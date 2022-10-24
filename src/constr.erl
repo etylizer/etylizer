@@ -1,0 +1,38 @@
+-module(constr).
+
+% @doc This module defines types for constraints.
+
+-export_type([
+    locs/0,
+    constr_env/0,
+    constr_poly_env/0,
+    constrs/0,
+    constr/0,
+    simp_constrs/0,
+    simp_constr/0,
+    constr_subty/0,
+    constr_var/0,
+    constr_def/0,
+    constr_case_body/0
+]).
+
+-type locs() :: {string(), sets:set(ast:loc())}.
+-type constr_env() :: #{ast:any_ref() => ast:ty()}.
+-type constr_poly_env() :: #{ast:any_ref() => ast:ty_scheme()}.
+
+% Constraints
+-type constrs() :: sets:set(constr()).
+-type constr() :: constr_subty() | constr_var() | constr_op() | constr_def()
+                | constr_case() | constr_unsatisfiable().
+
+-type simp_constrs() :: sets:set(simp_constr()).
+-type simp_constr() :: constr_subty() | constr_unsatisfiable().
+
+-type constr_subty() :: {csubty, locs(), ast:ty(), ast:ty()}.
+-type constr_var() :: {cvar, locs(), ast:any_ref(), ast:ty()}.
+-type constr_op() :: {cop, locs(), atom(), arity(), ast:ty()}.
+-type constr_def() :: {cdef, locs(), constr_env(), constrs()}.
+-type constr_case() :: {ccase, locs(), constrs(), [constr_case_body()]}.
+-type constr_case_body() ::
+        {locs(), Env::constr_env(), Guard::constrs(), Body::constrs(), BodyCond::ast:ty()}.
+-type constr_unsatisfiable() :: {cunsatisfiable, ast:loc(), string()}.

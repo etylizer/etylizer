@@ -1,0 +1,17 @@
+#!/bin/bash
+
+file="$1"
+exp="$2"
+
+if [ -z "$exp" ]; then
+    echo "USAGE: $0 FILE FUNCALL"
+    exit 1
+fi
+
+
+cd $(dirname "$file") || exit 1
+base=$(basename "$file")
+erl -compile "$base" || exit 1
+mod="${base%.erl}"
+echo "Running, exit with Ctrl-\\"
+erl -eval "$mod:$exp"
