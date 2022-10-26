@@ -268,20 +268,24 @@ pat_guard_upper_lower(P, Gs, E) ->
     % Env has type constr:constr_env() = #{ast:any_ref() => ast:ty()}
     {Env, Status} = guard_seq_env(Gs),
     EPat = pat_of_exp(E),
-    PatTy = ty_of_pat(Env, P),
-    ETy = ty_of_pat(Env, EPat),
-    Upper = ast:mk_intersection([PatTy, ETy]),
+    UpperPatTy = ty_of_pat(Env, P, upper),
+    LowerPatTy = ty_of_pat(Env, P, lower),
+    UpperETy = ty_of_pat(Env, EPat, upper),
+    LowerETy = ty_of_pat(Env, EPat, lower),
+    Upper = ast:mk_intersection([UpperPatTy, UpperETy]),
     VarsOfGuards = sets:from_list(lists:filtermap(fun ast:local_varname_from_any_ref/1, maps:keys(Env))),
     BoundVars = sets:union(bound_vars_pat(P), bound_vars_pat(EPat)),
     Lower =
         case {Status, sets:is_subset(VarsOfGuards, BoundVars)} of
-            {safe, true} -> Upper;
+            {safe, true} -> ast:mk_intersection([LowerPatTy, LowerETy]);
             _ -> {predef, none}
         end,
-    ?LOG_TRACE("EPat=~200p, PatTy=~s, ETy=~s, Upper=~s, Lower=~s, VarsOfGuards=~200p, BoundVars=~w, Status=~w",
+    ?LOG_TRACE("EPat=~200p, UpperPatTy=~s, LowerPatTy=~s, UpperETy=~s, LowerETy=~s Upper=~s, Lower=~s, VarsOfGuards=~200p, BoundVars=~w, Status=~w",
                EPat,
-               pretty:render_ty(PatTy),
-               pretty:render_ty(ETy),
+               pretty:render_ty(UpperPatTy),
+               pretty:render_ty(LowerPatTy),
+               pretty:render_ty(UpperETy),
+               pretty:render_ty(LowerETy),
                pretty:render_ty(Upper),
                pretty:render_ty(Lower),
                maps:keys(Env),
@@ -339,12 +343,13 @@ bound_vars_pat(P) ->
 %
 % Hence, we introduce a mode for ty_of_pat, which can be either upper or lower.
 %
-% - Mode upper deals with the potential type. If e matches p then e must
+% - Mode upper deals with the potential type. Any expression matching p must
 %   be of this type. In the example above, the potential type is nonempty_list(any()).
+%
 % - Mode lower deals with the accepting type. If e has this type, then p definitely
 %   matches. In the example above, the accepting type is nonempty_list(1).
--spec ty_of_pat(constr:constr_env(), ast:pat()) -> ast:ty().
-ty_of_pat(Env, P) ->
+-spec ty_of_pat(constr:constr_env(), ast:pat(), upper | lower) -> ast:ty().
+ty_of_pat(Env, P, Mode) ->
     case P of
         {'atom', _L, A} -> {singleton, A};
         {'char', _L, C} -> {singleton, C};
@@ -352,22 +357,31 @@ ty_of_pat(Env, P) ->
         {'float', _L, _F} -> {predef, float};
         {'string', _L, _S} -> {predef_alias, string};
         {bin, L, _Elems} -> errors:unsupported(L, "bitstring patterns");
-        {match, _L, P1, P2} -> ast:mk_intersection([ty_of_pat(Env, P1), ty_of_pat(Env, P2)]);
+        {match, _L, P1, P2} ->
+            ast:mk_intersection([ty_of_pat(Env, P1, Mode), ty_of_pat(Env, P2, Mode)]);
         {nil, _L} -> {empty_list};
         {cons, _L, P1, P2} ->
-            %% FIXME: this is wrong. It should be the union of {list, ty_of_pat(Env, P1)}
-            %% and ty_of_pat(Env, P2), intersected with type list(any()).
-            %% Accepting and potential types of list patterns are also wrong.
-            ast:mk_intersection([{list, ty_of_pat(Env, P1)}, ty_of_pat(Env, P2)]);
+            case Mode of
+                upper ->
+                    T1 = {nonempty_list, ty_of_pat(Env, P1, Mode)},
+                    T2 = ast:mk_intersection([ty_of_pat(Env, P2, Mode),
+                                              {predef_alias, nonempty_list}]),
+                    ast:mk_union([T1, T2]);
+                lower ->
+                    T1 = {nonempty_list, ty_of_pat(Env, P1, Mode)},
+                    T2 = ty_of_pat(Env, P2, Mode),
+                    ast:mk_intersection([T1, T2])
+            end;
         {op, _, '++', [P1, P2]} ->
-            ast:mk_intersection([ty_of_pat(Env, P1), ty_of_pat(Env, P2), {predef_alias, list}]);
+            ast:mk_intersection([ty_of_pat(Env, P1, Mode), ty_of_pat(Env, P2, Mode),
+                                 {predef_alias, string}]);
         {op, _, '-', [SubP]} ->
-            ast:mk_intersection([ty_of_pat(Env, SubP), {predef_alias, number}]);
+            ast:mk_intersection([ty_of_pat(Env, SubP, Mode), {predef_alias, number}]);
         {op, L, Op, _} -> errors:unsupported(L, "operator ~w in patterns", Op);
         {map, L, _Assocs} -> errors:unsupported(L, "map patterns");
         {record, L, _Name, _Fields} -> errors:unsupported(L, "record patterns");
         {record_index, L, _Name, _Field} -> errors:unsupported(L, "record index patterns");
-        {tuple, _L, Ps} -> {tuple, lists:map(fun(P) -> ty_of_pat(Env, P) end, Ps)};
+        {tuple, _L, Ps} -> {tuple, lists:map(fun(P) -> ty_of_pat(Env, P, Mode) end, Ps)};
         {wildcard, _L} -> {predef, any};
         {var, _L, {local_bind, V}} -> maps:get({local_ref, V}, Env, {predef, any});
         {var, _L, {local_ref, _V}} -> {predef, any} % we could probably do better here

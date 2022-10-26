@@ -56,6 +56,10 @@
 -define(LOG_TRACE(A,B,C,D,E,F,G,H),?DO_LOG(trace,[A,B,C,D,E,F,G,H])).
 -define(LOG_TRACE(A,B,C,D,E,F,G,H,I),?DO_LOG(trace,[A,B,C,D,E,F,G,H,I])).
 -define(LOG_TRACE(A,B,C,D,E,F,G,H,I,J),?DO_LOG(trace,[A,B,C,D,E,F,G,H,I,J])).
+-define(LOG_TRACE(A,B,C,D,E,F,G,H,I,J,K),?DO_LOG(trace,[A,B,C,D,E,F,G,H,I,J,K])).
+-define(LOG_TRACE(A,B,C,D,E,F,G,H,I,J,K,L),?DO_LOG(trace,[A,B,C,D,E,F,G,H,I,J,K,L])).
+-define(LOG_TRACE(A,B,C,D,E,F,G,H,I,J,K,L,M),?DO_LOG(trace,[A,B,C,D,E,F,G,H,I,J,K,L,M])).
+-define(LOG_TRACE(A,B,C,D,E,F,G,H,I,J,K,L,M,N),?DO_LOG(trace,[A,B,C,D,E,F,G,H,I,J,K,L,M,N])).
 
 %%%-----------------------------------------------------------------
 %%% Internal, i.e. not intended for direct use in code - use above
