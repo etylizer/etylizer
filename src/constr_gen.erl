@@ -324,7 +324,25 @@ bound_vars_pat(P) ->
     end.
 
 
+% ty_of_pat
 % \lbag p \rbag_\Gamma
+%
+% In the paper, the type t of a pattern p has the following semantics:
+%     Expression e matches p if, and only if, e has type t
+%
+% With list patterns, this is no longer true. For example, consider the pattern
+% [1 | _]. For the => direction above, consider an expression e that matches
+% this pattern. From this, all we know is that e must have type nonempty_list(any()).
+% (e could be any of the following expressions: [1,2,3] or [1, "foo"] or [1]).
+% For the <= direction, e must have type nonempty_list(1) if we want to make sure
+% that the pattern definitely matches.
+%
+% Hence, we introduce a mode for ty_of_pat, which can be either upper or lower.
+%
+% - Mode upper deals with the potential type. If e matches p then e must
+%   be of this type. In the example above, the potential type is nonempty_list(any()).
+% - Mode lower deals with the accepting type. If e has this type, then p definitely
+%   matches. In the example above, the accepting type is nonempty_list(1).
 -spec ty_of_pat(constr:constr_env(), ast:pat()) -> ast:ty().
 ty_of_pat(Env, P) ->
     case P of
