@@ -249,18 +249,10 @@ ty_without(T1, T2) -> ast:mk_intersection([T1, ast:mk_negation(T2)]).
 -spec case_clause_constrs(ctx(), ast:ty(), ast:exp(), ast:case_clause(), ast:ty())
                          -> {ast:ty(), ast:ty(), constr:constrs(), constr:constr_case_body()}.
 case_clause_constrs(Ctx, TyScrut, Scrut, {case_clause, L, Pat, Guards, Exps}, Beta) ->
-    {Upper, Lower} = pat_guard_upper_lower(Pat, Guards, Scrut),
-    Ti = ast:mk_intersection([TyScrut, Upper]),
-    {Ci0, Gamma0} = pat_env(Ctx, L, Ti, pat_of_exp(Scrut)),
-    {Ci1, BodyGamma1} = pat_guard_env(Ctx, L, Ti, Pat, Guards),
-    % We need a separate environment for typing the guards and the body. For the body
-    % we already know that the guards are true. For the guards, this assumption
-    % does not hold.
-    {Ci2, GuardsGamma1} = pat_guard_env(Ctx, L, Ti, Pat, []),
-    BodyGamma2 = intersect_envs(BodyGamma1, Gamma0),
-    GuardsGamma2 = intersect_envs(GuardsGamma1, Gamma0),
-    ?LOG_TRACE("TyScrut=~w, Scrut=~w, Gamma0=~w, BodyGamma1=~w, BodyGamma2=~w, GuardsGamma1=~w, GuardsGamm2=~w",
-               TyScrut, Scrut, Gamma0, BodyGamma1, BodyGamma2, GuardsGamma1, GuardsGamma2),
+    {BodyLower, BodyUpper, BodyTi, BodyEnvCs, BodyEnv} =
+        case_clause_env(Ctx, L, TyScrut, Scrut, Pat, Guards),
+    {_, _, _, GuardEnvCs, GuardEnv} = case_clause_env(Ctx, L, TyScrut, Scrut, Pat, []),
+    ?LOG_TRACE("TyScrut=~w, Scrut=~w, GuardEnv=~w, BodyEnv=~w", TyScrut, Scrut, GuardEnv, BodyEnv),
     InnerCs = exps_constrs(Ctx, L, Exps, Beta),
     CGuards =
         sets:union(
@@ -269,13 +261,23 @@ case_clause_constrs(Ctx, TyScrut, Scrut, {case_clause, L, Pat, Guards, Exps}, Be
                     exps_constrs(Ctx, L, Guard, {predef_alias, boolean})
             end,
             Guards)),
-    ConstrBody = {mk_locs("case branch", L), {GuardsGamma2, CGuards}, {BodyGamma2, InnerCs}, Ti},
-    {Lower, Upper, sets:union([Ci0, Ci1, Ci2]), ConstrBody}.
+    ConstrBody = {mk_locs("case branch", L), {GuardEnv, CGuards}, {BodyEnv, InnerCs}, BodyTi},
+    {BodyLower, BodyUpper, sets:union([BodyEnvCs, GuardEnvCs]), ConstrBody}.
 
+% helper function for case_clause_constrs
+-spec case_clause_env(ctx(), ast:loc(), ast:ty(), ast:exp(), ast:pat(), [ast:guard()]) ->
+          {ast:ty(), ast:ty(), ast:ty(), constr:constrs(), symtab:fun_env()}.
+case_clause_env(Ctx, L, TyScrut, Scrut, Pat, Guards) ->
+    {Lower, Upper} = pat_guard_lower_upper(Pat, Guards, Scrut),
+    Ti = ast:mk_intersection([TyScrut, Upper]),
+    {Ci0, Gamma0} = pat_env(Ctx, L, Ti, pat_of_exp(Scrut)),
+    {Ci1, Gamma1} = pat_guard_env(Ctx, L, Ti, Pat, Guards),
+    Gamma2 = intersect_envs(Gamma1, Gamma0),
+    {Lower, Upper, Ti, sets:union(Ci0, Ci1), Gamma2}.
 
 % ⌊ p when g ⌋_e and ⌈ p when g ⌉_e
--spec pat_guard_upper_lower(ast:pat(), [ast:guard()], ast:exp()) -> {ast:ty(), ast:ty()}.
-pat_guard_upper_lower(P, Gs, E) ->
+-spec pat_guard_lower_upper(ast:pat(), [ast:guard()], ast:exp()) -> {ast:ty(), ast:ty()}.
+pat_guard_lower_upper(P, Gs, E) ->
     % Env has type constr:constr_env() = #{ast:any_ref() => ast:ty()}
     {Env, Status} = guard_seq_env(Gs),
     EPat = pat_of_exp(E),
@@ -298,7 +300,7 @@ pat_guard_upper_lower(P, Gs, E) ->
                maps:keys(Env),
                sets:to_list(BoundVars),
                Status),
-    {Upper, Lower}.
+    {Lower, Upper}.
 
 -spec bound_vars_pat(ast:pat()) -> sets:set(ast:local_varname()).
 bound_vars_pat(P) ->
