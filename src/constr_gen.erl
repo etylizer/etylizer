@@ -76,7 +76,7 @@ gen_constrs_annotated_fun({fun_full, ArgTys, ResTy}, {function, L, Name, Arity, 
     end,
     ArgRefs = lists:map(fun(V) -> {local_ref, V} end, Args),
     Env = maps:from_list(lists:zip(ArgRefs, ArgTys)),
-    BodyCs = exp_constrs(Ctx, Body, ResTy),
+    BodyCs = exps_constrs(Ctx, L, Body, ResTy),
     Msg = utils:sformat("definition of ~w/~w", Name, Arity),
     single({cdef, mk_locs(Msg, L), Env, BodyCs}).
 
@@ -152,12 +152,12 @@ exp_constrs(Ctx, E, T) ->
         {fun_ref, L, GlobalRef} ->
             single({cvar, mk_locs("function ref", L), GlobalRef, T});
         {'fun', L, RecName, FunClauses} ->
-            {Args, BodyExp} = fun_clauses_to_exp(Ctx, L, FunClauses),
+            {Args, BodyExps} = fun_clauses_to_exp(Ctx, L, FunClauses),
             ArgTys = lists:map(fun(X) -> {{local_ref, X}, fresh_tyvar(Ctx)} end, Args),
             ArgEnv = maps:from_list(ArgTys),
             ResTy = fresh_tyvar(Ctx),
             FunTy = {fun_full, lists:map(fun({_, Ty}) -> Ty end, ArgTys), ResTy},
-            CsBody = exp_constrs(Ctx, BodyExp, ResTy),
+            CsBody = exps_constrs(Ctx, L, BodyExps, ResTy),
             BodyEnv =
                 case RecName of
                     no_name -> ArgEnv;
@@ -608,8 +608,26 @@ var_test_env(FunExp, X, RestArgs) ->
 %   ...
 %   (pm1, pm2, ..., pmn) -> em
 % end
--spec fun_clauses_to_exp(ctx(), ast:loc(), [ast:fun_clauses()]) -> {[ast:local_varname()], ast:exp()}.
+-spec fun_clauses_to_exp(ctx(), ast:loc(), [ast:fun_clauses()]) -> {[ast:local_varname()], ast:exps()}.
+fun_clauses_to_exp(Ctx, _, FunClauses = [{fun_clause, L, Pats, [], Body}]) ->
+    % special case: only one clause, no guards, all patterns are variables
+    Vars =
+        lists:foldr(fun (Pat, Acc) ->
+                            case {Acc, Pat} of
+                                {error, _} -> error;
+                                {Vars, {var, _, {local_bind, V}}} -> [V | Vars];
+                                _ -> error
+                            end
+                    end, [], Pats),
+    case Vars of
+        error -> fun_clauses_to_exp_aux(Ctx, L, FunClauses);
+        VarList -> {VarList, Body}
+    end;
 fun_clauses_to_exp(Ctx, L, FunClauses) ->
+    fun_clauses_to_exp_aux(Ctx, L, FunClauses).
+
+-spec fun_clauses_to_exp_aux(ctx(), ast:loc(), [ast:fun_clauses()]) -> {[ast:local_varname()], ast:exps()}.
+fun_clauses_to_exp_aux(Ctx, L, FunClauses) ->
     Arity =
         case FunClauses of
             [] -> errors:ty_error(L, "expected function clauses");
@@ -629,7 +647,7 @@ fun_clauses_to_exp(Ctx, L, FunClauses) ->
     Vars = fresh_vars(Ctx, Arity),
     ScrutExp = {tuple, L, lists:map(fun(V) -> {var, L, {local_ref, V}} end, Vars)},
     CaseClauses = lists:map(fun fun_clause_to_case_clause/1, FunClauses),
-    {Vars, {'case', L, ScrutExp, CaseClauses}}.
+    {Vars, [{'case', L, ScrutExp, CaseClauses}]}.
 
 -spec fun_clause_to_case_clause(ast:fun_clause()) -> ast:case_clause().
 fun_clause_to_case_clause({fun_clause, L, Pats, Guards, Exps}) ->
