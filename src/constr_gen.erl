@@ -252,10 +252,15 @@ case_clause_constrs(Ctx, TyScrut, Scrut, {case_clause, L, Pat, Guards, Exps}, Be
     {Upper, Lower} = pat_guard_upper_lower(Pat, Guards, Scrut),
     Ti = ast:mk_intersection([TyScrut, Upper]),
     {Ci0, Gamma0} = pat_env(Ctx, L, Ti, pat_of_exp(Scrut)),
-    {Ci1, Gamma1} = pat_guard_env(Ctx, L, Ti, Pat, Guards),
-    Gamma2 = intersect_envs(Gamma1, Gamma0),
-    ?LOG_TRACE("TyScrut=~w, Scrut=~w, Gamma0=~w, Gamma1=~w, Gamma2=~w",
-               TyScrut, Scrut, Gamma0, Gamma1, Gamma2),
+    {Ci1, BodyGamma1} = pat_guard_env(Ctx, L, Ti, Pat, Guards),
+    % We need a separate environment for typing the guards and the body. For the body
+    % we already know that the guards are true. For the guards, this assumption
+    % does not hold.
+    {Ci2, GuardsGamma1} = pat_guard_env(Ctx, L, Ti, Pat, []),
+    BodyGamma2 = intersect_envs(BodyGamma1, Gamma0),
+    GuardsGamma2 = intersect_envs(GuardsGamma1, Gamma0),
+    ?LOG_TRACE("TyScrut=~w, Scrut=~w, Gamma0=~w, BodyGamma1=~w, BodyGamma2=~w, GuardsGamma1=~w, GuardsGamm2=~w",
+               TyScrut, Scrut, Gamma0, BodyGamma1, BodyGamma2, GuardsGamma1, GuardsGamma2),
     InnerCs = exps_constrs(Ctx, L, Exps, Beta),
     CGuards =
         sets:union(
@@ -264,8 +269,8 @@ case_clause_constrs(Ctx, TyScrut, Scrut, {case_clause, L, Pat, Guards, Exps}, Be
                     exps_constrs(Ctx, L, Guard, {predef_alias, boolean})
             end,
             Guards)),
-    ConstrBody = {mk_locs("case branch", L), Gamma2, CGuards, InnerCs, Ti}, % Gamma in InnerCs when Ti
-    {Lower, Upper, sets:union([Ci0, Ci1]), ConstrBody}.
+    ConstrBody = {mk_locs("case branch", L), {GuardsGamma2, CGuards}, {BodyGamma2, InnerCs}, Ti},
+    {Lower, Upper, sets:union([Ci0, Ci1, Ci2]), ConstrBody}.
 
 
 % ⌊ p when g ⌋_e and ⌈ p when g ⌉_e
@@ -653,7 +658,9 @@ fun_clauses_to_exp_aux(Ctx, L, FunClauses) ->
     Vars = fresh_vars(Ctx, Arity),
     ScrutExp = {tuple, L, lists:map(fun(V) -> {var, L, {local_ref, V}} end, Vars)},
     CaseClauses = lists:map(fun fun_clause_to_case_clause/1, FunClauses),
-    {Vars, [{'case', L, ScrutExp, CaseClauses}]}.
+    E = {'case', L, ScrutExp, CaseClauses},
+    ?LOG_TRACE("Rewrote function clauses at ~s with arguments=~w:\n~200p", ast:format_loc(L), Vars, E),
+    {Vars, [E]}.
 
 -spec fun_clause_to_case_clause(ast:fun_clause()) -> ast:case_clause().
 fun_clause_to_case_clause({fun_clause, L, Pats, Guards, Exps}) ->
