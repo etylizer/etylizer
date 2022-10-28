@@ -81,8 +81,8 @@ file_logger() ->
                 receive
                     {log, Msg, Sender} ->
                         io:put_chars(F, Msg),
-                        Sender ! log_ok,
                         %file:datasync(F),
+                        Sender ! log_ok,
                         Loop();
                     {shutdown, Pid} ->
                         Pid ! shutdown_done,
