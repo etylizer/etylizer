@@ -169,7 +169,7 @@ doWork(Opts) ->
                       ?LOG_NOTE("Typechecking ~s ...", F),
                       Only = sets:from_list(Opts#opts.only),
                       Ctx = typing:new_ctx(Symtab, Sanity),
-                      typing:check_forms(Ctx, Forms, Only)
+                      typing:check_forms(Ctx, F, Forms, Only)
               end
       end, Opts#opts.files).
 

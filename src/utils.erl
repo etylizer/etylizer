@@ -10,7 +10,8 @@
     diff_terms/3, if_true/2,
     file_get_lines/1, set_add_many/2, assert_no_error/1,
     replicate/2, unconsult/2,
-    string_ends_with/2, shorten/2
+    string_ends_with/2, shorten/2,
+    flatmap_flip/2, map_flip/2, with_index/1, with_index/2
 ]).
 
 -spec map_opt(fun((T) -> U | error), [T]) -> [U].
@@ -195,3 +196,18 @@ shorten([], _) -> {[], 0};
 shorten([X | Xs], N) ->
     {Short, ShortN} = shorten(Xs, N - 1),
     {[X | Short], ShortN + 1}.
+
+-spec flatmap_flip([A], fun((A) -> [B])) -> [B].
+flatmap_flip(L, F) -> lists:flatmap(F, L).
+
+-spec map_flip([A], fun((A) -> B)) -> [B].
+map_flip(L, F) -> lists:map(F, L).
+
+-spec with_index([A]) -> [{integer(), A}].
+with_index(L) -> with_index(0, L).
+
+-spec with_index(integer(), [A]) -> [{integer(), A}].
+with_index(Start, L) ->
+    {_, Rev} = lists:foldl(fun (X, {I, Acc}) -> {I + 1, [{I, X} | Acc]} end,
+                           {Start, []}, L),
+    lists:reverse(Rev).
