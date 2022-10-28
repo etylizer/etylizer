@@ -164,7 +164,7 @@ exp_constrs(Ctx, E, T) ->
                     {local_bind, F} -> maps:put({local_ref, F}, FunTy, ArgEnv)
                 end,
             sets:from_list([{cdef, mk_locs("function def", L), BodyEnv, CsBody},
-                            {csubty, mk_locs("result of function def", L), FunTy, T}]);
+                            {csubty, mk_locs("result of fun exp", L), FunTy, T}]);
         {call, L, FunExp, Args} ->
             {ArgCs, ArgTys} =
                 lists:foldr(
@@ -178,8 +178,14 @@ exp_constrs(Ctx, E, T) ->
             Beta = fresh_tyvar(Ctx),
             FunTy = {fun_full, ArgTys, Beta},
             FunCs = exp_constrs(Ctx, FunExp, FunTy),
+            Description =
+                case FunExp of
+                    {var, _, AnyRef} ->
+                        "result of calling " ++ pretty:render_any_ref(AnyRef);
+                    _ -> "result of function call"
+                end,
             sets:add_element(
-              {csubty, mk_locs("result of function call", L), Beta, T},
+              {csubty, mk_locs(Description, L), Beta, T},
               sets:union(FunCs, ArgCs));
         {call_remote, L, _ModExp, _FunExp, _Args} ->
             errors:unsupported(L, "function calls with dynamically computed modules");
