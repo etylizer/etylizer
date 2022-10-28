@@ -110,7 +110,11 @@ check_forms(Ctx, FileName, Forms, Only) ->
 infer_all(Ctx, FileName, Decls) ->
     ?LOG_INFO("Inferring types of functions without specs in ~s", FileName),
     % FIXME: need to build strongly connected components to infer each group in isolation
-    L = infer(Ctx, Decls),
+    L =
+        case Decls of
+            [] -> [#{}];
+            _ -> infer(Ctx, Decls)
+        end,
     ?LOG_INFO("Inferring types of functions without specs returned ~w environments in total",
               length(L)),
     L.
