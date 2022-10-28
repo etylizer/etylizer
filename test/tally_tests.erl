@@ -9,12 +9,13 @@
                    tfloat/0, tfun2/3, tnot/1, tbool/0
                   ]).
 
--spec test_tally_unique(list({ast:ty(), ast:ty()}), #{ atom() => ast:ty()}) -> ok.
-test_tally_unique(ConstrList, ExpectedSubst) ->
-    test_tally_unique(ConstrList, ExpectedSubst, []).
+-spec test_tally_unique(string(), list({ast:ty(), ast:ty()}), #{ atom() => ast:ty()}) -> ok.
+test_tally_unique(Name, ConstrList, ExpectedSubst) ->
+    test_tally_unique(Name, ConstrList, ExpectedSubst, []).
 
--spec test_tally_unique(list({ast:ty(), ast:ty()}), #{ atom() => ast:ty()}, [ast:ty_varname()]) -> ok.
-test_tally_unique(ConstrList, ExpectedSubst, FixedVars) ->
+-spec test_tally_unique(string(), list({ast:ty(), ast:ty()}), #{ atom() => ast:ty()}, [ast:ty_varname()]) -> ok.
+test_tally_unique(Name, ConstrList, ExpectedSubst, FixedVars) ->
+    ?LOG_WARN("Running test_tally_unique for ~s", Name),
     Constrs = sets:from_list(
                 lists:map(
                   fun ({T, U}) -> {csubty, sets:from_list([ast:loc_auto()]), T, U} end,
@@ -23,7 +24,7 @@ test_tally_unique(ConstrList, ExpectedSubst, FixedVars) ->
     SortFun = fun({K1,_}, {K2,_}) -> K1 < K2 end,
     case tally:tally(symtab:empty(), Constrs, sets:from_list(FixedVars)) of
         [RealSubst] ->
-            ?LOG_WARN("~nSubst: ~s~n~nExpected: ~s",
+            ?LOG_WARN("Subst:~n~s~nExpected:~n~s",
                       pretty:render_subst(RealSubst),
                       pretty:render_subst(ExpectedSubst)),
             ?assertEqual(lists:sort(SortFun, maps:to_list(ExpectedSubst)),
@@ -37,15 +38,15 @@ test_tally_unique(ConstrList, ExpectedSubst, FixedVars) ->
     end.
 
 tally_01_test() ->
-    test_tally_unique([{tvar(alpha), tint()}], #{ alpha => tnone() }).
+    test_tally_unique("01", [{tvar(alpha), tint()}], #{ alpha => tnone() }).
 
 tally_02_test() ->
-    test_tally_unique([{tint(), tvar(alpha)}], #{ alpha => tint() }).
+    test_tally_unique("02", [{tint(), tvar(alpha)}], #{ alpha => tint() }).
 
 tally_03_test() ->
     Alpha = tvar(alpha),
     Beta = tvar(beta),
-    test_tally_unique([{Alpha, ttuple1(tany())},
+    test_tally_unique("03", [{Alpha, ttuple1(tany())},
                        {ttuple1(Beta), Alpha}, {tint(), Beta}],
                       #{ beta => tint(), alpha => ttuple1(tint())}).
 
@@ -53,7 +54,7 @@ tally_03_test() ->
 tally_04_test() ->
     Alpha = tvar(alpha),
     Beta = tvar(beta),
-    test_tally_unique([{tlist(Beta), Alpha}],
+    test_tally_unique("04", [{tlist(Beta), Alpha}],
                       #{ alpha => tempty_list() }).
 
 % See #31
@@ -62,7 +63,7 @@ tally_04_test() ->
 tally_05_test() ->
     Alpha = tvar(alpha),
     Beta = tvar(beta),
-    test_tally_unique([{Beta, Alpha}],
+    test_tally_unique("05", [{Beta, Alpha}],
                       #{ alpha => Beta },
                       [beta]).
 
@@ -71,7 +72,7 @@ tally_05_test() ->
 tally_06_test() ->
   Alpha = tvar(alpha),
   Beta = tvar(beta),
-  test_tally_unique([{tlist(Beta), Alpha}],
+  test_tally_unique("06", [{tlist(Beta), Alpha}],
     #{ alpha => tunion([tempty_list(), stdtypes:tlist_improper(Beta, tempty_list())]) },
     [beta]).
 
@@ -85,7 +86,7 @@ tally_07_test() ->
   Beta = tvar(beta),
   OneOrTwo = tunion(tint(1), tint(2)),
   OneOrTwoRange = trange(1, 2),
-  test_tally_unique(
+  test_tally_unique("07",
     [{OneOrTwo, Alpha},
       {Beta, OneOrTwo},
       {tinter(tfun1(tint(), tint()), tfun1(OneOrTwo, OneOrTwo)), tfun1(Alpha, Beta)}],
@@ -107,7 +108,7 @@ tally_08_test() ->
     OneOrTwo = tunion(One, Two),
     I = tint(),
     F = tfloat(),
-    test_tally_unique(
+    test_tally_unique("08",
       [{tinter([tfun2(I, I, I), tfun2(I, F, F), tfun2(F, I, F), tfun2(F, F, F)]), tfun2(Alpha, Beta, Gamma)},
        {tinter(I, tnot(OneOrTwo)), Alpha},
        {One, Beta},
@@ -119,3 +120,28 @@ tally_08_test() ->
          beta => tunion([trange(1, 1)]),
          gamma => I,
          delta => I }).
+
+tally_09_test() ->
+    V0 = tvar(v0),
+    V2 = tvar(v2),
+    V3 = tvar(v3),
+    V4 = tvar(v4),
+    V5 = tvar(v5),
+    V6 = tvar(v6),
+    V7 = tvar(v7),
+    V8 = tvar(v8),
+    A = tatom(a),
+    B = tatom(b),
+    TupleAny = ttuple1(tany()),
+    LargeInter = tinter([V0, tnot(tinter([ttuple1(A), TupleAny])), ttuple1(B), TupleAny]),
+    test_tally_unique("09",
+      [{tinter([V0, ttuple1(A), TupleAny]), ttuple1(V3)},
+       {tunion([tinter([ttuple1(A), TupleAny]), tinter([ttuple1(B), TupleAny])]), ttuple(V8)},
+       {ttuple1(V2), V0},
+       {LargeInter, ttuple1(V8)},
+       {LargeInter, ttuple1(V7)},
+       {LargeInter, ttuple1(V6)},
+       {tinter([V0, ttuple1(A), TupleAny]), ttuple(V5)},
+       {A, V2},
+       {tinter([V0, ttuple1(A), TupleAny]), ttuple1(V4)}],
+      #{}).
