@@ -74,7 +74,6 @@ sep_by(Sep, Docs) ->
 
 -spec render(doc()) -> string().
 render(D) ->
-    ?LOG_TRACE("D:~n~200p", D),
     prettypr:format(D, 200).
 
 -spec render_ty(ast:ty()) -> string().
