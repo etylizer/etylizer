@@ -17,4 +17,4 @@ bar(_) -> ok.
 -spec test() -> ok.
 test() ->
     ok = foo(replicate(5, 1)),
-    ok = bar(replicate("X", 3)).
+    ok = bar(replicate("X", 3)). % invalid

@@ -136,7 +136,8 @@
 -export([
     format_loc/1, to_loc/2, loc_auto/0, is_predef_name/1, is_predef_alias_name/1,
     local_varname_from_any_ref/1,
-    mk_intersection/1, mk_union/1, mk_negation/1
+    mk_intersection/1, mk_union/1, mk_negation/1,
+    get_fun_name/1
 ]).
 
 % General
@@ -175,6 +176,10 @@ local_varname_from_any_ref(Ref) ->
 -type import_form() :: {attribute, loc(), import, {Mod::atom(),[fun_with_arity()]}}.
 -type mod_form() :: {attribute, loc(), module, Mod::atom()}.
 -type fun_decl() :: {function, loc(), Name::atom(), Arity::arity(), [fun_clause()]}.
+
+-spec get_fun_name(fun_decl()) -> string().
+get_fun_name({function, _Loc, Name, Arity, _}) -> utils:sformat("~w/~w", Name, Arity).
+
 -type fun_spec() :: {attribute, loc(), spec | callback, Name::atom(), Arity::arity(),
                      ty_scheme(),
                      % wether the spec was written with an explicit module name or not

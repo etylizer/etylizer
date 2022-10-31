@@ -126,12 +126,7 @@ infer_all(Ctx, FileName, Decls) ->
 -spec infer(ctx(), [ast:fun_decl()]) -> [symtab:fun_env()].
 infer(_, []) -> errors:bug("typing:infer called with empty list of declarations");
 infer(Ctx, Decls) ->
-    Funs =
-        lists:map(
-          fun({function, _Loc, Name, Arity, _}) ->
-                  utils:sformat("~w/~w", Name, Arity)
-          end,
-          Decls),
+    Funs = lists:map(fun ast:get_fun_name/1, Decls),
     FunsStr = string:join(Funs, ", "),
     ?LOG_INFO("Inferring types of the following functions: ~s", FunsStr),
     Loc =
