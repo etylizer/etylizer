@@ -19,9 +19,9 @@ solve(M, Fix, SymTab) ->
 
   % unify produces very ugly types
   % clean up a bit
-  CleanSubstitution = fun(Substitution, Fix) ->
+  CleanSubstitution = fun(Substitution, CFix) ->
     CleanedList = lists:map(fun({Var, Ty}) ->
-      {Var, clean_type(Ty, Fix, SymTab)} end, Substitution),
+      {Var, clean_type(Ty, CFix, SymTab)} end, Substitution),
     CleanedList
                       end,
 
