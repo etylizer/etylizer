@@ -13,3 +13,6 @@ _checkouts/
 ety.log
 *.trace
 *.analyze
+
+.idea
+*.iml
