@@ -13,10 +13,18 @@ tint/0, tint/1, ttuple1/1, tinter/1, tinter/2, tlist/1, tempty_list/0]).
 -spec norm_api(constr:simp_constrs(), sets:new(), symtab:t()) -> any() | {fail, norm}.
 norm_api(Constraints, Fix, Sym) ->
 
+  Start = erlang:system_time(),
   ToMeetNormalizedConstraints =
     sets:fold(fun (Cs, Ac) -> normalize_constraints_api(Cs, Ac, Fix, Sym) end, [[]], Constraints),
 
+  Middle = erlang:system_time(),
+%%  logger:notice("Phase I ~p", [(Middle - Start)/1000000000]),
+
   SaturatedConstraints = saturate(ToMeetNormalizedConstraints, [], Fix, Sym),
+
+  End = erlang:system_time(),
+
+%%  logger:notice("Phase II ~p", [(End - Middle)/1000000000]),
 
   SaturatedConstraints.
 
@@ -24,29 +32,39 @@ norm_api(Constraints, Fix, Sym) ->
 
 normalize_constraints_api({csubty, _, S, T}, AllNormalized, Fix, Sym) ->
   SnT = tintersect([S, tnegate(T)]),
+
   % sorted list of merged variables => [{V, S, T}]
   Normalized = norm_and_merge(SnT, [], Fix, Sym),
   sanity(Normalized),
-  merge_and_meet(Normalized, AllNormalized, Sym).
+  M = merge_and_meet(Normalized, AllNormalized, Sym),
+  M.
 
 
 norm_and_merge(Ty, Memo, Fix, Sym) ->
-%%  logger:notice("norming and merging ~p", [Ty]),
-  T_partitions = dnf:simplify(subty:simple_empty(Ty, Sym)),
-  case T_partitions of
-    [] -> [[]]; % satisfiable
-    _ ->
-      {_ZeroPartitions, UnknownPartitions} = partition(T_partitions, Memo),
-      case UnknownPartitions of
-        [] -> [[]]; % satisfiable, memoized everything
-        _ ->
-          % TODO unfold recursive types once
-          % neccessary to transform back to AST, unfold, then partition again
-          %%  T_ast  = partition_to_ast(UnknownPartitions),
-          %%  T_norec = Ty, %esubrel:unfold_recursive_types(SymbolicTable, T_ast),
+  H1 = erlang:phash2(Ty),
 
-          norm_partitions(UnknownPartitions, Memo ++ UnknownPartitions, Fix, Sym)
-      end
+  case ets:lookup(norm_memoized, H1) of
+    [] ->
+      T_partitions = dnf:simplify(subty:simple_empty(Ty, Sym)),
+      Result = case T_partitions of
+        [] -> [[]]; % satisfiable
+        _ ->
+          {_ZeroPartitions, UnknownPartitions} = partition(T_partitions, Memo),
+          case UnknownPartitions of
+            [] -> [[]]; % satisfiable, memoized everything
+            _ ->
+              % TODO unfold recursive types once
+              % neccessary to transform back to AST, unfold, then partition again
+              %%  T_ast  = partition_to_ast(UnknownPartitions),
+              %%  T_norec = Ty, %esubrel:unfold_recursive_types(SymbolicTable, T_ast),
+
+              norm_partitions(UnknownPartitions, Memo ++ UnknownPartitions, Fix, Sym)
+          end
+      end,
+
+      ets:insert_new(norm_memoized, [{H1, Result}]),
+      Result;
+    [{_, Res}] -> Res
   end.
 
 norm_partitions([], _Memo, _, _Sym) -> [[]]; % satisfiable constraints
@@ -242,12 +260,19 @@ merge_and_meet(_Set1, [], _Sym) -> [];
 merge_and_meet([[]], Set2, _Sym) -> Set2;
 merge_and_meet(Set1, [[]], _Sym) -> Set1;
 merge_and_meet(La, Lb, Sym) ->
+  {H1, H2} = {erlang:phash2(La), erlang:phash2(Lb)},
+  case ets:lookup(meet_memoized, {H1, H2}) of
+    [] ->
+      R = lists:map(fun(E) -> unionlist(Lb, E, Sym) end, La),
+      R2 = lists:foldl(fun(NewS, All) -> merge_and_join(NewS, All, Sym) end, [], R),
+      sanity(R2),
 
-  R = lists:map(fun(E) -> unionlist(Lb, E, Sym) end, La),
-  R2 = lists:foldl(fun(NewS, All) -> merge_and_join(NewS, All, Sym) end, [], R),
-  sanity(R2),
 
-  R2.
+      ets:insert_new(meet_memoized, [{{H1, H2}, R2}]),
+      R2;
+    [{_, Result}] -> Result
+  end.
+
 
 
 
@@ -282,10 +307,19 @@ merge_and_join(_Set1, [[]], _Sym) -> [[]];
 merge_and_join([], Set2, _Sym) -> Set2;
 merge_and_join(Set1, [], _Sym) -> Set1;
 merge_and_join(S1, S2, Sym) ->
-  MayAdd = fun (S, Con) -> (not (has_smaller_constraint(Con, S, Sym))) end,
-  S22 = lists:filter(fun(C) -> MayAdd(S1, C) end, S2),
-  S11 = lists:filter(fun(C) -> MayAdd(S22, C) end, S1),
-  lists:map(fun lists:usort/1, lists:usort(S11 ++ S22)).
+  {H1, H2} = {erlang:phash2(S1), erlang:phash2(S2)},
+  case ets:lookup(join_memoized, {H1, H2}) of
+    [] ->
+      MayAdd = fun (S, Con) -> (not (has_smaller_constraint(Con, S, Sym))) end,
+      S22 = lists:filter(fun(C) -> MayAdd(S1, C) end, S2),
+      S11 = lists:filter(fun(C) -> MayAdd(S22, C) end, S1),
+      Res = lists:map(fun lists:usort/1, lists:usort(S11 ++ S22)),
+
+      ets:insert_new(join_memoized, [{{H1, H2}, Res}]),
+      Res;
+    [{_, Res}] -> Res
+  end.
+
 
 has_smaller_constraint(_Con, [], _Sym) -> false;
 has_smaller_constraint(Con, [C | S], Sym) ->
