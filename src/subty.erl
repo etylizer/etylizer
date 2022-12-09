@@ -14,27 +14,17 @@ is_equivalent(SymTab, S, T) -> is_subty(SymTab, S,T) andalso is_subty(SymTab, T,
 
 -spec is_subty(symtab:t(), ast:ty(), ast:ty()) -> boolean().
 is_subty(Symtab, T1, T2) ->
-%%  {ok, Fd} = file:open("hashes.txt", [append]),
   H1 = erlang:phash2(T1),
   H2 = erlang:phash2(T2),
 
-  memoized({H1, T1}, {H2, T2}, Symtab).
-
-
-
-memoized({H1, T1}, {H2, T2}, Symtab) ->
-  case ets:lookup(subty_memoized, {H1, H2}) of
-    [] ->
-      S_internal = ty_rec:norm(T1),
-      T_internal = ty_rec:norm(T2),
-      Res = is_subty_bdd(S_internal, T_internal, Symtab, sets:new()),
-      ets:insert_new(subty_memoized, [{{H1, H2}, Res}]),
-      Res;
-    [{_, Result}] -> Result
-  end.
-
-
-
+  memoize:memo_fun(
+    {subty_memo, {H1, H2}},
+    fun() ->
+    S_internal = ty_rec:norm(T1),
+    T_internal = ty_rec:norm(T2),
+    is_subty_bdd(S_internal, T_internal, Symtab, sets:new())
+                   end
+  ).
 
 
 is_any(T, Sym) ->

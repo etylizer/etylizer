@@ -175,7 +175,6 @@ doWork(Opts) ->
 
 -spec main([string()]) -> ok.
 main(Args) ->
-    ensure_ets(),
     Opts = parse_args(Args),
     log:init(Opts#opts.log_level),
     ?LOG_INFO("Parsed commandline options as ~200p", Opts),
@@ -186,12 +185,6 @@ main(Args) ->
             io:format("~s~n", [Msg]),
             erlang:halt(1)
     end.
-
-ensure_ets() ->
-  ets:new(meet_memoized,[named_table]),
-  ets:new(join_memoized,[named_table]),
-  ets:new(subty_memoized,[named_table]),
-  ets:new(norm_memoized,[named_table]).
 
 debug() ->
   Args = ["--level","debug","--sanity","--only","catch_01/0",
