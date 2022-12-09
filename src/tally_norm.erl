@@ -12,20 +12,10 @@ tint/0, tint/1, ttuple1/1, tinter/1, tinter/2, tlist/1, tempty_list/0]).
 
 -spec norm_api(constr:simp_constrs(), sets:new(), symtab:t()) -> any() | {fail, norm}.
 norm_api(Constraints, Fix, Sym) ->
-
-  Start = erlang:system_time(),
   ToMeetNormalizedConstraints =
     sets:fold(fun (Cs, Ac) -> normalize_constraints_api(Cs, Ac, Fix, Sym) end, [[]], Constraints),
 
-  Middle = erlang:system_time(),
-%%  logger:notice("Phase I ~p", [(Middle - Start)/1000000000]),
-
   SaturatedConstraints = saturate(ToMeetNormalizedConstraints, [], Fix, Sym),
-
-  End = erlang:system_time(),
-
-%%  logger:notice("Phase II ~p", [(End - Middle)/1000000000]),
-
   SaturatedConstraints.
 
 
