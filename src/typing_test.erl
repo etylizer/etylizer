@@ -92,9 +92,6 @@ should_run(Name, {exclude,Set}) -> not sets:is_element(Name, Set).
 
 simple_test_() ->
   WhatNot = [
-             "fun_local_02" % TODO 4s
-            , "fun_local_03" % TODO 10s
-            , "fun_local_04" % TODO 6s
             ],
   check_decls_in_file("test_files/tycheck_simple.erl",
                       {exclude, sets:from_list(WhatNot)}).

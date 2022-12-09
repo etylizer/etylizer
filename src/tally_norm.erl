@@ -12,42 +12,48 @@ tint/0, tint/1, ttuple1/1, tinter/1, tinter/2, tlist/1, tempty_list/0]).
 
 -spec norm_api(constr:simp_constrs(), sets:new(), symtab:t()) -> any() | {fail, norm}.
 norm_api(Constraints, Fix, Sym) ->
-
   ToMeetNormalizedConstraints =
     sets:fold(fun (Cs, Ac) -> normalize_constraints_api(Cs, Ac, Fix, Sym) end, [[]], Constraints),
 
   SaturatedConstraints = saturate(ToMeetNormalizedConstraints, [], Fix, Sym),
-
   SaturatedConstraints.
 
 
 
 normalize_constraints_api({csubty, _, S, T}, AllNormalized, Fix, Sym) ->
   SnT = tintersect([S, tnegate(T)]),
+
   % sorted list of merged variables => [{V, S, T}]
   Normalized = norm_and_merge(SnT, [], Fix, Sym),
   sanity(Normalized),
-  merge_and_meet(Normalized, AllNormalized, Sym).
+  M = merge_and_meet(Normalized, AllNormalized, Sym),
+  M.
 
 
 norm_and_merge(Ty, Memo, Fix, Sym) ->
-%%  logger:notice("norming and merging ~p", [Ty]),
-  T_partitions = dnf:simplify(subty:simple_empty(Ty, Sym)),
-  case T_partitions of
-    [] -> [[]]; % satisfiable
-    _ ->
-      {_ZeroPartitions, UnknownPartitions} = partition(T_partitions, Memo),
-      case UnknownPartitions of
-        [] -> [[]]; % satisfiable, memoized everything
-        _ ->
-          % TODO unfold recursive types once
-          % neccessary to transform back to AST, unfold, then partition again
-          %%  T_ast  = partition_to_ast(UnknownPartitions),
-          %%  T_norec = Ty, %esubrel:unfold_recursive_types(SymbolicTable, T_ast),
+  H1 = erlang:phash2(Ty),
 
-          norm_partitions(UnknownPartitions, Memo ++ UnknownPartitions, Fix, Sym)
+  memoize:memo_fun(
+    {norm_memo, H1},
+    fun() ->
+      T_partitions = dnf:simplify(subty:simple_empty(Ty, Sym)),
+      case T_partitions of
+        [] -> [[]]; % satisfiable
+        _ ->
+          {_ZeroPartitions, UnknownPartitions} = partition(T_partitions, Memo),
+          case UnknownPartitions of
+            [] -> [[]]; % satisfiable, memoized everything
+            _ ->
+              % TODO unfold recursive types once
+              % necessary to transform back to AST, unfold, then partition again
+              %%  T_ast  = partition_to_ast(UnknownPartitions),
+              %%  T_norec = Ty, %esubrel:unfold_recursive_types(SymbolicTable, T_ast),
+
+              norm_partitions(UnknownPartitions, Memo ++ UnknownPartitions, Fix, Sym)
+          end
       end
-  end.
+    end
+  ).
 
 norm_partitions([], _Memo, _, _Sym) -> [[]]; % satisfiable constraints
 norm_partitions([P | Ps], Memo, Fix, Sym) ->
@@ -242,12 +248,16 @@ merge_and_meet(_Set1, [], _Sym) -> [];
 merge_and_meet([[]], Set2, _Sym) -> Set2;
 merge_and_meet(Set1, [[]], _Sym) -> Set1;
 merge_and_meet(La, Lb, Sym) ->
+  {H1, H2} = {erlang:phash2(La), erlang:phash2(Lb)},
 
-  R = lists:map(fun(E) -> unionlist(Lb, E, Sym) end, La),
-  R2 = lists:foldl(fun(NewS, All) -> merge_and_join(NewS, All, Sym) end, [], R),
-  sanity(R2),
-
-  R2.
+  memoize:memo_fun(
+    {norm_meet, {H1, H2}},
+    fun() ->
+      R = lists:map(fun(E) -> unionlist(Lb, E, Sym) end, La),
+      R2 = lists:foldl(fun(NewS, All) -> merge_and_join(NewS, All, Sym) end, [], R),
+      sanity(R2),
+      R2
+      end).
 
 
 
@@ -282,10 +292,16 @@ merge_and_join(_Set1, [[]], _Sym) -> [[]];
 merge_and_join([], Set2, _Sym) -> Set2;
 merge_and_join(Set1, [], _Sym) -> Set1;
 merge_and_join(S1, S2, Sym) ->
-  MayAdd = fun (S, Con) -> (not (has_smaller_constraint(Con, S, Sym))) end,
-  S22 = lists:filter(fun(C) -> MayAdd(S1, C) end, S2),
-  S11 = lists:filter(fun(C) -> MayAdd(S22, C) end, S1),
-  lists:map(fun lists:usort/1, lists:usort(S11 ++ S22)).
+  {H1, H2} = {erlang:phash2(S1), erlang:phash2(S2)},
+  memoize:memo_fun(
+    {norm_join, {H1, H2}},
+    fun() ->
+      MayAdd = fun (S, Con) -> (not (has_smaller_constraint(Con, S, Sym))) end,
+      S22 = lists:filter(fun(C) -> MayAdd(S1, C) end, S2),
+      S11 = lists:filter(fun(C) -> MayAdd(S22, C) end, S1),
+      lists:map(fun lists:usort/1, lists:usort(S11 ++ S22))
+
+    end).
 
 has_smaller_constraint(_Con, [], _Sym) -> false;
 has_smaller_constraint(Con, [C | S], Sym) ->

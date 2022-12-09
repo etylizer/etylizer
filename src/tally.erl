@@ -9,27 +9,21 @@
 
 -spec tally(symtab:t(), constr:simp_constrs(), sets:set(ast:ty_varname())) -> [subst:t()] | {error, [{error, string()}]}.
 tally(Symtab, Constraints, FixedVars) ->
-
-  Start = erlang:system_time(),
   N = tally_norm:norm_api(Constraints, FixedVars, Symtab),
-  logger:debug("== Phase I ~p ms", [(erlang:system_time() - Start)/1000000]),
-
-%%  logger:notice("Got ~p", [N]),
   M = case N of [] -> {fail, norm}; _ -> N end,
 
-
-  Start3 = erlang:system_time(),
   S = tally_solve:solve(M, FixedVars, Symtab),
 
   Min = minimize_solutions(S, Symtab),
-  logger:debug("== Phase II ~p ms", [(erlang:system_time() - Start3)/1000000]),
-  case Min of
+  X = case Min of
     {fail, _X} ->
       {error, []};
     _ ->
       % transform to subst:t()
       [maps:from_list([{VarName, Ty} || {{var, VarName}, Ty} <- Subst]) || Subst <- S]
-  end.
+  end,
+
+  X.
 
 -spec tally(symtab:t(), constr:simp_constrs()) -> [subst:t()] | {error, [{error, string()}]}.
 tally(Symtab, Constraints) ->
