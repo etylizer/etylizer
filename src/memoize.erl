@@ -4,7 +4,7 @@
 -export([memo_fun/2]).
 
 
-
+-spec memo_fun({atom(), term()}, fun(() -> A)) -> A.
 memo_fun({Table, Key}, Fun) ->
   case (catch ets:lookup(Table, Key)) of
     [] ->
