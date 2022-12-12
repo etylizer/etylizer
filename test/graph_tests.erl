@@ -49,4 +49,7 @@ test_graph_02(G) ->
     graph:add_edge(G, "V1", "V3"),
     graph:add_edge(G, "V3", "V4"),
     graph:add_edge(G, "V2", "V4"),
-    ?assertEqual(["V0","V1","V2","V3","V4"], graph:topsort(G)).
+    L = graph:topsort(G),
+    ?assert(L == ["V0","V1","V2","V3","V4"] orelse
+            L == ["V0","V1","V3","V2","V4"] orelse
+            L == ["V0","V2","V1","V3","V4"]).

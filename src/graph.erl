@@ -1,10 +1,12 @@
 -module(graph).
 
 -export([with_graph/1, add_vertex/2, add_edge/3, out_neighbours/2,
-         strong_components/1, topsort/1]).
+         strong_components/1, topsort/1, to_list/2]).
 
 -type digraph(_V) :: digraph:graph().
 -type table(_V) :: ets:table().
+% A graph consists of a diagraph and a table mapping extern vertices of
+% type V to vertices used by the digraph
 -type graph(V) :: {digraph(V), table(V)}.
 
 -spec with_graph(fun((graph(_V)) -> T)) -> T.
@@ -79,3 +81,10 @@ topsort({G, _}) ->
         L ->
             lists:map(fun(InternV) -> get_extern(G, InternV) end, L)
     end.
+
+-spec to_list(graph(V), fun((V) -> string())) -> list({V, list(V)}).
+to_list(G = {_, Tab}, F) ->
+    ets:foldl(
+      fun({V, _}, Acc) -> [ {F(V), lists:map(F, out_neighbours(G, V))} | Acc ] end,
+      [],
+      Tab).
