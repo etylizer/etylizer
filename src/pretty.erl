@@ -74,7 +74,6 @@ sep_by(Sep, Docs) ->
 
 -spec render(doc()) -> string().
 render(D) ->
-    ?LOG_TRACE("D:~n~200p", D),
     prettypr:format(D, 200).
 
 -spec render_ty(ast:ty()) -> string().
@@ -253,8 +252,9 @@ constr_bodies(L) ->
     braces(
       comma_sep(
         lists:map(
-          fun({Locs, Env, GuardCs, BodyCs, T}) ->
-                  brackets(comma_sep([locs(Locs), constr_env(Env), constr(GuardCs), constr(BodyCs), ty(T)]))
+          fun({Locs, {GuardEnv, GuardCs}, {BodyEnv, BodyCs}, T}) ->
+                  brackets(comma_sep([locs(Locs), constr_env(GuardEnv), constr(GuardCs),
+                                      constr_env(BodyEnv), constr(BodyCs), ty(T)]))
           end,
           L))).
 
