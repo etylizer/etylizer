@@ -90,7 +90,7 @@ ez({improper_list, A, B}) ->
 ez(Ty) -> Ty.
 
 
-simplify_line(CoClause = {{P, Pv}, {N, Nv}}) ->
+simplify_line(_CoClause = {{P, Pv}, {N, Nv}}) ->
   Counters = #{},
 
   NewCounters = lists:foldl(

@@ -219,6 +219,7 @@ builtin_ops() ->
     ])),
     IntOpTy = tyscm(tfun([tint(), tint()], tint())),
     BoolOpTy = tyscm(tfun([tbool(), tbool()], tbool())),
+    BoolShortcutOpTy = tyscm(tfun([tbool(), tvar(a)], tvar(a))),
     PolyOpTy = tyscm([a], tfun([tvar(a), tvar(a)], tbool())),
     [
         {'+', 2, NumOpTy},
@@ -241,8 +242,8 @@ builtin_ops() ->
         {'and', 2, BoolOpTy},
         {'or', 2, BoolOpTy},
         {'xor', 2, BoolOpTy},
-        {'orelse', 2, BoolOpTy},
-        {'andalso', 2, BoolOpTy},
+        {'orelse', 2, BoolShortcutOpTy},
+        {'andalso', 2, BoolShortcutOpTy},
         {'==', 2, PolyOpTy},
         {'/=', 2, PolyOpTy},
         {'=<', 2, PolyOpTy},

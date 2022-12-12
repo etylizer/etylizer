@@ -14,10 +14,18 @@ is_equivalent(SymTab, S, T) -> is_subty(SymTab, S,T) andalso is_subty(SymTab, T,
 
 -spec is_subty(symtab:t(), ast:ty(), ast:ty()) -> boolean().
 is_subty(Symtab, T1, T2) ->
-  S_internal = ty_rec:norm(T1),
-  T_internal = ty_rec:norm(T2),
+  H1 = erlang:phash2(T1),
+  H2 = erlang:phash2(T2),
 
-  is_subty_bdd(S_internal, T_internal, Symtab, sets:new()).
+  memoize:memo_fun(
+    {subty_memo, {H1, H2}},
+    fun() ->
+    S_internal = ty_rec:norm(T1),
+    T_internal = ty_rec:norm(T2),
+    is_subty_bdd(S_internal, T_internal, Symtab, sets:new())
+                   end
+  ).
+
 
 is_any(T, Sym) ->
   is_subty(Sym, {predef, any}, T).
