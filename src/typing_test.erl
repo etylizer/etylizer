@@ -106,6 +106,11 @@ simple_test_() ->
              "fun_local_02" % TODO 4s
             , "fun_local_03" % TODO 10s
             , "fun_local_04" % TODO 6s
+            , "foo2" % TODO very long
+            , "foo3" % TODO very long
             ],
   check_decls_in_file("test_files/tycheck_simple.erl",
                       {exclude, sets:from_list(WhatNot)}).
+  %What = ["case_06"],
+  %check_decls_in_file("test_files/tycheck_simple.erl",
+  %                    {include, sets:from_list(What)}).

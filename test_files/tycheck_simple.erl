@@ -447,7 +447,6 @@ foo(L) ->
 foo2(a) -> 1;
 foo2(b) -> 2.
 
-
 -spec foo3
     (a|b) -> 1|true.
 foo3(a) -> 1;
