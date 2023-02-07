@@ -369,8 +369,8 @@ mono_ty(TyScm = {ty_scheme, Tyvars, T}, FreshStart) ->
          ),
     Subst = subst:from_list(Kvs),
     Res = subst:apply(Subst, T),
-    ?LOG_DEBUG("Result of monomorphizing type scheme ~s:~n~s",
-               pretty:render_tyscheme(TyScm), pretty:render_ty(Res)),
+    ?LOG_DEBUG("Result of monomorphizing type scheme ~s:~n~s~nFresh: ~200p",
+               pretty:render_tyscheme(TyScm), pretty:render_ty(Res), Freshs),
     {Res, sets:from_list(Freshs), I}.
 
 % more_general(T1, T2, Sym) return true of T1 is more general than T2
@@ -379,10 +379,17 @@ more_general(Ts1, Ts2, Tab) ->
     {Mono1, _, Next} = mono_ty(Ts1, 0),
     {Mono2, A2, _} = mono_ty(Ts2, Next),
     C = {csubty, sets:new(), Mono1, Mono2},
-    case tally:tally(Tab, sets:from_list([C]), A2) of
-        [] -> false;
-        _ -> true
-    end.
+    Result =
+        case tally:tally(Tab, sets:from_list([C]), A2) of
+            [] -> false;
+            {error, _} -> false;
+            TallyRes ->
+                ?LOG_DEBUG("Result of tally when computing more_general relation: ~w", TallyRes),
+                true
+        end,
+    ?LOG_DEBUG("T1=~s is more general than T2=~s: ~s",
+        pretty:render_tyscheme(Ts1), pretty:render_tyscheme(Ts2), Result),
+    Result.
 
 % Generalize generalizes the type of a top-level function. As there is no outer
 % environment, we may simply quantify over all free type variables.
