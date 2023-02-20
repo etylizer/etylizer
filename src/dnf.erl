@@ -168,7 +168,7 @@ type_of({range, _, _}) -> int;
 type_of({improper_list, _, _}) -> list;
 type_of(A) ->
   logger:error("TODO type ~p", [A]),
-  throw(todo).
+  halt(2).
 
 
 

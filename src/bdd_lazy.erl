@@ -63,7 +63,7 @@ eval({bdd_range, From, To}) when is_integer(From), is_integer(To) ->
     {range, From, To};
 eval(B) ->
     logger:warning("Unhandled ~p", [B]),
-    throw(bdd_todo).
+    halt(2).
 
 empty() -> ?EMPTY.
 any() -> ?ANY.
@@ -141,4 +141,4 @@ substitute_rec({bdd_list, Element, Termination}, Map) ->
     {bdd_list, ty_rec:substitute_bdd(Map, Element), ty_rec:substitute_bdd(Map, Termination) };
 substitute_rec(Atom, _Map) ->
     logger:error("Subst! ~p", [Atom]),
-    throw(todo_branch).
+    halt(2).

@@ -106,7 +106,7 @@ norm_single_partition({{P, []}, {N, []}}, Memo, Fix, Sym) ->
 
     [Pp | _Ps] ->
       logger:debug("Unhandled normalization of atom type:~n~p", [Pp]),
-      throw(todo)
+      halt(2)
   end;
 
 

@@ -4,11 +4,17 @@
 
 Static typechecker for Erlang based on set-theoretic types.
 
-## User-level documentation
+## Benchmark Modifications
 
-Yet to come...
+This is the version used for running the benchmarks for the IFL paper (TODO ref).
 
-## Developer documentation
+Modifications done for the paper version to the source code compared to the main branch:
+
+* Instead of logging errors, the tool exits with these error codes immediately
+  upon encountering the first error:
+  * 1: type error
+  * 2: not yet implemented
+  * other: crash
 
 ### Type-checker pipeline
 
@@ -28,12 +34,3 @@ Yet to come...
     erlang modules.
   * Check that each top-level functions have a type spec.
 
-### Rules of hacking
-
-* Make sure every top-level function has a type annotation.
-* Make sure every module has a short description at the top of the file
-  stating the purpose of the module.
-* Make sure that complicated functions have a short text of documentation.
-* Make sure that complicated functions have unit tests.
-* Make sure that all unit tests are running before comitting: `make test`
-* Make sure the dialyzer is happy before comitting: `make check`

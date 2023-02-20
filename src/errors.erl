@@ -9,12 +9,11 @@
 
 -spec generic_error(atom(), ast:loc(), string(), string(), any()) -> no_return().
 generic_error(Kind, Loc, Prefix, Msg, Args) ->
-    throw({ety, Kind, utils:sformat("~s: ~s: ~s",
-        ast:format_loc(Loc), Prefix, utils:sformat(Msg, Args))}).
+    halt(3).
 
 -spec unsupported(ast:loc(), string(), any()) -> no_return().
 unsupported(Loc, Msg, Args) ->
-    generic_error(unsupported, Loc, "Unsupported language feature", Msg, Args).
+    halt(1).
 
 -spec unsupported(ast:loc(), string()) -> no_return().
 unsupported(Loc, Msg) -> unsupported(Loc, Msg, []).
@@ -36,14 +35,14 @@ bug(Msg, Args) ->
 
 -spec uncovered_case(file:filename(), t:lineno(), any()) -> no_return().
 uncovered_case(File, Line, X) ->
-    bug("uncovered case in ~s:~w, unmatched value: ~w", [File, Line, X]).
+    halt(2).
 
 -spec ty_error(ast:loc(), string(), any()) -> no_return().
 ty_error(Loc, Msg, Args) ->
-    generic_error(ty_error, Loc, "Type error", Msg, Args).
+    halt(1).
 
 -spec ty_error(ast:loc(), string()) -> no_return().
 ty_error(Loc, Msg) -> ty_error(Loc, Msg, []).
 
 -spec not_implemented(string()) -> no_return().
-not_implemented(Msg) -> throw({ety, not_implemented, Msg}).
+not_implemented(_Msg) -> halt(2).

@@ -109,7 +109,7 @@ simple_empty(T = {singleton, _}, _Sym) -> T;
 simple_empty(T = {range, _, _}, _Sym) -> T;
 simple_empty(T, _Sym) ->
   logger:error("Simple empty: ~p", [T]),
-  throw(todo_p).
+  halt(2).
 
 move_covariance_inside({intersection, Components}, Sym) ->
   {ImproperLists, Other} = lists:partition(fun({improper_list, _, _}) -> true; (_) -> false end, Components),

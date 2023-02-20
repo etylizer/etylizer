@@ -155,10 +155,10 @@ tbool() -> {predef_alias, boolean}.
 
 -spec expand_predef_alias(ast:predef_alias_name()) -> ast:ty().
 expand_predef_alias(term) -> {predef, any};
-expand_predef_alias(binary) -> throw(todo); %% TODO
-expand_predef_alias(nonempty_binary) -> throw(todo); %% TODO
-expand_predef_alias(bitstring) -> throw(todo); %% TODO
-expand_predef_alias(nonempty_bitstring) -> throw(todo); %% TODO
+expand_predef_alias(binary) -> halt(2); %% TODO
+expand_predef_alias(nonempty_binary) -> halt(2); %% TODO
+expand_predef_alias(bitstring) -> halt(2); %% TODO
+expand_predef_alias(nonempty_bitstring) -> halt(2); %% TODO
 expand_predef_alias(boolean) -> {union, [{singleton, true}, {singleton, false}]};
 expand_predef_alias(byte) -> {range, 0, 255};
 expand_predef_alias(char) -> {range, 0, 1114111};

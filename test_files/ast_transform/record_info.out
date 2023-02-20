@@ -1,7 +1,0 @@
-[{attribute,{loc,[],0,0},module,record_info},
- {attribute,{loc,[],0,0},
-            record,
-            {parse_opts,[{record_field,{loc,[],0,0},includes,{list,{predef_alias,string}},{nil,{loc,[],0,0}}},
-                         {record_field,{loc,[],0,0},defines,{list,{tuple,[{predef,atom},{predef_alias,string}]}},{nil,{loc,[],0,0}}},
-                         {record_field,{loc,[],0,0},verbose,{predef_alias,boolean},{atom,{loc,[],0,0},true}}]}},
- {function,{loc,[],0,0},foo,0,[{fun_clause,{loc,[],0,0},[],[],[{call,{loc,[],0,0},{var,{loc,[],0,0},{qref,erlang,record_info,2}},[{atom,{loc,[],0,0},fields},{atom,{loc,[],0,0},parse_opts}]}]}]}].
