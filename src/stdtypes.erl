@@ -43,7 +43,7 @@ is_tlist({improper_list, _, _}) -> true;
 is_tlist({negation, {improper_list, _, _}}) -> true;
 is_tlist(_) -> false.
 
-tmu(_,_) -> throw(todo_mu).
+tmu(_,_) -> halt(5).
 
 -spec tinter([ast:ty()]) -> ast:ty().
 tinter(Tys) -> {intersection, Tys}.
@@ -155,10 +155,10 @@ tbool() -> {predef_alias, boolean}.
 
 -spec expand_predef_alias(ast:predef_alias_name()) -> ast:ty().
 expand_predef_alias(term) -> {predef, any};
-expand_predef_alias(binary) -> halt(2); %% TODO
-expand_predef_alias(nonempty_binary) -> halt(2); %% TODO
-expand_predef_alias(bitstring) -> halt(2); %% TODO
-expand_predef_alias(nonempty_bitstring) -> halt(2); %% TODO
+expand_predef_alias(binary) -> halt(5); %% TODO
+expand_predef_alias(nonempty_binary) -> halt(5); %% TODO
+expand_predef_alias(bitstring) -> halt(5); %% TODO
+expand_predef_alias(nonempty_bitstring) -> halt(5); %% TODO
 expand_predef_alias(boolean) -> {union, [{singleton, true}, {singleton, false}]};
 expand_predef_alias(byte) -> {range, 0, 255};
 expand_predef_alias(char) -> {range, 0, 1114111};
@@ -168,14 +168,14 @@ expand_predef_alias(list) -> {list, {predef, any}};
 expand_predef_alias(nonempty_list) -> {nonempty_list, {predef, any}};
 expand_predef_alias(maybe_improper_list) -> errors:not_implemented("expand maybe_improper_list");
 expand_predef_alias(nonempty_improper_list) -> {nonempty_improper_list, {predef, any}, {predef, any}};
-expand_predef_alias(nonempty_maybe_improper_list) -> throw(error_todo); %% TODO what is a maybe improper list vs improper list?
+expand_predef_alias(nonempty_maybe_improper_list) -> halt(5); %% TODO what is a maybe improper list vs improper list?
 expand_predef_alias(string) -> {list, expand_predef_alias(char)};
 expand_predef_alias(nonempty_string) -> {nonempty_list, expand_predef_alias(char)};
 %% iodata and iolist are recursively defined and are expanded in the
 %% subtype relation into a recursive type
 expand_predef_alias(iodata) -> throw(rec_type_not_supported_outside_esubrel);
 expand_predef_alias(iolist) -> throw(rec_type_not_supported_outside_esubrel);
-expand_predef_alias(map) -> {map, [{map_field_assoc, {predef, any}, {predef, any}}]};
+expand_predef_alias(map) -> halt(5);
 expand_predef_alias(function) -> {fun_simple};
 expand_predef_alias(module) -> tatom();
 expand_predef_alias(mfa) -> {tuple, [tatom(), tatom(), {predef, integer}]};

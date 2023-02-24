@@ -158,7 +158,7 @@ collect_vars({var, Name}, CPos, Pos, Fix) ->
   end;
 collect_vars(Ty, _, _, _) ->
   logger:error("Unhandled collect vars branch: ~p", [Ty]),
-  halt(2).
+  halt(5).
 
 contains_variable(_, {_, any}) -> false;
 contains_variable({var, A}, {var, A}) -> true;
@@ -180,5 +180,5 @@ contains_variable(V, {improper_list, A, B}) ->
   contains_variable(V, A) orelse contains_variable(V, B);
 contains_variable(_, Type) ->
   logger:error("Unhandled contains branch: ~p", [Type]),
-  halt(2).
+  halt(5).
 

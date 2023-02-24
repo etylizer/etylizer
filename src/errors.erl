@@ -13,29 +13,29 @@ generic_error(Kind, Loc, Prefix, Msg, Args) ->
 
 -spec unsupported(ast:loc(), string(), any()) -> no_return().
 unsupported(Loc, Msg, Args) ->
-    halt(1).
+    halt(5).
 
 -spec unsupported(ast:loc(), string()) -> no_return().
 unsupported(Loc, Msg) -> unsupported(Loc, Msg, []).
 
 -spec name_error(ast:loc(), string(), any()) -> no_return().
 name_error(Loc, Msg, Args) ->
-    generic_error(name_error, Loc, "Name error", Msg, Args).
+    halt(2).
 
 -spec name_error(ast:loc(), string()) -> no_return().
 name_error(Loc, Msg) -> name_error(Loc, Msg, []).
 
 -spec bug(string()) -> no_return().
 bug(Msg) ->
-    throw({ety, bug, "BUG: " ++ Msg}).
+    halt(2).
 
 -spec bug(string(), any()) -> no_return().
 bug(Msg, Args) ->
-    throw({ety, bug, utils:sformat("BUG: " ++ Msg, Args)}).
+    halt(2).
 
 -spec uncovered_case(file:filename(), t:lineno(), any()) -> no_return().
 uncovered_case(File, Line, X) ->
-    halt(2).
+    halt(5).
 
 -spec ty_error(ast:loc(), string(), any()) -> no_return().
 ty_error(Loc, Msg, Args) ->
@@ -45,4 +45,4 @@ ty_error(Loc, Msg, Args) ->
 ty_error(Loc, Msg) -> ty_error(Loc, Msg, []).
 
 -spec not_implemented(string()) -> no_return().
-not_implemented(_Msg) -> halt(2).
+not_implemented(_Msg) -> halt(5).
