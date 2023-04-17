@@ -14,7 +14,7 @@
 %% we define use the total order of Erlang atoms and impose
 %% that on every path the order of the labels strictly increases.
 
--type bdd() :: {bdd, 0} | {bdd, 1} | {bdd, east:ty(), bdd(), bdd(), bdd()}.
+-type bdd() :: {bdd, 0} | {bdd, 1} | {bdd, ast:ty(), bdd(), bdd(), bdd()}.
 
 -define(EMPTY, {bdd, 0}).
 -define(ANY,   {bdd, 1}).
