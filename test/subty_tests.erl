@@ -297,7 +297,7 @@ simple_named_test() ->
   Scheme = stdtypes:tyscm([a], stdtypes:tfun([stdtypes:tvar(a), stdtypes:tvar(a)], stdtypes:tatom(ok))),
   TyDef = {mynamed, Scheme},
   Form = {attribute, noloc(), type, transparent, TyDef},
-  Sym = symtab:extend_symtab([Form], symtab:empty()),
+  Sym = symtab:extend_symtab([Form], no_module, symtab:empty()),
 
   S = {named, noloc(), {ref, mynamed, 1}, [{predef, integer}]},
   T = {named, noloc(), {ref, mynamed, 1}, [stdtypes:tatom(ok)]},
@@ -316,8 +316,8 @@ simple_named2_test() ->
   Form = {attribute, noloc(), type, transparent, TyDef},
 
 
-  M = symtab:extend_symtab([Form], symtab:empty()),
-  Sym = symtab:extend_symtab([Form2], M),
+  M = symtab:extend_symtab([Form], no_module,symtab:empty()),
+  Sym = symtab:extend_symtab([Form2], no_module, M),
 
   S = {named, noloc(), {ref, mynamed, 1}, [stdtypes:tatom(helloworld)]},
   T = stdtypes:tatom(helloworld),
@@ -332,7 +332,7 @@ simple_recursive_test() ->
   TyDef = {mylist, Scheme},
   Form = {attribute, noloc(), type, transparent, TyDef},
 
-  Sym = symtab:extend_symtab([Form], symtab:empty()),
+  Sym = symtab:extend_symtab([Form], no_module, symtab:empty()),
 
   S = named(mylist, [stdtypes:tatom(myints)]),
   T = stdtypes:tatom(helloworld),
@@ -468,7 +468,7 @@ predefSymbolicTable() ->
   % user-defined list :: µx.(α×x) ∨ nil
   % user-defined even list :: µx.(α×(α×x)) ∨ nil
   % user-defined uneven list :: µx.(α×(α×x)) ∨ (α×nil)
-  symtab:extend_symtab([List, EvenList, UnevenList], symtab:empty()).
+  symtab:extend_symtab([List, EvenList, UnevenList], no_module, symtab:empty()).
 
 
 a(A, B) -> {fun_full, [A], B}.

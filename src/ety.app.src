@@ -9,7 +9,8 @@
   {applications,
    [kernel,
     stdlib,
-    getopt
+    getopt,
+    jsone
    ]},
   {modules, []},
   {maintainers, []},

@@ -5,6 +5,9 @@
 erl_crash.dump
 .concrete/DEV_MODE
 
+# etylizer
+src/.etylizer/
+
 # rebar 3
 .rebar3
 _build/

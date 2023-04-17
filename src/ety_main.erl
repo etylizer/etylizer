@@ -15,6 +15,7 @@
                no_type_checking = false :: boolean(),
                only = [] :: [string()],
                ast_file = empty :: empty | string(),
+               path = empty :: empty | string(),
                includes = [] :: [string()],
                defines = [] :: [{atom(), string()}],
                load_start = [] :: [string()],
@@ -32,6 +33,8 @@ parse_define(S) ->
 parse_args(Args) ->
     OptSpecList =
         [
+         {path,       $P,    "path",     string,
+             "Path to the project"},
          {include,    $I,   "include",   string,
              "Where to search for include files"  },
          {define,     $D,   "define",    string,
@@ -76,6 +79,7 @@ parse_args(Args) ->
                         {load_end, S} ->
                             Opts#opts{ load_end = Opts#opts.load_end ++ [S] };
                         {check_ast, S} -> Opts#opts{ ast_file = S };
+                        {path, S} -> Opts#opts{ path = S };
                         {include, F} -> Opts#opts{ includes = Opts#opts.includes ++ [F]};
                         {only, S} -> Opts#opts { only = Opts#opts.only ++ [S]};
                         dump_raw -> Opts#opts{ dump_raw = true };
@@ -101,11 +105,6 @@ fix_load_path(Opts) ->
 
 -spec doWork(#opts{}) -> ok.
 doWork(Opts) ->
-    Files = Opts#opts.files,
-    case Files of
-        [] -> utils:quit(1, "No input files given, aborting");
-        _ -> ok
-    end,
     fix_load_path(Opts),
     ParseOpts = #parse_opts{
         includes = Opts#opts.includes,
@@ -120,58 +119,149 @@ doWork(Opts) ->
             end, Opts#opts.files),
             erlang:halt(0)
     end,
+
     Symtab = symtab:std_symtab(),
-    lists:foreach(
-      fun(F) ->
-              ?LOG_NOTE("Parsing ~s ...", F),
-              RawForms = parse:parse_file_or_die(F, ParseOpts),
-              if  Opts#opts.dump_raw -> ?LOG_NOTE("Raw forms in ~s:~n~p", F, RawForms);
-                  true -> ok
-              end,
-              ?LOG_TRACE("Parse result (raw):~n~120p", RawForms),
-              if Opts#opts.sanity ->
-                      ?LOG_INFO("Checking whether parse result conforms to AST in ast_erl.erl ..."),
-                      {RawSpec, _} = ast_check:parse_spec("src/ast_erl.erl"),
-                      case ast_check:check_against_type(RawSpec, ast_erl, forms, RawForms) of
-                          true ->
-                              ?LOG_INFO("Parse result from ~s conforms to AST in ast_erl.erl", F);
-                          false ->
-                              ?ABORT("Parse result from ~s violates AST in ast_erl.erl", F)
-                      end;
-                 true -> ok
-              end,
-              ?LOG_NOTE("Transforming ~s ...", F),
-              Forms = ast_transform:trans(F, RawForms),
-              if  Opts#opts.dump ->
-                      ?LOG_NOTE("Transformed forms in ~s:~n~p", F, ast_utils:remove_locs(Forms));
-                  true -> ok
-              end,
-              ?LOG_TRACE("Parse result (after transform):~n~120p", Forms),
-              Sanity =
-                  if Opts#opts.sanity ->
-                          ?LOG_INFO("Checking whether transformation result conforms to AST in "
-                                    "ast.erl ..."),
-                          {AstSpec, _} = ast_check:parse_spec("src/ast.erl"),
-                          case ast_check:check_against_type(AstSpec, ast, forms, Forms) of
-                              true ->
-                                  ?LOG_INFO("Transform result from ~s conforms to AST in ast.erl", F);
-                              false ->
-                                  ?ABORT("Transform result from ~s violates AST in ast.erl", F)
+    SourceList = generate_file_list(Opts),
+    {DependencyGraph, FormsList} = traverse_source_list(SourceList, maps:new(), maps:new(), Opts, ParseOpts),
+
+    case Opts#opts.no_type_checking of
+        true ->
+            ?LOG_NOTE("Not performing type checking as requested"),
+            erlang:halt();
+        false -> ok
+    end,
+
+    Index = index:load_index(),
+    CheckList = create_check_list(FormsList, Index, DependencyGraph),
+    NewIndex = traverse_check_list(CheckList, FormsList, Symtab, Opts, Index),
+    index:save_index(NewIndex).
+
+-spec generate_file_list(#opts{}) -> [file:filename()].
+generate_file_list(Opts) ->
+    case Opts#opts.path of
+        empty ->
+            case Opts#opts.files of
+                [] -> utils:quit(1, "No input files given, aborting");
+                Files -> Files
+            end;
+        Path ->
+            add_dir_to_list(Path)
+    end.
+
+-spec add_dir_to_list(file:filename()) -> [file:filename()].
+add_dir_to_list(Path) ->
+    case file:list_dir(Path) of
+        {ok, []} ->
+            []; % Exit recursion if directory is empty
+        {ok, DirContent} ->
+            {Dirs, Files} = lists:splitwith(fun(F) -> filelib:is_dir(F) end, DirContent),
+            Sources = lists:filter(
+                        fun(F) ->
+                                case string:find(F, ".erl") of
+                                    nomatch -> false;
+                                    _ -> true
+                                end
+                        end, Files),
+            SourcesFull = lists:map(fun(F) -> filename:join(Path, F) end, Sources),
+            ChildSources = lists:append(lists:map(fun(F) -> add_dir_to_list(filename:join(Path, F)) end, Dirs)),
+            lists:append(SourcesFull, ChildSources);
+        {error, Reason} ->
+            ?ABORT("Error occurred while scanning for erlang sources. Reason: ~s", Reason)
+    end.
+
+-spec traverse_source_list([file:filename()], map(), map(), #opts{}, tuple()) -> tuple().
+traverse_source_list(SourceList, DependencyGraph, FormsList, Opts, ParseOpts) ->
+    case SourceList of
+        [CurrentFile | RemainingFiles] ->
+            ?LOG_NOTE("Parsing ~s ...", CurrentFile),
+            RawForms = parse:parse_file_or_die(CurrentFile, ParseOpts),
+            if  Opts#opts.dump_raw -> ?LOG_NOTE("Raw forms in ~s:~n~p", CurrentFile, RawForms);
+                true -> ok
+            end,
+            ?LOG_TRACE("Parse result (raw):~n~120p", RawForms),
+
+            if Opts#opts.sanity ->
+                    ?LOG_INFO("Checking whether parse result conforms to AST in ast_erl.erl ..."),
+                    {RawSpec, _} = ast_check:parse_spec("src/ast_erl.erl"),
+                    case ast_check:check_against_type(RawSpec, ast_erl, forms, RawForms) of
+                        true ->
+                            ?LOG_INFO("Parse result from ~s conforms to AST in ast_erl.erl", CurrentFile);
+                        false ->
+                            ?ABORT("Parse result from ~s violates AST in ast_erl.erl", CurrentFile)
+                    end;
+               true -> ok
+            end,
+
+            ?LOG_NOTE("Transforming ~s ...", CurrentFile),
+            Forms = ast_transform:trans(CurrentFile, RawForms),
+            if  Opts#opts.dump ->
+                    ?LOG_NOTE("Transformed forms in ~s:~n~p", CurrentFile, ast_utils:remove_locs(Forms));
+                true -> ok
+            end,
+            ?LOG_TRACE("Parse result (after transform):~n~120p", Forms),
+
+            Sanity =
+                if Opts#opts.sanity ->
+                        ?LOG_INFO("Checking whether transformation result conforms to AST in "
+                                  "ast.erl ..."),
+                        {AstSpec, _} = ast_check:parse_spec("src/ast.erl"),
+                        case ast_check:check_against_type(AstSpec, ast, forms, Forms) of
+                            true ->
+                                ?LOG_INFO("Transform result from ~s conforms to AST in ast.erl", CurrentFile);
+                            false ->
+                                ?ABORT("Transform result from ~s violates AST in ast.erl", CurrentFile)
+                        end,
+                        {SpecConstr, _} = ast_check:parse_spec("src/constr.erl"),
+                        SpecFullConstr = ast_check:merge_specs([SpecConstr, AstSpec]),
+                        {ok, SpecFullConstr};
+                   true -> error
+                end,
+
+            NewDependencyGraph = dependency_graph:update_dependency_graph(CurrentFile, Forms, RemainingFiles, DependencyGraph),
+            NewFormsList = maps:put(CurrentFile, {Forms, Sanity}, FormsList),
+
+            traverse_source_list(RemainingFiles, NewDependencyGraph, NewFormsList, Opts, ParseOpts);
+        [] ->
+            {DependencyGraph, FormsList}
+    end.
+
+-spec create_check_list(map(), map(), map()) -> [file:filename()].
+create_check_list(FormsList, Index, DependencyGraph) ->
+    CheckList = maps:fold(
+                  fun(Path, {Forms, _}, FilesToCheck) ->
+                          case index:has_file_changed(Path, Index) of
+                              true -> ChangedFile = [Path];
+                              false -> ChangedFile = []
                           end,
-                          {SpecConstr, _} = ast_check:parse_spec("src/constr.erl"),
-                          SpecFullConstr = ast_check:merge_specs([SpecConstr, AstSpec]),
-                          {ok, SpecFullConstr};
-                     true -> error
-                  end,
-              case Opts#opts.no_type_checking of
-                  true -> ?LOG_NOTE("Not performing type checking as requested");
-                  false ->
-                      ?LOG_NOTE("Typechecking ~s ...", F),
-                      Only = sets:from_list(Opts#opts.only),
-                      Ctx = typing:new_ctx(Symtab, Sanity),
-                      typing:check_forms(Ctx, Forms, Only)
-              end
-      end, Opts#opts.files).
+
+                          case index:has_exported_interface_changed(Path, Forms, Index) of
+                              true -> Dependencies = dependency_graph:find_dependencies(Path, DependencyGraph);
+                              false -> Dependencies = []
+                          end,
+
+                          FilesToCheck ++ ChangedFile ++ Dependencies
+                  end, [], FormsList),
+    lists:uniq(CheckList).
+
+-spec traverse_check_list([file:filename()], map(), symtab:t(), #opts{}, map()) -> map().
+traverse_check_list(CheckList, FormsList, Symtab, Opts, Index) ->
+    case CheckList of
+        [CurrentFile | RemainingFiles] ->
+            ?LOG_NOTE("Preparing to check ~s", CurrentFile),
+            {ok, {Forms, Sanity}} = maps:find(CurrentFile, FormsList),
+            ExpandedSymtab = symtab:extend_symtab_with_module_list(Symtab, Opts#opts.path, ast_utils:export_modules(Forms)),
+            perform_type_checks(Forms, ExpandedSymtab, CurrentFile, Opts, Sanity),
+            NewIndex = index:put_into_index(CurrentFile, Forms, Index),
+            traverse_check_list(RemainingFiles, FormsList, Symtab, Opts, NewIndex);
+        [] -> Index
+    end.
+
+-spec perform_type_checks(ast:forms(), symtab:t(), file:filename(), #opts{}, tuple()) -> ok.
+perform_type_checks(Forms, Symtab, Filename, Opts, Sanity) ->
+    ?LOG_NOTE("Typechecking ~s ...", Filename),
+    Only = sets:from_list(Opts#opts.only),
+    Ctx = typing:new_ctx(Symtab, Sanity),
+    typing:check_forms(Ctx, Forms, Only).
 
 -spec main([string()]) -> ok.
 main(Args) ->

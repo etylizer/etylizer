@@ -2,6 +2,9 @@
 
 % @doc A symbol table for information either defined in the current or some external module.
 
+-include_lib("log.hrl").
+-include_lib("parse.hrl").
+
 -compile([nowarn_shadow_vars]).
 
 -export_type([
@@ -16,8 +19,9 @@
     lookup_ty/3,
     find_ty/2,
     std_symtab/0,
-    extend_symtab/2,
-    empty/0
+    extend_symtab/3,
+    empty/0,
+    extend_symtab_with_module_list/3
 ]).
 
 -record(tab, {
@@ -78,19 +82,88 @@ std_symtab() ->
                     stdtypes:builtin_ops()),
     #tab { funs = Funs, ops = Ops, types = #{} }.
 
--spec extend_symtab([ast:form()], t()) -> t().
-extend_symtab(Forms, Tab) ->
+-spec extend_symtab([ast:form()], atom(), t()) -> t().
+extend_symtab(Forms, Module, Tab) ->
     lists:foldl(
       fun(Form, Tab) ->
               case Form of
                   {attribute, _, spec, Name, Arity, T, _} ->
-                      Tab#tab { funs = maps:put({ref, Name, Arity}, T, Tab#tab.funs) };
+                      Tab#tab { funs = maps:put(create_ref_tuple(Module, Name, Arity), T, Tab#tab.funs) };
                   {attribute, _, type, _, {Name, TyScm = {ty_scheme, TyVars, _}}} ->
                       Arity = length(TyVars),
-                      Tab#tab { types = maps:put({ref, Name, Arity}, TyScm, Tab#tab.types) };
+                      Tab#tab { types = maps:put(create_ref_tuple(Module, Name, Arity), TyScm, Tab#tab.types) };
                   _ ->
                       Tab
               end
       end,
       Tab,
       Forms).
+
+-spec create_ref_tuple(atom(), string(), arity()) -> tuple().
+create_ref_tuple(Module, Name, Arity) ->
+    case Module of
+        no_module ->
+            {ref, Name, Arity};
+        _ ->
+            {qref, Module, Name, Arity}
+    end.
+
+-spec extend_symtab_with_module_list(symtab:t(), file:filename(), [atom()]) -> symtab:t().
+extend_symtab_with_module_list(Symtab, SourceDir, Modules) ->
+    traverse_module_list(find_search_paths(SourceDir), Symtab, Modules).
+
+traverse_module_list(SearchPaths, Symtab, Modules) ->
+    case Modules of
+        [CurrentModule | RemainingModules] ->
+            {SourcePath, IncludePath} = find_module_path(SearchPaths, CurrentModule),
+            ?LOG_NOTE("Path to includes ~s", IncludePath),
+
+            RawForms = parse:parse_file_or_die(SourcePath, #parse_opts{ verbose = false, includes = [IncludePath] }),
+            Forms = ast_transform:trans(SourcePath, RawForms),
+
+            NewSymtab = symtab:extend_symtab(Forms, CurrentModule, Symtab),
+            traverse_module_list(SearchPaths, NewSymtab, RemainingModules);
+        [] ->
+            Symtab
+    end.
+
+-spec find_module_path([file:filename()], atom()) -> {file:filename(), file:filename()}.
+find_module_path(SearchPaths, Module) ->
+    Filename = string:concat(atom_to_list(Module), ".erl"),
+    ?LOG_NOTE("Looking for file ~s", Filename),
+    {value, Result} = lists:search(
+      fun(Path) ->
+              SourcePath = filename:join([Path, "src"]),
+              case filelib:find_file(Filename, SourcePath) of
+                  {ok, _} -> true;
+                  {error, not_found} -> false
+              end
+      end, SearchPaths),
+    IncludePath = filename:join([Result, "include"]),
+    {filename:join([Result, "src", Filename]), IncludePath}.
+
+-spec find_search_paths(file:filename()) -> [file:filename()].
+find_search_paths(SourceDir) ->
+    ProjectRoot = find_project_root(SourceDir),
+    find_otp_paths() ++ [ProjectRoot] ++ find_dependency_roots(ProjectRoot).
+
+-spec find_otp_paths() -> [file:filename()].
+find_otp_paths() ->
+    RootDir = code:lib_dir(),
+    {ok, Files} = file:list_dir(RootDir),
+    lists:map(fun(Path) -> filename:join([RootDir, Path]) end, Files).
+
+-spec find_dependency_roots(file:filename()) -> [file:filename()].
+find_dependency_roots(ProjectDir) ->
+    ProjectLibDir = filename:join([ProjectDir, "_build/default/lib"]),
+    {ok, PathList} = file:list_dir(ProjectLibDir),
+    lists:map(fun(Path) -> filename:join([ProjectLibDir, Path]) end, PathList).
+
+-spec find_project_root(file:filename()) -> file:filename().
+find_project_root(Directory) ->
+    case filelib:is_dir(filename:join(Directory, "_build")) of
+        true ->
+            Directory;
+        false ->
+            find_project_root(filename:dirname(Directory))
+    end.
