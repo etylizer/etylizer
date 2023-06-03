@@ -22,6 +22,8 @@
                load_end = [] :: [string()],
                files = [] :: [string()]}).
 
+-define(INDEX_FILE_NAME, "index.json").
+
 -spec parse_define(string()) -> {atom(), string()}.
 parse_define(S) ->
     case string:split(string:strip(S), "=") of
@@ -131,10 +133,10 @@ doWork(Opts) ->
         false -> ok
     end,
 
-    Index = index:load_index(),
+    Index = cm_index:load_index(?INDEX_FILE_NAME),
     CheckList = create_check_list(FormsList, Index, DependencyGraph),
     NewIndex = traverse_check_list(CheckList, FormsList, Symtab, Opts, Index),
-    index:save_index(NewIndex).
+    cm_index:save_index(?INDEX_FILE_NAME, NewIndex).
 
 -spec generate_file_list(#opts{}) -> [file:filename()].
 generate_file_list(Opts) ->
@@ -229,12 +231,12 @@ traverse_source_list(SourceList, DependencyGraph, FormsList, Opts, ParseOpts) ->
 create_check_list(FormsList, Index, DependencyGraph) ->
     CheckList = maps:fold(
                   fun(Path, {Forms, _}, FilesToCheck) ->
-                          case index:has_file_changed(Path, Index) of
+                          case cm_index:has_file_changed(Path, Index) of
                               true -> ChangedFile = [Path];
                               false -> ChangedFile = []
                           end,
 
-                          case index:has_exported_interface_changed(Path, Forms, Index) of
+                          case cm_index:has_exported_interface_changed(Path, Forms, Index) of
                               true -> Dependencies = dependency_graph:find_dependencies(Path, DependencyGraph);
                               false -> Dependencies = []
                           end,
@@ -251,7 +253,7 @@ traverse_check_list(CheckList, FormsList, Symtab, Opts, Index) ->
             {ok, {Forms, Sanity}} = maps:find(CurrentFile, FormsList),
             ExpandedSymtab = symtab:extend_symtab_with_module_list(Symtab, Opts#opts.path, ast_utils:export_modules(Forms)),
             perform_type_checks(Forms, ExpandedSymtab, CurrentFile, Opts, Sanity),
-            NewIndex = index:put_into_index(CurrentFile, Forms, Index),
+            NewIndex = cm_index:insert(CurrentFile, Forms, Index),
             traverse_check_list(RemainingFiles, FormsList, Symtab, Opts, NewIndex);
         [] -> Index
     end.
