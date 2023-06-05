@@ -6,23 +6,7 @@
 
 -include_lib("log.hrl").
 -include_lib("parse.hrl").
-
--record(opts, {log_level = default :: log:log_level() | default,
-               help = false :: boolean(),
-               dump_raw = false :: boolean(),
-               dump = false :: boolean(),
-               sanity = false :: boolean(),
-               no_type_checking = false :: boolean(),
-               only = [] :: [string()],
-               ast_file = empty :: empty | string(),
-               path = empty :: empty | string(),
-               includes = [] :: [string()],
-               defines = [] :: [{atom(), string()}],
-               load_start = [] :: [string()],
-               load_end = [] :: [string()],
-               files = [] :: [string()]}).
-
--define(INDEX_FILE_NAME, "index.json").
+-include_lib("ety_main.hrl").
 
 -spec parse_define(string()) -> {atom(), string()}.
 parse_define(S) ->
@@ -133,10 +117,7 @@ doWork(Opts) ->
         false -> ok
     end,
 
-    Index = cm_index:load_index(?INDEX_FILE_NAME),
-    CheckList = create_check_list(FormsList, Index, DependencyGraph),
-    NewIndex = traverse_check_list(CheckList, FormsList, Symtab, Opts, Index),
-    cm_index:save_index(?INDEX_FILE_NAME, NewIndex).
+    cm_check:perform_type_checks(FormsList, Symtab, Opts, DependencyGraph).
 
 -spec generate_file_list(#opts{}) -> [file:filename()].
 generate_file_list(Opts) ->
@@ -226,44 +207,6 @@ traverse_source_list(SourceList, DependencyGraph, FormsList, Opts, ParseOpts) ->
         [] ->
             {DependencyGraph, FormsList}
     end.
-
--spec create_check_list(map(), map(), map()) -> [file:filename()].
-create_check_list(FormsList, Index, DependencyGraph) ->
-    CheckList = maps:fold(
-                  fun(Path, {Forms, _}, FilesToCheck) ->
-                          case cm_index:has_file_changed(Path, Index) of
-                              true -> ChangedFile = [Path];
-                              false -> ChangedFile = []
-                          end,
-
-                          case cm_index:has_exported_interface_changed(Path, Forms, Index) of
-                              true -> Dependencies = dependency_graph:find_dependencies(Path, DependencyGraph);
-                              false -> Dependencies = []
-                          end,
-
-                          FilesToCheck ++ ChangedFile ++ Dependencies
-                  end, [], FormsList),
-    lists:uniq(CheckList).
-
--spec traverse_check_list([file:filename()], map(), symtab:t(), #opts{}, map()) -> map().
-traverse_check_list(CheckList, FormsList, Symtab, Opts, Index) ->
-    case CheckList of
-        [CurrentFile | RemainingFiles] ->
-            ?LOG_NOTE("Preparing to check ~s", CurrentFile),
-            {ok, {Forms, Sanity}} = maps:find(CurrentFile, FormsList),
-            ExpandedSymtab = symtab:extend_symtab_with_module_list(Symtab, Opts#opts.path, ast_utils:export_modules(Forms)),
-            perform_type_checks(Forms, ExpandedSymtab, CurrentFile, Opts, Sanity),
-            NewIndex = cm_index:insert(CurrentFile, Forms, Index),
-            traverse_check_list(RemainingFiles, FormsList, Symtab, Opts, NewIndex);
-        [] -> Index
-    end.
-
--spec perform_type_checks(ast:forms(), symtab:t(), file:filename(), #opts{}, tuple()) -> ok.
-perform_type_checks(Forms, Symtab, Filename, Opts, Sanity) ->
-    ?LOG_NOTE("Typechecking ~s ...", Filename),
-    Only = sets:from_list(Opts#opts.only),
-    Ctx = typing:new_ctx(Symtab, Sanity),
-    typing:check_forms(Ctx, Forms, Only).
 
 -spec main([string()]) -> ok.
 main(Args) ->

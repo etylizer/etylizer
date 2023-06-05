@@ -13,6 +13,8 @@
     remove/2
 ]).
 
+-export_type([index/0]).
+
 -include_lib("log.hrl").
 
 -define(ETYLIZER_DIR, ".etylizer").
