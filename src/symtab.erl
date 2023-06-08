@@ -19,6 +19,7 @@
     lookup_ty/3,
     find_ty/2,
     std_symtab/0,
+    extend_symtab/2,
     extend_symtab/3,
     empty/0,
     extend_symtab_with_module_list/3
@@ -82,16 +83,23 @@ std_symtab() ->
                     stdtypes:builtin_ops()),
     #tab { funs = Funs, ops = Ops, types = #{} }.
 
+-spec extend_symtab([ast:form()], t()) -> t().
+extend_symtab(Forms, Tab) ->
+    extend_symtab_internal(Forms, {ref}, Tab).
+
 -spec extend_symtab([ast:form()], atom(), t()) -> t().
 extend_symtab(Forms, Module, Tab) ->
+    extend_symtab_internal(Forms, {qref, Module}, Tab).
+
+extend_symtab_internal(Forms, RefType, Tab) ->
     lists:foldl(
       fun(Form, Tab) ->
               case Form of
                   {attribute, _, spec, Name, Arity, T, _} ->
-                      Tab#tab { funs = maps:put(create_ref_tuple(Module, Name, Arity), T, Tab#tab.funs) };
+                      Tab#tab { funs = maps:put(create_ref_tuple(RefType, Name, Arity), T, Tab#tab.funs) };
                   {attribute, _, type, _, {Name, TyScm = {ty_scheme, TyVars, _}}} ->
                       Arity = length(TyVars),
-                      Tab#tab { types = maps:put(create_ref_tuple(Module, Name, Arity), TyScm, Tab#tab.types) };
+                      Tab#tab { types = maps:put(create_ref_tuple(RefType, Name, Arity), TyScm, Tab#tab.types) };
                   _ ->
                       Tab
               end
@@ -99,14 +107,11 @@ extend_symtab(Forms, Module, Tab) ->
       Tab,
       Forms).
 
--spec create_ref_tuple(atom(), string(), arity()) -> tuple().
-create_ref_tuple(Module, Name, Arity) ->
-    case Module of
-        no_module ->
-            {ref, Name, Arity};
-        _ ->
-            {qref, Module, Name, Arity}
-    end.
+-spec create_ref_tuple(tuple(), string(), arity()) -> tuple().
+create_ref_tuple({ref}, Name, Arity) ->
+    {ref, Name, Arity};
+create_ref_tuple({qref, Module}, Name, Arity) ->
+    {qref, Module, Name, Arity}.
 
 -spec extend_symtab_with_module_list(symtab:t(), file:filename(), [atom()]) -> symtab:t().
 extend_symtab_with_module_list(Symtab, SourceDir, Modules) ->
