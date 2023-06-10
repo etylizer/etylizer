@@ -80,7 +80,7 @@ has_exported_interface_changed(Path, Forms, Index) ->
         error ->
             true;
         {ok, {_, OldInterfaceHash}} ->
-            Interface = ast_utils:extract_interface_declaration(Forms),
+            Interface = cm_module_interface:extract_interface_declaration(Forms),
             NewHash = crypto:hash(sha, io_lib:write(Interface)),
             not crypto:hash_equals(OldInterfaceHash, NewHash)
     end.
@@ -89,7 +89,7 @@ has_exported_interface_changed(Path, Forms, Index) ->
 insert(Path, Forms, Index) ->
     {ok, FileContent} = file:read_file(Path),
     FileHash = crypto:hash(sha, FileContent),
-    Interface = ast_utils:extract_interface_declaration(Forms),
+    Interface = cm_module_interface:extract_interface_declaration(Forms),
     InterfaceHash = crypto:hash(sha, io_lib:write(Interface)),
     maps:put(Path, {FileHash, InterfaceHash}, Index).
 
