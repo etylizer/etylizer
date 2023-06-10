@@ -27,7 +27,7 @@ create_check_list(FormsList, Index, DependencyGraph) ->
                           end,
 
                           case cm_index:has_exported_interface_changed(Path, Forms, Index) of
-                              true -> Dependencies = dependency_graph:find_dependencies(Path, DependencyGraph);
+                              true -> Dependencies = cm_depgraph:find_dependent_files(Path, DependencyGraph);
                               false -> Dependencies = []
                           end,
 

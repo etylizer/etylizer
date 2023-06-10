@@ -170,7 +170,7 @@ traverse_source_list(SourceList, DependencyGraph, FormsList, Opts, ParseOpts) ->
                    true -> error
                 end,
 
-            NewDependencyGraph = dependency_graph:update_dependency_graph(CurrentFile, Forms, RemainingFiles, DependencyGraph),
+            NewDependencyGraph = cm_depgraph:update_dependency_graph(CurrentFile, Forms, RemainingFiles, DependencyGraph),
             NewFormsList = maps:put(CurrentFile, {Forms, Sanity}, FormsList),
 
             traverse_source_list(RemainingFiles, NewDependencyGraph, NewFormsList, Opts, ParseOpts);
