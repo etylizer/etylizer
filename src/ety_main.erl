@@ -19,8 +19,10 @@ parse_define(S) ->
 parse_args(Args) ->
     OptSpecList =
         [
-         {path,       $P,    "path",     string,
-             "Path to the project"},
+         {project_root, $P,    "project-root",  string,
+             "Path to the root of the project"},
+         {src_path,    $S,    "src-path",       string,
+             "Path to a directory containing source files to be checked"},
          {include,    $I,   "include",   string,
              "Where to search for include files"  },
          {define,     $D,   "define",    string,
@@ -65,7 +67,8 @@ parse_args(Args) ->
                         {load_end, S} ->
                             Opts#opts{ load_end = Opts#opts.load_end ++ [S] };
                         {check_ast, S} -> Opts#opts{ ast_file = S };
-                        {path, S} -> Opts#opts{ path = S };
+                        {project_root, S} -> Opts#opts{ project_root = S };
+                        {src_path, F} -> Opts#opts{ src_paths = Opts#opts.src_paths ++ [F]};
                         {include, F} -> Opts#opts{ includes = Opts#opts.includes ++ [F]};
                         {only, S} -> Opts#opts { only = Opts#opts.only ++ [S]};
                         dump_raw -> Opts#opts{ dump_raw = true };
@@ -107,7 +110,7 @@ doWork(Opts) ->
     end,
 
     Symtab = symtab:std_symtab(),
-    SourceList = generate_file_list(Opts),
+    SourceList = paths:generate_file_list(Opts),
     {DependencyGraph, FormsList} = traverse_source_list(SourceList, maps:new(), maps:new(), Opts, ParseOpts),
 
     case Opts#opts.no_type_checking of
@@ -118,39 +121,6 @@ doWork(Opts) ->
     end,
 
     cm_check:perform_type_checks(FormsList, Symtab, Opts, DependencyGraph).
-
--spec generate_file_list(#opts{}) -> [file:filename()].
-generate_file_list(Opts) ->
-    case Opts#opts.path of
-        empty ->
-            case Opts#opts.files of
-                [] -> utils:quit(1, "No input files given, aborting");
-                Files -> Files
-            end;
-        Path ->
-            add_dir_to_list(Path)
-    end.
-
--spec add_dir_to_list(file:filename()) -> [file:filename()].
-add_dir_to_list(Path) ->
-    case file:list_dir(Path) of
-        {ok, []} ->
-            []; % Exit recursion if directory is empty
-        {ok, DirContent} ->
-            {Dirs, Files} = lists:splitwith(fun(F) -> filelib:is_dir(F) end, DirContent),
-            Sources = lists:filter(
-                        fun(F) ->
-                                case string:find(F, ".erl") of
-                                    nomatch -> false;
-                                    _ -> true
-                                end
-                        end, Files),
-            SourcesFull = lists:map(fun(F) -> filename:join(Path, F) end, Sources),
-            ChildSources = lists:append(lists:map(fun(F) -> add_dir_to_list(filename:join(Path, F)) end, Dirs)),
-            lists:append(SourcesFull, ChildSources);
-        {error, Reason} ->
-            ?ABORT("Error occurred while scanning for erlang sources. Reason: ~s", Reason)
-    end.
 
 -spec traverse_source_list([file:filename()], map(), map(), #opts{}, tuple()) -> tuple().
 traverse_source_list(SourceList, DependencyGraph, FormsList, Opts, ParseOpts) ->

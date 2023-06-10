@@ -42,7 +42,7 @@ traverse_and_check([], _, _, _, Index) ->
 traverse_and_check([CurrentFile | RemainingFiles], FormsList, Symtab, Opts, Index) ->
     ?LOG_NOTE("Preparing to check ~s", CurrentFile),
     {ok, {Forms, Sanity}} = maps:find(CurrentFile, FormsList),
-    ExpandedSymtab = symtab:extend_symtab_with_module_list(Symtab, Opts#opts.path, ast_utils:export_modules(Forms)),
+    ExpandedSymtab = symtab:extend_symtab_with_module_list(Symtab, Opts, ast_utils:export_modules(Forms)),
 
     ?LOG_NOTE("Typechecking ~s ...", CurrentFile),
     Only = sets:from_list(Opts#opts.only),

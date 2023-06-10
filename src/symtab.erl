@@ -4,6 +4,7 @@
 
 -include_lib("log.hrl").
 -include_lib("parse.hrl").
+-include_lib("ety_main.hrl").
 
 -compile([nowarn_shadow_vars]).
 
@@ -113,9 +114,9 @@ create_ref_tuple({ref}, Name, Arity) ->
 create_ref_tuple({qref, Module}, Name, Arity) ->
     {qref, Module, Name, Arity}.
 
--spec extend_symtab_with_module_list(symtab:t(), file:filename(), [atom()]) -> symtab:t().
-extend_symtab_with_module_list(Symtab, SourceDir, Modules) ->
-    traverse_module_list(find_search_paths(SourceDir), Symtab, Modules).
+-spec extend_symtab_with_module_list(symtab:t(), cmd_opts(), [atom()]) -> symtab:t().
+extend_symtab_with_module_list(Symtab, Opts, Modules) ->
+    traverse_module_list(paths:find_search_paths(Opts), Symtab, Modules).
 
 traverse_module_list(SearchPaths, Symtab, Modules) ->
     case Modules of
@@ -146,29 +147,3 @@ find_module_path(SearchPaths, Module) ->
       end, SearchPaths),
     IncludePath = filename:join([Result, "include"]),
     {filename:join([Result, "src", Filename]), IncludePath}.
-
--spec find_search_paths(file:filename()) -> [file:filename()].
-find_search_paths(SourceDir) ->
-    ProjectRoot = find_project_root(SourceDir),
-    find_otp_paths() ++ [ProjectRoot] ++ find_dependency_roots(ProjectRoot).
-
--spec find_otp_paths() -> [file:filename()].
-find_otp_paths() ->
-    RootDir = code:lib_dir(),
-    {ok, Files} = file:list_dir(RootDir),
-    lists:map(fun(Path) -> filename:join([RootDir, Path]) end, Files).
-
--spec find_dependency_roots(file:filename()) -> [file:filename()].
-find_dependency_roots(ProjectDir) ->
-    ProjectLibDir = filename:join([ProjectDir, "_build/default/lib"]),
-    {ok, PathList} = file:list_dir(ProjectLibDir),
-    lists:map(fun(Path) -> filename:join([ProjectLibDir, Path]) end, PathList).
-
--spec find_project_root(file:filename()) -> file:filename().
-find_project_root(Directory) ->
-    case filelib:is_dir(filename:join(Directory, "_build")) of
-        true ->
-            Directory;
-        false ->
-            find_project_root(filename:dirname(Directory))
-    end.
