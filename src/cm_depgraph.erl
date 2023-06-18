@@ -24,7 +24,7 @@ add_dependency(Path, Dependency, DependencyGraph) ->
 
 -spec update_dependency_graph(file:filename(), ast:forms(), [file:filename()], dependency_graph()) -> dependency_graph().
 update_dependency_graph(Path, Forms, SourcesList, DependencyGraph) ->
-    Modules = ast_utils:export_modules(Forms),
+    Modules = ast_utils:referenced_modules(Forms),
     traverse_module_list(Path, Modules, SourcesList, DependencyGraph).
 
 -spec traverse_module_list(file:filename(), [atom()], [file:filename()], dependency_graph()) -> dependency_graph().

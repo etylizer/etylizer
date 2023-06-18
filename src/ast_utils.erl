@@ -1,6 +1,6 @@
 -module(ast_utils).
 
--export([remove_locs/1, export_modules/1]).
+-export([remove_locs/1, referenced_modules/1]).
 
 -export_type([ty_module_name/0]).
 
@@ -16,14 +16,14 @@ remove_locs(X) ->
     end,
     utils:everywhere(LocToError, X).
 
--spec export_modules(ast:forms()) -> [ty_module_name()].
-export_modules(Forms) ->
+-spec referenced_modules(ast:forms()) -> [ty_module_name()].
+referenced_modules(Forms) ->
     Modules = utils:everything(
                 fun(T) ->
                         case T of
-                            {qref, _, _, _} -> {ok, T};
+                            {attribute, _, import, {ModuleName, _}} -> {ok, ModuleName};
+                            {qref, ModuleName, _, _} -> {ok, ModuleName};
                             _ -> error
                         end
                 end, Forms),
-    ModuleList = lists:map(fun({_, ModuleName, _, _}) -> ModuleName end, Modules),
-    lists:uniq(ModuleList).
+    lists:uniq(Modules).
