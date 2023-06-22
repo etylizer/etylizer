@@ -118,20 +118,18 @@ create_ref_tuple({qref, Module}, Name, Arity) ->
 extend_symtab_with_module_list(Symtab, Opts, Modules) ->
     traverse_module_list(paths:find_search_paths(Opts), Symtab, Modules).
 
-traverse_module_list(SearchPaths, Symtab, Modules) ->
-    case Modules of
-        [CurrentModule | RemainingModules] ->
-            {SourcePath, IncludePath} = find_module_path(SearchPaths, CurrentModule),
-            ?LOG_NOTE("Path to includes ~s", IncludePath),
+-spec traverse_module_list([file:filename()], t(), [ast_utils:ty_module_name()]) -> t().
+traverse_module_list(SearchPaths, Symtab, [CurrentModule | RemainingModules]) ->
+    {SourcePath, IncludePath} = find_module_path(SearchPaths, CurrentModule),
+    ?LOG_NOTE("Path to includes ~s", IncludePath),
 
-            RawForms = parse:parse_file_or_die(SourcePath, #parse_opts{ verbose = false, includes = [IncludePath] }),
-            Forms = ast_transform:trans(SourcePath, RawForms),
+    Forms = retrieve_forms_for_source(SourcePath, IncludePath),
 
-            NewSymtab = symtab:extend_symtab(Forms, CurrentModule, Symtab),
-            traverse_module_list(SearchPaths, NewSymtab, RemainingModules);
-        [] ->
-            Symtab
-    end.
+    NewSymtab = symtab:extend_symtab(Forms, CurrentModule, Symtab),
+    traverse_module_list(SearchPaths, NewSymtab, RemainingModules);
+
+traverse_module_list(_, Symtab, []) ->
+    Symtab.
 
 -spec find_module_path([file:filename()], atom()) -> {file:filename(), file:filename()}.
 find_module_path(SearchPaths, Module) ->
@@ -147,3 +145,15 @@ find_module_path(SearchPaths, Module) ->
       end, SearchPaths),
     IncludePath = filename:join([Result, "include"]),
     {filename:join([Result, "src", Filename]), IncludePath}.
+
+-spec retrieve_forms_for_source(file:filename(), file:filename()) -> ast:forms().
+retrieve_forms_for_source(SourcePath, IncludePath) ->
+    case ets:lookup(forms_table, SourcePath) of
+        [] ->
+            RawForms = parse:parse_file_or_die(SourcePath, #parse_opts{ verbose = false, includes = [IncludePath] }),
+            Forms = ast_transform:trans(SourcePath, RawForms),
+            ets:insert(forms_table, {SourcePath, Forms}),
+            Forms;
+        [{_, Forms}] ->
+            Forms
+    end.

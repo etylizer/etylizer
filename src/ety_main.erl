@@ -109,9 +109,10 @@ doWork(Opts) ->
             erlang:halt(0)
     end,
 
-    Symtab = symtab:std_symtab(),
+    ets:new(forms_table, [set, named_table, {keypos, 1}]),
+
     SourceList = paths:generate_file_list(Opts),
-    {DependencyGraph, FormsList} = traverse_source_list(SourceList, maps:new(), maps:new(), Opts, ParseOpts),
+    DependencyGraph = build_dependency_graph(SourceList, maps:new(), Opts, ParseOpts),
 
     case Opts#opts.no_type_checking of
         true ->
@@ -120,63 +121,44 @@ doWork(Opts) ->
         false -> ok
     end,
 
-    cm_check:perform_type_checks(FormsList, Symtab, Opts, DependencyGraph).
+    cm_check:perform_type_checks(SourceList, symtab:std_symtab(), Opts, DependencyGraph).
 
--spec traverse_source_list([file:filename()], map(), map(), #opts{}, tuple()) -> tuple().
-traverse_source_list(SourceList, DependencyGraph, FormsList, Opts, ParseOpts) ->
-    case SourceList of
-        [CurrentFile | RemainingFiles] ->
-            ?LOG_NOTE("Parsing ~s ...", CurrentFile),
-            RawForms = parse:parse_file_or_die(CurrentFile, ParseOpts),
-            if  Opts#opts.dump_raw -> ?LOG_NOTE("Raw forms in ~s:~n~p", CurrentFile, RawForms);
-                true -> ok
-            end,
-            ?LOG_TRACE("Parse result (raw):~n~120p", RawForms),
+-spec build_dependency_graph([file:filename()], cm_depgraph:dependency_graph(), #opts{}, tuple()) -> cm_depgraph:dependency_graph().
+build_dependency_graph([CurrentFile | RemainingFiles], DependencyGraph, Opts, ParseOpts) ->
+    ?LOG_NOTE("Parsing ~s ...", CurrentFile),
+    RawForms = parse:parse_file_or_die(CurrentFile, ParseOpts),
+    if  Opts#opts.dump_raw -> ?LOG_NOTE("Raw forms in ~s:~n~p", CurrentFile, RawForms);
+        true -> ok
+    end,
+    ?LOG_TRACE("Parse result (raw):~n~120p", RawForms),
 
-            if Opts#opts.sanity ->
-                    ?LOG_INFO("Checking whether parse result conforms to AST in ast_erl.erl ..."),
-                    {RawSpec, _} = ast_check:parse_spec("src/ast_erl.erl"),
-                    case ast_check:check_against_type(RawSpec, ast_erl, forms, RawForms) of
-                        true ->
-                            ?LOG_INFO("Parse result from ~s conforms to AST in ast_erl.erl", CurrentFile);
-                        false ->
-                            ?ABORT("Parse result from ~s violates AST in ast_erl.erl", CurrentFile)
-                    end;
-               true -> ok
-            end,
+    if Opts#opts.sanity ->
+            ?LOG_INFO("Checking whether parse result conforms to AST in ast_erl.erl ..."),
+            {RawSpec, _} = ast_check:parse_spec("src/ast_erl.erl"),
+            case ast_check:check_against_type(RawSpec, ast_erl, forms, RawForms) of
+                true ->
+                    ?LOG_INFO("Parse result from ~s conforms to AST in ast_erl.erl", CurrentFile);
+                false ->
+                    ?ABORT("Parse result from ~s violates AST in ast_erl.erl", CurrentFile)
+            end;
+       true -> ok
+    end,
 
-            ?LOG_NOTE("Transforming ~s ...", CurrentFile),
-            Forms = ast_transform:trans(CurrentFile, RawForms),
-            if  Opts#opts.dump ->
-                    ?LOG_NOTE("Transformed forms in ~s:~n~p", CurrentFile, ast_utils:remove_locs(Forms));
-                true -> ok
-            end,
-            ?LOG_TRACE("Parse result (after transform):~n~120p", Forms),
+    ?LOG_NOTE("Transforming ~s ...", CurrentFile),
+    Forms = ast_transform:trans(CurrentFile, RawForms),
+    if  Opts#opts.dump ->
+            ?LOG_NOTE("Transformed forms in ~s:~n~p", CurrentFile, ast_utils:remove_locs(Forms));
+        true -> ok
+    end,
+    ?LOG_TRACE("Parse result (after transform):~n~120p", Forms),
 
-            Sanity =
-                if Opts#opts.sanity ->
-                        ?LOG_INFO("Checking whether transformation result conforms to AST in "
-                                  "ast.erl ..."),
-                        {AstSpec, _} = ast_check:parse_spec("src/ast.erl"),
-                        case ast_check:check_against_type(AstSpec, ast, forms, Forms) of
-                            true ->
-                                ?LOG_INFO("Transform result from ~s conforms to AST in ast.erl", CurrentFile);
-                            false ->
-                                ?ABORT("Transform result from ~s violates AST in ast.erl", CurrentFile)
-                        end,
-                        {SpecConstr, _} = ast_check:parse_spec("src/constr.erl"),
-                        SpecFullConstr = ast_check:merge_specs([SpecConstr, AstSpec]),
-                        {ok, SpecFullConstr};
-                   true -> error
-                end,
+    ets:insert(forms_table, {CurrentFile, Forms}),
 
-            NewDependencyGraph = cm_depgraph:update_dependency_graph(CurrentFile, Forms, RemainingFiles, DependencyGraph),
-            NewFormsList = maps:put(CurrentFile, {Forms, Sanity}, FormsList),
+    NewDependencyGraph = cm_depgraph:update_dependency_graph(CurrentFile, Forms, RemainingFiles, DependencyGraph),
+    build_dependency_graph(RemainingFiles, NewDependencyGraph, Opts, ParseOpts);
 
-            traverse_source_list(RemainingFiles, NewDependencyGraph, NewFormsList, Opts, ParseOpts);
-        [] ->
-            {DependencyGraph, FormsList}
-    end.
+build_dependency_graph([], DependencyGraph, _, _) ->
+    DependencyGraph.
 
 -spec main([string()]) -> ok.
 main(Args) ->
