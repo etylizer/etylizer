@@ -6,21 +6,7 @@
 
 -include_lib("log.hrl").
 -include_lib("parse.hrl").
-
--record(opts, {log_level = default :: log:log_level() | default,
-               help = false :: boolean(),
-               dump_raw = false :: boolean(),
-               dump = false :: boolean(),
-               sanity = false :: boolean(),
-               no_type_checking = false :: boolean(),
-               only = [] :: [string()],
-               ast_file = empty :: empty | string(),
-               path = empty :: empty | string(),
-               includes = [] :: [string()],
-               defines = [] :: [{atom(), string()}],
-               load_start = [] :: [string()],
-               load_end = [] :: [string()],
-               files = [] :: [string()]}).
+-include_lib("ety_main.hrl").
 
 -spec parse_define(string()) -> {atom(), string()}.
 parse_define(S) ->
@@ -33,8 +19,10 @@ parse_define(S) ->
 parse_args(Args) ->
     OptSpecList =
         [
-         {path,       $P,    "path",     string,
-             "Path to the project"},
+         {project_root, $P,    "project-root",  string,
+             "Path to the root of the project"},
+         {src_path,    $S,    "src-path",       string,
+             "Path to a directory containing source files to be checked"},
          {include,    $I,   "include",   string,
              "Where to search for include files"  },
          {define,     $D,   "define",    string,
@@ -79,7 +67,8 @@ parse_args(Args) ->
                         {load_end, S} ->
                             Opts#opts{ load_end = Opts#opts.load_end ++ [S] };
                         {check_ast, S} -> Opts#opts{ ast_file = S };
-                        {path, S} -> Opts#opts{ path = S };
+                        {project_root, S} -> Opts#opts{ project_root = S };
+                        {src_path, F} -> Opts#opts{ src_paths = Opts#opts.src_paths ++ [F]};
                         {include, F} -> Opts#opts{ includes = Opts#opts.includes ++ [F]};
                         {only, S} -> Opts#opts { only = Opts#opts.only ++ [S]};
                         dump_raw -> Opts#opts{ dump_raw = true };
@@ -120,9 +109,10 @@ doWork(Opts) ->
             erlang:halt(0)
     end,
 
-    Symtab = symtab:std_symtab(),
-    SourceList = generate_file_list(Opts),
-    {DependencyGraph, FormsList} = traverse_source_list(SourceList, maps:new(), maps:new(), Opts, ParseOpts),
+    ets:new(forms_table, [set, named_table, {keypos, 1}]),
+
+    SourceList = paths:generate_file_list(Opts),
+    DependencyGraph = build_dependency_graph(SourceList, maps:new(), Opts, ParseOpts),
 
     case Opts#opts.no_type_checking of
         true ->
@@ -131,137 +121,44 @@ doWork(Opts) ->
         false -> ok
     end,
 
-    Index = index:load_index(),
-    CheckList = create_check_list(FormsList, Index, DependencyGraph),
-    NewIndex = traverse_check_list(CheckList, FormsList, Symtab, Opts, Index),
-    index:save_index(NewIndex).
+    cm_check:perform_type_checks(SourceList, symtab:std_symtab(), Opts, DependencyGraph).
 
--spec generate_file_list(#opts{}) -> [file:filename()].
-generate_file_list(Opts) ->
-    case Opts#opts.path of
-        empty ->
-            case Opts#opts.files of
-                [] -> utils:quit(1, "No input files given, aborting");
-                Files -> Files
+-spec build_dependency_graph([file:filename()], cm_depgraph:dependency_graph(), #opts{}, tuple()) -> cm_depgraph:dependency_graph().
+build_dependency_graph([CurrentFile | RemainingFiles], DependencyGraph, Opts, ParseOpts) ->
+    ?LOG_NOTE("Parsing ~s ...", CurrentFile),
+    RawForms = parse:parse_file_or_die(CurrentFile, ParseOpts),
+    if  Opts#opts.dump_raw -> ?LOG_NOTE("Raw forms in ~s:~n~p", CurrentFile, RawForms);
+        true -> ok
+    end,
+    ?LOG_TRACE("Parse result (raw):~n~120p", RawForms),
+
+    if Opts#opts.sanity ->
+            ?LOG_INFO("Checking whether parse result conforms to AST in ast_erl.erl ..."),
+            {RawSpec, _} = ast_check:parse_spec("src/ast_erl.erl"),
+            case ast_check:check_against_type(RawSpec, ast_erl, forms, RawForms) of
+                true ->
+                    ?LOG_INFO("Parse result from ~s conforms to AST in ast_erl.erl", CurrentFile);
+                false ->
+                    ?ABORT("Parse result from ~s violates AST in ast_erl.erl", CurrentFile)
             end;
-        Path ->
-            add_dir_to_list(Path)
-    end.
+       true -> ok
+    end,
 
--spec add_dir_to_list(file:filename()) -> [file:filename()].
-add_dir_to_list(Path) ->
-    case file:list_dir(Path) of
-        {ok, []} ->
-            []; % Exit recursion if directory is empty
-        {ok, DirContent} ->
-            {Dirs, Files} = lists:splitwith(fun(F) -> filelib:is_dir(F) end, DirContent),
-            Sources = lists:filter(
-                        fun(F) ->
-                                case string:find(F, ".erl") of
-                                    nomatch -> false;
-                                    _ -> true
-                                end
-                        end, Files),
-            SourcesFull = lists:map(fun(F) -> filename:join(Path, F) end, Sources),
-            ChildSources = lists:append(lists:map(fun(F) -> add_dir_to_list(filename:join(Path, F)) end, Dirs)),
-            lists:append(SourcesFull, ChildSources);
-        {error, Reason} ->
-            ?ABORT("Error occurred while scanning for erlang sources. Reason: ~s", Reason)
-    end.
+    ?LOG_NOTE("Transforming ~s ...", CurrentFile),
+    Forms = ast_transform:trans(CurrentFile, RawForms),
+    if  Opts#opts.dump ->
+            ?LOG_NOTE("Transformed forms in ~s:~n~p", CurrentFile, ast_utils:remove_locs(Forms));
+        true -> ok
+    end,
+    ?LOG_TRACE("Parse result (after transform):~n~120p", Forms),
 
--spec traverse_source_list([file:filename()], map(), map(), #opts{}, tuple()) -> tuple().
-traverse_source_list(SourceList, DependencyGraph, FormsList, Opts, ParseOpts) ->
-    case SourceList of
-        [CurrentFile | RemainingFiles] ->
-            ?LOG_NOTE("Parsing ~s ...", CurrentFile),
-            RawForms = parse:parse_file_or_die(CurrentFile, ParseOpts),
-            if  Opts#opts.dump_raw -> ?LOG_NOTE("Raw forms in ~s:~n~p", CurrentFile, RawForms);
-                true -> ok
-            end,
-            ?LOG_TRACE("Parse result (raw):~n~120p", RawForms),
+    ets:insert(forms_table, {CurrentFile, Forms}),
 
-            if Opts#opts.sanity ->
-                    ?LOG_INFO("Checking whether parse result conforms to AST in ast_erl.erl ..."),
-                    {RawSpec, _} = ast_check:parse_spec("src/ast_erl.erl"),
-                    case ast_check:check_against_type(RawSpec, ast_erl, forms, RawForms) of
-                        true ->
-                            ?LOG_INFO("Parse result from ~s conforms to AST in ast_erl.erl", CurrentFile);
-                        false ->
-                            ?ABORT("Parse result from ~s violates AST in ast_erl.erl", CurrentFile)
-                    end;
-               true -> ok
-            end,
+    NewDependencyGraph = cm_depgraph:update_dependency_graph(CurrentFile, Forms, RemainingFiles, DependencyGraph),
+    build_dependency_graph(RemainingFiles, NewDependencyGraph, Opts, ParseOpts);
 
-            ?LOG_NOTE("Transforming ~s ...", CurrentFile),
-            Forms = ast_transform:trans(CurrentFile, RawForms),
-            if  Opts#opts.dump ->
-                    ?LOG_NOTE("Transformed forms in ~s:~n~p", CurrentFile, ast_utils:remove_locs(Forms));
-                true -> ok
-            end,
-            ?LOG_TRACE("Parse result (after transform):~n~120p", Forms),
-
-            Sanity =
-                if Opts#opts.sanity ->
-                        ?LOG_INFO("Checking whether transformation result conforms to AST in "
-                                  "ast.erl ..."),
-                        {AstSpec, _} = ast_check:parse_spec("src/ast.erl"),
-                        case ast_check:check_against_type(AstSpec, ast, forms, Forms) of
-                            true ->
-                                ?LOG_INFO("Transform result from ~s conforms to AST in ast.erl", CurrentFile);
-                            false ->
-                                ?ABORT("Transform result from ~s violates AST in ast.erl", CurrentFile)
-                        end,
-                        {SpecConstr, _} = ast_check:parse_spec("src/constr.erl"),
-                        SpecFullConstr = ast_check:merge_specs([SpecConstr, AstSpec]),
-                        {ok, SpecFullConstr};
-                   true -> error
-                end,
-
-            NewDependencyGraph = dependency_graph:update_dependency_graph(CurrentFile, Forms, RemainingFiles, DependencyGraph),
-            NewFormsList = maps:put(CurrentFile, {Forms, Sanity}, FormsList),
-
-            traverse_source_list(RemainingFiles, NewDependencyGraph, NewFormsList, Opts, ParseOpts);
-        [] ->
-            {DependencyGraph, FormsList}
-    end.
-
--spec create_check_list(map(), map(), map()) -> [file:filename()].
-create_check_list(FormsList, Index, DependencyGraph) ->
-    CheckList = maps:fold(
-                  fun(Path, {Forms, _}, FilesToCheck) ->
-                          case index:has_file_changed(Path, Index) of
-                              true -> ChangedFile = [Path];
-                              false -> ChangedFile = []
-                          end,
-
-                          case index:has_exported_interface_changed(Path, Forms, Index) of
-                              true -> Dependencies = dependency_graph:find_dependencies(Path, DependencyGraph);
-                              false -> Dependencies = []
-                          end,
-
-                          FilesToCheck ++ ChangedFile ++ Dependencies
-                  end, [], FormsList),
-    lists:uniq(CheckList).
-
--spec traverse_check_list([file:filename()], map(), symtab:t(), #opts{}, map()) -> map().
-traverse_check_list(CheckList, FormsList, Symtab, Opts, Index) ->
-    case CheckList of
-        [CurrentFile | RemainingFiles] ->
-            ?LOG_NOTE("Preparing to check ~s", CurrentFile),
-            {ok, {Forms, Sanity}} = maps:find(CurrentFile, FormsList),
-            ExpandedSymtab = symtab:extend_symtab_with_module_list(Symtab, Opts#opts.path, ast_utils:export_modules(Forms)),
-            perform_type_checks(Forms, ExpandedSymtab, CurrentFile, Opts, Sanity),
-            NewIndex = index:put_into_index(CurrentFile, Forms, Index),
-            traverse_check_list(RemainingFiles, FormsList, Symtab, Opts, NewIndex);
-        [] -> Index
-    end.
-
--spec perform_type_checks(ast:forms(), symtab:t(), file:filename(), #opts{}, tuple()) -> ok.
-perform_type_checks(Forms, Symtab, Filename, Opts, Sanity) ->
-    ?LOG_NOTE("Typechecking ~s ...", Filename),
-    Only = sets:from_list(Opts#opts.only),
-    Ctx = typing:new_ctx(Symtab, Sanity),
-    typing:check_forms(Ctx, Forms, Only).
+build_dependency_graph([], DependencyGraph, _, _) ->
+    DependencyGraph.
 
 -spec main([string()]) -> ok.
 main(Args) ->

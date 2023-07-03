@@ -31,8 +31,7 @@
     tnone/0,
     tnot/1,
     tmu/2,
-    is_tlist/1,
-    scan_module/1
+    is_tlist/1
 ]).
 
 -include_lib("parse.hrl").
@@ -300,37 +299,4 @@ builtin_funs() ->
                   end
           end, AllSpecs) ++ extra_funs(),
     ?LOG_TRACE("Builtin functions: ~200p", Result),
-    Result.
-
--spec scan_module(file:filename_all()) -> fun_types().
-scan_module(Path) ->
-    RawForms = parse:parse_file_or_die(Path, #parse_opts{
-                                                verbose = false
-                                               }),
-    {Exports, RawSpecs} =
-        lists:foldl(
-          fun (Form, Acc = {Exports, Specs}) ->
-                  case Form of
-                      {attribute, _, export, Funs} ->
-                          {utils:set_add_many(Funs, Exports), Specs};
-                      {attribute, _, spec, _} ->
-                          {Exports, [Form | Specs]};
-                      _ -> Acc
-                  end
-          end,
-          {sets:new(), []}, RawForms),
-    AllSpecs = ast_transform:trans(Path, lists:reverse(RawSpecs), varenv:empty("function")),
-    Result =
-        lists:filtermap(
-          fun (Spec) ->
-                  case Spec of
-                      {attribute, _, spec, Name, Arity, Ty, without_mod} ->
-                          case sets:is_element({Name, Arity}, Exports) of
-                              true -> {true, {Name, Arity, Ty}};
-                              false -> false
-                          end;
-                      _ -> false
-                  end
-          end, AllSpecs),
-    % ?LOG_NOTE("Result: ~p", Result),
     Result.

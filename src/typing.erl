@@ -76,7 +76,7 @@ infer(Ctx, Decls) ->
 
 -spec check_forms(ctx(), ast:forms(), sets:set(string())) -> ok.
 check_forms(Ctx, Forms, Only) ->
-    ExtTab = symtab:extend_symtab(Forms, no_module, Ctx#ctx.symtab),
+    ExtTab = symtab:extend_symtab(Forms, Ctx#ctx.symtab),
     ExtCtx = Ctx#ctx { symtab = ExtTab },
     DefinedFuns =
         lists:filtermap(

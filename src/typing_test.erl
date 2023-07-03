@@ -59,7 +59,7 @@ check_decls_in_file(F, What) ->
   RawForms = parse:parse_file_or_die(F),
   Forms = ast_transform:trans(F, RawForms),
   Tab0 = symtab:std_symtab(),
-  Tab = symtab:extend_symtab(Forms, no_module, Tab0),
+  Tab = symtab:extend_symtab(Forms, Tab0),
 
   CollectDecls = fun(Decl, TestCases) ->
     case Decl of
