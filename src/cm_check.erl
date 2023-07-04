@@ -9,7 +9,7 @@
 -include_lib("ety_main.hrl").
 
 
--spec perform_type_checks(paths:search_path(), cm_depgraph:dependency_graph(), cmd_opts()) -> [file:filename()].
+-spec perform_type_checks(paths:search_path(), cm_depgraph:dep_graph(), cmd_opts()) -> [file:filename()].
 perform_type_checks(SearchPath, DepGraph, Opts) ->
     IndexFile = paths:index_file_name(Opts),
     Index = cm_index:load_index(IndexFile),
@@ -21,7 +21,7 @@ perform_type_checks(SearchPath, DepGraph, Opts) ->
     cm_index:save_index(IndexFile, NewIndex),
     CheckList.
 
--spec create_check_list([file:filename()], cm_index:index(), cm_depgraph:dependency_graph()) -> [file:filename()].
+-spec create_check_list([file:filename()], cm_index:index(), cm_depgraph:dep_graph()) -> [file:filename()].
 create_check_list(SourceList, Index, DepGraph) ->
     CheckList = lists:foldl(
                   fun(Path, FilesToCheck) ->

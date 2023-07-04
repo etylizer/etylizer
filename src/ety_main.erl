@@ -118,7 +118,7 @@ doWork(Opts) ->
     SourceList = paths:generate_input_file_list(Opts),
     SearchPath = paths:find_search_path(Opts),
     ?LOG_NOTE("Entry points: ~p, now building dependency graph", SourceList),
-    DepGraph = cm_depgraph:build_dependency_graph(SourceList, SearchPath,
+    DepGraph = cm_depgraph:build_dep_graph(SourceList, SearchPath,
         fun(P) -> parse_cache:parse(intern, P) end),
     ?LOG_INFO("Dependency graph: ~p", cm_depgraph:pretty_depgraph(DepGraph)),
     ?LOG_NOTE("Performing type checking"),

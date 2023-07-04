@@ -13,31 +13,31 @@
     find_dependent_files/2,
     all_sources/1,
     add_dependency/3,
-    update_dependency_graph/4,
-    build_dependency_graph/3,
+    update_dep_graph/4,
+    build_dep_graph/3,
     pretty_depgraph/1
 ]).
 
--export_type([dependency_graph/0]).
+-export_type([dep_graph/0]).
 
--type dependency_graph() :: {
+-type dep_graph() :: {
     sets:set(file:filename()),
     #{file:filename() => sets:set(file:filename())}
 }.
 
--spec new() -> dependency_graph().
+-spec new() -> dep_graph().
 new() -> {sets:new(), maps:new()}.
 
--spec pretty_depgraph(dependency_graph()) ->
+-spec pretty_depgraph(dep_graph()) ->
     {[file:filename()], #{file:filename() => [file:filename()]}}.
 pretty_depgraph({Srcs, DepGraph}) ->
     {sets:to_list(Srcs), maps:map(fun(_, V) -> sets:to_list(V) end, DepGraph)}.
 
--spec all_sources(dependency_graph()) -> [file:filename()].
+-spec all_sources(dep_graph()) -> [file:filename()].
 all_sources({Srcs, _}) -> sets:to_list(Srcs).
 
 % Given a filename F, find all files that use something from F.
--spec find_dependent_files(file:filename(), dependency_graph()) -> [file:filename()].
+-spec find_dependent_files(file:filename(), dep_graph()) -> [file:filename()].
 find_dependent_files(Path, {_, DepGraph}) ->
     PathNorm = normalize(Path),
     case maps:find(PathNorm, DepGraph) of
@@ -48,7 +48,7 @@ find_dependent_files(Path, {_, DepGraph}) ->
 -spec normalize(file:filename()) -> file:filename().
 normalize(P) -> filename:nativename(P).
 
--spec add_dependency(file:filename(), file:filename(), dependency_graph()) -> dependency_graph().
+-spec add_dependency(file:filename(), file:filename(), dep_graph()) -> dep_graph().
 add_dependency(Path, Dep, {Srcs, DepGraph}) ->
     PathNorm = normalize(Path),
     DepNorm = normalize(Dep),
@@ -61,13 +61,13 @@ add_dependency(Path, Dep, {Srcs, DepGraph}) ->
     NewSrcs = sets:add_element(PathNorm, sets:add_element(DepNorm, Srcs)),
     {NewSrcs, NewDepGraph}.
 
--spec update_dependency_graph(file:filename(), ast:forms(), paths:search_path(), dependency_graph()) -> dependency_graph().
-update_dependency_graph(Path, Forms, SearchPath, DepGraph) ->
+-spec update_dep_graph(file:filename(), ast:forms(), paths:search_path(), dep_graph()) -> dep_graph().
+update_dep_graph(Path, Forms, SearchPath, DepGraph) ->
     Modules = ast_utils:referenced_modules(Forms),
     ?LOG_DEBUG("Modules reference from ~p: ~p", Path, Modules),
     traverse_module_list(Path, Modules, SearchPath, DepGraph).
 
--spec traverse_module_list(file:filename(), [atom()], paths:search_path(), dependency_graph()) -> dependency_graph().
+-spec traverse_module_list(file:filename(), [atom()], paths:search_path(), dep_graph()) -> dep_graph().
 traverse_module_list(_, [], _, DepGraph) ->
     DepGraph;
 traverse_module_list(Path, [CurrentModule | RemainingModules], SearchPath, DepGraph) ->
@@ -88,30 +88,30 @@ find_source_for_module(Module, SearchPath) ->
     end.
 
 % Builds the dependency graph.
--spec build_dependency_graph(
+-spec build_dep_graph(
     [file:filename()], paths:search_path(), fun((file:filename()) -> [ast:forms()]))
-    -> {dependency_graph(), file:filename()}.
-build_dependency_graph(Files, SearchPath, ParseFun) ->
-    build_dependency_graph(lists:map(fun normalize/1, Files),
+    -> {dep_graph(), file:filename()}.
+build_dep_graph(Files, SearchPath, ParseFun) ->
+    build_dep_graph(lists:map(fun normalize/1, Files),
         SearchPath, ParseFun, new(), sets:new()).
 
--spec build_dependency_graph(
+-spec build_dep_graph(
         [file:filename()],
         paths:search_path(),
         fun((file:filename()) -> [ast:forms()]),
-        dependency_graph(),
+        dep_graph(),
         sets:set(file:filename())
-    ) -> {dependency_graph(), file:filename()}.
-build_dependency_graph(Worklist, SearchPath, ParseFun, DepGraph, AlreadyHandled) ->
+    ) -> {dep_graph(), file:filename()}.
+build_dep_graph(Worklist, SearchPath, ParseFun, DepGraph, AlreadyHandled) ->
     case Worklist of
         [] -> DepGraph;
         [File | Rest] ->
             Forms = ParseFun(File),
-            {All, _} = NewDepGraph = update_dependency_graph(File, Forms, SearchPath, DepGraph),
+            {All, _} = NewDepGraph = update_dep_graph(File, Forms, SearchPath, DepGraph),
             ?LOG_DEBUG("Dependecy graph after processing ~p: ~p", File,
                 cm_depgraph:pretty_depgraph(NewDepGraph)),
             NewFiles = sets:subtract(All, AlreadyHandled),
-            build_dependency_graph(
+            build_dep_graph(
                 Rest ++ sets:to_list(NewFiles), SearchPath, ParseFun,
                 NewDepGraph, sets:add_element(File, AlreadyHandled))
     end.
