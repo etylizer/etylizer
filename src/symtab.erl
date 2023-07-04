@@ -4,7 +4,6 @@
 
 -include_lib("log.hrl").
 -include_lib("parse.hrl").
--include_lib("ety_main.hrl").
 
 -compile([nowarn_shadow_vars]).
 
@@ -69,6 +68,18 @@ lookup_ty(Ref, Loc, Tab) ->
 -spec find_ty(ast:global_ref(), t()) -> t:opt(ast:ty_scheme()).
 find_ty(Ref, Tab) -> maps:find(Ref, Tab#tab.types).
 
+-spec symbols_for_module(atom(), t()) -> [{ref, atom(), arity()}].
+symbols_for_module(Mod, Tab) ->
+    lists:filtermap(
+        fun({K,_}) ->
+            case K of
+                {qref, M, N, A} when M =:= Mod -> {true, {ref, N, A}};
+                _ -> false
+            end
+        end,
+        maps:to_list(Tab#tab.funs) ++ maps:to_list(Tab#tab.types)
+        ).
+
 -spec empty() -> t().
 empty() -> #tab { funs = #{}, ops = #{}, types = #{} }.
 
@@ -114,46 +125,26 @@ create_ref_tuple({ref}, Name, Arity) ->
 create_ref_tuple({qref, Module}, Name, Arity) ->
     {qref, Module, Name, Arity}.
 
--spec extend_symtab_with_module_list(symtab:t(), cmd_opts(), [atom()]) -> symtab:t().
-extend_symtab_with_module_list(Symtab, Opts, Modules) ->
-    traverse_module_list(paths:find_search_paths(Opts), Symtab, Modules).
+-spec extend_symtab_with_module_list(symtab:t(), paths:search_path(), [atom()]) -> symtab:t().
+extend_symtab_with_module_list(Symtab, SearchPath, Modules) ->
+    traverse_module_list(SearchPath, Symtab, Modules).
 
--spec traverse_module_list([file:filename()], t(), [ast_utils:ty_module_name()]) -> t().
-traverse_module_list(SearchPaths, Symtab, [CurrentModule | RemainingModules]) ->
-    {SourcePath, IncludePath} = find_module_path(SearchPaths, CurrentModule),
-    ?LOG_NOTE("Path to includes ~s", IncludePath),
-
-    Forms = retrieve_forms_for_source(SourcePath, IncludePath),
-
-    NewSymtab = symtab:extend_symtab(Forms, CurrentModule, Symtab),
-    traverse_module_list(SearchPaths, NewSymtab, RemainingModules);
+-spec traverse_module_list(paths:search_path(), t(), [ast_utils:ty_module_name()]) -> t().
+traverse_module_list(SearchPath, Symtab, [CurrentModule | RemainingModules]) ->
+    Entry = paths:find_module_path(SearchPath, CurrentModule),
+    Forms = retrieve_forms_for_source(Entry),
+    NewSymtab = extend_symtab(Forms, CurrentModule, Symtab),
+    NewSymbols = symbols_for_module(CurrentModule, NewSymtab),
+    ?LOG_INFO("Extended symtab with entries from ~p: ~p", CurrentModule,
+        pretty:render_list(fun pretty:ref/1, NewSymbols)),
+    traverse_module_list(SearchPath, NewSymtab, RemainingModules);
 
 traverse_module_list(_, Symtab, []) ->
     Symtab.
 
--spec find_module_path([file:filename()], atom()) -> {file:filename(), file:filename()}.
-find_module_path(SearchPaths, Module) ->
-    Filename = string:concat(atom_to_list(Module), ".erl"),
-    ?LOG_NOTE("Looking for file ~s", Filename),
-    {value, Result} = lists:search(
-      fun(Path) ->
-              SourcePath = filename:join([Path, "src"]),
-              case filelib:find_file(Filename, SourcePath) of
-                  {ok, _} -> true;
-                  {error, not_found} -> false
-              end
-      end, SearchPaths),
-    IncludePath = filename:join([Result, "include"]),
-    {filename:join([Result, "src", Filename]), IncludePath}.
-
--spec retrieve_forms_for_source(file:filename(), file:filename()) -> ast:forms().
-retrieve_forms_for_source(SourcePath, IncludePath) ->
-    case ets:lookup(forms_table, SourcePath) of
-        [] ->
-            RawForms = parse:parse_file_or_die(SourcePath, #parse_opts{ verbose = false, includes = [IncludePath] }),
-            Forms = ast_transform:trans(SourcePath, RawForms),
-            ets:insert(forms_table, {SourcePath, Forms}),
-            Forms;
-        [{_, Forms}] ->
-            Forms
+-spec retrieve_forms_for_source(paths:search_path_entry()) -> ast:forms().
+retrieve_forms_for_source({Kind, Src, Includes}) ->
+    case Kind of
+        local -> parse_cache:parse(intern, Src);
+        _ -> parse_cache:parse({extern, Includes}, Src)
     end.

@@ -1,5 +1,5 @@
 -module(ety_main).
--export([main/1, debug/0]).
+-export([main/1, doWork/1]).
 
 % @doc This is the main module of ety. It parses commandline arguments and orchestrates
 % everything.
@@ -87,78 +87,44 @@ parse_args(Args) ->
     end,
     Opts.
 
+% FIXME (sw, 2023-07-04): this is ugly global state. Remove!
 -spec fix_load_path(#opts{}) -> true.
 fix_load_path(Opts) ->
-    Path = Opts#opts.load_start ++ [D || D <- code:get_path(), D =/= "."] ++ Opts#opts.load_end,
-    true = code:set_path(Path).
+    case {Opts#opts.load_start, Opts#opts.load_end} of
+        {[], []} -> true;
+        {Start, End} ->
+            Path = Start ++ [D || D <- code:get_path(), D =/= "."] ++ End,
+            true = code:set_path(Path),
+            true
+    end.
 
 -spec doWork(#opts{}) -> ok.
 doWork(Opts) ->
+    parse_cache:init(Opts),
     fix_load_path(Opts),
-    ParseOpts = #parse_opts{
-        includes = Opts#opts.includes,
-        defines = Opts#opts.defines
-    },
     case Opts#opts.ast_file of
         empty -> ok;
         AstPath ->
             {Spec, Module} = ast_check:parse_spec(AstPath),
+            ParseOpts = #parse_opts{
+                includes = Opts#opts.includes,
+                defines = Opts#opts.defines
+            },
             lists:foreach(fun(F) ->
                 ast_check:check(Spec, Module, F, ParseOpts)
             end, Opts#opts.files),
             erlang:halt(0)
     end,
-
-    ets:new(forms_table, [set, named_table, {keypos, 1}]),
-
-    SourceList = paths:generate_file_list(Opts),
-    DependencyGraph = build_dependency_graph(SourceList, maps:new(), Opts, ParseOpts),
-
-    case Opts#opts.no_type_checking of
-        true ->
-            ?LOG_NOTE("Not performing type checking as requested"),
-            erlang:halt();
-        false -> ok
-    end,
-
-    cm_check:perform_type_checks(SourceList, symtab:std_symtab(), Opts, DependencyGraph).
-
--spec build_dependency_graph([file:filename()], cm_depgraph:dependency_graph(), #opts{}, tuple()) -> cm_depgraph:dependency_graph().
-build_dependency_graph([CurrentFile | RemainingFiles], DependencyGraph, Opts, ParseOpts) ->
-    ?LOG_NOTE("Parsing ~s ...", CurrentFile),
-    RawForms = parse:parse_file_or_die(CurrentFile, ParseOpts),
-    if  Opts#opts.dump_raw -> ?LOG_NOTE("Raw forms in ~s:~n~p", CurrentFile, RawForms);
-        true -> ok
-    end,
-    ?LOG_TRACE("Parse result (raw):~n~120p", RawForms),
-
-    if Opts#opts.sanity ->
-            ?LOG_INFO("Checking whether parse result conforms to AST in ast_erl.erl ..."),
-            {RawSpec, _} = ast_check:parse_spec("src/ast_erl.erl"),
-            case ast_check:check_against_type(RawSpec, ast_erl, forms, RawForms) of
-                true ->
-                    ?LOG_INFO("Parse result from ~s conforms to AST in ast_erl.erl", CurrentFile);
-                false ->
-                    ?ABORT("Parse result from ~s violates AST in ast_erl.erl", CurrentFile)
-            end;
-       true -> ok
-    end,
-
-    ?LOG_NOTE("Transforming ~s ...", CurrentFile),
-    Forms = ast_transform:trans(CurrentFile, RawForms),
-    if  Opts#opts.dump ->
-            ?LOG_NOTE("Transformed forms in ~s:~n~p", CurrentFile, ast_utils:remove_locs(Forms));
-        true -> ok
-    end,
-    ?LOG_TRACE("Parse result (after transform):~n~120p", Forms),
-
-    ets:insert(forms_table, {CurrentFile, Forms}),
-
-    NewDependencyGraph = cm_depgraph:update_dependency_graph(CurrentFile, Forms, RemainingFiles, DependencyGraph),
-    build_dependency_graph(RemainingFiles, NewDependencyGraph, Opts, ParseOpts);
-
-build_dependency_graph([], DependencyGraph, _, _) ->
-    DependencyGraph.
+    SourceList = paths:generate_input_file_list(Opts),
+    SearchPath = paths:find_search_path(Opts),
+    ?LOG_NOTE("Entry points: ~p, now building dependency graph", SourceList),
+    DepGraph = cm_depgraph:build_dependency_graph(SourceList, SearchPath,
+        fun(P) -> parse_cache:parse(intern, P) end),
+    ?LOG_INFO("Dependency graph: ~p", cm_depgraph:pretty_depgraph(DepGraph)),
+    ?LOG_NOTE("Performing type checking"),
+    Res = cm_check:perform_type_checks(SearchPath, DepGraph, Opts),
+    parse_cache:cleanup(),
+    Res.
 
 -spec main([string()]) -> ok.
 main(Args) ->
@@ -172,17 +138,3 @@ main(Args) ->
             io:format("~s~n", [Msg]),
             erlang:halt(1)
     end.
-
-debug() ->
-  Args = ["--level","debug","--sanity","--only","catch_01/0",
-      "test_files/tycheck_simple.erl"],
-  Opts = parse_args(Args),
-  log:init(Opts#opts.log_level),
-  ?LOG_INFO("Parsed commandline options as ~200p", Opts),
-  try doWork(Opts)
-  catch throw:{ety, K, Msg}:S ->
-    Raw = erl_error:format_exception(throw, K, S),
-    ?LOG_INFO("~s", Raw),
-    io:format("~s~n", [Msg]),
-    erlang:halt(1)
-  end.

@@ -1,6 +1,7 @@
 -module(cm_depgraph_tests).
 
 -include_lib("eunit/include/eunit.hrl").
+-include_lib("../src/log.hrl").
 
 add_dependency_test() ->
     TestGraph = maps:put("test.erl", ["foo.erl"], maps:new()),
@@ -10,6 +11,7 @@ add_dependency_test() ->
 
 update_dependency_graph_test() ->
     ExampleFilePath = "./test_files/referenced_modules/module1.erl",
+    ?LOG_WARN("ExampleFilePath=~s", ExampleFilePath),
     RawForms = parse:parse_file_or_die(ExampleFilePath),
     Forms = ast_transform:trans(ExampleFilePath, RawForms),
     SourcesList = ["./test_files/referenced_modules/module2.erl",

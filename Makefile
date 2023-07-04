@@ -9,6 +9,7 @@ build:
 
 clean:
 	$(REBAR) clean
+	rm -rf _build
 
 test: build testtest
 	@echo "Running unit tests for type checker ..."

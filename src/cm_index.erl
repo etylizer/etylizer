@@ -17,51 +17,42 @@
 
 -include_lib("log.hrl").
 
--define(ETYLIZER_DIR, ".etylizer").
-
 -type index() :: #{file:filename() => {binary(), binary()}}.
 
 -spec load_index(file:filename()) -> index().
-load_index(FileName) ->
-    filelib:ensure_dir(?ETYLIZER_DIR),
-    Path = filename:join(?ETYLIZER_DIR, FileName),
+load_index(Path) ->
     case filelib:is_file(Path) of
         true ->
-            case file:read_file(Path) of
-                {ok, FileContent} ->
-                    decode_index(FileContent);
+            case file:consult(Path) of
+                {ok, [Index]} ->
+                    ?LOG_INFO("Loading index from ~p", Path),
+                    Index;
+                {ok, []} ->
+                    ?LOG_WARN("Empty index at ~p", Path),
+                    maps:new();
+                {ok, _} ->
+                    ?LOG_WARN("Index with unexpected content at ~p", Path),
+                    maps:new();
                 {error, Reason} ->
-                    ?ABORT("Error occurred while trying to load existing index. Reason: ~s", Reason)
+                    ?LOG_WARN("Error occurred while trying to load existing index. Reason: ~s",
+                        Reason),
+                    maps:new()
             end;
-        false -> maps:new()
+        false ->
+            ?LOG_INFO("No index exists at ~p, using empty index", Path),
+            maps:new()
     end.
 
 -spec save_index(file:filename(), index()) -> ok.
-save_index(FileName, Index) ->
-    filelib:ensure_dir(?ETYLIZER_DIR),
-    case file:write_file(filename:join(?ETYLIZER_DIR, FileName), encode_index(Index)) of
+save_index(Path, Index) ->
+    filelib:ensure_dir(Path),
+    case file:write_file(Path, io_lib:format("~p.~n", [Index])) of
         ok ->
+            ?LOG_INFO("Stored index at ~p", Path),
             ok;
         {error, Reason} ->
             ?ABORT("Error occurred while trying to save index. Reason: ~s", Reason)
     end.
-
--spec encode_index(index()) -> binary().
-encode_index(Index) ->
-    NewIndex = maps:fold(
-      fun(Key, {FileHash, InterfaceHash}, AccMap) ->
-              maps:put(list_to_binary(Key), [base64:encode(FileHash), base64:encode(InterfaceHash)], AccMap)
-      end, maps:new(), Index),
-    jsone:encode(NewIndex).
-
--spec decode_index(binary()) -> index().
-decode_index(FileContent) ->
-    DecodedIndex = jsone:decode(FileContent),
-    maps:fold(
-     fun(Key, Value, AccMap) ->
-             {FileHash, InterfaceHash} = list_to_tuple(Value),
-             maps:put(binary_to_list(Key), {base64:decode(FileHash), base64:decode(InterfaceHash)}, AccMap)
-     end, maps:new(), DecodedIndex).
 
 -spec has_file_changed(file:filename(), index()) -> boolean().
 has_file_changed(Path, Index) ->

@@ -10,7 +10,8 @@
     diff_terms/3, if_true/2,
     file_get_lines/1, set_add_many/2, assert_no_error/1,
     replicate/2, unconsult/2,
-    string_ends_with/2, shorten/2
+    string_ends_with/2, shorten/2,
+    mkdirs/1
 ]).
 
 -spec map_opt(fun((T) -> U | error), [T]) -> [U].
@@ -195,3 +196,7 @@ shorten([], _) -> {[], 0};
 shorten([X | Xs], N) ->
     {Short, ShortN} = shorten(Xs, N - 1),
     {[X | Short], ShortN + 1}.
+
+-spec mkdirs(filename:name()) -> ok | {error, string()}.
+mkdirs(D) ->
+    ok = filelib:ensure_dir(filename:join(D, "XXX")). % only creates the parent!
