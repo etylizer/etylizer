@@ -37,3 +37,5 @@ find_dependent_files_test() ->
     Deps = cm_depgraph:find_dependent_files("test.erl", ResultGraph),
 
     ?assertEqual(["bar.erl", "foo.erl"], lists:sort(Deps)).
+
+% cycles

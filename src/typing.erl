@@ -14,11 +14,11 @@
 
 -record(ctx,
         { symtab :: symtab:t(),
-          sanity :: t:opt(ast_spec:ty_map())
+          sanity :: t:opt(ast_check:ty_map())
         }).
 -opaque ctx() :: #ctx{}.
 
--spec new_ctx(symtab:t(), t:opt(ast_spec:ty_map())) -> ctx().
+-spec new_ctx(symtab:t(), t:opt(ast_check:ty_map())) -> ctx().
 new_ctx(Tab, Sanity) ->
     Ctx = #ctx{ symtab = Tab, sanity = Sanity },
     Ctx.

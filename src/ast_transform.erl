@@ -445,7 +445,7 @@ trans_exp(Ctx, Env, Exp) ->
             % The expression returned is 'case NewExp of ($X = Q) -> $x'
             % $X is not a valid erlang variable, so there is no danger of conflicting with
             % existing variables.
-            {MatchVar, NewEnv} = varenv_local:insert(list_to_atom("$X"), E2),
+            {MatchVar, NewEnv} = varenv_local:insert_fresh(E2),
             % ast:case_clause()
             Clause = {case_clause, Loc,
                       {match, Loc, {var, Loc, {local_bind, MatchVar}}, Q},
@@ -659,6 +659,7 @@ trans_case_clauses(_Ctx, Env, []) -> {[], Env};
 trans_case_clauses(Ctx, Env, Cs) ->
     {NewClauses, NewEnvs} =
         lists:unzip(lists:map(fun(C) -> trans_case_clause(Ctx, Env, C) end, Cs)),
+    ?LOG_DEBUG("Merging envs: ~200p", NewEnvs),
     {NewClauses, varenv_local:merge_envs(NewEnvs)}.
 
 -spec trans_case_clause(ctx(), varenv_local:t(), ast_erl:case_clause())

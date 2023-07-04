@@ -357,14 +357,14 @@ ty_of_pat(Env, P) ->
 
 % t // pg
 -spec pat_guard_env(ctx(), ast:loc(), ast:ty(), ast:pat(), [ast:guard()]) ->
-          {const:constrs(), constr:constr_env()}.
+          {constr:constrs(), constr:constr_env()}.
 pat_guard_env(Ctx, L, T, P, Gs) ->
     {Cs, Env} = pat_env(Ctx, L, T, P),
     {EnvGuards, _} = guard_seq_env(Gs),
     {Cs, intersect_envs(Env, EnvGuards)}.
 
 % t // p
--spec pat_env(ctx(), ast:loc(), ast:ty(), ast:pat()) -> {const:constrs(), constr:constr_env()}.
+-spec pat_env(ctx(), ast:loc(), ast:ty(), ast:pat()) -> {constr:constrs(), constr:constr_env()}.
 pat_env(Ctx, OuterL, T, P) ->
     Empty = {sets:new(), #{}},
     case P of
@@ -657,7 +657,7 @@ if_exp_to_case_exp({'if', L, IfClauses}) ->
                   end, IfClauses),
     {'case', L, ScrutExp, CaseClauses}.
 
--spec sanity_check(const:constrs(), ast_spec:ty_map()) -> ok.
+-spec sanity_check(constr:constrs(), ast_check:ty_map()) -> ok.
 sanity_check(Cs, Spec) ->
     case ast_check:check_against_type(Spec, constr, constrs, Cs) of
         true ->

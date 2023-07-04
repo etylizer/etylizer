@@ -10,7 +10,8 @@
 -spec init(#opts{}) -> ok.
 init(Opts) ->
     ets:new(forms_table, [set, named_table, {keypos, 1}]),
-    ets:insert(forms_table, {opts, Opts}). % special entry
+    ets:insert(forms_table, {opts, Opts}), % special entry
+    ok.
 
 -spec cleanup() -> ok.
 cleanup() ->
@@ -19,7 +20,7 @@ cleanup() ->
 
 -type file_kind() :: intern | {extern, [file:filename()]}.
 
--spec parse(file_kind, file:filename()) -> [ast:form()].
+-spec parse(file_kind(), file:filename()) -> [ast:form()].
 parse(Kind, Path) ->
     PathNorm = filename:nativename(Path),
     case ets:lookup(forms_table, PathNorm) of

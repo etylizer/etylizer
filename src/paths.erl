@@ -2,7 +2,7 @@
 
 % @doc This module contains functionality related to handling file system paths.
 
--export([find_search_path/1, generate_input_file_list/1, index_file_name/1, find_module_path/2]).
+-export([compute_search_path/1, generate_input_file_list/1, index_file_name/1, find_module_path/2]).
 -export_type([search_path_entry/0, search_path/0]).
 
 -include_lib("log.hrl").
@@ -16,31 +16,30 @@
 
 -type search_path() :: [search_path_entry()].
 
--spec root_dir(cmd_opts) -> file:filename().
+-spec root_dir(cmd_opts()) -> file:filename().
 root_dir(Opts) ->
     case Opts#opts.project_root of
         empty -> ".";
         D -> D
     end.
 
--spec find_search_path(cmd_opts()) -> search_path().
-find_search_path(Opts) ->
+-spec compute_search_path(cmd_opts()) -> search_path().
+compute_search_path(Opts) ->
     RootDir = root_dir(Opts),
     ImplicitDirs = lists:map(fun(F) -> filename:dirname(F) end, Opts#opts.files),
-    LocalPathEntries =
-        lists:reverse(
-            lists:foldl(
-                fun(P, {Acc, Set}) ->
-                    NormP = filename:nativename(P),
-                    case sets:is_element(NormP, Set) of
-                        true -> Acc;
-                        false -> [{local, NormP, Opts#opts.includes} | Acc]
-                    end
-                end,
-                {[], sets:new()},
-                ImplicitDirs ++ Opts#opts.src_paths)
-        ),
-    LocalPathEntries ++ find_dependency_roots(RootDir) ++ find_otp_paths().
+    {LocalPathEntries, _} =
+        lists:foldl(
+            fun(P, {Acc, Set}) ->
+                NormP = filename:nativename(P),
+                case sets:is_element(NormP, Set) of
+                    true -> {Acc, Set};
+                    false -> {[{local, NormP, Opts#opts.includes} | Acc],
+                                sets:add_element(NormP, Set)}
+                end
+            end,
+            {[], sets:new()},
+            ImplicitDirs ++ Opts#opts.src_paths),
+    lists:reverse(LocalPathEntries) ++ find_dependency_roots(RootDir) ++ find_otp_paths().
 
 -spec standard_path_entry(dep | stdlib, file:filename(), file:filename()) -> search_path_entry().
 standard_path_entry(Kind, D1, D2) ->
@@ -53,7 +52,7 @@ find_otp_paths() ->
     {ok, Dirs} = file:list_dir(RootDir),
     lists:map(fun(Path) -> standard_path_entry(stdlib, RootDir, Path) end, Dirs).
 
--spec find_dependency_roots(file:filename()) -> search_path.
+-spec find_dependency_roots(file:filename()) -> search_path().
 find_dependency_roots(ProjectDir) ->
     ProjectBuildDir = filename:join([ProjectDir, "_build"]),
     ProjectLibDir = filename:join([ProjectBuildDir, "default/lib"]),
@@ -124,6 +123,6 @@ find_module_path(SearchPath, Module) ->
             ?LOG_DEBUG("Resolved module ~p to file ~p", Module, File),
             {Kind, File, Includes};
         false ->
-            Dirs = lists:map(fun({P, _}) -> P end, SearchPath),
+            Dirs = lists:map(fun({_, P, _}) -> P end, SearchPath),
             ?ABORT("Module ~p not found, search path: ~p", Module, Dirs)
     end.

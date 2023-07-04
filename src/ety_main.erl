@@ -98,7 +98,7 @@ fix_load_path(Opts) ->
             true
     end.
 
--spec doWork(#opts{}) -> ok.
+-spec doWork(#opts{}) -> [file:filename()].
 doWork(Opts) ->
     parse_cache:init(Opts),
     fix_load_path(Opts),
@@ -116,7 +116,7 @@ doWork(Opts) ->
             erlang:halt(0)
     end,
     SourceList = paths:generate_input_file_list(Opts),
-    SearchPath = paths:find_search_path(Opts),
+    SearchPath = paths:compute_search_path(Opts),
     ?LOG_NOTE("Entry points: ~p, now building dependency graph", SourceList),
     DepGraph = cm_depgraph:build_dep_graph(SourceList, SearchPath,
         fun(P) -> parse_cache:parse(intern, P) end),
@@ -137,4 +137,5 @@ main(Args) ->
             ?LOG_ERROR("~s", Raw),
             io:format("~s~n", [Msg]),
             erlang:halt(1)
-    end.
+    end,
+    ok.

@@ -90,7 +90,7 @@ find_source_for_module(Module, SearchPath) ->
 % Builds the dependency graph.
 -spec build_dep_graph(
     [file:filename()], paths:search_path(), fun((file:filename()) -> [ast:forms()]))
-    -> {dep_graph(), file:filename()}.
+    -> dep_graph().
 build_dep_graph(Files, SearchPath, ParseFun) ->
     build_dep_graph(lists:map(fun normalize/1, Files),
         SearchPath, ParseFun, new(), sets:new()).
@@ -101,7 +101,7 @@ build_dep_graph(Files, SearchPath, ParseFun) ->
         fun((file:filename()) -> [ast:forms()]),
         dep_graph(),
         sets:set(file:filename())
-    ) -> {dep_graph(), file:filename()}.
+    ) -> dep_graph().
 build_dep_graph(Worklist, SearchPath, ParseFun, DepGraph, AlreadyHandled) ->
     case Worklist of
         [] -> DepGraph;
