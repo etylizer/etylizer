@@ -12,7 +12,7 @@
     replicate/2, unconsult/2,
     string_ends_with/2, shorten/2,
     mkdirs/1, hash_sha1/1, hash_file/1,
-    list_uniq/1
+    list_uniq/1, lists_enumerate/1, lists_enumerate/2
 ]).
 
 -spec map_opt(fun((T) -> U | error), [T]) -> [U].
@@ -221,7 +221,8 @@ hash_file(Path) ->
         X -> X
     end.
 
-% Copied from OTP 25
+% Some functions copied from OTP 25 (we still support OTP 24)
+
 -spec list_uniq(List1) -> List2 when
       List1 :: [T],
       List2 :: [T],
@@ -237,3 +238,25 @@ list_uniq_1([X | Xs], M) ->
     end;
 list_uniq_1([], _) ->
     [].
+
+-spec lists_enumerate(List1) -> List2 when
+      List1 :: [T],
+      List2 :: [{Index, T}],
+      Index :: integer(),
+      T :: term().
+lists_enumerate(List1) when is_list(List1) ->
+    lists_enumerate_1(1, List1).
+
+-spec lists_enumerate(Index, List1) -> List2 when
+      List1 :: [T],
+      List2 :: [{Index, T}],
+      Index :: integer(),
+      T :: term().
+lists_enumerate(Index, List1) when is_integer(Index), is_list(List1) ->
+    lists_enumerate_1(Index, List1).
+
+lists_enumerate_1(Index, [H|T]) ->
+    [{Index, H}|lists_enumerate_1(Index + 1, T)];
+lists_enumerate_1(_Index, []) ->
+    [].
+
