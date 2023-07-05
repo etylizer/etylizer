@@ -121,8 +121,26 @@ rebar_lock_file(Opts) ->
     RootDir = root_dir(Opts),
     filename:join(RootDir, "rebar.lock").
 
+-define(TABLE, mod_table).
+
 -spec find_module_path(paths:search_path(), atom()) -> paths:search_path_entry().
 find_module_path(SearchPath, Module) ->
+    case ets:whereis(?TABLE) of
+        undefined -> ets:new(?TABLE, [set, named_table, {keypos, 1}]);
+        _ -> ok
+    end,
+    Key = {SearchPath, Module},
+    case ets:lookup(?TABLE, Key) of
+        [{_, Result}] -> Result;
+        [] ->
+            X = really_find_module_path(SearchPath, Module),
+            true = ets:insert(?TABLE, {Key, X}),
+            X;
+        Y -> ?ABORT("Unexpected entry in mod_table: ~p", Y)
+    end.
+
+-spec really_find_module_path(paths:search_path(), atom()) -> paths:search_path_entry().
+really_find_module_path(SearchPath, Module) ->
     Filename = string:concat(atom_to_list(Module), ".erl"),
     SearchResult = lists:search(
       fun({_, SrcPath, _Includes}) ->
