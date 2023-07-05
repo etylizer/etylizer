@@ -70,7 +70,7 @@ add_file(Path, {Srcs, DepGraph}) ->
 -spec update_dep_graph(file:filename(), ast:forms(), paths:search_path(), dep_graph()) -> dep_graph().
 update_dep_graph(Path, Forms, SearchPath, DepGraph) ->
     Modules = ast_utils:referenced_modules(Forms),
-    ?LOG_DEBUG("Modules reference from ~p: ~p", Path, Modules),
+    ?LOG_DEBUG("Modules referenced from ~p: ~p", Path, Modules),
     traverse_module_list(Path, Modules, SearchPath, add_file(Path, DepGraph)).
 
 -spec traverse_module_list(file:filename(), [atom()], paths:search_path(), dep_graph()) -> dep_graph().
@@ -112,12 +112,16 @@ build_dep_graph(Worklist, SearchPath, ParseFun, DepGraph, AlreadyHandled) ->
     case Worklist of
         [] -> DepGraph;
         [File | Rest] ->
+            ?LOG_INFO("Adding ~p to dependency graph", File),
             Forms = ParseFun(File),
             {All, _} = NewDepGraph = update_dep_graph(File, Forms, SearchPath, DepGraph),
-            ?LOG_DEBUG("Dependecy graph after processing ~p: ~p", File,
-                cm_depgraph:pretty_depgraph(NewDepGraph)),
-            NewFiles = sets:subtract(All, AlreadyHandled),
+            NewAlreadyHandled = sets:add_element(File, AlreadyHandled),
+            NewFiles = sets:subtract(
+                sets:subtract(All, NewAlreadyHandled),
+                sets:from_list(Rest)
+            ),
+            ?LOG_INFO("Done adding ~p to dependency graph", File),
             build_dep_graph(
                 Rest ++ sets:to_list(NewFiles), SearchPath, ParseFun,
-                NewDepGraph, sets:add_element(File, AlreadyHandled))
+                NewDepGraph, NewAlreadyHandled)
     end.

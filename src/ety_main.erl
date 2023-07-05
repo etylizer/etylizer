@@ -123,7 +123,7 @@ doWork(Opts) ->
         ?LOG_NOTE("Entry points: ~p, now building dependency graph", SourceList),
         DepGraph = cm_depgraph:build_dep_graph(SourceList, SearchPath,
             fun(P) -> parse_cache:parse(intern, P) end),
-        ?LOG_INFO("Dependency graph: ~p", cm_depgraph:pretty_depgraph(DepGraph)),
+        ?LOG_DEBUG("Dependency graph: ~p", cm_depgraph:pretty_depgraph(DepGraph)),
         ?LOG_NOTE("Performing type checking"),
         Res = cm_check:perform_type_checks(SearchPath, DepGraph, Opts),
         Res

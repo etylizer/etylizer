@@ -26,7 +26,7 @@ parse_file(Path, Opts) ->
             ets:new(?TABLE, [named_table, public, set]);
         _ -> ets:delete_all_objects(?TABLE)
     end,
-    ?LOG_DEBUG("Parsing ~s", Path),
+    ?LOG_TRACE("Parsing ~s", Path),
     Ext = filename:extension(Path),
     if
         Ext == ".erl" ->
@@ -41,10 +41,10 @@ parse_file(Path, Opts) ->
                         _ -> {d, Name, Val}
                     end
                 end, Opts#parse_opts.defines),
-            ?LOG_DEBUG("Calling compile:file for ~s, options: ~200p", NoExt, CompileOpts),
+            ?LOG_TRACE("Calling compile:file for ~s, options: ~200p", NoExt, CompileOpts),
             case compile:file(NoExt, CompileOpts) of
                 {ok, _} ->
-                    ?LOG_DEBUG("Done parsing ~s", Path),
+                    ?LOG_TRACE("Done parsing ~s", Path),
                     case ets:lookup(?TABLE, ?FORMS) of
                         [{?FORMS, Forms}] -> {ok, Forms};
                         _ ->

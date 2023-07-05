@@ -144,7 +144,8 @@ test_rebar_changes() ->
         end).
 
 file_changes_test_() ->
-    [?_test(test_recompile("file_changes",
+    [?_test(test_recompile("simple", #{1 => ["main.erl"], 2 => []})),
+     ?_test(test_recompile("file_changes",
         #{1 => ["bar.erl", "foo.erl", "main.erl"], 2 => ["foo.erl"]})),
      ?_test(test_recompile("file_changes2",
         #{1 => ["bar.erl", "foo.erl", "main.erl"], 2 => ["foo.erl"]})),

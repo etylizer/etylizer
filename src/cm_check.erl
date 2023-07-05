@@ -27,7 +27,12 @@ perform_type_checks(SearchPath, DepGraph, Opts) ->
                 ?LOG_INFO("No external dependency has changed"),
                 create_check_list(SourceList, NewIndex1, DepGraph)
         end,
-    ?LOG_INFO("Sources to check: ~p", CheckList),
+    case CheckList of
+        [] -> ?LOG_NOTE("Need to check 0 of ~p files", length(CheckList));
+        _ ->
+            ?LOG_NOTE("Need to check ~p of ~p files: ~p",
+                length(CheckList), length(SourceList), CheckList)
+    end,
     NewIndex2 = traverse_and_check(CheckList, symtab:std_symtab(), SearchPath, Opts, NewIndex1),
     cm_index:save_index(IndexFile, NewIndex2),
     CheckList.
@@ -65,17 +70,16 @@ traverse_and_check([], _, _, _, Index) ->
     Index;
 
 traverse_and_check([CurrentFile | RemainingFiles], Symtab, SearchPath, Opts, Index) ->
-    ?LOG_NOTE("Preparing to check ~s", CurrentFile),
+    ?LOG_NOTE("Typechecking ~s", CurrentFile),
     Forms = parse_cache:parse(intern, CurrentFile),
     ExpandedSymtab = symtab:extend_symtab_with_module_list(Symtab, SearchPath, ast_utils:referenced_modules(Forms)),
 
-    ?LOG_NOTE("Typechecking ~s ...", CurrentFile),
     Only = sets:from_list(Opts#opts.type_check_only),
     Sanity = perform_sanity_check(CurrentFile, Forms, Opts),
     Ctx = typing:new_ctx(ExpandedSymtab, Sanity),
     case Opts#opts.no_type_checking of
         true ->
-            ?LOG_WARN("Not type checking ~p as requested", CurrentFile);
+            ?LOG_INFO("Not type checking ~p as requested", CurrentFile);
         false ->
             typing:check_forms(Ctx, Forms, Only)
     end,

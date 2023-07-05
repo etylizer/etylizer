@@ -140,5 +140,5 @@ insert(Path, Forms, {DepVersions, Index}) ->
     {DepVersions, maps:put(Path, {FileHash, InterfaceHash}, Index)}.
 
 -spec remove(file:filename(), index()) -> index().
-remove(Path, {_, Index}) ->
-    maps:remove(Path, Index).
+remove(Path, {DepVersions, Index}) ->
+    {DepVersions, maps:remove(Path, Index)}.

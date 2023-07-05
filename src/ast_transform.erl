@@ -651,7 +651,7 @@ trans_pat(Ctx, Env, Pat, BindMode) ->
             case BindMode of
                 shadow ->
                     {Name, NewEnv} = varenv_local:insert(V, Env),
-                    ?LOG_DEBUG("Introducing new binding ~w at ~s", Name, ast:format_loc(Loc)),
+                    ?LOG_TRACE("Introducing new binding ~w at ~s", Name, ast:format_loc(Loc)),
                     {{var, Loc, {local_bind, Name}}, NewEnv};
                 no_bind ->
                     case varenv_local:find(V , Env) of
@@ -663,7 +663,7 @@ trans_pat(Ctx, Env, Pat, BindMode) ->
                         {ok, Name} -> {{var, Loc, {local_ref, Name}}, Env};
                         error ->
                             {Name, NewEnv} = varenv_local:insert(V, Env),
-                            ?LOG_DEBUG("Introducing new binding ~w at ~s", Name,
+                            ?LOG_TRACE("Introducing new binding ~w at ~s", Name,
                                        ast:format_loc(Loc)),
                             {{var, Loc, {local_bind, Name}}, NewEnv}
                     end
@@ -691,7 +691,7 @@ trans_case_clauses(_Ctx, Env, []) -> {[], Env};
 trans_case_clauses(Ctx, Env, Cs) ->
     {NewClauses, NewEnvs} =
         lists:unzip(lists:map(fun(C) -> trans_case_clause(Ctx, Env, C) end, Cs)),
-    ?LOG_DEBUG("Merging envs: ~200p", NewEnvs),
+    ?LOG_TRACE("Merging envs: ~200p", NewEnvs),
     {NewClauses, varenv_local:merge_envs(NewEnvs)}.
 
 -spec trans_case_clause(ctx(), varenv_local:t(), ast_erl:case_clause())
@@ -702,7 +702,7 @@ trans_case_clause(Ctx, Env, C) ->
             {Q, QEnv} = trans_pat(Ctx, Env, Pat, bind_fresh),
             NewGuards = trans_guards(Ctx, QEnv, Guards),
             Loc = to_loc(Ctx, Anno),
-            ?LOG_DEBUG("Env for body of case clause at ~s: ~w", ast:format_loc(Loc), QEnv),
+            ?LOG_TRACE("Env for body of case clause at ~s: ~w", ast:format_loc(Loc), QEnv),
             {NewBody, NewEnv} = trans_exp_seq(Ctx, QEnv, Body),
             {{case_clause, Loc, Q, NewGuards, NewBody}, NewEnv};
         X -> errors:uncovered_case(?FILE, ?LINE, X)

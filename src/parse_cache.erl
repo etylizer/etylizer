@@ -42,7 +42,7 @@ parse(Kind, Path) ->
                     ?ABORT("Previously parsed ~p with kind ~p, now requested for kind ~p",
                         PathNorm, StoredKind, Kind)
             end,
-            ?LOG_DEBUG("Retrieving parse result for ~p from cache", PathNorm),
+            ?LOG_TRACE("Retrieving parse result for ~p from cache", PathNorm),
             Forms;
         [] ->
             [{_, Opts}] = ets:lookup(?TABLE, opts),
@@ -54,7 +54,7 @@ parse(Kind, Path) ->
 
 -spec really_parse_file(file_kind(), file:filename(), #opts{}) -> [ast:form()].
 really_parse_file(Kind, File, Opts) ->
-    ?LOG_INFO("Really parsing ~s ...", File),
+    ?LOG_INFO("Parsing ~s ...", File),
     ParseOpts =
         case Kind of
             intern -> #parse_opts{
