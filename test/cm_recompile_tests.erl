@@ -1,7 +1,5 @@
 -module(cm_recompile_tests).
 
--compile([export_all]).
-
 -include_lib("eunit/include/eunit.hrl").
 -include_lib("../src/ety_main.hrl").
 -include_lib("../src/log.hrl").
@@ -38,7 +36,11 @@ parse_filename(Name) ->
 % [{bar_V1+2.erl", "bar.erl"}]
 -spec get_files_with_version(file:name(), integer()) -> [{file:name(), file:name()}].
 get_files_with_version(Dir, Version) ->
-    {ok, Files} = file:list_dir(Dir),
+    Files =
+        case file:list_dir(Dir) of
+            {ok, X} -> X;
+            E -> ?ABORT("Error listing content of ~p: ~p", Dir, E)
+        end,
     lists:filtermap(
         fun(Filename) ->
             case parse_filename(Filename) of
@@ -95,6 +97,13 @@ test_recompile(Dir, VersionMap) ->
                 end, Versions)
         end).
 
-file_changes_test() ->
-    test_recompile("file_changes", #{1 => ["bar.erl", "foo.erl", "main.erl"], 2 => ["foo.erl"]}),
-    ok.
+file_changes_test_() ->
+    [?_test(test_recompile("file_changes",
+        #{1 => ["bar.erl", "foo.erl", "main.erl"], 2 => ["foo.erl"]})),
+     ?_test(test_recompile("file_changes2",
+        #{1 => ["bar.erl", "foo.erl", "main.erl"], 2 => ["foo.erl"]})),
+     ?_test(test_recompile("change_tyspec",
+        #{1 => ["bar.erl", "foo.erl", "main.erl"], 2 => ["main.erl", "foo.erl"]})),
+     ?_test(test_recompile("change_local_tyspec",
+        #{1 => ["bar.erl", "foo.erl", "main.erl"], 2 => ["foo.erl"]}))
+    ].

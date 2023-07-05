@@ -34,7 +34,7 @@ load_index(Path) ->
                     ?LOG_WARN("Index with unexpected content at ~p", Path),
                     maps:new();
                 {error, Reason} ->
-                    ?LOG_WARN("Error occurred while trying to load existing index. Reason: ~s",
+                    ?LOG_WARN("Error occurred while trying to load existing index. Reason: ~200p",
                         Reason),
                     maps:new()
             end;
