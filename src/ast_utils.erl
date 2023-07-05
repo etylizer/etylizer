@@ -26,4 +26,4 @@ referenced_modules(Forms) ->
                             _ -> error
                         end
                 end, Forms),
-    lists:uniq(Modules).
+    utils:list_uniq(Modules).

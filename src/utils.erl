@@ -11,7 +11,8 @@
     file_get_lines/1, set_add_many/2, assert_no_error/1,
     replicate/2, unconsult/2,
     string_ends_with/2, shorten/2,
-    mkdirs/1, hash_sha1/1, hash_file/1
+    mkdirs/1, hash_sha1/1, hash_file/1,
+    list_uniq/1
 ]).
 
 -spec map_opt(fun((T) -> U | error), [T]) -> [U].
@@ -219,3 +220,20 @@ hash_file(Path) ->
         {ok, FileContent} -> utils:hash_sha1(FileContent);
         X -> X
     end.
+
+% Copied from OTP 25
+-spec list_uniq(List1) -> List2 when
+      List1 :: [T],
+      List2 :: [T],
+      T :: term().
+list_uniq(L) ->
+    list_uniq_1(L, #{}).
+list_uniq_1([X | Xs], M) ->
+    case is_map_key(X, M) of
+        true ->
+            list_uniq_1(Xs, M);
+        false ->
+            [X | list_uniq_1(Xs, M#{X => true})]
+    end;
+list_uniq_1([], _) ->
+    [].
