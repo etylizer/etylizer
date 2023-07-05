@@ -66,8 +66,10 @@ run_typechecker(SrcDir, Mode) ->
     },
     ety_main:doWork(Opts).
 
--spec test_recompile_version(file:name(), file:name(), integer(), [string()], tycheck_mode()) -> ok.
-test_recompile_version(TargetDir, Dir, Version, ExpectedChanges, Mode) ->
+-spec test_recompile_version(
+    file:name(), file:name(), integer(), string(), [string()], tycheck_mode()
+) -> ok.
+test_recompile_version(TargetDir, Dir, Version, RebarLockContent, ExpectedChanges, Mode) ->
     ?LOG_NOTE("Testing code version ~p in ~p", Version, Dir),
     % cleanup of previous source files
     {ok, ExistingFiles} = file:list_dir(TargetDir),
@@ -87,6 +89,7 @@ test_recompile_version(TargetDir, Dir, Version, ExpectedChanges, Mode) ->
             file:copy(From, To)
         end, Files),
     utils:mkdirs(filename:join(TargetDir, "_build/default/lib")),
+    file:write_file(filename:join(TargetDir, "rebar.lock"), RebarLockContent),
     RealChanges = run_typechecker(TargetDir, Mode),
     ?assertEqual(lists:sort(ExpectedChanges),
         lists:sort(lists:map(fun filename:basename/1, RealChanges))),
@@ -103,16 +106,41 @@ test_recompile_dont_tycheck(Dir, VersionMap) ->
 -spec test_recompile(file:name(), #{integer => [string()]}, tycheck_mode()) -> ok.
 test_recompile(Dir, VersionMap, Mode) ->
     Versions = lists:sort(maps:keys(VersionMap)),
-    tmp:with_tmp_dir(Dir, "root", dont_delete,
+    tmp:with_tmp_dir(Dir, "root", delete,
         fun(TargetDir) ->
             lists:foreach(
                 fun(V) ->
                     test_recompile_version(TargetDir,
                         filename:join("test_files/recompilation/", Dir),
                         V,
+                        "rebar.lock_1",
                         maps:get(V, VersionMap),
                         Mode)
                 end, Versions)
+        end).
+
+test_rebar_changes() ->
+    Dir = "rebar_changes",
+    tmp:with_tmp_dir(Dir, "root", delete,
+        fun(TargetDir) ->
+            test_recompile_version(TargetDir,
+                filename:join("test_files/recompilation/", Dir),
+                1,
+                "rebar.lock_1",
+                ["main.erl"],
+                tycheck),
+            test_recompile_version(TargetDir,
+                filename:join("test_files/recompilation/", Dir),
+                2,
+                "rebar.lock_1",
+                [],
+                tycheck),
+            test_recompile_version(TargetDir,
+                filename:join("test_files/recompilation/", Dir),
+                3,
+                "rebar.lock_2",
+                ["main.erl"],
+                tycheck)
         end).
 
 file_changes_test_() ->
@@ -132,6 +160,7 @@ file_changes_test_() ->
      ?_test(test_recompile_dont_tycheck("change_local_but_reachable_tydef",
         #{1 => ["bar.erl", "foo.erl", "main.erl"], 2 => ["main.erl", "foo.erl"]})),
      ?_test(test_recompile_dont_tycheck("cycle",
-        #{1 => ["m1.erl", "m2.erl", "main.erl"], 2 => ["m1.erl", "m2.erl"]}))
+        #{1 => ["m1.erl", "m2.erl", "main.erl"], 2 => ["m1.erl", "m2.erl"]})),
+     ?_test(test_rebar_changes())
     ].
 

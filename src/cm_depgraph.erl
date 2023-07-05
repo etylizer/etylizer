@@ -61,11 +61,17 @@ add_dependency(Path, Dep, {Srcs, DepGraph}) ->
     NewSrcs = sets:add_element(PathNorm, sets:add_element(DepNorm, Srcs)),
     {NewSrcs, NewDepGraph}.
 
+-spec add_file(file:filename(), dep_graph()) -> dep_graph().
+add_file(Path, {Srcs, DepGraph}) ->
+    PathNorm = normalize(Path),
+    NewSrcs = sets:add_element(PathNorm, Srcs),
+    {NewSrcs, DepGraph}.
+
 -spec update_dep_graph(file:filename(), ast:forms(), paths:search_path(), dep_graph()) -> dep_graph().
 update_dep_graph(Path, Forms, SearchPath, DepGraph) ->
     Modules = ast_utils:referenced_modules(Forms),
     ?LOG_DEBUG("Modules reference from ~p: ~p", Path, Modules),
-    traverse_module_list(Path, Modules, SearchPath, DepGraph).
+    traverse_module_list(Path, Modules, SearchPath, add_file(Path, DepGraph)).
 
 -spec traverse_module_list(file:filename(), [atom()], paths:search_path(), dep_graph()) -> dep_graph().
 traverse_module_list(_, [], _, DepGraph) ->

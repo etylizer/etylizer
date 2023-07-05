@@ -12,13 +12,24 @@
 -spec perform_type_checks(paths:search_path(), cm_depgraph:dep_graph(), cmd_opts()) -> [file:filename()].
 perform_type_checks(SearchPath, DepGraph, Opts) ->
     IndexFile = paths:index_file_name(Opts),
-    Index = cm_index:load_index(IndexFile, Opts#opts.mode),
+    RebarLockFile = paths:rebar_lock_file(Opts),
+    Index = cm_index:load_index(RebarLockFile, IndexFile, Opts#opts.mode),
     SourceList = cm_depgraph:all_sources(DepGraph),
     ?LOG_INFO("All sources: ~p", SourceList),
-    CheckList = create_check_list(SourceList, Index, DepGraph),
+    {DepsChanged, NewIndex1} =
+        cm_index:has_external_dep_changed(RebarLockFile, Index),
+    CheckList =
+        if
+            DepsChanged ->
+                ?LOG_INFO("Some external dependency has changed, rechecking everything"),
+                SourceList;
+            true ->
+                ?LOG_INFO("No external dependency has changed"),
+                create_check_list(SourceList, NewIndex1, DepGraph)
+        end,
     ?LOG_INFO("Sources to check: ~p", CheckList),
-    NewIndex = traverse_and_check(CheckList, symtab:std_symtab(), SearchPath, Opts, Index),
-    cm_index:save_index(IndexFile, NewIndex),
+    NewIndex2 = traverse_and_check(CheckList, symtab:std_symtab(), SearchPath, Opts, NewIndex1),
+    cm_index:save_index(IndexFile, NewIndex2),
     CheckList.
 
 -spec create_check_list([file:filename()], cm_index:index(), cm_depgraph:dep_graph()) -> [file:filename()].

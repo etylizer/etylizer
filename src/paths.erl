@@ -2,7 +2,13 @@
 
 % @doc This module contains functionality related to handling file system paths.
 
--export([compute_search_path/1, generate_input_file_list/1, index_file_name/1, find_module_path/2]).
+-export([
+    compute_search_path/1,
+    generate_input_file_list/1,
+    index_file_name/1,
+    find_module_path/2,
+    rebar_lock_file/1
+]).
 -export_type([search_path_entry/0, search_path/0]).
 
 -include_lib("log.hrl").
@@ -109,6 +115,11 @@ etylizer_dir(Opts) ->
 index_file_name(Opts) ->
     D = etylizer_dir(Opts),
     filename:join(D, "index").
+
+-spec rebar_lock_file(cmd_opts()) -> file:filename().
+rebar_lock_file(Opts) ->
+    RootDir = root_dir(Opts),
+    filename:join(RootDir, "rebar.lock").
 
 -spec find_module_path(paths:search_path(), atom()) -> paths:search_path_entry().
 find_module_path(SearchPath, Module) ->
