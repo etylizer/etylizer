@@ -54,13 +54,20 @@ get_files_with_version(Dir, Version) ->
         end,
         Files).
 
--spec run_typechecker(file:name()) -> [file:name()].
-run_typechecker(SrcDir) ->
-    Opts = #opts{ files = [filename:join(SrcDir, "main.erl")], project_root = SrcDir },
+-type tycheck_mode() :: tycheck | dont_tycheck.
+
+-spec run_typechecker(file:name(), tycheck_mode()) -> [file:name()].
+run_typechecker(SrcDir, Mode) ->
+    Opts = #opts{
+        files = [filename:join(SrcDir, "main.erl")],
+        project_root = SrcDir,
+        mode = test_mode,
+        no_type_checking = (Mode =:= dont_tycheck)
+    },
     ety_main:doWork(Opts).
 
--spec test_recompile_version(file:name(), file:name(), integer(), [string()]) -> ok.
-test_recompile_version(TargetDir, Dir, Version, ExpectedChanges) ->
+-spec test_recompile_version(file:name(), file:name(), integer(), [string()], tycheck_mode()) -> ok.
+test_recompile_version(TargetDir, Dir, Version, ExpectedChanges, Mode) ->
     ?LOG_NOTE("Testing code version ~p in ~p", Version, Dir),
     % cleanup of previous source files
     {ok, ExistingFiles} = file:list_dir(TargetDir),
@@ -80,20 +87,31 @@ test_recompile_version(TargetDir, Dir, Version, ExpectedChanges) ->
             file:copy(From, To)
         end, Files),
     utils:mkdirs(filename:join(TargetDir, "_build/default/lib")),
-    RealChanges = run_typechecker(TargetDir),
+    RealChanges = run_typechecker(TargetDir, Mode),
     ?assertEqual(lists:sort(ExpectedChanges),
         lists:sort(lists:map(fun filename:basename/1, RealChanges))),
     ?LOG_NOTE("Test successful for code version ~p in ~p", Version, Dir).
 
 -spec test_recompile(file:name(), #{integer => [string()]}) -> ok.
 test_recompile(Dir, VersionMap) ->
+    test_recompile(Dir, VersionMap, tycheck).
+
+-spec test_recompile_dont_tycheck(file:name(), #{integer => [string()]}) -> ok.
+test_recompile_dont_tycheck(Dir, VersionMap) ->
+    test_recompile(Dir, VersionMap, dont_tycheck).
+
+-spec test_recompile(file:name(), #{integer => [string()]}, tycheck_mode()) -> ok.
+test_recompile(Dir, VersionMap, Mode) ->
     Versions = lists:sort(maps:keys(VersionMap)),
     tmp:with_tmp_dir(Dir, "root", dont_delete,
         fun(TargetDir) ->
             lists:foreach(
                 fun(V) ->
-                    test_recompile_version(TargetDir, filename:join("test_files/recompilation/", Dir),
-                        V, maps:get(V, VersionMap))
+                    test_recompile_version(TargetDir,
+                        filename:join("test_files/recompilation/", Dir),
+                        V,
+                        maps:get(V, VersionMap),
+                        Mode)
                 end, Versions)
         end).
 
@@ -105,5 +123,15 @@ file_changes_test_() ->
      ?_test(test_recompile("change_tyspec",
         #{1 => ["bar.erl", "foo.erl", "main.erl"], 2 => ["main.erl", "foo.erl"]})),
      ?_test(test_recompile("change_local_tyspec",
-        #{1 => ["bar.erl", "foo.erl", "main.erl"], 2 => ["foo.erl"]}))
+        #{1 => ["bar.erl", "foo.erl", "main.erl"], 2 => ["foo.erl"]})),
+     % FIXME: the following tests use the _dont_tycheck alternative because of some subtype bug
+     ?_test(test_recompile_dont_tycheck("change_tydef",
+        #{1 => ["bar.erl", "foo.erl", "main.erl"], 2 => ["main.erl", "foo.erl"]})),
+     ?_test(test_recompile_dont_tycheck("change_local_tydef",
+        #{1 => ["bar.erl", "foo.erl", "main.erl"], 2 => ["foo.erl"]})),
+     ?_test(test_recompile_dont_tycheck("change_local_but_reachable_tydef",
+        #{1 => ["bar.erl", "foo.erl", "main.erl"], 2 => ["main.erl", "foo.erl"]})),
+     ?_test(test_recompile_dont_tycheck("cycle",
+        #{1 => ["m1.erl", "m2.erl", "main.erl"], 2 => ["m1.erl", "m2.erl"]}))
     ].
+

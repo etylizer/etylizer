@@ -8,11 +8,11 @@
 -include_lib("log.hrl").
 -include_lib("ety_main.hrl").
 
-% An entry in the search path is a kind (local, dep, or stdlib), a source directory and a list
+% An entry in the search path is a kind (local, dep, or otp), a source directory and a list
 % of include directories.
 % Parsing a file in the directory requires the include path to be set according to the
 % include directories.
--type search_path_entry() :: {local | dep | stdlib, file:filename(), [file:filename()]}.
+-type search_path_entry() :: {local | dep | otp, file:filename(), [file:filename()]}.
 
 -type search_path() :: [search_path_entry()].
 
@@ -41,16 +41,19 @@ compute_search_path(Opts) ->
             ImplicitDirs ++ Opts#opts.src_paths),
     lists:reverse(LocalPathEntries) ++ find_dependency_roots(RootDir) ++ find_otp_paths().
 
--spec standard_path_entry(dep | stdlib, file:filename(), file:filename()) -> search_path_entry().
-standard_path_entry(Kind, D1, D2) ->
+-spec standard_path_entry(
+    dep | otp, file:filename(), file:filename(), [file:filename()]) -> search_path_entry().
+standard_path_entry(Kind, D1, D2, ExtraIncludes) ->
     D = filename:join(D1, D2),
-    {Kind, filename:join(D, "src"), [filename:join(D, "include")]}.
+    SrcDir = filename:join(D, "src"),
+    {Kind, SrcDir, [SrcDir, filename:join(D, "include")] ++ ExtraIncludes}.
 
 -spec find_otp_paths() -> search_path().
 find_otp_paths() ->
     RootDir = code:lib_dir(),
+    StdlibIncludeDir = filename:join(code:lib_dir(stdlib), "include"),
     {ok, Dirs} = file:list_dir(RootDir),
-    lists:map(fun(Path) -> standard_path_entry(stdlib, RootDir, Path) end, Dirs).
+    lists:map(fun(Path) -> standard_path_entry(otp, RootDir, Path, [StdlibIncludeDir]) end, Dirs).
 
 -spec find_dependency_roots(file:filename()) -> search_path().
 find_dependency_roots(ProjectDir) ->
@@ -59,7 +62,7 @@ find_dependency_roots(ProjectDir) ->
     case filelib:is_dir(ProjectBuildDir) of
         true ->
             {ok, PathList} = file:list_dir(ProjectLibDir),
-            lists:map(fun(Path) -> standard_path_entry(dep, ProjectLibDir, Path) end, PathList);
+            lists:map(fun(Path) -> standard_path_entry(dep, ProjectLibDir, Path, []) end, PathList);
         false ->
             ?ABORT("_build/ directory not found. The project needs to be build at least once before etylizer can run.")
     end.

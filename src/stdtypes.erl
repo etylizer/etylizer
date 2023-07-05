@@ -31,7 +31,8 @@
     tnone/0,
     tnot/1,
     tmu/2,
-    is_tlist/1
+    is_tlist/1,
+    init/0, cleanup/0
 ]).
 
 -include_lib("parse.hrl").
@@ -266,10 +267,44 @@ extra_funs() ->
     [{record_info, 2, tyscm(tinter([tfun([tatom(fields), tatom()], tlist(tatom())),
                                     tfun([tatom(size), tatom()], tint())]))}].
 
+-define(TABLE, stdtypes_table).
+
+-spec init() -> ok.
+init() ->
+    case ets:whereis(?TABLE) of
+        undefined -> ok;
+        _ -> cleanup()
+    end,
+    ets:new(?TABLE, [set, named_table, {keypos, 1}]),
+    ok.
+
+-spec cleanup() -> ok.
+cleanup() ->
+    ets:delete(?TABLE),
+    ok.
+
 -spec builtin_funs() -> fun_types().
 builtin_funs() ->
+    Key = stdtypes,
+    case ets:whereis(?TABLE) of
+        undefined -> init();
+        _ -> ok
+    end,
     Dir = utils:assert_no_error(code:lib_dir(erts)),
     Path = filename:join([Dir, "src", "erlang.erl"]),
+    Hash = utils:hash_file(Path),
+    case ets:lookup(?TABLE, Key) of
+        [{_, {StoredHash, Result}}] when Hash =:= StoredHash -> Result;
+        [] ->
+            X = mk_builtin_funs(Path),
+            true = ets:insert(?TABLE, {Key, {Hash, X}}),
+            X;
+        Y -> ?ABORT("Unexpected entry in stdtypes_table: ~p", Y)
+    end.
+
+-spec mk_builtin_funs(file:filename()) -> fun_types().
+mk_builtin_funs(Path) ->
+    ?LOG_DEBUG("Creating types for builtin functions"),
     RawForms = parse:parse_file_or_die(Path, #parse_opts{
                                                 verbose = false
                                                }),
@@ -285,7 +320,7 @@ builtin_funs() ->
                   end
           end,
           {sets:new(), []}, RawForms),
-    AllSpecs = ast_transform:trans(Path, lists:reverse(RawSpecs), varenv:empty("function")),
+    AllSpecs = ast_transform:trans(Path, lists:reverse(RawSpecs), flat, varenv:empty("function")),
     Result =
         lists:filtermap(
           fun (Spec) ->

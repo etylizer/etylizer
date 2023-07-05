@@ -1,8 +1,10 @@
 -module(ast_transform).
 
 -export([
-    trans/2, trans/3
+    trans/2, trans/3, trans/4
 ]).
+
+-export_type([trans_mode/0]).
 
 -compile([nowarn_shadow_vars]).
 
@@ -22,14 +24,21 @@
 -type funenv() :: varenv:t(ast:fun_with_arity(), intern | {extern, ModName::atom()}).
 
 -spec trans(string(), [ast_erl:form()]) -> [ast:form()].
-trans(Path, Forms) ->
-    FunEnv = build_funenv(Path, Forms),
-    trans(Path, Forms, FunEnv).
+trans(Path, Forms) -> trans(Path, Forms, full).
 
--spec trans(string(), [ast_erl:form()], funenv()) -> [ast:form()].
-trans(Path, Forms, FunEnv) ->
+% full: everything is transformed
+% flat: function bodies are not transformed.
+-type trans_mode() :: full | flat.
+
+-spec trans(string(), [ast_erl:form()], trans_mode()) -> [ast:form()].
+trans(Path, Forms, Mode) ->
+    FunEnv = build_funenv(Path, Forms),
+    trans(Path, Forms, Mode, FunEnv).
+
+-spec trans(string(), [ast_erl:form()], trans_mode(), funenv()) -> [ast:form()].
+trans(Path, Forms, Mode, FunEnv) ->
     Ctx = #ctx{ path = Path, funenv = FunEnv},
-    utils:map_opt(fun(F) -> trans_form(Ctx, F) end, Forms).
+    utils:map_opt(fun(F) -> trans_form(Ctx, F, Mode) end, Forms).
 
 -spec build_funenv(file:filename(), [ast_erl:form()]) -> funenv().
 build_funenv(Path, Forms) ->
@@ -54,8 +63,8 @@ build_funenv(Path, Forms) ->
             varenv:insert_if_absent({Name, Arity}, {extern, erlang}, E)
         end, Env1, stdtypes:builtin_funs()).
 
--spec trans_form(ctx(), ast_erl:form()) -> ast:form() | error.
-trans_form(Ctx, Form) ->
+-spec trans_form(ctx(), ast_erl:form(), trans_mode()) -> ast:form() | error.
+trans_form(Ctx, Form, Mode) ->
     R =
         case Form of
             {attribute, Anno, export, X} -> {attribute, to_loc(Ctx, Anno), export, X};
@@ -66,7 +75,12 @@ trans_form(Ctx, Form) ->
             {attribute, _, behaviour, _} -> error;
             {attribute, _, behavior, _} -> error;
             {function, Anno, Name, Arity, Clauses} ->
-                {function, to_loc(Ctx, Anno), Name, Arity, trans_fun_clauses(Ctx, Clauses)};
+                case Mode of
+                    full ->
+                        {function, to_loc(Ctx, Anno), Name, Arity, trans_fun_clauses(Ctx, Clauses)};
+                    flat ->
+                        error
+                end;
             {attribute, Anno, spec, {{Name, Arity}, FunTys}} ->
                 Loc = to_loc(Ctx, Anno),
                 {attribute, Loc, spec, Name, Arity, trans_spec_ty(Ctx, Loc, FunTys), without_mod};
@@ -175,6 +189,17 @@ resolve_ety_ty(_, without, [T, U]) -> {intersection, [T, {negation, U}]};
 resolve_ety_ty(L, Name, _) ->
     errors:ty_error(L, "Invalid use of builtin type ety:~w", Name).
 
+-spec eval_const_ty(erl_parse:abstract_expr(), ast:loc()) -> {singleton, integer()}.
+eval_const_ty(Ty, Loc) ->
+    try
+        case erl_eval:expr(Ty, maps:new()) of
+            {value, Val, _} when is_integer(Val) -> {singleton, Val};
+            _ -> errors:ty_error(Loc, "Invalid type: ~200p", Ty)
+        end
+    catch error:_:_ ->
+        errors:ty_error(Loc, "Invalid type: ~200p", Ty)
+    end.
+
 -spec trans_ty(ctx(), tyenv(), ast_erl:ty()) -> ast:ty().
 trans_ty(Ctx, Env, Ty) ->
     case Ty of
@@ -195,14 +220,21 @@ trans_ty(Ctx, Env, Ty) ->
             {fun_full, trans_tys(Ctx, Env, ArgTys), trans_ty(Ctx, Env, ResTy)};
         {type, Anno, bounded_fun, _} ->
             errors:unsupported(to_loc(Ctx, Anno), "nested function types with constraints");
-        {type, _, range, [{'integer', _, X}, {'integer', _, Y}]} -> {range, X, Y};
+        {type, Anno, range, [T1, T2]} ->
+            Loc = to_loc(Ctx, Anno),
+            case {trans_ty(Ctx, Env, T1), trans_ty(Ctx, Env, T2)} of
+                {{singleton, I1}, {singleton, I2}} when is_integer(I1) andalso is_integer(I2) ->
+                    {range, I1, I2};
+                _ ->
+                    errors:ty_error("~s: Invalid range type type: ~w", [ast:format_loc(Loc), Ty])
+            end;
         {type, _, map, any} -> {map_any};
         {type, _, map, Assocs} ->
             {map, lists:map(fun(A) -> trans_ty_map_assoc(Ctx, Env, A) end, Assocs)};
         {op, Anno, _, _, _} ->
-            errors:unsupported(to_loc(Ctx, Anno), "binary operators in types");
+            eval_const_ty(Ty, to_loc(Ctx, Anno));
         {op, Anno, _, _} ->
-            errors:unsupported(to_loc(Ctx, Anno), "unary operators in types");
+            eval_const_ty(Ty, to_loc(Ctx, Anno));
         {type, _, record, [{'atom', _, Name} | Fields]} ->
             {record, Name,
              lists:map(fun ({type, _, field_type, [{'atom', _, FieldName}, FieldTy]}) ->
@@ -760,7 +792,7 @@ trans_map_assocs(Ctx, Env, As) ->
                      -> {ast:map_assoc(), varenv_local:t()}.
 trans_map_assoc(Ctx, Env, Assoc) ->
     case Assoc of
-        {K, Anno, ExpKey, ExpVal} when (K == map_field_assoc orelse K == map_field_exakt) ->
+        {K, Anno, ExpKey, ExpVal} when (K == map_field_assoc orelse K == map_field_exact) ->
             {NewExpKey, Env1} = trans_exp(Ctx, Env, ExpKey),
             {NewExpVal, Env2} = trans_exp(Ctx, Env1, ExpVal),
             {{K, to_loc(Ctx, Anno), NewExpKey, NewExpVal}, Env2};

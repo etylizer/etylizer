@@ -147,7 +147,7 @@ macro_log(File, Line, Level, Msg, Args) ->
                       [format_level(Level), Y, M, D, H, MM, SS, filename:basename(File), Line | Args]),
     log_to_file(S),
     case num_level(Level) >= num_level(debug) of
-        false -> io:format(S, []);
+        false -> io:put_chars(S);
         true -> ok
     end,
     ok.

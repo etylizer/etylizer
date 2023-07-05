@@ -9,7 +9,7 @@ build:
 
 clean:
 	$(REBAR) clean
-	rm -rf _build
+	rm -rf _build _etylizer rebar.lock
 
 test: build testtest
 	@echo "Running unit tests for type checker ..."

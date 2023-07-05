@@ -12,7 +12,7 @@
 -spec perform_type_checks(paths:search_path(), cm_depgraph:dep_graph(), cmd_opts()) -> [file:filename()].
 perform_type_checks(SearchPath, DepGraph, Opts) ->
     IndexFile = paths:index_file_name(Opts),
-    Index = cm_index:load_index(IndexFile),
+    Index = cm_index:load_index(IndexFile, Opts#opts.mode),
     SourceList = cm_depgraph:all_sources(DepGraph),
     ?LOG_INFO("All sources: ~p", SourceList),
     CheckList = create_check_list(SourceList, Index, DepGraph),
@@ -59,13 +59,12 @@ traverse_and_check([CurrentFile | RemainingFiles], Symtab, SearchPath, Opts, Ind
     ExpandedSymtab = symtab:extend_symtab_with_module_list(Symtab, SearchPath, ast_utils:referenced_modules(Forms)),
 
     ?LOG_NOTE("Typechecking ~s ...", CurrentFile),
-    Only = sets:from_list(Opts#opts.only),
+    Only = sets:from_list(Opts#opts.type_check_only),
     Sanity = perform_sanity_check(CurrentFile, Forms, Opts),
     Ctx = typing:new_ctx(ExpandedSymtab, Sanity),
     case Opts#opts.no_type_checking of
         true ->
-            ?LOG_NOTE("Not performing type checking as requested"),
-            erlang:halt();
+            ?LOG_WARN("Not type checking ~p as requested", CurrentFile);
         false ->
             typing:check_forms(Ctx, Forms, Only)
     end,
@@ -75,8 +74,8 @@ traverse_and_check([CurrentFile | RemainingFiles], Symtab, SearchPath, Opts, Ind
 -spec perform_sanity_check(file:filename(), ast:forms(), cmd_opts()) -> {ok, ast_check:ty_map()} | error.
 perform_sanity_check(CurrentFile, Forms, Opts) ->
     if Opts#opts.sanity ->
-            ?LOG_INFO("Checking whether transformation result conforms to AST in "
-                      "ast.erl ..."),
+            ?LOG_INFO("Checking whether transformation result for ~p conforms to AST in "
+                      "ast.erl ...", CurrentFile),
             {AstSpec, _} = ast_check:parse_spec("src/ast.erl"),
             case ast_check:check_against_type(AstSpec, ast, forms, Forms) of
                 true ->

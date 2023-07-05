@@ -48,7 +48,7 @@ parse_file(Path, Opts) ->
                     case ets:lookup(?TABLE, ?FORMS) of
                         [{?FORMS, Forms}] -> {ok, Forms};
                         _ ->
-                            ?LOG_ERROR("No result in ets table after parsing"),
+                            ?LOG_ERROR("No result in ETS table after parsing"),
                             error
                     end;
                 error ->

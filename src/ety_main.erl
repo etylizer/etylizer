@@ -70,7 +70,7 @@ parse_args(Args) ->
                         {project_root, S} -> Opts#opts{ project_root = S };
                         {src_path, F} -> Opts#opts{ src_paths = Opts#opts.src_paths ++ [F]};
                         {include, F} -> Opts#opts{ includes = Opts#opts.includes ++ [F]};
-                        {only, S} -> Opts#opts { only = Opts#opts.only ++ [S]};
+                        {only, S} -> Opts#opts { type_check_only = Opts#opts.type_check_only ++ [S]};
                         dump_raw -> Opts#opts{ dump_raw = true };
                         dump -> Opts#opts{ dump = true };
                         sanity -> Opts#opts{ sanity = true };
@@ -100,31 +100,37 @@ fix_load_path(Opts) ->
 
 -spec doWork(#opts{}) -> [file:filename()].
 doWork(Opts) ->
+    ?LOG_INFO("Initializing ETS tables"),
     parse_cache:init(Opts),
-    fix_load_path(Opts),
-    case Opts#opts.ast_file of
-        empty -> ok;
-        AstPath ->
-            {Spec, Module} = ast_check:parse_spec(AstPath),
-            ParseOpts = #parse_opts{
-                includes = Opts#opts.includes,
-                defines = Opts#opts.defines
-            },
-            lists:foreach(fun(F) ->
-                ast_check:check(Spec, Module, F, ParseOpts)
-            end, Opts#opts.files),
-            erlang:halt(0)
-    end,
-    SourceList = paths:generate_input_file_list(Opts),
-    SearchPath = paths:compute_search_path(Opts),
-    ?LOG_NOTE("Entry points: ~p, now building dependency graph", SourceList),
-    DepGraph = cm_depgraph:build_dep_graph(SourceList, SearchPath,
-        fun(P) -> parse_cache:parse(intern, P) end),
-    ?LOG_INFO("Dependency graph: ~p", cm_depgraph:pretty_depgraph(DepGraph)),
-    ?LOG_NOTE("Performing type checking"),
-    Res = cm_check:perform_type_checks(SearchPath, DepGraph, Opts),
-    parse_cache:cleanup(),
-    Res.
+    stdtypes:init(),
+    try
+        fix_load_path(Opts),
+        case Opts#opts.ast_file of
+            empty -> ok;
+            AstPath ->
+                {Spec, Module} = ast_check:parse_spec(AstPath),
+                ParseOpts = #parse_opts{
+                    includes = Opts#opts.includes,
+                    defines = Opts#opts.defines
+                },
+                lists:foreach(fun(F) ->
+                    ast_check:check(Spec, Module, F, ParseOpts)
+                end, Opts#opts.files),
+                erlang:halt(0)
+        end,
+        SourceList = paths:generate_input_file_list(Opts),
+        SearchPath = paths:compute_search_path(Opts),
+        ?LOG_NOTE("Entry points: ~p, now building dependency graph", SourceList),
+        DepGraph = cm_depgraph:build_dep_graph(SourceList, SearchPath,
+            fun(P) -> parse_cache:parse(intern, P) end),
+        ?LOG_INFO("Dependency graph: ~p", cm_depgraph:pretty_depgraph(DepGraph)),
+        ?LOG_NOTE("Performing type checking"),
+        Res = cm_check:perform_type_checks(SearchPath, DepGraph, Opts),
+        Res
+    after
+        parse_cache:cleanup(),
+        stdtypes:cleanup()
+    end.
 
 -spec main([string()]) -> ok.
 main(Args) ->
