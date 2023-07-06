@@ -196,13 +196,7 @@ check_tys(Spec, CurModule, Tys, Forms) ->
 -spec is_reportable_type(atom(), atom()) -> boolean().
 is_reportable_type(Mod, Name) ->
     case {Mod, Name} of
-        {ast, exp} -> true;
-        {ast, exp_var} -> true;
-        {ast, case_clause} -> true;
-        {ast, guard} -> true;
-        {ast, pat} -> true;
-        {ast, pat_var} -> true;
-        {constr, constr} -> true;
+        {ast, form} -> true;
         _ -> false
     end.
 

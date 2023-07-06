@@ -142,9 +142,12 @@ log_to_file(S) ->
 
 -spec macro_log(string(), integer(), log_level(), string(), [any()]) -> ok.
 macro_log(File, Line, Level, Msg, Args) ->
-    {{Y,M,D},{H,MM,SS}} = calendar:now_to_datetime(erlang:timestamp()),
-    S = utils:sformat("[~s ~B-~2.10.0B-~2.10.0B ~2.10.0B:~2.10.0B:~2.10.0B ~s:~b] " ++ Msg ++ "~n",
-                      [format_level(Level), Y, M, D, H, MM, SS, filename:basename(File), Line | Args]),
+    Now = {_Mega, _Sec, Micro} = erlang:timestamp(),
+    {{Y,M,D},{H,MM,SS}} = calendar:now_to_datetime(Now),
+    Millis = floor(Micro/1000),
+    S = utils:sformat("[~s ~B-~2.10.0B-~2.10.0B ~2.10.0B:~2.10.0B:~2.10.0B.~3.10.0B ~s:~b] " ++ Msg ++ "~n",
+                      [format_level(Level), Y, M, D, H, MM, SS, Millis,
+                      filename:basename(File), Line | Args]),
     log_to_file(S),
     case num_level(Level) >= num_level(debug) of
         false -> io:put_chars(S);

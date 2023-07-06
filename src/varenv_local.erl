@@ -4,6 +4,7 @@
 
 -export([empty/0,
          insert/2,
+         insert_fresh/1,
          lookup/3,
          find/2,
          merge_envs/1
@@ -13,23 +14,29 @@
     t/0
 ]).
 
--opaque t() :: #{ atom() => ast:unique_tok() }.
+-opaque t() :: {integer(), #{ atom() => ast:unique_tok() }}.
 
 -include("log.hrl").
 
 % Constructs a new, empty varenv.
 -spec empty() -> t().
-empty() -> #{}.
+empty() -> {0, #{}}.
 
 % Inserts a new binding, shadowing an existing binding.
 -spec insert(atom(), t()) -> {ast:local_varname(), t()}.
-insert(Name, Map) ->
+insert(Name, {Next, Map}) ->
     Unique =
         case maps:find(Name, Map) of
             {ok, X} -> X + 1;
             error -> 0
         end,
-    {{Name, Unique}, Map#{ Name => Unique}}.
+    {{Name, Unique}, {Next, Map#{ Name => Unique}}}.
+
+% Inserts a binding for a comletely fresh variable
+-spec insert_fresh(t()) -> {ast:local_varname(), t()}.
+insert_fresh({Next, Map}) ->
+    Name = list_to_atom("$X_" ++ integer_to_list(Next)),
+    insert(Name, {Next+1, Map}).
 
 % Looks up a variable, undefined variables cause an error.
 -spec lookup(ast:loc(), atom(), t()) -> ast:local_varname().
@@ -44,7 +51,7 @@ lookup(Loc, Name, Env) ->
 
 % Looks up a variable or return error
 -spec find(atom(), t()) -> t:opt(ast:local_varname()).
-find(Name, Map) ->
+find(Name, {_, Map}) ->
     case maps:find(Name, Map) of
         {ok, X} -> {ok, {Name, X}};
         error -> error
@@ -63,5 +70,7 @@ merge_envs([Init | Rest]) ->
                                       [K, V1, V2])
                 end
         end,
-    lists:foldl(fun (M, Acc) -> maps:intersect_with(Combiner, M, Acc) end,
-                Init, Rest).
+    lists:foldl(
+        fun ({Next1, M}, {Next2, AccMap}) ->
+            {max(Next1, Next2), maps:intersect_with(Combiner, M, AccMap)}
+        end, Init, Rest).

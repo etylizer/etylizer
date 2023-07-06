@@ -14,7 +14,7 @@
         { symtab :: symtab:t(),
           env :: constr:constr_poly_env(),
           tyvar_counter :: counters:counters_ref(),
-          sanity :: t:opt(ast_spec:ty_map()),
+          sanity :: t:opt(ast_check:ty_map()),
           unmatched_branch :: unmatched_branch_mode()
         }).
 -type ctx() :: #ctx{}.
@@ -38,7 +38,7 @@
 -type unmatched_branch_mode() :: ignore_branch | report.
 
 -spec new_ctx(symtab:t(), constr:constr_poly_env(),
-              t:opt(ast_spec:ty_map()), unmatched_branch_mode()) -> ctx().
+              t:opt(ast_check:ty_map()), unmatched_branch_mode()) -> ctx().
 new_ctx(Tab, Env, Sanity, BranchMode) ->
     Counter = counters:new(1, []),
     Ctx = #ctx{ tyvar_counter = Counter, env = Env, symtab = Tab, sanity = Sanity,
@@ -243,7 +243,7 @@ cross_union(L1, L2) ->
       end,
       L1).
 
--spec sanity_check([constr:simp_constrs()], ast_spec:ty_map(), unmatched_branch_mode()) -> ok.
+-spec sanity_check([constr:simp_constrs()], ast_check:ty_map(), unmatched_branch_mode()) -> ok.
 sanity_check(Dss, Spec, BranchMode) ->
     case is_list(Dss) of
         false -> ?ABORT("List of constraint sets is not a list: ~w", Dss);

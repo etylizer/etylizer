@@ -17,6 +17,7 @@
          render_substs/1,
          render_subst/1,
          render_poly_env/1,
+         render_list/2,
          ref/1
         ]).
 
@@ -333,3 +334,7 @@ poly_env(Env) ->
           end,
           maps:to_list(Env)),
     brackets(comma_sep(Elems)).
+
+-spec render_list(fun((T) -> doc()), list(T)) -> string().
+render_list(Fun, L) ->
+    render(comma_sep(lists:map(Fun, L))).
