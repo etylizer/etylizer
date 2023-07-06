@@ -32,7 +32,7 @@ extract_interface_declaration(Forms) ->
     TypesFromSignatures = extract_types_from_function_signatures(Forms, NotExportedTypes, ExportedFunctions),
 
     RelevantTypes = sets:union([ExportedTypes, TypesFromExportedTypes, TypesFromSignatures]),
-    utils:everything(
+    Result = utils:everything(
       fun(T) ->
               case T of
                   {attribute, _, spec, Name, Arity, _, _} ->
@@ -47,7 +47,19 @@ extract_interface_declaration(Forms) ->
                       end;
                   _ -> error
               end
-      end, Forms).
+      end, Forms),
+    utils:everywhere(
+        fun(T) ->
+            case T of
+                {loc,File,Line,Col} ->
+                    case utils:is_string(File) andalso is_integer(Line) andalso is_integer(Col) of
+                        true -> {ok, no_loc};
+                        false -> error
+                    end;
+                _ -> error
+            end
+        end,
+        Result).
 
 -spec extract_exported_functions_and_types(ast:forms()) -> {sets:set(ast:fun_with_arity()), sets:set(ast:ty_with_arity())}.
 extract_exported_functions_and_types(Forms) ->

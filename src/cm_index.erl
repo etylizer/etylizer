@@ -99,6 +99,7 @@ has_exported_interface_changed(Path, Forms, {_, Index}) ->
             true;
         {ok, {_, OldInterfaceHash}} ->
             Interface = cm_module_interface:extract_interface_declaration(Forms),
+            ?LOG_DEBUG("Interface of ~p: ~200p", Path, Interface),
             NewHash = utils:hash_sha1(io_lib:write(Interface)),
             OldInterfaceHash =/= NewHash
     end.

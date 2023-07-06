@@ -44,6 +44,11 @@ overloaded_functions_test() ->
 
     verify_does_not_contain_function(exported_function, 3, Interface).
 
+no_change_test() ->
+    Interface1 = load_interface("./test_files/extract_interface/no_change1.erl"),
+    Interface2 = load_interface("./test_files/extract_interface/no_change2.erl"),
+    ?assertEqual(Interface1, Interface2).
+
 -spec load_interface(file:filename()) -> ast:forms().
 load_interface(Path) ->
     RawForms = parse:parse_file_or_die(Path),
