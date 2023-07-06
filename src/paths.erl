@@ -18,6 +18,8 @@
 % of include directories.
 % Parsing a file in the directory requires the include path to be set according to the
 % include directories.
+% NOTE (SW, 2023-06-07): the handling of include directories is very ad-hoc. We need a better
+% way of doing this.
 -type search_path_entry() :: {local | dep | otp, file:filename(), [file:filename()]}.
 
 -type search_path() :: [search_path_entry()].
@@ -57,9 +59,12 @@ standard_path_entry(Kind, D1, D2, ExtraIncludes) ->
 -spec find_otp_paths() -> search_path().
 find_otp_paths() ->
     RootDir = code:lib_dir(),
-    StdlibIncludeDir = filename:join(code:lib_dir(stdlib), "include"),
+    MoreIncDirs = [
+        filename:join(code:lib_dir(stdlib), "include"),
+        filename:join(code:lib_dir(kernel), "include")
+    ],
     {ok, Dirs} = file:list_dir(RootDir),
-    lists:map(fun(Path) -> standard_path_entry(otp, RootDir, Path, [StdlibIncludeDir]) end, Dirs).
+    lists:map(fun(Path) -> standard_path_entry(otp, RootDir, Path, MoreIncDirs) end, Dirs).
 
 -spec find_dependency_roots(file:filename()) -> search_path().
 find_dependency_roots(ProjectDir) ->

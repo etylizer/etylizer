@@ -10,7 +10,11 @@
 remove_locs(X) ->
     LocToError = fun(Z) ->
         case Z of
-            {loc, _, _, _} -> {ok, {loc, "", 0, 0}};
+            {loc,File,Line,Col} ->
+                case utils:is_string(File) andalso is_integer(Line) andalso is_integer(Col) of
+                    true -> {ok, {loc, "", 0, 0}};
+                    false -> error
+                end;
             _ -> error
         end
     end,
