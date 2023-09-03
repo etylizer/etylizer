@@ -117,9 +117,13 @@ standard_path_entries(Kind, D1, D2, ExtraIncludes) ->
 -spec find_include_dirs(file:filename(), [file:filename()]) -> [file:filename()].
 find_include_dirs(RootDir, SubDirs) ->
     lists:flatmap(fun(Path) ->
-        D = filename:join([RootDir, Path, "include"]),
-        case filelib:is_dir(D) of
-            true -> [D];
+        D1 = filename:join([RootDir, Path, "include"]),
+        D2 = filename:join([RootDir, Path, "src"]),
+        case filelib:is_dir(D1) of
+            true -> [D1];
+            false -> []
+        end ++ case filelib:is_dir(D2) of
+            true -> [D2];
             false -> []
         end
     end, SubDirs).

@@ -54,7 +54,6 @@ parse(Kind, Path) ->
 
 -spec really_parse_file(file_kind(), file:filename(), #opts{}) -> [ast:form()].
 really_parse_file(Kind, File, Opts) ->
-    ?LOG_INFO("Parsing ~s ...", File),
     ParseOpts =
         case Kind of
             intern -> #parse_opts{
@@ -62,8 +61,9 @@ really_parse_file(Kind, File, Opts) ->
                         defines = Opts#opts.defines
                     };
             {extern, Includes} ->
-                #parse_opts{ verbose = false, includes = Includes }
+                #parse_opts{ verbose = false, includes = Includes, defines = Opts#opts.defines }
         end,
+    ?LOG_INFO("Parsing ~s with options ~p ...", File, ParseOpts),
     RawForms = parse:parse_file_or_die(File, ParseOpts),
     if  Opts#opts.dump_raw -> ?LOG_NOTE("Raw forms in ~s:~n~p", File, RawForms);
         true -> ok

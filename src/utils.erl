@@ -12,7 +12,8 @@
     replicate/2, unconsult/2,
     string_ends_with/2, shorten/2,
     mkdirs/1, hash_sha1/1, hash_file/1,
-    list_uniq/1, lists_enumerate/1, lists_enumerate/2
+    list_uniq/1, lists_enumerate/1, lists_enumerate/2,
+    with_default/2
 ]).
 
 -spec map_opt(fun((T) -> U | error), [T]) -> [U].
@@ -260,3 +261,6 @@ lists_enumerate_1(Index, [H|T]) ->
 lists_enumerate_1(_Index, []) ->
     [].
 
+-spec with_default(T | undefined, T) -> T.
+with_default(undefined, Def) -> Def;
+with_default(X, _) -> X.

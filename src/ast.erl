@@ -155,7 +155,10 @@ format_loc({loc, "AUTO", -1, -1}) -> "auto";
 format_loc({loc, Path, Line, Col}) -> utils:sformat("~s:~w:~w", [Path, Line, Col]).
 
 -spec to_loc(string(), ast_erl:anno()) -> loc().
-to_loc(Path, {Line, Col}) -> {loc, Path, Line, Col}.
+to_loc(Path, Anno) ->
+    Line = utils:with_default(erl_anno:line(Anno), -1),
+    Col = utils:with_default(erl_anno:column(Anno), -1),
+    {loc, Path, Line, Col}.
 
 -spec loc_auto() -> loc().
 loc_auto() -> {loc, "AUTO", -1, -1}.

@@ -32,6 +32,9 @@ gradualize:
 check_ast_trans_ety: build
 	./ety --sanity -I ./src ./src/*.erl
 
+check_types_ety: build
+	./ety --no-type-checking ./src/*.erl
+
 # Checked with commit c6e6acc290487251b419578d2ed7c65167b033ad
 check_syntax_antidote: build
 	./ety -I ~/repos/antidote/include/ -I ~/repos -c src/ast_erl.erl ~/repos/antidote/src/*.erl
