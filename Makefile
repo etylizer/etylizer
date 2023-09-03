@@ -32,6 +32,7 @@ gradualize:
 check_ast_trans_ety: build
 	./ety --sanity -I ./src ./src/*.erl
 
+# Checked with commit 9670af61618f4e05208c58101baea43e49bb9c28
 check_types_ety: build
 	./ety --no-type-checking ./src/*.erl
 
@@ -43,6 +44,7 @@ check_syntax_antidote: build
 check_ast_trans_antidote: build
 	./ety --sanity -I ~/repos/antidote/include/ -I ~/repos ~/repos/antidote/src/*.erl
 
+# Checked with commit 9670af61618f4e05208c58101baea43e49bb9c28
 check_types_antidote: build
 	cd ~/devel/antidote && ~/devel/etylizer/ety --no-type-checking -S src/ -I include/ -I ~/devel/
 
@@ -56,5 +58,6 @@ check_syntax_riak: build
 check_ast_trans_riak: build
 	./ety --sanity --pa ~/repos/riak_core/ --level error -D namespaced_types -I ~/repos/riak_core/include/ ~/repos/riak_core/src/*.erl
 
+# Checked with commit 9670af61618f4e05208c58101baea43e49bb9c28
 check_types_riak: build
 	cd ~/devel/riak_core && ~/devel/etylizer/ety --no-type-checking -S src/ -D namespaced_types -I include/ -I ~/devel/
