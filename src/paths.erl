@@ -7,7 +7,8 @@
     generate_input_file_list/1,
     index_file_name/1,
     find_module_path/2,
-    rebar_lock_file/1
+    rebar_lock_file/1,
+    rebar_config_from_lock_file/1
 ]).
 -export_type([search_path_entry/0, search_path/0]).
 
@@ -35,18 +36,22 @@ root_dir(Opts) ->
 compute_search_path(Opts) ->
     RootDir = root_dir(Opts),
     ImplicitDirs = lists:map(fun(F) -> filename:dirname(F) end, Opts#opts.files),
+    SrcDirs = ImplicitDirs ++ Opts#opts.src_paths,
+    IncDirs = Opts#opts.includes ++ Opts#opts.src_paths ++ [filename:join(RootDir, "include")],
     {LocalPathEntries, _} =
         lists:foldl(
             fun(P, {Acc, Set}) ->
                 NormP = filename:nativename(P),
                 case sets:is_element(NormP, Set) of
                     true -> {Acc, Set};
-                    false -> {[{local, NormP, Opts#opts.includes} | Acc],
+                    false ->
+                        ThisIncDir = filename:dirname(NormP),
+                        {[{local, NormP, [ThisIncDir] ++ IncDirs} | Acc],
                                 sets:add_element(NormP, Set)}
                 end
             end,
             {[], sets:new()},
-            ImplicitDirs ++ Opts#opts.src_paths),
+            SrcDirs),
     lists:reverse(LocalPathEntries) ++ find_dependency_roots(RootDir) ++ find_otp_paths().
 
 -spec standard_path_entry(
@@ -56,26 +61,40 @@ standard_path_entry(Kind, D1, D2, ExtraIncludes) ->
     SrcDir = filename:join(D, "src"),
     {Kind, SrcDir, [SrcDir, filename:join(D, "include")] ++ ExtraIncludes}.
 
+-spec find_include_dirs(file:filename(), file:filename()) -> file:filename().
+find_include_dirs(RootDir, SubDirs) ->
+    lists:flatmap(fun(Path) ->
+        D = filename:join([RootDir, Path, "include"]),
+        case filelib:is_dir(D) of
+            true -> [D];
+            false -> []
+        end
+    end, SubDirs).
+
 -spec find_otp_paths() -> search_path().
 find_otp_paths() ->
     RootDir = code:lib_dir(),
-    MoreIncDirs = [
-        filename:join(code:lib_dir(stdlib), "include"),
-        filename:join(code:lib_dir(kernel), "include")
-    ],
     {ok, Dirs} = file:list_dir(RootDir),
-    lists:map(fun(Path) -> standard_path_entry(otp, RootDir, Path, MoreIncDirs) end, Dirs).
+    IncDirs = find_include_dirs(RootDir, Dirs),
+    lists:map(fun(Path) -> standard_path_entry(otp, RootDir, Path, IncDirs) end, Dirs).
 
 -spec find_dependency_roots(file:filename()) -> search_path().
 find_dependency_roots(ProjectDir) ->
     ProjectBuildDir = filename:join([ProjectDir, "_build"]),
     ProjectLibDir = filename:join([ProjectBuildDir, "default/lib"]),
+    RebarConfig = filename:join([ProjectDir, "rebar.config"]),
     case filelib:is_dir(ProjectBuildDir) of
         true ->
             {ok, PathList} = file:list_dir(ProjectLibDir),
-            lists:map(fun(Path) -> standard_path_entry(dep, ProjectLibDir, Path, []) end, PathList);
+            IncDirs = find_include_dirs(ProjectLibDir, PathList),
+            lists:map(fun(Path) -> standard_path_entry(dep, ProjectLibDir, Path, IncDirs) end, PathList);
         false ->
-            ?ABORT("_build/ directory not found. The project needs to be build at least once before etylizer can run.")
+            case filelib:is_file(RebarConfig) of
+                true ->
+                    ?ABORT("rebar.config found but no _build/ directory. The project needs to be build at least once before etylizer can run.");
+                false ->
+                    []
+            end
     end.
 
 -spec generate_input_file_list(cmd_opts()) -> [file:filename()].
@@ -125,6 +144,10 @@ index_file_name(Opts) ->
 rebar_lock_file(Opts) ->
     RootDir = root_dir(Opts),
     filename:join(RootDir, "rebar.lock").
+
+-spec rebar_config_from_lock_file(file:filename()) -> file:filename().
+rebar_config_from_lock_file(F) ->
+    filename:join(filename:dirname(F), "rebar.config").
 
 -define(TABLE, mod_table).
 

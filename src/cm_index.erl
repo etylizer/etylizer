@@ -20,7 +20,7 @@
 -include_lib("ety_main.hrl").
 
 -type index() :: {
-    % OTP version and hash or rebar.lock
+    % OTP version and hash of rebar.lock
     {string(), string()},
     % map .erl-file -> {FileHash, InterfaceHash}
     #{file:filename() => {string(), string()}}
@@ -110,8 +110,13 @@ get_external_deps(RebarLockFile) ->
     RebarHash =
         case utils:hash_file(RebarLockFile) of
             {error, _} ->
-                ?ABORT("Could not read rebar's lock file at ~p. Please build your project " ++
-                    "with rebar before using etylizer.", RebarLockFile);
+                case filelib:is_file(paths:rebar_config_from_lock_file(RebarLockFile)) of
+                    true ->
+                        ?ABORT("Could not read rebar's lock file at ~p. Please build your project " ++
+                                "with rebar before using etylizer.", RebarLockFile);
+                    false ->
+                        []
+                end;
             H -> H
         end,
     {OtpVersion, RebarHash}.
