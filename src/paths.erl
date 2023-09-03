@@ -19,8 +19,8 @@
 % of include directories.
 % Parsing a file in the directory requires the include path to be set according to the
 % include directories.
-% NOTE (SW, 2023-06-07): the handling of include directories is very ad-hoc. We need a better
-% way of doing this.
+% NOTE (SW, 2023-06-07): the handling of include directories is very ad-hoc. Is there a better
+% way of doing this?
 -type search_path_entry() :: {local | dep | otp, file:filename(), [file:filename()]}.
 
 -type search_path() :: [search_path_entry()].
@@ -35,9 +35,16 @@ root_dir(Opts) ->
 -spec compute_search_path(cmd_opts()) -> search_path().
 compute_search_path(Opts) ->
     RootDir = root_dir(Opts),
+    {OtpPaths, OtpIncDirs} = find_otp_paths(),
+    {DepPaths, DepIncDirs} = find_dependency_roots(RootDir, OtpIncDirs),
     ImplicitDirs = lists:map(fun(F) -> filename:dirname(F) end, Opts#opts.files),
     SrcDirs = ImplicitDirs ++ Opts#opts.src_paths,
-    IncDirs = Opts#opts.includes ++ Opts#opts.src_paths ++ [filename:join(RootDir, "include")],
+    LocalIncDirs =
+        Opts#opts.includes ++
+        Opts#opts.src_paths ++
+        [filename:join(RootDir, "include")] ++
+        DepIncDirs ++
+        OtpIncDirs,
     {LocalPathEntries, _} =
         lists:foldl(
             fun(P, {Acc, Set}) ->
@@ -46,22 +53,68 @@ compute_search_path(Opts) ->
                     true -> {Acc, Set};
                     false ->
                         ThisIncDir = filename:dirname(NormP),
-                        {[{local, NormP, [ThisIncDir] ++ IncDirs} | Acc],
+                        {[{local, NormP, [ThisIncDir] ++ LocalIncDirs} | Acc],
                                 sets:add_element(NormP, Set)}
                 end
             end,
             {[], sets:new()},
             SrcDirs),
-    lists:reverse(LocalPathEntries) ++ find_dependency_roots(RootDir) ++ find_otp_paths().
+    LocalPaths = lists:reverse(LocalPathEntries),
+    ?LOG_DEBUG("OTP search path: ~p", OtpPaths),
+    ?LOG_DEBUG("rebar search path: ~p", DepPaths),
+    ?LOG_DEBUG("Local search path: ~p", LocalPaths),
+    LocalPaths ++ DepPaths ++ OtpPaths.
 
--spec standard_path_entry(
-    dep | otp, file:filename(), file:filename(), [file:filename()]) -> search_path_entry().
-standard_path_entry(Kind, D1, D2, ExtraIncludes) ->
+-spec has_erl_files(file:filename()) -> boolean().
+has_erl_files(Dir) ->
+    case file:list_dir(Dir) of
+        {ok, Entries} ->
+            lists:any(fun(Entry) ->
+                    case filename:extension(Entry) =:= ".erl" of
+                        true ->
+                            X = filename:join(Dir, Entry),
+                            filelib:is_file(X);
+                        false ->
+                            false
+                    end
+                end, Entries);
+        _ -> false
+    end.
+
+-spec find_src_dirs(file:filename()) -> [file:filename()].
+find_src_dirs(SrcDir) ->
+    case file:list_dir(SrcDir) of
+        {error, _} -> [];
+        {ok, Subs} ->
+            ErlSubs = lists:filtermap(
+                fun(Sub) ->
+                    D = filename:join(SrcDir, Sub),
+                    case filelib:is_dir(D) andalso has_erl_files(D) of
+                        true -> {true, D};
+                        false -> false
+                    end
+                end, Subs),
+            case has_erl_files(SrcDir) of
+                true -> [SrcDir | ErlSubs];
+                false -> ErlSubs
+            end
+    end.
+
+-spec standard_path_entries(
+    dep | otp, file:filename(), file:filename(), [file:filename()]) -> [search_path_entry()].
+standard_path_entries(Kind, D1, D2, ExtraIncludes) ->
     D = filename:join(D1, D2),
-    SrcDir = filename:join(D, "src"),
-    {Kind, SrcDir, [SrcDir, filename:join(D, "include")] ++ ExtraIncludes}.
+    TopSrcDir = filename:join(D, "src"),
+    SrcDirs = find_src_dirs(TopSrcDir),
+    Res =
+        lists:map(
+            fun(SrcDir) ->
+                {Kind, SrcDir, [SrcDir, filename:join(D, "include")] ++ ExtraIncludes}
+            end, SrcDirs),
+    ?LOG_DEBUG("Standard path entries for ~p: ~p", D2, Res),
+    Res.
 
--spec find_include_dirs(file:filename(), file:filename()) -> file:filename().
+-spec find_include_dirs(file:filename(), [file:filename()]) -> [file:filename()].
 find_include_dirs(RootDir, SubDirs) ->
     lists:flatmap(fun(Path) ->
         D = filename:join([RootDir, Path, "include"]),
@@ -71,29 +124,31 @@ find_include_dirs(RootDir, SubDirs) ->
         end
     end, SubDirs).
 
--spec find_otp_paths() -> search_path().
+-spec find_otp_paths() -> {search_path(), [file:filename()]}.
 find_otp_paths() ->
     RootDir = code:lib_dir(),
     {ok, Dirs} = file:list_dir(RootDir),
     IncDirs = find_include_dirs(RootDir, Dirs),
-    lists:map(fun(Path) -> standard_path_entry(otp, RootDir, Path, IncDirs) end, Dirs).
+    Sp = lists:flatmap(fun(Path) -> standard_path_entries(otp, RootDir, Path, IncDirs) end, Dirs),
+    {Sp, IncDirs}.
 
--spec find_dependency_roots(file:filename()) -> search_path().
-find_dependency_roots(ProjectDir) ->
+-spec find_dependency_roots(file:filename(), [file:filename()]) -> {search_path(), [file:filename()]}.
+find_dependency_roots(ProjectDir, OtpIncDirs) ->
     ProjectBuildDir = filename:join([ProjectDir, "_build"]),
     ProjectLibDir = filename:join([ProjectBuildDir, "default/lib"]),
     RebarConfig = filename:join([ProjectDir, "rebar.config"]),
     case filelib:is_dir(ProjectBuildDir) of
         true ->
             {ok, PathList} = file:list_dir(ProjectLibDir),
-            IncDirs = find_include_dirs(ProjectLibDir, PathList),
-            lists:map(fun(Path) -> standard_path_entry(dep, ProjectLibDir, Path, IncDirs) end, PathList);
+            IncDirs = find_include_dirs(ProjectLibDir, PathList) ++ OtpIncDirs,
+            Sp = lists:flatmap(fun(Path) -> standard_path_entries(dep, ProjectLibDir, Path, IncDirs) end, PathList),
+            {Sp, IncDirs};
         false ->
             case filelib:is_file(RebarConfig) of
                 true ->
                     ?ABORT("rebar.config found but no _build/ directory. The project needs to be build at least once before etylizer can run.");
                 false ->
-                    []
+                    {[], []}
             end
     end.
 
@@ -167,7 +222,7 @@ find_module_path(SearchPath, Module) ->
         Y -> ?ABORT("Unexpected entry in mod_table: ~p", Y)
     end.
 
--spec really_find_module_path(paths:search_path(), atom()) -> paths:search_path_entry().
+-spec really_find_module_path(search_path(), atom()) -> search_path_entry().
 really_find_module_path(SearchPath, Module) ->
     Filename = string:concat(atom_to_list(Module), ".erl"),
     SearchResult = lists:search(

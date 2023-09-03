@@ -99,7 +99,7 @@ trans_form(Ctx, Form, Mode) ->
             {attribute, Anno, opaque, Def} ->
                 {attribute, to_loc(Ctx, Anno), type, opaque, trans_tydef(Ctx, Def)};
             {attribute, Anno, Other, _} ->
-                ?LOG_INFO("Ignoring attribute ~w at ~s", Other, ast:format_loc(to_loc(Ctx, Anno))),
+                ?LOG_DEBUG("Ignoring attribute ~w at ~s", Other, ast:format_loc(to_loc(Ctx, Anno))),
                 error;
             {eof, _} -> error;
             X -> errors:uncovered_case(?FILE, ?LINE, X)
