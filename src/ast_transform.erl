@@ -99,7 +99,7 @@ trans_form(Ctx, Form, Mode) ->
             {attribute, Anno, opaque, Def} ->
                 {attribute, to_loc(Ctx, Anno), type, opaque, trans_tydef(Ctx, Def)};
             {attribute, Anno, Other, _} ->
-                ?LOG_INFO("Ignoring attribute ~w at ~s", Other, ast:format_loc(to_loc(Ctx, Anno))),
+                ?LOG_DEBUG("Ignoring attribute ~w at ~s", Other, ast:format_loc(to_loc(Ctx, Anno))),
                 error;
             {eof, _} -> error;
             X -> errors:uncovered_case(?FILE, ?LINE, X)
@@ -286,6 +286,7 @@ trans_ty(Ctx, Env, Ty) ->
                                 _ ->
                                     case {Name, NewArgTys} of
                                         {bool, []} -> {predef_alias, boolean};
+                                        {dynamic, []} -> {predef, any}; % FIXME: for now (2023-08-14), we treat dynamic as any. This is wrong and must be fixed
                                         _ ->
                                             errors:bug("~s: Unhandled builtin type: ~w",
                                                        [ast:format_loc(Loc), Ty])
