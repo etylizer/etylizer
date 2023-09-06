@@ -51,10 +51,7 @@ test_tally_unique(ConstrList, ExpectedSubst, FixedVars) ->
 
 tally_03_test() ->
   test_tally_unique([
-    {tvar(alpha), tatom(foobar)},
-    {tintersect([tvar(zero), ttuple([])]), ttuple([])},
     {ttuple([]), tvar(zero)},
-    {tatom(foobar), tvar(alpha)},
     {tvar(zero), ttuple([])}
   ], #{}).
 

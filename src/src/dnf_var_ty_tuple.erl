@@ -51,7 +51,8 @@ is_empty(Size, {node, _Variable, PositiveEdge, NegativeEdge}) ->
   is_empty(Size, PositiveEdge)
     and is_empty(Size, NegativeEdge).
 
-normalize(Size, Ty, Fixed, M) -> normalize(Size, Ty, [], [], Fixed, M).
+normalize(Size, Ty, Fixed, M) ->
+  normalize(Size, Ty, [], [], Fixed, M).
 
 normalize(_, 0, _, _, _, _) -> [[]]; % satisfiable
 normalize(Size, {terminal, Tuple}, PVar, NVar, Fixed, M) ->
@@ -68,7 +69,6 @@ normalize(Size, {node, Variable, PositiveEdge, NegativeEdge}, PVar, NVar, Fixed,
     N1 = normalize(Size, PositiveEdge, [Variable | PVar], NVar, Fixed, M),
     N2 = normalize(Size, NegativeEdge, PVar, [Variable | NVar], Fixed, M)
   ),
-  io:format(user, "Normalize (~p) ~p with ~p to ~n~p~n", [Size, N1, N2, R]),
   R.
 
 substitute(Size, T, M, Memo) -> substitute(Size, T, M, Memo, [], []).

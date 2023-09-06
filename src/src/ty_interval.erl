@@ -17,11 +17,11 @@
 
 transform([], #{empty := E}) -> E();
 transform([any_int], #{any := E}) -> E();
-transform([Int | Others], Ops = #{union := U}) -> U(transform_single(Int, Ops), transform(Others, Ops)).
+transform([Int | Others], Ops = #{union := U}) -> U([transform_single(Int, Ops), transform(Others, Ops)]).
 
 transform_single({range, A, B}, #{to_int := Int}) -> Int(A, B);
-transform_single(Interval, _) ->
-    erlang:error({"Left/Right unbounded intervals not supported by Erlang language: ", Interval}).
+transform_single(Interval, Ops) ->
+    erlang:error({"Left/Right unbounded intervals not supported by Erlang language: ", {Interval, Ops}}).
 
 %% representation
 %% left? range* right?

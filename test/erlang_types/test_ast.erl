@@ -93,7 +93,7 @@ normalize(T1, T2, Fixed) ->
   NT1 = test_ast:norm(T1),
   NT2 = ty_rec:negate(test_ast:norm(T2)),
   NT3 = ty_rec:intersect(NT1, NT2),
-  io:format(user, "INTERSECT~n~p~nWITH~n~p~n~p~n", [NT1, NT2, NT3]),
+  io:format(user, "Normalizing ~n~p~n", [NT3]),
   ty_rec:normalize(NT3, FixedN, sets:new()).
 
 b() -> atom.

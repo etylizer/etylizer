@@ -152,7 +152,7 @@
 %%  true = set_of_constraint_sets:is_equivalent(Expected, Result, TestSubstitutions),
 %%
 %%  ok.
-%%
+
 test_1_test() ->
 %%  {tintersect([tvar(zero), ttuple([])]), ttuple([])},
 %%  {ttuple([]), tvar(zero)},

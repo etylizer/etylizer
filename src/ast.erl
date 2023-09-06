@@ -550,6 +550,7 @@ erlang_ty_to_ast(X) ->
             to_fun => fun(S, T) -> stdtypes:tfun_full([erlang_ty_to_ast(S)], erlang_ty_to_ast(T)) end,
             to_tuple => fun(Ts) -> stdtypes:ttuple(lists:map(fun(T) -> erlang_ty_to_ast(T) end,Ts)) end,
             to_atom => fun(A) -> stdtypes:tatom(A) end,
+            to_int => fun(X, Y) -> stdtypes:trange(X, Y) end,
             any_tuple => fun stdtypes:ttuple_any/0,
             any_fun => fun stdtypes:tfun_any/0,
             any_int => fun stdtypes:tint/0,
@@ -616,15 +617,15 @@ ast_to_erlang_ty({improper_list, _Ty, _Term}) ->
 ast_to_erlang_ty({empty_list}) ->
     erlang:error("Lists not implemented yet");
 ast_to_erlang_ty({predef, T}) when T == pid; T == port; T == reference; T == float ->
-    erlang:error("predefs not implemented yet");
+    erlang:error({"predefs not implemented yet", T});
 
 % named
 ast_to_erlang_ty({named, _, _Ref, _Args}) ->
     erlang:error("named references not implemented yet");
 
 % ty_predef_alias
-ast_to_erlang_ty({predef_alias, _Alias}) ->
-    erlang:error("predef alias not implemented yet");
+ast_to_erlang_ty({predef_alias, Alias}) ->
+    ast_to_erlang_ty(stdtypes:expand_predef_alias(Alias));
 
 % ty_predef
 ast_to_erlang_ty({predef, atom}) ->

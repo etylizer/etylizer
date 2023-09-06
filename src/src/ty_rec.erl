@@ -118,9 +118,10 @@ interval(Interval) ->
 interval() -> interval(dnf_var_int:any()).
 
 %%-spec tuple(ty_tuple()) -> ty_ref().
-tuple(default, Tuple) ->
+tuple({default, Sizes}, Tuple) ->
+  NotCaptured = maps:from_list(lists:map(fun(Size) -> {Size, dnf_var_ty_tuple:empty()} end, Sizes)),
   Empty = ty_ref:load(empty()),
-  ty_ref:store(Empty#ty{ tuple = {Tuple, #{}}});
+  ty_ref:store(Empty#ty{ tuple = {Tuple, NotCaptured}});
 tuple(ComponentSize, Tuple) ->
   Empty = ty_ref:load(empty()),
   ty_ref:store(Empty#ty{ tuple = {dnf_var_ty_tuple:empty(), #{ComponentSize => Tuple}} }).
@@ -228,7 +229,6 @@ is_any(_Arg0) ->
 
 normalize(TyRef, Fixed, M) ->
   Ty = ty_ref:load(TyRef),
-  io:format(user, "Normalizing ~p~n", [Ty]),
   AtomNormalize = dnf_var_ty_atom:normalize(Ty#ty.atom, Fixed, M),
   case AtomNormalize of
     [] -> [];
@@ -239,9 +239,7 @@ normalize(TyRef, Fixed, M) ->
         [] -> [];
         _ ->
           begin
-            io:format(user, "Tuple normalize~n~p~n", [Ty#ty.tuple]),
                 Res2 = multi_normalize_tuples(Ty#ty.tuple, Fixed, M),
-            io:format(user, "GOT~n~p~n", [Res2]),
                 Res3 = constraint_set:merge_and_meet(Res1, Res2),
                 case Res3 of
                   [] -> [];
@@ -262,9 +260,14 @@ multi_normalize_tuples({Default, AllTuples}, Fixed, M) ->
       )
               end, [[]], AllTuples)
   ),
-  DF = ?F(dnf_var_ty_tuple:normalize(default, Default, Fixed, M)),
 
-  io:format(user, "Default~n~p~n ~p~n", [Default, DF()]),
+
+  io:format(user, "------------------BUGGY HERE START~n", []),
+  io:format(user, "Checking DEFAULT: ~n~p~n", [Default]),
+  DF = ?F(dnf_var_ty_tuple:normalize({default, maps:keys(AllTuples)}, Default, Fixed, M)),
+  io:format(user, "Result DEFAULT: ~n~p~n", [DF()]),
+  io:format(user, "------------------BUGGY HERE END~n", []),
+
   constraint_set:meet(
     DF,
     Others
@@ -314,9 +317,7 @@ multi_substitute(DefaultTuple, AllTuples, SubstituteMap, Memo) ->
   NewOtherTuples = maps:from_list(lists:map(fun(Key) ->
     {Key, case maps:is_key(Key, AllTuples) of
             true ->
-              io:format(user, "Getting ~p from ~p~n", [Key, AllTuples]),
               {X, M} = dnf_var_ty_tuple:substitute(Key, maps:get(Key, AllTuples), SubstituteMap, Memo),
-              io:format(user, "Result: ~p and ~p~n", [X, M]),
               maps:get(Key, M)
             ;
             _ -> maps:get(Key, NewDefaultOtherTuples, NewDefaultTuple)
