@@ -1,0 +1,13 @@
+{application, erlang_types,
+ [{description, "Erlang Types library"},
+  {vsn, "v2-rc1"},
+  {registered, []},
+  {applications,
+   [kernel,
+    stdlib
+   ]},
+  {modules, []},
+  {maintainers, []},
+  {licenses, ["BSD-3"]},
+  {links, []}
+ ]}.
