@@ -8,23 +8,37 @@
 ]).
 
 tally(_SymTab, Constraints, FixedVars) ->
+  case sets:is_empty(FixedVars) of true -> ok; false -> error(todo) end,
   InternalConstraints = lists:map(fun({csubty, _, S, T}) ->
-%%    io:format(user, "Cons~n~p~n", [{S, T}]),
+    io:format(user, "Cons~n~p~n", [{S, T}]),
     {ast:ast_to_erlang_ty(S), ast:ast_to_erlang_ty(T)} end, sets:to_list(Constraints)),
   InternalResult = tally(InternalConstraints, sets:new()), % FIXME fixed variables
 
+  [true || {X, Y} <- InternalConstraints],
 %%  io:format(user, "Got Constraints ~n~p~n~p~n", [Constraints, InternalResult]),
   X = case InternalResult of
         {error, []} ->
           {error, []};
         _ ->
+          % sanity: every substitution satisfies all given constraints
+          [true = is_valid_substitution(InternalConstraints, maps:from_list(Subst)) || Subst <- InternalResult],
+
           % transform to subst:t()
           % TODO sanity variable Id == variable name
           [maps:from_list([{VarName, ast:erlang_ty_to_ast(Ty)} || {{var, _, VarName}, Ty} <- Subst]) || Subst <- InternalResult]
       end,
 
+  error(todo),
   io:format(user, "Result: ~n~p~n", [X]),
   X.
+
+is_valid_substitution([], _) -> true;
+is_valid_substitution([{Left, Right} | Cs], Substitution) ->
+  SubstitutedLeft = ty_rec:substitute(Left, Substitution),
+  SubstitutedRight = ty_rec:substitute(Right, Substitution),
+  ty_rec:is_subtype(SubstitutedLeft, SubstitutedRight) andalso
+    is_valid_substitution(Cs, Substitution).
+
 
 tally(Constraints, FixedVars) ->
   % TODO heuristic here and benchmark
@@ -47,10 +61,19 @@ tally(Constraints, FixedVars) ->
 
   Saturated,
 
-  case Saturated of
+  Solved = case Saturated of
     [] -> {error, []};
     _ -> solve(Saturated, FixedVars)
-  end.
+  end,
+
+  case Solved of
+        {error, []} ->
+          {error, []};
+        _ ->
+          % sanity: every substitution satisfies all given constraints
+          [true = is_valid_substitution(Constraints, maps:from_list(Subst)) || Subst <- Solved],
+          Solved
+      end.
 
 %%-spec tally(constraint:simple_constraints()) -> [substitution:t()] | {error, [{error, string()}]}.
 tally(Constraints) ->
