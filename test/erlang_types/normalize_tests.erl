@@ -153,13 +153,38 @@
 %%
 %%  ok.
 
-test_1_test() ->
-%%  {tintersect([tvar(zero), ttuple([])]), ttuple([])},
-%%  {ttuple([]), tvar(zero)},
-%%  {tvar(zero), ttuple([])},
-%%  R1 = normalize(i(v(zero), t([])), t([])),
-  R1 = normalize(v(zero), t([]), sets:new()),
+pick_var_issue_test() ->
 
-  io:format(user, "R~p~n", [R1]),
+  % {α} ≤ {β}
+%%  Res = normalize(t([v(alpha)]), t([v(beta)]), sets:new()),
+  Res = normalize(v(alpha), v(beta), sets:new()),
+  io:format(user, "Res2: ~n~p~n", [Res]),
+
+%%  io:format(user, "Res: ~p~n", [Res2]),
+%%  io:format(user, "Res: ~p~n", [Res3]),
 
   ok.
+
+%%issue_test() ->
+%%  % N ≤ α
+%%  Res1 = normalize(r(), v(alpha), sets:new()),
+%%  % {α} ≤ {β}
+%%  Res2 = normalize(t([v(alpha)]), t([v(beta)]), sets:new()),
+%%  io:format(user, "Res2: ~n~p~n", [Res2]),
+%%  % β ≤ B
+%%  Res3 = normalize(v(beta), b(), sets:new()),
+%%
+%%  [SingleSet] = constraint_set:merge_and_meet(Res3, constraint_set:merge_and_meet(Res1, Res2)),
+%%
+%%  io:format(user, "Buggy:------: ~n", []),
+%%  io:format(user, "Before: ~n~p~n", [SingleSet]),
+%%  Sat = constraint_set:saturate(SingleSet, sets:new(), sets:new()),
+%%
+%%  io:format(user, "Sat: ~n~p~n", [Sat]),
+%%
+%%
+%%
+%%%%  io:format(user, "Res: ~p~n", [Res2]),
+%%%%  io:format(user, "Res: ~p~n", [Res3]),
+%%
+%%  ok.

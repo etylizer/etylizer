@@ -309,6 +309,8 @@ multi_substitute(DefaultTuple, AllTuples, SubstituteMap, Memo) ->
   {NewDefaultTuple, NewDefaultOtherTuples} = dnf_var_ty_tuple:substitute(default, DefaultTuple, SubstituteMap, Memo),
 
   AllKeys = maps:keys(AllTuples) ++ maps:keys(NewDefaultOtherTuples),
+  % [] = [X || X <- AllKeys, X == default],
+
   NewOtherTuples = maps:from_list(lists:map(fun(Key) ->
     {Key, case maps:is_key(Key, AllTuples) of
             true ->

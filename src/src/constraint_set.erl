@@ -25,12 +25,15 @@ saturate(C, FixedVariables, Memo) ->
 pick_bounds_in_c([], _) -> none;
 pick_bounds_in_c([{Var, S, T} | Cs], Memo) ->
   case (ty_rec:is_empty(S) orelse ty_rec:is_subtype(ty_rec:any(), T)) of
-    true -> pick_bounds_in_c(Cs, Memo);
+    true ->
+      pick_bounds_in_c(Cs, Memo);
     false ->
       SnT = ty_rec:intersect(S, ty_rec:negate(T)),
       case sets:is_element(SnT, Memo) of
-        true -> pick_bounds_in_c(Cs, Memo);
-        _ -> {Var, S, T}
+        true ->
+          pick_bounds_in_c(Cs, Memo);
+        _ ->
+          {Var, S, T}
       end
   end
 .

@@ -73,6 +73,7 @@ normalize(Size, {node, Variable, PositiveEdge, NegativeEdge}, PVar, NVar, Fixed,
 
 substitute(Size, T, M, Memo) -> substitute(Size, T, M, Memo, [], []).
 
+substitute(default, 0, _, _, _, _) -> {empty(), #{}};
 substitute(Size, 0, _, _, _, _) -> {empty(), #{Size => empty()}};
 substitute(Size, {terminal, Tuple}, Map, Memo, Pos, Neg) ->
   AllPos = lists:map(

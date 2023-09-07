@@ -73,26 +73,10 @@
 %%  ok.
 
 issue_test() ->
-  % fix order for variables
-  % int < [v2]
-  % [v2] < v0
-  % v0 & [any] < [v4]
-  % v4 < v1
-  % v1 < atom
-
-  % {{predef,integer},{var,'$2'}}
-  C1 = {r(), v('v2')},
-  % {{tuple,[{var,'$2'}]},{var,'$0'}}
-  C2 =  {t([v('v2')]), t([v(v4)])},
-  % {{var,'$4'},{var,'$1'}}
-  C3 = {v('v4'), b()},
-
-
-  Res = tally:tally(norm_all([C1, C2, C3])),
-%%  Res = tally:tally(norm_all([C1])),
-
-  io:format(user, "Res: ~p~n", [Res]),
-
+  C1 = {r(), v(a1)},
+  C2 = {t([v(a1)]), t([v(a2)])},
+  C3 = {v(a2), b()},
+  {error, _} = tally:tally(norm_all([C1, C2, C3])),
   ok.
 
 norm_all(List) ->

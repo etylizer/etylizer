@@ -9,7 +9,7 @@
 
 tally(_SymTab, Constraints, FixedVars) ->
   InternalConstraints = lists:map(fun({csubty, _, S, T}) ->
-    io:format(user, "Cons~n~p~n", [{S, T}]),
+%%    io:format(user, "Cons~n~p~n", [{S, T}]),
     {ast:ast_to_erlang_ty(S), ast:ast_to_erlang_ty(T)} end, sets:to_list(Constraints)),
   InternalResult = tally(InternalConstraints, sets:new()), % FIXME fixed variables
 
@@ -23,7 +23,7 @@ tally(_SymTab, Constraints, FixedVars) ->
           [maps:from_list([{VarName, ast:erlang_ty_to_ast(Ty)} || {{var, _, VarName}, Ty} <- Subst]) || Subst <- InternalResult]
       end,
 
-%%  io:format(user, "Result: ~n~p~n", [X]),
+  io:format(user, "Result: ~n~p~n", [X]),
   X.
 
 tally(Constraints, FixedVars) ->
@@ -37,7 +37,7 @@ tally(Constraints, FixedVars) ->
       fun() -> A end)
               end, [[]], Constraints),
 
-  io:format(user, "PHASE! ~p~n", [Normalized]),
+%%  io:format(user, "PHASE! ~p~n", [Normalized]),
 
   Saturated = lists:foldl(fun(ConstraintSet, A) ->
     constraint_set:join(
