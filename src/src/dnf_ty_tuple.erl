@@ -90,12 +90,9 @@ normalize(Size, TyTuple, [], [], Fixed, M) ->
   AllAny = [ty_rec:any() || _ <- lists:seq(1, Size)],
   normalize_no_vars(Size, TyTuple, AllAny, _NegatedTuples = [], Fixed, M);
 normalize(Size, DnfTyTuple, PVar, NVar, Fixed, M) ->
-  io:format(user, "DOing the normalization for ~p with ~p~n", [Size, DnfTyTuple]),
   Ty = ty_rec:tuple(Size, dnf_var_ty_tuple:tuple(DnfTyTuple)),
   % ntlv rule
-  R = ty_variable:normalize(Ty, PVar, NVar, Fixed, fun(Var) -> ty_rec:tuple(Size, dnf_var_ty_tuple:var(Var)) end, M),
-  io:format(user, "Got ~p~n", [R]),
-  R.
+  ty_variable:normalize(Ty, PVar, NVar, Fixed, fun(Var) -> ty_rec:tuple(Size, dnf_var_ty_tuple:var(Var)) end, M).
 
 normalize_no_vars(_Size, 0, _, _, _Fixed, _) -> [[]]; % empty
 normalize_no_vars(Size, {terminal, 1}, BigS, N, Fixed, M) ->

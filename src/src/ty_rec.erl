@@ -261,12 +261,7 @@ multi_normalize_tuples({Default, AllTuples}, Fixed, M) ->
               end, [[]], AllTuples)
   ),
 
-
-  io:format(user, "------------------BUGGY HERE START~n", []),
-  io:format(user, "Checking DEFAULT: ~n~p~n", [Default]),
   DF = ?F(dnf_var_ty_tuple:normalize({default, maps:keys(AllTuples)}, Default, Fixed, M)),
-  io:format(user, "Result DEFAULT: ~n~p~n", [DF()]),
-  io:format(user, "------------------BUGGY HERE END~n", []),
 
   constraint_set:meet(
     DF,

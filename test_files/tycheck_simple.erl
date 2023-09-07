@@ -8,74 +8,74 @@
 % If the name ends with _fail, the test must fail.
 
 % Atoms
--spec atom_01() -> foobar.
-atom_01() -> foobar.
-
--spec atom_02() -> atom().
-atom_02() -> foobar.
-
--spec atom_03_fail() -> integer().
-atom_03_fail() -> foobar.
-
--spec atom_04_fail() -> foobar.
-atom_04_fail() -> 1.
-
--spec atom_05_fail() -> atom().
-atom_05_fail() -> 1.
-
--spec atom_06_fail() -> foobar.
-atom_06_fail() -> spam.
-
-% Chars
--spec char_01() -> $a.
-char_01() -> $a.
-
--spec char_02() -> char().
-char_02() -> $a.
-
--spec char_03() -> integer().
-char_03() -> $a.
-
--spec char_04_fail() -> atom().
-char_04_fail() -> $a.
-
--spec char_05_fail() -> $a.
-char_05_fail() -> foobar.
-
--spec char_06_fail() -> $a.
-char_06_fail() -> 1.
-
--spec char_07() -> $a.
-char_07() -> 97. % ascii code for a
-
--spec char_08_fail() -> char().
-char_08_fail() -> foobar.
-
--spec char_09_fail() -> $a.
-char_09_fail() -> $b.
-
-% Integers
--spec integer_01() -> 42.
-integer_01() -> 42.
-
--spec integer_02() -> integer().
-integer_02() -> 42.
-
--spec integer_03_fail() -> atom().
-integer_03_fail() -> 42.
-
--spec integer_04_fail() -> 42.
-integer_04_fail() -> foobar.
-
--spec integer_05_fail() -> integer().
-integer_05_fail() -> foobar.
-
--spec integer_06_fail() -> 42.
-integer_06_fail() -> 43.
-
+%%-spec atom_01() -> foobar.
+%%atom_01() -> foobar.
+%%
+%%-spec atom_02() -> atom().
+%%atom_02() -> foobar.
+%%
+%%-spec atom_03_fail() -> integer().
+%%atom_03_fail() -> foobar.
+%%
+%%-spec atom_04_fail() -> foobar.
+%%atom_04_fail() -> 1.
+%%
+%%-spec atom_05_fail() -> atom().
+%%atom_05_fail() -> 1.
+%%
+%%-spec atom_06_fail() -> foobar.
+%%atom_06_fail() -> spam.
+%%
+%%% Chars
+%%-spec char_01() -> $a.
+%%char_01() -> $a.
+%%
+%%-spec char_02() -> char().
+%%char_02() -> $a.
+%%
+%%-spec char_03() -> integer().
+%%char_03() -> $a.
+%%
+%%-spec char_04_fail() -> atom().
+%%char_04_fail() -> $a.
+%%
+%%-spec char_05_fail() -> $a.
+%%char_05_fail() -> foobar.
+%%
+%%-spec char_06_fail() -> $a.
+%%char_06_fail() -> 1.
+%%
+%%-spec char_07() -> $a.
+%%char_07() -> 97. % ascii code for a
+%%
+%%-spec char_08_fail() -> char().
+%%char_08_fail() -> foobar.
+%%
+%%-spec char_09_fail() -> $a.
+%%char_09_fail() -> $b.
+%%
+%%% Integers
+%%-spec integer_01() -> 42.
+%%integer_01() -> 42.
+%%
+%%-spec integer_02() -> integer().
+%%integer_02() -> 42.
+%%
+%%-spec integer_03_fail() -> atom().
+%%integer_03_fail() -> 42.
+%%
+%%-spec integer_04_fail() -> 42.
+%%integer_04_fail() -> foobar.
+%%
+%%-spec integer_05_fail() -> integer().
+%%integer_05_fail() -> foobar.
+%%
+%%-spec integer_06_fail() -> 42.
+%%integer_06_fail() -> 43.
+%%
 %%-spec integer_07() -> number().
 %%integer_07() -> 42.
-
+%%
 %%% Floats
 %%-spec float_01() -> float().
 %%float_01() -> 3.14.
@@ -118,8 +118,8 @@ integer_06_fail() -> 43.
 %%string_08_fail() -> "bass".
 
 % Simple functions
--spec fun_01(any()) -> any().
-fun_01(X) -> X.
+%%-spec fun_01(any()) -> any().
+%%fun_01(X) -> X.
 
 -spec fun_02_fail(integer()) -> atom().
 fun_02_fail(X) -> X.

@@ -61,7 +61,7 @@ normalize(Ty, PVar, NVar, Fixed, VarToTy, Mx) ->
   case SmallestVar of
     {{pos, Var}, Others} ->
       TyResult = lists:foldl(fun({_, V}, CTy) -> ty_rec:intersect(CTy, VarToTy(V)) end, Ty, Others),
-      io:format(user, "Single out positive Variable ~p and Rest: ~p~nResult: ~n~p~n~n", [Var, Others, TyResult]),
+%%      io:format(user, "Single out positive Variable ~p and Rest: ~p~nResult: ~n~p~n~n", [Var, Others, TyResult]),
       [[{Var, ty_rec:empty(), ty_rec:negate(TyResult)}]];
     {{neg, Var}, Others} ->
 %%      io:format(user, "Single out negative Variable ~p and Rest: ~p~n", [Var, Others]),

@@ -635,8 +635,7 @@ ast_to_erlang_ty({predef, atom}) ->
 ast_to_erlang_ty({predef, any}) -> ty_rec:any();
 ast_to_erlang_ty({predef, none}) -> ty_rec:empty();
 ast_to_erlang_ty({predef, integer}) ->
-    Int = dnf_var_int:any(),
-    ty_rec:interval(Int);
+    ty_rec:interval();
 
 % ints
 ast_to_erlang_ty({range, From, To}) ->
