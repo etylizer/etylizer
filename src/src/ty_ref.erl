@@ -97,13 +97,14 @@ define_ty_ref({ty_ref, Id}, Ty) ->
   % this became apparent when, in the last phase of tally,
   % one always defines the new recursive type without checking first if this is necessary
   % this creates a lot of {ty, 0, 0, 0, 0} (empty) types with (newly defined) different type references!
-%%  Object = ets:lookup(?TY_UNIQUE_TABLE, Ty),
-%%  case Object of
-%%    [] -> ok;
-%%    _ ->
-%%      % io:format(user, "Defining a new type even though unique table has the type already!~n~p~n", [Ty]),
-%%      ok
-%%  end,
+  Object = ets:lookup(?TY_UNIQUE_TABLE, Ty),
+  case Object of
+    [] -> ok;
+    _ ->
+      io:format(user, "Defining a new type even though unique table has the type already!~n~p~n", [Ty]),
+      error({define_type_ref, should_not_happen, polluted_memory_table}),
+      ok
+  end,
 
   ets:insert(?TY_UNIQUE_TABLE, {Ty, Id}),
   ets:insert(?TY_MEMORY, {Id, Ty}),
