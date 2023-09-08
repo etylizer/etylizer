@@ -281,6 +281,8 @@ substitute(TyRef, SubstituteMap, OldMemo) ->
         function = Functions
       } = ty_ref:load(TyRef),
 
+      io:format(user, "Substitute ~p to ~p~n", [Ty, SubstituteMap]),
+
       case has_ref(Ty, TyRef) of
         true ->
           RecursiveNewRef = ty_ref:new_ty_ref(),

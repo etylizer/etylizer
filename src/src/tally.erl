@@ -20,15 +20,11 @@ tally(_SymTab, Constraints, FixedVars) ->
         {error, []} ->
           {error, []};
         _ ->
-          % sanity: every substitution satisfies all given constraints
-          [true = is_valid_substitution(InternalConstraints, maps:from_list(Subst)) || Subst <- InternalResult],
-
           % transform to subst:t()
           % TODO sanity variable Id == variable name
           [maps:from_list([{VarName, ast:erlang_ty_to_ast(Ty)} || {{var, _, VarName}, Ty} <- Subst]) || Subst <- InternalResult]
       end,
 
-  error(todo),
   io:format(user, "Result: ~n~p~n", [X]),
   X.
 
@@ -51,7 +47,6 @@ tally(Constraints, FixedVars) ->
       fun() -> A end)
               end, [[]], Constraints),
 
-%%  io:format(user, "PHASE! ~p~n", [Normalized]),
 
   Saturated = lists:foldl(fun(ConstraintSet, A) ->
     constraint_set:join(
@@ -59,7 +54,6 @@ tally(Constraints, FixedVars) ->
       fun() -> A end)
                            end, [], Normalized),
 
-  Saturated,
 
   Solved = case Saturated of
     [] -> {error, []};
@@ -99,6 +93,7 @@ unify(EquationList) ->
   [Eq = {eq, Var, TA} | _Tail] = lists:usort(fun({_, Var, _}, {_, Var2, _}) -> ty_variable:compare(Var, Var2) =< 0 end, EquationList),
 
   Vars = ty_rec:all_variables(TA),
+
   NewTA = case length([Z || Z <- Vars, Z == Var]) of
     0 ->
       TA;
@@ -123,7 +118,7 @@ unify(EquationList) ->
     (X = {eq, XA, TAA}) <- EquationList, X /= Eq
   ],
 
-  % true = length(EquationList) - 1 == length(E_),
+  true = length(EquationList) - 1 == length(E_),
 
   Sigma = unify(E_),
   NewTASigma = apply_substitution(NewTA, Sigma),

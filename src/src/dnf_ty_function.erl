@@ -158,8 +158,8 @@ substitute({node, TyFunction, L_BDD, R_BDD}, Map, Memo) ->
   NewTyFunction = ty_function:function(NewS1, NewS2),
 
   union(
-    intersect(function(NewTyFunction), L_BDD),
-    intersect(negate(function(NewTyFunction)), R_BDD)
+    intersect(function(NewTyFunction), substitute(L_BDD, Map, Memo)),
+    intersect(negate(function(NewTyFunction)), substitute(R_BDD, Map, Memo))
   ).
 
 has_ref(0, _) -> false;

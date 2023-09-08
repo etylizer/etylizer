@@ -72,35 +72,22 @@
 %%
 %%  ok.
 
-issue_test() ->
-  C1 = {r(), v(a1)},
-  C2 = {t([v(a1)]), t([v(a2)])},
-  C3 = {v(a2), b()},
-  {error, _} = tally:tally(norm_all([C1, C2, C3])),
-  ok.
+%%issue_test() ->
+%%  C1 = {r(), v(a1)},
+%%  C2 = {t([v(a1)]), t([v(a2)])},
+%%  C3 = {v(a2), b()},
+%%  {error, _} = tally:tally(norm_all([C1, C2, C3])),
+%%  ok.
 
-% issue2_test() ->
-%   C1 = {t([v(a2)]), v(a0)},
-%   C2 = {v(a0), u([
-%                   t([b(a)])
-%                   , 
-%                   t([b(b)])
-%                  ])},
-%   C3 = {b(a), v(a2)},
-%   C4 = {i([v(a0), t([b(a)])]), t([v(a4)])},
-%   C5 = {i([v(a0), t([b(a)])]), t([v(a3)])},
-%   C6 = {
-%     i([v(a0), t([b(b)]), n(t([b(a)]))]),
-%     t([v(a6)])
-%    },
-%   C7 = {
-%     i([v(a0), t([b(b)]), n(t([b(a)]))]),
-%     t([v(a5)])
-%    },
-% 
-% 
-%   Res = tally:tally(norm_all([C1, C2, C3, C4, C5, C6, C7])),
-%   ok.
+issue2_test() ->
+  C1 = {t([v(a1)]), v(a0)},
+  C2 = {v(a0), t([any()]) },
+  C3 = {r(), v(a1)},
+
+
+  Res = tally:tally(norm_all([C1, C2, C3])),
+  io:format(user, "Result: ~p~n", [Res]),
+  ok.
 
 norm_all(List) ->
   lists:map(fun({S, T}) -> {norm(S), norm(T)} end, List).

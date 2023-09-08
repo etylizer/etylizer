@@ -142,8 +142,8 @@ substitute({node, TyTuple, L_BDD, R_BDD}, Map, Memo) ->
   NewTyTuple = ty_tuple:tuple(NewS),
 
   union(
-    intersect(tuple(NewTyTuple), L_BDD),
-    intersect(negate(tuple(NewTyTuple)), R_BDD)
+    intersect(tuple(NewTyTuple), substitute(L_BDD, Map, Memo)),
+    intersect(negate(tuple(NewTyTuple)), substitute(R_BDD, Map, Memo))
     ).
 
 has_ref(0, _) -> false;
