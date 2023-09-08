@@ -13,7 +13,7 @@
 % type constructors with type refs
 -export([function/2]).
 % top type constructors
--export([function/0, atom/0, interval/0, tuple/0]).
+-export([function/0, atom/0, interval/0, tuple/0, ty_of/4]).
 
 -export([is_equivalent/2, is_subtype/2, normalize/3]).
 
@@ -34,6 +34,9 @@
 % ======
 % top-level API
 % ======
+
+ty_of(Atom, Int, Tuple, Function) ->
+  #ty{atom = Atom, interval = Int, tuple = Tuple, function = Function}.
 
 is_subtype(TyRef1, TyRef2) ->
   NewTy = intersect(TyRef1, ty_rec:negate(TyRef2)),

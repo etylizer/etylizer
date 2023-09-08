@@ -64,29 +64,16 @@ any() -> {ty_ref, 0}.
 define_any() ->
   Any = {ty_ref, 0},
 
-  % create function top
-  DnfVarFunctionAny = dnf_var_ty_function:any(),
-
-  % create interval top
-  DnfVarIntervalAny = dnf_var_int:any(),
-
-  % create atom top
-  DnfVarAtomAny = dnf_var_ty_atom:any(),
-
   % union
-  Ty1 = ty_rec:interval(DnfVarIntervalAny),
-  Ty2 = ty_rec:tuple(),
-  Ty3 = ty_rec:atom(DnfVarAtomAny),
-  Ty4 = ty_rec:function(DnfVarFunctionAny),
+  Ty1 = dnf_var_ty_atom:any(),
+  Ty2 = dnf_var_int:any(),
+  Ty3 = {dnf_var_ty_tuple:any(), #{}},
+  Ty4 = dnf_var_ty_function:any(),
 
-  U1 = ty_rec:union(Ty1, Ty2),
-  U2 = ty_rec:union(U1, Ty3),
-  % note: applying the union on U2 and Ty4 already defines ANY at some ty_ref other than 0 automatically
-  % this breaks the property that for every ty there is only one entry in the unique table
-  U = ty_rec:union(U2, Ty4),
+  Ty = ty_rec:ty_of(Ty1, Ty2, Ty3, Ty4),
 
   % define
-  ty_ref:define_ty_ref(Any, ty_ref:load(U)),
+  ty_ref:define_ty_ref(Any, Ty),
 
   ok.
 

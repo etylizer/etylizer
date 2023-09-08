@@ -8,11 +8,10 @@
 ]).
 
 tally(_SymTab, Constraints, FixedVars) ->
-  case sets:is_empty(FixedVars) of true -> ok; false -> error(todo) end,
   InternalConstraints = lists:map(fun({csubty, _, S, T}) ->
     io:format(user, "Cons~n~p~n", [{S, T}]),
     {ast:ast_to_erlang_ty(S), ast:ast_to_erlang_ty(T)} end, sets:to_list(Constraints)),
-  InternalResult = tally(InternalConstraints, sets:new()), % FIXME fixed variables
+  InternalResult = tally(InternalConstraints, sets:from_list([ast:ast_to_erlang_ty({var, Var}) || Var <- sets:to_list(FixedVars)])),
 
   [true || {X, Y} <- InternalConstraints],
 %%  io:format(user, "Got Constraints ~n~p~n~p~n", [Constraints, InternalResult]),

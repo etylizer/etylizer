@@ -561,7 +561,7 @@ erlang_ty_to_ast(X) ->
                 Object = ets:lookup(?VAR_ETS, Name),
                 case Object of
                     % new variable not seen before!
-                    [] -> {var, list_to_atom(Name ++ "mu" ++ integer_to_list(Id))};
+                    [] -> {var, list_to_atom("mu" ++ integer_to_list(Id))};
                     [{_, _}] -> {var, Name}
                 end
                    end,
