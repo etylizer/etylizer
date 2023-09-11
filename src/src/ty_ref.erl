@@ -84,9 +84,6 @@ new_ty_ref() ->
   {ty_ref, next_ty_id()}.
 
 define_ty_ref({ty_ref, Id}, Ty) ->
-%%  io:format(user, "Store NEW: ~p :=~n~p~n", [Id, Ty]),
-
-  % TODO
   % when defining new (recursive) types manually,
   % the type to be built is already stored in the unique table
   % before finishing the manual definition
@@ -97,15 +94,19 @@ define_ty_ref({ty_ref, Id}, Ty) ->
   % this became apparent when, in the last phase of tally,
   % one always defines the new recursive type without checking first if this is necessary
   % this creates a lot of {ty, 0, 0, 0, 0} (empty) types with (newly defined) different type references!
+  % TODO think about this solution more thoroughly, edge cases?
   Object = ets:lookup(?TY_UNIQUE_TABLE, Ty),
   case Object of
     [] -> ok;
-    _ ->
-      io:format(user, "Defining a new type even though unique table has the type already!~n~p~n", [Ty]),
-      error({define_type_ref, should_not_happen, polluted_memory_table}),
+    [{_, OldId}] ->
+      % last ty ref inserted is the recursive type, delete from memory and decrease ty number by one
+      ets:delete(?TY_MEMORY, OldId),
+      [] = ets:lookup(?TY_MEMORY, OldId),
+      ets:update_counter(?TY_UTIL, ty_number, {2, -1}),
       ok
   end,
 
+  io:format(user, "Store (manual): ~p :=~n~p~n", [Id, Ty]),
   ets:insert(?TY_UNIQUE_TABLE, {Ty, Id}),
   ets:insert(?TY_MEMORY, {Id, Ty}),
   {ty_ref, Id}.
@@ -123,12 +124,11 @@ store(Ty) ->
   case Object of
     [] ->
       Id = ets:update_counter(?TY_UTIL, ty_number, {2, 1}),
-%%      io:format(user, "Store: ~p :=~n~p~n", [Id, Ty]),
+      io:format(user, "Store: ~p :=~n~p~n", [Id, Ty]),
       ets:insert(?TY_UNIQUE_TABLE, {Ty, Id}),
       ets:insert(?TY_MEMORY, {Id, Ty}),
       {ty_ref, Id};
     [{_, Id}] ->
-%%      io:format(user, "o", []),
       {ty_ref, Id}
   end.
 
