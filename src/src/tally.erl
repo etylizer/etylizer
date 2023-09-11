@@ -9,7 +9,7 @@
 
 tally(_SymTab, Constraints, FixedVars) ->
   InternalConstraints = lists:map(fun({csubty, _, S, T}) ->
-    io:format(user, "Cons~n~p~n", [{S, T}]),
+%%    io:format(user, "Cons~n~p~n", [{S, T}]),
     {ast:ast_to_erlang_ty(S), ast:ast_to_erlang_ty(T)} end, sets:to_list(Constraints)),
   InternalResult = tally(InternalConstraints, sets:from_list([ast:ast_to_erlang_ty({var, Var}) || Var <- sets:to_list(FixedVars)])),
 
@@ -24,7 +24,7 @@ tally(_SymTab, Constraints, FixedVars) ->
           [maps:from_list([{VarName, ast:erlang_ty_to_ast(Ty)} || {{var, _, VarName}, Ty} <- Subst]) || Subst <- InternalResult]
       end,
 
-  io:format(user, "Result: ~n~p~n", [X]),
+%%  io:format(user, "Result: ~n~p~n", [X]),
   X.
 
 is_valid_substitution([], _) -> true;

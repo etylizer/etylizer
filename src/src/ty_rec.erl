@@ -284,7 +284,7 @@ substitute(TyRef, SubstituteMap, OldMemo) ->
         function = Functions
       } = ty_ref:load(TyRef),
 
-      io:format(user, "Substitute ~p to ~p~n", [Ty, SubstituteMap]),
+%%      io:format(user, "Substitute ~p to ~p~n", [Ty, SubstituteMap]),
 
       case has_ref(Ty, TyRef) of
         true ->

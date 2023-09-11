@@ -9,84 +9,87 @@
                    tfloat/0, tfun2/3, tnot/1, tbool/0
                   ]).
 
--spec test_tally_unique(list({ast:ty(), ast:ty()}), #{ atom() => ast:ty()}) -> ok.
-test_tally_unique(ConstrList, ExpectedSubst) ->
-    test_tally_unique(ConstrList, ExpectedSubst, []).
+-spec test_tally(list({ast:ty(), ast:ty()}), #{ atom() => ast:ty()}) -> ok.
+test_tally(ConstrList, ExpectedSubst) ->
+    test_tally(ConstrList, ExpectedSubst, []).
 
--spec test_tally_unique(list({ast:ty(), ast:ty()}), #{ atom() => ast:ty()}, [ast:ty_varname()]) -> ok.
-test_tally_unique(ConstrList, {ExpectedSubstLow, High}, FixedVars) ->
+-spec test_tally(list({ast:ty(), ast:ty()}), #{ atom() => ast:ty()}, [ast:ty_varname()]) -> ok.
+test_tally(_ConstrList, [], _FixedVars) -> ok;
+test_tally(ConstrList, AllTests, FixedVars) ->
     Constrs = sets:from_list(
                 lists:map(
                   fun ({T, U}) -> {csubty, sets:from_list([ast:loc_auto()]), T, U} end,
                   ConstrList
                  )),
 
-    case tally:tally(symtab:empty(), Constrs, sets:from_list(FixedVars)) of
-        [RealSubst] ->
-            ?LOG_WARN("~nSubst: ~s~n~nExpected lower bound:~n~s~n~nExpected upper bound:~n~s",
-                      pretty:render_subst(RealSubst),
-                      pretty:render_subst(ExpectedSubstLow),
-                      pretty:render_subst(High)
-            ),
-            lists:foreach(fun({{Var, LowerBound}, {Var, UpperBound}}) ->
-              ?assertEqual(true,
-                begin
-                  TyOther = maps:get(Var, RealSubst),
-                  subty:is_subty(none, LowerBound, TyOther) andalso
-                    subty:is_subty(none, TyOther, UpperBound)
-                end
-              )
-                          end, lists:zip(lists:sort(maps:to_list(ExpectedSubstLow)), lists:sort(maps:to_list(High))));
+  Res = tally:tally(symtab:empty(), Constrs, sets:from_list(FixedVars)),
+  find_subst(AllTests, Res, Res).
 
-        {error, Err} ->
-            ?LOG_WARN("tally returned an error: ~200p", Err),
-            error("test failed because tally returned an error");
-        Substs ->
-            ?LOG_WARN("tally returned several substitutions: ~s", pretty:render_substs(Substs)),
-            error("test failed because tally returned more than one substitution")
-    end.
+find_subst([], [], _) -> ok;
+find_subst([{Low, High} | _], [], Sols) ->
+  ?LOG_WARN("~nCould not find substitutions among remaining ~p tally solutions for~nExpected lower bound:~n~s~n~nExpected upper bound:~n~s",
+            length(Sols),
+            pretty:render_subst(Low),
+            pretty:render_subst(High)
+  ),
+  error("test failed because tally returned no substitution that matches low and high bounds");
+find_subst([], [X | _Xs], _) -> error({"Too many substitutions:", X});
+find_subst(X = [{Low, High} | OtherTests], [Subst | Others], AllTally) ->
+  Valid = lists:any(
+    fun({{Var, LowerBound}, {Var, UpperBound}}) ->
+      begin
+        TyOther = maps:get(Var, Subst),
+        not (subty:is_subty(none, LowerBound, TyOther) andalso
+          subty:is_subty(none, TyOther, UpperBound))
+      end
+    end, lists:zip(lists:sort(maps:to_list(Low)), lists:sort(maps:to_list(High)))),
+  case Valid of
+    true -> find_subst(X, Others, AllTally);
+    false -> find_subst(OtherTests, AllTally -- [Subst], AllTally -- [Subst])
+  end.
 
 tally_01_test() ->
-    test_tally_unique([{tvar(alpha), tint()}],
-      {
+    test_tally([{tvar(alpha), tint()}],
+      [{
         #{ alpha => tnone()},
         #{ alpha => tint()}
-      }
+      }]
     ).
 
 tally_02_test() ->
-    test_tally_unique([{tint(), tvar(alpha)}],
-      {
+    test_tally([{tint(), tvar(alpha)}],
+      [{
         #{ alpha => tint()},
         #{ alpha => tany()}
-      }
+      }]
     ).
 
 tally_04_test() ->
-  test_tally_unique([
+  test_tally([
     {ttuple([]), tvar(zero)},
     {tvar(zero), ttuple([])}
   ],
-    {
+    [{
       #{ zero => ttuple([])},
       #{ zero => ttuple([])}
-    }
+    }]
   ).
 
 tally_03_test() ->
     Alpha = tvar(alpha),
     Beta = tvar(beta),
-    test_tally_unique([
+    test_tally([
       {Alpha, ttuple1(tany())},
       {ttuple1(Beta), Alpha},
       {tint(), Beta}
     ],
-      {
+      [{
         #{ alpha => ttuple([tint()]), beta => tint()},
         #{ alpha => ttuple([tany()]), beta => tany()}
-      }
+      }]
     ).
 
+% TODO lists
 %%tally_04_test() ->
 %%    Alpha = tvar(alpha),
 %%    Beta = tvar(beta),
@@ -98,14 +101,15 @@ tally_03_test() ->
 tally_05_test() ->
     Alpha = tvar(alpha),
     Beta = tvar(beta),
-    test_tally_unique(
+    test_tally(
       [{Beta, Alpha}],
-      {
+      [{
         #{ alpha => Beta },
         #{ alpha => tany() }
-      },
+      }],
       [beta]).
 
+% TODO lists
 %%% debug tallying (['b] [ (['b*], 'a2) ]);;
 %%% result:[{'a2:=[ 'b* ]}]
 %%tally_06_test() ->
@@ -114,7 +118,7 @@ tally_05_test() ->
 %%  test_tally_unique([{tlist(Beta), Alpha}],
 %%    #{ alpha => tunion([tempty_list(), stdtypes:tlist_improper(Beta, tempty_list())]) },
 %%    [beta]).
-%%
+
 % see #36
 % # debug tallying ([] [(1|2, 'alpha) ( (Int -> Int) & ((1|2) -> (1|2)), 'alpha -> 'beta) ('beta, 1|2)]);;
 % [DEBUG:tallying]
@@ -124,17 +128,18 @@ tally_07_test() ->
   Beta = tvar(beta),
   OneOrTwo = tunion(tint(1), tint(2)),
   OneOrTwoRange = trange(1, 2),
-  test_tally_unique(
+  test_tally(
     [
       {OneOrTwo, Alpha},
       {Beta, OneOrTwo},
       {tinter(tfun1(tint(), tint()), tfun1(OneOrTwo, OneOrTwo)), tfun1(Alpha, Beta)}
     ],
-    {
+    [{
       #{ alpha => OneOrTwoRange, beta => OneOrTwoRange },
       #{ alpha => OneOrTwoRange, beta => OneOrTwoRange }
-    }).
+    }]).
 
+% TODO n-functions
 % Also see #36
 % #debug tallying ([] [( ((Int, Int) -> Int) & ((Int, Float) -> Float) & ((Float, Int) -> Float) & ((Float, Float) -> Float), ('alpha, 'beta) -> 'gamma ) (Int \ (1--2), 'alpha) (1, 'beta) (1, 'delta) (2, 'delta) ('delta, Int) ('gamma, 'delta)]);;
 % [DEBUG:tallying]
@@ -169,3 +174,47 @@ tally_07_test() ->
 %%          delta => I }
 %%      }
 %%    ).
+
+
+% debug tallying ([] [] [('a1 -> 'a2, 'a0) ('a4, 'a2) (42, 'a4) ('a3 & Int, 'a4) ('a3 & Int, 'a5) (Any -> Bool, 'a5 -> 'a6) ('a6, Bool) ('a1, 'a3)]);;
+%[DEBUG:tallying]
+%Result:[
+%   {
+%      'a1:=('a1a1 & 'a3a3) \ Int;
+%      'a3:='a3a3 \ Int;
+%      'a6:=Bool & 'a6a6;
+%      'a5:=Empty;
+%      'a4:=42 | 'a4a4 & 'a2a2;
+%      'a2:=42 | 'a2a2;
+%      'a0:=(('a1a1 & 'a3a3) \ Int -> 42 | 'a2a2) | 'a0a0};
+%   {
+%      'a1:=Int & 'a5 & 'a1a1 & 'a3a3 & 'a4a4 & 'a2a2 | 42 & 'a5 & 'a1a1 & 'a3a3 | ('a1a1 & 'a3a3) \ Int;
+%      'a3:=Int & 'a5 & 'a3a3 & 'a4a4 & 'a2a2 | 42 & 'a5 & 'a3a3 | 'a3a3 \ Int;
+%      'a6:=Bool;
+%      'a4:=42 | 'a4a4 & 'a2a2;
+%      'a2:=42 | 'a2a2;
+%      'a0:=(Int & 'a5 & 'a1a1 & 'a3a3 & 'a4a4 & 'a2a2 | 42 & 'a5 & 'a1a1 & 'a3a3 | ('a1a1 & 'a3a3) \ Int -> 42 | 'a2a2) | 'a0a0
+%   }]
+tally_issue_8_test() ->
+  A0 = tvar(alpha0), A1 = tvar(alpha1), A2 = tvar(alpha2), A3 = tvar(alpha3), A4 = tvar(alpha4), A5 = tvar(alpha5), A6 = tvar(alpha6),
+  test_tally(
+    [
+      {tfun_full([A1], A2), A0},
+      {A4, A2},
+      {tint(42), A4},
+      {tintersect([A3, tint()]), A4},
+      {tintersect([A3, tint()]), A5},
+      {tfun_full([tany()], tbool()), tfun_full([A5], A6)},
+      {A6, tbool()},
+      {A1, A3}
+    ],
+    [
+      {
+        #{ alpha2 => tint(42), alpha1 => tnone(), alpha3 => tnone(), alpha6 => tbool(), alpha4 => tint(42) },
+        #{ alpha2 => tany(), alpha1 => tany(), alpha3 => tany(), alpha6 => tbool(), alpha4 => tany() }
+      },
+      {
+        #{ alpha0 => tfun_full([tany()], tint(42)), alpha5 => tnone(), alpha2 => tint(42), alpha1 => tnone(), alpha3 => tnone(), alpha6 => tnone(), alpha4 => tnone() },
+        #{ alpha0 => tany(), alpha5 => tnone(), alpha2 => tany(), alpha1 => tinter([tany(), tnegate(tint())]), alpha3 => tinter([tany(), tnegate(tint())]), alpha6 => tbool(), alpha4 => tany() }
+      }
+    ]).

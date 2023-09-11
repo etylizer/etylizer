@@ -121,3 +121,23 @@ transform({node, Variable, PositiveEdge, NegativeEdge},
     Intersect([AstVar, transform(PositiveEdge, Ops)]),
     Intersect([Negate(AstVar), transform(NegativeEdge, Ops)])
   ]).
+
+-ifdef(TEST).
+-include_lib("eunit/include/eunit.hrl").
+
+usage_test() ->
+  %   any arrow
+  TIa = ty_rec:empty(),
+  TIb = ty_rec:empty(),
+  Ty_F1 = ty_rec:function(dnf_var_ty_function:function(dnf_ty_function:function(ty_function:function(TIa, TIb)))),
+
+  %   any arrow 2
+  Ty_F2 = ty_rec:function(),
+
+  true = ty_rec:is_subtype(Ty_F1, Ty_F2),
+  true = ty_rec:is_subtype(Ty_F2, Ty_F1),
+%%  io:format(user, "~p~n", [Bdd]),
+
+  ok.
+
+-endif.
