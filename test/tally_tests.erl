@@ -219,6 +219,32 @@ tally_issue_8_test() ->
       }
     ]).
 
+
+tally_issue_14_test() ->
+  V0 = tvar(v0),
+  V2 = tvar(v2),
+  V3 = tvar(v3),
+  V4 = tvar(v4),
+  V5 = tvar(v5),
+  V6 = tvar(v6),
+  V7 = tvar(v7),
+  V8 = tvar(v8),
+  A = tatom(a),
+  B = tatom(b),
+  TupleAny = ttuple1(tany()),
+  LargeInter = tinter([V0, tnot(tinter([ttuple1(A), TupleAny])), ttuple1(B), TupleAny]),
+  test_tally(
+    [{tinter([V0, ttuple1(A), TupleAny]), ttuple1(V3)},
+      {tunion([tinter([ttuple1(A), TupleAny]), tinter([ttuple1(B), TupleAny])]), ttuple1(V8)},
+      {ttuple1(V2), V0},
+      {LargeInter, ttuple1(V8)},
+      {LargeInter, ttuple1(V7)},
+      {LargeInter, ttuple1(V6)},
+      {tinter([V0, ttuple1(A), TupleAny]), ttuple1(V5)},
+      {A, V2},
+      {tinter([V0, ttuple1(A), TupleAny]), ttuple1(V4)}],
+    [{#{}, #{}}]).
+
 % debug tallying (['a0 'a1 'a2 'a3 'a4 'a5 'a6] [] [
 % (('a2, 42), 'a0)
 % (1, 'a2)
