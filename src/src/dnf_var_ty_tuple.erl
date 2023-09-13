@@ -1,5 +1,4 @@
 -module(dnf_var_ty_tuple).
--vsn({2,0,0}).
 
 -define(P, {dnf_ty_tuple, ty_variable}).
 

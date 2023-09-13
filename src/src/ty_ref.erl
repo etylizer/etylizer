@@ -1,5 +1,4 @@
 -module(ty_ref).
--vsn({2,0,0}).
 
 -export([any/0, store/1, load/1, new_ty_ref/0, define_ty_ref/2, is_empty_cached/1, store_is_empty_cached/2, store_recursive_variable/2, check_recursive_variable/1]).
 -export([memoize/1, is_empty_memoized/1, reset/0, is_normalized_memoized/3]).
@@ -106,7 +105,7 @@ define_ty_ref({ty_ref, Id}, Ty) ->
       ok
   end,
 
-  io:format(user, "Store (manual): ~p :=~n~p~n", [Id, Ty]),
+%%  io:format(user, "Store (manual): ~p :=~n~p~n", [Id, Ty]),
   ets:insert(?TY_UNIQUE_TABLE, {Ty, Id}),
   ets:insert(?TY_MEMORY, {Id, Ty}),
   {ty_ref, Id}.
@@ -124,7 +123,7 @@ store(Ty) ->
   case Object of
     [] ->
       Id = ets:update_counter(?TY_UTIL, ty_number, {2, 1}),
-      io:format(user, "Store: ~p :=~n~p~n", [Id, Ty]),
+%%      io:format(user, "Store: ~p :=~n~p~n", [Id, Ty]),
       ets:insert(?TY_UNIQUE_TABLE, {Ty, Id}),
       ets:insert(?TY_MEMORY, {Id, Ty}),
       {ty_ref, Id};

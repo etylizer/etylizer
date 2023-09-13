@@ -1,5 +1,4 @@
 -module(eq).
--vsn({2,0,0}).
 
 -type x() :: term().
 

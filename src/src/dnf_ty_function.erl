@@ -1,5 +1,4 @@
 -module(dnf_ty_function).
--vsn({2,0,0}).
 
 -ifdef(TEST).
 -export([normalize_no_vars/6]).

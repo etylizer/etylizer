@@ -1,5 +1,4 @@
 -module(dnf_var_ty_atom).
--vsn({2,0,0}).
 
 -define(P, {ty_atom, ty_variable}).
 

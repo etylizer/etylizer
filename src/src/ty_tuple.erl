@@ -1,5 +1,4 @@
 -module(ty_tuple).
--vsn({3,0,0}).
 
 %% n-tuple representation
 

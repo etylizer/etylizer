@@ -1,5 +1,4 @@
 -module(dnf_var_int).
--vsn({2,0,0}).
 
 -define(P, {ty_interval, ty_variable}).
 

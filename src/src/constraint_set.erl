@@ -1,5 +1,4 @@
 -module(constraint_set).
--vsn({2,0,0}).
 
 %% API
 -export([set_of_constraint_sets/1, constraint_set/1, constraint/3, constraint/1, is_smaller/2]).

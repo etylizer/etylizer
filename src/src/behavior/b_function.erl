@@ -1,5 +1,4 @@
 -module(b_function).
--vsn({2,0,0}).
 
 -type ty_function() :: term().
 -type ty_ref() :: {ty_ref, integer()}.

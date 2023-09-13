@@ -1,5 +1,4 @@
 -module(ty_atom).
--vsn({2,0,0}).
 
 %% Efficient atom representation
 

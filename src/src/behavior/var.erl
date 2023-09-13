@@ -1,5 +1,4 @@
 -module(var).
--vsn({2,0,0}).
 
 % TODO types
 % every variable is distinct from all other created variables

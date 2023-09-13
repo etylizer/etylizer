@@ -33,12 +33,12 @@ find_subst([{Low, High} | _], [], Sols) ->
             pretty:render_subst(High)
   ),
   error("test failed because tally returned no substitution that matches low and high bounds");
-find_subst([], [X | _Xs], _) -> error({"Too many substitutions:", X});
+find_subst([], [_X | _Xs], _) -> error({"Too many substitutions"});
 find_subst(X = [{Low, High} | OtherTests], [Subst | Others], AllTally) ->
   Valid = lists:any(
     fun({{Var, LowerBound}, {Var, UpperBound}}) ->
       begin
-        TyOther = maps:get(Var, Subst),
+        TyOther = maps:get(Var, Subst, {var, Var}),
         not (subty:is_subty(none, LowerBound, TyOther) andalso
           subty:is_subty(none, TyOther, UpperBound))
       end
@@ -216,5 +216,75 @@ tally_issue_8_test() ->
       {
         #{ alpha0 => tfun_full([tany()], tint(42)), alpha5 => tnone(), alpha2 => tint(42), alpha1 => tnone(), alpha3 => tnone(), alpha6 => tnone(), alpha4 => tnone() },
         #{ alpha0 => tany(), alpha5 => tnone(), alpha2 => tany(), alpha1 => tinter([tany(), tnegate(tint())]), alpha3 => tinter([tany(), tnegate(tint())]), alpha6 => tbool(), alpha4 => tany() }
+      }
+    ]).
+
+% debug tallying (['a0 'a1 'a2 'a3 'a4 'a5 'a6] [] [
+% (('a2, 42), 'a0)
+% (1, 'a2)
+% (('a0 & (1, 42)), ('a4, 42))
+% (('a0 & (1, 42)), ('a3, 42))
+% ('a0, (1, 42) | (2, 42))
+% ('a0 & (2, 42) \ (1, 42), ('a6, 42))
+% ('a0 & (2, 42) \ (1, 42) ,('a5, 42))
+% ]);;
+% Result:[{
+%  'a0:=(2 & 'a5 & 'a6 & 'a2a2,42) | (2 & 'a5 & 'a6 & 'a2a2 & 'a3a3 & 'a4a4,42) | (1,42) | ((2 & 'a5 & 'a6,42) | (2 & 'a5 & 'a6 & 'a3a3 & 'a4a4,42) | (1,42)) & 'a0a0;
+%  'a2:=1 | 1--2 & 'a5 & 'a6 & 'a2a2 & 'a3a3 & 'a4a4 | 2 & 'a5 & 'a6 & 'a2a2;
+%  'a3:=1 | 'a3a3;
+%  'a4:=1 | 'a4a4
+% }]
+tally_foo2_test() ->
+  % changing variable order might produce a different number of solutions
+  [ast:ast_to_erlang_ty({var, X}) || X <- ['$0', '$1', '$2', '$3', '$4', '$5', '$6']],
+  % (('a2, 42), 'a0)
+  C1 = {{tuple,[{var,'$2'}, {singleton, tag}]},{var,'$0'}},
+  % (1, 'a2)
+  C2 = {{singleton,a},{var,'$2'}},
+  % (('a0 & (1, 42)), ('a4, 42))
+  C3 = {
+    {intersection,[ {var,'$0'}, {tuple,[{singleton,a}, {singleton, tag}]} ]},
+    {tuple,[{var,'$4'}, {singleton, tag}]}
+  },
+  % (('a0 & (1, 42)), ('a3, 42))
+  C4 = {
+    {intersection,[{var,'$0'}, {tuple,[{singleton,a}, {singleton, tag}]}]},
+    {tuple,[{var,'$3'}, {singleton, tag}]}
+  },
+  % ('a0, (1, 42) | (2, 42))
+  C5 = {
+    {var,'$0'},
+    {union,[
+      {tuple,[{singleton,a}, {singleton, tag}]},
+      {tuple,[{singleton,b}, {singleton, tag}]}
+    ]}
+  },
+  % ('a0 & (2, 42) \ (1, 42), ('a6, 42))
+  C6 = {
+    {intersection, [
+      {var,'$0'},
+      {negation, {tuple,[{singleton,a}, {singleton, tag}]} },
+      {tuple,[{singleton,b}, {singleton, tag}]}
+    ]},
+    {tuple,[{var,'$6'}, {singleton, tag}]}},
+
+  % ('a0 & (2, 42) \ (1, 42) ,('a5, 42))
+  C7 = {
+    {intersection, [
+      {var,'$0'},
+      {negation, {tuple,[{singleton,a}, {singleton, tag}]}},
+      {tuple,[{singleton,b}, {singleton, tag}]}
+    ]},
+    {tuple,[{var,'$5'}, {singleton, tag}]}
+  },
+
+  test_tally(
+    [
+      C1, C2, C3, C4, C5, C6, C7
+    ],
+    [
+      {
+        #{'$0' => ttuple([tatom(a), tatom(tag)]), '$2' => tatom(a), '$3' => tatom(a), '$4' => tatom(a) },
+        #{'$0' => tunion([ttuple([tatom(a), tatom(tag)]), ttuple([tatom(b), tatom(tag)])]), '$2' => tunion([tatom(a), tatom(b)]), '$3' => tany(), '$4' => tany() }
       }
     ]).

@@ -1,5 +1,4 @@
 -module(ty_rec).
--vsn({2,0,0}).
 
 -define(F(Z), fun() -> Z end).
 
@@ -25,7 +24,7 @@
 
 -type ty_ref() :: {ty_ref, integer()}.
 -type interval() :: term().
--type ty_tuple() :: term().
+%%-type ty_tuple() :: term().
 -type ty_function() :: term().
 -type ty_variable() :: term().
 -type ty_atom() :: term().
@@ -166,7 +165,7 @@ intersect(TyRef1, TyRef2) ->
 
 -spec negate(ty_ref()) -> ty_ref().
 negate(TyRef1) ->
-  Ty = #ty{atom = A1, interval = I1, tuple = {DT, T}, function = F1} = ty_ref:load(TyRef1),
+   #ty{atom = A1, interval = I1, tuple = {DT, T}, function = F1} = ty_ref:load(TyRef1),
   ty_ref:store(#ty{
     atom = dnf_var_ty_atom:negate(A1),
     interval = dnf_var_int:negate(I1),
@@ -207,7 +206,8 @@ is_empty_miss(TyRef) ->
     andalso (
       begin
         case ty_ref:is_empty_memoized(TyRef) of
-          true -> true;
+          true ->
+            true;
           miss ->
             % memoize
             ok = ty_ref:memoize(TyRef),
@@ -236,6 +236,7 @@ normalize(TyRef, Fixed, M) ->
   case AtomNormalize of
     [] -> [];
     _ ->
+
       IntervalNormalize = dnf_var_int:normalize(Ty#ty.interval, Fixed, M),
       Res1 = constraint_set:merge_and_meet(AtomNormalize, IntervalNormalize),
       case Res1 of
@@ -319,7 +320,7 @@ multi_substitute(DefaultTuple, AllTuples, SubstituteMap, Memo) ->
   NewOtherTuples = maps:from_list(lists:map(fun(Key) ->
     {Key, case maps:is_key(Key, AllTuples) of
             true ->
-              {X, M} = dnf_var_ty_tuple:substitute(Key, maps:get(Key, AllTuples), SubstituteMap, Memo),
+              {_X, M} = dnf_var_ty_tuple:substitute(Key, maps:get(Key, AllTuples), SubstituteMap, Memo),
               maps:get(Key, M)
             ;
             _ -> maps:get(Key, NewDefaultOtherTuples, NewDefaultTuple)

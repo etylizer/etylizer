@@ -448,8 +448,6 @@ v(A) -> stdtypes:tvar(A).
 p(A, B) -> ttuple([A, B]).
 
 
-
-
 bug1_test() ->
   O = {intersection,
     [{union,
@@ -485,6 +483,7 @@ bug1_test() ->
   true = is_equiv(O2, O3),
 
   ok.
+
 
 
 

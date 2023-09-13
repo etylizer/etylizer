@@ -1,5 +1,4 @@
 -module(dnf_ty_tuple).
--vsn({2,0,0}).
 
 -define(P, {bdd_bool, ty_tuple}).
 -define(F(Z), fun() -> Z end).
@@ -114,7 +113,8 @@ phi_norm(Size, BigS, [Ty | N], Fixed, M) ->
       % remove pi_Index(NegativeComponents) from pi_Index(PComponents) and continue searching
         DoDiff = fun({IIndex, PComp}) ->
           case IIndex of
-            Index -> ty_rec:diff(PComp, NComponent);
+            Index ->
+              ty_rec:diff(PComp, NComponent);
             _ -> PComp
           end
                  end,
@@ -128,10 +128,8 @@ phi_norm(Size, BigS, [Ty | N], Fixed, M) ->
   constraint_set:join(
     ?F(lists:foldl(fun(S, Res) -> constraint_set:join(?F(Res), ?F(ty_rec:normalize(S, Fixed, M))) end, [], BigS))
     ,
-    % TODO tomorrow chekc here again
     ?F(lists:foldl(Solve, [[]], lists:zip(lists:seq(1, length(ty_tuple:components(Ty))), lists:zip(BigS, ty_tuple:components(Ty)))))
-  )
-.
+  ).
 
 substitute(0, _, _) -> 0;
 substitute({terminal, 1}, _, _) ->

@@ -1,5 +1,4 @@
 -module(tally).
--vsn({2,0,0}).
 
 -export([
   tally/1,
@@ -12,9 +11,7 @@ tally(_SymTab, Constraints, FixedVars) ->
 %%    io:format(user, "Cons~n~p~n", [{S, T}]),
     {ast:ast_to_erlang_ty(S), ast:ast_to_erlang_ty(T)} end, sets:to_list(Constraints)),
   InternalResult = tally(InternalConstraints, sets:from_list([ast:ast_to_erlang_ty({var, Var}) || Var <- sets:to_list(FixedVars)])),
-
-  [true || {X, Y} <- InternalConstraints],
-%%  io:format(user, "Got Constraints ~n~p~n~p~n", [Constraints, InternalResult]),
+%%  io:format(user, "Got Constraints ~n~p~n~p~n", [InternalConstraints, InternalResult]),
   X = case InternalResult of
         {error, []} ->
           {error, []};
@@ -63,6 +60,7 @@ tally(Constraints, FixedVars) ->
         {error, []} ->
           {error, []};
         _ ->
+          % TODO expensive sanity check
           % sanity: every substitution satisfies all given constraints
           [true = is_valid_substitution(Constraints, maps:from_list(Subst)) || Subst <- Solved],
           Solved
