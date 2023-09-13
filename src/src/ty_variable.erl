@@ -2,6 +2,7 @@
 
 % ETS table is used to strict monotonically increment a variable ID counter
 -on_load(setup_ets/0).
+-export([setup_ets/0]).
 -define(VAR_ETS, variable_counter_ets_table).
 
 -behavior(eq).
@@ -16,10 +17,12 @@
 -spec setup_ets() -> ok.
 setup_ets() ->
   spawn(fun() ->
+    catch(begin
     % spawns a new process that is the owner of the variable id ETS table
     ets:new(?VAR_ETS, [public, named_table]),
     ets:insert(?VAR_ETS, {variable_id, 0}),
     receive _ -> ok end
+          end)
         end),
   ok.
 

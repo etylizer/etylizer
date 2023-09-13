@@ -4,7 +4,7 @@
 % heavily derived from the erlang ast (defined in ast_erl.erl). See the README for
 % a description of the properties of the internal AST.
 
--export([ast_to_erlang_ty/1, erlang_ty_to_ast/1]).
+-export([setup_ets/0, ast_to_erlang_ty/1, erlang_ty_to_ast/1]).
 -on_load(setup_ets/0).
 -define(VAR_ETS, ast_norm_var_memo). % remember variable name -> variable ID to convert variables properly
 
@@ -156,7 +156,7 @@
 -type loc() :: {loc, string(), integer(), integer()}. % file, line, column
 
 -spec setup_ets() -> ok.
-setup_ets() -> spawn(fun() -> ets:new(?VAR_ETS, [public, named_table]), receive _ -> ok end end), ok.
+setup_ets() -> spawn(fun() -> catch(begin ets:new(?VAR_ETS, [public, named_table]), receive _ -> ok end end) end), ok.
 
 -spec format_loc(loc()) -> string().
 format_loc({loc, "AUTO", -1, -1}) -> "auto";

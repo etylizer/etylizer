@@ -101,6 +101,10 @@ fix_load_path(Opts) ->
 -spec doWork(#opts{}) -> [file:filename()].
 doWork(Opts) ->
     ?LOG_INFO("Initializing ETS tables"),
+    ty_ref:setup_ets(),
+    ty_variable:setup_ets(),
+    ast:setup_ets(),
+
     parse_cache:init(Opts),
     stdtypes:init(),
     try

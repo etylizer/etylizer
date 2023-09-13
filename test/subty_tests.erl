@@ -3,6 +3,54 @@
 
 -import(stdtypes, [tvar/1, ttuple_any/0, tnegate/1, tatom/0, tatom/1, tfun_full/2, trange/2, tunion/1, tintersect/1, trange_any/0, ttuple/1, tany/0, tnone/0]).
 
+
+foo2_branch1_test() ->
+  % $0 /\ {a, 42}
+  % $0 :: (`b & 'a5,42)  | (`a,42) | ((`b & 'a5,42) | (`a,42)) & 'a0a0;
+  % debug subtype ((((`b & 'a5,42)  | (`a,42) | ((`b & 'a5,42) | (`a,42)) & 'a0a0) & (`a, 42)) (Empty));;
+  % (`a,42) <= Empty : false
+  V0 = tunion([
+    ttuple([tintersect([tatom(b), tvar(a5)]), tatom(int)]),
+    ttuple([tatom(a), tatom(int)]),
+    tintersect([
+      tunion([
+        ttuple([tintersect([tatom(b), tvar(a5)]), tatom(int)]),
+        ttuple([tatom(a), tatom(int)])
+      ]),
+      tvar(a0a0)
+    ])
+  ]),
+
+  false = is_subtype(tintersect([V0, ttuple([tatom(a), tatom(int)])]), stdtypes:tnone()),
+  ok.
+
+foo2_branch2_test() ->
+  % $0 /\ !{a, 42} /\ {b, 42}
+  % $0 ::
+  %   (`b & 'a5,42)
+  % | (`a,42)
+  % | ((`b & 'a5,42) | (`a,42)) & 'a0a0;
+  % debug subtype ((((`b & 'a5,42)  | (`a,42) | ((`b & 'a5,42) | (`a,42)) & 'a0a0) & (`b, 42) \ (`a, 42)) (Empty));;
+  % (`b & 'a5,42) <= Empty : false
+  V0 = tunion([
+    ttuple([tintersect([tatom(b), tvar(a5)]), tatom(int)]),
+    ttuple([tatom(a), tatom(int)]),
+    tintersect([
+      tunion([
+        ttuple([tintersect([tatom(b), tvar(a5)]), tatom(int)]),
+        ttuple([tatom(a), tatom(int)])
+      ]),
+      tvar(a0a0)
+    ])
+  ]),
+
+  false = is_subtype(tintersect([
+    V0,
+    tnegate(ttuple([tatom(a), tatom(int)])),
+    ttuple([tatom(b), tatom(int)])
+  ]), stdtypes:tnone()),
+  ok.
+
 atoms_test() ->
   S = stdtypes:tatom(hello),
   T = stdtypes:tatom(),

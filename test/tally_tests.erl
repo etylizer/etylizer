@@ -245,39 +245,51 @@ tally_issue_14_test() ->
       {tinter([V0, ttuple1(A), TupleAny]), ttuple1(V4)}],
     [{#{}, #{}}]).
 
+
+% constraints:
+% { {$2},  $0 }
+% { ($0 /\ not({a} /\ {any()})) /\ ({b} /\ {any()}), {$6} }
+% { ($0 /\ not({a} /\ {any()})) /\ ({b} /\ {any()}), {$5} }
+% { a, $2},
+% {$0, {a} /\ {any()} | {b} /\ {any()}},
+% {$0 /\ ({a} /\ {any()}), {$4}},
+% {$0 /\ ({a} /\ {any()}), {$3}}]}
+%
+% cduce
 % debug tallying (['a0 'a1 'a2 'a3 'a4 'a5 'a6] [] [
 % (('a2, 42), 'a0)
-% (1, 'a2)
-% (('a0 & (1, 42)), ('a4, 42))
-% (('a0 & (1, 42)), ('a3, 42))
-% ('a0, (1, 42) | (2, 42))
-% ('a0 & (2, 42) \ (1, 42), ('a6, 42))
-% ('a0 & (2, 42) \ (1, 42) ,('a5, 42))
+% ('a0 & (`b, 42) \ (`a, 42), ('a6, 42))
+% ('a0 & (`b, 42) \ (`a, 42), ('a5, 42))
+% (`a, 'a2)
+% ('a0, (`a, 42) | (`b, 42))
+% (('a0 & (`a, 42)), ('a4, 42))
+% (('a0 & (`a, 42)), ('a3, 42))
 % ]);;
-% Result:[{
-%  'a0:=(2 & 'a5 & 'a6 & 'a2a2,42) | (2 & 'a5 & 'a6 & 'a2a2 & 'a3a3 & 'a4a4,42) | (1,42) | ((2 & 'a5 & 'a6,42) | (2 & 'a5 & 'a6 & 'a3a3 & 'a4a4,42) | (1,42)) & 'a0a0;
-%  'a2:=1 | 1--2 & 'a5 & 'a6 & 'a2a2 & 'a3a3 & 'a4a4 | 2 & 'a5 & 'a6 & 'a2a2;
-%  'a3:=1 | 'a3a3;
-%  'a4:=1 | 'a4a4
+% Result:
+% [{
+%   'a0:=(`b & 'a5 & 'a6 & 'a2a2,42) | (`b & 'a5 & 'a6 & 'a2a2 & 'a3a3 & 'a4a4,42) | (`a,42) | ((`b & 'a5 & 'a6,42) | (`b & 'a5 & 'a6 & 'a3a3 & 'a4a4,42) | (`a,42)) & 'a0a0;
+%   'a2:=`a | `b & 'a5 & 'a6 & 'a2a2 | (`b | `a) & 'a5 & 'a6 & 'a2a2 & 'a3a3 & 'a4a4;
+%   'a3:=`a | 'a3a3;
+%   'a4:=`a | 'a4a4
 % }]
 tally_foo2_test() ->
   % changing variable order might produce a different number of solutions
   [ast:ast_to_erlang_ty({var, X}) || X <- ['$0', '$1', '$2', '$3', '$4', '$5', '$6']],
   % (('a2, 42), 'a0)
   C1 = {{tuple,[{var,'$2'}, {singleton, tag}]},{var,'$0'}},
-  % (1, 'a2)
+  % (`a, 'a2)
   C2 = {{singleton,a},{var,'$2'}},
-  % (('a0 & (1, 42)), ('a4, 42))
+  % (('a0 & (`a, 42)), ('a4, 42))
   C3 = {
     {intersection,[ {var,'$0'}, {tuple,[{singleton,a}, {singleton, tag}]} ]},
     {tuple,[{var,'$4'}, {singleton, tag}]}
   },
-  % (('a0 & (1, 42)), ('a3, 42))
+  % (('a0 & (`a, 42)), ('a3, 42))
   C4 = {
     {intersection,[{var,'$0'}, {tuple,[{singleton,a}, {singleton, tag}]}]},
     {tuple,[{var,'$3'}, {singleton, tag}]}
   },
-  % ('a0, (1, 42) | (2, 42))
+  % ('a0, (`a, 42) | (`b, 42))
   C5 = {
     {var,'$0'},
     {union,[
@@ -285,7 +297,7 @@ tally_foo2_test() ->
       {tuple,[{singleton,b}, {singleton, tag}]}
     ]}
   },
-  % ('a0 & (2, 42) \ (1, 42), ('a6, 42))
+  % ('a0 & (`b, 42) \ (`a, 42), ('a6, 42))
   C6 = {
     {intersection, [
       {var,'$0'},
@@ -294,7 +306,7 @@ tally_foo2_test() ->
     ]},
     {tuple,[{var,'$6'}, {singleton, tag}]}},
 
-  % ('a0 & (2, 42) \ (1, 42) ,('a5, 42))
+  % ('a0 & (`b, 42) \ (`a, 42), ('a5, 42))
   C7 = {
     {intersection, [
       {var,'$0'},
@@ -310,7 +322,7 @@ tally_foo2_test() ->
     ],
     [
       {
-        #{'$0' => ttuple([tatom(a), tatom(tag)]), '$2' => tatom(a), '$3' => tatom(a), '$4' => tatom(a) },
-        #{'$0' => tunion([ttuple([tatom(a), tatom(tag)]), ttuple([tatom(b), tatom(tag)])]), '$2' => tunion([tatom(a), tatom(b)]), '$3' => tany(), '$4' => tany() }
+        #{'$0' => ttuple([tatom(a), tatom(tag)])                                          , '$2' => tatom(a),                     '$3' => tatom(a), '$4' => tatom(a) },
+        #{'$0' => tunion([ttuple([tatom(a), tatom(tag)]), ttuple([tatom(b), tatom(tag)])]), '$2' => tunion([tatom(a), tatom(b)]), '$3' => tany(),   '$4' => tany() }
       }
     ]).

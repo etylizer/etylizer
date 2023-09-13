@@ -1,6 +1,6 @@
 -module(ty_ref).
 
--export([any/0, store/1, load/1, new_ty_ref/0, define_ty_ref/2, is_empty_cached/1, store_is_empty_cached/2, store_recursive_variable/2, check_recursive_variable/1]).
+-export([setup_ets/0, any/0, store/1, load/1, new_ty_ref/0, define_ty_ref/2, is_empty_cached/1, store_is_empty_cached/2, store_recursive_variable/2, check_recursive_variable/1]).
 -export([memoize/1, is_empty_memoized/1, reset/0, is_normalized_memoized/3]).
 
 -on_load(setup_ets/0).
@@ -39,6 +39,7 @@ reset() ->
 -spec setup_ets() -> ok.
 setup_ets() ->
   spawn(fun() ->
+    catch(begin
     % spawns a new process that is the owner of the variable id ETS table
     lists:foreach(fun(Tab) -> ets:new(Tab, [public, named_table]) end, all_tables()),
     ets:insert(?TY_UTIL, {ty_number, 0}),
@@ -55,6 +56,7 @@ setup_ets() ->
     ets:insert(?EMPTY_CACHE, {EmptyId, true}),
 
     receive _ -> ok end
+           end)
         end),
   ok.
 
@@ -96,7 +98,8 @@ define_ty_ref({ty_ref, Id}, Ty) ->
   % TODO think about this solution more thoroughly, edge cases?
   Object = ets:lookup(?TY_UNIQUE_TABLE, Ty),
   case Object of
-    [] -> ok;
+    [] ->
+      ok;
     [{_, OldId}] ->
       % last ty ref inserted is the recursive type, delete from memory and decrease ty number by one
       ets:delete(?TY_MEMORY, OldId),
@@ -111,7 +114,6 @@ define_ty_ref({ty_ref, Id}, Ty) ->
   {ty_ref, Id}.
 
 load({ty_ref, Id}) ->
-  %%  io:format(user, "LOOKUP ~p -> ~p ~n", [Id, Object]),
   [{Id, Ty}] = ets:lookup(?TY_MEMORY, Id),
   Ty.
 
