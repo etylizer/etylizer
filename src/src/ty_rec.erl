@@ -8,11 +8,11 @@
 -export([is_empty/1, eval/1]).
 
 % additional type constructors
--export([ variable/1, atom/1, interval/1, tuple/2]).
+-export([predef/0, predef/1, variable/1, atom/1, interval/1, tuple/2]).
 % type constructors with type refs
 -export([function/2]).
 % top type constructors
--export([function/0, atom/0, interval/0, tuple/0, ty_of/4]).
+-export([function/0, atom/0, interval/0, tuple/0, ty_of/5]).
 
 -export([is_equivalent/2, is_subtype/2, normalize/3]).
 
@@ -20,12 +20,12 @@
 
 -export([transform/2]).
 
--record(ty, {atom, interval, tuple, function}).
+-record(ty, {predef, atom, interval, tuple, function}).
 
 -type ty_ref() :: {ty_ref, integer()}.
 -type interval() :: term().
 %%-type ty_tuple() :: term().
--type ty_function() :: term().
+%%-type ty_function() :: term().
 -type ty_variable() :: term().
 -type ty_atom() :: term().
 
@@ -34,8 +34,8 @@
 % top-level API
 % ======
 
-ty_of(Atom, Int, Tuple, Function) ->
-  #ty{atom = Atom, interval = Int, tuple = Tuple, function = Function}.
+ty_of(Predef, Atom, Int, Tuple, Function) ->
+  #ty{predef = Predef, atom = Atom, interval = Int, tuple = Tuple, function = Function}.
 
 is_subtype(TyRef1, TyRef2) ->
   NewTy = intersect(TyRef1, ty_rec:negate(TyRef2)),
@@ -51,19 +51,21 @@ transform(TyRef, Ops =
     any_fun := Functions,
     any_int := Intervals,
     any_atom := Atoms,
+    any_predef := Predef,
     union := Union,
     intersect := Intersect
   }) ->
   Ty = ty_ref:load(TyRef),
-  #ty{atom = A, interval = I, tuple = {DT, T}, function = {DF, F}} = Ty,
+  #ty{predef = P, atom = A, interval = I, tuple = {DT, T}, function = {DF, F}} = Ty,
 
+  NP = Intersect([Predef(), dnf_var_predef:transform(P, Ops)]),
   NA = Intersect([Atoms(), dnf_var_ty_atom:transform(A, Ops)]),
   NI = Intersect([Intervals(), dnf_var_int:transform(I, Ops)]),
   NT = Intersect([Tuples(), multi_transform(DT, T, Ops)]),
   NF = Intersect([Functions(), multi_transform_fun(DF, F, Ops)]),
 
 
-  Union([NA, NI, NT, NF]).
+  Union([NP, NA, NI, NT, NF]).
 
 multi_transform(DefaultT, T, Ops = #{negate := Negate, union := Union, intersect := Intersect}) ->
   X1 = dnf_var_ty_tuple:transform(DefaultT, Ops),
@@ -88,6 +90,7 @@ multi_transform_fun(DefaultF, F, Ops = #{negate := Negate, union := Union, inter
 -spec empty() -> ty_ref().
 empty() ->
   ty_ref:store(#ty{
+    predef = dnf_var_predef:empty(),
     atom = dnf_var_ty_atom:empty(),
     interval = dnf_var_int:empty(),
     tuple = {dnf_var_ty_tuple:empty(), #{}},
@@ -103,6 +106,7 @@ variable(Var) ->
   Any = ty_ref:load(any()),
 
   ty_ref:store(Any#ty{
+    predef = dnf_var_predef:intersect(Any#ty.predef, dnf_var_predef:var(Var)),
     atom = dnf_var_ty_atom:intersect(Any#ty.atom, dnf_var_ty_atom:ty_var(Var)),
     interval = dnf_var_int:intersect(Any#ty.interval, dnf_var_int:var(Var)),
     tuple = {dnf_var_ty_tuple:var(Var), #{}},
@@ -124,6 +128,11 @@ interval(Interval) ->
 
 -spec interval() -> ty_ref().
 interval() -> interval(dnf_var_int:any()).
+
+predef(Predef) ->
+  Empty = ty_ref:load(empty()),
+  ty_ref:store(Empty#ty{ predef = Predef }).
+predef() -> predef(dnf_var_predef:any()).
 
 %%-spec tuple(ty_tuple()) -> ty_ref().
 tuple({default, Sizes}, Tuple) ->
@@ -165,9 +174,10 @@ function() ->
 
 -spec intersect(ty_ref(), ty_ref()) -> ty_ref().
 intersect(TyRef1, TyRef2) ->
-  #ty{atom = A1, interval = I1, tuple = T1, function = F1} = ty_ref:load(TyRef1),
-  #ty{atom = A2, interval = I2, tuple = T2, function = F2} = ty_ref:load(TyRef2),
+  #ty{predef = P1, atom = A1, interval = I1, tuple = T1, function = F1} = ty_ref:load(TyRef1),
+  #ty{predef = P2, atom = A2, interval = I2, tuple = T2, function = F2} = ty_ref:load(TyRef2),
   ty_ref:store(#ty{
+    predef = dnf_var_predef:intersect(P1, P2),
     atom = dnf_var_ty_atom:intersect(A1, A2),
     interval = dnf_var_int:intersect(I1, I2),
     tuple = multi_intersect(T1, T2),
@@ -176,8 +186,9 @@ intersect(TyRef1, TyRef2) ->
 
 -spec negate(ty_ref()) -> ty_ref().
 negate(TyRef1) ->
-   #ty{atom = A1, interval = I1, tuple = {DT, T}, function = {DF, F}} = ty_ref:load(TyRef1),
+   #ty{predef = P1, atom = A1, interval = I1, tuple = {DT, T}, function = {DF, F}} = ty_ref:load(TyRef1),
   ty_ref:store(#ty{
+    predef = dnf_var_predef:negate(P1),
     atom = dnf_var_ty_atom:negate(A1),
     interval = dnf_var_int:negate(I1),
     tuple = {dnf_var_ty_tuple:negate(DT), maps:map(fun(_K,V) -> dnf_var_ty_tuple:negate(V) end, T)},
@@ -223,7 +234,8 @@ is_empty(TyRef) ->
 
 is_empty_miss(TyRef) ->
   Ty = ty_ref:load(TyRef),
-  dnf_var_ty_atom:is_empty(Ty#ty.atom)
+  dnf_var_predef:is_empty(Ty#ty.predef)
+  andalso dnf_var_ty_atom:is_empty(Ty#ty.atom)
     andalso dnf_var_int:is_empty(Ty#ty.interval)
     andalso (
       begin
@@ -259,13 +271,15 @@ is_any(_Arg0) ->
 
 normalize(TyRef, Fixed, M) ->
   Ty = ty_ref:load(TyRef),
+  PredefNormalize = dnf_var_predef:normalize(Ty#ty.predef, Fixed, M),
   AtomNormalize = dnf_var_ty_atom:normalize(Ty#ty.atom, Fixed, M),
-  case AtomNormalize of
+  Both = constraint_set:merge_and_meet(PredefNormalize, AtomNormalize),
+  case Both of
     [] -> [];
     _ ->
 
       IntervalNormalize = dnf_var_int:normalize(Ty#ty.interval, Fixed, M),
-      Res1 = constraint_set:merge_and_meet(AtomNormalize, IntervalNormalize),
+      Res1 = constraint_set:merge_and_meet(Both, IntervalNormalize),
       case Res1 of
         [] -> [];
         _ ->
@@ -323,6 +337,7 @@ substitute(TyRef, SubstituteMap, OldMemo) ->
   case maps:get(TyRef, OldMemo, undefined) of
     undefined ->
       Ty = #ty{
+        predef = Predef,
         atom = Atoms,
         interval = Ints,
         tuple = {DefaultT, AllTuples},
@@ -336,6 +351,7 @@ substitute(TyRef, SubstituteMap, OldMemo) ->
           RecursiveNewRef = ty_ref:new_ty_ref(),
           Memo = OldMemo#{TyRef => RecursiveNewRef},
           NewTy = #ty{
+            predef = dnf_var_predef:substitute(Predef, SubstituteMap),
             atom = dnf_var_ty_atom:substitute(Atoms, SubstituteMap),
             interval = dnf_var_int:substitute(Ints, SubstituteMap),
             tuple = multi_substitute(DefaultT, AllTuples, SubstituteMap, Memo),
@@ -344,6 +360,7 @@ substitute(TyRef, SubstituteMap, OldMemo) ->
           ty_ref:define_ty_ref(RecursiveNewRef, NewTy);
         false ->
           NewTy = #ty{
+            predef = dnf_var_predef:substitute(Predef, SubstituteMap),
             atom = dnf_var_ty_atom:substitute(Atoms, SubstituteMap),
             interval = dnf_var_int:substitute(Ints, SubstituteMap),
             tuple = multi_substitute(DefaultT, AllTuples, SubstituteMap, OldMemo),
@@ -408,12 +425,16 @@ pi(interval, TyRef) ->
 pi(tuple, TyRef) ->
   Ty = ty_ref:load(TyRef),
   Ty#ty.tuple;
+pi(predef, TyRef) ->
+  Ty = ty_ref:load(TyRef),
+  Ty#ty.predef;
 pi(function, TyRef) ->
   Ty = ty_ref:load(TyRef),
   Ty#ty.function.
 
 all_variables(TyRef) ->
   #ty{
+    predef = Predefs,
     atom = Atoms,
     interval = Ints,
     tuple = Tuples,
@@ -421,7 +442,9 @@ all_variables(TyRef) ->
   } = ty_ref:load(TyRef),
 
 
-  lists:usort(dnf_var_ty_atom:all_variables(Atoms)
+  lists:usort(
+    dnf_var_predef:all_variables(Predefs)
+  ++  dnf_var_ty_atom:all_variables(Atoms)
   ++ dnf_var_int:all_variables(Ints)
     ++ dnf_var_ty_tuple:all_variables(Tuples)
     ++ dnf_var_ty_function:all_variables(Functions)).

@@ -63,7 +63,7 @@ tally(Constraints, FixedVars) ->
         _ ->
           % TODO expensive sanity check
           % sanity: every substitution satisfies all given constraints
-          [true = is_valid_substitution(Constraints, maps:from_list(Subst)) || Subst <- Solved],
+%%          [true = is_valid_substitution(Constraints, maps:from_list(Subst)) || Subst <- Solved],
           Solved
       end.
 

@@ -193,6 +193,7 @@ norm({tuple, Components}) ->
   Tuple = dnf_var_ty_tuple:tuple(dnf_ty_tuple:tuple(ty_tuple:tuple(Normed))),
   ty_rec:tuple(length(Components), Tuple);
 norm({'fun', A, B}) ->
+  error(todo),
   TyA = norm(A),
   TyB = norm(B),
 

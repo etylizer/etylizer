@@ -92,17 +92,10 @@ should_run(Name, {exclude,Set}) -> not sets:is_element(Name, Set).
 
 simple_test_() ->
   WhatNot = [
-    % FIXME #36 impossible branches bug, completeness bug
     "foo2",
     % TODO specials (float, pid, [], ...)
     % TODO lists
-    "integer_07",
-    "float_01",
-    "float_02",
-    "float_03",
     "float_04_fail",
-    "float_05_fail",
-    "case_09",
     "foo",
     "inter_04_fail",
     "nil_01",
@@ -118,31 +111,22 @@ simple_test_() ->
     "string_06_fail",
     "string_07",
     "string_08_fail",
-    "op_01",
-    "op_03",
     "op_04",
-    "op_06_fail",
     "op_07_fail",
     "op_08",
-    "block_01",
-    "block_02_fail",
-    "block_03",
-    "catch_01",
-    "catch_02",
-    "catch_03_fail",
     "cons_01",
     "cons_02",
     "cons_03",
     "cons_04_fail",
     "cons_05",
     "cons_06_fail",
-    "fun_local_01",
+    "inter_03_fail",
+    % TODO 11s
     "fun_local_02",
+    % TODO 7s
     "fun_local_03",
-    "fun_local_04",
-    "fun_local_05_fail",
-    "if_04_fail",
-    "inter_03_fail"
+    % TODO 23s
+    "fun_local_04"
             ],
   check_decls_in_file("test_files/tycheck_simple.erl",
                       {exclude, sets:from_list(WhatNot)}).

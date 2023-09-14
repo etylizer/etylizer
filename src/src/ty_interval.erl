@@ -19,6 +19,9 @@ transform([any_int], #{any := E}) -> E();
 transform([Int | Others], Ops = #{union := U}) -> U([transform_single(Int, Ops), transform(Others, Ops)]).
 
 transform_single({range, A, B}, #{to_int := Int}) -> Int(A, B);
+% TODO hack
+transform_single({left, -1}, _) -> {predef_alias, neg_integer};
+transform_single({right, 1}, _) -> {predef_alias, pos_integer};
 transform_single(Interval, Ops) ->
     erlang:error({"Left/Right unbounded intervals not supported by Erlang language: ", {Interval, Ops}}).
 

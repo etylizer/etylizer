@@ -425,11 +425,11 @@ empty_tuples_edge_cases_test() ->
 %%
 %%  true = is_subtype(S, T),
 %%  false = is_subtype(T, S).
-%%
-%%simple_predef_alias_test() ->
-%%  S = {predef_alias, term},
-%%  true = is_subtype(S, S),
-%%  ok.
+
+simple_predef_alias_test() ->
+  S = {predef_alias, term},
+  true = is_subtype(S, S),
+  ok.
 %%
 %%
 %%

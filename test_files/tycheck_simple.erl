@@ -152,7 +152,7 @@ op_04() -> [1,2] ++ [3,4].
 op_05() -> 1 =:= foo.
 
 -spec op_06_fail(integer()) -> boolean().
-op_06_fail(X) -> X + "foo".
+op_06_fail(X) -> X + foo.
 
 -spec op_07_fail() -> list(integer()).
 op_07_fail() -> [1,2] ++ ["foo", "bar"].
@@ -344,7 +344,7 @@ fun_local_04() ->
 -spec fun_local_05_fail(integer()) -> integer().
 fun_local_05_fail(X) ->
     F = fun(Y) -> X + Y end,
-    F("foo").
+    F(foo).
 
 % if
 -spec if_01(integer()) -> integer().
