@@ -95,6 +95,7 @@ simple_test_() ->
     % FIXME #36 impossible branches bug, completeness bug
     "foo2",
     % TODO specials (float, pid, [], ...)
+    % TODO lists
     "integer_07",
     "float_01",
     "float_02",
@@ -102,7 +103,6 @@ simple_test_() ->
     "float_04_fail",
     "float_05_fail",
     "case_09",
-    % TODO lists
     "foo",
     "inter_04_fail",
     "nil_01",
@@ -118,14 +118,9 @@ simple_test_() ->
     "string_06_fail",
     "string_07",
     "string_08_fail",
-    % TODO n-functions
-    "fun_03",
-    "fun_04_fail",
     "op_01",
-    "op_02",
     "op_03",
     "op_04",
-    "op_05",
     "op_06_fail",
     "op_07_fail",
     "op_08",
@@ -146,14 +141,7 @@ simple_test_() ->
     "fun_local_03",
     "fun_local_04",
     "fun_local_05_fail",
-    "if_01",
-    "if_02",
-    "if_03_fail",
     "if_04_fail",
-    "if_05",
-    "fun_ref_01",
-    "fun_ref_02_fail",
-    "fun_ref_03_fail",
     "inter_03_fail"
             ],
   check_decls_in_file("test_files/tycheck_simple.erl",

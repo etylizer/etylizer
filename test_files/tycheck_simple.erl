@@ -124,10 +124,10 @@ fun_01(X) -> X.
 -spec fun_02_fail(integer()) -> atom().
 fun_02_fail(X) -> X.
 
--spec fun_03(string(), integer()) -> integer().
+-spec fun_03(atom(), integer()) -> integer().
 fun_03(_X, Y) -> Y.
 
--spec fun_04_fail(string(), integer()) -> integer().
+-spec fun_04_fail(atom(), integer()) -> integer().
 fun_04_fail(X, _Y) -> X.
 
 -spec fun_05(integer()) -> any().
@@ -149,7 +149,7 @@ op_03() -> -3.
 op_04() -> [1,2] ++ [3,4].
 
 -spec op_05() -> boolean().
-op_05() -> 1 =:= "foo".
+op_05() -> 1 =:= foo.
 
 -spec op_06_fail(integer()) -> boolean().
 op_06_fail(X) -> X + "foo".
@@ -353,16 +353,16 @@ if_01(X) ->
        true -> 0
     end.
 
--spec if_02(integer()) -> integer() | string().
+-spec if_02(integer()) -> integer() | atom().
 if_02(X) ->
     if X =:= 0 -> 42;
-       true -> "foo"
+       true -> foo
     end.
 
 -spec if_03_fail(integer()) -> integer().
 if_03_fail(X) ->
     if X =:= 0 -> 42;
-       true -> "foo"
+       true -> foo
     end.
 
 -spec if_04_fail(atom()) -> integer().
@@ -449,6 +449,6 @@ foo(L) ->
 foo3(a) -> 1;
 foo3(b) -> true.
 
--spec foo2 (a) -> 1; (b) -> 2.
-foo2(a) -> 1;
-foo2(b) -> 2.
+%%-spec foo2 (a) -> 1; (b) -> 2.
+%%foo2(a) -> 1;
+%%foo2(b) -> 2.
