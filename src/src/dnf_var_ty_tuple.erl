@@ -1,6 +1,7 @@
 -module(dnf_var_ty_tuple).
 
 -define(P, {dnf_ty_tuple, ty_variable}).
+-define(F(Z), fun() -> Z end).
 
 -behavior(eq).
 -export([equal/2, compare/2]).
@@ -48,7 +49,7 @@ is_empty(Size, {terminal, Tuple}) ->
   dnf_ty_tuple:is_empty(Size, Tuple);
 is_empty(Size, {node, _Variable, PositiveEdge, NegativeEdge}) ->
   is_empty(Size, PositiveEdge)
-    and is_empty(Size, NegativeEdge).
+    andalso is_empty(Size, NegativeEdge).
 
 normalize(Size, Ty, Fixed, M) ->
   normalize(Size, Ty, [], [], Fixed, M).
@@ -64,9 +65,9 @@ normalize(Size, {terminal, Tuple}, PVar, NVar, Fixed, M) ->
       dnf_ty_tuple:normalize(Size, Tuple, PVar, NVar, Fixed, sets:union(M, sets:from_list([Tuple])))
   end;
 normalize(Size, {node, Variable, PositiveEdge, NegativeEdge}, PVar, NVar, Fixed, M) ->
-  constraint_set:merge_and_meet(
-    normalize(Size, PositiveEdge, [Variable | PVar], NVar, Fixed, M),
-    normalize(Size, NegativeEdge, PVar, [Variable | NVar], Fixed, M)
+  constraint_set:meet(
+    ?F(normalize(Size, PositiveEdge, [Variable | PVar], NVar, Fixed, M)),
+    ?F(normalize(Size, NegativeEdge, PVar, [Variable | NVar], Fixed, M))
   ).
 
 substitute(Size, T, M, Memo) -> substitute(Size, T, M, Memo, [], []).

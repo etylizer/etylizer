@@ -1,11 +1,12 @@
 -module(dnf_var_ty_function).
 
 -define(P, {dnf_ty_function, ty_variable}).
+-define(F(Z), fun() -> Z end).
 
 -behavior(eq).
 -export([equal/2, compare/2]).
 
--behavior(type).
+%%-behavior(type).
 -export([empty/0, any/0, union/2, intersect/2, diff/2, negate/1]).
 -export([eval/1, is_empty/2, is_any/1, normalize/4, substitute/4]).
 
@@ -49,7 +50,7 @@ is_empty(Size, {terminal, Function}) ->
   dnf_ty_function:is_empty(Size, Function);
 is_empty(Size, {node, _Variable, PositiveEdge, NegativeEdge}) ->
   is_empty(Size, PositiveEdge)
-    and is_empty(Size, NegativeEdge).
+    andalso is_empty(Size, NegativeEdge).
 
 normalize(Size, Ty, Fixed, M) -> normalize(Size, Ty, [], [], Fixed, M).
 
@@ -64,9 +65,9 @@ normalize(Size, {terminal, Function}, PVar, NVar, Fixed, M) ->
       dnf_ty_function:normalize(Size, Function, PVar, NVar, Fixed, sets:union(M, sets:from_list([Function])))
   end;
 normalize(Size, {node, Variable, PositiveEdge, NegativeEdge}, PVar, NVar, Fixed, M) ->
-  constraint_set:merge_and_meet(
-    normalize(Size, PositiveEdge, [Variable | PVar], NVar, Fixed, M),
-    normalize(Size, NegativeEdge, PVar, [Variable | NVar], Fixed, M)
+  constraint_set:meet(
+    ?F(normalize(Size, PositiveEdge, [Variable | PVar], NVar, Fixed, M)),
+    ?F(normalize(Size, NegativeEdge, PVar, [Variable | NVar], Fixed, M))
   ).
 
 

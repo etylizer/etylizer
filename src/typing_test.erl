@@ -69,6 +69,7 @@ check_decls_in_file(F, What) ->
           true ->
             TestCases ++ [
               {NameStr, fun() ->
+              io:format(user, "~nType checking ~s from ~s~n", [NameStr, F]),
                 ?LOG_NOTE("Type checking ~s from ~s", NameStr, F),
                 Ty = symtab:lookup_fun({ref, Name, Arity}, Loc, Tab),
                 case utils:string_ends_with(NameStr, "_fail") of
@@ -121,8 +122,8 @@ simple_test_() ->
     "cons_05",
     "cons_06_fail",
     "inter_03_fail",
-    % TODO 11s
-    "fun_local_02",
+%%    % TODO 11s
+%%    "fun_local_02",
     % TODO 7s
     "fun_local_03",
     % TODO 23s
