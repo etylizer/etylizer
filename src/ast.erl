@@ -547,7 +547,7 @@ erlang_ty_to_ast(X) ->
     ty_rec:transform(
         X,
         #{
-            to_fun => fun(S, T) -> stdtypes:tfun_full([erlang_ty_to_ast(S)], erlang_ty_to_ast(T)) end,
+            to_fun => fun(S, T) -> stdtypes:tfun_full(lists:map(fun(F) -> erlang_ty_to_ast(F) end,S), erlang_ty_to_ast(T)) end,
             to_tuple => fun(Ts) -> stdtypes:ttuple(lists:map(fun(T) -> erlang_ty_to_ast(T) end,Ts)) end,
             to_atom => fun(A) -> stdtypes:tatom(A) end,
             to_int => fun(X, Y) -> stdtypes:trange(X, Y) end,
@@ -591,18 +591,13 @@ ast_to_erlang_ty({tuple, Comps}) ->
 
 % funs
 ast_to_erlang_ty({fun_simple}) ->
-    % TODO n-function any
-    T = dnf_var_ty_function:any(),
-    ty_rec:function(T);
-ast_to_erlang_ty({fun_full, [A], Result}) ->
-    TyA = ast_to_erlang_ty(A),
+    ty_rec:function();
+ast_to_erlang_ty({fun_full, Comps, Result}) ->
+    ETy = lists:map(fun(T) -> ast_to_erlang_ty(T) end, Comps),
     TyB = ast_to_erlang_ty(Result),
 
-    T = dnf_var_ty_function:function(dnf_ty_function:function(ty_function:function(TyA, TyB))),
-    ty_rec:function(T);
-ast_to_erlang_ty({fun_full, Components, _Result}) ->
-    % TODO
-    erlang:error({"Function domain size not implemented yet", length(Components)});
+    T = dnf_var_ty_function:function(dnf_ty_function:function(ty_function:function(ETy, TyB))),
+    ty_rec:function(length(Comps), T);
 
 % var
 ast_to_erlang_ty({var, A}) ->

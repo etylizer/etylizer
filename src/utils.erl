@@ -13,8 +13,14 @@
     string_ends_with/2, shorten/2,
     mkdirs/1, hash_sha1/1, hash_file/1,
     list_uniq/1, lists_enumerate/1, lists_enumerate/2,
-    with_default/2
+    with_default/2,
+    mingle/5
 ]).
+
+mingle(LeftDefault, RightDefault, AllLeft, AllRight, Op) ->
+    AllKeys = maps:keys(AllLeft) ++ maps:keys(AllRight),
+    % LeftDefault + Right (left not assigned)  Left + RightDefault (right not assigned) Left + Right (both)
+    maps:from_list(lists:map(fun(Key) -> {Key, Op(maps:get(Key, AllLeft, LeftDefault), maps:get(Key, AllRight, RightDefault))} end, AllKeys)).
 
 -spec map_opt(fun((T) -> U | error), [T]) -> [U].
 map_opt(F, L) -> map_opt(F, error, L).

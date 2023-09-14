@@ -69,7 +69,7 @@ define_any() ->
   Ty1 = dnf_var_ty_atom:any(),
   Ty2 = dnf_var_int:any(),
   Ty3 = {dnf_var_ty_tuple:any(), #{}},
-  Ty4 = dnf_var_ty_function:any(),
+  Ty4 = {dnf_var_ty_function:any(), #{}},
 
   Ty = ty_rec:ty_of(Ty1, Ty2, Ty3, Ty4),
 
@@ -125,7 +125,7 @@ store(Ty) ->
   case Object of
     [] ->
       Id = ets:update_counter(?TY_UTIL, ty_number, {2, 1}),
-%%      io:format(user, "Store: ~p :=~n~p~n", [Id, Ty]),
+      io:format(user, "Store: ~p :=~n~p~n", [Id, Ty]),
       ets:insert(?TY_UNIQUE_TABLE, {Ty, Id}),
       ets:insert(?TY_MEMORY, {Id, Ty}),
       {ty_ref, Id};

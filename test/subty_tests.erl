@@ -88,16 +88,16 @@ simple_prod_var_test() ->
   false = is_subtype( T, S ),
   ok.
 
-%%
-%%empty_functions_test() ->
-%%  AllFuns = {fun_simple},
-%%  S = {fun_full, [tatom(ok), {predef, none}], tatom(ok)},
-%%  T = {fun_full, [{predef, none}, tatom(hello), tatom(no)], tatom(ok2)},
-%%  true = not is_subtype( S, T ),
-%%  true = not is_subtype( T, S ),
-%%  true = is_subtype(S, AllFuns),
-%%  true = is_subtype(T, AllFuns),
-%%  ok.
+
+empty_functions_test() ->
+  AllFuns = {fun_simple},
+  S = {fun_full, [tatom(ok), {predef, none}], tatom(ok)},
+  T = {fun_full, [{predef, none}, tatom(hello), tatom(no)], tatom(ok2)},
+  false = is_subtype( S, T ),
+  false = is_subtype( T, S ),
+  true = is_subtype(S, AllFuns),
+  true = is_subtype(T, AllFuns),
+  ok.
 
 simple_int_test() ->
   true = is_subtype(stdtypes:trange_any(), stdtypes:trange_any()).
@@ -168,24 +168,6 @@ refine_test() ->
   Body = i(a(b(a), b(a)), a(b(b), b(b))),
   true = is_subtype( Body, Annotation ),
   false = is_subtype( Annotation, Body ).
-
-% create fun_simple with only fun_full
-%%all_funs_test() ->
-%%  Everything =
-%%  tunion([
-%%    tnegate(tfun_full([tatom(b)], tatom(a))),
-%%    tfun_full([tatom(b)], tatom(a))
-%%  ]),
-%%  true = is_equiv( Everything, {predef, any}),
-%%
-%%  OnlyFuns = tintersect([{predef, any},
-%%    tnegate(tunion([tatom(), stdtypes:tspecial_any(), stdtypes:tlist_any(), trange_any(), ttuple_any()]))
-%%  ]),
-%%
-%%  true = is_subtype({fun_simple}, OnlyFuns),
-%%  true = is_subtype(OnlyFuns, {fun_simple}),
-%%
-%%  ok.
 
 edge_cases_test() ->
   false = is_subtype( v(alpha), {predef, none} ),
@@ -293,13 +275,13 @@ pos_var_prod_test() ->
   false = is_subtype( T, S ),
   ok.
 
-%%neg_var_fun_test() ->
-%%  S = stdtypes:tfun_full([stdtypes:tatom(hello), stdtypes:tvar(alpha)], stdtypes:tatom(ok)),
-%%  T = stdtypes:tvar(alpha),
-%%
-%%  false = is_subtype( S, T ),
-%%  false = is_subtype( T, S ),
-%%  ok.
+neg_var_fun_test() ->
+  S = stdtypes:tfun_full([stdtypes:tatom(hello), stdtypes:tvar(alpha)], stdtypes:tatom(ok)),
+  T = stdtypes:tvar(alpha),
+
+  false = is_subtype( S, T ),
+  false = is_subtype( T, S ),
+  ok.
 
 pos_var_fun_test() ->
   S = i(stdtypes:tfun_full([stdtypes:tatom(hello)], stdtypes:tatom(ok)), stdtypes:tvar(alpha)),

@@ -7,7 +7,7 @@
 
 -behavior(type).
 -export([empty/0, any/0, union/2, intersect/2, diff/2, negate/1]).
--export([eval/1, is_empty/1, is_any/1, normalize/3, substitute/3]).
+-export([eval/1, is_empty/2, is_any/1, normalize/4, substitute/4]).
 
 -export([var/1, function/1, all_variables/1, has_ref/2, transform/2]).
 
@@ -44,36 +44,37 @@ equal(B1, B2) -> gen_bdd:equal(?P, B1, B2).
 compare(B1, B2) -> gen_bdd:compare(?P, B1, B2).
 
 
-is_empty(0) -> true;
-is_empty({terminal, Function}) ->
-  dnf_ty_function:is_empty(Function);
-is_empty({node, _Variable, PositiveEdge, NegativeEdge}) ->
-  is_empty(PositiveEdge)
-    and is_empty(NegativeEdge).
+is_empty(_, 0) -> true;
+is_empty(Size, {terminal, Function}) ->
+  dnf_ty_function:is_empty(Size, Function);
+is_empty(Size, {node, _Variable, PositiveEdge, NegativeEdge}) ->
+  is_empty(Size, PositiveEdge)
+    and is_empty(Size, NegativeEdge).
 
-normalize(Ty, Fixed, M) -> normalize(Ty, [], [], Fixed, M).
+normalize(Size, Ty, Fixed, M) -> normalize(Size, Ty, [], [], Fixed, M).
 
-normalize(0, _, _, _, _) -> [[]]; % satisfiable
-normalize({terminal, Function}, PVar, NVar, Fixed, M) ->
+normalize(_, 0, _, _, _, _) -> [[]]; % satisfiable
+normalize(Size, {terminal, Function}, PVar, NVar, Fixed, M) ->
   case ty_ref:is_normalized_memoized(Function, Fixed, M) of
     true ->
       % TODO test case
       error({todo, extract_test_case, memoize_function}); %[[]];
     miss ->
       % memoize only non-variable component t0
-      dnf_ty_function:normalize(Function, PVar, NVar, Fixed, sets:union(M, sets:from_list([Function])))
+      dnf_ty_function:normalize(Size, Function, PVar, NVar, Fixed, sets:union(M, sets:from_list([Function])))
   end;
-normalize({node, Variable, PositiveEdge, NegativeEdge}, PVar, NVar, Fixed, M) ->
+normalize(Size, {node, Variable, PositiveEdge, NegativeEdge}, PVar, NVar, Fixed, M) ->
   constraint_set:merge_and_meet(
-    normalize(PositiveEdge, [Variable | PVar], NVar, Fixed, M),
-    normalize(NegativeEdge, PVar, [Variable | NVar], Fixed, M)
+    normalize(Size, PositiveEdge, [Variable | PVar], NVar, Fixed, M),
+    normalize(Size, NegativeEdge, PVar, [Variable | NVar], Fixed, M)
   ).
 
 
-substitute(T, M, Memo) -> substitute(T, M, Memo, [], []).
+substitute(Size, T, M, Memo) -> substitute(Size, T, M, Memo, [], []).
 
-substitute(0, _, _, _, _) -> 0;
-substitute({terminal, Function}, Map, Memo, Pos, Neg) ->
+substitute(default, 0, _, _, _, _) -> {empty(), #{}};
+substitute(Size, 0, _, _, _, _) -> {empty(), #{Size => empty()}};
+substitute(Size, {terminal, Function}, Map, Memo, Pos, Neg) ->
   AllPos = lists:map(
     fun(Var) ->
       Substitution = maps:get(Var, Map, ty_rec:variable(Var)),
@@ -86,16 +87,22 @@ substitute({terminal, Function}, Map, Memo, Pos, Neg) ->
       ty_rec:pi(function, NewNeg)
     end, Neg),
 
-  lists:foldl(fun(Current, All) ->
-    intersect(Current, All)
-              end, function(dnf_ty_function:substitute(Function, Map, Memo)), AllPos ++ AllNeg);
+  Base = case Size of
+           default ->
+             {function(dnf_ty_function:substitute(Function, Map, Memo)), #{}};
+           _ ->
+             {empty(), #{Size => function(dnf_ty_function:substitute(Function, Map, Memo))}}
+         end,
 
-substitute({node, Variable, PositiveEdge, NegativeEdge}, Map, Memo, P, N) ->
+  lists:foldl(fun({CurrentDefault, CurrentFunction}, {AllDefault, AllFunction}) ->
+    {intersect(CurrentDefault, AllDefault), utils:mingle(CurrentDefault, AllDefault, CurrentFunction, AllFunction, fun intersect/2)}
+              end, Base, AllPos ++ AllNeg);
 
-  LBdd = substitute(PositiveEdge, Map, Memo, [Variable | P], N),
-  RBdd = substitute(NegativeEdge, Map, Memo, P, [Variable | N]),
+substitute(Size, {node, Variable, PositiveEdge, NegativeEdge}, Map, Memo, P, N) ->
+  {LeftDefault, LeftOthers} = substitute(Size, PositiveEdge, Map, Memo, [Variable | P], N),
+  {RightDefault, RightOthers} = substitute(Size, NegativeEdge, Map, Memo, P, [Variable | N]),
 
-  union(LBdd, RBdd).
+  {union(LeftDefault, RightDefault), utils:mingle(LeftDefault, RightDefault, LeftOthers, RightOthers, fun union/2)}.
 
 has_ref(0, _) -> false;
 has_ref({terminal, Function}, Ref) ->
@@ -105,8 +112,10 @@ has_ref({node, _Variable, PositiveEdge, NegativeEdge}, Ref) ->
 
 
 
+all_variables({Default, Others}) when is_map(Others) ->
+  all_variables(Default) ++ lists:map(fun({_K,V}) -> all_variables(V) end, maps:to_list(Others));
 all_variables(0) -> [];
-all_variables({terminal, Function}) -> dnf_ty_function:all_variables(Function);
+all_variables({terminal, Tuple}) -> dnf_ty_function:all_variables(Tuple);
 all_variables({node, Variable, PositiveEdge, NegativeEdge}) ->
 [Variable] ++ all_variables(PositiveEdge) ++ all_variables(NegativeEdge).
 
@@ -121,22 +130,22 @@ transform({node, Variable, PositiveEdge, NegativeEdge},
     Intersect([Negate(AstVar), transform(NegativeEdge, Ops)])
   ]).
 
--ifdef(TEST).
--include_lib("eunit/include/eunit.hrl").
-
-usage_test() ->
-  %   any arrow
-  TIa = ty_rec:empty(),
-  TIb = ty_rec:empty(),
-  Ty_F1 = ty_rec:function(dnf_var_ty_function:function(dnf_ty_function:function(ty_function:function(TIa, TIb)))),
-
-  %   any arrow 2
-  Ty_F2 = ty_rec:function(),
-
-  true = ty_rec:is_subtype(Ty_F1, Ty_F2),
-  true = ty_rec:is_subtype(Ty_F2, Ty_F1),
-%%  io:format(user, "~p~n", [Bdd]),
-
-  ok.
-
--endif.
+%%-ifdef(TEST).
+%%-include_lib("eunit/include/eunit.hrl").
+%%
+%%usage_test() ->
+%%  %   any arrow
+%%  TIa = ty_rec:empty(),
+%%  TIb = ty_rec:empty(),
+%%  Ty_F1 = ty_rec:function(dnf_var_ty_function:function(dnf_ty_function:function(ty_function:function(TIa, TIb)))),
+%%
+%%  %   any arrow 2
+%%  Ty_F2 = ty_rec:function(),
+%%
+%%  true = ty_rec:is_subtype(Ty_F1, Ty_F2),
+%%  true = ty_rec:is_subtype(Ty_F2, Ty_F1),
+%%%%  io:format(user, "~p~n", [Bdd]),
+%%
+%%  ok.
+%%
+%%-endif.

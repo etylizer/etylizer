@@ -64,11 +64,10 @@ normalize(Size, {terminal, Tuple}, PVar, NVar, Fixed, M) ->
       dnf_ty_tuple:normalize(Size, Tuple, PVar, NVar, Fixed, sets:union(M, sets:from_list([Tuple])))
   end;
 normalize(Size, {node, Variable, PositiveEdge, NegativeEdge}, PVar, NVar, Fixed, M) ->
-  R = constraint_set:merge_and_meet(
-    N1 = normalize(Size, PositiveEdge, [Variable | PVar], NVar, Fixed, M),
-    N2 = normalize(Size, NegativeEdge, PVar, [Variable | NVar], Fixed, M)
-  ),
-  R.
+  constraint_set:merge_and_meet(
+    normalize(Size, PositiveEdge, [Variable | PVar], NVar, Fixed, M),
+    normalize(Size, NegativeEdge, PVar, [Variable | NVar], Fixed, M)
+  ).
 
 substitute(Size, T, M, Memo) -> substitute(Size, T, M, Memo, [], []).
 
