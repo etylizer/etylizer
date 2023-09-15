@@ -1,6 +1,6 @@
 #!/bin/bash
 
-D=$(dirname $0)
+D=$( cd -- "$( dirname -- "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )
 
 if [ "$1" == "--build" ]; then
     shift
