@@ -4,7 +4,7 @@
 % heavily derived from the erlang ast (defined in ast_erl.erl). See the README for
 % a description of the properties of the internal AST.
 
--export([setup_ets/0, ast_to_erlang_ty/1, erlang_ty_to_ast/1]).
+-export([setup_ets/0, ast_to_erlang_ty/1, erlang_ty_to_ast/1, ast_to_erlang_ty_var/1]).
 -on_load(setup_ets/0).
 -define(VAR_ETS, ast_norm_var_memo). % remember variable name -> variable ID to convert variables properly
 
@@ -655,6 +655,9 @@ ast_to_erlang_ty({negation, Ty}) -> ty_rec:negate(ast_to_erlang_ty(Ty));
 ast_to_erlang_ty(T) ->
     logger:error("Norm not implemented for~n~p", [T]),
     erlang:error("Norm not implemented, see error log").
+
+ast_to_erlang_ty_var({var, Name}) when is_atom(Name) ->
+    maybe_new_variable(Name).
 
 maybe_new_variable(Name) ->
     Object = ets:lookup(?VAR_ETS, Name),
