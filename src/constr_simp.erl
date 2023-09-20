@@ -149,6 +149,7 @@ simp_constr(Ctx, C) ->
                       Substs
                      );
                 report ->
+                    % FIXME: we miss an invocation of tally to get an substitution that we can apply to GammaI
                     % NOTE: there is some code duplication with respect to the ignore_branch case
                     lists:foldl(
                       fun({_BodyLoc, GammaI, GuardCsI, BodyCsI, _TI}, BeforeDss) ->
