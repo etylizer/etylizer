@@ -5,10 +5,10 @@
 -export([setup_ets/0]).
 -define(VAR_ETS, variable_counter_ets_table).
 
--behavior(eq).
+
 -export([equal/2, compare/2]).
 
--behavior(var).
+
 -export([new/1, smallest/3, normalize/6]).
 
 -record(var, {id, name}).

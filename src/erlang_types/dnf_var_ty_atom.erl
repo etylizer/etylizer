@@ -2,10 +2,10 @@
 
 -define(P, {ty_atom, ty_variable}).
 
--behavior(eq).
+
 -export([equal/2, compare/2]).
 
--behavior(type).
+
 -export([empty/0, any/0, union/2, intersect/2, diff/2, negate/1]).
 -export([eval/1, is_empty/1, is_any/1, normalize/3, substitute/2]).
 

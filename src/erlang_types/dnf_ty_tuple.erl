@@ -3,10 +3,10 @@
 -define(P, {bdd_bool, ty_tuple}).
 -define(F(Z), fun() -> Z end).
 
--behavior(eq).
+
 -export([equal/2, compare/2]).
 
-%%-behavior(type).
+%%
 -export([empty/0, any/0, union/2, intersect/2, diff/2, negate/1]).
 -export([eval/1, is_empty/2, is_any/1, normalize/6, substitute/3]).
 

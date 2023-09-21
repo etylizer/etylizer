@@ -2,7 +2,7 @@
 
 %% n-tuple representation
 
--behavior(eq).
+
 -export([compare/2, equal/2]).
 
 -export([tuple/1, pi/2, has_ref/2, components/1, transform/2]).

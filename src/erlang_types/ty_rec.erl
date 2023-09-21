@@ -2,7 +2,7 @@
 
 -define(F(Z), fun() -> Z end).
 
--behavior(type).
+
 -export([empty/0, any/0]).
 -export([union/2, negate/1, intersect/2, diff/2, is_any/1]).
 -export([is_empty/1, eval/1]).
@@ -281,6 +281,15 @@ is_any(_Arg0) ->
   erlang:error(any_not_implemented). % TODO needed?
 
 normalize(TyRef, Fixed, M) ->
+  case ty_ref:normalized_memoized({TyRef, Fixed}) of
+    miss ->
+      ty_ref:memoize_norm({TyRef, Fixed}, Sol = normalize_miss(TyRef, Fixed, M)),
+      Sol;
+    R -> R
+  end.
+
+normalize_miss(TyRef, Fixed, M) ->
+
   Ty = ty_ref:load(TyRef),
   PredefNormalize = dnf_var_predef:normalize(Ty#ty.predef, Fixed, M),
   AtomNormalize = dnf_var_ty_atom:normalize(Ty#ty.atom, Fixed, M),

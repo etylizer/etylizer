@@ -19,10 +19,10 @@
 %%-type element() :: any().  % :: Element:type()
 %%-type bdd() :: 0 | {terminal, terminal()} | {node, element(), bdd(), bdd()}.
 
-%%-behavior(type). % implements type behavior indirectly parameterized over a type
+%% % implements type behavior indirectly parameterized over a type
 -export([terminal/2, element/2, empty/1, any/1, union/3, intersect/3, negate/2, diff/3, eval/2, is_empty/2, is_any/2]).
 
-%%-behavior(eq). % implements eq behavior indirectly parameterized over a type
+%% % implements eq behavior indirectly parameterized over a type
 -export([equal/3, compare/3]).
 
 % ==

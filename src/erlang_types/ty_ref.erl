@@ -2,6 +2,7 @@
 
 -export([setup_ets/0, any/0, store/1, load/1, new_ty_ref/0, define_ty_ref/2, is_empty_cached/1, store_is_empty_cached/2, store_recursive_variable/2, check_recursive_variable/1]).
 -export([memoize/1, is_empty_memoized/1, reset/0, is_normalized_memoized/3]).
+-export([memoize_norm/2, normalized_memoized/1]).
 
 -on_load(setup_ets/0).
 -define(TY_UTIL, ty_counter).        % counter store
@@ -11,6 +12,7 @@
 -define(EMPTY_MEMO, memoize_ty_ets).                            % ty_ref -> true
 
 -define(EMPTY_CACHE, is_empty_memoize_ets). % ty_rec -> true/false
+-define(NORMALIZE_CACHE, normalize_cache_ets). % ty_ref -> SoCS
 
 % helper table to construct recursive definitions properly
 % once a bound variable is encountered in ty_rec:variable,
@@ -18,11 +20,12 @@
 -define(RECURSIVE_TABLE, remember_recursive_variables_ets).
 
 all_tables() ->
-  [?TY_UNIQUE_TABLE, ?TY_MEMORY, ?TY_UTIL, ?EMPTY_MEMO, ?EMPTY_CACHE, ?RECURSIVE_TABLE].
+  [?TY_UNIQUE_TABLE, ?TY_MEMORY, ?TY_UTIL, ?EMPTY_MEMO, ?EMPTY_CACHE, ?RECURSIVE_TABLE, ?NORMALIZE_CACHE].
 
 reset() ->
   ets:delete(?EMPTY_MEMO),
   ets:delete(?EMPTY_CACHE),
+  ets:delete(?NORMALIZE_CACHE),
 
   ets:new(?EMPTY_CACHE, [public, named_table]),
   ets:new(?EMPTY_MEMO, [public, named_table]),
@@ -50,10 +53,12 @@ setup_ets() ->
     % memoize ANY as not empty
     {ty_ref, AnyId} = ty_rec:any(),
     ets:insert(?EMPTY_CACHE, {AnyId, false}),
+    ets:insert(?NORMALIZE_CACHE, {AnyId, []}),
 
     % memoize EMPTY as empty
     {ty_ref, EmptyId} = ty_rec:empty(),
     ets:insert(?EMPTY_CACHE, {EmptyId, true}),
+    ets:insert(?NORMALIZE_CACHE, {EmptyId, [[]]}),
 
     receive _ -> ok end
            end)
@@ -139,11 +144,23 @@ memoize({ty_ref, Id}) ->
   ets:insert(?EMPTY_MEMO, {Id, true}),
   ok.
 
+
 is_empty_memoized({ty_ref, Id}) ->
   Object = ets:lookup(?EMPTY_MEMO, Id),
   case Object of
     [] -> miss;
     [{_, true}] -> true
+  end.
+
+memoize_norm({{ty_ref, Id}, Fixed}, Sol) ->
+  ets:insert(?NORMALIZE_CACHE, {{Id, Fixed}, Sol}),
+  ok.
+
+normalized_memoized({{ty_ref, Id}, Fixed}) ->
+  Object = ets:lookup(?NORMALIZE_CACHE, {Id, Fixed}),
+  case Object of
+    [] -> miss;
+    [{_, Res}] -> Res
   end.
 
 is_normalized_memoized(Id, _Fixed, M) ->

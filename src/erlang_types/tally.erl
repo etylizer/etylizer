@@ -37,18 +37,20 @@ tally(Constraints, FixedVars) ->
   % TODO heuristic here and benchmark
   Normalized = lists:foldl(fun({S, T}, A) ->
     constraint_set:meet(
+      fun() -> A end,
       fun() ->
         SnT = ty_rec:diff(S, T),
         ty_rec:normalize(SnT, FixedVars, sets:new())
-      end,
-      fun() -> A end)
+      end
+    )
               end, [[]], Constraints),
 
 
   Saturated = lists:foldl(fun(ConstraintSet, A) ->
     constraint_set:join(
-      fun() -> constraint_set:saturate(ConstraintSet, FixedVars, sets:new()) end,
-      fun() -> A end)
+      fun() -> A end,
+      fun() -> constraint_set:saturate(ConstraintSet, FixedVars, sets:new()) end
+    )
                            end, [], Normalized),
 
 
@@ -63,7 +65,7 @@ tally(Constraints, FixedVars) ->
         _ ->
           % TODO expensive sanity check
           % sanity: every substitution satisfies all given constraints
-%%          [true = is_valid_substitution(Constraints, maps:from_list(Subst)) || Subst <- Solved],
+          [true = is_valid_substitution(Constraints, maps:from_list(Subst)) || Subst <- Solved],
           Solved
       end.
 

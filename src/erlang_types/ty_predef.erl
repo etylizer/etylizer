@@ -2,10 +2,10 @@
 
 %% Predef representation
 
--behavior(eq).
+
 -export([compare/2, equal/2]).
 
--behavior(type).
+
 -export([empty/0, any/0]).
 -export([union/2, intersect/2, diff/2, negate/1, is_any/1]).
 -export([is_empty/1, eval/1, normalize/5]).

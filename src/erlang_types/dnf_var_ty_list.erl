@@ -1,22 +1,18 @@
--module(dnf_var_predef).
+-module(dnf_var_ty_list).
 
--define(P, {ty_predef, ty_variable}).
+-define(P, {dnf_ty_list, ty_variable}).
 
--behavior(eq).
+
 -export([equal/2, compare/2]).
 
--behavior(type).
+
 -export([empty/0, any/0, union/2, intersect/2, diff/2, negate/1]).
--export([eval/1, is_empty/1, is_any/1, normalize/3, substitute/2]).
+-export([eval/1, is_empty/1, is_any/1, normalize/3, substitute/3]).
 
--export([var/1, predef/1,  all_variables/1, transform/2]).
+-export([var/1, list/1, all_variables/1, has_ref/2, transform/2]).
 
--type variable() :: term(). % variable:type()
--type dnf_var_int() :: term().
+list(List) -> gen_bdd:terminal(?P, List).
 
-predef(Predef) -> gen_bdd:terminal(?P, Predef).
-
--spec var(variable()) -> dnf_var_int().
 var(Var) -> gen_bdd:element(?P, Var).
 
 % ==
@@ -33,8 +29,6 @@ negate(B1) -> gen_bdd:negate(?P, B1).
 eval(B) -> gen_bdd:eval(?P, B).
 is_any(B) -> gen_bdd:is_any(?P, B).
 
-
-
 % ==
 % basic interface
 % ==
@@ -43,23 +37,25 @@ equal(B1, B2) -> gen_bdd:equal(?P, B1, B2).
 compare(B1, B2) -> gen_bdd:compare(?P, B1, B2).
 
 
-% ==
-% Emptiness for variable interval DNFs
-% ==
-
 is_empty(0) -> true;
-is_empty({terminal, Interval}) ->
-  ty_interval:is_empty(Interval);
+is_empty({terminal, List}) ->
+  dnf_ty_list:is_empty(List);
 is_empty({node, _Variable, PositiveEdge, NegativeEdge}) ->
   is_empty(PositiveEdge)
-    andalso is_empty(NegativeEdge).
-
+    and is_empty(NegativeEdge).
 
 normalize(Ty, Fixed, M) -> normalize(Ty, [], [], Fixed, M).
 
 normalize(0, _, _, _, _) -> [[]]; % satisfiable
-normalize({terminal, Predef}, PVar, NVar, Fixed, M) ->
-  ty_predef:normalize(Predef, PVar, NVar, Fixed, M);
+normalize({terminal, List}, PVar, NVar, Fixed, M) ->
+  case ty_ref:is_normalized_memoized(List, Fixed, M) of
+    true ->
+      % TODO test case
+      error({todo, extract_test_case, memoize_function}); %[[]];
+    miss ->
+      % memoize only non-variable component t0
+      dnf_ty_list:normalize(List, PVar, NVar, Fixed, sets:union(M, sets:from_list([List])))
+  end;
 normalize({node, Variable, PositiveEdge, NegativeEdge}, PVar, NVar, Fixed, M) ->
   constraint_set:merge_and_meet(
     normalize(PositiveEdge, [Variable | PVar], NVar, Fixed, M),
@@ -67,39 +63,45 @@ normalize({node, Variable, PositiveEdge, NegativeEdge}, PVar, NVar, Fixed, M) ->
   ).
 
 
-substitute(T, M) -> substitute(T, M, [], []).
+substitute(T, M, Memo) -> substitute(T, M, Memo, [], []).
 
-substitute(0, _, _, _) -> 0;
-substitute({terminal, Interval}, Map, Pos, Neg) ->
+substitute(0, _, _, _, _) -> 0;
+substitute({terminal, List}, Map, Memo, Pos, Neg) ->
   AllPos = lists:map(
     fun(Var) ->
       Substitution = maps:get(Var, Map, ty_rec:variable(Var)),
-      ty_rec:pi(predef, Substitution)
+      ty_rec:pi(list, Substitution)
     end, Pos),
   AllNeg = lists:map(
     fun(Var) ->
       Substitution = maps:get(Var, Map, ty_rec:variable(Var)),
       NewNeg = ty_rec:negate(Substitution),
-      ty_rec:pi(predef, NewNeg)
+      ty_rec:pi(list, NewNeg)
     end, Neg),
 
-  lists:foldl(fun(Current, All) -> intersect(Current, All) end, predef(Interval), AllPos ++ AllNeg);
+  lists:foldl(fun(Current, All) -> intersect(Current, All) end, list(dnf_ty_list:substitute(List, Map, Memo)), AllPos ++ AllNeg);
 
-substitute({node, Variable, PositiveEdge, NegativeEdge}, Map, P, N) ->
+substitute({node, Variable, PositiveEdge, NegativeEdge}, Map, Memo, P, N) ->
 
-  LBdd = substitute(PositiveEdge, Map, [Variable | P], N),
-  RBdd = substitute(NegativeEdge, Map, P, [Variable | N]),
+  LBdd = substitute(PositiveEdge, Map, Memo, [Variable | P], N),
+  RBdd = substitute(NegativeEdge, Map, Memo, P, [Variable | N]),
 
   union(LBdd, RBdd).
 
+has_ref(0, _) -> false;
+has_ref({terminal, List}, Ref) ->
+  dnf_ty_list:has_ref(List, Ref);
+has_ref({node, _Variable, PositiveEdge, NegativeEdge}, Ref) ->
+  has_ref(PositiveEdge, Ref) orelse has_ref(NegativeEdge, Ref).
+
 all_variables(0) -> [];
-all_variables({terminal, _}) -> [];
+all_variables({terminal, List}) -> dnf_ty_list:all_variables(List);
 all_variables({node, Variable, PositiveEdge, NegativeEdge}) ->
   [Variable] ++ all_variables(PositiveEdge) ++ all_variables(NegativeEdge).
 
 transform(0, #{empty := E}) -> E();
-transform({terminal, Predef}, Ops) ->
-  ty_predef:transform(Predef, Ops);
+transform({terminal, List}, Ops) ->
+  dnf_ty_list:transform(List, Ops);
 transform({node, Variable, PositiveEdge, NegativeEdge},
     Ops = #{negate := Negate, var := ToVar, union := Union, intersect := Intersect}) ->
   AstVar = ToVar(Variable),
