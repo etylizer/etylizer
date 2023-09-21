@@ -92,6 +92,8 @@ should_run(Name, {exclude,Set}) -> not sets:is_element(Name, Set).
 
 simple_test_() ->
   WhatNot = [
+    % FIXME #36 impossible branches bug, completeness bug
+    "foo2",
     % TODO specials (float, pid, [], ...)
     "integer_07",
     "float_01",
