@@ -86,7 +86,7 @@ domains_to_tuple(Domains) ->
 
 % optimized phi' (4.10) from paper covariance and contravariance
 % justification for this version of phi can be found in `prop_phi_function.erl`
--spec explore_function([ty_ref()], ty_ref(), [term()]) -> boolean().
+-spec explore_function(ty_ref(), ty_ref(), [term()]) -> boolean().
 explore_function(Ts, T2, []) ->
   ty_rec:is_empty(T2) orelse ty_rec:is_empty(Ts);
 explore_function(Ts, T2, [Function | P]) ->
