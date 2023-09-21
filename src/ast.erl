@@ -550,11 +550,13 @@ erlang_ty_to_ast(X) ->
             to_fun => fun(S, T) -> stdtypes:tfun_full(lists:map(fun(F) -> erlang_ty_to_ast(F) end,S), erlang_ty_to_ast(T)) end,
             to_tuple => fun(Ts) -> stdtypes:ttuple(lists:map(fun(T) -> erlang_ty_to_ast(T) end,Ts)) end,
             to_atom => fun(A) -> stdtypes:tatom(A) end,
+            to_list => fun(A, B) -> stdtypes:tlist_improper(erlang_ty_to_ast(A), erlang_ty_to_ast(B)) end,
             to_int => fun(X, Y) -> stdtypes:trange(X, Y) end,
             to_predef => fun('[]') -> stdtypes:tempty_list(); (Predef) -> {predef, Predef} end,
             any_tuple => fun stdtypes:ttuple_any/0,
             any_fun => fun stdtypes:tfun_any/0,
             any_int => fun stdtypes:tint/0,
+            any_list => fun stdtypes:tlist_any/0,
             any_atom => fun stdtypes:tatom/0,
             any_predef => fun stdtypes:tspecial_any/0,
             empty => fun stdtypes:tnone/0,
@@ -609,8 +611,8 @@ ast_to_erlang_ty({var, A}) ->
 ast_to_erlang_ty({list, Ty}) -> ty_rec:union( ast_to_erlang_ty({improper_list, Ty, {empty_list}}), ast_to_erlang_ty({empty_list}) );
 ast_to_erlang_ty({nonempty_list, Ty}) -> ast_to_erlang_ty({nonempty_improper_list, Ty, {empty_list}});
 ast_to_erlang_ty({nonempty_improper_list, Ty, Term}) -> ty_rec:diff(ast_to_erlang_ty({list, Ty}), ast_to_erlang_ty(Term));
-ast_to_erlang_ty({improper_list, _Ty, _Term}) ->
-    erlang:error("Lists not implemented yet");
+ast_to_erlang_ty({improper_list, A, B}) ->
+    ty_rec:list(dnf_var_ty_list:list(dnf_ty_list:list(ty_list:list(ast_to_erlang_ty(A), ast_to_erlang_ty(B)))));
 ast_to_erlang_ty({empty_list}) ->
     ty_rec:predef(dnf_var_predef:predef(ty_predef:predef('[]')));
 ast_to_erlang_ty({predef, T}) when T == pid; T == port; T == reference; T == float ->

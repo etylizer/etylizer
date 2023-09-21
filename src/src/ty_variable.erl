@@ -50,8 +50,8 @@ smallest(PositiveVariables, NegativeVariables, FixedVariables) ->
   NegativeVariablesTagged = [{neg, V} || V <- NegativeVariables, not sets:is_element(V, FixedVariables)],
 
   RestTagged =
-    [{delta, neg, V} || V <- NegativeVariables, sets:is_element(V, FixedVariables)] ++
-    [{delta, pos, V} || V <- PositiveVariables, sets:is_element(V, FixedVariables)],
+    [{{delta, neg}, V} || V <- NegativeVariables, sets:is_element(V, FixedVariables)] ++
+    [{{delta, pos}, V} || V <- PositiveVariables, sets:is_element(V, FixedVariables)],
 
   Sort = fun({_, V}, {_, V2}) -> leq(V, V2) end,
   [X | Z] = lists:sort(Sort, PositiveVariablesTagged++NegativeVariablesTagged) ++ lists:sort(Sort, RestTagged),
@@ -65,8 +65,8 @@ normalize(Ty, PVar, NVar, Fixed, VarToTy, Mx) ->
   case SmallestVar of
     {{pos, Var}, Others} ->
       TyResult = lists:foldl(fun
-                               ({delta, pos, V}, CTy) -> ty_rec:intersect(CTy, VarToTy(V));
-                               ({delta, neg, V}, CTy) -> ty_rec:intersect(CTy, ty_rec:negate(VarToTy(V)));
+                               ({{delta, pos}, V}, CTy) -> ty_rec:intersect(CTy, VarToTy(V));
+                               ({{delta, neg}, V}, CTy) -> ty_rec:intersect(CTy, ty_rec:negate(VarToTy(V)));
                                ({pos, V}, CTy) -> ty_rec:intersect(CTy, VarToTy(V));
                                ({neg, V}, CTy) -> ty_rec:intersect(CTy, ty_rec:negate(VarToTy(V)))
                              end, Ty, Others),
@@ -74,15 +74,15 @@ normalize(Ty, PVar, NVar, Fixed, VarToTy, Mx) ->
       [[{Var, ty_rec:empty(), ty_rec:negate(TyResult)}]];
     {{neg, Var}, Others} ->
       TyResult = lists:foldl(fun
-                               ({delta, pos, V}, CTy) -> ty_rec:intersect(CTy, VarToTy(V));
-                               ({delta, neg, V}, CTy) -> ty_rec:intersect(CTy, ty_rec:negate(VarToTy(V)));
+                               ({{delta, pos}, V}, CTy) -> ty_rec:intersect(CTy, VarToTy(V));
+                               ({{delta, neg}, V}, CTy) -> ty_rec:intersect(CTy, ty_rec:negate(VarToTy(V)));
                                ({pos, V}, CTy) -> ty_rec:intersect(CTy, VarToTy(V));
                                ({neg, V}, CTy) -> ty_rec:intersect(CTy, ty_rec:negate(VarToTy(V)))
                              end, Ty, Others),
       Res = [[{Var, TyResult, ty_rec:any()}]],
       % io:format(user, "Single out negative Variable ~p and Rest: ~p~nResult: ~n~p~n", [Var, Others, Res]),
       Res;
-    {{delta, _, _}, _} ->
+    {{{delta, _}, _}, _} ->
       % io:format(user, "Normalize all fixed variables done! ~p~n", [Ty]),
       % part 1 paper Lemma C.3 and C.11 all fixed variables can be eliminated
       ty_rec:normalize(Ty, Fixed, Mx)

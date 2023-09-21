@@ -449,6 +449,6 @@ foo(L) ->
 foo3(a) -> 1;
 foo3(b) -> true.
 
-%%-spec foo2 (a) -> 1; (b) -> 2.
-%%foo2(a) -> 1;
-%%foo2(b) -> 2.
+-spec foo2 (a) -> 1; (b) -> 2.
+foo2(a) -> 1;
+foo2(b) -> 2.

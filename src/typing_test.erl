@@ -93,36 +93,9 @@ should_run(Name, {exclude,Set}) -> not sets:is_element(Name, Set).
 
 simple_test_() ->
   WhatNot = [
+    % FIXME #36 impossible branches
     "foo2",
-    % TODO specials (float, pid, [], ...)
-    % TODO lists
-    "float_04_fail",
-    "foo",
-    "inter_04_fail",
-    "nil_01",
-    "nil_02",
-    "nil_03",
-    "nil_04",
-    "nil_05_fail",
-    "string_01",
-    "string_02",
-    "string_03",
-    "string_04",
-    "string_05_fail",
-    "string_06_fail",
-    "string_07",
-    "string_08_fail",
-    "op_04",
-    "op_07_fail",
-    "op_08",
-    "cons_01",
-    "cons_02",
-    "cons_03",
-    "cons_04_fail",
-    "cons_05",
-    "cons_06_fail",
-    "inter_03_fail",
-%%    % TODO 11s
+    % TODO 11s
     "fun_local_02",
     % TODO 7s
     "fun_local_03",
