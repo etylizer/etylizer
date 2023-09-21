@@ -90,80 +90,68 @@ simp_constr(Ctx, C) ->
                 error -> ok
             end,
             Dss = simp_constrs(Ctx, Cs),
-            case Ctx#ctx.unmatched_branch of
-                ignore_branch ->
-                    % NOTE: there is some code duplication with respect to the report case
-                    FreeSet = tyutils:free_in_poly_env(Ctx#ctx.env),
-                    ?LOG_DEBUG("Checking which branches of case at ~s should be ignored.~n" ++
-                               "Env: ~s~nFixed tyvars: ~w~nConstraints for scrutiny:~n~s",
-                               ast:format_loc(loc(Locs)),
-                               pretty:render_poly_env(Ctx#ctx.env),
-                               sets:to_list(FreeSet),
-                               pretty:render_constr(Dss)),
-                    Substs =
-                        lists:flatmap(
-                          fun(Ds) -> get_substs(tally:tally(Ctx#ctx.symtab, Ds, FreeSet), Locs) end,
-                          Dss),
-                    ?LOG_TRACE("Env=~s, FreeSet=~200p", pretty:render_poly_env(Ctx#ctx.env),
-                               sets:to_list(FreeSet)),
-                    case Substs of
-                        [] -> ?LOG_DEBUG("No substitutions returned from tally.");
-                        [{S, _}] -> ?LOG_DEBUG("Unique substitution:~n~s",
-                                               pretty:render_subst(S));
-                        L -> ?LOG_DEBUG("~w substitutions: ~s",
-                                        length(L),
-                                        pretty:render_substs(lists:map(fun({S, _}) -> S end, L)))
-                    end,
-                    % Non-determinism here because of multiple solutions from tally
-                    lists:flatmap(
-                      fun({Subst, EquivDs}) ->
-                              % returns [constr:simp_constrs()]
-                              lists:foldl(
-                                % returns [constr:simp_constrs()]
-                                fun({BodyLocs, GammaI, GuardCsI, BodyCsI, TI}, BeforeDss) ->
-                                        NewCtx = extend_env(Ctx, apply_subst_to_env(Subst, GammaI)),
-                                        GuardDss = simp_constrs(NewCtx, GuardCsI),
-                                        MatchTy = subst:apply(Subst, TI),
-                                        IsBottom = subty:is_subty(Ctx#ctx.symtab,
-                                                                  MatchTy,
-                                                                  {predef, none}),
-                                        if IsBottom ->
-                                                ?LOG_DEBUG("Ignoring branch at ~s, match type ~s (unsubstituted: ~s) equivalent to none()",
-                                                           ast:format_loc(loc(BodyLocs)),
-                                                           pretty:render_ty(MatchTy),
-                                                           pretty:render_ty(TI)
-                                                          ),
-                                                cross_union(BeforeDss, GuardDss);
-                                           true ->
-                                                ?LOG_DEBUG("Not ignoring branch at ~s, match type ~s (unsubstituted: ~s) greater than none()",
-                                                           ast:format_loc(loc(BodyLocs)),
-                                                           pretty:render_ty(MatchTy),
-                                                           pretty:render_ty(TI)
-                                                          ),
-                                                BodyDss = simp_constrs(NewCtx, BodyCsI),
-                                                cross_union(cross_union(BeforeDss, GuardDss), BodyDss)
-                                        end
-                                end,
-                                [EquivDs], Bodies
-                               )
-                      end,
-                      Substs
-                     );
-                report ->
-                    % FIXME: we miss an invocation of tally to get an substitution that we can apply to GammaI
-                    % NOTE: there is some code duplication with respect to the ignore_branch case
-                    lists:foldl(
-                      fun({_BodyLoc, GammaI, GuardCsI, BodyCsI, _TI}, BeforeDss) ->
-                              % returns [constr:simp_constrs()]
-                              % FIXME: we need to return the matching type TI
-                              NewCtx = extend_env(Ctx, GammaI),
-                              GuardDss = simp_constrs(NewCtx, GuardCsI),
-                              BodyDss = simp_constrs(NewCtx, BodyCsI),
-                              cross_union(cross_union(BeforeDss, GuardDss), BodyDss)
-                      end,
-                      Dss, Bodies
-                     )
-            end;
+            FreeSet = tyutils:free_in_poly_env(Ctx#ctx.env),
+            ?LOG_DEBUG("Checking which branches of case at ~s should be ignored.~n" ++
+                    "Env: ~s~nFixed tyvars: ~w~nConstraints for scrutiny:~n~s",
+                    ast:format_loc(loc(Locs)),
+                    pretty:render_poly_env(Ctx#ctx.env),
+                    sets:to_list(FreeSet),
+                    pretty:render_constr(Dss)),
+            Substs =
+                lists:flatmap(
+                fun(Ds) -> get_substs(tally:tally(Ctx#ctx.symtab, Ds, FreeSet), Locs) end,
+                Dss),
+            ?LOG_TRACE("Env=~s, FreeSet=~200p", pretty:render_poly_env(Ctx#ctx.env),
+                    sets:to_list(FreeSet)),
+            case Substs of
+                [] -> ?LOG_DEBUG("No substitutions returned from tally.");
+                [{S, _}] -> ?LOG_DEBUG("Unique substitution:~n~s",
+                                    pretty:render_subst(S));
+                L -> ?LOG_DEBUG("~w substitutions: ~s",
+                                length(L),
+                                pretty:render_substs(lists:map(fun({S, _}) -> S end, L)))
+            end,
+            % Non-determinism here because of multiple solutions from tally
+            lists:flatmap(
+                fun({Subst, EquivDs}) ->
+                        % returns [constr:simp_constrs()]
+                        lists:foldl(
+                            % returns [constr:simp_constrs()]
+                            fun({BodyLocs, GammaI, GuardCsI, BodyCsI, TI}, BeforeDss) ->
+                                    NewCtx = extend_env(Ctx, apply_subst_to_env(Subst, GammaI)),
+                                    GuardDss = simp_constrs(NewCtx, GuardCsI),
+                                    MatchTy = subst:apply(Subst, TI),
+                                    IsBottom = subty:is_subty(Ctx#ctx.symtab,
+                                                                MatchTy,
+                                                                {predef, none}),
+                                    case {IsBottom, Ctx#ctx.unmatched_branch} of
+                                        {true, ignore_branch} ->
+                                            ?LOG_DEBUG("Ignoring branch at ~s, match type ~s (unsubstituted: ~s) equivalent to none()",
+                                                        ast:format_loc(loc(BodyLocs)),
+                                                        pretty:render_ty(MatchTy),
+                                                        pretty:render_ty(TI)
+                                                        ),
+                                            cross_union(BeforeDss, GuardDss);
+                                        _ ->
+                                            % FIXME: if IsBottom is true, we must report this match because it is never taken
+                                            case Ctx#ctx.unmatched_branch of
+                                                ignore_branch ->
+                                                    ?LOG_DEBUG("Not ignoring branch at ~s, match type ~s (unsubstituted: ~s) greater than none()",
+                                                            ast:format_loc(loc(BodyLocs)),
+                                                            pretty:render_ty(MatchTy),
+                                                            pretty:render_ty(TI)
+                                                            );
+                                                _ -> ok
+                                            end,
+                                            BodyDss = simp_constrs(NewCtx, BodyCsI),
+                                            cross_union(cross_union(BeforeDss, GuardDss), BodyDss)
+                                    end
+                            end,
+                            [EquivDs], Bodies
+                        )
+                end,
+                Substs
+            );
         {cunsatisfiable, Locs, Msg} -> [single({cunsatisfiable, Locs, Msg})];
         X -> errors:uncovered_case(?FILE, ?LINE, X)
     end.
