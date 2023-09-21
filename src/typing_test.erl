@@ -123,7 +123,7 @@ simple_test_() ->
     "cons_06_fail",
     "inter_03_fail",
 %%    % TODO 11s
-%%    "fun_local_02",
+    "fun_local_02",
     % TODO 7s
     "fun_local_03",
     % TODO 23s
