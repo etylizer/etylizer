@@ -23,14 +23,37 @@ new_ctx(Tab, Sanity) ->
     Ctx = #ctx{ symtab = Tab, sanity = Sanity },
     Ctx.
 
--spec report_tyerror(constr_simp:simp_constrs_result()) -> nonempty_list(constr:simp_constrs()).
-report_tyerror({simp_constrs_ok, L}) ->
+-spec format_src_loc(ast:loc()) -> string().
+format_src_loc({loc, File, LineNo, ColumnNo}) ->
+    ErrMsg = "",
+    case utils:file_get_lines(File) of
+        {error, _} -> ErrMsg;
+        {ok, Lines} ->
+            N = length(Lines),
+            if
+                LineNo >= 1 andalso LineNo =< N ->
+                    Line = string:trim(lists:nth(LineNo, Lines), trailing),
+                    ColumnSpace = lists:duplicate(ColumnNo - 1, $\s),
+                    utils:sformat("%~5.B| ~s~n%     | ~s^", LineNo, Line, ColumnSpace);
+                true ->
+                    ErrMsg
+            end
+    end.
+
+-spec report_tyerror(constr_simp:simp_constrs_result(), string()) -> nonempty_list(constr:simp_constrs()).
+report_tyerror({simp_constrs_ok, L}, _) ->
     case length(L) of
         0 -> errors:bug("empty list of simple constraints returned from constr_simp:simp_constrs");
         _ -> L
     end;
-report_tyerror({simp_constrs_error, {Kind, Loc}}) ->
-    errors:ty_error(Loc, "Error: ~w", Kind).
+report_tyerror({simp_constrs_error, {Kind, Loc}}, What) ->
+    Msg =
+        case Kind of
+            tyerror -> "expression failed to type check";
+            redundant_branch -> "this branch never matches"
+        end,
+    SrcCtx = format_src_loc(Loc),
+    errors:ty_error(Loc, "~s~n~s~n~n  ~s", [Msg, SrcCtx, What]).
 
 % Infers the types of a group of mutually recursive functions. Throws a ty_error.
 % FIXME: must return multiple possible type environments
@@ -45,16 +68,17 @@ infer(Ctx, Decls) ->
     PolyEnv = maps:map(fun(_Key, T) -> {ty_scheme, [], T} end, Env),
     Tab = Ctx#ctx.symtab,
     SimpCtx = constr_simp:new_ctx(Tab, PolyEnv, Ctx#ctx.sanity, report),
-    Dss = report_tyerror(constr_simp:simp_constrs(SimpCtx, Cs)),
+    Funs =
+        lists:map(
+            fun({function, _Loc, Name, Arity, _}) ->
+                    utils:sformat("~w/~w", Name, Arity)
+            end,
+            Decls),
+    Dss = report_tyerror(constr_simp:simp_constrs(SimpCtx, Cs),
+        utils:sformat("while infering types of mutually recursive functions ~w", Funs)),
     [Ds | _] = Dss, % FIXME: this is wrong but for now we do not use infer
     case tally:tally(Tab, Ds) of
         [] ->
-            Funs =
-                lists:map(
-                  fun({function, _Loc, Name, Arity, _}) ->
-                          utils:sformat("~w/~w", Name, Arity)
-                  end,
-                  Decls),
             Loc =
                 case Decls of
                     [{function, L, _, _, _} | _] -> L
@@ -132,8 +156,7 @@ check(Ctx, Decl = {function, Loc, Name, Arity, _}, PolyTy) ->
         case AltTys of
             [_] -> report;
             [] ->
-                errors:ty_error(Loc, "Invalid spec for ~w/~w: ~w",
-                                [Name, Arity, PolyTy]);
+                errors:ty_error(Loc, "Invalid spec for ~w/~w: ~w", [Name, Arity, PolyTy]);
             _ -> ignore_branch
         end,
     lists:foreach(
@@ -141,8 +164,7 @@ check(Ctx, Decl = {function, Loc, Name, Arity, _}, PolyTy) ->
               case Ty of
                   {fun_full, _, _} -> check_alt(Ctx, Decl, Ty, BranchMode);
                   _ ->
-                    errors:ty_error(Loc, "Invalid spec for ~w/~w: ~w",
-                                       [Name, Arity, PolyTy])
+                    errors:ty_error(Loc, "Invalid spec for ~w/~w: ~w", [Name, Arity, PolyTy])
               end
       end,
       AltTys),
@@ -164,11 +186,13 @@ check_alt(Ctx, Decl = {function, Loc, Name, Arity, _}, FunTy, BranchMode) ->
     ?LOG_DEBUG("Constraints:~n~s", pretty:render_constr(Cs)),
     Tab = Ctx#ctx.symtab,
     SimpCtx = constr_simp:new_ctx(Tab, #{}, Ctx#ctx.sanity, BranchMode),
-    Dss = report_tyerror(constr_simp:simp_constrs(SimpCtx, Cs)),
+    Dss = report_tyerror(constr_simp:simp_constrs(SimpCtx, Cs),
+        utils:sformat("while checking function ~w/~w against type ~s",
+            Name, Arity, pretty:render_ty(FunTy))),
     Total = length(Dss),
-    {Status, Errors, _} =
+    {Status, _} =
         lists:foldl(
-          fun(Ds, {Status, Errors, Idx}) ->
+          fun(Ds, {Status, Idx}) ->
                   case Status of
                       true -> {Status, [], Idx + 1};
                       false ->
@@ -192,17 +216,17 @@ check_alt(Ctx, Decl = {function, Loc, Name, Arity, _}, FunTy, BranchMode) ->
                                           true -> utils:sformat("~n    (skipped ~w lines)", N)
                                        end),
                                   ?LOG_DEBUG("tally finished with errors: ~s", ErrStr),
-                                  {false, [ErrStr | Errors], Idx + 1};
+                                  {false, Idx + 1};
                               [S] ->
                                   ?LOG_DEBUG("Unique substitution:~n~s", [pretty:render_subst(S)]),
-                                  {true, [], Idx + 1};
+                                  {true, Idx + 1};
                               L ->
                                   ?LOG_DEBUG("~w substitutions: ~200p", length(L), pretty:render_substs(L)),
-                                  {true, [], Idx + 1}
+                                  {true, Idx + 1}
                               end
                   end
           end,
-          {false, [], 1},
+          {false, 1},
           Dss),
     case Status of
         true ->
@@ -212,8 +236,9 @@ check_alt(Ctx, Decl = {function, Loc, Name, Arity, _}, FunTy, BranchMode) ->
                        ast:format_loc(Loc),
                        pretty:render_ty(FunTy));
         false ->
-            errors:ty_error(Loc, "Function ~w/~w failed to type check against type ~s~n~s",
-                            [Name, Arity, pretty:render_ty(FunTy), string:join(Errors, "\n\n")])
+            SrcCtx = format_src_loc(Loc),
+            errors:ty_error(Loc, "function ~w/~w failed to type check against type ~s~n~s",
+                            [Name, Arity, pretty:render_ty(FunTy), SrcCtx])
     end.
 
 % Creates the monomorphic version of the given type scheme, does not

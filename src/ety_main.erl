@@ -140,8 +140,20 @@ main(Args) ->
     try doWork(Opts)
     catch throw:{ety, K, Msg}:S ->
             Raw = erl_error:format_exception(throw, K, S),
-            ?LOG_ERROR("~s", Raw),
-            io:format("~s~n", [Msg]),
+            IsExpected =
+                case K of
+                    ty_error -> true;
+                    name_error -> true;
+                    _ -> false
+                end,
+            if
+                IsExpected ->
+                    ?LOG_NOTE("~s", Raw),
+                    io:format("~s~n", [Msg]);
+                true ->
+                    ?LOG_ERROR("~s", Raw),
+                    io:format("~s~n", [Msg])
+            end,
             erlang:halt(1)
     end,
     ok.
