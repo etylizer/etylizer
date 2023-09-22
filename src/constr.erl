@@ -32,7 +32,11 @@
 -type constr_var() :: {cvar, locs(), ast:any_ref(), ast:ty()}.
 -type constr_op() :: {cop, locs(), atom(), arity(), ast:ty()}.
 -type constr_def() :: {cdef, locs(), constr_env(), constrs()}.
--type constr_case() :: {ccase, locs(), constrs(), [constr_case_body()]}.
+-type constr_case() :: {ccase,
+                        locs(),
+                        Scrutiny::constrs(),
+                        Exhaustiveness::constrs(),
+                        [constr_case_body()]}.
 -type constr_case_body() ::
         {locs(), Env::constr_env(), Guard::constrs(), Body::constrs(), BodyCond::ast:ty()}.
 -type constr_unsatisfiable() :: {cunsatisfiable, ast:loc(), string()}.

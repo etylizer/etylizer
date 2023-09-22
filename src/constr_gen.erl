@@ -132,11 +132,11 @@ exp_constrs(Ctx, E, T) ->
                             end,
                             {[], [], [], sets:new()},
                             Clauses),
-            AllCs = sets:union([Cs0, CsCases,
-                                single({csubty, mk_locs("exhaustiveness check", L),
-                                        Alpha, ast:mk_union(Uppers)})]),
+            CsScrut = sets:union(Cs0, CsCases),
+            CsExhaust = single({csubty, mk_locs("exhaustiveness check", L),
+                                Alpha, ast:mk_union(Uppers)}),
             sets:from_list([
-                {ccase, mk_locs("case", L), AllCs, BodyList},
+                {ccase, mk_locs("case", L), CsScrut, CsExhaust, BodyList},
                 {csubty, mk_locs("result of case", L), Beta, T}
             ]);
         {'catch', L, CatchE} ->

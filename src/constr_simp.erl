@@ -49,7 +49,7 @@ new_ctx(Tab, Env, Sanity, BranchMode) ->
 -spec zero_simp_constrs_result() -> simp_constrs_result().
 zero_simp_constrs_result() -> {simp_constrs_ok, [sets:new()]}.
 
--type simp_constrs_error_kind() :: tyerror | redundant_branch.
+-type simp_constrs_error_kind() :: tyerror | redundant_branch | non_exhaustive_case.
 
 -spec is_simp_constrs_error(simp_constrs_result()) -> boolean().
 is_simp_constrs_error({simp_constrs_error, _}) -> true;
@@ -113,9 +113,12 @@ simp_constr(Ctx, C) ->
         {cdef, _Locs, Env, Cs} ->
             NewCtx = extend_env(Ctx, Env),
             simp_constrs(NewCtx, Cs);
-        {ccase, Locs, Cs, Bodies} ->
+        {ccase, Locs, CsScrut, CsEx, Bodies} ->
+            Cs = sets:union(CsScrut, CsEx),
             case Ctx#ctx.sanity of
-                {ok, TyMap0} -> constr_gen:sanity_check(Cs, TyMap0);
+                {ok, TyMap0} ->
+                    constr_gen:sanity_check(CsScrut, TyMap0),
+                    constr_gen:sanity_check(CsEx, TyMap0);
                 error -> ok
             end,
             simp_constrs_if_ok(
@@ -204,9 +207,25 @@ simp_constr(Ctx, C) ->
                             case lists:search(fun is_simp_constrs_error/1, MultiResults) of
                                 false ->
                                     % MultiResults is empty, there is no substitution,
-                                    % so the tally invocation above failed.
+                                    % so the tally invocation for typing the scrutiny above failed.
                                     % Hence, we return an error
-                                    {simp_constrs_error, {tyerror, loc(Locs)}};
+                                    ?LOG_DEBUG("MultiResults is empty "),
+                                    simp_constrs_if_ok(
+                                        simp_constrs(Ctx, CsScrut),
+                                        fun(_, DsScrutList) ->
+                                            case
+                                                lists:flatmap(
+                                                    fun(Ds) -> get_substs(tally:tally(Ctx#ctx.symtab, Ds, FreeSet), Locs) end,
+                                                DsScrutList)
+                                            of
+                                                [] ->
+                                                    ?LOG_DEBUG("Typing the scrutiny failed"),
+                                                    LocScrut = loc(locs_from_constrs(CsScrut), loc(Locs)),
+                                                    {simp_constrs_error, {tyerror, LocScrut}};
+                                                _ ->
+                                                    {simp_constrs_error, {non_exhaustive_case, loc(Locs)}}
+                                            end
+                                        end);
                                 {value, Err} ->
                                     % there are nested errors, return the first
                                     Err
@@ -246,12 +265,35 @@ fresh_ty_scheme(Ctx, {ty_scheme, Tyvars, T}) ->
 single(X) -> sets:from_list([X]).
 
 -spec loc(constr:locs()) -> ast:loc().
-loc({_, Locs}) ->
+loc(Locs) ->
+    case loc(Locs, error) of
+        error -> errors:bug("empty set of locations");
+        X -> X
+    end.
+
+-spec loc(constr:locs() | sets:set(ast:loc()), T) -> T | ast:loc().
+loc({_, Locs}, Def) -> loc(Locs, Def);
+loc(Locs, Def) ->
     case sets:to_list(Locs) of
         [First | Rest] ->
             lists:foldl(fun ast:min_loc/2, First, Rest);
-        [] -> errors:bug("empty set of locations")
+        [] -> Def
     end.
+
+-spec locs_from_constrs(constr:constrs()) -> sets:set(ast:loc()).
+locs_from_constrs(Cs) ->
+    sets:union(
+        lists:map(
+            fun (C) ->
+                case C of
+                    {csubty, {_, Locs}, _, _} -> Locs;
+                    {cvar, {_, Locs}, _, _} -> Locs;
+                    {cop, {_, Locs}, _, _, _} -> Locs;
+                    {cdef, {_, Locs}, _, _} -> Locs;
+                    {cunsatisfiable, L, _} -> sets:from_list([L])
+                end
+            end, sets:to_list(Cs))
+    ).
 
 -spec get_substs([subst:t()], constr:locs()) -> [{subst:t(), constr:simpl_constrs()}].
 get_substs(Substs, Locs) ->

@@ -50,7 +50,8 @@ report_tyerror({simp_constrs_error, {Kind, Loc}}, What) ->
     Msg =
         case Kind of
             tyerror -> "expression failed to type check";
-            redundant_branch -> "this branch never matches"
+            redundant_branch -> "this branch never matches";
+            non_exhaustive_case -> "not all cases are covered"
         end,
     SrcCtx = format_src_loc(Loc),
     errors:ty_error(Loc, "~s~n~s~n~n  ~s", [Msg, SrcCtx, What]).
@@ -194,7 +195,7 @@ check_alt(Ctx, Decl = {function, Loc, Name, Arity, _}, FunTy, BranchMode) ->
         lists:foldl(
           fun(Ds, {Status, Idx}) ->
                   case Status of
-                      true -> {Status, [], Idx + 1};
+                      true -> {Status, Idx + 1};
                       false ->
                           FreeSet = tyutils:free_in_ty(FunTy),
                           ?LOG_DEBUG("Simplified constraint set ~w/~w for ~w/~w at ~s, now " ++

@@ -283,10 +283,11 @@ constr(X) ->
                                        locs(Locs),
                                        constr_env(Env),
                                        constr(Cs)]));
-               {ccase, Locs, Cs, Bodies} ->
+               {ccase, Locs, CsScrut, CsCase, Bodies} ->
                    brackets(comma_sep([text("ccase"),
                                        locs(Locs),
-                                       constr(Cs),
+                                       constr(CsScrut),
+                                       constr(CsCase),
                                        constr_bodies(Bodies)]));
                {cunsatisfiable, Locs, Msg} ->
                    brackets(comma_sep([text("cunsatisfiable"),
