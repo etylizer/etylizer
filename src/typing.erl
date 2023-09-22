@@ -23,7 +23,17 @@ new_ctx(Tab, Sanity) ->
     Ctx = #ctx{ symtab = Tab, sanity = Sanity },
     Ctx.
 
+-spec report_tyerror(constr_simp:simp_constrs_result()) -> nonempty_list(constr:simp_constrs()).
+report_tyerror({simp_constrs_ok, L}) ->
+    case length(L) of
+        0 -> errors:bug("empty list of simple constraints returned from constr_simp:simp_constrs");
+        _ -> L
+    end;
+report_tyerror({simp_constrs_error, {Kind, Loc}}) ->
+    errors:ty_error(Loc, "Error: ~w", Kind).
+
 % Infers the types of a group of mutually recursive functions. Throws a ty_error.
+% FIXME: must return multiple possible type environments
 -spec infer(ctx(), [ast:fun_decl()]) -> [{ast:global_ref(), Type::ast:ty_scheme()}].
 infer(_, []) -> errors:bug("typing:infer called with empty list of declarations");
 infer(Ctx, Decls) ->
@@ -35,15 +45,7 @@ infer(Ctx, Decls) ->
     PolyEnv = maps:map(fun(_Key, T) -> {ty_scheme, [], T} end, Env),
     Tab = Ctx#ctx.symtab,
     SimpCtx = constr_simp:new_ctx(Tab, PolyEnv, Ctx#ctx.sanity, report),
-    Dss = constr_simp:simp_constrs(SimpCtx, Cs),
-    case Ctx#ctx.sanity of
-        {ok, TyMap2} -> constr_simp:sanity_check(Dss, TyMap2, report);
-        error -> ok
-    end,
-    Total = length(Dss),
-    if Total =:= 0 -> errors:bug("empty list of simple constraints returned from constr_simp:simp_constrs");
-       true -> ok
-    end,
+    Dss = report_tyerror(constr_simp:simp_constrs(SimpCtx, Cs)),
     [Ds | _] = Dss, % FIXME: this is wrong but for now we do not use infer
     case tally:tally(Tab, Ds) of
         [] ->
@@ -162,17 +164,8 @@ check_alt(Ctx, Decl = {function, Loc, Name, Arity, _}, FunTy, BranchMode) ->
     ?LOG_DEBUG("Constraints:~n~s", pretty:render_constr(Cs)),
     Tab = Ctx#ctx.symtab,
     SimpCtx = constr_simp:new_ctx(Tab, #{}, Ctx#ctx.sanity, BranchMode),
-    Dss = constr_simp:simp_constrs(SimpCtx, Cs),
-    case Ctx#ctx.sanity of
-        {ok, TyMap2} -> constr_simp:sanity_check(Dss, TyMap2, BranchMode);
-        error -> ok
-    end,
+    Dss = report_tyerror(constr_simp:simp_constrs(SimpCtx, Cs)),
     Total = length(Dss),
-    if Total =:= 0 ->
-            errors:ty_error(Loc, "Function ~w/~w failed to type check against type ~s",
-                            [Name, Arity, pretty:render_ty(FunTy)]);
-       true -> ok
-    end,
     {Status, Errors, _} =
         lists:foldl(
           fun(Ds, {Status, Errors, Idx}) ->

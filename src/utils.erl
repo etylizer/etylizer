@@ -13,7 +13,7 @@
     string_ends_with/2, shorten/2,
     mkdirs/1, hash_sha1/1, hash_file/1,
     list_uniq/1, lists_enumerate/1, lists_enumerate/2,
-    with_default/2
+    with_default/2, compare/2
 ]).
 
 -spec map_opt(fun((T) -> U | error), [T]) -> [U].
@@ -220,6 +220,17 @@ hash_file(Path) ->
     case file:read_file(Path) of
         {ok, FileContent} -> utils:hash_sha1(FileContent);
         X -> X
+    end.
+
+-spec compare(integer(), integer()) -> less | equal | greater.
+compare(I1, I2) ->
+    case I1 < I2 of
+        true -> less;
+        false ->
+            case I1 > I2 of
+                true -> greater;
+                false -> equal
+            end
     end.
 
 % Some functions copied from OTP 25 (we still support OTP 24)
