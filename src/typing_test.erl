@@ -13,9 +13,9 @@ check_ok_fun(Filename, Tab, Decl = {function, L, Name, Arity, _}, Ty) ->
     try
         typing:check(Ctx, Decl, Ty)
     catch
-        throw:{ety, ty_error, _Msg} ->
-%%            io:format("~s: Type checking ~w/~w in ~s failed but should succeed: ~s",
-%%                      [ast:format_loc(L), Name, Arity, Filename, Msg]),
+        throw:{ety, ty_error, Msg} ->
+            io:format("~s: Type checking ~w/~w in ~s failed but should succeed: ~s",
+                      [ast:format_loc(L), Name, Arity, Filename, Msg]),
             ?assert(false)
     end,
     % FIXME: activate once the FIXME in typing:infer has been removed
@@ -44,8 +44,8 @@ check_fail_fun(Filename, Tab, Decl = {function, L, Name, Arity, _}, Ty) ->
     Ctx = typing:new_ctx(Tab, error),
     try
         typing:check(Ctx, Decl, Ty),
-%%        io:format("~s: Type checking ~w/~w in ~s succeeded but should fail",
-%%                  [ast:format_loc(L), Name, Arity, Filename]),
+        io:format("~s: Type checking ~w/~w in ~s succeeded but should fail",
+                  [ast:format_loc(L), Name, Arity, Filename]),
         ?assert(false)
     catch
         throw:{ety, ty_error, _Msg} ->
