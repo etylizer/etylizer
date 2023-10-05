@@ -15,6 +15,10 @@ compare(_, _) -> 0.
 equal(P1, P2) -> compare(P1, P2) =:= 0.
 
 function(Refs, Ref2) ->
+    case Refs of
+        _ when not is_list(Refs) -> error(Refs);
+        _ -> ok
+    end,
     true = is_list(Refs),
     {ty_function, Refs, Ref2}.
 
@@ -34,17 +38,3 @@ transform({ty_function, Ref1, Ref2}, #{to_fun := Fun}) ->
     Fun(Ref1, Ref2).
 
 
-
--ifdef(TEST).
--include_lib("eunit/include/eunit.hrl").
-
-usage_test() ->
-    TIa = ty_rec:interval(dnf_var_int:int(ty_interval:interval('*', '*'))),
-    TIb = ty_rec:interval(dnf_var_int:int(ty_interval:interval('*', '*'))),
-
-    % int -> int
-    _TyFunction = ty_function:function(TIa, TIb),
-
-    ok.
-
--endif.

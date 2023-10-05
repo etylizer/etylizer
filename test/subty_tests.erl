@@ -401,30 +401,30 @@ empty_tuples_edge_cases_test() ->
   ok.
 
 
-%%simple_list_test() ->
-%%  S = {empty_list},
-%%  T = {list, {singleton, hello}},
-%%  Ti = {improper_list, {singleton, hello}, {empty_list}},
-%%
-%%  true = is_subtype(S, T),
-%%  false = is_subtype(S, Ti),
-%%  false = is_subtype(T, Ti).
-%%
-%%nonempty_list_test() ->
-%%  S = {empty_list},
-%%  T = {nonempty_list, {singleton, hello}},
-%%  Ti = {nonempty_improper_list, {singleton, hello}, {empty_list}},
-%%
-%%  false = is_subtype(S, T),
-%%  false = is_subtype(S, Ti),
-%%  true = is_subtype(T, Ti).
-%%
-%%number_list_test() ->
-%%  T = {list, stdtypes:tunion([{predef, integer}, {predef, float}])},
-%%  S = {list, stdtypes:tunion([{predef, integer}])},
-%%
-%%  true = is_subtype(S, T),
-%%  false = is_subtype(T, S).
+simple_list_test() ->
+  S = {empty_list},
+  T = {list, {singleton, hello}},
+  Ti = {improper_list, {singleton, hello}, {empty_list}},
+
+  true = is_subtype(S, T),
+  false = is_subtype(S, Ti),
+  false = is_subtype(T, Ti).
+
+nonempty_list_test() ->
+  S = {empty_list},
+  T = {nonempty_list, {singleton, hello}},
+  Ti = {nonempty_improper_list, {singleton, hello}, {empty_list}},
+
+  false = is_subtype(S, T),
+  false = is_subtype(S, Ti),
+  true = is_subtype(T, Ti).
+
+number_list_test() ->
+  T = {list, stdtypes:tunion([{predef, integer}, {predef, float}])},
+  S = {list, stdtypes:tunion([{predef, integer}])},
+
+  true = is_subtype(S, T),
+  false = is_subtype(T, S).
 
 simple_predef_alias_test() ->
   S = {predef_alias, term},

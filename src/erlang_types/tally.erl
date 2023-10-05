@@ -22,7 +22,6 @@ tally(_SymTab, Constraints, FixedVars) ->
           [maps:from_list([{VarName, ast:erlang_ty_to_ast(Ty)} || {{var, _, VarName}, Ty} <- Subst]) || Subst <- InternalResult]
       end,
 
-%%  io:format(user, "Result: ~n~p~n", [X]),
   X.
 
 is_valid_substitution([], _) -> true;

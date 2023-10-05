@@ -64,7 +64,7 @@ tally_02_test() ->
       }]
     ).
 
-tally_04_test() ->
+tally_03_test() ->
   test_tally([
     {ttuple([]), tvar(zero)},
     {tvar(zero), ttuple([])}
@@ -75,7 +75,7 @@ tally_04_test() ->
     }]
   ).
 
-tally_03_test() ->
+tally_04_test() ->
     Alpha = tvar(alpha),
     Beta = tvar(beta),
     test_tally([
@@ -89,16 +89,21 @@ tally_03_test() ->
       }]
     ).
 
-% TODO lists
-%%tally_04_test() ->
-%%    Alpha = tvar(alpha),
-%%    Beta = tvar(beta),
-%%    test_tally_unique([{tlist(Beta), Alpha}],
-%%                      #{ alpha => tempty_list() }).
+tally_05_test() ->
+    Alpha = tvar(alpha),
+    Beta = tvar(beta),
+    test_tally([
+      {tlist(Beta), Alpha}
+    ],
+      [{
+        #{ alpha => tlist(Beta)},
+        #{ alpha => tany() }
+      }]
+    ).
 
 % debug tallying (['b] [ ('b, 'a2) ]);;
 % result:[{'a2:='b}]
-tally_05_test() ->
+tally_06_test() ->
     Alpha = tvar(alpha),
     Beta = tvar(beta),
     test_tally(
@@ -109,21 +114,26 @@ tally_05_test() ->
       }],
       [beta]).
 
-% TODO lists
-%%% debug tallying (['b] [ (['b*], 'a2) ]);;
-%%% result:[{'a2:=[ 'b* ]}]
-%%tally_06_test() ->
-%%  Alpha = tvar(alpha),
-%%  Beta = tvar(beta),
-%%  test_tally_unique([{tlist(Beta), Alpha}],
-%%    #{ alpha => tunion([tempty_list(), stdtypes:tlist_improper(Beta, tempty_list())]) },
-%%    [beta]).
+% debug tallying (['b] [ (['b*], 'a2) ]);;
+% result:[{'a2:=[ 'b* ]}]
+tally_07_test() ->
+  Alpha = tvar(alpha),
+  Beta = tvar(beta),
+  test_tally([
+    {tlist(Beta), Alpha}
+  ],
+    [{
+      #{ alpha => tlist(Beta)},
+      #{ alpha => tany() }
+    }],
+    [beta]
+  ).
 
 % see #36
 % # debug tallying ([] [(1|2, 'alpha) ( (Int -> Int) & ((1|2) -> (1|2)), 'alpha -> 'beta) ('beta, 1|2)]);;
 % [DEBUG:tallying]
 % Result:[{'beta:=1--2 | 1--2 & 'a6a6; 'alpha:=1--2 | 1--2 & 'a6a6}]
-tally_07_test() ->
+tally_08_test() ->
   Alpha = tvar(alpha),
   Beta = tvar(beta),
   OneOrTwo = tunion(tint(1), tint(2)),
@@ -139,41 +149,45 @@ tally_07_test() ->
       #{ alpha => OneOrTwoRange, beta => OneOrTwoRange }
     }]).
 
-% TODO n-functions
 % Also see #36
 % #debug tallying ([] [( ((Int, Int) -> Int) & ((Int, Float) -> Float) & ((Float, Int) -> Float) & ((Float, Float) -> Float), ('alpha, 'beta) -> 'gamma ) (Int \ (1--2), 'alpha) (1, 'beta) (1, 'delta) (2, 'delta) ('delta, Int) ('gamma, 'delta)]);;
 % [DEBUG:tallying]
-% Result:[{'gamma:=Int; 'delta:=Int; 'beta:=1 | Int & 'betabeta;
-%         'alpha:=*--0 | 3--* | Int & 'alphaalpha}]
-%%tally_08_test() ->
-%%    Alpha = tvar(alpha),
-%%    Beta = tvar(beta),
-%%    Gamma = tvar(gamma),
-%%    Delta = tvar(delta),
-%%    One = tint(1),
-%%    Two = tint(2),
-%%    OneOrTwo = tunion(One, Two),
-%%    I = tint(),
-%%    F = tfloat(),
-%%    test_tally_unique(
-%%      [{tinter([tfun2(I, I, I), tfun2(I, F, F), tfun2(F, I, F), tfun2(F, F, F)]), tfun2(Alpha, Beta, Gamma)},
-%%       {tinter(I, tnot(OneOrTwo)), Alpha},
-%%       {One, Beta},
-%%       {One, Delta},
-%%       {Two, Delta},
-%%       {Delta, I},
-%%       {Gamma, Delta}],
-%%      {
-%%        #{ alpha => tunion(tunion([trange(3, '*')]), tunion([trange('*', 0)])),
-%%          beta => tunion([trange(1, 1)]),
-%%          gamma => I,
-%%          delta => I },
-%%        #{ alpha => tint(),
-%%          beta => tint(),
-%%          gamma => I,
-%%          delta => I }
-%%      }
-%%    ).
+% Result:[{
+%  'gamma:=Int;
+%  'delta:=Int;
+%  'beta:=1 | Int & 'betabeta;
+%  'alpha:=*--0 | 3--* | Int & 'alphaalpha
+% }]
+tally_09_test() ->
+    Alpha = tvar(alpha),
+    Beta = tvar(beta),
+    Gamma = tvar(gamma),
+    Delta = tvar(delta),
+    One = tint(1),
+    Two = tint(2),
+    OneOrTwo = tunion(One, Two),
+    I = tint(),
+    F = tfloat(),
+    test_tally(
+      [{tinter([tfun2(I, I, I), tfun2(I, F, F), tfun2(F, I, F), tfun2(F, F, F)]), tfun2(Alpha, Beta, Gamma)},
+       {tinter(I, tnot(OneOrTwo)), Alpha},
+       {One, Beta},
+       {One, Delta},
+       {Two, Delta},
+       {Delta, I},
+       {Gamma, Delta}],
+
+      [{
+        #{ alpha => tunion(tunion([trange(3, '*')]), tunion([trange('*', 0)])),
+          beta => trange(1, 1),
+          gamma => I,
+          delta => I },
+        #{ alpha => tint(),
+          beta => tint(),
+          gamma => I,
+          delta => I }
+      }]
+    ).
 
 
 % debug tallying ([] [] [('a1 -> 'a2, 'a0) ('a4, 'a2) (42, 'a4) ('a3 & Int, 'a4) ('a3 & Int, 'a5) (Any -> Bool, 'a5 -> 'a6) ('a6, Bool) ('a1, 'a3)]);;

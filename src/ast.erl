@@ -141,7 +141,7 @@
 -export([
     format_loc/1, to_loc/2, loc_auto/0, is_predef_name/1, is_predef_alias_name/1,
     local_varname_from_any_ref/1,
-    mk_intersection/1, mk_union/1, mk_negation/1
+    mk_intersection/1, mk_union/1, mk_negation/1, mk_diff/2
 ]).
 
 % General
@@ -505,6 +505,8 @@ mk_intersection(Tys) ->
             end
     end.
 
+mk_diff(T1, T2) ->
+   mk_intersection([T1, mk_negation(T2)]).
 
 -spec mk_union([ast:ty()]) -> ast:ty().
 mk_union(Tys) ->
@@ -569,6 +571,7 @@ erlang_ty_to_ast(X) ->
                     [{_, _}] -> {var, Name}
                 end
                    end,
+            diff => fun ast:mk_diff/2,
             union => fun ast:mk_union/1,
             intersect => fun ast:mk_intersection/1,
             negate => fun ast:mk_negation/1

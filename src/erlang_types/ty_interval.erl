@@ -22,8 +22,18 @@ transform_single({range, A, B}, #{to_int := Int}) -> Int(A, B);
 % TODO hack
 transform_single({left, -1}, _) -> {predef_alias, neg_integer};
 transform_single({right, 1}, _) -> {predef_alias, pos_integer};
-transform_single(Interval, Ops) ->
-    erlang:error({"Left/Right unbounded intervals not supported by Erlang language: ", {Interval, Ops}}).
+
+transform_single({left, L}, M = #{diff := D}) when L < -1 ->
+    D({predef_alias, neg_integer}, transform_single({range, (L + 1), -1}, M));
+transform_single({left, L}, M = #{union := U}) when L > -1 ->
+    U([{predef_alias, neg_integer}, transform_single({range, -1, L}, M)]);
+
+transform_single({right, R}, M = #{diff := D}) when R > 1 ->
+    D({predef_alias, pos_integer}, transform_single({range, 1, (R - 1)}, M));
+transform_single({right, R}, M = #{union := U}) when R < 1 ->
+    U([{predef_alias, pos_integer}, transform_single({range, R, 1}, M)]).
+
+
 
 %% representation
 %% left? range* right?
