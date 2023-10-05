@@ -4,7 +4,7 @@
 -export([memoize/1, is_empty_memoized/1, reset/0, is_normalized_memoized/3]).
 -export([memoize_norm/2, normalized_memoized/1]).
 
--on_load(setup_ets/0).
+%%-on_load(setup_ets/0).
 -define(TY_UTIL, ty_counter).        % counter store
 -define(TY_MEMORY, ty_mem).          % id -> ty
 -define(TY_UNIQUE_TABLE, ty_unique). % ty -> id
@@ -23,44 +23,34 @@ all_tables() ->
   [?TY_UNIQUE_TABLE, ?TY_MEMORY, ?TY_UTIL, ?EMPTY_MEMO, ?EMPTY_CACHE, ?RECURSIVE_TABLE, ?NORMALIZE_CACHE].
 
 reset() ->
-  ets:delete(?EMPTY_MEMO),
-  ets:delete(?EMPTY_CACHE),
-  ets:delete(?NORMALIZE_CACHE),
+  lists:foreach(fun(Tab) -> ets:delete(Tab) end, all_tables()),
+  setup_all()
+.
 
-  ets:new(?EMPTY_CACHE, [public, named_table]),
-  ets:new(?EMPTY_MEMO, [public, named_table]),
+setup_all() ->
+  % spawns a new process that is the owner of the variable id ETS table
+  lists:foreach(fun(Tab) -> ets:new(Tab, [public, named_table]) end, all_tables()),
+  ets:insert(?TY_UTIL, {ty_number, 0}),
+
+  % define ANY node once
+  ok = define_any(),
 
   % memoize ANY as not empty
   {ty_ref, AnyId} = ty_rec:any(),
   ets:insert(?EMPTY_CACHE, {AnyId, false}),
+  ets:insert(?NORMALIZE_CACHE, {AnyId, []}),
 
   % memoize EMPTY as empty
   {ty_ref, EmptyId} = ty_rec:empty(),
-  ets:insert(?EMPTY_CACHE, {EmptyId, true})
-.
+  ets:insert(?EMPTY_CACHE, {EmptyId, true}),
+  ets:insert(?NORMALIZE_CACHE, {EmptyId, [[]]}).
 
 -spec setup_ets() -> ok.
 setup_ets() ->
   spawn(fun() ->
     catch(begin
-    % spawns a new process that is the owner of the variable id ETS table
-    lists:foreach(fun(Tab) -> ets:new(Tab, [public, named_table]) end, all_tables()),
-    ets:insert(?TY_UTIL, {ty_number, 0}),
-
-    % define ANY node once
-    ok = define_any(),
-
-    % memoize ANY as not empty
-    {ty_ref, AnyId} = ty_rec:any(),
-    ets:insert(?EMPTY_CACHE, {AnyId, false}),
-    ets:insert(?NORMALIZE_CACHE, {AnyId, []}),
-
-    % memoize EMPTY as empty
-    {ty_ref, EmptyId} = ty_rec:empty(),
-    ets:insert(?EMPTY_CACHE, {EmptyId, true}),
-    ets:insert(?NORMALIZE_CACHE, {EmptyId, [[]]}),
-
-    receive _ -> ok end
+            setup_all(),
+            receive _ -> ok end
            end)
         end),
   ok.
@@ -134,6 +124,7 @@ store(Ty) ->
       Id = ets:update_counter(?TY_UTIL, ty_number, {2, 1}),
       ets:insert(?TY_UNIQUE_TABLE, {Ty, Id}),
       ets:insert(?TY_MEMORY, {Id, Ty}),
+      io:format(user, "Store: ~p :=~n~p~n", [Id, Ty]),
       {ty_ref, Id};
     [{_, Id}] ->
       {ty_ref, Id}

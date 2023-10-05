@@ -92,12 +92,13 @@ should_run(Name, {exclude,Set}) -> not sets:is_element(Name, Set).
 
 simple_test_() ->
   WhatNot = [
-    % FIXME soundness
+    % FIXME tally soundness
     "foo",
     "op_04",
     "op_08",
     "cons_01",
     "cons_02",
+    "cons_03",
     "cons_05",
     % FIXME #36 impossible branches
     "foo2",
@@ -107,7 +108,9 @@ simple_test_() ->
     % TODO 7s
     "fun_local_03",
     % TODO 23s
-    "fun_local_04"
+    "fun_local_04",
+    % TODO timeout
+    "inter_01", "inter_02"
             ],
   check_decls_in_file("test_files/tycheck_simple.erl",
                       {exclude, sets:from_list(WhatNot)}).

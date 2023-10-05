@@ -10,7 +10,18 @@ is_valid_substitution([], _) -> true;
 is_valid_substitution([{Left, Right} | Cs], Substitution) ->
   SubstitutedLeft = ty_rec:substitute(Left, Substitution),
   SubstitutedRight = ty_rec:substitute(Right, Substitution),
-  ty_rec:is_subtype(SubstitutedLeft, SubstitutedRight) andalso
+  Res = ty_rec:is_subtype(SubstitutedLeft, SubstitutedRight) ,
+  case Res of
+    true -> ok;
+    false ->
+      io:format(user, "WRONG~n", []),
+      io:format(user, "Check ~n~p <= ~n~p~n", [ty_ref:load(Left), ty_ref:load(Right)]),
+      io:format(user, "Check ~n~p <= ~n~p~n", [ty_ref:load(SubstitutedLeft), ty_ref:load(SubstitutedRight)]),
+      io:format(user, "With ~p~n", [Substitution]),
+      error(todo)
+  end,
+
+    Res andalso
     is_valid_substitution(Cs, Substitution).
 
 
@@ -40,13 +51,20 @@ tally(Constraints, FixedVars) ->
     _ -> solve(Saturated, FixedVars)
   end,
 
+  io:format(user, "Got:~n~p~n", [Solved]),
+
   case Solved of
         {error, []} ->
           {error, []};
         _ ->
           % TODO expensive sanity check
           % sanity: every substitution satisfies all given constraints
-          [true = is_valid_substitution(Constraints, maps:from_list(Subst)) || Subst <- Solved],
+          [
+            case is_valid_substitution(Constraints, maps:from_list(Subst)) of
+              true -> ok;
+              _ -> error(todo)
+                end
+            || Subst <- Solved],
           Solved
       end.
 

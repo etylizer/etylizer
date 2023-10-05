@@ -1,7 +1,7 @@
 -module(ty_variable).
 
 % ETS table is used to strict monotonically increment a variable ID counter
--on_load(setup_ets/0).
+%%-on_load(setup_ets/0).
 -export([setup_ets/0]).
 -define(VAR_ETS, variable_counter_ets_table).
 

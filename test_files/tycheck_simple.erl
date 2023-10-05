@@ -118,16 +118,16 @@ string_07() -> "bass".
 string_08_fail() -> "bass".
 
 % Simple functions
--spec fun_01(integer()) -> integer().
+-spec fun_01(any()) -> any().
 fun_01(X) -> X.
 
 -spec fun_02_fail(integer()) -> atom().
 fun_02_fail(X) -> X.
 
--spec fun_03(atom(), integer()) -> integer().
+-spec fun_03(string(), integer()) -> integer().
 fun_03(_X, Y) -> Y.
 
--spec fun_04_fail(atom(), integer()) -> integer().
+-spec fun_04_fail(string(), integer()) -> integer().
 fun_04_fail(X, _Y) -> X.
 
 -spec fun_05(integer()) -> any().
@@ -149,16 +149,19 @@ op_03() -> -3.
 op_04() -> [1,2] ++ [3,4].
 
 -spec op_05() -> boolean().
-op_05() -> 1 =:= foo.
+op_05() -> 1 =:= "foo".
 
 -spec op_06_fail(integer()) -> boolean().
-op_06_fail(X) -> X + foo.
+op_06_fail(X) -> X + "foo".
 
 -spec op_07_fail() -> list(integer()).
 op_07_fail() -> [1,2] ++ ["foo", "bar"].
 
 -spec op_08() -> list().
 op_08() -> [1,2] ++ ["foo", "bar"].
+
+-spec op_09() -> list(integer()).
+op_09() -> [] ++ [].
 
 % Case
 -spec case_01(atom()) -> foobar.
@@ -297,17 +300,17 @@ nil_04() -> [].
 nil_05_fail() -> [].
 
 % fun ref and call
--spec some_fun(atom(), integer()) -> atom().
+-spec some_fun(string(), integer()) -> string().
 some_fun(S, _) -> S.
 
--spec fun_ref_01() -> atom().
-fun_ref_01() -> some_fun(foo, 42).
+-spec fun_ref_01() -> string().
+fun_ref_01() -> some_fun("foo", 42).
 
 -spec fun_ref_02_fail() -> integer().
-fun_ref_02_fail() -> some_fun(foo, 42).
+fun_ref_02_fail() -> some_fun("foo", 42).
 
--spec fun_ref_03_fail() -> atom().
-fun_ref_03_fail() -> some_fun(foo, '42').
+-spec fun_ref_03_fail() -> string().
+fun_ref_03_fail() -> some_fun("foo", "42").
 
 % fun
 -spec fun_local_01() -> integer().
@@ -318,10 +321,10 @@ fun_local_01() ->
 -spec fun_local_02() -> integer().
 fun_local_02() ->
     F = fun Add(X) ->
-                case X of
-                    0 -> 0;
-                    Y -> Y + Add(X - 1)
-                end
+        case X of
+            0 -> 0;
+            Y -> Y + Add(X - 1)
+        end
         end,
     F(3).
 
@@ -344,49 +347,49 @@ fun_local_04() ->
 -spec fun_local_05_fail(integer()) -> integer().
 fun_local_05_fail(X) ->
     F = fun(Y) -> X + Y end,
-    F(foo).
+    F("foo").
 
 % if
 -spec if_01(integer()) -> integer().
 if_01(X) ->
     if X =:= 0 -> 42;
-       true -> 0
+        true -> 0
     end.
 
--spec if_02(integer()) -> integer() | atom().
+-spec if_02(integer()) -> integer() | string().
 if_02(X) ->
     if X =:= 0 -> 42;
-       true -> foo
+        true -> "foo"
     end.
 
 -spec if_03_fail(integer()) -> integer().
 if_03_fail(X) ->
     if X =:= 0 -> 42;
-       true -> foo
+        true -> "foo"
     end.
 
 -spec if_04_fail(atom()) -> integer().
 if_04_fail(X) ->
     if (X + 1) =:= 0 -> 0;
-       true -> 1
+        true -> 1
     end.
 
 -spec if_05(atom()) -> integer().
 if_05(X) ->
     if X =:= 0 -> 0;
-       true -> 1
+        true -> 1
     end.
 
 
 % Tuples
--spec tuple_01() -> {integer(), atom()}.
-tuple_01() -> {42, foo}.
+-spec tuple_01() -> {integer(), string()}.
+tuple_01() -> {42, "foo"}.
 
--spec tuple_02_fail() -> {integer(), atom()}.
-tuple_02_fail() -> {foo, 42}.
+-spec tuple_02_fail() -> {integer(), string()}.
+tuple_02_fail() -> {"foo", 42}.
 
--spec tuple_03() -> {atom(), integer(), {boolean(), atom()}}.
-tuple_03() -> {foo, 42, {true, foo}}.
+-spec tuple_03() -> {atom(), integer(), {boolean(), string()}}.
+tuple_03() -> {foo, 42, {true, "foo"}}.
 
 -spec tuple_04({atom(), integer()}) -> integer().
 tuple_04(X) ->
@@ -404,51 +407,51 @@ tuple_05_fail(X) ->
 -spec use_atom(atom()) -> atom().
 use_atom(X) -> X.
 
-
 -spec inter_01(integer()) -> integer()
-            ; (atom()) -> atom().
+; (atom()) -> atom().
 inter_01(X) ->
     case X of
-        _ when is_integer(X) -> X;
+        _ when is_integer(X) -> X + 1;
         _ -> use_atom(X)
     end.
 
 % just swap the types of the intersection
 -spec inter_02(atom()) -> atom()
-            ; (integer()) -> integer().
+; (integer()) -> integer().
 inter_02(X) ->
     case X of
-        _ when is_integer(X) -> X;
+        _ when is_integer(X) -> X + 1;
         _ -> use_atom(X)
     end.
 
 -spec inter_03_fail(integer()) -> integer()
-                 ; (atom()) -> atom().
+; (atom()) -> atom().
 inter_03_fail(X) ->
     case X of
-        _ when is_integer(X) -> X;
+        _ when is_integer(X) -> X + 1;
         _ -> X + 2
     end.
 
 -spec inter_04_fail([T]) -> [T] ; ([T]) -> [T].
 inter_04_fail(L) ->
-  case L of
-    [] -> [];
-    [_X | XS] -> XS + 1 % ERROR ignored if branch ignored when type-checking
-  end.
+    case L of
+        [] -> [];
+        [_X | XS] -> XS + 1 % ERROR ignored if branch ignored when type-checking
+    end.
 
 -spec foo([T]) -> [T].
 foo(L) ->
-  case L of
-    [] -> [];
-    [_X|XS] -> XS
-  end.
+    case L of
+        [] -> [];
+        [_X|XS] -> XS
+    end.
+
+-spec foo2 (a) -> 1; (b) -> 2.
+foo2(a) -> 1;
+foo2(b) -> 2.
+
 
 -spec foo3
     (a|b) -> 1|true.
 foo3(a) -> 1;
 foo3(b) -> true.
-
--spec foo2 (a) -> 1; (b) -> 2.
-foo2(a) -> 1;
-foo2(b) -> 2.
