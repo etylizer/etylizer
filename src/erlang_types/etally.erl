@@ -17,8 +17,7 @@ is_valid_substitution([{Left, Right} | Cs], Substitution) ->
       io:format(user, "WRONG~n", []),
       io:format(user, "Check ~n~p <= ~n~p~n", [ty_ref:load(Left), ty_ref:load(Right)]),
       io:format(user, "Check ~n~p <= ~n~p~n", [ty_ref:load(SubstitutedLeft), ty_ref:load(SubstitutedRight)]),
-      io:format(user, "With ~p~n", [Substitution]),
-      error(todo)
+      io:format(user, "With ~p~n", [Substitution])
   end,
 
     Res andalso
@@ -59,12 +58,7 @@ tally(Constraints, FixedVars) ->
         _ ->
           % TODO expensive sanity check
           % sanity: every substitution satisfies all given constraints
-          [
-            case is_valid_substitution(Constraints, maps:from_list(Subst)) of
-              true -> ok;
-              _ -> error(todo)
-                end
-            || Subst <- Solved],
+          [ true = is_valid_substitution(Constraints, maps:from_list(Subst)) || Subst <- Solved],
           Solved
       end.
 

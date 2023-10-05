@@ -377,9 +377,11 @@ find_subst(X = [{Low, High} | OtherTests], [Subst | Others], AllTally) ->
 %%    }]).
 
 tally_fun_cons3_test() ->
+  ty_ref:setup_all(),
+  ty_variable:setup_all(),
 
-  ty_ref:setup_ets(),
-  ty_variable:setup_ets(),
+  [ast_lib:ast_to_erlang_ty({var, X}) || X <- ['$3', '$0', '$1', 'a@0', '$2', '$4']],
+
 
   test_tally(
     [

@@ -2,7 +2,7 @@
 
 -export([setup_ets/0, any/0, store/1, load/1, new_ty_ref/0, define_ty_ref/2, is_empty_cached/1, store_is_empty_cached/2, store_recursive_variable/2, check_recursive_variable/1]).
 -export([memoize/1, is_empty_memoized/1, reset/0, is_normalized_memoized/3]).
--export([memoize_norm/2, normalized_memoized/1]).
+-export([memoize_norm/2, normalized_memoized/1, setup_all/0]).
 
 %%-on_load(setup_ets/0).
 -define(TY_UTIL, ty_counter).        % counter store
@@ -124,7 +124,7 @@ store(Ty) ->
       Id = ets:update_counter(?TY_UTIL, ty_number, {2, 1}),
       ets:insert(?TY_UNIQUE_TABLE, {Ty, Id}),
       ets:insert(?TY_MEMORY, {Id, Ty}),
-      io:format(user, "Store: ~p :=~n~p~n", [Id, Ty]),
+%%      io:format(user, "Store: ~p :=~n~p~n", [Id, Ty]),
       {ty_ref, Id};
     [{_, Id}] ->
       {ty_ref, Id}
