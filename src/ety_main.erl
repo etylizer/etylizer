@@ -103,7 +103,7 @@ doWork(Opts) ->
     ?LOG_INFO("Initializing ETS tables"),
     ty_ref:setup_ets(),
     ty_variable:setup_ets(),
-    ast:setup_ets(),
+    ast_lib:setup_ets(),
 
     parse_cache:init(Opts),
     stdtypes:init(),

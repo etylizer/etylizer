@@ -288,7 +288,7 @@ tally_issue_14_test() ->
 % }]
 tally_foo2_test() ->
   % changing variable order might produce a different number of solutions
-  [ast:ast_to_erlang_ty({var, X}) || X <- ['$0', '$1', '$2', '$3', '$4', '$5', '$6']],
+  [ast_lib:ast_to_erlang_ty({var, X}) || X <- ['$0', '$1', '$2', '$3', '$4', '$5', '$6']],
   % (('a2, 42), 'a0)
   C1 = {{tuple,[{var,'$2'}, {singleton, tag}]},{var,'$0'}},
   % (`a, 'a2)

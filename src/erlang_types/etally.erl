@@ -1,28 +1,10 @@
--module(tally).
+-module(etally).
 
 -export([
   tally/1,
-  tally/2,
-  tally/3
+  tally/2
 ]).
 
-tally(_SymTab, Constraints, FixedVars) ->
-  InternalConstraints = lists:map(fun({csubty, _, S, T}) ->
-%%    io:format(user, "Cons~n~p~n", [{S, T}]),
-    {ast:ast_to_erlang_ty(S), ast:ast_to_erlang_ty(T)} end, sets:to_list(Constraints)),
-  InternalResult = tally(InternalConstraints, sets:from_list([ast:ast_to_erlang_ty_var({var, Var}) || Var <- sets:to_list(FixedVars)])),
-%%  io:format(user, "Got Constraints ~n~p~n~p~n", [InternalConstraints, InternalResult]),
-
-  X = case InternalResult of
-        {error, []} ->
-          {error, []};
-        _ ->
-          % transform to subst:t()
-          % TODO sanity variable Id == variable name
-          [maps:from_list([{VarName, ast:erlang_ty_to_ast(Ty)} || {{var, _, VarName}, Ty} <- Subst]) || Subst <- InternalResult]
-      end,
-
-  X.
 
 is_valid_substitution([], _) -> true;
 is_valid_substitution([{Left, Right} | Cs], Substitution) ->
