@@ -12,7 +12,7 @@
 
 %%
 -export([empty/0, any/0, union/2, intersect/2, diff/2, negate/1]).
--export([eval/1, is_empty/2, is_any/1, normalize/6, substitute/3]).
+-export([is_empty/2, is_any/1, normalize/6, substitute/3]).
 
 -export([function/1, all_variables/1, has_ref/2, transform/2]).
 
@@ -36,7 +36,6 @@ intersect(B1, B2) -> gen_bdd:intersect(?P, B1, B2).
 diff(B1, B2) -> gen_bdd:diff(?P, B1, B2).
 negate(B1) -> gen_bdd:negate(?P, B1).
 
-eval(B) -> gen_bdd:eval(?P, B).
 is_any(B) -> gen_bdd:is_any(?P, B).
 
 % ==
@@ -102,50 +101,35 @@ explore_function(Ts, T2, [Function | P]) ->
 normalize({default, _}, 0, [], [], _, _) -> [[]];
 normalize({default, _}, {terminal, 1}, [], [], _, _) -> [];
 normalize(Size, TyFunction, [], [], Fixed, M) ->
-  % cduce arrow rule
-  normalize_cduce({Size, TyFunction}, Fixed, M, {[], []});
+  % optimized NArrow rule
+  AllEmpty = domains_to_tuple([ty_rec:empty() || _ <- lists:seq(1, Size)]),
+  normalize_no_vars(Size, TyFunction, AllEmpty, [], [], Fixed, M);
 normalize(Size, DnfTyFunction, PVar, NVar, Fixed, M) ->
   Ty = ty_rec:function(Size, dnf_var_ty_function:function(DnfTyFunction)),
   % ntlv rule
   ty_variable:normalize(Ty, PVar, NVar, Fixed, fun(Var) -> ty_rec:function(Size, dnf_var_ty_function:var(Var)) end, M).
 
-normalize_cduce({_, 0}, _, _, _) -> [[]]; % empty
-normalize_cduce({Size, {terminal, 1}}, Fixed, M, PN) -> norm_arrow(Size, Fixed, M, PN); % non-empty
-normalize_cduce({Size, {node, Function, L_BDD, R_BDD}}, Fixed, M, {P, N}) ->
+normalize_no_vars(_Size, 0, _, _, _, _Fixed, _) -> [[]]; % empty
+normalize_no_vars(_Size, {terminal, 1}, _, _, [], _Fixed, _) -> []; % non-empty
+normalize_no_vars(Size, {terminal, 1}, S, P, [Function | N], Fixed, M) ->
+  T1 = domains_to_tuple(ty_function:domains(Function)),
+  T2 = ty_function:codomain(Function),
+  %% ∃ T1-->T2 ∈ N s.t.
+  %%   T1 is in the domain of the function
+  %%   S is the union of all domains of the positive function intersections
+  X1 = ?F(ty_rec:normalize(ty_rec:intersect(T1, ty_rec:negate(S)), Fixed, M)),
+  X2 = ?F(explore_function_norm(Size, T1, ty_rec:negate(T2), P, Fixed, M)),
+  R1 = ?F(constraint_set:meet(X1, X2)),
+  %% Continue searching for another arrow ∈ N
+  R2 = ?F(normalize_no_vars(Size, {terminal, 1}, S, P, N, Fixed, M)),
+  constraint_set:join(R1, R2);
+normalize_no_vars(Size, {node, Function, L_BDD, R_BDD}, S, P, Negated, Fixed, M) ->
+  T1 = domains_to_tuple(ty_function:domains(Function)),
+
   constraint_set:meet(
-    ?F(normalize_cduce({Size, L_BDD}, Fixed, M, {[Function | P], N})),
-    ?F(normalize_cduce({Size, R_BDD}, Fixed, M, {P, [Function | N]}))
+    ?F(normalize_no_vars(Size, L_BDD, ty_rec:union(S, T1), [Function | P], Negated, Fixed, M)),
+    ?F(normalize_no_vars(Size, R_BDD, S, P, [Function | Negated], Fixed, M))
   ).
-
-
-norm_arrow(Size, Delta, Mem, {LPos, []}) -> [];
-norm_arrow(Size, Delta, Mem, {LPos, [Fneg | N]}) ->
-  T1 = domains_to_tuple(ty_function:domains(Fneg)),
-  T2 = ty_function:codomain(Fneg),
-  Con1 = ?F(ty_rec:normalize(T1, Delta, Mem)),
-  Con2 = ?F(aux_arrow(Size, Delta, Mem, T1, ty_rec:negate(T2), LPos)),
-  Con0 = ?F(norm_arrow(Size, Delta, Mem, {LPos, N})),
-  D1 = ?F(constraint_set:join(Con1, Con2)),
-  constraint_set:join(D1, Con0).
-
-
-aux_arrow(Size, Delta, Mem, T1, Acc, []) -> [];
-aux_arrow(Size, Delta, Mem, T1, Acc, [FP | P]) ->
-  S1 = domains_to_tuple(ty_function:domains(FP)),
-  S2 = ty_function:codomain(FP),
-
-  T1S1 = ty_rec:diff(T1, S1),
-  Acc1 = ty_rec:intersect(Acc, S2),
-
-  Con1 = ?F(ty_rec:normalize(T1S1, Delta, Mem)),
-  Con10 = ?F(aux_arrow(Size, Delta, Mem, T1S1, Acc, P)),
-  Con11 = ?F(constraint_set:join(Con1, Con10)),
-
-  Con2 = ?F(ty_rec:normalize(Acc1, Delta, Mem)),
-  Con20 = ?F(aux_arrow(Size, Delta, Mem, T1, Acc1, P)),
-  Con22 = ?F(constraint_set:join(Con2, Con20)),
-  constraint_set:meet(Con11, Con22).
-
 
 
 explore_function_norm(_Size, BigT1, T2, [], Fixed, M) ->
