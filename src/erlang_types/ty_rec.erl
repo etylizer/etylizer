@@ -18,7 +18,7 @@
 
 -export([substitute/2, substitute/3, pi/2, all_variables/1]).
 
--export([transform/2]).
+-export([transform/2, print/1]).
 
 -record(ty, {predef, atom, interval, list, tuple, function}).
 
@@ -33,6 +33,7 @@
 % ======
 % top-level API
 % ======
+print(Ref) -> pretty:render_ty(ast_lib:erlang_ty_to_ast(Ref)) .
 
 ty_of(Predef, Atom, Int, List, Tuple, Function) ->
   #ty{predef = Predef, atom = Atom, interval = Int, list = List, tuple = Tuple, function = Function}.

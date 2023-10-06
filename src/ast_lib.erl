@@ -4,7 +4,7 @@
 % heavily derived from the erlang ast (defined in ast_erl.erl). See the README for
 % a description of the properties of the internal AST.
 
--export([setup_ets/0, ast_to_erlang_ty/1, erlang_ty_to_ast/1, ast_to_erlang_ty_var/1]).
+-export([setup_ets/0, ast_to_erlang_ty/1, erlang_ty_to_ast/1, ast_to_erlang_ty_var/1, erlang_ty_var_to_var/1]).
 -on_load(setup_ets/0).
 -define(VAR_ETS, ast_norm_var_memo). % remember variable name -> variable ID to convert variables properly
 
@@ -72,7 +72,7 @@ mk_union(Tys) ->
                     fun(T) ->
                         case T of
                             {predef, none} -> false;
-                            [] -> error(todo);
+                            [] -> error(Tys);
                             _ -> true
                         end
                     end,
@@ -88,6 +88,14 @@ mk_union(Tys) ->
 mk_negation({predef, any}) -> {predef, none};
 mk_negation({predef, none}) -> {predef, any};
 mk_negation(T) -> {negation, T}.
+
+erlang_ty_var_to_var({var, Id, Name}) ->
+    Object = ets:lookup(?VAR_ETS, Name),
+    case Object of
+        % new variable not seen before!
+        [] -> {var, list_to_atom("mu" ++ integer_to_list(Id))};
+        [{_, _}] -> {var, Name}
+    end.
 
 erlang_ty_to_ast(X) ->
     ty_rec:transform(
@@ -107,14 +115,7 @@ erlang_ty_to_ast(X) ->
             any_predef => fun stdtypes:tspecial_any/0,
             empty => fun stdtypes:tnone/0,
             any => fun stdtypes:tany/0,
-            var => fun({var, Id, Name}) ->
-                Object = ets:lookup(?VAR_ETS, Name),
-                case Object of
-                    % new variable not seen before!
-                    [] -> {var, list_to_atom("mu" ++ integer_to_list(Id))};
-                    [{_, _}] -> {var, Name}
-                end
-                   end,
+            var => fun erlang_ty_var_to_var/1,
             diff => fun ast_lib:mk_diff/2,
             union => fun ast_lib:mk_union/1,
             intersect => fun ast_lib:mk_intersection/1,

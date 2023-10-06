@@ -121,8 +121,8 @@ substitute({node, TyList, L_BDD, R_BDD}, Map, Memo) ->
   NewTyList = ty_list:list(NewS1, NewS2),
 
   union(
-    intersect(list(NewTyList), L_BDD),
-    intersect(negate(list(NewTyList)), R_BDD)
+    intersect(list(NewTyList), substitute(L_BDD, Map, Memo)),
+    intersect(negate(list(NewTyList)), substitute(R_BDD, Map, Memo))
     ).
 
 has_ref(0, _) -> false;

@@ -11,16 +11,7 @@ is_valid_substitution([{Left, Right} | Cs], Substitution) ->
   SubstitutedLeft = ty_rec:substitute(Left, Substitution),
   SubstitutedRight = ty_rec:substitute(Right, Substitution),
   Res = ty_rec:is_subtype(SubstitutedLeft, SubstitutedRight) ,
-  case Res of
-    true -> ok;
-    false ->
-      io:format(user, "WRONG~n", []),
-      io:format(user, "Check ~n~p <= ~n~p~n", [ty_ref:load(Left), ty_ref:load(Right)]),
-      io:format(user, "Check ~n~p <= ~n~p~n", [ty_ref:load(SubstitutedLeft), ty_ref:load(SubstitutedRight)]),
-      io:format(user, "With ~p~n", [Substitution])
-  end,
-
-    Res andalso
+  Res andalso
     is_valid_substitution(Cs, Substitution).
 
 
@@ -49,8 +40,6 @@ tally(Constraints, FixedVars) ->
     [] -> {error, []};
     _ -> solve(Saturated, FixedVars)
   end,
-
-  io:format(user, "Got:~n~p~n", [Solved]),
 
   case Solved of
         {error, []} ->
@@ -122,9 +111,22 @@ apply_substitution(Ty, Substitutions) ->
   % io:format(user, "Applying: ~p with ~p~n", [Ty, Substitutions]),
   SubstFun = fun({Var, To}, Tyy) ->
     Mapping = #{Var => To},
-    ty_rec:substitute(Tyy, Mapping)
+    Result = ty_rec:substitute(Tyy, Mapping),
+    sanity_substitution({Var, To}, Tyy, Result),
+    Result
     end,
   lists:foldl(SubstFun, Ty, Substitutions).
+
+sanity_substitution({Var, _To}, Ty, TyAfter) ->
+  case lists:member(Var, ty_rec:all_variables(Ty)) of
+    false ->  ok;
+    true ->
+      case lists:member(Var, ty_rec:all_variables(TyAfter)) of
+        false -> ok;
+        _ ->
+          error({failed_sanity, Var, variable_is_still_in_ty_after_substitution, {before, ty_rec:print(Ty)}, {'after', ty_rec:print(TyAfter)}})
+      end
+  end.
 
 % TODO implement & benchmark the minimization
 %%minimize_solutions(X = {fail, _}) -> X;

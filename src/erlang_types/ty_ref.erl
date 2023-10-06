@@ -4,7 +4,7 @@
 -export([memoize/1, is_empty_memoized/1, reset/0, is_normalized_memoized/3]).
 -export([memoize_norm/2, normalized_memoized/1, setup_all/0]).
 
-%%-on_load(setup_ets/0).
+-on_load(setup_ets/0).
 -define(TY_UTIL, ty_counter).        % counter store
 -define(TY_MEMORY, ty_mem).          % id -> ty
 -define(TY_UNIQUE_TABLE, ty_unique). % ty -> id
