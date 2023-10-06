@@ -92,14 +92,6 @@ should_run(Name, {exclude,Set}) -> not sets:is_element(Name, Set).
 
 simple_test_() ->
   WhatNot = [
-    % FIXME tally soundness
-    "foo",
-    "op_04",
-    "op_08",
-    "cons_01",
-    "cons_02",
-    "cons_03",
-    "cons_05",
     % FIXME #36 impossible branches
     "foo2",
     "inter_03_fail",
