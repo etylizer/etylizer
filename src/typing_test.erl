@@ -101,7 +101,7 @@ simple_test_() ->
     "fun_local_03",
     % TODO 23s
     "fun_local_04",
-    % TODO timeout
+    % TODO 4s
     "inter_01", "inter_02"
             ],
   check_decls_in_file("test_files/tycheck_simple.erl",
