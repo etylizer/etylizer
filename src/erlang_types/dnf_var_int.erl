@@ -7,7 +7,7 @@
 
 
 -export([empty/0, any/0, union/2, intersect/2, diff/2, negate/1]).
--export([eval/1, is_empty/1, is_any/1, normalize/3, substitute/2]).
+-export([is_empty/1, is_any/1, normalize/3, substitute/2]).
 
 -export([var/1, int/1,  all_variables/1, transform/2]).
 
@@ -32,7 +32,6 @@ intersect(B1, B2) -> gen_bdd:intersect(?P, B1, B2).
 diff(B1, B2) -> gen_bdd:diff(?P, B1, B2).
 negate(B1) -> gen_bdd:negate(?P, B1).
 
-eval(B) -> gen_bdd:eval(?P, B).
 is_any(B) -> gen_bdd:is_any(?P, B).
 
 

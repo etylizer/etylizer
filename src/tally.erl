@@ -1,21 +1,13 @@
 -module(tally).
 
 -export([
+  tally/2,
   tally/3
 ]).
 
-
-% FIXME tally memoization breaks these tests; when checking as single test cases (empty cache) the correct result is returned
-% "foo",
-% "op_04",
-% "op_08",
-% "cons_01",
-% "cons_02",
-% "cons_05",
+tally(SymTab, Constraints) -> tally(SymTab, Constraints, sets:new()) .
 
 tally(_SymTab, Constraints, FixedVars) ->
-%%  ty_ref:reset(),
-
   InternalConstraints = lists:map(fun({csubty, _, S, T}) ->
 %%    io:format(user, "~p~n", [{S, T}]),
     {ast_lib:ast_to_erlang_ty(S), ast_lib:ast_to_erlang_ty(T)} end, sets:to_list(Constraints)),
