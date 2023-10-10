@@ -6,5 +6,5 @@
 bar(X) -> X.
 
 % foo fails to type check
--spec foo(integer()) -> integer().
+-spec foo(boolean()) -> boolean().
 foo(X) -> bar(X).

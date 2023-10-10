@@ -5,8 +5,8 @@
 
 -type foo_type() :: local_ty1().
 -type local_ty1() :: local_ty2().
--type local_ty2() :: integer().
+-type local_ty2() :: boolean().
 
--spec foo_fun(integer(), foo_type()) -> integer().
+-spec foo_fun(boolean(), foo_type()) -> boolean().
 foo_fun(X, _) -> bar:bar_fun(X).
 

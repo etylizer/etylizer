@@ -3,13 +3,13 @@
 -export([foo_fun/2]).
 -export_type([foo_type/0]).
 
--type foo_type() :: integer().
+-type foo_type() :: boolean().
 
 -type local_ty() :: any().
 
--spec helper(local_ty()) -> integer().
-helper(_) -> 1.
+-spec helper(local_ty()) -> boolean().
+helper(_) -> true.
 
--spec foo_fun(integer(), foo_type()) -> integer().
-foo_fun(X, Y) -> bar:bar_fun(X) + helper(Y).
+-spec foo_fun(boolean(), foo_type()) -> boolean().
+foo_fun(X, Y) -> bar:bar_fun(X) and helper(Y).
 
