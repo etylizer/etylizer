@@ -34,23 +34,18 @@ is_any(B) -> gen_bdd:is_any(?P, B).
 equal(B1, B2) -> gen_bdd:equal(?P, B1, B2).
 compare(B1, B2) -> gen_bdd:compare(?P, B1, B2).
 
-is_empty(TyBDD) -> is_empty(
-  TyBDD,
-  ty_rec:any(),
-  ty_rec:any(),
-  _NegatedLists = []
-).
+is_empty(TyBDD) ->
+  gen_bdd:dnf(?P, TyBDD, {fun is_empty_coclause/3, fun gen_bdd:is_empty_union/2}).
 
-is_empty({terminal, 0}, _, _, _) -> true;
-is_empty({terminal, 1}, S1, S2, N) ->
-  phi(S1, S2, N);
-is_empty({node, TyList, L_BDD, R_BDD}, BigS1, BigS2, Negated) ->
-  S1 = ty_list:pi1(TyList),
-  S2 = ty_list:pi2(TyList),
-
-  is_empty(L_BDD, ty_rec:intersect(S1, BigS1), ty_rec:intersect(S2, BigS2), Negated)
-  andalso
-    is_empty(R_BDD, BigS1, BigS2, [TyList | Negated]).
+is_empty_coclause(_Pos, _Neg, 0) -> true;
+is_empty_coclause([], _Neg, 1) -> false;
+is_empty_coclause(Pos, Neg, 1) ->
+  Big = ty_list:big_intersect(Pos),
+  S1 = ty_list:pi1(Big),
+  S2 = ty_list:pi2(Big),
+  ty_rec:is_empty(S1) orelse
+    ty_rec:is_empty(S2) orelse
+    phi(S1, S2, Neg).
 
 phi(S1, S2, []) ->
   ty_rec:is_empty(S1)
