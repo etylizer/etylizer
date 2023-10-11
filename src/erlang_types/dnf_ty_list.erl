@@ -64,33 +64,24 @@ phi(S1, S2, [Ty | N]) ->
   ).
 
 normalize(TyList, [], [], Fixed, M) ->
-  New = gen_bdd:dnf(?P, TyList, {fun(Pos, Neg, DnfTyList) ->
-    normalize_coclause(Pos, Neg, DnfTyList, Fixed, M)
-                                 end, fun constraint_set:meet/2}),
-  New = normalize_no_vars(TyList, ty_rec:any(), ty_rec:any(), _NegatedLists = [], Fixed, M);
+  gen_bdd:dnf(?P, TyList, {
+    fun(Pos, Neg, DnfTyList) ->
+      normalize_coclause(Pos, Neg, DnfTyList, Fixed, M)
+                                 end,
+    fun constraint_set:meet/2
+  });
 normalize(DnfTyList, PVar, NVar, Fixed, M) ->
   Ty = ty_rec:list(dnf_var_ty_list:list(DnfTyList)),
   % ntlv rule
   ty_variable:normalize(Ty, PVar, NVar, Fixed, fun(Var) -> ty_rec:list(dnf_var_ty_list:var(Var)) end, M).
 
 
-normalize_coclause(Pos, Neg, 0, Fixed, M) -> [[]];
+normalize_coclause(_Pos, _Neg, 0, _Fixed, _M) -> [[]];
 normalize_coclause(Pos, Neg, 1, Fixed, M) ->
   Big = ty_list:big_intersect(Pos),
   S1 = ty_list:pi1(Big),
   S2 = ty_list:pi2(Big),
   phi_norm(S1, S2, Neg, Fixed, M).
-
-normalize_no_vars({terminal, 0}, _, _, _, _Fixed, _) -> [[]]; % empty
-normalize_no_vars({terminal, 1}, S1, S2, N, Fixed, M) ->
-  phi_norm(S1, S2, N, Fixed, M);
-normalize_no_vars({node, TyList, L_BDD, R_BDD}, BigS1, BigS2, Negated, Fixed, M) ->
-  S1 = ty_list:pi1(TyList),
-  S2 = ty_list:pi2(TyList),
-
-  X1 = ?F(normalize_no_vars(L_BDD, ty_rec:intersect(S1, BigS1), ty_rec:intersect(S2, BigS2), Negated, Fixed, M)),
-  X2 = ?F(normalize_no_vars(R_BDD, BigS1, BigS2, [TyList | Negated], Fixed, M)),
-  constraint_set:meet(X1, X2).
 
 phi_norm(S1, S2, [], Fixed, M) ->
   T1 = ?F(ty_rec:normalize(S1, Fixed, M)),
@@ -111,48 +102,50 @@ phi_norm(S1, S2, [Ty | N], Fixed, M) ->
 
   constraint_set:join(T1, ?F(constraint_set:join(T2, T3))).
 
+substitute(TyBDD, Map, Memo) ->
+  gen_bdd:dnf(?P, TyBDD, {
+    fun(P,N,T) -> subst_coclause(P,N,T, Map, Memo) end,
+    fun(F1, F2) -> union(F1(), F2()) end
+  }).
 
-substitute({terminal, 0}, _, _) -> {terminal, 0};
-substitute({terminal, 1}, _, _) ->
-  {terminal, 1};
-substitute({node, TyList, L_BDD, R_BDD}, Map, Memo) ->
-  S1 = ty_list:pi1(TyList),
-  S2 = ty_list:pi2(TyList),
+subst_coclause(_P, _N, 0, _Map, _Memo) -> empty();
+subst_coclause(P, N, 1, Map, Memo) ->
+  PosL = lists:map(fun(L) -> list(ty_list:substitute(L, Map, Memo)) end, P),
+  NegL = lists:map(fun(L) -> negate(list(ty_list:substitute(L, Map, Memo))) end, N),
+  Res = lists:foldl(fun(E,Ac) -> intersect(E, Ac) end, any(), PosL ++ NegL),
+  Res.
 
-  NewS1 = ty_rec:substitute(S1, Map, Memo),
-  NewS2 = ty_rec:substitute(S2, Map, Memo),
+has_ref(TyBDD, Ref) ->
+  gen_bdd:dnf(?P, TyBDD, {
+    fun(P,N,T) -> has_ref(P,N,T,Ref) end,
+    fun(F1, F2) -> F1() orelse F2() end
+  }).
 
-  NewTyList = ty_list:list(NewS1, NewS2),
+has_ref(_P, _N, 0, _) -> false;
+has_ref(P, N, 1, Ref) ->
+  Fun = fun(F) -> ty_list:has_ref(F, Ref) end,
+  lists:any(Fun, P) orelse lists:any(Fun, N).
 
-  union(
-    intersect(list(NewTyList), substitute(L_BDD, Map, Memo)),
-    intersect(negate(list(NewTyList)), substitute(R_BDD, Map, Memo))
-    ).
+all_variables(TyBDD) ->
+  gen_bdd:dnf(?P, TyBDD, {
+    fun all_vars_coclause/3,
+    fun(F1, F2) -> lists:usort(F1() ++ F2()) end
+  }).
 
-has_ref({terminal, 0}, _) -> false;
-has_ref({terminal, _}, _) -> false;
-has_ref({node, List, PositiveEdge, NegativeEdge}, Ref) ->
-  ty_list:has_ref(List, Ref)
-    orelse
-    has_ref(PositiveEdge, Ref)
-    orelse
-    has_ref(NegativeEdge, Ref).
+all_vars_coclause(_,_,0) -> [];
+all_vars_coclause(P,N,1) ->
+  lists:foldl(fun(L, Acc) -> Acc ++ ty_list:all_variables(L) end, [], P) ++
+  lists:foldl(fun(L, Acc) -> Acc ++ ty_list:all_variables(L) end, [], N) .
 
-all_variables({terminal, 0}) -> [];
-all_variables({terminal, _}) -> [];
-all_variables({node, List, PositiveEdge, NegativeEdge}) ->
-  ty_rec:all_variables(ty_list:pi1(List))
-  ++ ty_rec:all_variables(ty_list:pi2(List))
-    ++ all_variables(PositiveEdge)
-    ++ all_variables(NegativeEdge).
+transform(TyBDD, OpMap = #{union := U}) ->
+  gen_bdd:dnf(?P, TyBDD, {
+    fun(P,N,T) -> transform_coclause(P,N,T,OpMap) end,
+    fun(F1, F2) -> U([F1(), F2()]) end
+  }).
 
-transform({terminal, 0}, #{empty := F}) -> F();
-transform({terminal, 1}, #{any_list := F}) -> F();
-transform({node, List, PositiveEdge, NegativeEdge}, Ops = #{negate := N, union := U, intersect := I} ) ->
-  NF = ty_list:transform(List, Ops),
-
-  U([
-    I([NF, transform(PositiveEdge, Ops)]),
-    I([N(NF), transform(NegativeEdge, Ops)])
-  ]).
+transform_coclause(_,_,0,#{empty := E}) -> E();
+transform_coclause(Pos,Neg,1, Ops = #{negate := N, intersect := I} ) ->
+  PosL = lists:map(fun(L) ->   ty_list:transform(L, Ops) end, Pos),
+  NegL = lists:map(fun(L) -> N(ty_list:transform(L, Ops)) end, Neg),
+  I(PosL ++ NegL).
 
