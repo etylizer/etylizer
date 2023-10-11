@@ -2,6 +2,9 @@
 
 % @doc A symbol table for information either defined in the current or some external module.
 
+-include_lib("log.hrl").
+-include_lib("parse.hrl").
+
 -compile([nowarn_shadow_vars]).
 
 -export_type([
@@ -17,7 +20,9 @@
     find_ty/2,
     std_symtab/0,
     extend_symtab/2,
-    empty/0
+    extend_symtab/3,
+    empty/0,
+    extend_symtab_with_module_list/3
 ]).
 
 -record(tab, {
@@ -63,6 +68,18 @@ lookup_ty(Ref, Loc, Tab) ->
 -spec find_ty(ast:global_ref(), t()) -> t:opt(ast:ty_scheme()).
 find_ty(Ref, Tab) -> maps:find(Ref, Tab#tab.types).
 
+-spec symbols_for_module(atom(), t()) -> [{ref, atom(), arity()}].
+symbols_for_module(Mod, Tab) ->
+    lists:filtermap(
+        fun({K,_}) ->
+            case K of
+                {qref, M, N, A} when M =:= Mod -> {true, {ref, N, A}};
+                _ -> false
+            end
+        end,
+        maps:to_list(Tab#tab.funs) ++ maps:to_list(Tab#tab.types)
+        ).
+
 -spec empty() -> t().
 empty() -> #tab { funs = #{}, ops = #{}, types = #{} }.
 
@@ -80,17 +97,54 @@ std_symtab() ->
 
 -spec extend_symtab([ast:form()], t()) -> t().
 extend_symtab(Forms, Tab) ->
+    extend_symtab_internal(Forms, {ref}, Tab).
+
+-spec extend_symtab([ast:form()], atom(), t()) -> t().
+extend_symtab(Forms, Module, Tab) ->
+    extend_symtab_internal(Forms, {qref, Module}, Tab).
+
+extend_symtab_internal(Forms, RefType, Tab) ->
     lists:foldl(
       fun(Form, Tab) ->
               case Form of
                   {attribute, _, spec, Name, Arity, T, _} ->
-                      Tab#tab { funs = maps:put({ref, Name, Arity}, T, Tab#tab.funs) };
+                      Tab#tab { funs = maps:put(create_ref_tuple(RefType, Name, Arity), T, Tab#tab.funs) };
                   {attribute, _, type, _, {Name, TyScm = {ty_scheme, TyVars, _}}} ->
                       Arity = length(TyVars),
-                      Tab#tab { types = maps:put({ref, Name, Arity}, TyScm, Tab#tab.types) };
+                      Tab#tab { types = maps:put(create_ref_tuple(RefType, Name, Arity), TyScm, Tab#tab.types) };
                   _ ->
                       Tab
               end
       end,
       Tab,
       Forms).
+
+-spec create_ref_tuple(tuple(), string(), arity()) -> tuple().
+create_ref_tuple({ref}, Name, Arity) ->
+    {ref, Name, Arity};
+create_ref_tuple({qref, Module}, Name, Arity) ->
+    {qref, Module, Name, Arity}.
+
+-spec extend_symtab_with_module_list(symtab:t(), paths:search_path(), [atom()]) -> symtab:t().
+extend_symtab_with_module_list(Symtab, SearchPath, Modules) ->
+    traverse_module_list(SearchPath, Symtab, Modules).
+
+-spec traverse_module_list(paths:search_path(), t(), [ast_utils:ty_module_name()]) -> t().
+traverse_module_list(SearchPath, Symtab, [CurrentModule | RemainingModules]) ->
+    Entry = paths:find_module_path(SearchPath, CurrentModule),
+    Forms = retrieve_forms_for_source(Entry),
+    NewSymtab = extend_symtab(Forms, CurrentModule, Symtab),
+    NewSymbols = symbols_for_module(CurrentModule, NewSymtab),
+    ?LOG_DEBUG("Extended symtab with entries from ~p: ~s", CurrentModule,
+        pretty:render_list(fun pretty:ref/1, NewSymbols)),
+    traverse_module_list(SearchPath, NewSymtab, RemainingModules);
+
+traverse_module_list(_, Symtab, []) ->
+    Symtab.
+
+-spec retrieve_forms_for_source(paths:search_path_entry()) -> ast:forms().
+retrieve_forms_for_source({Kind, Src, Includes}) ->
+    case Kind of
+        local -> parse_cache:parse(intern, Src);
+        _ -> parse_cache:parse({extern, Includes}, Src)
+    end.

@@ -121,7 +121,7 @@ exp_constrs(Ctx, E, T) ->
                                     {ThisLower, ThisUpper, ThisCs, ThisConstrBody} =
                                         case_clause_constrs(
                                           Ctx,
-                                          ty_without(Alpha, ast:mk_union(Lowers)),
+                                          ty_without(Alpha, ast_lib:mk_union(Lowers)),
                                           ScrutE,
                                           Clause,
                                           Beta),
@@ -134,7 +134,7 @@ exp_constrs(Ctx, E, T) ->
                             Clauses),
             AllCs = sets:union([Cs0, CsCases,
                                 single({csubty, mk_locs("exhaustiveness check", L),
-                                        Alpha, ast:mk_union(Uppers)})]),
+                                        Alpha, ast_lib:mk_union(Uppers)})]),
             sets:from_list([
                 {ccase, mk_locs("case", L), AllCs, BodyList},
                 {csubty, mk_locs("result of case", L), Beta, T}
@@ -238,13 +238,13 @@ exp_constrs(Ctx, E, T) ->
     end.
 
 -spec ty_without(ast:ty(), ast:ty()) -> ast:ty().
-ty_without(T1, T2) -> ast:mk_intersection([T1, ast:mk_negation(T2)]).
+ty_without(T1, T2) -> ast_lib:mk_intersection([T1, ast_lib:mk_negation(T2)]).
 
 -spec case_clause_constrs(ctx(), ast:ty(), ast:exp(), ast:case_clause(), ast:ty())
                          -> {ast:ty(), ast:ty(), constr:constrs(), constr:constr_case_body()}.
 case_clause_constrs(Ctx, TyScrut, Scrut, {case_clause, L, Pat, Guards, Exps}, Beta) ->
     {Upper, Lower} = pat_guard_upper_lower(Pat, Guards, Scrut),
-    Ti = ast:mk_intersection([TyScrut, Upper]),
+    Ti = ast_lib:mk_intersection([TyScrut, Upper]),
     {Ci0, Gamma0} = pat_env(Ctx, L, Ti, pat_of_exp(Scrut)),
     {Ci1, Gamma1} = pat_guard_env(Ctx, L, Ti, Pat, Guards),
     Gamma2 = intersect_envs(Gamma1, Gamma0),
@@ -272,7 +272,7 @@ pat_guard_upper_lower(P, Gs, E) ->
     LowerPatTy = ty_of_pat(Env, P, lower),
     UpperETy = ty_of_pat(Env, EPat, upper),
     LowerETy = ty_of_pat(Env, EPat, lower),
-    Upper = ast:mk_intersection([UpperPatTy, UpperETy]),
+    Upper = ast_lib:mk_intersection([UpperPatTy, UpperETy]),
     VarsOfGuards = sets:from_list(lists:filtermap(fun ast:local_varname_from_any_ref/1, maps:keys(Env))),
     BoundVars = sets:union(bound_vars_pat(P), bound_vars_pat(EPat)),
     Lower =
@@ -358,7 +358,7 @@ ty_of_pat(Env, P, Mode) ->
         {'string', _L, _S} -> {predef_alias, string};
         {bin, L, _Elems} -> errors:unsupported(L, "bitstring patterns");
         {match, _L, P1, P2} ->
-            ast:mk_intersection([ty_of_pat(Env, P1, Mode), ty_of_pat(Env, P2, Mode)]);
+            ast_lib:mk_intersection([ty_of_pat(Env, P1, Mode), ty_of_pat(Env, P2, Mode)]);
         {nil, _L} -> {empty_list};
         {cons, _L, P1, P2} ->
             case Mode of
@@ -366,17 +366,17 @@ ty_of_pat(Env, P, Mode) ->
                     T1 = {nonempty_list, ty_of_pat(Env, P1, Mode)},
                     T2 = ast:mk_intersection([ty_of_pat(Env, P2, Mode),
                                               {predef_alias, nonempty_list}]),
-                    ast:mk_union([T1, T2]);
+                    ast_lib:mk_union([T1, T2]);
                 lower ->
                     T1 = {nonempty_list, ty_of_pat(Env, P1, Mode)},
                     T2 = ty_of_pat(Env, P2, Mode),
-                    ast:mk_intersection([T1, T2])
+                    ast_lib:mk_intersection([T1, T2])
             end;
         {op, _, '++', [P1, P2]} ->
-            ast:mk_intersection([ty_of_pat(Env, P1, Mode), ty_of_pat(Env, P2, Mode),
+            ast_lib:mk_intersection([ty_of_pat(Env, P1, Mode), ty_of_pat(Env, P2, Mode),
                                  {predef_alias, string}]);
         {op, _, '-', [SubP]} ->
-            ast:mk_intersection([ty_of_pat(Env, SubP, Mode), {predef_alias, number}]);
+            ast_lib:mk_intersection([ty_of_pat(Env, SubP, Mode), {predef_alias, number}]);
         {op, L, Op, _} -> errors:unsupported(L, "operator ~w in patterns", Op);
         {map, L, _Assocs} -> errors:unsupported(L, "map patterns");
         {record, L, _Name, _Fields} -> errors:unsupported(L, "record patterns");
@@ -389,14 +389,14 @@ ty_of_pat(Env, P, Mode) ->
 
 % t // pg
 -spec pat_guard_env(ctx(), ast:loc(), ast:ty(), ast:pat(), [ast:guard()]) ->
-          {const:constrs(), constr:constr_env()}.
+          {constr:constrs(), constr:constr_env()}.
 pat_guard_env(Ctx, L, T, P, Gs) ->
     {Cs, Env} = pat_env(Ctx, L, T, P),
     {EnvGuards, _} = guard_seq_env(Gs),
     {Cs, intersect_envs(Env, EnvGuards)}.
 
 % t // p
--spec pat_env(ctx(), ast:loc(), ast:ty(), ast:pat()) -> {const:constrs(), constr:constr_env()}.
+-spec pat_env(ctx(), ast:loc(), ast:ty(), ast:pat()) -> {constr:constrs(), constr:constr_env()}.
 pat_env(Ctx, OuterL, T, P) ->
     Empty = {sets:new(), #{}},
     case P of
@@ -475,7 +475,7 @@ pat_of_exp(E) ->
 % Γ //\\ Γ
 -spec intersect_envs(constr:constr_env(), constr:constr_env()) -> constr:constr_env().
 intersect_envs(Env1, Env2) ->
-    combine_envs(Env1, Env2, fun(T1, T2) -> ast:mk_intersection([T1, T2]) end).
+    combine_envs(Env1, Env2, fun(T1, T2) -> ast_lib:mk_intersection([T1, T2]) end).
 
 -spec combine_envs(
         constr:constr_env(),
@@ -502,10 +502,10 @@ combine_envs(Env1, Env2, F) ->
 % Γ \\// Γ
 -spec union_envs(constr:constr_env(), constr:constr_env()) -> constr:constr_env().
 union_envs(Env1, Env2) ->
-    combine_envs(Env1, Env2, fun(T1, T2) -> ast:mk_union([T1, T2]) end).
+    combine_envs(Env1, Env2, fun(T1, T2) -> ast_lib:mk_union([T1, T2]) end).
 
 -spec negate_env(constr:constr_env()) -> constr:constr_env().
-negate_env(Env) -> maps:map(fun (_Key, T) -> ast:mk_negation(T) end, Env).
+negate_env(Env) -> maps:map(fun (_Key, T) -> ast_lib:mk_negation(T) end, Env).
 
 % env(g)
 -spec guard_seq_env([ast:guard()]) -> {constr:constr_env(), safe | unsafe}.
@@ -689,7 +689,7 @@ if_exp_to_case_exp({'if', L, IfClauses}) ->
                   end, IfClauses),
     {'case', L, ScrutExp, CaseClauses}.
 
--spec sanity_check(const:constrs(), ast_spec:ty_map()) -> ok.
+-spec sanity_check(constr:constrs(), ast_check:ty_map()) -> ok.
 sanity_check(Cs, Spec) ->
     case ast_check:check_against_type(Spec, constr, constrs, Cs) of
         true ->

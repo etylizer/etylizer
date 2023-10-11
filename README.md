@@ -1,8 +1,16 @@
 # etylizer
 
+![status badge](https://github.com/etylizer/etylizer/actions/workflows/erlang.yml/badge.svg)
+
 Static typechecker for Erlang based on set-theoretic types.
 
-## Type-checker pipeline
+## User-level documentation
+
+Yet to come...
+
+## Developer documentation
+
+### Type-checker pipeline
 
 * Parse, using erlang's parser.
 * Transform the AST into an internal representation. The AST for the internal representation
@@ -20,7 +28,7 @@ Static typechecker for Erlang based on set-theoretic types.
     erlang modules.
   * Check that each top-level functions have a type spec.
 
-## Rules of hacking
+### Rules of hacking
 
 * Make sure every top-level function has a type annotation.
 * Make sure every module has a short description at the top of the file

@@ -14,7 +14,7 @@
         { symtab :: symtab:t(),
           env :: constr:constr_poly_env(),
           tyvar_counter :: counters:counters_ref(),
-          sanity :: t:opt(ast_spec:ty_map()),
+          sanity :: t:opt(ast_check:ty_map()),
           unmatched_branch :: unmatched_branch_mode()
         }).
 -type ctx() :: #ctx{}.
@@ -38,7 +38,7 @@
 -type unmatched_branch_mode() :: ignore_branch | report.
 
 -spec new_ctx(symtab:t(), constr:constr_poly_env(),
-              t:opt(ast_spec:ty_map()), unmatched_branch_mode()) -> ctx().
+              t:opt(ast_check:ty_map()), unmatched_branch_mode()) -> ctx().
 new_ctx(Tab, Env, Sanity, BranchMode) ->
     Counter = counters:new(1, []),
     Ctx = #ctx{ tyvar_counter = Counter, env = Env, symtab = Tab, sanity = Sanity,
@@ -94,15 +94,16 @@ simp_constr(Ctx, C) ->
                 ignore_branch ->
                     % NOTE: there is some code duplication with respect to the report case
                     FreeSet = tyutils:free_in_poly_env(Ctx#ctx.env),
+                    ?LOG_DEBUG("Checking which branches of case at ~s should be ignored.~n" ++
+                               "Env: ~s~nFixed tyvars: ~w~nConstraints for scrutiny:~n~s",
+                               ast:format_loc(loc(Locs)),
+                               pretty:render_poly_env(Ctx#ctx.env),
+                               sets:to_list(FreeSet),
+                               pretty:render_constr(Dss)),
                     Substs =
                         lists:flatmap(
                           fun(Ds) -> get_substs(tally:tally(Ctx#ctx.symtab, Ds, FreeSet), Locs) end,
                           Dss),
-                    ?LOG_DEBUG("Checking which branches of case at ~s should be ignored.~n" ++
-                               "Fixed tyvars: ~w~nConstraints:~n~s",
-                               ast:format_loc(loc(Locs)),
-                               sets:to_list(FreeSet),
-                               pretty:render_constr(Dss)),
                     ?LOG_TRACE("Env=~s, FreeSet=~200p", pretty:render_poly_env(Ctx#ctx.env),
                                sets:to_list(FreeSet)),
                     case Substs of
@@ -134,7 +135,7 @@ simp_constr(Ctx, C) ->
                                                           ),
                                                 cross_union(BeforeDss, GuardDss);
                                            true ->
-                                                ?LOG_DEBUG("Not ignoring branch at ~s, match type ~s (unsubstituted: gb~s) greater than none()",
+                                                ?LOG_DEBUG("Not ignoring branch at ~s, match type ~s (unsubstituted: ~s) greater than none()",
                                                            ast:format_loc(loc(BodyLocs)),
                                                            pretty:render_ty(MatchTy),
                                                            pretty:render_ty(TI)
@@ -149,6 +150,7 @@ simp_constr(Ctx, C) ->
                       Substs
                      );
                 report ->
+                    % FIXME: we miss an invocation of tally to get an substitution that we can apply to GammaI
                     % NOTE: there is some code duplication with respect to the ignore_branch case
                     lists:foldl(
                       fun({_BodyLoc, GammaI, GuardCsI, BodyCsI, _TI}, BeforeDss) ->
@@ -243,7 +245,7 @@ cross_union(L1, L2) ->
       end,
       L1).
 
--spec sanity_check([constr:simp_constrs()], ast_spec:ty_map(), unmatched_branch_mode()) -> ok.
+-spec sanity_check([constr:simp_constrs()], ast_check:ty_map(), unmatched_branch_mode()) -> ok.
 sanity_check(Dss, Spec, BranchMode) ->
     case is_list(Dss) of
         false -> ?ABORT("List of constraint sets is not a list: ~w", Dss);

@@ -10,8 +10,17 @@
     diff_terms/3, if_true/2,
     file_get_lines/1, set_add_many/2, assert_no_error/1,
     replicate/2, unconsult/2,
-    string_ends_with/2, shorten/2
+    string_ends_with/2, shorten/2,
+    mkdirs/1, hash_sha1/1, hash_file/1,
+    list_uniq/1, lists_enumerate/1, lists_enumerate/2,
+    with_default/2,
+    mingle/5
 ]).
+
+mingle(LeftDefault, RightDefault, AllLeft, AllRight, Op) ->
+    AllKeys = maps:keys(AllLeft) ++ maps:keys(AllRight),
+    % LeftDefault + Right (left not assigned)  Left + RightDefault (right not assigned) Left + Right (both)
+    maps:from_list(lists:map(fun(Key) -> {Key, Op(maps:get(Key, AllLeft, LeftDefault), maps:get(Key, AllRight, RightDefault))} end, AllKeys)).
 
 -spec map_opt(fun((T) -> U | error), [T]) -> [U].
 map_opt(F, L) -> map_opt(F, error, L).
@@ -46,14 +55,20 @@ undefined() -> erlang:error("undefined").
 sformat_raw(Msg, L) ->
     lists:flatten(io_lib:format(Msg, L)).
 
+% Does some magic to distinguish whether term() is a list of arguments or a single argument
 -spec sformat(string(), term()) -> string().
+sformat(Msg, []) ->
+    % we dont know whether we have no argument or a single argument "".
+    try sformat_raw(Msg, [])
+    catch badarg:_:_ -> sformat_raw(Msg, [""])
+    end;
 sformat(Msg, X) ->
     L = case io_lib:char_list(X) of
-            true -> [X];
+            true -> [X]; % we have a single string argument
             false ->
                 if
-                    is_list(X) -> X;
-                    true -> [X]
+                    is_list(X) -> X; % we have a list of arguments
+                    true -> [X]      % we have a single argument
                 end
         end,
     sformat_raw(Msg, L).
@@ -80,7 +95,7 @@ error(Msg) -> erlang:error(Msg).
 error(Msg, L) -> erlang:error(sformat(Msg, L)).
 
 -spec is_string(term()) -> boolean().
-is_string(X) -> io_lib:printable_unicode_list(X).
+is_string(X) -> io_lib:char_list(X).
 
 -spec is_char(term()) -> boolean().
 is_char(X) -> is_string([X]).
@@ -195,3 +210,63 @@ shorten([], _) -> {[], 0};
 shorten([X | Xs], N) ->
     {Short, ShortN} = shorten(Xs, N - 1),
     {[X | Short], ShortN + 1}.
+
+-spec mkdirs(filename:name()) -> ok | {error, string()}.
+mkdirs(D) ->
+    ok = filelib:ensure_dir(filename:join(D, "XXX")). % only creates the parent!
+
+-spec hash_sha1(iodata()) -> string().
+hash_sha1(Data) ->
+    Digest = crypto:hash(sha, Data),
+    Bin = binary:encode_hex(Digest),
+    binary_to_list(Bin).
+
+-spec hash_file(file:filename()) -> string() | {error, any()}.
+hash_file(Path) ->
+    case file:read_file(Path) of
+        {ok, FileContent} -> utils:hash_sha1(FileContent);
+        X -> X
+    end.
+
+% Some functions copied from OTP 25 (we still support OTP 24)
+
+-spec list_uniq(List1) -> List2 when
+      List1 :: [T],
+      List2 :: [T],
+      T :: term().
+list_uniq(L) ->
+    list_uniq_1(L, #{}).
+list_uniq_1([X | Xs], M) ->
+    case is_map_key(X, M) of
+        true ->
+            list_uniq_1(Xs, M);
+        false ->
+            [X | list_uniq_1(Xs, M#{X => true})]
+    end;
+list_uniq_1([], _) ->
+    [].
+
+-spec lists_enumerate(List1) -> List2 when
+      List1 :: [T],
+      List2 :: [{Index, T}],
+      Index :: integer(),
+      T :: term().
+lists_enumerate(List1) when is_list(List1) ->
+    lists_enumerate_1(1, List1).
+
+-spec lists_enumerate(Index, List1) -> List2 when
+      List1 :: [T],
+      List2 :: [{Index, T}],
+      Index :: integer(),
+      T :: term().
+lists_enumerate(Index, List1) when is_integer(Index), is_list(List1) ->
+    lists_enumerate_1(Index, List1).
+
+lists_enumerate_1(Index, [H|T]) ->
+    [{Index, H}|lists_enumerate_1(Index + 1, T)];
+lists_enumerate_1(_Index, []) ->
+    [].
+
+-spec with_default(T | undefined, T) -> T.
+with_default(undefined, Def) -> Def;
+with_default(X, _) -> X.

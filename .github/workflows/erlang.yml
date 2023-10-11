@@ -1,0 +1,56 @@
+name: Erlang CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+
+  build:
+    runs-on: ubuntu-latest
+    strategy: 
+      matrix:
+        erlang: [ 24,25 ]
+
+    container:
+      image: erlang:${{ matrix.erlang }}
+
+    steps:
+    - uses: actions/checkout@v2
+    - run: make build
+
+  test:
+    runs-on: ubuntu-latest
+    strategy: 
+      matrix:
+        erlang: [ 24,25 ]
+
+    container:
+      image: erlang:${{ matrix.erlang }}
+
+    steps:
+    - uses: actions/checkout@v2
+    - run: make build
+    - name: Unit Tests
+      run: make test
+        # TODO
+        #    - name: Coverage
+        #      run: make coverage
+        #    - name: Send Coverage
+        #      env:
+        #        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        #      run: ./rebar3 as test coveralls send
+
+  verify:
+    runs-on: ubuntu-latest
+    strategy: 
+      matrix:
+        erlang: [ 24,25 ]
+
+    container:
+      image: erlang:${{ matrix.erlang }}
+
+    steps:
+    - uses: actions/checkout@v2
+    - name: Dialyzer
+      run: make check

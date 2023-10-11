@@ -5,6 +5,9 @@
 erl_crash.dump
 .concrete/DEV_MODE
 
+# etylizer
+_etylizer/
+
 # rebar 3
 .rebar3
 _build/
@@ -13,3 +16,6 @@ _checkouts/
 ety.log
 *.trace
 *.analyze
+
+.idea
+*.iml
