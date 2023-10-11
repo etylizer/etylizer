@@ -43,7 +43,7 @@ is_any(B) -> gen_bdd:is_any(?P, B).
 equal(B1, B2) -> gen_bdd:equal(?P, B1, B2).
 compare(B1, B2) -> gen_bdd:compare(?P, B1, B2).
 
-is_empty(_, 0) -> true;
+is_empty(_, {terminal, 0}) -> true;
 is_empty(Size, {terminal, Tuple}) ->
   dnf_ty_tuple:is_empty(Size, Tuple);
 is_empty(Size, {node, _Variable, PositiveEdge, NegativeEdge}) ->
@@ -53,7 +53,7 @@ is_empty(Size, {node, _Variable, PositiveEdge, NegativeEdge}) ->
 normalize(Size, Ty, Fixed, M) ->
   normalize(Size, Ty, [], [], Fixed, M).
 
-normalize(_, 0, _, _, _, _) -> [[]]; % satisfiable
+normalize(_, {terminal, 0}, _, _, _, _) -> [[]]; % satisfiable
 normalize(Size, {terminal, Tuple}, PVar, NVar, Fixed, M) ->
   case ty_ref:is_normalized_memoized(Tuple, Fixed, M) of
     true ->
@@ -71,8 +71,8 @@ normalize(Size, {node, Variable, PositiveEdge, NegativeEdge}, PVar, NVar, Fixed,
 
 substitute(Size, T, M, Memo) -> substitute(Size, T, M, Memo, [], []).
 
-substitute(default, 0, _, _, _, _) -> {empty(), #{}};
-substitute(Size, 0, _, _, _, _) -> {empty(), #{Size => empty()}};
+substitute(default, {terminal, 0}, _, _, _, _) -> {empty(), #{}};
+substitute(Size, {terminal, 0}, _, _, _, _) -> {empty(), #{Size => empty()}};
 substitute(Size, {terminal, Tuple}, Map, Memo, Pos, Neg) ->
   AllPos = lists:map(
     fun(Var) ->
@@ -102,7 +102,7 @@ substitute(Size, {node, Variable, PositiveEdge, NegativeEdge}, Map, Memo, P, N) 
 
   {union(LeftDefault, RightDefault), mingle(LeftDefault, RightDefault, LeftOthers, RightOthers, fun union/2)}.
 
-has_ref(0, _) -> false;
+has_ref({terminal, 0}, _) -> false;
 has_ref({terminal, Tuple}, Ref) ->
   dnf_ty_tuple:has_ref(Tuple, Ref);
 has_ref({node, _Variable, PositiveEdge, NegativeEdge}, Ref) ->
@@ -110,7 +110,7 @@ has_ref({node, _Variable, PositiveEdge, NegativeEdge}, Ref) ->
 
 all_variables({Default, Others}) when is_map(Others) ->
   all_variables(Default) ++ lists:map(fun({_K,V}) -> all_variables(V) end, maps:to_list(Others));
-all_variables(0) -> [];
+all_variables({terminal, 0}) -> [];
 all_variables({terminal, Tuple}) -> dnf_ty_tuple:all_variables(Tuple);
 all_variables({node, Variable, PositiveEdge, NegativeEdge}) ->
   [Variable] ++ all_variables(PositiveEdge) ++ all_variables(NegativeEdge).
@@ -122,7 +122,7 @@ mingle(LeftDefault, RightDefault, AllLeft, AllRight, Op) ->
   maps:from_list(lists:map(fun(Key) -> {Key, Op(maps:get(Key, AllLeft, LeftDefault), maps:get(Key, AllRight, RightDefault))} end, AllKeys)).
 
 
-transform(0, #{empty := E}) -> E();
+transform({terminal, 0}, #{empty := E}) -> E();
 transform({terminal, Tuple}, Ops) ->
   dnf_ty_tuple:transform(Tuple, Ops);
 transform({node, Variable, PositiveEdge, NegativeEdge},

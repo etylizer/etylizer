@@ -45,7 +45,7 @@ is_any(B) -> gen_bdd:is_any(?P, B).
 equal(B1, B2) -> gen_bdd:equal(?P, B1, B2).
 compare(B1, B2) -> gen_bdd:compare(?P, B1, B2).
 
-is_empty(default, 0) -> true;
+is_empty(default, {terminal, 0}) -> true;
 is_empty(default, {terminal, 1}) -> false;
 is_empty(Size, TyDnf) ->
   is_empty(
@@ -53,7 +53,7 @@ is_empty(Size, TyDnf) ->
     domains_to_tuple([ty_rec:empty() || _ <- lists:seq(1, Size)]), [], []
   ).
 
-is_empty(0, _, _, _) -> true;
+is_empty({terminal, 0}, _, _, _) -> true;
 % TODO should only be {terminal, 1}, not just 1!
 %%is_empty(1, _, _, []) -> false;
 is_empty({terminal, 1}, _, _, []) -> false;
@@ -98,7 +98,7 @@ explore_function(Ts, T2, [Function | P]) ->
         explore_function(ty_rec:diff(Ts, BigS1), T2, P)
     end.
 
-normalize({default, _}, 0, [], [], _, _) -> [[]];
+normalize({default, _}, {terminal, 0}, [], [], _, _) -> [[]];
 normalize({default, _}, {terminal, 1}, [], [], _, _) -> [];
 normalize(Size, TyFunction, [], [], Fixed, M) ->
   % optimized NArrow rule
@@ -109,7 +109,7 @@ normalize(Size, DnfTyFunction, PVar, NVar, Fixed, M) ->
   % ntlv rule
   ty_variable:normalize(Ty, PVar, NVar, Fixed, fun(Var) -> ty_rec:function(Size, dnf_var_ty_function:var(Var)) end, M).
 
-normalize_no_vars(_Size, 0, _, _, _, _Fixed, _) -> [[]]; % empty
+normalize_no_vars(_Size, {terminal, 0}, _, _, _, _Fixed, _) -> [[]]; % empty
 normalize_no_vars(_Size, {terminal, 1}, _, _, [], _Fixed, _) -> []; % non-empty
 normalize_no_vars(Size, {terminal, 1}, S, P, [Function | N], Fixed, M) ->
   T1 = domains_to_tuple(ty_function:domains(Function)),
@@ -150,7 +150,7 @@ explore_function_norm(Size, T1, T2, [Function | P], Fixed, M) ->
     ?F(constraint_set:join(NT2,
       ?F(constraint_set:meet(NS1, NS2))))).
 
-substitute(0, _, _) -> 0;
+substitute({terminal, 0}, _, _) -> {terminal, 0};
 substitute({terminal, 1}, _, _) ->
   {terminal, 1};
 substitute({node, TyFunction, L_BDD, R_BDD}, Map, Memo) ->
@@ -166,7 +166,7 @@ substitute({node, TyFunction, L_BDD, R_BDD}, Map, Memo) ->
     intersect(negate(function(NewTyFunction)), substitute(R_BDD, Map, Memo))
   ).
 
-has_ref(0, _) -> false;
+has_ref({terminal, 0}, _) -> false;
 has_ref({terminal, _}, _) -> false;
 has_ref({node, Function, PositiveEdge, NegativeEdge}, Ref) ->
   ty_function:has_ref(Function, Ref)
@@ -175,7 +175,7 @@ has_ref({node, Function, PositiveEdge, NegativeEdge}, Ref) ->
     orelse
     has_ref(NegativeEdge, Ref).
 
-all_variables(0) -> [];
+all_variables({terminal, 0}) -> [];
 all_variables({terminal, _}) -> [];
 all_variables({node, Function, PositiveEdge, NegativeEdge}) ->
   ty_rec:all_variables(domains_to_tuple(ty_function:domains(Function)))
@@ -184,7 +184,7 @@ all_variables({node, Function, PositiveEdge, NegativeEdge}) ->
     ++ all_variables(NegativeEdge).
 
 
-transform(0, #{empty := F}) -> F();
+transform({terminal, 0}, #{empty := F}) -> F();
 transform({terminal, 1}, #{any_fun := F}) -> F();
 transform({node, Function, PositiveEdge, NegativeEdge}, Ops = #{negate := N, union := U, intersect := I} ) ->
   NF = ty_function:transform(Function, Ops),

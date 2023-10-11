@@ -20,10 +20,12 @@
 %%-type bdd() :: 0 | {terminal, terminal()} | {node, element(), bdd(), bdd()}.
 
 %% % implements type behavior indirectly parameterized over a type
--export([terminal/2, element/2, empty/1, any/1, union/3, intersect/3, negate/2, diff/3, eval/2, is_empty/2, is_any/2]).
+-export([terminal/2, element/2, empty/1, any/1, union/3, intersect/3, negate/2, diff/3, is_empty/2, is_any/2]).
 
 %% % implements eq behavior indirectly parameterized over a type
 -export([equal/3, compare/3]).
+
+-export([dnf/3]).
 
 % ==
 % basic interface (parameterized)
@@ -38,8 +40,6 @@ equal(_, _, _) ->
   false.
 
 compare({Terminal, _}, {terminal, T1}, {terminal, T2}) -> Terminal:compare(T1, T2);
-compare(_, 0, {terminal, _}) -> -1;
-compare(_, {terminal, _}, 0) -> +1;
 compare(_, {terminal, _}, {node, _, _, _}) -> +1;
 compare(_, {node, _, _, _}, {terminal, _}) -> -1;
 compare(Gen = {_, Element}, {node, E1, A1, B1}, {node, E2, A2, B2}) ->
@@ -55,7 +55,7 @@ compare(Gen = {_, Element}, {node, E1, A1, B1}, {node, E2, A2, B2}) ->
 % ==
 % type interface
 % ==
-empty(_) -> 0.
+empty({Terminal, _}) -> {terminal, Terminal:empty()}.
 any({Terminal, _}) -> {terminal, Terminal:any()}.
 
 element(I = {_Terminal, _Element}, Atom) ->
@@ -65,38 +65,38 @@ terminal(I = {_Terminal, _}, Ty) ->
   terminal_of(I, Ty).
 
 
-union(_, 0, B) -> B;
-union(_, A, 0) -> A;
 union(I = {Terminal, Element}, A, B) ->
-  case is_any(I, A) orelse is_any(I, B) of
-    true -> any(I);
+  case is_empty(I, A) of
+    true -> B;
     _ ->
-      case {A, B} of
-        {{terminal, X}, {terminal, Y}} -> terminal_of(I, Terminal:union(X, Y));
-        {BDD1 = {node, E, A1, B1}, BDD2 = {node, E2, A2, B2}} ->
-          case Element:compare(E, E2) of
-            -1 ->
-              s(I,{node, E, s(I,union(I, A1, BDD2)), s(I,union(I, B1, BDD2))});
-            +0 ->
-              s(I,{node, E, s(I,union(I, A1, A2)), s(I,union(I, B1, B2))});
-            +1 ->
-              s(I,{node, E2, s(I,union(I, A2, BDD1)), s(I,union(I, B2, BDD1))})
-          end;
-        {BDD1 = {terminal, _X}, _BDD2 = {node, E2, A2, B2}} ->
-          s(I, {node, E2, s(I, union(I, A2, BDD1)), s(I, union(I, B2, BDD1))});
-        {_BDD1 = {node, E1, A1, B1}, BDD2 = {terminal, _X}} ->
-          s(I, {node, E1, s(I, union(I, A1, BDD2)), s(I, union(I, B1, BDD2))})
+      case is_empty(I, B) of
+        true -> A;
+        _ ->
+          case is_any(I, A) orelse is_any(I, B) of
+            true -> any(I);
+            _ ->
+              case {A, B} of
+                {{terminal, X}, {terminal, Y}} -> terminal_of(I, Terminal:union(X, Y));
+                {BDD1 = {node, E, A1, B1}, BDD2 = {node, E2, A2, B2}} ->
+                  case Element:compare(E, E2) of
+                    -1 ->
+                      s(I,{node, E, s(I,union(I, A1, BDD2)), s(I,union(I, B1, BDD2))});
+                    +0 ->
+                      s(I,{node, E, s(I,union(I, A1, A2)), s(I,union(I, B1, B2))});
+                    +1 ->
+                      s(I,{node, E2, s(I,union(I, A2, BDD1)), s(I,union(I, B2, BDD1))})
+                  end;
+                {BDD1 = {terminal, _X}, _BDD2 = {node, E2, A2, B2}} ->
+                  s(I, {node, E2, s(I, union(I, A2, BDD1)), s(I, union(I, B2, BDD1))});
+                {_BDD1 = {node, E1, A1, B1}, BDD2 = {terminal, _X}} ->
+                  s(I, {node, E1, s(I, union(I, A1, BDD2)), s(I, union(I, B1, BDD2))})
+              end
+          end
       end
   end.
 
-negate(I, 0) -> any(I);
-% FIXME HACK why is this branch reached? it should always be a {terminal, 1}, not a raw 1
-negate(_I, 1) -> 0;
 negate(I = {Terminal, _}, TN = {terminal, A}) ->
-  case is_any(I, TN) of
-    true -> 0;
-    _ -> s(I, {terminal, Terminal:negate(A)})
-  end;
+  s(I, {terminal, Terminal:negate(A)});
 negate(I, {node, E, B1, B2}) -> s(I, {node, E, s(I, negate(I, B1)), s(I, negate(I, B2))}).
 
 
@@ -107,19 +107,32 @@ intersect(I, A, B) -> negate(I, union(I, negate(I, A), negate(I, B))).
 is_any({Terminal, _}, {terminal, Ty}) -> Terminal:equal(Ty, Terminal:any());
 is_any(_, _) -> false.
 
-
-% TODO
-eval(_,_) -> erlang:error("TODO").
-
 % convert empty terminal node into empty BDD node
 terminal_of({Terminal, _}, Ty) ->
   case Terminal:equal(Ty, Terminal:empty()) of
-    true -> 0;
-    _ -> {terminal, Ty}
+    true -> {terminal, Terminal:empty()};
+    _ ->
+      case Terminal:equal(Ty, Terminal:any()) of
+        true -> {terminal, Terminal:any()};
+        _ ->
+          {terminal, Ty}
+      end
   end.
 
 
 s(_G, {node, _, B, B}) -> B;
 s(_G, X) -> X.
 
-is_empty(P, _) -> erlang:error({"implement above", P}).
+is_empty({Terminal, _}, {terminal, Ty}) -> Terminal:equal(Ty, Terminal:empty());
+is_empty(_, _) -> false.
+
+dnf(I, Bdd, {ProcessCoclause, CombineResults}) ->
+  do_dnf(I, Bdd, {ProcessCoclause, CombineResults}, _Pos = [], _Neg = []).
+
+do_dnf(I, {node, Element, Left, Right}, F = {_Process, Combine}, Pos, Neg) ->
+  F1 = fun() -> do_dnf(I, Left, F, [Element | Pos], Neg) end,
+  F2 = fun() -> do_dnf(I, Right, F, Pos, [Element | Neg]) end,
+  Combine(F1, F2);
+do_dnf({T, _}, {leaf, Terminal}, {Proc, _Comb}, Pos, Neg) ->
+  DnfTerminal = T:dnf(Terminal),
+  Proc(Pos, Neg, DnfTerminal).
