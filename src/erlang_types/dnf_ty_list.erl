@@ -38,7 +38,6 @@ is_empty(TyBDD) ->
   gen_bdd:dnf(?P, TyBDD, {fun is_empty_coclause/3, fun gen_bdd:is_empty_union/2}).
 
 is_empty_coclause(_Pos, _Neg, 0) -> true;
-is_empty_coclause([], _Neg, 1) -> false;
 is_empty_coclause(Pos, Neg, 1) ->
   Big = ty_list:big_intersect(Pos),
   S1 = ty_list:pi1(Big),
@@ -65,11 +64,22 @@ phi(S1, S2, [Ty | N]) ->
   ).
 
 normalize(TyList, [], [], Fixed, M) ->
-  normalize_no_vars(TyList, ty_rec:any(), ty_rec:any(), _NegatedLists = [], Fixed, M);
+  New = gen_bdd:dnf(?P, TyList, {fun(Pos, Neg, DnfTyList) ->
+    normalize_coclause(Pos, Neg, DnfTyList, Fixed, M)
+                                 end, fun constraint_set:meet/2}),
+  New = normalize_no_vars(TyList, ty_rec:any(), ty_rec:any(), _NegatedLists = [], Fixed, M);
 normalize(DnfTyList, PVar, NVar, Fixed, M) ->
   Ty = ty_rec:list(dnf_var_ty_list:list(DnfTyList)),
   % ntlv rule
   ty_variable:normalize(Ty, PVar, NVar, Fixed, fun(Var) -> ty_rec:list(dnf_var_ty_list:var(Var)) end, M).
+
+
+normalize_coclause(Pos, Neg, 0, Fixed, M) -> [[]];
+normalize_coclause(Pos, Neg, 1, Fixed, M) ->
+  Big = ty_list:big_intersect(Pos),
+  S1 = ty_list:pi1(Big),
+  S2 = ty_list:pi2(Big),
+  phi_norm(S1, S2, Neg, Fixed, M).
 
 normalize_no_vars({terminal, 0}, _, _, _, _Fixed, _) -> [[]]; % empty
 normalize_no_vars({terminal, 1}, S1, S2, N, Fixed, M) ->
