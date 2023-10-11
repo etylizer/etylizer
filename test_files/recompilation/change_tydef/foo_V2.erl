@@ -5,6 +5,6 @@
 
 -type foo_type() :: any().
 
--spec foo_fun(integer(), foo_type()) -> integer().
+-spec foo_fun(boolean(), foo_type()) -> boolean().
 foo_fun(X, _Y) -> bar:bar_fun(X).
 

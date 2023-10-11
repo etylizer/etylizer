@@ -249,7 +249,7 @@ mono_ty(TyScm = {ty_scheme, Tyvars, T}, FreshStart) ->
         lists:foldl(
           fun({Alpha, Bound}, {Kvs, Freshs, I}) ->
                   {AlphaFresh, NextI} = fresh_tyvar(Alpha, I),
-                  {[ {Alpha, ast:mk_intersection([{var, AlphaFresh}, Bound])} | Kvs],
+                  {[ {Alpha, ast_lib:mk_intersection([{var, AlphaFresh}, Bound])} | Kvs],
                    [ AlphaFresh | Freshs ],
                    NextI}
           end,

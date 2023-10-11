@@ -43,7 +43,8 @@ to_dnf(A) ->
 
 
 simplify(Ty) ->
-  {union, RawLines} = filter_empty_intersections(to_dnf(to_nnf(unfold_predef_alias(Ty)))),
+  {union, RawLines} =
+    filter_empty_intersections(to_dnf(to_nnf(unfold_predef_alias(Ty)))),
   {union, Lines} = filter_structural_subsets(RawLines),
   Partitioned = lists:map(fun partition_intersection/1, Lines),
   Simplified = lists:usort(lists:filter(fun(empty) -> false;(_) -> true end ,lists:map(fun simplify_line/1, Partitioned))),
@@ -114,10 +115,32 @@ simplify_line(_CoClause = {{P, Pv}, {N, Nv}}) ->
 
           case lists:any(fun(E) -> E end, [lists:member(X, N) || X <- P]) of
             true -> empty;
-            _ -> {{P, Pv}, {filter_other_kinds(N, NewCounters), Nv}}
+            _ -> normalize_kinds({{P, Pv}, {filter_other_kinds(N, NewCounters), Nv}})
           end
       end
   end.
+
+normalize_kinds(All = {{Lists = [X | _Other], Pv}, {N, Nv}}) ->
+  case type_of(X) of
+    list -> {{[normalize_list(Lists)], Pv}, {N, Nv}};
+    _ -> All
+  end;
+normalize_kinds(X) -> X.
+
+
+normalize_list(AllLists) ->
+  lists:foldl(
+    fun({improper_list, A, B}, {improper_list, S, T}) ->
+      {improper_list,
+        partitions_to_ty(simplify(ast_lib:mk_intersection([A, S]))),
+        partitions_to_ty(simplify(ast_lib:mk_intersection([B, T])))
+      }
+    end,
+    {improper_list, stdtypes:any(), stdtypes:any()},
+    AllLists
+  ).
+
+
 
 filter_other_kinds([], _TypeMap) -> [];
 filter_other_kinds(N, TypeMap) ->
@@ -159,6 +182,9 @@ type_of({fun_full, C, _T}) -> {fun_full, length(C)};
 type_of({singleton, Atom}) when is_atom(Atom) -> atom;
 type_of({predef, atom}) -> atom;
 
+type_of({predef, reference}) -> special;
+type_of({predef, port}) -> special;
+type_of({predef, pid}) -> special;
 type_of({predef, float}) -> special;
 type_of({empty_list}) -> special;
 
