@@ -42,18 +42,13 @@ is_any(B) -> gen_bdd:is_any(?P, B).
 
 equal(B1, B2) -> gen_bdd:equal(?P, B1, B2).
 compare(B1, B2) -> gen_bdd:compare(?P, B1, B2).
+is_empty(B) -> gen_bdd:is_empty(?P, B).
+
 
 
 % ==
 % Emptiness for variable interval DNFs
 % ==
-
-is_empty({terminal, 0}) -> true;
-is_empty({terminal, Interval}) ->
-  ty_interval:is_empty(Interval);
-is_empty({node, _Variable, PositiveEdge, NegativeEdge}) ->
-  is_empty(PositiveEdge)
-    andalso is_empty(NegativeEdge).
 
 
 normalize(Ty, Fixed, M) -> normalize(Ty, [], [], Fixed, M).
