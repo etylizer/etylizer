@@ -41,7 +41,7 @@ is_empty(TyBDD) -> is_empty(
   _NegatedLists = []
 ).
 
-is_empty(0, _, _, _) -> true;
+is_empty({terminal, 0}, _, _, _) -> true;
 is_empty({terminal, 1}, S1, S2, N) ->
   phi(S1, S2, N);
 is_empty({node, TyList, L_BDD, R_BDD}, BigS1, BigS2, Negated) ->
@@ -76,7 +76,7 @@ normalize(DnfTyList, PVar, NVar, Fixed, M) ->
   % ntlv rule
   ty_variable:normalize(Ty, PVar, NVar, Fixed, fun(Var) -> ty_rec:list(dnf_var_ty_list:var(Var)) end, M).
 
-normalize_no_vars(0, _, _, _, _Fixed, _) -> [[]]; % empty
+normalize_no_vars({terminal, 0}, _, _, _, _Fixed, _) -> [[]]; % empty
 normalize_no_vars({terminal, 1}, S1, S2, N, Fixed, M) ->
   phi_norm(S1, S2, N, Fixed, M);
 normalize_no_vars({node, TyList, L_BDD, R_BDD}, BigS1, BigS2, Negated, Fixed, M) ->
@@ -107,7 +107,7 @@ phi_norm(S1, S2, [Ty | N], Fixed, M) ->
   constraint_set:join(T1, ?F(constraint_set:join(T2, T3))).
 
 
-substitute(0, _, _) -> 0;
+substitute({terminal, 0}, _, _) -> {terminal, 0};
 substitute({terminal, 1}, _, _) ->
   {terminal, 1};
 substitute({node, TyList, L_BDD, R_BDD}, Map, Memo) ->
@@ -124,7 +124,7 @@ substitute({node, TyList, L_BDD, R_BDD}, Map, Memo) ->
     intersect(negate(list(NewTyList)), substitute(R_BDD, Map, Memo))
     ).
 
-has_ref(0, _) -> false;
+has_ref({terminal, 0}, _) -> false;
 has_ref({terminal, _}, _) -> false;
 has_ref({node, List, PositiveEdge, NegativeEdge}, Ref) ->
   ty_list:has_ref(List, Ref)
@@ -133,7 +133,7 @@ has_ref({node, List, PositiveEdge, NegativeEdge}, Ref) ->
     orelse
     has_ref(NegativeEdge, Ref).
 
-all_variables(0) -> [];
+all_variables({terminal, 0}) -> [];
 all_variables({terminal, _}) -> [];
 all_variables({node, List, PositiveEdge, NegativeEdge}) ->
   ty_rec:all_variables(ty_list:pi1(List))
@@ -141,7 +141,7 @@ all_variables({node, List, PositiveEdge, NegativeEdge}) ->
     ++ all_variables(PositiveEdge)
     ++ all_variables(NegativeEdge).
 
-transform(0, #{empty := F}) -> F();
+transform({terminal, 0}, #{empty := F}) -> F();
 transform({terminal, 1}, #{any_list := F}) -> F();
 transform({node, List, PositiveEdge, NegativeEdge}, Ops = #{negate := N, union := U, intersect := I} ) ->
   NF = ty_list:transform(List, Ops),

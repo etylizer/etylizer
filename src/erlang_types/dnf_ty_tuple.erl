@@ -39,7 +39,7 @@ is_any(B) -> gen_bdd:is_any(?P, B).
 equal(B1, B2) -> gen_bdd:equal(?P, B1, B2).
 compare(B1, B2) -> gen_bdd:compare(?P, B1, B2).
 
-is_empty(default, 0) -> true;
+is_empty(default, {terminal, 0}) -> true;
 is_empty(default, {terminal, 1}) -> false;
 is_empty(Size, TyBDD) -> is_empty(
   TyBDD,
@@ -47,7 +47,7 @@ is_empty(Size, TyBDD) -> is_empty(
   _NegatedTuples = []
 ).
 
-is_empty(0, _, _) -> true;
+is_empty({terminal, 0}, _, _) -> true;
 is_empty({terminal, 1}, BigS, N) ->
   phi(BigS, N);
 is_empty({node, TyTuple, L_BDD, R_BDD}, BigS, Negated) ->
@@ -81,7 +81,7 @@ phi(BigS, [Ty | N]) ->
     orelse
       lists:foldl(Solve, true, lists:zip(lists:seq(1, length(ty_tuple:components(Ty))), lists:zip(BigS, ty_tuple:components(Ty)))).
 
-normalize({default, _}, 0, [], [], _, _) -> [[]];
+normalize({default, _}, {terminal, 0}, [], [], _, _) -> [[]];
 normalize({default, _}, {terminal, 1}, [], [], _, _) -> [];
 normalize(Size, TyTuple, [], [], Fixed, M) ->
   % optimized NProd rule
@@ -92,7 +92,7 @@ normalize(Size, DnfTyTuple, PVar, NVar, Fixed, M) ->
   % ntlv rule
   ty_variable:normalize(Ty, PVar, NVar, Fixed, fun(Var) -> ty_rec:tuple(Size, dnf_var_ty_tuple:var(Var)) end, M).
 
-normalize_no_vars(_Size, 0, _, _, _Fixed, _) -> [[]]; % empty
+normalize_no_vars(_Size, {terminal, 0}, _, _, _Fixed, _) -> [[]]; % empty
 normalize_no_vars(Size, {terminal, 1}, BigS, N, Fixed, M) ->
   phi_norm(Size, BigS, N, Fixed, M);
 normalize_no_vars(Size, {node, TyTuple, L_BDD, R_BDD}, BigS, Negated, Fixed, M) ->
@@ -130,7 +130,7 @@ phi_norm(Size, BigS, [Ty | N], Fixed, M) ->
     ?F(lists:foldl(Solve, [[]], lists:zip(lists:seq(1, length(ty_tuple:components(Ty))), lists:zip(BigS, ty_tuple:components(Ty)))))
   ).
 
-substitute(0, _, _) -> 0;
+substitute({terminal, 0}, _, _) -> {terminal, 0};
 substitute({terminal, 1}, _, _) ->
   {terminal, 1};
 substitute({node, TyTuple, L_BDD, R_BDD}, Map, Memo) ->
@@ -143,7 +143,7 @@ substitute({node, TyTuple, L_BDD, R_BDD}, Map, Memo) ->
     intersect(negate(tuple(NewTyTuple)), substitute(R_BDD, Map, Memo))
     ).
 
-has_ref(0, _) -> false;
+has_ref({terminal, 0}, _) -> false;
 has_ref({terminal, _}, _) -> false;
 has_ref({node, Tuple, PositiveEdge, NegativeEdge}, Ref) ->
   ty_tuple:has_ref(Tuple, Ref)
@@ -152,14 +152,14 @@ has_ref({node, Tuple, PositiveEdge, NegativeEdge}, Ref) ->
     orelse
     has_ref(NegativeEdge, Ref).
 
-all_variables(0) -> [];
+all_variables({terminal, 0}) -> [];
 all_variables({terminal, _}) -> [];
 all_variables({node, Tuple, PositiveEdge, NegativeEdge}) ->
   lists:map(fun(E) -> ty_rec:all_variables(E) end, ty_tuple:components(Tuple))
     ++ all_variables(PositiveEdge)
     ++ all_variables(NegativeEdge).
 
-transform(0, #{empty := F}) -> F();
+transform({terminal, 0}, #{empty := F}) -> F();
 transform({terminal, 1}, #{any_tuple := F}) -> F();
 transform({node, Tuple, PositiveEdge, NegativeEdge}, Ops = #{negate := N, union := U, intersect := I} ) ->
   NF = ty_tuple:transform(Tuple, Ops),

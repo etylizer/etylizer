@@ -47,7 +47,7 @@ equal(B1, B2) -> gen_bdd:equal(?P, B1, B2).
 compare(B1, B2) -> gen_bdd:compare(?P, B1, B2).
 
 
-transform(0, #{empty := E}) -> E();
+transform({terminal, 0}, #{empty := E}) -> E();
 transform({terminal, Atom}, Ops) ->
   ty_atom:transform(Atom, Ops);
 transform({node, Variable, PositiveEdge, NegativeEdge},
@@ -62,7 +62,7 @@ transform({node, Variable, PositiveEdge, NegativeEdge},
 % Emptiness for variable atom DNFs
 % ==
 
-is_empty(0) -> true;
+is_empty({terminal, 0}) -> true;
 is_empty({terminal, Atom}) ->
   ty_atom:is_empty(Atom);
 is_empty({node, _Variable, PositiveEdge, NegativeEdge}) ->
@@ -72,7 +72,7 @@ is_empty({node, _Variable, PositiveEdge, NegativeEdge}) ->
 
 normalize(Ty, Fixed, M) -> normalize(Ty, [], [], Fixed, M).
 
-normalize(0, _, _, _, _) -> [[]]; % satisfiable
+normalize({terminal, 0}, _, _, _, _) -> [[]]; % satisfiable
 normalize({terminal, Atom}, PVar, NVar, Fixed, M) ->
   ty_atom:normalize(Atom, PVar, NVar, Fixed, M);
 normalize({node, Variable, PositiveEdge, NegativeEdge}, PVar, NVar, Fixed, M) ->
@@ -83,7 +83,7 @@ normalize({node, Variable, PositiveEdge, NegativeEdge}, PVar, NVar, Fixed, M) ->
 
 substitute(T, M) -> substitute(T, M, [], []).
 
-substitute(0, _, _, _) -> 0;
+substitute({terminal, 0}, _, _, _) -> {terminal, 0};
 substitute({terminal, Atom}, Map, Pos, Neg) ->
   AllPos = lists:map(
     fun(Var) ->
@@ -107,7 +107,7 @@ substitute({node, Variable, PositiveEdge, NegativeEdge}, Map, P, N) ->
   union(LBdd, RBdd).
 
 
-all_variables(0) -> [];
+all_variables({terminal, 0}) -> [];
 all_variables({terminal, _}) -> [];
 all_variables({node, Variable, PositiveEdge, NegativeEdge}) ->
 [Variable] ++ all_variables(PositiveEdge) ++ all_variables(NegativeEdge).

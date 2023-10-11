@@ -36,7 +36,7 @@ equal(B1, B2) -> gen_bdd:equal(?P, B1, B2).
 compare(B1, B2) -> gen_bdd:compare(?P, B1, B2).
 
 
-is_empty(0) -> true;
+is_empty({terminal, 0}) -> true;
 is_empty({terminal, List}) ->
   dnf_ty_list:is_empty(List);
 is_empty({node, _Variable, PositiveEdge, NegativeEdge}) ->
@@ -45,7 +45,7 @@ is_empty({node, _Variable, PositiveEdge, NegativeEdge}) ->
 
 normalize(Ty, Fixed, M) -> normalize(Ty, [], [], Fixed, M).
 
-normalize(0, _, _, _, _) -> [[]]; % satisfiable
+normalize({terminal, 0}, _, _, _, _) -> [[]]; % satisfiable
 normalize({terminal, List}, PVar, NVar, Fixed, M) ->
   case ty_ref:is_normalized_memoized(List, Fixed, M) of
     true ->
@@ -64,7 +64,7 @@ normalize({node, Variable, PositiveEdge, NegativeEdge}, PVar, NVar, Fixed, M) ->
 
 substitute(T, M, Memo) -> substitute(T, M, Memo, [], []).
 
-substitute(0, _, _, _, _) -> 0;
+substitute({terminal, 0}, _, _, _, _) -> {terminal, 0};
 substitute({terminal, List}, Map, Memo, Pos, Neg) ->
   AllPos = lists:map(
     fun(Var) ->
@@ -87,18 +87,18 @@ substitute({node, Variable, PositiveEdge, NegativeEdge}, Map, Memo, P, N) ->
 
   union(LBdd, RBdd).
 
-has_ref(0, _) -> false;
+has_ref({terminal, 0}, _) -> false;
 has_ref({terminal, List}, Ref) ->
   dnf_ty_list:has_ref(List, Ref);
 has_ref({node, _Variable, PositiveEdge, NegativeEdge}, Ref) ->
   has_ref(PositiveEdge, Ref) orelse has_ref(NegativeEdge, Ref).
 
-all_variables(0) -> [];
+all_variables({terminal, 0}) -> [];
 all_variables({terminal, List}) -> dnf_ty_list:all_variables(List);
 all_variables({node, Variable, PositiveEdge, NegativeEdge}) ->
   [Variable] ++ all_variables(PositiveEdge) ++ all_variables(NegativeEdge).
 
-transform(0, #{empty := E}) -> E();
+transform({terminal, 0}, #{empty := E}) -> E();
 transform({terminal, List}, Ops) ->
   dnf_ty_list:transform(List, Ops);
 transform({node, Variable, PositiveEdge, NegativeEdge},
