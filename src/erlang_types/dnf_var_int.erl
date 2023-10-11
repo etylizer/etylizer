@@ -42,7 +42,8 @@ is_any(B) -> gen_bdd:is_any(?P, B).
 
 equal(B1, B2) -> gen_bdd:equal(?P, B1, B2).
 compare(B1, B2) -> gen_bdd:compare(?P, B1, B2).
-is_empty(B) -> gen_bdd:is_empty(?P, B).
+is_empty(TyBDD) -> gen_bdd:dnf(?P, TyBDD, {fun is_empty_coclause/3, fun gen_bdd:is_empty_union/2}).
+is_empty_coclause(_Pos, _Neg, T) -> ty_interval:is_empty(T).
 
 
 
