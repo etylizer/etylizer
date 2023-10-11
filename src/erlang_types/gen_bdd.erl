@@ -23,7 +23,7 @@
 -export([terminal/2, element/2, empty/1, any/1, union/3, intersect/3, negate/2, diff/3, is_empty/2, is_any/2]).
 
 %% % implements eq behavior indirectly parameterized over a type
--export([equal/3, compare/3]).
+-export([equal/3, compare/3, is_empty_union/2]).
 
 -export([dnf/3]).
 
@@ -126,6 +126,9 @@ s(_G, X) -> X.
 is_empty({Terminal, _}, {terminal, Ty}) -> Terminal:equal(Ty, Terminal:empty());
 is_empty(_, _) -> false.
 
+is_empty_union(F1, F2) ->
+  F1() andalso F2().
+
 dnf(I, Bdd, {ProcessCoclause, CombineResults}) ->
   do_dnf(I, Bdd, {ProcessCoclause, CombineResults}, _Pos = [], _Neg = []).
 
@@ -133,6 +136,5 @@ do_dnf(I, {node, Element, Left, Right}, F = {_Process, Combine}, Pos, Neg) ->
   F1 = fun() -> do_dnf(I, Left, F, [Element | Pos], Neg) end,
   F2 = fun() -> do_dnf(I, Right, F, Pos, [Element | Neg]) end,
   Combine(F1, F2);
-do_dnf({T, _}, {leaf, Terminal}, {Proc, _Comb}, Pos, Neg) ->
-  DnfTerminal = T:dnf(Terminal),
-  Proc(Pos, Neg, DnfTerminal).
+do_dnf(_, {terminal, Terminal}, {Proc, _Comb}, Pos, Neg) ->
+  Proc(Pos, Neg, Terminal).

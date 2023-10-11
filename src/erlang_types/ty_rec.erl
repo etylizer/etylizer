@@ -264,9 +264,9 @@ is_empty_miss(TyRef) ->
   ).
 
 multi_empty_tuples({Default, AllTuples}) ->
-  dnf_var_ty_tuple:is_empty(default, Default)
+  dnf_var_ty_tuple:is_empty(Default)
     andalso
-  maps:fold(fun(Size, V, Acc) -> Acc andalso dnf_var_ty_tuple:is_empty(Size, V) end, true, AllTuples).
+  maps:fold(fun(Size, V, Acc) -> Acc andalso dnf_var_ty_tuple:is_empty(V) end, true, AllTuples).
 
 multi_empty_functions({Default, AllFunctions}) ->
   dnf_var_ty_function:is_empty(default, Default)

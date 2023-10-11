@@ -8,7 +8,7 @@
 
 %%
 -export([empty/0, any/0, union/2, intersect/2, diff/2, negate/1]).
--export([is_empty/2, is_any/1, normalize/6, substitute/3]).
+-export([is_empty/1, is_any/1, normalize/6, substitute/3]).
 
 -export([tuple/1, all_variables/1, has_ref/2, transform/2]).
 
@@ -39,26 +39,18 @@ is_any(B) -> gen_bdd:is_any(?P, B).
 equal(B1, B2) -> gen_bdd:equal(?P, B1, B2).
 compare(B1, B2) -> gen_bdd:compare(?P, B1, B2).
 
-is_empty(default, {terminal, 0}) -> true;
-is_empty(default, {terminal, 1}) -> false;
-is_empty(Size, TyBDD) -> is_empty(
-  TyBDD,
-  [ty_rec:any() || _ <- lists:seq(1, Size)],
-  _NegatedTuples = []
-).
+is_empty(TyBDD) ->
+  gen_bdd:dnf(?P, TyBDD, {fun is_empty_coclause/3, fun gen_bdd:is_empty_union/2}).
 
-is_empty({terminal, 0}, _, _) -> true;
-is_empty({terminal, 1}, BigS, N) ->
-  phi(BigS, N);
-is_empty({node, TyTuple, L_BDD, R_BDD}, BigS, Negated) ->
-  BigSExtended = [ty_rec:intersect(ToIntersect, Others) || {ToIntersect, Others} <- lists:zip(ty_tuple:components(TyTuple), BigS)],
-
-  is_empty(L_BDD, BigSExtended, Negated)
-  andalso
-    is_empty(R_BDD, BigS, [TyTuple | Negated]).
+is_empty_coclause(_Pos, _Neg, 0) -> true;
+is_empty_coclause([], _Neg, 1) -> false; % TODO check correctness of this
+is_empty_coclause(Pos, Neg, 1) ->
+  % invariant: Pos is single tuple (simplification step required)
+  BigS = ty_tuple:big_intersect(Pos),
+  phi(ty_tuple:components(BigS), Neg).
 
 phi(BigS, []) ->
-  lists:foldl(fun(S, Res) -> Res orelse ty_rec:is_empty(S) end, false, BigS); % TODO unit false?
+  lists:foldl(fun(S, Res) -> Res orelse ty_rec:is_empty(S) end, false, BigS);
 phi(BigS, [Ty | N]) ->
   Solve = fun({Index, {_PComponent, NComponent}}, Result) ->
     Result
