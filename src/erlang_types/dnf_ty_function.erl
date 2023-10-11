@@ -12,7 +12,7 @@
 
 %%
 -export([empty/0, any/0, union/2, intersect/2, diff/2, negate/1]).
--export([is_empty/2, is_any/1, normalize/6, substitute/3]).
+-export([is_any/1, normalize/6, substitute/3, is_empty/1]).
 
 -export([function/1, all_variables/1, has_ref/2, transform/2]).
 
@@ -37,6 +37,35 @@ diff(B1, B2) -> gen_bdd:diff(?P, B1, B2).
 negate(B1) -> gen_bdd:negate(?P, B1).
 
 is_any(B) -> gen_bdd:is_any(?P, B).
+is_empty(TyBDD) ->
+  gen_bdd:dnf(?P, TyBDD, {fun is_empty_coclause/3, fun gen_bdd:is_empty_union/2}).
+
+is_empty_coclause(_Pos, _Neg, 0) -> true;
+is_empty_coclause([], _Neg, 1) -> false;
+is_empty_coclause(AllPos = [P | Pos], Neg, 1) ->
+  % TODO here do these simplifications
+  % A -> B && C -> B == A|C -> B
+  % A -> B && A -> C == A -> B&C
+  BigSTuple = lists:foldl(fun(FunTy, Acc) ->
+    ty_rec:union(Acc, domains_to_tuple(ty_function:domains(FunTy)))
+                          end, domains_to_tuple(ty_function:domains(P)), Pos),
+  is_empty_cont(BigSTuple, AllPos, Neg).
+
+is_empty_cont(_, _, []) -> false;
+is_empty_cont(BigSTuple, P, [Function | N]) ->
+  Ts = ty_function:domains(Function),
+  T2 = ty_function:codomain(Function),
+  (
+      %% ∃ Ts-->T2 ∈ N s.t.
+      %%    Ts is in the domains of the function
+      %%    BigS is the union of all domains of the positive function intersections
+      ty_rec:is_subtype(domains_to_tuple(Ts), BigSTuple)
+        andalso
+        explore_function(domains_to_tuple(Ts), ty_rec:negate(T2), P)
+  )
+  %% Continue searching for another arrow ∈ N
+    orelse
+    is_empty_cont(BigSTuple, P, N).
 
 % ==
 % basic interface
@@ -44,40 +73,6 @@ is_any(B) -> gen_bdd:is_any(?P, B).
 
 equal(B1, B2) -> gen_bdd:equal(?P, B1, B2).
 compare(B1, B2) -> gen_bdd:compare(?P, B1, B2).
-
-is_empty(default, {terminal, 0}) -> true;
-is_empty(default, {terminal, 1}) -> false;
-is_empty(Size, TyDnf) ->
-  is_empty(
-    TyDnf,
-    domains_to_tuple([ty_rec:empty() || _ <- lists:seq(1, Size)]), [], []
-  ).
-
-is_empty({terminal, 0}, _, _, _) -> true;
-% TODO should only be {terminal, 1}, not just 1!
-%%is_empty(1, _, _, []) -> false;
-is_empty({terminal, 1}, _, _, []) -> false;
-is_empty({terminal, 1}, BigSTuple, P, [Function | N]) ->
-  Ts = ty_function:domains(Function),
-  T2 = ty_function:codomain(Function),
-  (
-  %% ∃ Ts-->T2 ∈ N s.t.
-  %%    Ts is in the domains of the function
-  %%    BigS is the union of all domains of the positive function intersections
-  ty_rec:is_subtype(domains_to_tuple(Ts), BigSTuple)
-    andalso
-    explore_function(domains_to_tuple(Ts), ty_rec:negate(T2), P)
-  )
-  %% Continue searching for another arrow ∈ N
-    orelse
-    is_empty({terminal, 1}, BigSTuple, P, N)
-  ;
-is_empty({node, Function, L_BDD, R_BDD}, BigS, P, N) ->
-  Ts = ty_function:domains(Function),
-  is_empty(L_BDD, ty_rec:union(BigS, domains_to_tuple(Ts)), [Function | P], N)
-  andalso
-    is_empty(R_BDD, BigS, P, [Function | N])
-.
 
 domains_to_tuple(Domains) ->
   ty_rec:tuple(length(Domains), dnf_var_ty_tuple:tuple(dnf_ty_tuple:tuple(ty_tuple:tuple(Domains)))).
