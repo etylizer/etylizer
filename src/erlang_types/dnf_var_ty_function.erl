@@ -4,11 +4,11 @@
 -define(F(Z), fun() -> Z end).
 
 
--export([equal/2, compare/2]).
+-export([equal/2, compare/2, is_empty/1]).
 
 %%
 -export([empty/0, any/0, union/2, intersect/2, diff/2, negate/1]).
--export([is_empty/2, is_any/1, normalize/4, substitute/4]).
+-export([is_any/1, normalize/4, substitute/4]).
 
 -export([var/1, function/1, all_variables/1, has_ref/2, transform/2]).
 
@@ -35,6 +35,8 @@ diff(B1, B2) -> gen_bdd:diff(?P, B1, B2).
 negate(B1) -> gen_bdd:negate(?P, B1).
 
 is_any(B) -> gen_bdd:is_any(?P, B).
+is_empty(TyBDD) -> gen_bdd:dnf(?P, TyBDD, {fun is_empty_coclause/3, fun gen_bdd:is_empty_union/2}).
+is_empty_coclause(_Pos, _Neg, T) -> dnf_ty_function:is_empty(T).
 
 % ==
 % basic interface
@@ -42,14 +44,6 @@ is_any(B) -> gen_bdd:is_any(?P, B).
 
 equal(B1, B2) -> gen_bdd:equal(?P, B1, B2).
 compare(B1, B2) -> gen_bdd:compare(?P, B1, B2).
-
-
-is_empty(_, {terminal, 0}) -> true;
-is_empty(Size, {terminal, Function}) ->
-  dnf_ty_function:is_empty(Size, Function);
-is_empty(Size, {node, _Variable, PositiveEdge, NegativeEdge}) ->
-  is_empty(Size, PositiveEdge)
-    andalso is_empty(Size, NegativeEdge).
 
 normalize(Size, Ty, Fixed, M) -> normalize(Size, Ty, [], [], Fixed, M).
 
