@@ -23,7 +23,7 @@
 -export([terminal/2, element/2, empty/1, any/1, union/3, intersect/3, negate/2, diff/3, is_empty/2, is_any/2]).
 
 %% % implements eq behavior indirectly parameterized over a type
--export([equal/3, compare/3, is_empty_union/2]).
+-export([equal/3, compare/3, is_empty_union/2, substitute/4]).
 
 -export([dnf/3]).
 
@@ -138,3 +138,16 @@ do_dnf(I, {node, Element, Left, Right}, F = {_Process, Combine}, Pos, Neg) ->
   Combine(F1, F2);
 do_dnf(_, {terminal, Terminal}, {Proc, _Comb}, Pos, Neg) ->
   Proc(Pos, Neg, Terminal).
+
+substitute(I, Bdd, Map, Memo) ->
+  gen_bdd:dnf(I, Bdd, {
+    fun(P,N,T) -> substitute_coclause(I,P,N,T, Map, Memo) end,
+    fun(F1, F2) -> union(I, F1(), F2()) end
+  }).
+
+substitute_coclause(I,_P, _N, 0, _Map, _Memo) -> empty(I);
+substitute_coclause(I = {_, Element},P, N, 1, Map, Memo) ->
+  PosL = lists:map(fun(L) -> gen_bdd:element(I, Element:substitute(L, Map, Memo)) end, P),
+  NegL = lists:map(fun(L) -> negate(I, gen_bdd:element(I, Element:substitute(L, Map, Memo))) end, N),
+  Res = lists:foldl(fun(E,Ac) -> intersect(I, E, Ac) end, any(I), PosL ++ NegL),
+  Res.

@@ -3,9 +3,9 @@
 %% n-tuple representation
 
 
--export([compare/2, equal/2]).
+-export([compare/2, equal/2, substitute/3]).
 
--export([tuple/1, pi/2, has_ref/2, components/1, transform/2, any/1, empty/1, big_intersect/1, is_empty/1]).
+-export([tuple/1, pi/2, has_ref/2, components/1, transform/2, any/1, empty/1, big_intersect/1, is_empty/1, big_union/1]).
 
 empty(Size) -> {ty_tuple, Size, [ty_rec:empty() || _ <- lists:seq(1, Size)]}.
 any(Size) -> {ty_tuple, Size, [ty_rec:any() || _ <- lists:seq(1, Size)]}.
@@ -35,6 +35,18 @@ big_intersect(Pos = [X | Y]) ->
         true = length(Refs) == length(Refs2),
         {ty_tuple, Dim, [ty_rec:intersect(S, T) || {S, T} <- lists:zip(Refs, Refs2)]}
                 end, X, Y).
+
+big_union([]) -> error(illegal_state);
+big_union([X]) -> X;
+big_union([X | Y]) ->
+    lists:foldl(fun({ty_tuple, Dim, Refs}, {ty_tuple, Dim, Refs2}) ->
+        true = length(Refs) == length(Refs2),
+        {ty_tuple, Dim, [ty_rec:union(S, T) || {S, T} <- lists:zip(Refs, Refs2)]}
+                end, X, Y).
+
+substitute({ty_tuple, _, Refs}, Map, Memo) ->
+    NewS = lists:map(fun(E) -> ty_rec:substitute(E, Map, Memo) end, Refs),
+    tuple(NewS).
 
 
 -ifdef(TEST).

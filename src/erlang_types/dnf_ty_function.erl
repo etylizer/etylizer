@@ -28,8 +28,9 @@ function(TyFunction) -> gen_bdd:element(?P, TyFunction).
 % type interface
 % ==
 empty() -> gen_bdd:empty(?P).
-any() ->
-  gen_bdd:any(?P).
+any() -> gen_bdd:any(?P).
+
+substitute(TyBDD, Map, Memo) -> gen_bdd:substitute(?P, TyBDD, Map, Memo).
 
 union(B1, B2) -> gen_bdd:union(?P, B1, B2).
 intersect(B1, B2) -> gen_bdd:intersect(?P, B1, B2).
@@ -93,20 +94,27 @@ explore_function(Ts, T2, [Function | P]) ->
         explore_function(ty_rec:diff(Ts, BigS1), T2, P)
     end.
 
-normalize({default, _}, {terminal, 0}, [], [], _, _) -> [[]];
-normalize({default, _}, {terminal, 1}, [], [], _, _) -> [];
-normalize(Size, TyFunction, [], [], Fixed, M) ->
-  % optimized NArrow rule
-  AllEmpty = domains_to_tuple([ty_rec:empty() || _ <- lists:seq(1, Size)]),
-  normalize_no_vars(Size, TyFunction, AllEmpty, [], [], Fixed, M);
+normalize(_Size, DnfTyFunction, [], [], Fixed, M) ->
+  gen_bdd:dnf(?P, DnfTyFunction, {
+    fun(Pos, Neg, DnfTyList) -> normalize_coclause(Pos, Neg, DnfTyList, Fixed, M) end,
+    fun constraint_set:meet/2
+  })
+;
 normalize(Size, DnfTyFunction, PVar, NVar, Fixed, M) ->
   Ty = ty_rec:function(Size, dnf_var_ty_function:function(DnfTyFunction)),
   % ntlv rule
   ty_variable:normalize(Ty, PVar, NVar, Fixed, fun(Var) -> ty_rec:function(Size, dnf_var_ty_function:var(Var)) end, M).
 
-normalize_no_vars(_Size, {terminal, 0}, _, _, _, _Fixed, _) -> [[]]; % empty
-normalize_no_vars(_Size, {terminal, 1}, _, _, [], _Fixed, _) -> []; % non-empty
-normalize_no_vars(Size, {terminal, 1}, S, P, [Function | N], Fixed, M) ->
+normalize_coclause(_Pos, _Neg, 0, _Fixed, _M) -> [[]];
+normalize_coclause(Pos, Neg, 1, Fixed, M) ->
+  [First | _] = Pos ++ Neg,
+  AllDomainsAsTuples = [ty_tuple:tuple(ty_function:domains(Fun)) || Fun <- Pos],
+  Size = length(ty_function:domains(First)),
+  S = ty_rec:tuple(Size, dnf_var_ty_tuple:tuple(dnf_ty_tuple:tuple(ty_tuple:big_union(AllDomainsAsTuples)))),
+  normalize_no_vars(Size, S, Pos, Neg, Fixed, M).
+
+normalize_no_vars(_Size, _, _, [], _Fixed, _) -> []; % non-empty
+normalize_no_vars(Size, S, P, [Function | N], Fixed, M) ->
   T1 = domains_to_tuple(ty_function:domains(Function)),
   T2 = ty_function:codomain(Function),
   %% ∃ T1-->T2 ∈ N s.t.
@@ -116,15 +124,8 @@ normalize_no_vars(Size, {terminal, 1}, S, P, [Function | N], Fixed, M) ->
   X2 = ?F(explore_function_norm(Size, T1, ty_rec:negate(T2), P, Fixed, M)),
   R1 = ?F(constraint_set:meet(X1, X2)),
   %% Continue searching for another arrow ∈ N
-  R2 = ?F(normalize_no_vars(Size, {terminal, 1}, S, P, N, Fixed, M)),
-  constraint_set:join(R1, R2);
-normalize_no_vars(Size, {node, Function, L_BDD, R_BDD}, S, P, Negated, Fixed, M) ->
-  T1 = domains_to_tuple(ty_function:domains(Function)),
-
-  constraint_set:meet(
-    ?F(normalize_no_vars(Size, L_BDD, ty_rec:union(S, T1), [Function | P], Negated, Fixed, M)),
-    ?F(normalize_no_vars(Size, R_BDD, S, P, [Function | Negated], Fixed, M))
-  ).
+  R2 = ?F(normalize_no_vars(Size, S, P, N, Fixed, M)),
+  constraint_set:join(R1, R2).
 
 
 explore_function_norm(_Size, BigT1, T2, [], Fixed, M) ->
@@ -145,21 +146,23 @@ explore_function_norm(Size, T1, T2, [Function | P], Fixed, M) ->
     ?F(constraint_set:join(NT2,
       ?F(constraint_set:meet(NS1, NS2))))).
 
-substitute({terminal, 0}, _, _) -> {terminal, 0};
-substitute({terminal, 1}, _, _) ->
-  {terminal, 1};
-substitute({node, TyFunction, L_BDD, R_BDD}, Map, Memo) ->
-  S2 = ty_function:codomain(TyFunction),
 
-  NewDomains = lists:map(fun(E) -> ty_rec:substitute(E, Map, Memo) end, ty_function:domains(TyFunction)),
-  NewS2 = ty_rec:substitute(S2, Map, Memo),
 
-  NewTyFunction = ty_function:function(NewDomains, NewS2),
-
-  union(
-    intersect(function(NewTyFunction), substitute(L_BDD, Map, Memo)),
-    intersect(negate(function(NewTyFunction)), substitute(R_BDD, Map, Memo))
-  ).
+%%substitute({terminal, 0}, _, _) -> {terminal, 0};
+%%substitute({terminal, 1}, _, _) ->
+%%  {terminal, 1};
+%%substitute({node, TyFunction, L_BDD, R_BDD}, Map, Memo) ->
+%%  S2 = ty_function:codomain(TyFunction),
+%%
+%%  NewDomains = lists:map(fun(E) -> ty_rec:substitute(E, Map, Memo) end, ty_function:domains(TyFunction)),
+%%  NewS2 = ty_rec:substitute(S2, Map, Memo),
+%%
+%%  NewTyFunction = ty_function:function(NewDomains, NewS2),
+%%
+%%  union(
+%%    intersect(function(NewTyFunction), substitute(L_BDD, Map, Memo)),
+%%    intersect(negate(function(NewTyFunction)), substitute(R_BDD, Map, Memo))
+%%  ).
 
 has_ref({terminal, 0}, _) -> false;
 has_ref({terminal, _}, _) -> false;
