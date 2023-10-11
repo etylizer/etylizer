@@ -27,6 +27,8 @@ diff(B1, B2) -> gen_bdd:diff(?P, B1, B2).
 negate(B1) -> gen_bdd:negate(?P, B1).
 
 is_any(B) -> gen_bdd:is_any(?P, B).
+is_empty(TyBDD) -> gen_bdd:dnf(?P, TyBDD, {fun is_empty_coclause/3, fun gen_bdd:is_empty_union/2}).
+is_empty_coclause(_Pos, _Neg, T) -> dnf_ty_list:is_empty(T).
 
 % ==
 % basic interface
@@ -34,14 +36,6 @@ is_any(B) -> gen_bdd:is_any(?P, B).
 
 equal(B1, B2) -> gen_bdd:equal(?P, B1, B2).
 compare(B1, B2) -> gen_bdd:compare(?P, B1, B2).
-
-
-is_empty({terminal, 0}) -> true;
-is_empty({terminal, List}) ->
-  dnf_ty_list:is_empty(List);
-is_empty({node, _Variable, PositiveEdge, NegativeEdge}) ->
-  is_empty(PositiveEdge)
-    and is_empty(NegativeEdge).
 
 normalize(Ty, Fixed, M) -> normalize(Ty, [], [], Fixed, M).
 
