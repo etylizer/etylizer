@@ -2,5 +2,5 @@
 
 -export([main/0]).
 
--spec main() -> integer().
-main() -> 1.
+-spec main() -> boolean().
+main() -> true.

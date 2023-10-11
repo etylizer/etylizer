@@ -2,5 +2,5 @@
 
 -export([foo/1]).
 
--spec foo(integer()) -> integer().
+-spec foo(boolean()) -> boolean().
 foo(X) -> X.

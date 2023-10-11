@@ -23,7 +23,7 @@
     ttuple/1, ttuple_n/1, ttuple_any/0, ttuple1/1, ttuple2/2,
     tarrow_n/1,
     tfun_full/2,
-    tfun/2, tfun1/2, tfun2/3,
+    tfun/2, tfun1/2, tfun2/3, tfun_any/0,
     tvar/1,
     trange_any/0, trange/2,
     expand_predef_alias/1,
@@ -126,6 +126,9 @@ tnone() ->
 ttuple_any() ->
     {tuple_any}.
 
+tfun_any() ->
+    {fun_simple}.
+
 trange_any() ->
     {predef, integer}.
 
@@ -221,7 +224,7 @@ builtin_ops() ->
     IntOpTy = tyscm(tfun([tint(), tint()], tint())),
     BoolOpTy = tyscm(tfun([tbool(), tbool()], tbool())),
     BoolShortcutOpTy = tyscm(tfun([tbool(), tvar(a)], tvar(a))),
-    PolyOpTy = tyscm([a], tfun([tvar(a), tvar(a)], tbool())),
+    PolyOpTy = tyscm(tfun([tvar(a), tvar(a)], tbool())),
     [
         {'+', 2, NumOpTy},
         {'-', 2, NumOpTy},

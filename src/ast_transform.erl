@@ -143,7 +143,7 @@ trans_spec_ty(Ctx, Loc, FunTys) ->
                                                             true -> false
                                                          end
                                                  end, Constrs),
-                        {Alpha, ast:mk_intersection(Bounds)}
+                        {Alpha, ast_lib:mk_intersection(Bounds)}
                 end,
                 TyVars),
     {ty_scheme, ConstrainedTyVars, Ty}.

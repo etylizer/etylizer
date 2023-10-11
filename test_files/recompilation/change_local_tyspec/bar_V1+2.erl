@@ -2,6 +2,6 @@
 
 -export([bar_fun/1]).
 
--spec bar_fun(integer()) -> integer().
-bar_fun(X) -> X+1.
+-spec bar_fun(boolean()) -> boolean().
+bar_fun(X) -> X and true.
 

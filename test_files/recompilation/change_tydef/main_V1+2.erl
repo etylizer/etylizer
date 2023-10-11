@@ -2,5 +2,5 @@
 
 -export([main/0]).
 
--spec main() -> integer().
-main() -> foo:foo_fun(1,2).
+-spec main() -> boolean().
+main() -> foo:foo_fun(true,false).

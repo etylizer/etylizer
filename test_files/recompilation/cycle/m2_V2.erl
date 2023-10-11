@@ -2,10 +2,10 @@
 
 -export([f2/1]).
 
--spec f2(any()) -> integer().
-f2(X) when is_integer(X) ->
+-spec f2(any()) -> boolean().
+f2(X) when is_boolean(X) ->
     if
-        X =:= 0 -> 1;
-        true -> X * m1:f1(X-1)
+        X =:= false -> true;
+        true -> X or m1:f1(X and true)
     end;
-f2(_) -> 1.
+f2(_) -> true.

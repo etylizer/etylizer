@@ -94,15 +94,16 @@ simp_constr(Ctx, C) ->
                 ignore_branch ->
                     % NOTE: there is some code duplication with respect to the report case
                     FreeSet = tyutils:free_in_poly_env(Ctx#ctx.env),
+                    ?LOG_DEBUG("Checking which branches of case at ~s should be ignored.~n" ++
+                               "Env: ~s~nFixed tyvars: ~w~nConstraints for scrutiny:~n~s",
+                               ast:format_loc(loc(Locs)),
+                               pretty:render_poly_env(Ctx#ctx.env),
+                               sets:to_list(FreeSet),
+                               pretty:render_constr(Dss)),
                     Substs =
                         lists:flatmap(
                           fun(Ds) -> get_substs(tally:tally(Ctx#ctx.symtab, Ds, FreeSet), Locs) end,
                           Dss),
-                    ?LOG_DEBUG("Checking which branches of case at ~s should be ignored.~n" ++
-                               "Fixed tyvars: ~w~nConstraints:~n~s",
-                               ast:format_loc(loc(Locs)),
-                               sets:to_list(FreeSet),
-                               pretty:render_constr(Dss)),
                     ?LOG_TRACE("Env=~s, FreeSet=~200p", pretty:render_poly_env(Ctx#ctx.env),
                                sets:to_list(FreeSet)),
                     case Substs of
@@ -134,7 +135,7 @@ simp_constr(Ctx, C) ->
                                                           ),
                                                 cross_union(BeforeDss, GuardDss);
                                            true ->
-                                                ?LOG_DEBUG("Not ignoring branch at ~s, match type ~s (unsubstituted: gb~s) greater than none()",
+                                                ?LOG_DEBUG("Not ignoring branch at ~s, match type ~s (unsubstituted: ~s) greater than none()",
                                                            ast:format_loc(loc(BodyLocs)),
                                                            pretty:render_ty(MatchTy),
                                                            pretty:render_ty(TI)
