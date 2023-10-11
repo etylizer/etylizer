@@ -20,6 +20,8 @@ list(TyList) -> gen_bdd:element(?P, TyList).
 empty() -> gen_bdd:empty(?P).
 any() -> gen_bdd:any(?P).
 
+substitute(TyBDD, Map, Memo) -> gen_bdd:substitute(?P, TyBDD, Map, Memo).
+
 union(B1, B2) -> gen_bdd:union(?P, B1, B2).
 intersect(B1, B2) -> gen_bdd:intersect(?P, B1, B2).
 diff(B1, B2) -> gen_bdd:diff(?P, B1, B2).
@@ -101,12 +103,6 @@ phi_norm(S1, S2, [Ty | N], Fixed, M) ->
     end),
 
   constraint_set:join(T1, ?F(constraint_set:join(T2, T3))).
-
-substitute(TyBDD, Map, Memo) ->
-  gen_bdd:dnf(?P, TyBDD, {
-    fun(P,N,T) -> subst_coclause(P,N,T, Map, Memo) end,
-    fun(F1, F2) -> union(F1(), F2()) end
-  }).
 
 subst_coclause(_P, _N, 0, _Map, _Memo) -> empty();
 subst_coclause(P, N, 1, Map, Memo) ->

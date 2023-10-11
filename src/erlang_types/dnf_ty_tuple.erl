@@ -25,6 +25,8 @@ tuple(TyTuple) -> gen_bdd:element(?P, TyTuple).
 empty() -> gen_bdd:empty(?P).
 any() -> gen_bdd:any(?P).
 
+substitute(TyBDD, Map, Memo) -> gen_bdd:substitute(?P, TyBDD, Map, Memo).
+
 union(B1, B2) -> gen_bdd:union(?P, B1, B2).
 intersect(B1, B2) -> gen_bdd:intersect(?P, B1, B2).
 diff(B1, B2) -> gen_bdd:diff(?P, B1, B2).
@@ -122,18 +124,6 @@ phi_norm(Size, BigS, [Ty | N], Fixed, M) ->
     ?F(lists:foldl(Solve, [[]], lists:zip(lists:seq(1, length(ty_tuple:components(Ty))), lists:zip(BigS, ty_tuple:components(Ty)))))
   ).
 
-substitute({terminal, 0}, _, _) -> {terminal, 0};
-substitute({terminal, 1}, _, _) ->
-  {terminal, 1};
-substitute({node, TyTuple, L_BDD, R_BDD}, Map, Memo) ->
-  NewS = lists:map(fun(E) -> ty_rec:substitute(E, Map, Memo) end, ty_tuple:components(TyTuple)),
-
-  NewTyTuple = ty_tuple:tuple(NewS),
-
-  union(
-    intersect(tuple(NewTyTuple), substitute(L_BDD, Map, Memo)),
-    intersect(negate(tuple(NewTyTuple)), substitute(R_BDD, Map, Memo))
-    ).
 
 has_ref({terminal, 0}, _) -> false;
 has_ref({terminal, _}, _) -> false;
