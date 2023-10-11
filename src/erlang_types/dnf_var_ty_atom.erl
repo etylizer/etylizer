@@ -36,6 +36,7 @@ diff(B1, B2) -> gen_bdd:diff(?P, B1, B2).
 negate(B1) -> gen_bdd:negate(?P, B1).
 
 is_any(B) -> gen_bdd:is_any(?P, B).
+is_empty(B) -> gen_bdd:is_empty(?P, B).
 
 
 
@@ -57,17 +58,6 @@ transform({node, Variable, PositiveEdge, NegativeEdge},
     Intersect([AstVar, transform(PositiveEdge, Ops)]),
     Intersect([Negate(AstVar), transform(NegativeEdge, Ops)])
   ]).
-
-% ==
-% Emptiness for variable atom DNFs
-% ==
-
-is_empty({terminal, 0}) -> true;
-is_empty({terminal, Atom}) ->
-  ty_atom:is_empty(Atom);
-is_empty({node, _Variable, PositiveEdge, NegativeEdge}) ->
-  is_empty(PositiveEdge)
-    andalso is_empty(NegativeEdge).
 
 
 normalize(Ty, Fixed, M) -> normalize(Ty, [], [], Fixed, M).
