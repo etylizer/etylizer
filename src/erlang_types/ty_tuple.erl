@@ -1,9 +1,7 @@
 -module(ty_tuple).
 
 %% n-tuple representation
-
-
--export([compare/2, equal/2, substitute/3]).
+-export([compare/2, equal/2, substitute/4]).
 
 -export([tuple/1, pi/2, has_ref/2, components/1, transform/2, any/1, empty/1, big_intersect/1, is_empty/1, big_union/1]).
 
@@ -44,7 +42,7 @@ big_union([X | Y]) ->
         {ty_tuple, Dim, [ty_rec:union(S, T) || {S, T} <- lists:zip(Refs, Refs2)]}
                 end, X, Y).
 
-substitute({ty_tuple, _, Refs}, Map, Memo) ->
+substitute(_MkTy, {ty_tuple, Dim, Refs}, Map, Memo) ->
     NewS = lists:map(fun(E) -> ty_rec:substitute(E, Map, Memo) end, Refs),
     tuple(NewS).
 

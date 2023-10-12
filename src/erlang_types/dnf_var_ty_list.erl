@@ -7,7 +7,7 @@
 
 
 -export([empty/0, any/0, union/2, intersect/2, diff/2, negate/1]).
--export([is_empty/1, is_any/1, normalize/3, substitute/3]).
+-export([is_empty/1, is_any/1, normalize/3, substitute/4]).
 
 -export([var/1, list/1, all_variables/1, has_ref/2, transform/2]).
 
@@ -72,31 +72,8 @@ normalize({node, Variable, PositiveEdge, NegativeEdge}, PVar, NVar, Fixed, M) ->
     normalize(NegativeEdge, PVar, [Variable | NVar], Fixed, M)
   ).
 
-
-substitute(T, M, Memo) -> substitute(T, M, Memo, [], []).
-
-substitute({terminal, {terminal, 0}}, _, _, _, _) -> {terminal, {terminal, 0}};
-substitute({terminal, List}, Map, Memo, Pos, Neg) ->
-  AllPos = lists:map(
-    fun(Var) ->
-      Substitution = maps:get(Var, Map, ty_rec:variable(Var)),
-      ty_rec:pi(list, Substitution)
-    end, Pos),
-  AllNeg = lists:map(
-    fun(Var) ->
-      Substitution = maps:get(Var, Map, ty_rec:variable(Var)),
-      NewNeg = ty_rec:negate(Substitution),
-      ty_rec:pi(list, NewNeg)
-    end, Neg),
-
-  lists:foldl(fun(Current, All) -> intersect(Current, All) end, list(dnf_ty_list:substitute(List, Map, Memo)), AllPos ++ AllNeg);
-
-substitute({node, Variable, PositiveEdge, NegativeEdge}, Map, Memo, P, N) ->
-
-  LBdd = substitute(PositiveEdge, Map, Memo, [Variable | P], N),
-  RBdd = substitute(NegativeEdge, Map, Memo, P, [Variable | N]),
-
-  union(LBdd, RBdd).
+substitute(MkTy, T, M, Memo) ->
+  gen_bdd:substitute(?P, MkTy, T, M, Memo).
 
 has_ref({terminal, {terminal, 0}}, _) -> false;
 has_ref({terminal, List}, Ref) ->

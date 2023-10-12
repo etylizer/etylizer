@@ -63,40 +63,7 @@ normalize(Size, {node, Variable, PositiveEdge, NegativeEdge}, PVar, NVar, Fixed,
     ?F(normalize(Size, NegativeEdge, PVar, [Variable | NVar], Fixed, M))
   ).
 
-
-substitute(Size, T, M, Memo) -> substitute(Size, T, M, Memo, [], []).
-
-substitute(default, {terminal, 0}, _, _, _, _) -> {empty(), #{}};
-substitute(Size, {terminal, 0}, _, _, _, _) -> {empty(), #{Size => empty()}};
-substitute(Size, {terminal, Function}, Map, Memo, Pos, Neg) ->
-  AllPos = lists:map(
-    fun(Var) ->
-      Substitution = maps:get(Var, Map, ty_rec:variable(Var)),
-      ty_rec:pi(function, Substitution)
-    end, Pos),
-  AllNeg = lists:map(
-    fun(Var) ->
-      Substitution = maps:get(Var, Map, ty_rec:variable(Var)),
-      NewNeg = ty_rec:negate(Substitution),
-      ty_rec:pi(function, NewNeg)
-    end, Neg),
-
-  Base = case Size of
-           default ->
-             {function(dnf_ty_function:substitute(Function, Map, Memo)), #{}};
-           _ ->
-             {empty(), #{Size => function(dnf_ty_function:substitute(Function, Map, Memo))}}
-         end,
-
-  lists:foldl(fun({CurrentDefault, CurrentFunction}, {AllDefault, AllFunction}) ->
-    {intersect(CurrentDefault, AllDefault), utils:mingle(CurrentDefault, AllDefault, CurrentFunction, AllFunction, fun intersect/2)}
-              end, Base, AllPos ++ AllNeg);
-
-substitute(Size, {node, Variable, PositiveEdge, NegativeEdge}, Map, Memo, P, N) ->
-  {LeftDefault, LeftOthers} = substitute(Size, PositiveEdge, Map, Memo, [Variable | P], N),
-  {RightDefault, RightOthers} = substitute(Size, NegativeEdge, Map, Memo, P, [Variable | N]),
-
-  {union(LeftDefault, RightDefault), utils:mingle(LeftDefault, RightDefault, LeftOthers, RightOthers, fun union/2)}.
+substitute(MkTy, T, M, Memo) -> gen_bdd:substitute(?P, MkTy, T, M, Memo).
 
 has_ref({terminal, 0}, _) -> false;
 has_ref({terminal, Function}, Ref) ->

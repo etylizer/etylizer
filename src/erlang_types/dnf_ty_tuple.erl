@@ -8,7 +8,7 @@
 
 %%
 -export([empty/0, any/0, union/2, intersect/2, diff/2, negate/1]).
--export([is_empty/1, is_any/1, normalize/6, substitute/3]).
+-export([is_empty/1, is_any/1, normalize/6, substitute/4]).
 
 -export([tuple/1, all_variables/1, has_ref/2, transform/2]).
 
@@ -25,7 +25,7 @@ tuple(TyTuple) -> gen_bdd:element(?P, TyTuple).
 empty() -> gen_bdd:empty(?P).
 any() -> gen_bdd:any(?P).
 
-substitute(TyBDD, Map, Memo) -> gen_bdd:substitute(?P, TyBDD, Map, Memo).
+substitute(MkTy, TyBDD, Map, Memo) -> gen_bdd:substitute(?P, MkTy, TyBDD, Map, Memo).
 
 union(B1, B2) -> gen_bdd:union(?P, B1, B2).
 intersect(B1, B2) -> gen_bdd:intersect(?P, B1, B2).

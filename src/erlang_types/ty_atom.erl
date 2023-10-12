@@ -15,7 +15,9 @@
 
 -export([finite/1, cofinite/1]).
 
--export([normalize/5]).
+-export([normalize/5, substitute/4]).
+
+substitute(_, Ty, _, _) -> Ty.
 
 transform({Atoms, finite}, #{to_atom := ToAtom, union := Union}) ->
   Union(lists:map(fun(A) -> ToAtom(A) end, gb_sets:to_list(Atoms)));
