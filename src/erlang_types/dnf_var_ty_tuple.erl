@@ -64,39 +64,6 @@ normalize(Size, {node, Variable, PositiveEdge, NegativeEdge}, PVar, NVar, Fixed,
     ?F(normalize(Size, NegativeEdge, PVar, [Variable | NVar], Fixed, M))
   ).
 
-substitute(Size, T, M, Memo) -> substitute(Size, T, M, Memo, [], []).
-
-substitute(default, {terminal, 0}, _, _, _, _) -> {empty(), #{}};
-substitute(Size, {terminal, 0}, _, _, _, _) -> {empty(), #{Size => empty()}};
-substitute(Size, {terminal, Tuple}, Map, Memo, Pos, Neg) ->
-  AllPos = lists:map(
-    fun(Var) ->
-      Substitution = maps:get(Var, Map, ty_rec:variable(Var)),
-      ty_rec:pi(tuple, Substitution)
-    end, Pos),
-  AllNeg = lists:map(
-    fun(Var) ->
-      Substitution = maps:get(Var, Map, ty_rec:variable(Var)),
-      NewNeg = ty_rec:negate(Substitution),
-      ty_rec:pi(tuple, NewNeg)
-    end, Neg),
-
-  Base = case Size of
-           default ->
-             {tuple(dnf_ty_tuple:substitute(Tuple, Map, Memo)), #{}};
-           _ ->
-             {empty(), #{Size => tuple(dnf_ty_tuple:substitute(Tuple, Map, Memo))}}
-         end,
-  lists:foldl(fun({CurrentDefault, CurrentTuple}, {AllDefault, AllTuple}) ->
-    {intersect(CurrentDefault, AllDefault), mingle(CurrentDefault, AllDefault, CurrentTuple, AllTuple, fun intersect/2)}
-              end, Base, AllPos ++ AllNeg);
-
-substitute(Size, {node, Variable, PositiveEdge, NegativeEdge}, Map, Memo, P, N) ->
-  {LeftDefault, LeftOthers} = substitute(Size, PositiveEdge, Map, Memo, [Variable | P], N),
-  {RightDefault, RightOthers} = substitute(Size, NegativeEdge, Map, Memo, P, [Variable | N]),
-
-  {union(LeftDefault, RightDefault), mingle(LeftDefault, RightDefault, LeftOthers, RightOthers, fun union/2)}.
-
 has_ref({terminal, 0}, _) -> false;
 has_ref({terminal, Tuple}, Ref) ->
   dnf_ty_tuple:has_ref(Tuple, Ref);
@@ -110,11 +77,9 @@ all_variables({terminal, Tuple}) -> dnf_ty_tuple:all_variables(Tuple);
 all_variables({node, Variable, PositiveEdge, NegativeEdge}) ->
   [Variable] ++ all_variables(PositiveEdge) ++ all_variables(NegativeEdge).
 
+substitute(MkTy, T, M, Memo) ->
+  gen_bdd:substitute(?P, MkTy, T, M, Memo).
 
-mingle(LeftDefault, RightDefault, AllLeft, AllRight, Op) ->
-  AllKeys = maps:keys(AllLeft) ++ maps:keys(AllRight),
-  % LeftDefault + Right (left not assigned)  Left + RightDefault (right not assigned) Left + Right (both)
-  maps:from_list(lists:map(fun(Key) -> {Key, Op(maps:get(Key, AllLeft, LeftDefault), maps:get(Key, AllRight, RightDefault))} end, AllKeys)).
 
 
 transform({terminal, 0}, #{empty := E}) -> E();

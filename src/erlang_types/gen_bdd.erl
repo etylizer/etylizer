@@ -23,7 +23,7 @@
 -export([terminal/2, element/2, empty/1, any/1, union/3, intersect/3, negate/2, diff/3, is_empty/2, is_any/2]).
 
 %% % implements eq behavior indirectly parameterized over a type
--export([equal/3, compare/3, is_empty_union/2, substitute/4]).
+-export([equal/3, compare/3, is_empty_union/2, substitute/5]).
 
 -export([dnf/3]).
 
@@ -95,7 +95,7 @@ union(I = {Terminal, Element}, A, B) ->
       end
   end.
 
-negate(I = {Terminal, _}, TN = {terminal, A}) ->
+negate(I = {Terminal, _}, {terminal, A}) ->
   s(I, {terminal, Terminal:negate(A)});
 negate(I, {node, E, B1, B2}) -> s(I, {node, E, s(I, negate(I, B1)), s(I, negate(I, B2))}).
 
@@ -139,15 +139,69 @@ do_dnf(I, {node, Element, Left, Right}, F = {_Process, Combine}, Pos, Neg) ->
 do_dnf(_, {terminal, Terminal}, {Proc, _Comb}, Pos, Neg) ->
   Proc(Pos, Neg, Terminal).
 
-substitute(I, Bdd, Map, Memo) ->
+substitute(I, MkTy, Bdd, Map, Memo) ->
   gen_bdd:dnf(I, Bdd, {
-    fun(P,N,T) -> substitute_coclause(I,P,N,T, Map, Memo) end,
+    fun(P,N,T) -> substitute_coclause(I,MkTy,P,N,T, Map, Memo) end,
     fun(F1, F2) -> union(I, F1(), F2()) end
   }).
 
-substitute_coclause(I,_P, _N, 0, _Map, _Memo) -> empty(I);
-substitute_coclause(I = {_, Element},P, N, 1, Map, Memo) ->
-  PosL = lists:map(fun(L) -> gen_bdd:element(I, Element:substitute(L, Map, Memo)) end, P),
-  NegL = lists:map(fun(L) -> negate(I, gen_bdd:element(I, Element:substitute(L, Map, Memo))) end, N),
-  Res = lists:foldl(fun(E,Ac) -> intersect(I, E, Ac) end, any(I), PosL ++ NegL),
-  Res.
+substitute_coclause(I,_, _P, _N, 0, _Map, _Memo) -> empty(I);
+substitute_coclause(I = {Terminal, Element},MkTy,P, N, T, Map, Memo) ->
+  %Terminal :: dnf_ty_list, Element :: ty_variable
+      %Terminal :: bdd_bool, Element :: ty_list
+
+  % Terminal:substitute :: Terminal -> Terminal
+  % Terminal:substitute :: dnf_ty_list -> dnf_ty_list
+    % Terminal:substitute :: bdd_bool -> bdd_bool
+  % currently MkTy :: ty_rec -> dnf_var_ty_list
+%%  io:format(user, "Using substitution of ~p~n", [Terminal]),
+  NewTerminalBDD = terminal_of(I, Terminal:substitute(MkTy, T, Map, Memo)),
+  % NewTerminalBDD :: BDD
+
+%%  io:format(user, "We are in: ~p~n",[{terminal_type, Terminal, element_Type, Element}]),
+%%  io:format(user, "We have a map: ~p~n",[Map]),
+%%  io:format(user, "Pos (Elements): ~p~n",[P]),
+%%  io:format(user, "Neg (Elements): ~p~n",[N]),
+%%  io:format(user, "Terminal: ~p~n",[T]),
+%%  io:format(user, "Subst. BDD: ~p~n",[NewTerminalBDD]),
+
+  % Element substitute :: Element -> Element
+  % Element substitute :: ty_variable -> ty_rec --> dnf_var_ty_list
+      % Element substitute :: ty_list -> ty_list
+  PosL = lists:map(fun(L) ->
+    case Element of
+      ty_variable ->
+%%        io:format(user, "Doing Pos VARIABLE subst: ~p~n",[L]),
+        Res = Element:substitute(MkTy, L, Map, Memo),
+%%        io:format(user, "Doing Pos VARIABLE subst: ~p -> ~p~n",[L, Res]),
+        Res;
+      _ ->
+%%        io:format(user, "Doing Pos subst: ~p~n",[L]),
+        E = Element:substitute(MkTy, L, Map, Memo),
+%%        io:format(user, "E: ~p~n",[E]),
+        EBdd = gen_bdd:element(I, E),
+%%        io:format(user, "as BDD E: ~p~n",[EBdd]),
+        EBdd
+    end
+                   end, P),
+
+  NegL = lists:map(fun(L) ->
+    % FIXME how to not need a special case for variables?
+    case Element of
+      ty_variable ->
+        Res = negate(I, Element:substitute(MkTy, L, Map, Memo)),
+%%        io:format(user, "Doing Neg VARIABLE subst: ~p -> ~p~n",[L, Res]),
+        Res
+      ;
+      _ ->
+%%        io:format(user, "Doing Neg subst: ~p~n",[L]),
+        negate(I, gen_bdd:element(I, Element:substitute(MkTy, L, Map, Memo)))
+    end
+                   end, N),
+
+  Res = lists:foldl(fun(E,Ac) ->
+    intersect(I, E, Ac)
+                    end, any(I), PosL ++ NegL),
+  X = intersect(I, NewTerminalBDD, Res),
+%%  io:format(user, "Final ~p :: ~p~n",[I, X]),
+  X.

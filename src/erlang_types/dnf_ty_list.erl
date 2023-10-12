@@ -8,7 +8,7 @@
 
 
 -export([empty/0, any/0, union/2, intersect/2, diff/2, negate/1]).
--export([is_empty/1, is_any/1, normalize/5, substitute/3]).
+-export([is_empty/1, is_any/1, normalize/5, substitute/4]).
 
 -export([list/1, all_variables/1, has_ref/2, transform/2]).
 
@@ -20,7 +20,14 @@ list(TyList) -> gen_bdd:element(?P, TyList).
 empty() -> gen_bdd:empty(?P).
 any() -> gen_bdd:any(?P).
 
-substitute(TyBDD, Map, Memo) -> gen_bdd:substitute(?P, TyBDD, Map, Memo).
+substitute(MkTy, TyBDD, Map, Memo) -> gen_bdd:substitute(?P, MkTy, TyBDD, Map, Memo).
+
+%%subst_coclause(_P, _N, 0, _Map, _Memo) -> empty();
+%%subst_coclause(P, N, 1, Map, Memo) ->
+%%  PosL = lists:map(fun(L) -> list(ty_list:substitute(L, Map, Memo)) end, P),
+%%  NegL = lists:map(fun(L) -> negate(list(ty_list:substitute(L, Map, Memo))) end, N),
+%%  Res = lists:foldl(fun(E,Ac) -> intersect(E, Ac) end, any(), PosL ++ NegL),
+%%  Res.
 
 union(B1, B2) -> gen_bdd:union(?P, B1, B2).
 intersect(B1, B2) -> gen_bdd:intersect(?P, B1, B2).
@@ -103,13 +110,6 @@ phi_norm(S1, S2, [Ty | N], Fixed, M) ->
     end),
 
   constraint_set:join(T1, ?F(constraint_set:join(T2, T3))).
-
-subst_coclause(_P, _N, 0, _Map, _Memo) -> empty();
-subst_coclause(P, N, 1, Map, Memo) ->
-  PosL = lists:map(fun(L) -> list(ty_list:substitute(L, Map, Memo)) end, P),
-  NegL = lists:map(fun(L) -> negate(list(ty_list:substitute(L, Map, Memo))) end, N),
-  Res = lists:foldl(fun(E,Ac) -> intersect(E, Ac) end, any(), PosL ++ NegL),
-  Res.
 
 has_ref(TyBDD, Ref) ->
   gen_bdd:dnf(?P, TyBDD, {

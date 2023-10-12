@@ -4,7 +4,7 @@
 -export([setup_all/0, reset/0]).
 -define(VAR_ETS, variable_counter_ets_table).
 
--export([equal/2, compare/2]).
+-export([equal/2, compare/2, substitute/4]).
 
 
 -export([new/1, smallest/3, normalize/6]).
@@ -77,6 +77,13 @@ normalize(Ty, PVar, NVar, Fixed, VarToTy, Mx) ->
       % part 1 paper Lemma C.3 and C.11 all fixed variables can be eliminated
       ty_rec:normalize(Ty, Fixed, Mx)
   end.
+
+substitute(MkTy, Var, Map, _Memo) ->
+%%  io:format(user, "Getting ~p from ~p~n", [Var, Map]),
+  X = maps:get(Var, Map, ty_rec:variable(Var)),%, ty_rec:variable(Var)), % TODO
+%%  io:format(user, "Got ~p~n", [X]),
+%%  io:format(user, "Doing THE THING: ~p~n", [MkTy(X)]),
+  MkTy(X).
 
 
 
