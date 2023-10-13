@@ -35,3 +35,4 @@ substitute(_, {ty_list, A, B}, Map, Memo) ->
 all_variables({ty_list, A, B}) ->
   ty_rec:all_variables(A) ++
   ty_rec:all_variables(B).
+

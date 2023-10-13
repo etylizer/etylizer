@@ -25,7 +25,7 @@
 %% % implements eq behavior indirectly parameterized over a type
 -export([equal/3, compare/3, is_empty_union/2, substitute/5, has_ref/3, all_variables/2]).
 
--export([dnf/3]).
+-export([dnf/3, transform/3]).
 
 % ==
 % basic interface (parameterized)
@@ -187,14 +187,13 @@ substitute_coclause(I = {Terminal, Element},MkTy,P, N, T, Map, Memo) ->
 
   NegL = lists:map(fun(L) ->
     % FIXME how to not need a special case for variables?
+    % substitute usually is implemented as type X -> X
+    % but for variables, it's always ty_variable -> ty_rec
     case Element of
       ty_variable ->
-        Res = negate(I, Element:substitute(MkTy, L, Map, Memo)),
-%%        io:format(user, "Doing Neg VARIABLE subst: ~p -> ~p~n",[L, Res]),
-        Res
+        negate(I, Element:substitute(MkTy, L, Map, Memo))
       ;
       _ ->
-%%        io:format(user, "Doing Neg subst: ~p~n",[L]),
         negate(I, gen_bdd:element(I, Element:substitute(MkTy, L, Map, Memo)))
     end
                    end, N),
@@ -202,9 +201,7 @@ substitute_coclause(I = {Terminal, Element},MkTy,P, N, T, Map, Memo) ->
   Res = lists:foldl(fun(E,Ac) ->
     intersect(I, E, Ac)
                     end, any(I), PosL ++ NegL),
-  X = intersect(I, NewTerminalBDD, Res),
-%%  io:format(user, "Final ~p :: ~p~n",[I, X]),
-  X.
+  intersect(I, NewTerminalBDD, Res).
 
 has_ref(I = {Terminal, Element}, Ty, Ref) ->
   gen_bdd:dnf(I, Ty, {
@@ -227,4 +224,17 @@ all_variables(I = {Terminal, Element}, Ty) ->
           lists:foldl(fun(L, Acc) -> Acc ++ Element:all_variables(L) end, [], N)
     end,
     fun(F1, F2) -> lists:usort(F1() ++ F2()) end
+  }).
+
+
+transform(I = {Terminal, Element}, Ty, Ops = #{negate := Negate, intersect := Intersect, union := Union}) ->
+  gen_bdd:dnf(I, Ty, {
+    fun
+      (P,N,T) ->
+        P1 = Terminal:transform(T, Ops),
+        P2 = [Element:transform(V, Ops) || V <- P],
+        P3 = [Negate(Element:transform(V, Ops)) || V <- N],
+        Intersect([P1] ++ P2 ++ P3)
+    end,
+    fun(F1, F2) -> Union([F1(), F2()]) end
   }).

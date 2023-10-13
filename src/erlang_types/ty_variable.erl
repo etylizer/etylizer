@@ -7,7 +7,7 @@
 -export([equal/2, compare/2, substitute/4, has_ref/2, all_variables/1]).
 
 
--export([new/1, smallest/3, normalize/6]).
+-export([new/1, smallest/3, normalize/6, transform/2]).
 
 -record(var, {id, name}).
 -type var() :: #var{id :: integer(), name :: string()}.
@@ -84,9 +84,8 @@ substitute(MkTy, Var, Map, _Memo) ->
   X = maps:get(Var, Map, ty_rec:variable(Var)),
   MkTy(X).
 
-
 all_variables(Var) -> [Var].
-
+transform(Ty, #{var := ToVar}) -> ToVar(Ty).
 
 -ifdef(TEST).
 -include_lib("eunit/include/eunit.hrl").
@@ -111,3 +110,4 @@ same_name_different_id_test() ->
   ok.
 
 -endif.
+
