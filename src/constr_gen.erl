@@ -4,7 +4,9 @@
 
 -export([
          gen_constrs_fun_group/1, gen_constrs_annotated_fun/2,
-         sanity_check/2
+         sanity_check/2,
+         % for tests
+         pat_guard_upper_lower/3
         ]).
 
 -compile([nowarn_shadow_vars]).
@@ -111,7 +113,7 @@ exp_constrs(Ctx, E, T) ->
             Alpha = fresh_tyvar(Ctx),
             Beta = fresh_tyvar(Ctx),
             Cs0 = exp_constrs(Ctx, ScrutE, Alpha),
-            {BodyList, _Lowers, Uppers, CsCases} =
+            {BodyList, Lowers, _Uppers, CsCases} =
                 lists:foldl(fun (Clause = {case_clause, LocClause, _, _, _},
                                  {BodyList, Lowers, Uppers, AccCs}) ->
                                     ?LOG_TRACE("Generating constraint for case clause at ~s: Lowers=~s, Uppers=~s",
@@ -134,7 +136,7 @@ exp_constrs(Ctx, E, T) ->
                             Clauses),
             AllCs = sets:union([Cs0, CsCases,
                                 single({csubty, mk_locs("exhaustiveness check", L),
-                                        Alpha, ast_lib:mk_union(Uppers)})]),
+                                        Alpha, ast_lib:mk_union(Lowers)})]),
             sets:from_list([
                 {ccase, mk_locs("case", L), AllCs, BodyList},
                 {csubty, mk_locs("result of case", L), Beta, T}
@@ -334,20 +336,31 @@ bound_vars_pat(P) ->
 % In the paper, the type t of a pattern p has the following semantics:
 %     Expression e matches p if, and only if, e has type t
 %
-% With list patterns, this is no longer true. For example, consider the pattern
-% [1 | _]. For the => direction above, consider an expression e that matches
+% With list patterns, this is no longer true.
+%
+% Example 1: pattern [1 | _].
+% For the => direction above, consider an expression e that matches
 % this pattern. From this, all we know is that e must have type nonempty_list(any()).
 % (e could be any of the following expressions: [1,2,3] or [1, "foo"] or [1]).
 % For the <= direction, e must have type nonempty_list(1) if we want to make sure
 % that the pattern definitely matches.
+% Example 2: pattern [_ | _ | _].
+% For the => direction, consider an expression e that matches the pattern.
+% From this, all we know is that e has type nonempy_list() because there is no
+% type for lists with at least length two.
+% For the <= direction, no type except none() guarantees that e matches the pattern.
 %
 % Hence, we introduce a mode for ty_of_pat, which can be either upper or lower.
 %
 % - Mode upper deals with the potential type. Any expression matching p must
-%   be of this type. In the example above, the potential type is nonempty_list(any()).
+%   be of this type.
+%   Example 1: the potential type is nonempty_list(any()).
+%   Example 2: the potential type is nonempty_list(any()).
 %
 % - Mode lower deals with the accepting type. If e has this type, then p definitely
-%   matches. In the example above, the accepting type is nonempty_list(1).
+%   matches.
+%   Example 1: the accepting type is nonempty_list(1).
+%   Example 2: the accepting type is none()
 -spec ty_of_pat(constr:constr_env(), ast:pat(), upper | lower) -> ast:ty().
 ty_of_pat(Env, P, Mode) ->
     case P of
@@ -528,6 +541,9 @@ combine_guard_result(Guards, RecFun, CombineFun) ->
                 {#{}, safe},
                 lists:map(RecFun, Guards)).
 
+% Constructs an environment and a status from a guard test. The status 'safe' expresses
+% that the the type checker could fully analyze the guard, that is the guard test
+% does not use anything like the "oracle" from the IFL 2022 paper.
 -spec guard_test_env(ast:guard_test()) -> {constr:constr_env(), safe | unsafe}.
 guard_test_env(G) ->
     Default = {#{}, unsafe},
@@ -557,6 +573,8 @@ guard_test_env(G) ->
         {op, _L, 'not', Exp} ->
             {Env, Status} = guard_test_env(Exp),
             {negate_env(Env), Status};
+        {'atom', _Loc, true} ->
+            {#{}, safe};
         _ -> Default
     end.
 
@@ -586,7 +604,7 @@ var_test_env(FunExp, X, RestArgs) ->
                             Arity =:= 2 orelse Arity =:= 3 ->
                                 case RestArgs of
                                     [{'atom', _, RecordName} | _] ->
-                                        #{XRef => {record, RecordName, []}};
+                                        {#{XRef => {record, RecordName, []}}, safe};
                                     _ -> Default
                                 end;
                             true -> Default
@@ -596,7 +614,7 @@ var_test_env(FunExp, X, RestArgs) ->
                             [{'integer', _, N}] ->
                                 % The top type for functions with arity N
                                 TopFunTy = {fun_full, utils:replicate(N, {predef, any}), {predef, none}},
-                                #{XRef => TopFunTy};
+                                {#{XRef => TopFunTy}, safe};
                             _ -> Default
                         end;
                     {Name, 1} ->

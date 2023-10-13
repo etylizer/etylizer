@@ -2,7 +2,7 @@
 -include_lib("eunit/include/eunit.hrl").
 
 -import(stdtypes, [tvar/1, ttuple_any/0, tnegate/1, tatom/0, tatom/1, tfun_full/2, trange/2, tunion/1, tintersect/1, trange_any/0, ttuple/1, tany/0, tnone/0]).
-
+-import(test_utils, [is_subtype/2, is_equiv/2]).
 
 foo2_branch1_test() ->
   % $0 /\ {a, 42}
@@ -515,11 +515,3 @@ bug1_test() ->
   ok.
 
 
-
-
-is_equiv(S, T) ->
-  subty:is_subty(none, S, T) andalso
-    subty:is_subty(none, T, S).
-
-is_subtype(S, T) ->
-  subty:is_subty(none, S, T).
