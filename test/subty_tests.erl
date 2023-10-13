@@ -419,6 +419,13 @@ nonempty_list_test() ->
   false = is_subtype(S, Ti),
   true = is_subtype(T, Ti).
 
+nonempty_list_2_test() ->
+  Any = stdtypes:any(),
+  A = stdtypes:tatom(a),
+  T1 = stdtypes:tnonempty_list(Any),
+  T2 = ast_lib:mk_union([stdtypes:tnonempty_list(A), stdtypes:tnonempty_list()]),
+  true = is_equiv(T1, T2).
+
 number_list_test() ->
   T = {list, stdtypes:tunion([{predef, integer}, {predef, float}])},
   S = {list, stdtypes:tunion([{predef, integer}])},
@@ -513,5 +520,4 @@ bug1_test() ->
   true = is_equiv(O2, O3),
 
   ok.
-
 
