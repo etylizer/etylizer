@@ -5,6 +5,7 @@
                dump_raw = false :: boolean(),
                dump = false :: boolean(),
                sanity = false :: boolean(),
+               force = false :: boolean(),
                no_type_checking = false :: boolean(),
                type_check_only = [] :: [string()],
                ast_file = empty :: empty | string(),
