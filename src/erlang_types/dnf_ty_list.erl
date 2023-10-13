@@ -30,6 +30,7 @@ negate(B1) -> gen_bdd:negate(?P, B1).
 is_any(B) -> gen_bdd:is_any(?P, B).
 is_empty(TyBDD) -> gen_bdd:dnf(?P, TyBDD, {fun is_empty_coclause/3, fun gen_bdd:is_empty_union/2}).
 has_ref(TyBDD, Ref) -> gen_bdd:has_ref(?P, TyBDD, Ref).
+all_variables(TyBDD) -> gen_bdd:all_variables(?P, TyBDD).
 
 
 % ==
@@ -106,16 +107,6 @@ phi_norm(S1, S2, [Ty | N], Fixed, M) ->
   constraint_set:join(T1, ?F(constraint_set:join(T2, T3))).
 
 
-all_variables(TyBDD) ->
-  gen_bdd:dnf(?P, TyBDD, {
-    fun all_vars_coclause/3,
-    fun(F1, F2) -> lists:usort(F1() ++ F2()) end
-  }).
-
-all_vars_coclause(_,_,0) -> [];
-all_vars_coclause(P,N,1) ->
-  lists:foldl(fun(L, Acc) -> Acc ++ ty_list:all_variables(L) end, [], P) ++
-  lists:foldl(fun(L, Acc) -> Acc ++ ty_list:all_variables(L) end, [], N) .
 
 transform(TyBDD, OpMap = #{union := U}) ->
   gen_bdd:dnf(?P, TyBDD, {

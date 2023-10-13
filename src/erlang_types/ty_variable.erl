@@ -4,7 +4,7 @@
 -export([setup_all/0, reset/0]).
 -define(VAR_ETS, variable_counter_ets_table).
 
--export([equal/2, compare/2, substitute/4, has_ref/2]).
+-export([equal/2, compare/2, substitute/4, has_ref/2, all_variables/1]).
 
 
 -export([new/1, smallest/3, normalize/6]).
@@ -81,12 +81,11 @@ normalize(Ty, PVar, NVar, Fixed, VarToTy, Mx) ->
   end.
 
 substitute(MkTy, Var, Map, _Memo) ->
-%%  io:format(user, "Getting ~p from ~p~n", [Var, Map]),
-  X = maps:get(Var, Map, ty_rec:variable(Var)),%, ty_rec:variable(Var)), % TODO
-%%  io:format(user, "Got ~p~n", [X]),
-%%  io:format(user, "Doing THE THING: ~p~n", [MkTy(X)]),
+  X = maps:get(Var, Map, ty_rec:variable(Var)),
   MkTy(X).
 
+
+all_variables(Var) -> [Var].
 
 
 -ifdef(TEST).

@@ -75,7 +75,4 @@ normalize({node, Variable, PositiveEdge, NegativeEdge}, PVar, NVar, Fixed, M) ->
 substitute(MkTy, T, M, _) ->
   gen_bdd:substitute(?P, MkTy, T, M, sets:new()).
 
-all_variables({terminal, 0}) -> [];
-all_variables({terminal, _}) -> [];
-all_variables({node, Variable, PositiveEdge, NegativeEdge}) ->
-[Variable] ++ all_variables(PositiveEdge) ++ all_variables(NegativeEdge).
+all_variables(TyBDD) -> gen_bdd:all_variables(?P, TyBDD).
