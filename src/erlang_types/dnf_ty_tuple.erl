@@ -63,33 +63,29 @@ phi(BigS, [Ty | N]) ->
     orelse
       lists:foldl(Solve, true, lists:zip(lists:seq(1, length(ty_tuple:components(Ty))), lists:zip(BigS, ty_tuple:components(Ty)))).
 
-normalize({default, _}, {terminal, 0}, [], [], _, _) -> [[]];
-normalize({default, _}, {terminal, 1}, [], [], _, _) -> [];
-normalize(Size, TyTuple, [], [], Fixed, M) ->
-  % optimized NProd rule
-  AllAny = [ty_rec:any() || _ <- lists:seq(1, Size)],
-  normalize_no_vars(Size, TyTuple, AllAny, _NegatedTuples = [], Fixed, M);
-normalize(Size, DnfTyTuple, PVar, NVar, Fixed, M) ->
-  Ty = ty_rec:tuple(Size, dnf_var_ty_tuple:tuple(DnfTyTuple)),
+normalize(Size, Ty, [], [], Fixed, M) ->
+  gen_bdd:dnf(?P, Ty, {
+    fun(Pos, Neg, T) ->
+      case bdd_bool:empty() of
+        T -> [[]];
+        _ ->
+          BigS = ty_tuple:big_intersect(Pos),
+          phi_norm(Size, ty_tuple:components(BigS), Neg, Fixed, M)
+      end
+    end,
+    fun constraint_set:meet/2
+  });
+normalize(Size, DnfTy, PVar, NVar, Fixed, M) ->
+  Ty = ty_rec:tuple(Size, dnf_var_ty_tuple:tuple(DnfTy)),
   % ntlv rule
   ty_variable:normalize(Ty, PVar, NVar, Fixed, fun(Var) -> ty_rec:tuple(Size, dnf_var_ty_tuple:var(Var)) end, M).
-
-normalize_no_vars(_Size, {terminal, 0}, _, _, _Fixed, _) -> [[]]; % empty
-normalize_no_vars(Size, {terminal, 1}, BigS, N, Fixed, M) ->
-  phi_norm(Size, BigS, N, Fixed, M);
-normalize_no_vars(Size, {node, TyTuple, L_BDD, R_BDD}, BigS, Negated, Fixed, M) ->
-  BigSExtended = [ty_rec:intersect(ToIntersect, Others) || {ToIntersect, Others} <- lists:zip(ty_tuple:components(TyTuple), BigS)],
-  X1 = ?F(normalize_no_vars(Size, L_BDD, BigSExtended, Negated, Fixed, M)),
-  X2 = ?F(normalize_no_vars(Size, R_BDD, BigS, [TyTuple | Negated], Fixed, M)),
-  constraint_set:meet(X1, X2).
 
 phi_norm(_Size, BigS, [], Fixed, M) ->
   lists:foldl(fun(S, Res) -> constraint_set:join(?F(Res), ?F(ty_rec:normalize(S, Fixed, M))) end, [], BigS);
 phi_norm(Size, BigS, [Ty | N], Fixed, M) ->
   Solve = fun({Index, {_PComponent, NComponent}}, Result) ->
     constraint_set:meet(
-      ?F(Result)
-    ,
+      ?F(Result),
       ?F(begin
       % remove pi_Index(NegativeComponents) from pi_Index(PComponents) and continue searching
         DoDiff = fun({IIndex, PComp}) ->
@@ -104,7 +100,6 @@ phi_norm(Size, BigS, [Ty | N], Fixed, M) ->
       end)
     )
           end,
-
 
   constraint_set:join(
     ?F(lists:foldl(fun(S, Res) -> constraint_set:join(?F(Res), ?F(ty_rec:normalize(S, Fixed, M))) end, [], BigS)),
