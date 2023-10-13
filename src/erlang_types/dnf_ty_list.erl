@@ -31,6 +31,7 @@ is_any(B) -> gen_bdd:is_any(?P, B).
 is_empty(TyBDD) -> gen_bdd:dnf(?P, TyBDD, {fun is_empty_coclause/3, fun gen_bdd:is_empty_union/2}).
 has_ref(TyBDD, Ref) -> gen_bdd:has_ref(?P, TyBDD, Ref).
 all_variables(TyBDD) -> gen_bdd:all_variables(?P, TyBDD).
+transform(TyBDD, OpMap) -> gen_bdd:transform(?P, TyBDD, OpMap).
 
 
 % ==
@@ -105,18 +106,4 @@ phi_norm(S1, S2, [Ty | N], Fixed, M) ->
     end),
 
   constraint_set:join(T1, ?F(constraint_set:join(T2, T3))).
-
-
-
-transform(TyBDD, OpMap = #{union := U}) ->
-  gen_bdd:dnf(?P, TyBDD, {
-    fun(P,N,T) -> transform_coclause(P,N,T,OpMap) end,
-    fun(F1, F2) -> U([F1(), F2()]) end
-  }).
-
-transform_coclause(_,_,0,#{empty := E}) -> E();
-transform_coclause(Pos,Neg,1, Ops = #{negate := N, intersect := I} ) ->
-  PosL = lists:map(fun(L) ->   ty_list:transform(L, Ops) end, Pos),
-  NegL = lists:map(fun(L) -> N(ty_list:transform(L, Ops)) end, Neg),
-  I(PosL ++ NegL).
 
