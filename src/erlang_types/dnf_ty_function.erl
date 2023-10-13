@@ -24,20 +24,20 @@
 -spec function(ty_function()) -> dnf_ty_function().
 function(TyFunction) -> gen_bdd:element(?P, TyFunction).
 
-% ==
-% type interface
-% ==
 empty() -> gen_bdd:empty(?P).
 any() -> gen_bdd:any(?P).
-
+transform(Ty, Ops) -> gen_bdd:transform(?P, Ty, Ops).
 substitute(MkTy, TyBDD, Map, Memo) -> gen_bdd:substitute(?P, MkTy, TyBDD, Map, Memo).
-
 union(B1, B2) -> gen_bdd:union(?P, B1, B2).
 intersect(B1, B2) -> gen_bdd:intersect(?P, B1, B2).
 diff(B1, B2) -> gen_bdd:diff(?P, B1, B2).
 negate(B1) -> gen_bdd:negate(?P, B1).
-
 is_any(B) -> gen_bdd:is_any(?P, B).
+has_ref(Ty, Ref) -> gen_bdd:has_ref(?P, Ty, Ref).
+all_variables(TyBDD) -> gen_bdd:all_variables(?P, TyBDD).
+equal(B1, B2) -> gen_bdd:equal(?P, B1, B2).
+compare(B1, B2) -> gen_bdd:compare(?P, B1, B2).
+
 is_empty(TyBDD) ->
   gen_bdd:dnf(?P, TyBDD, {fun is_empty_coclause/3, fun gen_bdd:is_empty_union/2}).
 
@@ -67,16 +67,6 @@ is_empty_cont(BigSTuple, P, [Function | N]) ->
   %% Continue searching for another arrow ∈ N
     orelse
     is_empty_cont(BigSTuple, P, N).
-
-has_ref(Ty, Ref) -> gen_bdd:has_ref(?P, Ty, Ref).
-all_variables(TyBDD) -> gen_bdd:all_variables(?P, TyBDD).
-
-% ==
-% basic interface
-% ==
-
-equal(B1, B2) -> gen_bdd:equal(?P, B1, B2).
-compare(B1, B2) -> gen_bdd:compare(?P, B1, B2).
 
 domains_to_tuple(Domains) ->
   ty_rec:tuple(length(Domains), dnf_var_ty_tuple:tuple(dnf_ty_tuple:tuple(ty_tuple:tuple(Domains)))).
@@ -108,13 +98,16 @@ normalize(Size, DnfTyFunction, PVar, NVar, Fixed, M) ->
   % ntlv rule
   ty_variable:normalize(Ty, PVar, NVar, Fixed, fun(Var) -> ty_rec:function(Size, dnf_var_ty_function:var(Var)) end, M).
 
-normalize_coclause(_Pos, _Neg, 0, _Fixed, _M) -> [[]];
-normalize_coclause(Pos, Neg, 1, Fixed, M) ->
-  [First | _] = Pos ++ Neg,
-  AllDomainsAsTuples = [ty_tuple:tuple(ty_function:domains(Fun)) || Fun <- Pos],
-  Size = length(ty_function:domains(First)),
-  S = ty_rec:tuple(Size, dnf_var_ty_tuple:tuple(dnf_ty_tuple:tuple(ty_tuple:big_union(AllDomainsAsTuples)))),
-  normalize_no_vars(Size, S, Pos, Neg, Fixed, M).
+normalize_coclause(Pos, Neg, T, Fixed, M) ->
+  case bdd_bool:empty() of
+    T -> [[]];
+    _ ->
+      [First | _] = Pos ++ Neg,
+      AllDomainsAsTuples = [ty_tuple:tuple(ty_function:domains(Fun)) || Fun <- Pos],
+      Size = length(ty_function:domains(First)),
+      S = ty_rec:tuple(Size, dnf_var_ty_tuple:tuple(dnf_ty_tuple:tuple(ty_tuple:big_union(AllDomainsAsTuples)))),
+      normalize_no_vars(Size, S, Pos, Neg, Fixed, M)
+  end.
 
 normalize_no_vars(_Size, _, _, [], _Fixed, _) -> []; % non-empty
 normalize_no_vars(Size, S, P, [Function | N], Fixed, M) ->
@@ -148,40 +141,3 @@ explore_function_norm(Size, T1, T2, [Function | P], Fixed, M) ->
   constraint_set:join(NT1,
     ?F(constraint_set:join(NT2,
       ?F(constraint_set:meet(NS1, NS2))))).
-
-
-transform({terminal, 0}, #{empty := F}) -> F();
-transform({terminal, 1}, #{any_fun := F}) -> F();
-transform({node, Function, PositiveEdge, NegativeEdge}, Ops = #{negate := N, union := U, intersect := I} ) ->
-  NF = ty_function:transform(Function, Ops),
-
-  U([
-    I([NF, transform(PositiveEdge, Ops)]),
-    I([N(NF), transform(NegativeEdge, Ops)])
-  ]).
-
-
--ifdef(TEST).
--include_lib("eunit/include/eunit.hrl").
-
-%%normalize2_test_() ->
-%%  {timeout, 3000,
-%%    fun() ->
-%%      %   norm(b, ~b ^ N, []) == { {(b <= 0)} {(N <= b)} }
-%%      Alpha = ty_variable:new("Alpha"),
-%%      Beta = ty_variable:new("Beta"), TyBeta = ty_rec:variable(Beta),
-%%      N = ty_rec:atom(),
-%%
-%%      T1 = TyBeta,
-%%      T2 = ty_rec:intersect(ty_rec:negate(TyBeta), N),
-%%      Res = explore_function_norm(T1, T2, [], sets:new()),
-%%
-%%      io:format(user, "Done ~p~n", [Res]),
-%%
-%%      % TODO check via equivalence instead of syntactically
-%%      Res = [[{Beta, ty_rec:empty(), ty_rec:empty()}], [{Beta, N, ty_rec:any()}]],
-%%
-%%      ok
-%%    end
-%%  }.
--endif.
