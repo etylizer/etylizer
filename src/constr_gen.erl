@@ -6,7 +6,8 @@
          gen_constrs_fun_group/1, gen_constrs_annotated_fun/2,
          sanity_check/2,
          % for tests
-         pat_guard_upper_lower/3
+         pat_guard_upper_lower/3,
+         ty_of_pat/3
         ]).
 
 -compile([nowarn_shadow_vars]).
@@ -374,16 +375,31 @@ ty_of_pat(Env, P, Mode) ->
             ast_lib:mk_intersection([ty_of_pat(Env, P1, Mode), ty_of_pat(Env, P2, Mode)]);
         {nil, _L} -> {empty_list};
         {cons, _L, P1, P2} ->
+            Symtab = no_symtab,  % FIXME: need to use a real symtab below?
             case Mode of
                 upper ->
-                    T1 = {nonempty_list, ty_of_pat(Env, P1, Mode)},
-                    T2 = ast_lib:mk_intersection([ty_of_pat(Env, P2, Mode),
-                                              {predef_alias, nonempty_list}]),
-                    ast_lib:mk_union([T1, T2]);
+                    T1 = ty_of_pat(Env, P1, Mode),
+                    T2 = ty_of_pat(Env, P2, Mode),
+                    case subty:is_subty(Symtab, T2, stdtypes:tempty_list()) of
+                        true -> stdtypes:tnonempty_list(T1);
+                        false ->
+                            case subty:is_subty(Symtab, T2, stdtypes:tnonempty_list()) of
+                                true -> ast_lib:mk_union([stdtypes:tnonempty_list(T1), T2]);
+                                false ->
+                                    case subty:is_any(T2, Symtab) of
+                                        true -> stdtypes:tnonempty_list();
+                                        false -> stdtypes:tnonempty_improper_list(T1, T2)
+                                    end
+                            end
+                    end;
                 lower ->
                     T1 = {nonempty_list, ty_of_pat(Env, P1, Mode)},
                     T2 = ty_of_pat(Env, P2, Mode),
-                    ast_lib:mk_intersection([T1, T2])
+                    % FIXME: can we encode this choice as a type?
+                    case subty:is_any(T2, Symtab) of
+                        true -> T1;
+                        false -> stdtypes:empty()
+                    end
             end;
         {op, _, '++', [P1, P2]} ->
             ast_lib:mk_intersection([ty_of_pat(Env, P1, Mode), ty_of_pat(Env, P2, Mode),

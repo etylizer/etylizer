@@ -335,6 +335,14 @@ list_pattern_04_fail(L) ->
         [_X, Y | _] -> Y
     end.
 
+-spec list_pattern_04b_fail(list(integer())) -> integer().
+list_pattern_04b_fail(L) ->
+    case L of
+        [] -> 1;
+        % not exhaustive
+        [_X, []] -> 2
+    end.
+
 -spec list_pattern_05_fail(list(integer())) -> integer().
 list_pattern_05_fail(L) ->
     case L of
