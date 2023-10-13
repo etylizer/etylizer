@@ -68,6 +68,8 @@ is_empty_cont(BigSTuple, P, [Function | N]) ->
     orelse
     is_empty_cont(BigSTuple, P, N).
 
+has_ref(Ty, Ref) -> gen_bdd:has_ref(?P, Ty, Ref).
+
 % ==
 % basic interface
 % ==
@@ -164,14 +166,6 @@ explore_function_norm(Size, T1, T2, [Function | P], Fixed, M) ->
 %%    intersect(negate(function(NewTyFunction)), substitute(R_BDD, Map, Memo))
 %%  ).
 
-has_ref({terminal, 0}, _) -> false;
-has_ref({terminal, _}, _) -> false;
-has_ref({node, Function, PositiveEdge, NegativeEdge}, Ref) ->
-  ty_function:has_ref(Function, Ref)
-  orelse
-  has_ref(PositiveEdge, Ref)
-    orelse
-    has_ref(NegativeEdge, Ref).
 
 all_variables({terminal, 0}) -> [];
 all_variables({terminal, _}) -> [];

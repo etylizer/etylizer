@@ -266,12 +266,12 @@ is_empty_miss(TyRef) ->
 multi_empty_tuples({Default, AllTuples}) ->
   dnf_var_ty_tuple:is_empty(Default)
     andalso
-  maps:fold(fun(Size, V, Acc) -> Acc andalso dnf_var_ty_tuple:is_empty(V) end, true, AllTuples).
+  maps:fold(fun(_Size, V, Acc) -> Acc andalso dnf_var_ty_tuple:is_empty(V) end, true, AllTuples).
 
 multi_empty_functions({Default, AllFunctions}) ->
   dnf_var_ty_function:is_empty(Default)
     andalso
-    maps:fold(fun(Size, V, Acc) -> Acc andalso dnf_var_ty_function:is_empty(V) end, true, AllFunctions).
+    maps:fold(fun(_Size, V, Acc) -> Acc andalso dnf_var_ty_function:is_empty(V) end, true, AllFunctions).
 
 is_any(_Arg0) ->
   erlang:error(any_not_implemented). % TODO needed?
@@ -509,7 +509,7 @@ pi(tuple, TyRef) ->
   Ty#ty.tuple;
 pi({tuple, default}, TyRef) ->
   Ty = ty_ref:load(TyRef),
-  {D, TM} = Ty#ty.tuple,
+  {D, _TM} = Ty#ty.tuple,
   D;
 pi({tuple, Len}, TyRef) ->
   Ty = ty_ref:load(TyRef),
@@ -517,7 +517,7 @@ pi({tuple, Len}, TyRef) ->
   maps:get(Len, TM, D);
 pi({function, default}, TyRef) ->
   Ty = ty_ref:load(TyRef),
-  {D, TM} = Ty#ty.function,
+  {D, _TM} = Ty#ty.function,
   D;
 pi({function, Len}, TyRef) ->
   Ty = ty_ref:load(TyRef),

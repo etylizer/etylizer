@@ -12,8 +12,9 @@
 -export([var/1, list/1, all_variables/1, has_ref/2, transform/2]).
 
 list(List) -> gen_bdd:terminal(?P, List).
-
 var(Var) -> gen_bdd:element(?P, Var).
+has_ref(Ty, Ref) -> gen_bdd:has_ref(?P, Ty, Ref).
+
 
 % ==
 % type interface
@@ -75,11 +76,6 @@ normalize({node, Variable, PositiveEdge, NegativeEdge}, PVar, NVar, Fixed, M) ->
 substitute(MkTy, T, M, Memo) ->
   gen_bdd:substitute(?P, MkTy, T, M, Memo).
 
-has_ref({terminal, {terminal, 0}}, _) -> false;
-has_ref({terminal, List}, Ref) ->
-  dnf_ty_list:has_ref(List, Ref);
-has_ref({node, _Variable, PositiveEdge, NegativeEdge}, Ref) ->
-  has_ref(PositiveEdge, Ref) orelse has_ref(NegativeEdge, Ref).
 
 all_variables({terminal, {terminal, 0}}) -> [];
 all_variables({terminal, List}) -> dnf_ty_list:all_variables(List);
