@@ -7,7 +7,7 @@
 -export([is_empty/1, is_any/1, normalize/3, substitute/4]).
 -export([var/1, list/1, all_variables/1, has_ref/2, transform/2]).
 
-% Fully generic
+% fully generic
 list(List) -> gen_bdd:terminal(?P, List).
 var(Var) -> gen_bdd:element(?P, Var).
 has_ref(Ty, Ref) -> gen_bdd:has_ref(?P, Ty, Ref).
@@ -24,7 +24,7 @@ substitute(MkTy, T, M, Memo) -> gen_bdd:substitute(?P, MkTy, T, M, Memo).
 all_variables(TyBDD) -> gen_bdd:all_variables(?P, TyBDD).
 transform(Ty, Ops) -> gen_bdd:transform(?P, Ty, Ops).
 
-% Partially generic
+% partially generic
 is_empty_coclause(_Pos, _Neg, T) -> dnf_ty_list:is_empty(T).
 is_empty(TyBDD) -> gen_bdd:dnf(?P, TyBDD, {fun is_empty_coclause/3, fun gen_bdd:is_empty_union/2}).
 normalize(Ty, Fixed, M) -> gen_bdd:dnf(?P, Ty, {
