@@ -41,16 +41,21 @@ compare(B1, B2) -> gen_bdd:compare(?P, B1, B2).
 is_empty(TyBDD) ->
   gen_bdd:dnf(?P, TyBDD, {fun is_empty_coclause/3, fun gen_bdd:is_empty_union/2}).
 
-is_empty_coclause(_Pos, _Neg, 0) -> true;
-is_empty_coclause([], _Neg, 1) -> false;
-is_empty_coclause(AllPos = [P | Pos], Neg, 1) ->
-  % TODO here do these simplifications
-  % A -> B && C -> B == A|C -> B
-  % A -> B && A -> C == A -> B&C
-  BigSTuple = lists:foldl(fun(FunTy, Acc) ->
-    ty_rec:union(Acc, domains_to_tuple(ty_function:domains(FunTy)))
-                          end, domains_to_tuple(ty_function:domains(P)), Pos),
-  is_empty_cont(BigSTuple, AllPos, Neg).
+is_empty_coclause(AllPos, Neg, T) ->
+  case bdd_bool:empty() of
+    T -> true;
+    _ -> case AllPos of
+           [] -> false;
+           [P | Pos] ->
+             % TODO here do these simplifications
+             % A -> B && C -> B == A|C -> B
+             % A -> B && A -> C == A -> B&C
+             BigSTuple = lists:foldl(fun(FunTy, Acc) ->
+               ty_rec:union(Acc, domains_to_tuple(ty_function:domains(FunTy)))
+                                     end, domains_to_tuple(ty_function:domains(P)), Pos),
+             is_empty_cont(BigSTuple, AllPos, Neg)
+         end
+  end.
 
 is_empty_cont(_, _, []) -> false;
 is_empty_cont(BigSTuple, P, [Function | N]) ->
