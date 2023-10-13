@@ -2,13 +2,9 @@
 
 -define(P, {dnf_ty_list, ty_variable}).
 
-
 -export([equal/2, compare/2]).
-
-
 -export([empty/0, any/0, union/2, intersect/2, diff/2, negate/1]).
 -export([is_empty/1, is_any/1, normalize/3, substitute/4]).
-
 -export([var/1, list/1, all_variables/1, has_ref/2, transform/2]).
 
 list(List) -> gen_bdd:terminal(?P, List).
@@ -73,14 +69,8 @@ normalize({node, Variable, PositiveEdge, NegativeEdge}, PVar, NVar, Fixed, M) ->
     normalize(NegativeEdge, PVar, [Variable | NVar], Fixed, M)
   ).
 
-substitute(MkTy, T, M, Memo) ->
-  gen_bdd:substitute(?P, MkTy, T, M, Memo).
-
-
-all_variables({terminal, {terminal, 0}}) -> [];
-all_variables({terminal, List}) -> dnf_ty_list:all_variables(List);
-all_variables({node, Variable, PositiveEdge, NegativeEdge}) ->
-  [Variable] ++ all_variables(PositiveEdge) ++ all_variables(NegativeEdge).
+substitute(MkTy, T, M, Memo) -> gen_bdd:substitute(?P, MkTy, T, M, Memo).
+all_variables(TyBDD) -> gen_bdd:all_variables(?P, TyBDD).
 
 transform({terminal, {terminal, 0}}, #{empty := E}) -> E();
 transform({terminal, List}, Ops) ->

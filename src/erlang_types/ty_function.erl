@@ -3,7 +3,7 @@
 %% domain -> co-domain function representation
 
 
--export([compare/2, equal/2, substitute/4]).
+-export([compare/2, equal/2, substitute/4, all_variables/1]).
 
 %%
 -export([function/2, domains/1, codomain/1, codomains_intersect/1, has_ref/2, transform/2]).
@@ -37,13 +37,15 @@ has_ref({ty_function, Refs, _}, Ref) -> lists:member(Ref, Refs).
 transform({ty_function, Ref1, Ref2}, #{to_fun := Fun}) ->
     Fun(Ref1, Ref2).
 
-%%substitute(_MkTy, {ty_tuple, Dim, Refs}, Map, Memo) ->
-%%    NewS = lists:map(fun(E) -> ty_rec:substitute(E, Map, Memo) end, Refs),
-%%    tuple(NewS).
 substitute(_, {ty_function, Refs, B}, Map, Memo) ->
     {ty_function,
         lists:map(fun(C) -> ty_rec:substitute(C, Map, Memo) end, Refs),
         ty_rec:substitute(B, Map, Memo)
     }.
 
+all_variables({ty_function, Domain, Codomain}) ->
+  ty_rec:all_variables(domains_to_tuple(Domain))
+    ++ ty_rec:all_variables(Codomain).
 
+domains_to_tuple(Domains) ->
+    ty_rec:tuple(length(Domains), dnf_var_ty_tuple:tuple(dnf_ty_tuple:tuple(ty_tuple:tuple(Domains)))).

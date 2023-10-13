@@ -69,6 +69,7 @@ is_empty_cont(BigSTuple, P, [Function | N]) ->
     is_empty_cont(BigSTuple, P, N).
 
 has_ref(Ty, Ref) -> gen_bdd:has_ref(?P, Ty, Ref).
+all_variables(TyBDD) -> gen_bdd:all_variables(?P, TyBDD).
 
 % ==
 % basic interface
@@ -147,33 +148,6 @@ explore_function_norm(Size, T1, T2, [Function | P], Fixed, M) ->
   constraint_set:join(NT1,
     ?F(constraint_set:join(NT2,
       ?F(constraint_set:meet(NS1, NS2))))).
-
-
-
-%%substitute({terminal, 0}, _, _) -> {terminal, 0};
-%%substitute({terminal, 1}, _, _) ->
-%%  {terminal, 1};
-%%substitute({node, TyFunction, L_BDD, R_BDD}, Map, Memo) ->
-%%  S2 = ty_function:codomain(TyFunction),
-%%
-%%  NewDomains = lists:map(fun(E) -> ty_rec:substitute(E, Map, Memo) end, ty_function:domains(TyFunction)),
-%%  NewS2 = ty_rec:substitute(S2, Map, Memo),
-%%
-%%  NewTyFunction = ty_function:function(NewDomains, NewS2),
-%%
-%%  union(
-%%    intersect(function(NewTyFunction), substitute(L_BDD, Map, Memo)),
-%%    intersect(negate(function(NewTyFunction)), substitute(R_BDD, Map, Memo))
-%%  ).
-
-
-all_variables({terminal, 0}) -> [];
-all_variables({terminal, _}) -> [];
-all_variables({node, Function, PositiveEdge, NegativeEdge}) ->
-  ty_rec:all_variables(domains_to_tuple(ty_function:domains(Function)))
-    ++ ty_rec:all_variables(ty_function:codomain(Function))
-    ++ all_variables(PositiveEdge)
-    ++ all_variables(NegativeEdge).
 
 
 transform({terminal, 0}, #{empty := F}) -> F();

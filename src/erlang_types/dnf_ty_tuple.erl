@@ -25,6 +25,8 @@ tuple(TyTuple) -> gen_bdd:element(?P, TyTuple).
 empty() -> gen_bdd:empty(?P).
 any() -> gen_bdd:any(?P).
 
+all_variables(TyBDD) -> gen_bdd:all_variables(?P, TyBDD).
+
 substitute(MkTy, TyBDD, Map, Memo) -> gen_bdd:substitute(?P, MkTy, TyBDD, Map, Memo).
 
 union(B1, B2) -> gen_bdd:union(?P, B1, B2).
@@ -125,13 +127,6 @@ phi_norm(Size, BigS, [Ty | N], Fixed, M) ->
     ?F(lists:foldl(Solve, [[]], lists:zip(lists:seq(1, length(ty_tuple:components(Ty))), lists:zip(BigS, ty_tuple:components(Ty)))))
   ).
 
-
-all_variables({terminal, 0}) -> [];
-all_variables({terminal, _}) -> [];
-all_variables({node, Tuple, PositiveEdge, NegativeEdge}) ->
-  lists:map(fun(E) -> ty_rec:all_variables(E) end, ty_tuple:components(Tuple))
-    ++ all_variables(PositiveEdge)
-    ++ all_variables(NegativeEdge).
 
 transform({terminal, 0}, #{empty := F}) -> F();
 transform({terminal, 1}, #{any_tuple := F}) -> F();

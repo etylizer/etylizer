@@ -68,11 +68,11 @@ substitute(MkTy, T, M, Memo) -> gen_bdd:substitute(?P, MkTy, T, M, Memo).
 has_ref(Ty, Ref) -> gen_bdd:has_ref(?P, Ty, Ref).
 
 all_variables({Default, Others}) when is_map(Others) ->
-  all_variables(Default) ++ lists:map(fun({_K,V}) -> all_variables(V) end, maps:to_list(Others));
-all_variables({terminal, 0}) -> [];
-all_variables({terminal, Tuple}) -> dnf_ty_function:all_variables(Tuple);
-all_variables({node, Variable, PositiveEdge, NegativeEdge}) ->
-[Variable] ++ all_variables(PositiveEdge) ++ all_variables(NegativeEdge).
+  lists:usort(
+    gen_bdd:all_variables(?P, Default) ++
+    lists:map(fun({_K,V}) -> gen_bdd:all_variables(?P, V) end, maps:to_list(Others))
+  );
+all_variables(Ty) -> gen_bdd:all_variables(?P, Ty).
 
 transform({terminal, 0}, #{empty := E}) -> E();
 transform({terminal, Fun}, Ops) ->

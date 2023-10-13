@@ -56,11 +56,7 @@ normalize({node, Variable, PositiveEdge, NegativeEdge}, PVar, NVar, Fixed, M) ->
     normalize(NegativeEdge, PVar, [Variable | NVar], Fixed, M)
   ).
 
-
-all_variables({terminal, 0}) -> [];
-all_variables({terminal, _}) -> [];
-all_variables({node, Variable, PositiveEdge, NegativeEdge}) ->
-  [Variable] ++ all_variables(PositiveEdge) ++ all_variables(NegativeEdge).
+all_variables(TyBDD) -> gen_bdd:all_variables(?P, TyBDD).
 
 transform({terminal, 0}, #{empty := E}) -> E();
 transform({terminal, Predef}, Ops) ->

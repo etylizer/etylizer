@@ -15,8 +15,9 @@
 
 -export([finite/1, cofinite/1]).
 
--export([normalize/5, substitute/4]).
+-export([normalize/5, substitute/4, all_variables/1]).
 
+all_variables(_) -> [].
 substitute(_, Ty, _, _) -> Ty.
 
 transform({Atoms, finite}, #{to_atom := ToAtom, union := Union}) ->

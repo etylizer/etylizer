@@ -34,24 +34,17 @@ negate(B1) -> gen_bdd:negate(?P, B1).
 
 is_any(B) -> gen_bdd:is_any(?P, B).
 
-
-
 % ==
 % basic interface
 % ==
-
 equal(B1, B2) -> gen_bdd:equal(?P, B1, B2).
 compare(B1, B2) -> gen_bdd:compare(?P, B1, B2).
 is_empty(TyBDD) -> gen_bdd:dnf(?P, TyBDD, {fun is_empty_coclause/3, fun gen_bdd:is_empty_union/2}).
 is_empty_coclause(_Pos, _Neg, T) -> ty_interval:is_empty(T).
 
-
-
 % ==
 % Emptiness for variable interval DNFs
 % ==
-
-
 normalize(Ty, Fixed, M) -> normalize(Ty, [], [], Fixed, M).
 
 normalize({terminal, 0}, _, _, _, _) -> [[]]; % satisfiable
@@ -63,21 +56,8 @@ normalize({node, Variable, PositiveEdge, NegativeEdge}, PVar, NVar, Fixed, M) ->
     normalize(NegativeEdge, PVar, [Variable | NVar], Fixed, M)
   ).
 
-substitute(MkTy, T, M, _) ->
-  gen_bdd:substitute(?P, MkTy, T, M, sets:new()).
-
-%%
-%%substitute({node, Variable, PositiveEdge, NegativeEdge}, Map, P, N) ->
-%%
-%%  LBdd = substitute(PositiveEdge, Map, [Variable | P], N),
-%%  RBdd = substitute(NegativeEdge, Map, P, [Variable | N]),
-%%
-%%  union(LBdd, RBdd).
-
-all_variables({terminal, 0}) -> [];
-all_variables({terminal, _}) -> [];
-all_variables({node, Variable, PositiveEdge, NegativeEdge}) ->
-  [Variable] ++ all_variables(PositiveEdge) ++ all_variables(NegativeEdge).
+substitute(MkTy, T, M, Memo) -> gen_bdd:substitute(?P, MkTy, T, M, Memo).
+all_variables(TyBDD) -> gen_bdd:all_variables(?P, TyBDD).
 
 transform({terminal, 0}, #{empty := E}) -> E();
 transform({terminal, Int}, Ops) ->

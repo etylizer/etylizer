@@ -23,7 +23,7 @@
 -export([terminal/2, element/2, empty/1, any/1, union/3, intersect/3, negate/2, diff/3, is_empty/2, is_any/2]).
 
 %% % implements eq behavior indirectly parameterized over a type
--export([equal/3, compare/3, is_empty_union/2, substitute/5, has_ref/3]).
+-export([equal/3, compare/3, is_empty_union/2, substitute/5, has_ref/3, all_variables/2]).
 
 -export([dnf/3]).
 
@@ -216,4 +216,15 @@ has_ref(I = {Terminal, Element}, Ty, Ref) ->
           lists:any(Fun, N)
     end,
     fun(F1, F2) -> F1() orelse F2() end
+  }).
+
+all_variables(I = {Terminal, Element}, Ty) ->
+  gen_bdd:dnf(I, Ty, {
+    fun
+      (P,N,T) ->
+        Terminal:all_variables(T) ++
+          lists:foldl(fun(L, Acc) -> Acc ++ Element:all_variables(L) end, [], P) ++
+          lists:foldl(fun(L, Acc) -> Acc ++ Element:all_variables(L) end, [], N)
+    end,
+    fun(F1, F2) -> lists:usort(F1() ++ F2()) end
   }).
