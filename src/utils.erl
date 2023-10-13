@@ -3,8 +3,6 @@
 % @doc This module defines general purpose utility functions.
 
 -export([
-    expect/2,
-    expect/3,
     map_opt/3, map_opt/2,
     quit/3, quit/2, undefined/0, everywhere/2, everything/2, error/1, error/2,
     is_string/1, is_char/1,
@@ -19,12 +17,6 @@
     with_default/2,
     mingle/5
 ]).
-
-expect(A, B) when A =:= B -> A;
-expect(A, B) -> error({expect, A, B}).
-
-expect(A, B, _) when A =:= B -> A;
-expect(A, B, Msg) -> error({expect, A, B, Msg}).
 
 mingle(LeftDefault, RightDefault, AllLeft, AllRight, Op) ->
     AllKeys = maps:keys(AllLeft) ++ maps:keys(AllRight),

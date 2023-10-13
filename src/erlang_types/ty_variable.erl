@@ -56,8 +56,8 @@ smallest(PositiveVariables, NegativeVariables, FixedVariables) ->
 
 
 single(Pol, VPos, VNeg, Ty, VarToTy) ->
-  AccP = lists:foldl(fun(Var, Ty) -> ty_rec:intersect(Ty, VarToTy(Var)) end, Ty, VPos),
-  AccN = lists:foldl(fun(Var, Ty) -> ty_rec:union(Ty, VarToTy(Var)) end, ty_rec:empty(), VNeg),
+  AccP = lists:foldl(fun(Var, TTy) -> ty_rec:intersect(TTy, VarToTy(Var)) end, Ty, VPos),
+  AccN = lists:foldl(fun(Var, TTy) -> ty_rec:union(TTy, VarToTy(Var)) end, ty_rec:empty(), VNeg),
   S = ty_rec:diff(AccP, AccN),
   case Pol of
     true -> ty_rec:negate(S);

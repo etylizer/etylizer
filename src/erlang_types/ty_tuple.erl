@@ -28,8 +28,8 @@ transform({ty_tuple, _, Refs}, #{to_tuple := ToTuple}) ->
 
 big_intersect([]) -> error(illegal_state);
 big_intersect([X]) -> X;
-big_intersect(Pos = [X | Y]) ->
-    lists:foldl(fun({ty_tuple, Dim, Refs}, {ty_tuple, Dim, Refs2}) ->
+big_intersect([X | Y]) ->
+    lists:foldl(fun({ty_tuple, _, Refs}, {ty_tuple, Dim, Refs2}) ->
         true = length(Refs) == length(Refs2),
         {ty_tuple, Dim, [ty_rec:intersect(S, T) || {S, T} <- lists:zip(Refs, Refs2)]}
                 end, X, Y).
