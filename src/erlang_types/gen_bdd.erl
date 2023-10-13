@@ -23,7 +23,7 @@
 -export([terminal/2, element/2, empty/1, any/1, union/3, intersect/3, negate/2, diff/3, is_empty/2, is_any/2]).
 
 %% % implements eq behavior indirectly parameterized over a type
--export([equal/3, compare/3, is_empty_union/2, substitute/5]).
+-export([equal/3, compare/3, is_empty_union/2, substitute/5, has_ref/3]).
 
 -export([dnf/3]).
 
@@ -205,3 +205,15 @@ substitute_coclause(I = {Terminal, Element},MkTy,P, N, T, Map, Memo) ->
   X = intersect(I, NewTerminalBDD, Res),
 %%  io:format(user, "Final ~p :: ~p~n",[I, X]),
   X.
+
+has_ref(I = {Terminal, Element}, Ty, Ref) ->
+  gen_bdd:dnf(I, Ty, {
+    fun
+      (P,N,T) ->
+        Fun = fun(F) -> Element:has_ref(F, Ref) end,
+        Terminal:has_ref(T, Ref) orelse
+        lists:any(Fun, P) orelse
+          lists:any(Fun, N)
+    end,
+    fun(F1, F2) -> F1() orelse F2() end
+  }).

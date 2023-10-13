@@ -33,6 +33,7 @@ diff(B1, B2) -> gen_bdd:diff(?P, B1, B2).
 negate(B1) -> gen_bdd:negate(?P, B1).
 
 is_any(B) -> gen_bdd:is_any(?P, B).
+has_ref(Ty, Ref) -> gen_bdd:has_ref(?P, Ty, Ref).
 
 % ==
 % basic interface
@@ -124,15 +125,6 @@ phi_norm(Size, BigS, [Ty | N], Fixed, M) ->
     ?F(lists:foldl(Solve, [[]], lists:zip(lists:seq(1, length(ty_tuple:components(Ty))), lists:zip(BigS, ty_tuple:components(Ty)))))
   ).
 
-
-has_ref({terminal, 0}, _) -> false;
-has_ref({terminal, _}, _) -> false;
-has_ref({node, Tuple, PositiveEdge, NegativeEdge}, Ref) ->
-  ty_tuple:has_ref(Tuple, Ref)
-    orelse
-    has_ref(PositiveEdge, Ref)
-    orelse
-    has_ref(NegativeEdge, Ref).
 
 all_variables({terminal, 0}) -> [];
 all_variables({terminal, _}) -> [];

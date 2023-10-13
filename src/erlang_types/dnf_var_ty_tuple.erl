@@ -38,6 +38,8 @@ is_any(B) -> gen_bdd:is_any(?P, B).
 is_empty(TyBDD) -> gen_bdd:dnf(?P, TyBDD, {fun is_empty_coclause/3, fun gen_bdd:is_empty_union/2}).
 is_empty_coclause(_Pos, _Neg, T) -> dnf_ty_tuple:is_empty(T).
 
+has_ref(Ty, Ref) -> gen_bdd:has_ref(?P, Ty, Ref).
+
 % ==
 % basic interface
 % ==
@@ -63,12 +65,6 @@ normalize(Size, {node, Variable, PositiveEdge, NegativeEdge}, PVar, NVar, Fixed,
     ?F(normalize(Size, PositiveEdge, [Variable | PVar], NVar, Fixed, M)),
     ?F(normalize(Size, NegativeEdge, PVar, [Variable | NVar], Fixed, M))
   ).
-
-has_ref({terminal, 0}, _) -> false;
-has_ref({terminal, Tuple}, Ref) ->
-  dnf_ty_tuple:has_ref(Tuple, Ref);
-has_ref({node, _Variable, PositiveEdge, NegativeEdge}, Ref) ->
-  has_ref(PositiveEdge, Ref) orelse has_ref(NegativeEdge, Ref).
 
 all_variables({Default, Others}) when is_map(Others) ->
   all_variables(Default) ++ lists:map(fun({_K,V}) -> all_variables(V) end, maps:to_list(Others));

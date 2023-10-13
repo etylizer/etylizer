@@ -65,13 +65,7 @@ normalize(Size, {node, Variable, PositiveEdge, NegativeEdge}, PVar, NVar, Fixed,
 
 substitute(MkTy, T, M, Memo) -> gen_bdd:substitute(?P, MkTy, T, M, Memo).
 
-has_ref({terminal, 0}, _) -> false;
-has_ref({terminal, Function}, Ref) ->
-  dnf_ty_function:has_ref(Function, Ref);
-has_ref({node, _Variable, PositiveEdge, NegativeEdge}, Ref) ->
-  has_ref(PositiveEdge, Ref) orelse has_ref(NegativeEdge, Ref).
-
-
+has_ref(Ty, Ref) -> gen_bdd:has_ref(?P, Ty, Ref).
 
 all_variables({Default, Others}) when is_map(Others) ->
   all_variables(Default) ++ lists:map(fun({_K,V}) -> all_variables(V) end, maps:to_list(Others));
