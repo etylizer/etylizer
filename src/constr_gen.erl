@@ -375,7 +375,7 @@ ty_of_pat(Env, P, Mode) ->
             ast_lib:mk_intersection([ty_of_pat(Env, P1, Mode), ty_of_pat(Env, P2, Mode)]);
         {nil, _L} -> {empty_list};
         {cons, _L, P1, P2} ->
-            Symtab = no_symtab,  % FIXME: need to use a real symtab below?
+            Symtab = symtab:empty(),  % FIXME: need to use a real symtab below?
             case Mode of
                 upper ->
                     T1 = ty_of_pat(Env, P1, Mode),

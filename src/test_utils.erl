@@ -84,9 +84,11 @@ extract_tests_test() ->
 
 -spec is_equiv(ast:ty(), ast:ty()) -> boolean().
 is_equiv(S, T) ->
-  subty:is_subty(none, S, T) andalso
-    subty:is_subty(none, T, S).
+    Symtab = symtab:empty(),
+    subty:is_subty(Symtab, S, T) andalso
+        subty:is_subty(Symtab, T, S).
 
 -spec is_subtype(ast:ty(), ast:ty()) -> boolean().
 is_subtype(S, T) ->
-  subty:is_subty(none, S, T).
+    Symtab = symtab:empty(),
+    subty:is_subty(Symtab, S, T).
