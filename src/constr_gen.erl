@@ -277,7 +277,7 @@ pat_guard_upper_lower(P, Gs, E) ->
     BoundVars = sets:union(bound_vars_pat(P), bound_vars_pat(EPat)),
     Lower =
         case {Status, sets:is_subset(VarsOfGuards, BoundVars)} of
-            {safe, true} -> ast:mk_intersection([LowerPatTy, LowerETy]);
+            {safe, true} -> ast_lib:mk_intersection([LowerPatTy, LowerETy]);
             _ -> {predef, none}
         end,
     ?LOG_TRACE("EPat=~200p, UpperPatTy=~s, LowerPatTy=~s, UpperETy=~s, LowerETy=~s Upper=~s, Lower=~s, VarsOfGuards=~200p, BoundVars=~w, Status=~w",
@@ -364,7 +364,7 @@ ty_of_pat(Env, P, Mode) ->
             case Mode of
                 upper ->
                     T1 = {nonempty_list, ty_of_pat(Env, P1, Mode)},
-                    T2 = ast:mk_intersection([ty_of_pat(Env, P2, Mode),
+                    T2 = ast_lib:mk_intersection([ty_of_pat(Env, P2, Mode),
                                               {predef_alias, nonempty_list}]),
                     ast_lib:mk_union([T1, T2]);
                 lower ->
