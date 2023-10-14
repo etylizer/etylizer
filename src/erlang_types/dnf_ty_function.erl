@@ -108,9 +108,8 @@ normalize_coclause(Pos, Neg, T, Fixed, M) ->
     T -> [[]];
     _ ->
       [First | _] = Pos ++ Neg,
-      AllDomainsAsTuples = [ty_tuple:tuple(ty_function:domains(Fun)) || Fun <- Pos],
       Size = length(ty_function:domains(First)),
-      S = ty_rec:tuple(Size, dnf_var_ty_tuple:tuple(dnf_ty_tuple:tuple(ty_tuple:big_union(AllDomainsAsTuples)))),
+      S = lists:foldl(fun ty_rec:union/2, ty_rec:empty(), [domains_to_tuple(Refs) || {ty_function, Refs, _} <- Pos]),
       normalize_no_vars(Size, S, Pos, Neg, Fixed, M)
   end.
 
