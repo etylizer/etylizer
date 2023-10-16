@@ -12,7 +12,10 @@
     tbool/0,
     tlist_any/0,
     tlist_improper/2,
+    tnonempty_improper_list/2,
     tlist/1,
+    tnonempty_list/0,
+    tnonempty_list/1,
     builtin_ops/0, builtin_funs/0,
     tatom/0, tatom/1,
     tintersect/1, tunion/1, tunion/2, tnegate/1,
@@ -152,7 +155,17 @@ tlist_any() ->
 tlist_improper(A, B) ->
     {improper_list, A, B}.
 
+-spec tnonempty_improper_list(ast:ty(), ast:ty()) -> ast:ty().
+tnonempty_improper_list(A, B) ->
+    {nonempty_improper_list, A, B}.
+
 tempty_list() -> {empty_list}.
+
+-spec tnonempty_list(ast:ty()) -> ast:ty().
+tnonempty_list(Arg) -> {nonempty_list, Arg}.
+
+-spec tnonempty_list() -> ast:ty().
+tnonempty_list() -> {predef_alias, nonempty_list}.
 
 -spec tbool() -> ast:ty().
 tbool() -> {predef_alias, boolean}.

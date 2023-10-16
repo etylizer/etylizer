@@ -299,6 +299,73 @@ nil_04() -> [].
 -spec nil_05_fail() -> integer().
 nil_05_fail() -> [].
 
+-spec list_pattern_01(list(integer())) -> integer().
+list_pattern_01(L) ->
+    case L of
+        [] -> 1;
+        [X | _] -> X
+    end.
+
+-spec list_pattern_02(list(integer())) -> integer().
+list_pattern_02(L) ->
+    case L of
+        [] -> 1;
+        [_X, Y | _] -> Y;
+        [X | _] -> X
+    end.
+
+-spec list_pattern_03_fail(list(integer())) -> integer().
+list_pattern_03_fail(L) ->
+    case L of
+        % not exhaustive
+        [X | _] -> X
+    end.
+
+-spec list_pattern_03(nonempty_list(integer())) -> integer().
+list_pattern_03(L) ->
+    case L of
+        [X | _] -> X
+    end.
+
+-spec list_pattern_04_fail(list(integer())) -> integer().
+list_pattern_04_fail(L) ->
+    case L of
+        [] -> 1;
+        % not exhaustive
+        [_X, Y | _] -> Y
+    end.
+
+-spec list_pattern_04b_fail(list(integer())) -> integer().
+list_pattern_04b_fail(L) ->
+    case L of
+        [] -> 1;
+        % not exhaustive
+        [_X, []] -> 2
+    end.
+
+-spec list_pattern_05_fail(list(integer())) -> integer().
+list_pattern_05_fail(L) ->
+    case L of
+        [] -> 1;
+        [1 | _] -> 2 % not exhaustive
+    end.
+
+-spec list_pattern_06_fail(list(integer())) -> integer().
+list_pattern_06_fail(L) ->
+    case L of
+        [] -> 1;
+        [1 | _] -> 2;
+        [_X] -> 3 % not exhaustive
+    end.
+
+-spec list_pattern_07(list(integer())) -> integer().
+list_pattern_07(L) ->
+    case L of
+        [] -> 1;
+        [1 | _] -> 2;
+        [_X | _] -> 3
+    end.
+
 % fun ref and call
 -spec some_fun(string(), integer()) -> string().
 some_fun(S, _) -> S.

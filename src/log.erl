@@ -27,7 +27,6 @@ init(L1) ->
     ets:insert(log_config, {level, L}),
     Pid = spawn_link(fun file_logger/0),
     ets:insert(log_config, {logger_pid, Pid}),
-    io:format("Initialized logging with level ~s~n", [format_level(L1)]),
     ok.
 
 -spec get_log_level(log_level() | default) -> log_level().

@@ -27,7 +27,7 @@ new_ctx(Tab, Sanity) ->
 -spec infer(ctx(), [ast:fun_decl()]) -> [{ast:global_ref(), Type::ast:ty_scheme()}].
 infer(_, []) -> errors:bug("typing:infer called with empty list of declarations");
 infer(Ctx, Decls) ->
-    {Cs, Env} = constr_gen:gen_constrs_fun_group(Decls),
+    {Cs, Env} = constr_gen:gen_constrs_fun_group(Ctx#ctx.symtab, Decls),
     case Ctx#ctx.sanity of
         {ok, TyMap} -> constr_gen:sanity_check(Cs, TyMap);
         error -> ok
@@ -149,7 +149,7 @@ check(Ctx, Decl = {function, Loc, Name, Arity, _}, PolyTy) ->
 
 -spec check_alt(ctx(), ast:fun_decl(), ast:ty_full_fun(), constr_simp:unmatched_branch_mode()) -> ok.
 check_alt(Ctx, Decl = {function, Loc, Name, Arity, _}, FunTy, BranchMode) ->
-    Cs = constr_gen:gen_constrs_annotated_fun(FunTy, Decl),
+    Cs = constr_gen:gen_constrs_annotated_fun(Ctx#ctx.symtab, FunTy, Decl),
     case Ctx#ctx.sanity of
         {ok, TyMap} -> constr_gen:sanity_check(Cs, TyMap);
         error -> ok
