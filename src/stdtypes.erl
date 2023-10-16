@@ -12,7 +12,10 @@
     tbool/0,
     tlist_any/0,
     tlist_improper/2,
+    tnonempty_improper_list/2,
     tlist/1,
+    tnonempty_list/0,
+    tnonempty_list/1,
     builtin_ops/0, builtin_funs/0,
     tatom/0, tatom/1,
     tintersect/1, tunion/1, tunion/2, tnegate/1,
@@ -23,7 +26,7 @@
     ttuple/1, ttuple_n/1, ttuple_any/0, ttuple1/1, ttuple2/2,
     tarrow_n/1,
     tfun_full/2,
-    tfun/2, tfun1/2, tfun2/3,
+    tfun/2, tfun1/2, tfun2/3, tfun_any/0,
     tvar/1,
     trange_any/0, trange/2,
     expand_predef_alias/1,
@@ -126,6 +129,9 @@ tnone() ->
 ttuple_any() ->
     {tuple_any}.
 
+tfun_any() ->
+    {fun_simple}.
+
 trange_any() ->
     {predef, integer}.
 
@@ -149,7 +155,17 @@ tlist_any() ->
 tlist_improper(A, B) ->
     {improper_list, A, B}.
 
+-spec tnonempty_improper_list(ast:ty(), ast:ty()) -> ast:ty().
+tnonempty_improper_list(A, B) ->
+    {nonempty_improper_list, A, B}.
+
 tempty_list() -> {empty_list}.
+
+-spec tnonempty_list(ast:ty()) -> ast:ty().
+tnonempty_list(Arg) -> {nonempty_list, Arg}.
+
+-spec tnonempty_list() -> ast:ty().
+tnonempty_list() -> {predef_alias, nonempty_list}.
 
 -spec tbool() -> ast:ty().
 tbool() -> {predef_alias, boolean}.
@@ -221,7 +237,7 @@ builtin_ops() ->
     IntOpTy = tyscm(tfun([tint(), tint()], tint())),
     BoolOpTy = tyscm(tfun([tbool(), tbool()], tbool())),
     BoolShortcutOpTy = tyscm(tfun([tbool(), tvar(a)], tvar(a))),
-    PolyOpTy = tyscm([a], tfun([tvar(a), tvar(a)], tbool())),
+    PolyOpTy = tyscm(tfun([tvar(a), tvar(a)], tbool())),
     [
         {'+', 2, NumOpTy},
         {'-', 2, NumOpTy},

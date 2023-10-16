@@ -19,11 +19,14 @@ perform_type_checks(SearchPath, DepGraph, Opts) ->
     {DepsChanged, NewIndex1} =
         cm_index:has_external_dep_changed(RebarLockFile, Index),
     CheckList =
-        if
-            DepsChanged ->
+        case {DepsChanged, Opts#opts.force} of
+            {true, false} ->
                 ?LOG_INFO("Some external dependency has changed, rechecking everything"),
                 SourceList;
-            true ->
+            {false, true} ->
+                ?LOG_INFO("Forced to recheck everything"),
+                SourceList;
+            _ ->
                 ?LOG_INFO("No external dependency has changed"),
                 create_check_list(SourceList, NewIndex1, DepGraph)
         end,
@@ -70,7 +73,10 @@ traverse_and_check([], _, _, _, Index) ->
     Index;
 
 traverse_and_check([CurrentFile | RemainingFiles], Symtab, SearchPath, Opts, Index) ->
-    ?LOG_NOTE("Typechecking ~s", CurrentFile),
+    case log:allow(note) of
+        true -> ?LOG_NOTE("Checking ~s", CurrentFile);
+        false -> io:format("Checking ~s", [CurrentFile])
+    end,
     Forms = parse_cache:parse(intern, CurrentFile),
     ExpandedSymtab = symtab:extend_symtab_with_module_list(Symtab, SearchPath, ast_utils:referenced_modules(Forms)),
 
@@ -81,7 +87,7 @@ traverse_and_check([CurrentFile | RemainingFiles], Symtab, SearchPath, Opts, Ind
         true ->
             ?LOG_INFO("Not type checking ~p as requested", CurrentFile);
         false ->
-            typing:check_forms(Ctx, Forms, Only)
+            typing:check_forms(Ctx, CurrentFile, Forms, Only)
     end,
     NewIndex = cm_index:insert(CurrentFile, Forms, Index),
     traverse_and_check(RemainingFiles, Symtab, SearchPath, Opts, NewIndex).

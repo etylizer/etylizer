@@ -7,6 +7,6 @@
 -type local_ty1() :: local_ty2().
 -type local_ty2() :: any().
 
--spec foo_fun(integer(), foo_type()) -> integer().
+-spec foo_fun(boolean(), foo_type()) -> boolean().
 foo_fun(X, _) -> bar:bar_fun(X).
 

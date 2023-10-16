@@ -123,18 +123,24 @@ simp_constr(Ctx, C) ->
             end,
             simp_constrs_if_ok(
                 simp_constrs(Ctx, Cs),
-                fun(_, DssList) ->
+                fun(_, Dss) ->
                     FreeSet = tyutils:free_in_poly_env(Ctx#ctx.env),
-                    ?LOG_DEBUG("Checking scrutiny of case at ~s.~n" ++
-                            "Env: ~s~nFixed tyvars: ~w~nConstraints for scrutiny:~n~s",
-                            ast:format_loc(loc(Locs)),
-                            pretty:render_poly_env(Ctx#ctx.env),
-                            sets:to_list(FreeSet),
-                            pretty:render_constr(DssList)),
+                    ?LOG_DEBUG("Checking which branches of case at ~s should be ignored.~n" ++
+                               "Env: ~s~nFixed tyvars: ~w~nConstraints for scrutiny:~n~s",
+                               ast:format_loc(loc(Locs)),
+                               pretty:render_poly_env(Ctx#ctx.env),
+                               sets:to_list(FreeSet),
+                               pretty:render_constr(Dss)),
                     Substs =
                         lists:flatmap(
-                            fun(Ds) -> get_substs(tally:tally(Ctx#ctx.symtab, Ds, FreeSet), Locs) end,
-                        DssList),
+                          fun(Ds) ->
+                                  ?LOG_DEBUG("Invoking tally while simplifying constraints. " ++
+                                                 "FreeSet=~w, Constraints:~n~s",
+                                             sets:to_list(FreeSet),
+                                             pretty:render_constr(Ds)),
+                                  get_substs(tally:tally(Ctx#ctx.symtab, Ds, FreeSet), Locs)
+                          end,
+                          Dss),
                     ?LOG_TRACE("Env=~s, FreeSet=~200p", pretty:render_poly_env(Ctx#ctx.env),
                             sets:to_list(FreeSet)),
                     case Substs of
@@ -156,9 +162,9 @@ simp_constr(Ctx, C) ->
                                 lists:foldl(
                                     % returns simp_constrs_result()
                                     fun(_, {simp_constrs_error, _} = Err) -> Err;
-                                       ({BodyLocs, GammaI, GuardCsI, BodyCsI, TI}, BeforeDss) ->
-                                            NewCtx = extend_env(Ctx, apply_subst_to_env(Subst, GammaI)),
-                                            simp_constrs_if_ok(simp_constrs(NewCtx, GuardCsI),
+                                       ({BodyLocs, {GuardsGammaI, GuardCsI}, {BodyGammaI, BodyCsI}, TI}, BeforeDss) ->
+                                            NewGuardsCtx = extend_env(Ctx, apply_subst_to_env(Subst, GuardsGammaI)),
+                                            simp_constrs_if_ok(simp_constrs(NewGuardsCtx, GuardCsI),
                                                 fun(GuardDss, _) ->
                                                     MatchTy = subst:apply(Subst, TI),
                                                     IsBottom = subty:is_subty(Ctx#ctx.symtab,
@@ -184,7 +190,10 @@ simp_constr(Ctx, C) ->
                                                                             );
                                                                 _ -> ok
                                                             end,
-                                                            BodyDss = simp_constrs(NewCtx, BodyCsI),
+                                                            NewBodyCtx =
+                                                                extend_env(Ctx,
+                                                                        apply_subst_to_env(Subst, BodyGammaI)),
+                                                            BodyDss = simp_constrs(NewBodyCtx, BodyCsI),
                                                             cross_union(cross_union(BeforeDss, GuardDss), BodyDss)
                                                     end
                                                 end)

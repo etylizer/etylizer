@@ -160,6 +160,9 @@ op_07_fail() -> [1,2] ++ ["foo", "bar"].
 -spec op_08() -> list().
 op_08() -> [1,2] ++ ["foo", "bar"].
 
+-spec op_09() -> list(integer()).
+op_09() -> [] ++ [].
+
 % Case
 -spec case_01(atom()) -> foobar.
 case_01(X) ->
@@ -224,6 +227,14 @@ case_09(X) ->
         _ -> 42.0
     end.
 
+-spec case_10_fail(any()) -> integer().
+case_10_fail(X) ->
+    case X of
+        % should fail because Y does not have type integer
+        % in the guard but abs requires a number
+        Y when abs(Y) > 2 andalso is_integer(Y) -> Y;
+        _ -> 42
+    end.
 
 % Blocks
 -spec block_01() -> integer().
@@ -296,6 +307,73 @@ nil_04() -> [].
 -spec nil_05_fail() -> integer().
 nil_05_fail() -> [].
 
+-spec list_pattern_01(list(integer())) -> integer().
+list_pattern_01(L) ->
+    case L of
+        [] -> 1;
+        [X | _] -> X
+    end.
+
+-spec list_pattern_02(list(integer())) -> integer().
+list_pattern_02(L) ->
+    case L of
+        [] -> 1;
+        [_X, Y | _] -> Y;
+        [X | _] -> X
+    end.
+
+-spec list_pattern_03_fail(list(integer())) -> integer().
+list_pattern_03_fail(L) ->
+    case L of
+        % not exhaustive
+        [X | _] -> X
+    end.
+
+-spec list_pattern_03(nonempty_list(integer())) -> integer().
+list_pattern_03(L) ->
+    case L of
+        [X | _] -> X
+    end.
+
+-spec list_pattern_04_fail(list(integer())) -> integer().
+list_pattern_04_fail(L) ->
+    case L of
+        [] -> 1;
+        % not exhaustive
+        [_X, Y | _] -> Y
+    end.
+
+-spec list_pattern_04b_fail(list(integer())) -> integer().
+list_pattern_04b_fail(L) ->
+    case L of
+        [] -> 1;
+        % not exhaustive
+        [_X, []] -> 2
+    end.
+
+-spec list_pattern_05_fail(list(integer())) -> integer().
+list_pattern_05_fail(L) ->
+    case L of
+        [] -> 1;
+        [1 | _] -> 2 % not exhaustive
+    end.
+
+-spec list_pattern_06_fail(list(integer())) -> integer().
+list_pattern_06_fail(L) ->
+    case L of
+        [] -> 1;
+        [1 | _] -> 2;
+        [_X] -> 3 % not exhaustive
+    end.
+
+-spec list_pattern_07(list(integer())) -> integer().
+list_pattern_07(L) ->
+    case L of
+        [] -> 1;
+        [1 | _] -> 2;
+        [_X | _] -> 3
+    end.
+
 % fun ref and call
 -spec some_fun(string(), integer()) -> string().
 some_fun(S, _) -> S.
@@ -318,10 +396,10 @@ fun_local_01() ->
 -spec fun_local_02() -> integer().
 fun_local_02() ->
     F = fun Add(X) ->
-                case X of
-                    0 -> 0;
-                    Y -> Y + Add(X - 1)
-                end
+        case X of
+            0 -> 0;
+            Y -> Y + Add(X - 1)
+        end
         end,
     F(3).
 
@@ -350,31 +428,31 @@ fun_local_05_fail(X) ->
 -spec if_01(integer()) -> integer().
 if_01(X) ->
     if X =:= 0 -> 42;
-       true -> 0
+        true -> 0
     end.
 
 -spec if_02(integer()) -> integer() | string().
 if_02(X) ->
     if X =:= 0 -> 42;
-       true -> "foo"
+        true -> "foo"
     end.
 
 -spec if_03_fail(integer()) -> integer().
 if_03_fail(X) ->
     if X =:= 0 -> 42;
-       true -> "foo"
+        true -> "foo"
     end.
 
 -spec if_04_fail(atom()) -> integer().
 if_04_fail(X) ->
     if (X + 1) =:= 0 -> 0;
-       true -> 1
+        true -> 1
     end.
 
 -spec if_05(atom()) -> integer().
 if_05(X) ->
     if X =:= 0 -> 0;
-       true -> 1
+        true -> 1
     end.
 
 
@@ -405,7 +483,7 @@ tuple_05_fail(X) ->
 use_atom(X) -> X.
 
 -spec inter_01(integer()) -> integer()
-            ; (atom()) -> atom().
+; (atom()) -> atom().
 inter_01(X) ->
     case X of
         _ when is_integer(X) -> X + 1;
@@ -414,7 +492,7 @@ inter_01(X) ->
 
 % just swap the types of the intersection
 -spec inter_02(atom()) -> atom()
-            ; (integer()) -> integer().
+; (integer()) -> integer().
 inter_02(X) ->
     case X of
         _ when is_integer(X) -> X + 1;
@@ -422,7 +500,7 @@ inter_02(X) ->
     end.
 
 -spec inter_03_fail(integer()) -> integer()
-                 ; (atom()) -> atom().
+; (atom()) -> atom().
 inter_03_fail(X) ->
     case X of
         _ when is_integer(X) -> X + 1;
@@ -431,17 +509,17 @@ inter_03_fail(X) ->
 
 -spec inter_04_fail([T]) -> [T] ; ([T]) -> [T].
 inter_04_fail(L) ->
-  case L of
-    [] -> [];
-    [_X | XS] -> XS + 1 % ERROR ignored if branch ignored when type-checking
-  end.
+    case L of
+        [] -> [];
+        [_X | XS] -> XS + 1 % ERROR ignored if branch ignored when type-checking
+    end.
 
 -spec foo([T]) -> [T].
 foo(L) ->
-  case L of
-    [] -> [];
-    [_X|XS] -> XS
-  end.
+    case L of
+        [] -> [];
+        [_X|XS] -> XS
+    end.
 
 -spec foo2 (a) -> 1; (b) -> 2.
 foo2(a) -> 1;

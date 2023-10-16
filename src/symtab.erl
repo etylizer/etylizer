@@ -20,13 +20,16 @@
     find_ty/2,
     std_symtab/0,
     extend_symtab/2,
+    extend_symtab_with_fun_env/2,
     extend_symtab/3,
     empty/0,
     extend_symtab_with_module_list/3
 ]).
 
+-type fun_env() :: #{ ast:global_ref() => ast:ty_scheme() }.
+
 -record(tab, {
-              funs :: #{ ast:global_ref() => ast:ty_scheme() },
+              funs :: fun_env(),
               ops :: #{ {atom(), arity()} => ast:ty_scheme() },
               types :: #{ ast:global_ref() => ast:ty_scheme() }
 }).
@@ -118,6 +121,9 @@ extend_symtab_internal(Forms, RefType, Tab) ->
       end,
       Tab,
       Forms).
+
+-spec extend_symtab_with_fun_env(fun_env(), t()) -> t().
+extend_symtab_with_fun_env(Env, Tab) -> Tab#tab { funs = maps:merge(Tab#tab.funs, Env) }.
 
 -spec create_ref_tuple(tuple(), string(), arity()) -> tuple().
 create_ref_tuple({ref}, Name, Arity) ->

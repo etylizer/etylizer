@@ -31,6 +31,10 @@ parse_args(Args) ->
              "Add path to the front of Erlang's code path"},
          {load_end,   $z,   "pz",        string,
              "Add path to the end of Erlang's code path"},
+         {force,       $f,   "force",      undefined,
+            "Force type-checking"},
+         {help,       $h,   "help",      undefined,
+            "Output help message"},
          {check_ast,  $c,   "check-ast", string,
             "Check that all files match the AST type defined in the file given"},
          {dump_raw,  undefined, "dump-raw", undefined,
@@ -44,9 +48,7 @@ parse_args(Args) ->
          {only, $o, "only", string,
             "Only typecheck these functions (given as name/arity or just the name)"},
          {log_level,  $l,   "level",    string,
-            "Minimal log level (trace,debug,info,note,warn)"},
-         {help,       $h,   "help",      undefined,
-            "Output help message"}
+            "Minimal log level (trace,debug,info,note,warn)"}
         ],
     Opts = case getopt:parse(OptSpecList, Args) of
         {error, {Reason, Data}} ->
@@ -74,6 +76,7 @@ parse_args(Args) ->
                         dump_raw -> Opts#opts{ dump_raw = true };
                         dump -> Opts#opts{ dump = true };
                         sanity -> Opts#opts{ sanity = true };
+                        force -> Opts#opts{ force = true };
                         no_type_checking -> Opts#opts{ no_type_checking = true };
                         help -> Opts#opts{ help = true }
                     end
@@ -101,6 +104,10 @@ fix_load_path(Opts) ->
 -spec doWork(#opts{}) -> [file:filename()].
 doWork(Opts) ->
     ?LOG_INFO("Initializing ETS tables"),
+    ty_ref:setup_ets(),
+    ty_variable:setup_ets(),
+    ast_lib:setup_ets(),
+
     parse_cache:init(Opts),
     stdtypes:init(),
     try

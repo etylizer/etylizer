@@ -38,5 +38,6 @@
                         Exhaustiveness::constrs(),
                         [constr_case_body()]}.
 -type constr_case_body() ::
-        {locs(), Env::constr_env(), Guard::constrs(), Body::constrs(), BodyCond::ast:ty()}.
+        {locs(), Guard::constrs_with_env(), Body::constrs_with_env(), BodyCond::ast:ty()}.
+-type constrs_with_env() :: {constr_env(), constrs()}.
 -type constr_unsatisfiable() :: {cunsatisfiable, ast:loc(), string()}.

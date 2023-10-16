@@ -4,13 +4,17 @@
     unsupported/3, unsupported/2,
     name_error/3, name_error/2,
     uncovered_case/3, bug/2, bug/1,
-    ty_error/2, ty_error/3, not_implemented/1
+    ty_error/2, ty_error/3, ty_error/1, not_implemented/1
 ]).
+
+-spec generic_error(atom(), string()) -> no_return().
+generic_error(Kind, Msg) -> throw({ety, Kind, Msg}).
 
 -spec generic_error(atom(), ast:loc(), string(), string(), any()) -> no_return().
 generic_error(Kind, Loc, Prefix, Msg, Args) ->
-    throw({ety, Kind, utils:sformat("~s: ~s: ~s",
-        ast:format_loc(Loc), Prefix, utils:sformat(Msg, Args))}).
+    generic_error(Kind,
+                  utils:sformat("~s: ~s: ~s",
+                                ast:format_loc(Loc), Prefix, utils:sformat(Msg, Args))).
 
 -spec unsupported(ast:loc(), string(), any()) -> no_return().
 unsupported(Loc, Msg, Args) ->
@@ -44,6 +48,9 @@ ty_error(Loc, Msg, Args) ->
 
 -spec ty_error(ast:loc(), string()) -> no_return().
 ty_error(Loc, Msg) -> ty_error(Loc, Msg, []).
+
+-spec ty_error(string()) -> no_return().
+ty_error(Msg) -> generic_error(ty_error, Msg).
 
 -spec not_implemented(string()) -> no_return().
 not_implemented(Msg) -> throw({ety, not_implemented, Msg}).

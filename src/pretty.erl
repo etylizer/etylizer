@@ -17,6 +17,8 @@
          render_substs/1,
          render_subst/1,
          render_poly_env/1,
+         render_fun_env/1,
+         render_any_ref/1,
          render_list/2,
          ref/1
         ]).
@@ -73,7 +75,6 @@ sep_by(Sep, Docs) ->
 
 -spec render(doc()) -> string().
 render(D) ->
-    ?LOG_TRACE("D:~n~200p", D),
     prettypr:format(D, 200).
 
 -spec render_ty(ast:ty()) -> string().
@@ -96,6 +97,12 @@ render_subst(S) -> render(subst(S)).
 
 -spec render_poly_env(constr:constr_poly_env()) -> string().
 render_poly_env(S) -> render(poly_env(S)).
+
+-spec render_fun_env(symtab:fun_env()) -> string().
+render_fun_env(S) -> render(fun_env(S)).
+
+-spec render_any_ref(ast:any_ref()) -> string().
+render_any_ref(R) -> render(ref(R)).
 
 -spec tyscheme(ast:ty_scheme()) -> doc().
 tyscheme({ty_scheme, [], Ty}) -> ty(Ty);
@@ -246,8 +253,9 @@ constr_bodies(L) ->
     braces(
       comma_sep(
         lists:map(
-          fun({Locs, Env, GuardCs, BodyCs, T}) ->
-                  brackets(comma_sep([locs(Locs), constr_env(Env), constr(GuardCs), constr(BodyCs), ty(T)]))
+          fun({Locs, {GuardEnv, GuardCs}, {BodyEnv, BodyCs}, T}) ->
+                  brackets(comma_sep([locs(Locs), constr_env(GuardEnv), constr(GuardCs),
+                                      constr_env(BodyEnv), constr(BodyCs), ty(T)]))
           end,
           L))).
 
@@ -335,6 +343,9 @@ poly_env(Env) ->
           end,
           maps:to_list(Env)),
     brackets(comma_sep(Elems)).
+
+-spec fun_env(symtab:fun_env()) -> doc().
+fun_env(Env) -> poly_env(Env).
 
 -spec render_list(fun((T) -> doc()), list(T)) -> string().
 render_list(Fun, L) ->
