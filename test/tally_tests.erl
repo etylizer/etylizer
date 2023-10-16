@@ -21,7 +21,6 @@ test_tally(ConstrList, AllTests, FixedVars) ->
                   fun ({T, U}) -> {csubty, sets:from_list([ast:loc_auto()]), T, U} end,
                   ConstrList
                  )),
-
   Res = tally:tally(symtab:empty(), Constrs, sets:from_list(FixedVars)),
   find_subst(AllTests, Res, Res).
 
@@ -212,7 +211,7 @@ tally_10_test() ->
        {tinter([V0, ttuple1(A), TupleAny]), ttuple(V5)},
        {A, V2},
        {tinter([V0, ttuple1(A), TupleAny]), ttuple1(V4)}],
-      #{}).
+      [{#{}, #{}}]).
 
 % debug tallying ([] [] [('a1 -> 'a2, 'a0) ('a4, 'a2) (42, 'a4) ('a3 & Int, 'a4) ('a3 & Int, 'a5) (Any -> Bool, 'a5 -> 'a6) ('a6, Bool) ('a1, 'a3)]);;
 %[DEBUG:tallying]
