@@ -12,7 +12,10 @@
     tbool/0,
     tlist_any/0,
     tlist_improper/2,
+    tnonempty_improper_list/2,
     tlist/1,
+    tnonempty_list/0,
+    tnonempty_list/1,
     builtin_ops/0, builtin_funs/0,
     tatom/0, tatom/1,
     tintersect/1, tunion/1, tunion/2, tnegate/1,
@@ -23,7 +26,7 @@
     ttuple/1, ttuple_n/1, ttuple_any/0, ttuple1/1, ttuple2/2,
     tarrow_n/1,
     tfun_full/2,
-    tfun/2, tfun1/2, tfun2/3,
+    tfun/2, tfun1/2, tfun2/3, tfun_any/0,
     tvar/1,
     trange_any/0, trange/2,
     expand_predef_alias/1,
@@ -31,7 +34,8 @@
     tnone/0,
     tnot/1,
     tmu/2,
-    is_tlist/1
+    is_tlist/1,
+    init/0, cleanup/0
 ]).
 
 -include_lib("parse.hrl").
@@ -125,6 +129,9 @@ tnone() ->
 ttuple_any() ->
     {tuple_any}.
 
+tfun_any() ->
+    {fun_simple}.
+
 trange_any() ->
     {predef, integer}.
 
@@ -148,7 +155,17 @@ tlist_any() ->
 tlist_improper(A, B) ->
     {improper_list, A, B}.
 
+-spec tnonempty_improper_list(ast:ty(), ast:ty()) -> ast:ty().
+tnonempty_improper_list(A, B) ->
+    {nonempty_improper_list, A, B}.
+
 tempty_list() -> {empty_list}.
+
+-spec tnonempty_list(ast:ty()) -> ast:ty().
+tnonempty_list(Arg) -> {nonempty_list, Arg}.
+
+-spec tnonempty_list() -> ast:ty().
+tnonempty_list() -> {predef_alias, nonempty_list}.
 
 -spec tbool() -> ast:ty().
 tbool() -> {predef_alias, boolean}.
@@ -219,7 +236,8 @@ builtin_ops() ->
     ])),
     IntOpTy = tyscm(tfun([tint(), tint()], tint())),
     BoolOpTy = tyscm(tfun([tbool(), tbool()], tbool())),
-    PolyOpTy = tyscm([a], tfun([tvar(a), tvar(a)], tbool())),
+    BoolShortcutOpTy = tyscm(tfun([tbool(), tvar(a)], tvar(a))),
+    PolyOpTy = tyscm(tfun([tvar(a), tvar(a)], tbool())),
     [
         {'+', 2, NumOpTy},
         {'-', 2, NumOpTy},
@@ -241,8 +259,8 @@ builtin_ops() ->
         {'and', 2, BoolOpTy},
         {'or', 2, BoolOpTy},
         {'xor', 2, BoolOpTy},
-        {'orelse', 2, BoolOpTy},
-        {'andalso', 2, BoolOpTy},
+        {'orelse', 2, BoolShortcutOpTy},
+        {'andalso', 2, BoolShortcutOpTy},
         {'==', 2, PolyOpTy},
         {'/=', 2, PolyOpTy},
         {'=<', 2, PolyOpTy},
@@ -265,10 +283,44 @@ extra_funs() ->
     [{record_info, 2, tyscm(tinter([tfun([tatom(fields), tatom()], tlist(tatom())),
                                     tfun([tatom(size), tatom()], tint())]))}].
 
+-define(TABLE, stdtypes_table).
+
+-spec init() -> ok.
+init() ->
+    case ets:whereis(?TABLE) of
+        undefined -> ok;
+        _ -> cleanup()
+    end,
+    ets:new(?TABLE, [set, named_table, {keypos, 1}]),
+    ok.
+
+-spec cleanup() -> ok.
+cleanup() ->
+    ets:delete(?TABLE),
+    ok.
+
 -spec builtin_funs() -> fun_types().
 builtin_funs() ->
+    Key = stdtypes,
+    case ets:whereis(?TABLE) of
+        undefined -> init();
+        _ -> ok
+    end,
     Dir = utils:assert_no_error(code:lib_dir(erts)),
     Path = filename:join([Dir, "src", "erlang.erl"]),
+    Hash = utils:hash_file(Path),
+    case ets:lookup(?TABLE, Key) of
+        [{_, {StoredHash, Result}}] when Hash =:= StoredHash -> Result;
+        [] ->
+            X = mk_builtin_funs(Path),
+            true = ets:insert(?TABLE, {Key, {Hash, X}}),
+            X;
+        Y -> ?ABORT("Unexpected entry in stdtypes_table: ~p", Y)
+    end.
+
+-spec mk_builtin_funs(file:filename()) -> fun_types().
+mk_builtin_funs(Path) ->
+    ?LOG_DEBUG("Creating types for builtin functions"),
     RawForms = parse:parse_file_or_die(Path, #parse_opts{
                                                 verbose = false
                                                }),
@@ -284,7 +336,7 @@ builtin_funs() ->
                   end
           end,
           {sets:new(), []}, RawForms),
-    AllSpecs = ast_transform:trans(Path, lists:reverse(RawSpecs), varenv:empty("function")),
+    AllSpecs = ast_transform:trans(Path, lists:reverse(RawSpecs), flat, varenv:empty("function")),
     Result =
         lists:filtermap(
           fun (Spec) ->

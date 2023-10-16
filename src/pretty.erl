@@ -19,6 +19,7 @@
          render_poly_env/1,
          render_fun_env/1,
          render_any_ref/1,
+         render_list/2,
          ref/1
         ]).
 
@@ -344,3 +345,7 @@ poly_env(Env) ->
 
 -spec fun_env(symtab:fun_env()) -> doc().
 fun_env(Env) -> poly_env(Env).
+
+-spec render_list(fun((T) -> doc()), list(T)) -> string().
+render_list(Fun, L) ->
+    render(comma_sep(lists:map(Fun, L))).

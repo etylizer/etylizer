@@ -135,8 +135,7 @@
 
 -export([
     format_loc/1, to_loc/2, loc_auto/0, is_predef_name/1, is_predef_alias_name/1,
-    local_varname_from_any_ref/1,
-    mk_intersection/1, mk_union/1, mk_negation/1
+    local_varname_from_any_ref/1
 ]).
 
 % General
@@ -155,7 +154,10 @@ format_loc({loc, "AUTO", -1, -1}) -> "auto";
 format_loc({loc, Path, Line, Col}) -> utils:sformat("~s:~w:~w", [Path, Line, Col]).
 
 -spec to_loc(string(), ast_erl:anno()) -> loc().
-to_loc(Path, {Line, Col}) -> {loc, Path, Line, Col}.
+to_loc(Path, Anno) ->
+    Line = utils:with_default(erl_anno:line(Anno), -1),
+    Col = utils:with_default(erl_anno:column(Anno), -1),
+    {loc, Path, Line, Col}.
 
 -spec loc_auto() -> loc().
 loc_auto() -> {loc, "AUTO", -1, -1}.
@@ -459,45 +461,3 @@ is_predef_alias_name(N) ->
 -type ty_constraint() :: {subty_constraint, loc(), ty_varname(), ty()}.
 -type bounded_tyvar() :: {ty_varname(), ty()}.
 -type ty_scheme() :: {ty_scheme, [bounded_tyvar()], ty()}.
-
-
-% smart constructors for intersection, union and negation
--spec mk_intersection([ast:ty()]) -> ast:ty().
-mk_intersection(Tys) ->
-    Filtered =
-        lists:filter(
-          fun(T) ->
-                  case T of
-                      {predef, any} -> false;
-                      {negation, {predef, none}} -> false;
-                      _ -> true
-                  end
-          end,
-          Tys),
-    case Filtered of
-        [] -> {predef, any};
-        [T] -> T;
-        _ -> {intersection, Filtered}
-    end.
-
--spec mk_union([ast:ty()]) -> ast:ty().
-mk_union(Tys) ->
-    Filtered =
-        lists:filter(
-          fun(T) ->
-                  case T of
-                      {predef, none} -> false;
-                      _ -> true
-                  end
-          end,
-          Tys),
-    case Filtered of
-        [] -> {predef, none};
-        [T] -> T;
-        _ -> {union, Filtered}
-    end.
-
--spec mk_negation(ast:ty()) -> ast:ty().
-mk_negation({predef, any}) -> {predef, none};
-mk_negation({predef, none}) -> {predef, any};
-mk_negation(T) -> {negation, T}.

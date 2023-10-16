@@ -1,8 +1,10 @@
 -module(ast_transform).
 
 -export([
-    trans/2, trans/3
+    trans/2, trans/3, trans/4
 ]).
+
+-export_type([trans_mode/0]).
 
 -compile([nowarn_shadow_vars]).
 
@@ -22,14 +24,21 @@
 -type funenv() :: varenv:t(ast:fun_with_arity(), intern | {extern, ModName::atom()}).
 
 -spec trans(string(), [ast_erl:form()]) -> [ast:form()].
-trans(Path, Forms) ->
-    FunEnv = build_funenv(Path, Forms),
-    trans(Path, Forms, FunEnv).
+trans(Path, Forms) -> trans(Path, Forms, full).
 
--spec trans(string(), [ast_erl:form()], funenv()) -> [ast:form()].
-trans(Path, Forms, FunEnv) ->
+% full: everything is transformed
+% flat: function bodies are not transformed.
+-type trans_mode() :: full | flat.
+
+-spec trans(string(), [ast_erl:form()], trans_mode()) -> [ast:form()].
+trans(Path, Forms, Mode) ->
+    FunEnv = build_funenv(Path, Forms),
+    trans(Path, Forms, Mode, FunEnv).
+
+-spec trans(string(), [ast_erl:form()], trans_mode(), funenv()) -> [ast:form()].
+trans(Path, Forms, Mode, FunEnv) ->
     Ctx = #ctx{ path = Path, funenv = FunEnv},
-    utils:map_opt(fun(F) -> trans_form(Ctx, F) end, Forms).
+    utils:map_opt(fun(F) -> trans_form(Ctx, F, Mode) end, Forms).
 
 -spec build_funenv(file:filename(), [ast_erl:form()]) -> funenv().
 build_funenv(Path, Forms) ->
@@ -54,8 +63,8 @@ build_funenv(Path, Forms) ->
             varenv:insert_if_absent({Name, Arity}, {extern, erlang}, E)
         end, Env1, stdtypes:builtin_funs()).
 
--spec trans_form(ctx(), ast_erl:form()) -> ast:form() | error.
-trans_form(Ctx, Form) ->
+-spec trans_form(ctx(), ast_erl:form(), trans_mode()) -> ast:form() | error.
+trans_form(Ctx, Form, Mode) ->
     R =
         case Form of
             {attribute, Anno, export, X} -> {attribute, to_loc(Ctx, Anno), export, X};
@@ -66,7 +75,12 @@ trans_form(Ctx, Form) ->
             {attribute, _, behaviour, _} -> error;
             {attribute, _, behavior, _} -> error;
             {function, Anno, Name, Arity, Clauses} ->
-                {function, to_loc(Ctx, Anno), Name, Arity, trans_fun_clauses(Ctx, Clauses)};
+                case Mode of
+                    full ->
+                        {function, to_loc(Ctx, Anno), Name, Arity, trans_fun_clauses(Ctx, Clauses)};
+                    flat ->
+                        error
+                end;
             {attribute, Anno, spec, {{Name, Arity}, FunTys}} ->
                 Loc = to_loc(Ctx, Anno),
                 {attribute, Loc, spec, Name, Arity, trans_spec_ty(Ctx, Loc, FunTys), without_mod};
@@ -85,7 +99,7 @@ trans_form(Ctx, Form) ->
             {attribute, Anno, opaque, Def} ->
                 {attribute, to_loc(Ctx, Anno), type, opaque, trans_tydef(Ctx, Def)};
             {attribute, Anno, Other, _} ->
-                ?LOG_INFO("Ignoring attribute ~w at ~s", Other, ast:format_loc(to_loc(Ctx, Anno))),
+                ?LOG_DEBUG("Ignoring attribute ~w at ~s", Other, ast:format_loc(to_loc(Ctx, Anno))),
                 error;
             {eof, _} -> error;
             X -> errors:uncovered_case(?FILE, ?LINE, X)
@@ -129,7 +143,7 @@ trans_spec_ty(Ctx, Loc, FunTys) ->
                                                             true -> false
                                                          end
                                                  end, Constrs),
-                        {Alpha, ast:mk_intersection(Bounds)}
+                        {Alpha, ast_lib:mk_intersection(Bounds)}
                 end,
                 TyVars),
     {ty_scheme, ConstrainedTyVars, Ty}.
@@ -162,6 +176,30 @@ trans_constraint(Ctx, Env, C) ->
         X -> errors:uncovered_case(?FILE, ?LINE, X)
     end.
 
+% support for ety:negation, ety:intersection, and ety:without
+-spec resolve_ety_ty(ast:loc(), atom(), [ast:ty()]) -> ast:ty().
+resolve_ety_ty(_, negation, [Ty]) -> {negation, Ty};
+resolve_ety_ty(_, intersection, Tys) ->
+    case Tys of
+        [] -> {predef, any};
+        [Ty] -> Ty;
+        _ -> {intersection, Tys}
+    end;
+resolve_ety_ty(_, without, [T, U]) -> {intersection, [T, {negation, U}]};
+resolve_ety_ty(L, Name, _) ->
+    errors:ty_error(L, "Invalid use of builtin type ety:~w", Name).
+
+-spec eval_const_ty(erl_parse:abstract_expr(), ast:loc()) -> {singleton, integer()}.
+eval_const_ty(Ty, Loc) ->
+    try
+        case erl_eval:expr(Ty, maps:new()) of
+            {value, Val, _} when is_integer(Val) -> {singleton, Val};
+            _ -> errors:ty_error(Loc, "Invalid type: ~200p", Ty)
+        end
+    catch error:_:_ ->
+        errors:ty_error(Loc, "Invalid type: ~200p", Ty)
+    end.
+
 -spec trans_ty(ctx(), tyenv(), ast_erl:ty()) -> ast:ty().
 trans_ty(Ctx, Env, Ty) ->
     case Ty of
@@ -182,14 +220,21 @@ trans_ty(Ctx, Env, Ty) ->
             {fun_full, trans_tys(Ctx, Env, ArgTys), trans_ty(Ctx, Env, ResTy)};
         {type, Anno, bounded_fun, _} ->
             errors:unsupported(to_loc(Ctx, Anno), "nested function types with constraints");
-        {type, _, range, [{'integer', _, X}, {'integer', _, Y}]} -> {range, X, Y};
+        {type, Anno, range, [T1, T2]} ->
+            Loc = to_loc(Ctx, Anno),
+            case {trans_ty(Ctx, Env, T1), trans_ty(Ctx, Env, T2)} of
+                {{singleton, I1}, {singleton, I2}} when is_integer(I1) andalso is_integer(I2) ->
+                    {range, I1, I2};
+                _ ->
+                    errors:ty_error("~s: Invalid range type type: ~w", [ast:format_loc(Loc), Ty])
+            end;
         {type, _, map, any} -> {map_any};
         {type, _, map, Assocs} ->
             {map, lists:map(fun(A) -> trans_ty_map_assoc(Ctx, Env, A) end, Assocs)};
         {op, Anno, _, _, _} ->
-            errors:unsupported(to_loc(Ctx, Anno), "binary operators in types");
+            eval_const_ty(Ty, to_loc(Ctx, Anno));
         {op, Anno, _, _} ->
-            errors:unsupported(to_loc(Ctx, Anno), "unary operators in types");
+            eval_const_ty(Ty, to_loc(Ctx, Anno));
         {type, _, record, [{'atom', _, Name} | Fields]} ->
             {record, Name,
              lists:map(fun ({type, _, field_type, [{'atom', _, FieldName}, FieldTy]}) ->
@@ -207,6 +252,8 @@ trans_ty(Ctx, Env, Ty) ->
             % FIXME: should we check whether the reference is valid?
             Loc = to_loc(Ctx, Anno),
             {named, Loc, {ref, Name, arity(Loc, ArgTys)}, trans_tys(Ctx, Env, ArgTys)};
+        {remote_type, Anno, [{'atom', _, ety}, {'atom', _, Name}, ArgTys]} ->
+            resolve_ety_ty(to_loc(Ctx, Anno), Name, trans_tys(Ctx, Env, ArgTys));
         {remote_type, Anno, [{'atom', _, Mod}, {'atom', _, Name}, ArgTys]} ->
             Loc = to_loc(Ctx, Anno),
             {named, Loc, {qref, Mod, Name, arity(Loc, ArgTys)}, trans_tys(Ctx, Env, ArgTys)};
@@ -239,6 +286,7 @@ trans_ty(Ctx, Env, Ty) ->
                                 _ ->
                                     case {Name, NewArgTys} of
                                         {bool, []} -> {predef_alias, boolean};
+                                        {dynamic, []} -> {predef, any}; % FIXME: for now (2023-08-14), we treat dynamic as any. This is wrong and must be fixed
                                         _ ->
                                             errors:bug("~s: Unhandled builtin type: ~w",
                                                        [ast:format_loc(Loc), Ty])
@@ -430,7 +478,7 @@ trans_exp(Ctx, Env, Exp) ->
             % The expression returned is 'case NewExp of ($X = Q) -> $x'
             % $X is not a valid erlang variable, so there is no danger of conflicting with
             % existing variables.
-            {MatchVar, NewEnv} = varenv_local:insert(list_to_atom("$X"), E2),
+            {MatchVar, NewEnv} = varenv_local:insert_fresh(E2),
             % ast:case_clause()
             Clause = {case_clause, Loc,
                       {match, Loc, {var, Loc, {local_bind, MatchVar}}, Q},
@@ -604,7 +652,7 @@ trans_pat(Ctx, Env, Pat, BindMode) ->
             case BindMode of
                 shadow ->
                     {Name, NewEnv} = varenv_local:insert(V, Env),
-                    ?LOG_DEBUG("Introducing new binding ~w at ~s", Name, ast:format_loc(Loc)),
+                    ?LOG_TRACE("Introducing new binding ~w at ~s", Name, ast:format_loc(Loc)),
                     {{var, Loc, {local_bind, Name}}, NewEnv};
                 no_bind ->
                     case varenv_local:find(V , Env) of
@@ -616,7 +664,7 @@ trans_pat(Ctx, Env, Pat, BindMode) ->
                         {ok, Name} -> {{var, Loc, {local_ref, Name}}, Env};
                         error ->
                             {Name, NewEnv} = varenv_local:insert(V, Env),
-                            ?LOG_DEBUG("Introducing new binding ~w at ~s", Name,
+                            ?LOG_TRACE("Introducing new binding ~w at ~s", Name,
                                        ast:format_loc(Loc)),
                             {{var, Loc, {local_bind, Name}}, NewEnv}
                     end
@@ -644,6 +692,7 @@ trans_case_clauses(_Ctx, Env, []) -> {[], Env};
 trans_case_clauses(Ctx, Env, Cs) ->
     {NewClauses, NewEnvs} =
         lists:unzip(lists:map(fun(C) -> trans_case_clause(Ctx, Env, C) end, Cs)),
+    ?LOG_TRACE("Merging envs: ~200p", NewEnvs),
     {NewClauses, varenv_local:merge_envs(NewEnvs)}.
 
 -spec trans_case_clause(ctx(), varenv_local:t(), ast_erl:case_clause())
@@ -654,7 +703,7 @@ trans_case_clause(Ctx, Env, C) ->
             {Q, QEnv} = trans_pat(Ctx, Env, Pat, bind_fresh),
             NewGuards = trans_guards(Ctx, QEnv, Guards),
             Loc = to_loc(Ctx, Anno),
-            ?LOG_DEBUG("Env for body of case clause at ~s: ~w", ast:format_loc(Loc), QEnv),
+            ?LOG_TRACE("Env for body of case clause at ~s: ~w", ast:format_loc(Loc), QEnv),
             {NewBody, NewEnv} = trans_exp_seq(Ctx, QEnv, Body),
             {{case_clause, Loc, Q, NewGuards, NewBody}, NewEnv};
         X -> errors:uncovered_case(?FILE, ?LINE, X)
@@ -744,7 +793,7 @@ trans_map_assocs(Ctx, Env, As) ->
                      -> {ast:map_assoc(), varenv_local:t()}.
 trans_map_assoc(Ctx, Env, Assoc) ->
     case Assoc of
-        {K, Anno, ExpKey, ExpVal} when (K == map_field_assoc orelse K == map_field_exakt) ->
+        {K, Anno, ExpKey, ExpVal} when (K == map_field_assoc orelse K == map_field_exact) ->
             {NewExpKey, Env1} = trans_exp(Ctx, Env, ExpKey),
             {NewExpVal, Env2} = trans_exp(Ctx, Env1, ExpVal),
             {{K, to_loc(Ctx, Anno), NewExpKey, NewExpVal}, Env2};
