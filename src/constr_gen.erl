@@ -4,11 +4,15 @@
 
 -export([
          gen_constrs_fun_group/2, gen_constrs_annotated_fun/3,
-         sanity_check/2,
-         % for tests
+         sanity_check/2
+        ]).
+
+-ifdef(TEST).
+-export([
          pat_guard_upper_lower/4,
          ty_of_pat/4
         ]).
+-endif.
 
 -compile([nowarn_shadow_vars]).
 
