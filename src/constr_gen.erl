@@ -3,24 +3,25 @@
 -include_lib("log.hrl").
 
 -export([
-         gen_constrs_fun_group/1, gen_constrs_annotated_fun/2,
+         gen_constrs_fun_group/2, gen_constrs_annotated_fun/3,
          sanity_check/2,
          % for tests
-         pat_guard_upper_lower/3,
-         ty_of_pat/3
+         pat_guard_upper_lower/4,
+         ty_of_pat/4
         ]).
 
 -compile([nowarn_shadow_vars]).
 
 -record(ctx,
-        { var_counter :: counters:counters_ref()
+        { var_counter :: counters:counters_ref(),
+          symtab :: symtab:t()
         }).
 -type ctx() :: #ctx{}.
 
--spec new_ctx() -> ctx().
-new_ctx() ->
+-spec new_ctx(symtab:t()) -> ctx().
+new_ctx(Symtab) ->
     Counter = counters:new(2, []),
-    Ctx = #ctx{ var_counter = Counter },
+    Ctx = #ctx{ var_counter = Counter, symtab = Symtab },
     Ctx.
 
 -spec fresh_tyvar(ctx()) -> ast:ty_var().
@@ -53,9 +54,9 @@ single(X) -> sets:from_list([X]).
 mk_locs(Label, X) -> {Label, single(X)}.
 
 % Inference for a group of mutually recursive functions without type annotations.
--spec gen_constrs_fun_group([ast:fun_decl()]) -> {constr:constrs(), constr:constr_env()}.
-gen_constrs_fun_group(Decls) ->
-    Ctx = new_ctx(),
+-spec gen_constrs_fun_group(symtab:t(), [ast:fun_decl()]) -> {constr:constrs(), constr:constr_env()}.
+gen_constrs_fun_group(Symtab, Decls) ->
+    Ctx = new_ctx(Symtab),
     lists:foldl(
       fun({function, L, Name, Arity, FunClauses}, {Cs, Env}) ->
               Exp = {'fun', L, no_name, FunClauses},
@@ -69,9 +70,9 @@ gen_constrs_fun_group(Decls) ->
 % This function is invoked for each branch of the intersection type in the type spec.
 % The idea is that we can give better error messages by pointing out which part of the
 % intersection did not type check.
--spec gen_constrs_annotated_fun(ast:ty_full_fun(), ast:fun_decl()) -> constr:constrs().
-gen_constrs_annotated_fun({fun_full, ArgTys, ResTy}, {function, L, Name, Arity, FunClauses}) ->
-    Ctx = new_ctx(),
+-spec gen_constrs_annotated_fun(symtab:t(), ast:ty_full_fun(), ast:fun_decl()) -> constr:constrs().
+gen_constrs_annotated_fun(Symtab, {fun_full, ArgTys, ResTy}, {function, L, Name, Arity, FunClauses}) ->
+    Ctx = new_ctx(Symtab),
     {Args, Body} = fun_clauses_to_exp(Ctx, L, FunClauses),
     if length(Args) =/= length(ArgTys) orelse length(Args) =/= Arity ->
             errors:ty_error(L, "Arity mismatch for function ~w", Name);
@@ -246,7 +247,7 @@ ty_without(T1, T2) -> ast_lib:mk_intersection([T1, ast_lib:mk_negation(T2)]).
 -spec case_clause_constrs(ctx(), ast:ty(), ast:exp(), ast:case_clause(), ast:ty())
                          -> {ast:ty(), ast:ty(), constr:constrs(), constr:constr_case_body()}.
 case_clause_constrs(Ctx, TyScrut, Scrut, {case_clause, L, Pat, Guards, Exps}, Beta) ->
-    {Upper, Lower} = pat_guard_upper_lower(Pat, Guards, Scrut),
+    {Upper, Lower} = pat_guard_upper_lower(Ctx#ctx.symtab, Pat, Guards, Scrut),
     Ti = ast_lib:mk_intersection([TyScrut, Upper]),
     {Ci0, Gamma0} = pat_env(Ctx, L, Ti, pat_of_exp(Scrut)),
     {Ci1, Gamma1} = pat_guard_env(Ctx, L, Ti, Pat, Guards),
@@ -266,15 +267,15 @@ case_clause_constrs(Ctx, TyScrut, Scrut, {case_clause, L, Pat, Guards, Exps}, Be
 
 
 % ⌊ p when g ⌋_e and ⌈ p when g ⌉_e
--spec pat_guard_upper_lower(ast:pat(), [ast:guard()], ast:exp()) -> {ast:ty(), ast:ty()}.
-pat_guard_upper_lower(P, Gs, E) ->
+-spec pat_guard_upper_lower(symtab:t(), ast:pat(), [ast:guard()], ast:exp()) -> {ast:ty(), ast:ty()}.
+pat_guard_upper_lower(Symtab, P, Gs, E) ->
     % Env has type constr:constr_env() = #{ast:any_ref() => ast:ty()}
     {Env, Status} = guard_seq_env(Gs),
     EPat = pat_of_exp(E),
-    UpperPatTy = ty_of_pat(Env, P, upper),
-    LowerPatTy = ty_of_pat(Env, P, lower),
-    UpperETy = ty_of_pat(Env, EPat, upper),
-    LowerETy = ty_of_pat(Env, EPat, lower),
+    UpperPatTy = ty_of_pat(Symtab, Env, P, upper),
+    LowerPatTy = ty_of_pat(Symtab, Env, P, lower),
+    UpperETy = ty_of_pat(Symtab, Env, EPat, upper),
+    LowerETy = ty_of_pat(Symtab, Env, EPat, lower),
     Upper = ast_lib:mk_intersection([UpperPatTy, UpperETy]),
     VarsOfGuards = sets:from_list(lists:filtermap(fun ast:local_varname_from_any_ref/1, maps:keys(Env))),
     BoundVars = sets:union(bound_vars_pat(P), bound_vars_pat(EPat)),
@@ -362,8 +363,8 @@ bound_vars_pat(P) ->
 %   matches.
 %   Example 1: the accepting type is nonempty_list(1).
 %   Example 2: the accepting type is none()
--spec ty_of_pat(constr:constr_env(), ast:pat(), upper | lower) -> ast:ty().
-ty_of_pat(Env, P, Mode) ->
+-spec ty_of_pat(symtab:t(), constr:constr_env(), ast:pat(), upper | lower) -> ast:ty().
+ty_of_pat(Symtab, Env, P, Mode) ->
     case P of
         {'atom', _L, A} -> {singleton, A};
         {'char', _L, C} -> {singleton, C};
@@ -372,14 +373,13 @@ ty_of_pat(Env, P, Mode) ->
         {'string', _L, _S} -> {predef_alias, string};
         {bin, L, _Elems} -> errors:unsupported(L, "bitstring patterns");
         {match, _L, P1, P2} ->
-            ast_lib:mk_intersection([ty_of_pat(Env, P1, Mode), ty_of_pat(Env, P2, Mode)]);
+            ast_lib:mk_intersection([ty_of_pat(Symtab, Env, P1, Mode), ty_of_pat(Symtab, Env, P2, Mode)]);
         {nil, _L} -> {empty_list};
         {cons, _L, P1, P2} ->
-            Symtab = symtab:empty(),  % FIXME: need to use a real symtab below?
             case Mode of
                 upper ->
-                    T1 = ty_of_pat(Env, P1, Mode),
-                    T2 = ty_of_pat(Env, P2, Mode),
+                    T1 = ty_of_pat(Symtab, Env, P1, Mode),
+                    T2 = ty_of_pat(Symtab, Env, P2, Mode),
                     case subty:is_subty(Symtab, T2, stdtypes:tempty_list()) of
                         true -> stdtypes:tnonempty_list(T1);
                         false ->
@@ -393,8 +393,8 @@ ty_of_pat(Env, P, Mode) ->
                             end
                     end;
                 lower ->
-                    T1 = {nonempty_list, ty_of_pat(Env, P1, Mode)},
-                    T2 = ty_of_pat(Env, P2, Mode),
+                    T1 = {nonempty_list, ty_of_pat(Symtab, Env, P1, Mode)},
+                    T2 = ty_of_pat(Symtab, Env, P2, Mode),
                     % FIXME: can we encode this choice as a type?
                     case subty:is_any(T2, Symtab) of
                         true -> T1;
@@ -402,15 +402,15 @@ ty_of_pat(Env, P, Mode) ->
                     end
             end;
         {op, _, '++', [P1, P2]} ->
-            ast_lib:mk_intersection([ty_of_pat(Env, P1, Mode), ty_of_pat(Env, P2, Mode),
+            ast_lib:mk_intersection([ty_of_pat(Symtab, Env, P1, Mode), ty_of_pat(Symtab, Env, P2, Mode),
                                  {predef_alias, string}]);
         {op, _, '-', [SubP]} ->
-            ast_lib:mk_intersection([ty_of_pat(Env, SubP, Mode), {predef_alias, number}]);
+            ast_lib:mk_intersection([ty_of_pat(Symtab, Env, SubP, Mode), {predef_alias, number}]);
         {op, L, Op, _} -> errors:unsupported(L, "operator ~w in patterns", Op);
         {map, L, _Assocs} -> errors:unsupported(L, "map patterns");
         {record, L, _Name, _Fields} -> errors:unsupported(L, "record patterns");
         {record_index, L, _Name, _Field} -> errors:unsupported(L, "record index patterns");
-        {tuple, _L, Ps} -> {tuple, lists:map(fun(P) -> ty_of_pat(Env, P, Mode) end, Ps)};
+        {tuple, _L, Ps} -> {tuple, lists:map(fun(P) -> ty_of_pat(Symtab, Env, P, Mode) end, Ps)};
         {wildcard, _L} -> {predef, any};
         {var, _L, {local_bind, V}} -> maps:get({local_ref, V}, Env, {predef, any});
         {var, _L, {local_ref, _V}} -> {predef, any} % we could probably do better here
