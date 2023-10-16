@@ -203,12 +203,12 @@ tally_10_test() ->
     LargeInter = tinter([V0, tnot(tinter([ttuple1(A), TupleAny])), ttuple1(B), TupleAny]),
     test_tally(
       [{tinter([V0, ttuple1(A), TupleAny]), ttuple1(V3)},
-       {tunion([tinter([ttuple1(A), TupleAny]), tinter([ttuple1(B), TupleAny])]), ttuple(V8)},
+       {tunion([tinter([ttuple1(A), TupleAny]), tinter([ttuple1(B), TupleAny])]), ttuple1(V8)},
        {ttuple1(V2), V0},
        {LargeInter, ttuple1(V8)},
        {LargeInter, ttuple1(V7)},
        {LargeInter, ttuple1(V6)},
-       {tinter([V0, ttuple1(A), TupleAny]), ttuple(V5)},
+       {tinter([V0, ttuple1(A), TupleAny]), ttuple1(V5)},
        {A, V2},
        {tinter([V0, ttuple1(A), TupleAny]), ttuple1(V4)}],
       [{#{}, #{}}]).
