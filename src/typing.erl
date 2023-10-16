@@ -262,16 +262,16 @@ check(Ctx, Decl = {function, Loc, Name, Arity, _}, PolyTy) ->
 % Checks a function against an alternative of an intersection type.
 -spec check_alt(ctx(), ast:fun_decl(), ast:ty_full_fun(), constr_simp:unmatched_branch_mode()) -> ok.
 check_alt(Ctx, Decl = {function, Loc, Name, Arity, _}, FunTy, BranchMode) ->
-    Cs = constr_gen:gen_constrs_annotated_fun(Ctx#ctx.symtab, FunTy, Decl),
-    case Ctx#ctx.sanity of
-        {ok, TyMap} -> constr_gen:sanity_check(Cs, TyMap);
-        error -> ok
-    end,
     ?LOG_INFO("Checking function ~w/~w at ~s against type ~s",
                Name,
                Arity,
                ast:format_loc(Loc),
                pretty:render_ty(FunTy)),
+    Cs = constr_gen:gen_constrs_annotated_fun(Ctx#ctx.symtab, FunTy, Decl),
+    case Ctx#ctx.sanity of
+        {ok, TyMap} -> constr_gen:sanity_check(Cs, TyMap);
+        error -> ok
+    end,
     ?LOG_DEBUG("Constraints:~n~s", pretty:render_constr(Cs)),
     Tab = Ctx#ctx.symtab,
     SimpCtx = constr_simp:new_ctx(Tab, #{}, Ctx#ctx.sanity, BranchMode),

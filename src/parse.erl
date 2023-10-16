@@ -73,9 +73,9 @@ parse_file_or_die(Path, Opts) ->
 -spec parse_transform(any(), any()) -> ok.
 parse_transform(Forms, _Opts) ->
     try
-        ?LOG_TRACE("Forms: ~p", [Forms]),
+        % ?LOG_TRACE("Forms: ~p", [Forms]),
         ets:insert(?TABLE, {?FORMS, Forms}),
-        ?LOG_TRACE("done with parse_transform"),
+        % ?LOG_TRACE("done with parse_transform"),
         Forms
     catch
         K:E ->
