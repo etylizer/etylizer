@@ -8,6 +8,9 @@
 
 tally(SymTab, Constraints) -> tally(SymTab, Constraints, sets:new()) .
 
+tally(SymTab, Constraints, FixedVars) ->
+  tally(SymTab, Constraints, FixedVars, fun() -> noop end).
+
 tally(_SymTab, Constraints, FixedVars, Order) ->
   ty_ref:reset(),
   ty_variable:reset(),
@@ -19,7 +22,7 @@ tally(_SymTab, Constraints, FixedVars, Order) ->
     lists:sort(fun({csubty, _, S, T}, {csubty, _, X, Y}) -> ({S, T}) < ({X, Y}) end,
       sets:to_list(Constraints))
   ),
-  InternalResult = etally:tally(InternalConstraints, sets:from_list([ast_lib:ast_to_erlang_ty_var({var, Var}) || Var <- (sets:to_list(FixedVars))])),
+  InternalResult = etally:tally(InternalConstraints, sets:from_list([ast_lib:ast_to_erlang_ty_var({var, Var}) || Var <- lists:sort(sets:to_list(FixedVars))])),
 %%  io:format(user, "Got Constraints ~n~p~n~p~n", [InternalConstraints, InternalResult]),
 
   X = case InternalResult of
@@ -31,7 +34,3 @@ tally(_SymTab, Constraints, FixedVars, Order) ->
           [maps:from_list([{VarName, ast_lib:erlang_ty_to_ast(Ty)} || {{var, _, VarName}, Ty} <- Subst]) || Subst <- InternalResult]
       end,
   X.
-
-
-tally(SymTab, Constraints, FixedVars) ->
-  tally(SymTab, Constraints, FixedVars, fun() -> noop end).

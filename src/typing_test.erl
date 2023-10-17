@@ -107,6 +107,8 @@ simple_test_() ->
     "foo2",
     "inter_03_fail",
     % TODO 14s
+    "fun_local_03",
+    % TODO 14s
     "fun_local_04"
             ],
   check_decls_in_file("test_files/tycheck_simple.erl",
