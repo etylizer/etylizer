@@ -9,19 +9,21 @@
                    tfloat/0, tfun2/3, tnot/1, tbool/0
                   ]).
 
--spec test_tally(list({ast:ty(), ast:ty()}), #{ atom() => ast:ty()}) -> ok.
-test_tally(ConstrList, ExpectedSubst) ->
-    test_tally(ConstrList, ExpectedSubst, []).
+-spec test_tally(any(), list({ast:ty(), ast:ty()}), #{ atom() => ast:ty()}) -> ok.
+test_tally(Order, ConstrList, ExpectedSubst) ->
+    test_tally(Order, ConstrList, ExpectedSubst, []).
 
--spec test_tally(list({ast:ty(), ast:ty()}), #{ atom() => ast:ty()}, [ast:ty_varname()]) -> ok.
-test_tally(_ConstrList, [], _FixedVars) -> ok;
-test_tally(ConstrList, AllTests, FixedVars) ->
+-spec test_tally(any(), list({ast:ty(), ast:ty()}), #{ atom() => ast:ty()}, [ast:ty_varname()]) -> ok.
+test_tally(_Order, _ConstrList, [], _FixedVars) -> ok;
+test_tally(Order, ConstrList, AllTests, FixedVars) ->
     Constrs = sets:from_list(
                 lists:map(
                   fun ({T, U}) -> {csubty, sets:from_list([ast:loc_auto()]), T, U} end,
                   ConstrList
                  )),
-  Res = tally:tally(symtab:empty(), Constrs, sets:from_list(FixedVars)),
+
+  OrderFun = fun() -> [ast_lib:ast_to_erlang_ty({var, X}) || X <- Order] end,
+  Res = tally:tally(symtab:empty(), Constrs, sets:from_list(FixedVars), OrderFun),
   find_subst(AllTests, Res, Res).
 
 find_subst([], [], _) -> ok;
@@ -48,7 +50,9 @@ find_subst(X = [{Low, High} | OtherTests], [Subst | Others], AllTally) ->
   end.
 
 tally_01_test() ->
-    test_tally([{tvar(alpha), tint()}],
+    test_tally(
+      [], %TODO
+      [{tvar(alpha), tint()}],
       [{
         #{ alpha => tnone()},
         #{ alpha => tint()}
@@ -56,7 +60,9 @@ tally_01_test() ->
     ).
 
 tally_02_test() ->
-    test_tally([{tint(), tvar(alpha)}],
+    test_tally(
+      [], %TODO
+      [{tint(), tvar(alpha)}],
       [{
         #{ alpha => tint()},
         #{ alpha => tany()}
@@ -64,7 +70,9 @@ tally_02_test() ->
     ).
 
 tally_03_test() ->
-  test_tally([
+  test_tally(
+    [], %TODO
+    [
     {ttuple([]), tvar(zero)},
     {tvar(zero), ttuple([])}
   ],
@@ -77,7 +85,9 @@ tally_03_test() ->
 tally_04_test() ->
     Alpha = tvar(alpha),
     Beta = tvar(beta),
-    test_tally([
+    test_tally(
+      [], % TODO
+      [
       {Alpha, ttuple1(tany())},
       {ttuple1(Beta), Alpha},
       {tint(), Beta}
@@ -91,7 +101,9 @@ tally_04_test() ->
 tally_05_test() ->
     Alpha = tvar(alpha),
     Beta = tvar(beta),
-    test_tally([
+    test_tally(
+      [], % TODO
+      [
       {tlist(Beta), Alpha}
     ],
       [{
@@ -106,6 +118,7 @@ tally_06_test() ->
     Alpha = tvar(alpha),
     Beta = tvar(beta),
     test_tally(
+      [], %TODO
       [{Beta, Alpha}],
       [{
         #{ alpha => Beta },
@@ -118,7 +131,9 @@ tally_06_test() ->
 tally_07_test() ->
   Alpha = tvar(alpha),
   Beta = tvar(beta),
-  test_tally([
+  test_tally(
+    [], %TODO
+    [
     {tlist(Beta), Alpha}
   ],
     [{
@@ -138,6 +153,7 @@ tally_08_test() ->
   OneOrTwo = tunion(tint(1), tint(2)),
   OneOrTwoRange = trange(1, 2),
   test_tally(
+    [], % TODO
     [
       {OneOrTwo, Alpha},
       {Beta, OneOrTwo},
@@ -168,6 +184,7 @@ tally_09_test() ->
     I = tint(),
     F = tfloat(),
     test_tally(
+      [], %TODO
       [{tinter([tfun2(I, I, I), tfun2(I, F, F), tfun2(F, I, F), tfun2(F, F, F)]), tfun2(Alpha, Beta, Gamma)},
        {tinter(I, tnot(OneOrTwo)), Alpha},
        {One, Beta},
@@ -202,6 +219,7 @@ tally_10_test() ->
     TupleAny = ttuple1(tany()),
     LargeInter = tinter([V0, tnot(tinter([ttuple1(A), TupleAny])), ttuple1(B), TupleAny]),
     test_tally(
+      [], %TODO
       [{tinter([V0, ttuple1(A), TupleAny]), ttuple1(V3)},
        {tunion([tinter([ttuple1(A), TupleAny]), tinter([ttuple1(B), TupleAny])]), ttuple1(V8)},
        {ttuple1(V2), V0},
@@ -235,6 +253,7 @@ tally_10_test() ->
 tally_issue_8_test() ->
   A0 = tvar(alpha0), A1 = tvar(alpha1), A2 = tvar(alpha2), A3 = tvar(alpha3), A4 = tvar(alpha4), A5 = tvar(alpha5), A6 = tvar(alpha6),
   test_tally(
+    [], %TODo
     [
       {tfun_full([A1], A2), A0},
       {A4, A2},
@@ -271,6 +290,7 @@ tally_issue_14_test() ->
   TupleAny = ttuple1(tany()),
   LargeInter = tinter([V0, tnot(tinter([ttuple1(A), TupleAny])), ttuple1(B), TupleAny]),
   test_tally(
+    [], %TODO
     [{tinter([V0, ttuple1(A), TupleAny]), ttuple1(V3)},
       {tunion([tinter([ttuple1(A), TupleAny]), tinter([ttuple1(B), TupleAny])]), ttuple1(V8)},
       {ttuple1(V2), V0},
@@ -311,7 +331,8 @@ tally_issue_14_test() ->
 % }]
 tally_foo2_test() ->
   % changing variable order might produce a different number of solutions
-  [ast_lib:ast_to_erlang_ty({var, X}) || X <- ['$0', '$1', '$2', '$3', '$4', '$5', '$6']],
+  Order = ['$0', '$1', '$2', '$3', '$4', '$5', '$6'],
+
   % (('a2, 42), 'a0)
   C1 = {{tuple,[{var,'$2'}, {singleton, tag}]},{var,'$0'}},
   % (`a, 'a2)
@@ -354,6 +375,7 @@ tally_foo2_test() ->
   },
 
   test_tally(
+    Order,
     [
       C1, C2, C3, C4, C5, C6, C7
     ],
@@ -371,6 +393,7 @@ tally_fun_cons_test() ->
   A4 = tvar(a4),
 
   test_tally(
+    [], %TODO
     [
       {tempty_list(), A1},
       {tempty_list(), A2},
@@ -383,9 +406,9 @@ tally_fun_cons_test() ->
     }]).
 
 tally_fun_cons3_test() ->
-  [ast_lib:ast_to_erlang_ty({var, X}) || X <- ['$2', '$0', '$3', '$4', '$1', 'a@0']],
 
   test_tally(
+    ['$2', '$0', '$3', '$4', '$1', 'a@0'],
     [
       {{empty_list},{var,'$3'}},
       {{var,'$0'},{intersection,[{tuple,[]},{tuple,[]}]}},
