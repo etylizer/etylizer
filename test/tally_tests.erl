@@ -429,3 +429,23 @@ tally_fun_cons3_test() ->
       #{ },
       #{ }
     }]).
+
+sol_number_test() ->
+  % changing variable order produces a different number of solutions
+
+  % ('a2, 42) <=  ('a1, 42)
+  C1 = { {tuple,[{var,'$2'}, {singleton, tag}]}, {tuple,[{var,'$1'}, {singleton, tag}]}},
+
+  % single solution variable order says
+  % 'a1 is replaced by 'a2 & 'mu1
+
+  % multiple solution variable order says
+  % EITHER    'a2 is empty
+  % OR        'a1 is replaced by 'a2 U 'mu1
+  % both tally results are equivalent
+
+  % variable order determines if a variable is used as a lower or upper bound for another variable
+  Order1 = ['$2', '$1'],
+  Order2 = ['$1', '$2'],
+  test_tally( Order1, [ C1 ], [ { #{}, #{} } ]),
+  test_tally( Order2, [ C1 ], [ { #{}, #{} }, { #{}, #{} } ]).
