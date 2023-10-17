@@ -87,7 +87,7 @@ traverse_and_check([CurrentFile | RemainingFiles], Symtab, SearchPath, Opts, Ind
         true ->
             ?LOG_INFO("Not type checking ~p as requested", CurrentFile);
         false ->
-            typing:check_forms(Ctx, Forms, Only)
+            typing:check_forms(Ctx, CurrentFile, Forms, Only)
     end,
     NewIndex = cm_index:insert(CurrentFile, Forms, Index),
     traverse_and_check(RemainingFiles, Symtab, SearchPath, Opts, NewIndex).

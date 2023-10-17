@@ -11,6 +11,7 @@
     file_get_lines/1, set_add_many/2, assert_no_error/1,
     replicate/2, unconsult/2,
     string_ends_with/2, shorten/2,
+    flatmap_flip/2, map_flip/2, with_index/1, with_index/2,
     mkdirs/1, hash_sha1/1, hash_file/1,
     list_uniq/1, lists_enumerate/1, lists_enumerate/2,
     with_default/2,
@@ -210,6 +211,21 @@ shorten([], _) -> {[], 0};
 shorten([X | Xs], N) ->
     {Short, ShortN} = shorten(Xs, N - 1),
     {[X | Short], ShortN + 1}.
+
+-spec flatmap_flip([A], fun((A) -> [B])) -> [B].
+flatmap_flip(L, F) -> lists:flatmap(F, L).
+
+-spec map_flip([A], fun((A) -> B)) -> [B].
+map_flip(L, F) -> lists:map(F, L).
+
+-spec with_index([A]) -> [{integer(), A}].
+with_index(L) -> with_index(0, L).
+
+-spec with_index(integer(), [A]) -> [{integer(), A}].
+with_index(Start, L) ->
+    {_, Rev} = lists:foldl(fun (X, {I, Acc}) -> {I + 1, [{I, X} | Acc]} end,
+                           {Start, []}, L),
+    lists:reverse(Rev).
 
 -spec mkdirs(filename:name()) -> ok | {error, string()}.
 mkdirs(D) ->

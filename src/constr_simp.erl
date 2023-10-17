@@ -102,7 +102,13 @@ simp_constr(Ctx, C) ->
                                pretty:render_constr(Dss)),
                     Substs =
                         lists:flatmap(
-                          fun(Ds) -> get_substs(tally:tally(Ctx#ctx.symtab, Ds, FreeSet), Locs) end,
+                          fun(Ds) ->
+                                  ?LOG_DEBUG("Invoking tally while simplifying constraints. " ++
+                                                 "FreeSet=~w, Constraints:~n~s",
+                                             sets:to_list(FreeSet),
+                                             pretty:render_constr(Ds)),
+                                  get_substs(tally:tally(Ctx#ctx.symtab, Ds, FreeSet), Locs)
+                          end,
                           Dss),
                     ?LOG_TRACE("Env=~s, FreeSet=~200p", pretty:render_poly_env(Ctx#ctx.env),
                                sets:to_list(FreeSet)),
@@ -120,9 +126,11 @@ simp_constr(Ctx, C) ->
                               % returns [constr:simp_constrs()]
                               lists:foldl(
                                 % returns [constr:simp_constrs()]
-                                fun({BodyLocs, GammaI, GuardCsI, BodyCsI, TI}, BeforeDss) ->
-                                        NewCtx = extend_env(Ctx, apply_subst_to_env(Subst, GammaI)),
-                                        GuardDss = simp_constrs(NewCtx, GuardCsI),
+                                fun({BodyLocs, {GuardsGammaI, GuardCsI}, {BodyGammaI, BodyCsI}, TI}, BeforeDss) ->
+                                        NewGuardsCtx =
+                                            extend_env(Ctx,
+                                                       apply_subst_to_env(Subst, GuardsGammaI)),
+                                        GuardDss = simp_constrs(NewGuardsCtx, GuardCsI),
                                         MatchTy = subst:apply(Subst, TI),
                                         IsBottom = subty:is_subty(Ctx#ctx.symtab,
                                                                   MatchTy,
@@ -140,7 +148,10 @@ simp_constr(Ctx, C) ->
                                                            pretty:render_ty(MatchTy),
                                                            pretty:render_ty(TI)
                                                           ),
-                                                BodyDss = simp_constrs(NewCtx, BodyCsI),
+                                                NewBodyCtx =
+                                                    extend_env(Ctx,
+                                                               apply_subst_to_env(Subst, BodyGammaI)),
+                                                BodyDss = simp_constrs(NewBodyCtx, BodyCsI),
                                                 cross_union(cross_union(BeforeDss, GuardDss), BodyDss)
                                         end
                                 end,
@@ -153,12 +164,11 @@ simp_constr(Ctx, C) ->
                     % FIXME: we miss an invocation of tally to get an substitution that we can apply to GammaI
                     % NOTE: there is some code duplication with respect to the ignore_branch case
                     lists:foldl(
-                      fun({_BodyLoc, GammaI, GuardCsI, BodyCsI, _TI}, BeforeDss) ->
+                      fun({_BodyLoc, {GuardsGammaI, GuardCsI}, {BodyGammI, BodyCsI}, _TI}, BeforeDss) ->
                               % returns [constr:simp_constrs()]
                               % FIXME: we need to return the matching type TI
-                              NewCtx = extend_env(Ctx, GammaI),
-                              GuardDss = simp_constrs(NewCtx, GuardCsI),
-                              BodyDss = simp_constrs(NewCtx, BodyCsI),
+                              GuardDss = simp_constrs(extend_env(Ctx, GuardsGammaI), GuardCsI),
+                              BodyDss = simp_constrs(extend_env(Ctx, BodyGammI), BodyCsI),
                               cross_union(cross_union(BeforeDss, GuardDss), BodyDss)
                       end,
                       Dss, Bodies

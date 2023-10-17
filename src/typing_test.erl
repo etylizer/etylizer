@@ -18,26 +18,37 @@ check_ok_fun(Filename, Tab, Decl = {function, L, Name, Arity, _}, Ty) ->
                       [ast:format_loc(L), Name, Arity, Filename, Msg]),
             ?assert(false)
     end,
-    % FIXME: activate once the FIXME in typing:infer has been removed
-    %[{_, InferredTy}] =
-    %    try
-    %        typing:infer([Decl], Tab)
-    %    catch
-    %        throw:{ety, ty_error, Msg2} ->
-    %            io:format("~s: Type checking ~w/~w in ~s failed but should succeed: ~s",
-    %                  [ast:format_loc(L), Name, Arity, Filename, Msg2]),
-    %            ?assert(false)
-    %    end,
-    % FIXME: activate once more_general is working. This requires a working tally/3
-    % case typing:more_general(InferredTy, Ty, Tab) of
-    %     true -> ok;
-    %     false ->
-    %         io:format(
-    %           "~s: Inferred type ~w for function ~w/~w in ~s is not more general than type ~w from spec",
-    %           [ast:format_loc(L), InferredTy, Name, Arity, Filename, Ty]),
-    %         ?assert(false)
-    % end,
     ok.
+%    % Check that the inffered type is more general then the type in the spec
+%    Envs =
+%       try
+%           typing:infer(Ctx, [Decl])
+%       catch
+%           throw:{ety, ty_error, Msg2} ->
+%               io:format("~s: Type checking ~w/~w in ~s failed but should succeed: ~s",
+%                     [ast:format_loc(L), Name, Arity, Filename, Msg2]),
+%               ?assert(false)
+%       end,
+%    InferredTy =
+%        case Envs of
+%            [Env] ->
+%                case maps:to_list(Env) of
+%                    [{_, T}] -> T;
+%                    _ -> io:format("Type map with more than one entry", []),
+%                         ?assert(false)
+%                end;
+%            L -> io:format("List of maps with ~w elements", [length(L)]),
+%                 ?assert(false)
+%        end,
+%    case typing:more_general(InferredTy, Ty, Tab) of
+%        true -> ok;
+%        false ->
+%            io:format(
+%              "~s: Inferred type ~w for function ~w/~w in ~s is not more general than type ~w from spec",
+%              [ast:format_loc(L), InferredTy, Name, Arity, Filename, Ty]),
+%            ?assert(false)
+%    end,
+%    ok.
 
 -spec check_fail_fun(string(), symtab:t(), ast:fun_decl(), ast:ty_scheme()) -> ok.
 check_fail_fun(Filename, Tab, Decl = {function, L, Name, Arity, _}, Ty) ->
@@ -68,14 +79,14 @@ check_decls_in_file(F, What) ->
         case should_run(NameStr, What) of
           true ->
             TestCases ++ [
-              {NameStr, fun() ->
+              {timeout, 30, {NameStr, fun() ->
                 ?LOG_NOTE("Type checking ~s from ~s", NameStr, F),
                 Ty = symtab:lookup_fun({ref, Name, Arity}, Loc, Tab),
                 case utils:string_ends_with(NameStr, "_fail") of
                   true -> check_fail_fun(F, Tab, Decl, Ty);
                   false -> check_ok_fun(F, Tab, Decl, Ty)
                 end
-              end}
+              end}}
             ];
           false -> TestCases
         end;
