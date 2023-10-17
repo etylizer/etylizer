@@ -1,10 +1,8 @@
 -module(ty_variable).
 
 % ETS table is used to strict monotonically increment a variable ID counter
--on_load(setup_ets/0).
--export([setup_ets/0, setup_all/0]).
+-export([setup_all/0, reset/0]).
 -define(VAR_ETS, variable_counter_ets_table).
-
 
 -export([equal/2, compare/2]).
 
@@ -14,20 +12,13 @@
 -record(var, {id, name}).
 -type var() :: #var{id :: integer(), name :: string()}.
 
+reset() ->
+  catch ets:delete(?VAR_ETS),
+  setup_all().
+
 setup_all() ->
   ets:new(?VAR_ETS, [public, named_table]),
   ets:insert(?VAR_ETS, {variable_id, 0}).
-
--spec setup_ets() -> ok.
-setup_ets() ->
-  spawn(fun() ->
-    catch(begin
-    % spawns a new process that is the owner of the variable id ETS table
-          setup_all(),
-    receive _ -> ok end
-          end)
-        end),
-  ok.
 
 -spec equal(var(), var()) -> boolean().
 equal(Var1, Var2) -> compare(Var1, Var2) =:= 0.

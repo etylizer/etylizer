@@ -79,7 +79,7 @@ check_decls_in_file(F, What) ->
         case should_run(NameStr, What) of
           true ->
             TestCases ++ [
-              {timeout, 30, {NameStr, fun() ->
+              {timeout, 10, {NameStr, fun() ->
                 ?LOG_NOTE("Type checking ~s from ~s", NameStr, F),
                 Ty = symtab:lookup_fun({ref, Name, Arity}, Loc, Tab),
                 case utils:string_ends_with(NameStr, "_fail") of
@@ -106,14 +106,8 @@ simple_test_() ->
     % FIXME #36 impossible branches
     "foo2",
     "inter_03_fail",
-    % TODO 11s
-    "fun_local_02",
-    % TODO 7s
-    "fun_local_03",
-    % TODO 23s
-    "fun_local_04",
-    % TODO 4s
-    "inter_01", "inter_02"
+    % TODO 14s
+    "fun_local_04"
             ],
   check_decls_in_file("test_files/tycheck_simple.erl",
                       {exclude, sets:from_list(WhatNot)}).
