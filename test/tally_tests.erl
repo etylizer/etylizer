@@ -437,7 +437,7 @@ sol_number_test() ->
   C1 = { {tuple,[{var,'$2'}, {singleton, tag}]}, {tuple,[{var,'$1'}, {singleton, tag}]}},
 
   % single solution variable order says
-  % 'a1 is replaced by 'a2 & 'mu1
+  % 'a2 is replaced by 'a1 & 'mu1
 
   % multiple solution variable order says
   % EITHER    'a2 is empty
