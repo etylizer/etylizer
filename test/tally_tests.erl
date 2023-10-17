@@ -206,6 +206,7 @@ tally_09_test() ->
     ).
 
 tally_10_test() ->
+    Order = [v2, v0, v8, v7, v6, v5, v4, v3],
     V0 = tvar(v0),
     V2 = tvar(v2),
     V3 = tvar(v3),
@@ -219,7 +220,7 @@ tally_10_test() ->
     TupleAny = ttuple1(tany()),
     LargeInter = tinter([V0, tnot(tinter([ttuple1(A), TupleAny])), ttuple1(B), TupleAny]),
     test_tally(
-      [], %TODO
+      Order, %TODO
       [{tinter([V0, ttuple1(A), TupleAny]), ttuple1(V3)},
        {tunion([tinter([ttuple1(A), TupleAny]), tinter([ttuple1(B), TupleAny])]), ttuple1(V8)},
        {ttuple1(V2), V0},
@@ -277,6 +278,7 @@ tally_issue_8_test() ->
 
 
 tally_issue_14_test() ->
+  Order = [v2, v0, v8, v7, v6, v5, v4, v3],
   V0 = tvar(v0),
   V2 = tvar(v2),
   V3 = tvar(v3),
@@ -290,7 +292,7 @@ tally_issue_14_test() ->
   TupleAny = ttuple1(tany()),
   LargeInter = tinter([V0, tnot(tinter([ttuple1(A), TupleAny])), ttuple1(B), TupleAny]),
   test_tally(
-    [], %TODO
+    Order,
     [{tinter([V0, ttuple1(A), TupleAny]), ttuple1(V3)},
       {tunion([tinter([ttuple1(A), TupleAny]), tinter([ttuple1(B), TupleAny])]), ttuple1(V8)},
       {ttuple1(V2), V0},
