@@ -79,14 +79,14 @@ check_decls_in_file(F, What) ->
         case should_run(NameStr, What) of
           true ->
             TestCases ++ [
-              {NameStr, fun() ->
+              {timeout, 30, {NameStr, fun() ->
                 ?LOG_NOTE("Type checking ~s from ~s", NameStr, F),
                 Ty = symtab:lookup_fun({ref, Name, Arity}, Loc, Tab),
                 case utils:string_ends_with(NameStr, "_fail") of
                   true -> check_fail_fun(F, Tab, Decl, Ty);
                   false -> check_ok_fun(F, Tab, Decl, Ty)
                 end
-              end}
+              end}}
             ];
           false -> TestCases
         end;

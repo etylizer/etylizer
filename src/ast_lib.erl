@@ -135,7 +135,7 @@ ast_to_erlang_ty({binary, _, _}) ->
 
 ast_to_erlang_ty({tuple_any}) ->
     ty_rec:tuple();
-ast_to_erlang_ty({tuple, Comps}) ->
+ast_to_erlang_ty({tuple, Comps}) when is_list(Comps)->
     ETy = lists:map(fun(T) -> ast_to_erlang_ty(T) end, Comps),
 
     T = dnf_var_ty_tuple:tuple(dnf_ty_tuple:tuple(ty_tuple:tuple(ETy))),
@@ -200,8 +200,7 @@ ast_to_erlang_ty({intersection, [A|T]}) -> ty_rec:intersect(ast_to_erlang_ty(A),
 ast_to_erlang_ty({negation, Ty}) -> ty_rec:negate(ast_to_erlang_ty(Ty));
 
 ast_to_erlang_ty(T) ->
-    logger:error("Norm not implemented for~n~p", [T]),
-    erlang:error("Norm not implemented, see error log").
+    erlang:error({"Norm not implemented or malformed type", T}).
 
 ast_to_erlang_ty_var({var, Name}) when is_atom(Name) ->
     maybe_new_variable(Name).
