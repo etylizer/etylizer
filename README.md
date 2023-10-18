@@ -6,7 +6,23 @@ Static typechecker for Erlang based on set-theoretic types.
 
 ## User-level documentation
 
-Yet to come...
+* `make` will generate a standalone portable escript called `ety` inside the directory
+  `_build/default/bin`
+* `./ety -h` for help
+* To check a single module file `hello.erl` execute 
+    ./ety hello.erl
+* To check a rebar project `hello.erl`
+    * put `ety` inside the root
+    * compile the project (e.g. `rebar3 compile`)
+    * execute `./ety -P . -S src`
+
+Useful for debugging:
+
+    ./ety hello.erl --force -l debug -o foo1/1
+
+* type checks only the function `foo/1` (`-o`) with additional debug information
+  (`-l`)
+* disables caching of results, i.e. force type checking (`--force`)
 
 ## Developer documentation
 
