@@ -9,8 +9,7 @@ Static typechecker for Erlang based on set-theoretic types.
 * `make` will generate a standalone portable escript called `ety` inside the directory
   `_build/default/bin`
 * `./ety -h` for help
-* To check a single module file `hello.erl` execute 
-    ./ety hello.erl
+* To check a single module file `hello.erl` execute `./ety hello.erl`
 * To check a rebar project `hello.erl`
     * put `ety` inside the root
     * compile the project (e.g. `rebar3 compile`)
