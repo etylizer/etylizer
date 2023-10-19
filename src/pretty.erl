@@ -16,6 +16,7 @@
          render_constr/1,
          render_substs/1,
          render_subst/1,
+         render_mono_env/1,
          render_poly_env/1,
          render_fun_env/1,
          render_any_ref/1,
@@ -97,6 +98,9 @@ render_subst(S) -> render(subst(S)).
 
 -spec render_poly_env(constr:constr_poly_env()) -> string().
 render_poly_env(S) -> render(poly_env(S)).
+
+-spec render_mono_env(constr:constr_poly_env()) -> string().
+render_mono_env(S) -> render(mono_env(S)).
 
 -spec render_fun_env(symtab:fun_env()) -> string().
 render_fun_env(S) -> render(fun_env(S)).
@@ -346,6 +350,18 @@ poly_env(Env) ->
 
 -spec fun_env(symtab:fun_env()) -> doc().
 fun_env(Env) -> poly_env(Env).
+
+-spec mono_env(constr:constr_env()) -> doc().
+mono_env(Env) ->
+    Elems =
+        lists:map(
+          fun({Ref, T}) ->
+                 beside(ref(Ref),
+                        text(" => "),
+                        ty(T))
+          end,
+          maps:to_list(Env)),
+    brackets(comma_sep(Elems)).
 
 -spec render_list(fun((T) -> doc()), list(T)) -> string().
 render_list(Fun, L) ->

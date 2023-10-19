@@ -4,7 +4,8 @@
 
 -export([
     simp_constrs/2,
-    new_ctx/4
+    new_ctx/4,
+    sanity_check/2
 ]).
 
 -export_type([unmatched_branch_mode/0]).
@@ -126,7 +127,7 @@ simp_constr(Ctx, C) ->
                 fun(_, Dss) ->
                     FreeSet = tyutils:free_in_poly_env(Ctx#ctx.env),
                     ?LOG_DEBUG("Checking which branches of case at ~s should be ignored.~n" ++
-                               "Env: ~s~nFixed tyvars: ~w~nConstraints for scrutiny:~n~s",
+                               "Env: ~s~nFixed tyvars: ~w~nConstraints for scrutiny/exhaustiveness check:~n~s",
                                ast:format_loc(loc(Locs)),
                                pretty:render_poly_env(Ctx#ctx.env),
                                sets:to_list(FreeSet),
@@ -203,6 +204,7 @@ simp_constr(Ctx, C) ->
                         end,
                         Substs
                     ),
+                    ?LOG_TRACE("MultiResults: ~w", MultiResults),
                     case lists:filtermap(
                         fun({simp_constrs_ok, X}) -> {true, X};
                             (_) -> false
@@ -218,7 +220,8 @@ simp_constr(Ctx, C) ->
                                     % MultiResults is empty, there is no substitution,
                                     % so the tally invocation for typing the scrutiny above failed.
                                     % Hence, we return an error
-                                    ?LOG_DEBUG("MultiResults is empty "),
+                                    ?LOG_DEBUG("MultiResults is empty, checking whether typing the scrutiny or the exhaustiveness check fails."),
+                                    ?LOG_DEBUG("Solving constraints for scrutiny: ~s", pretty:render_constr(CsScrut)),
                                     simp_constrs_if_ok(
                                         simp_constrs(Ctx, CsScrut),
                                         fun(_, DsScrutList) ->
@@ -232,6 +235,7 @@ simp_constr(Ctx, C) ->
                                                     LocScrut = loc(locs_from_constrs(CsScrut), loc(Locs)),
                                                     {simp_constrs_error, {tyerror, LocScrut}};
                                                 _ ->
+                                                    ?LOG_DEBUG("Typing the scrutiny succeed, so it's a non-exhaustive case"),
                                                     {simp_constrs_error, {non_exhaustive_case, loc(Locs)}}
                                             end
                                         end);
@@ -299,6 +303,7 @@ locs_from_constrs(Cs) ->
                     {cvar, {_, Locs}, _, _} -> Locs;
                     {cop, {_, Locs}, _, _, _} -> Locs;
                     {cdef, {_, Locs}, _, _} -> Locs;
+                    {ccase, {_, Locs}, _, _, _} -> Locs;
                     {cunsatisfiable, L, _} -> sets:from_list([L])
                 end
             end, sets:to_list(Cs))
@@ -336,6 +341,9 @@ extend_env(Ctx, Env) ->
     PolyEnv =
         maps:map(fun(_Key, T) -> {ty_scheme, [], T} end, Env),
     NewEnv = maps:merge(Ctx#ctx.env, PolyEnv), % values from the second parameter have precedence
+    ?LOG_TRACE("extend_env(~s, ~s) = ~s", pretty:render_poly_env(Ctx#ctx.env),
+        pretty:render_mono_env(Env),
+    pretty:render_poly_env(NewEnv)),
     Ctx#ctx { env = NewEnv }.
 
 -spec apply_subst_to_env(subst:t(), constr:constr_env()) -> constr:constr_env().
