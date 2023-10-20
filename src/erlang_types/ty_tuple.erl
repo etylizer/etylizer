@@ -34,7 +34,7 @@ big_intersect([X | Y]) ->
         {ty_tuple, Dim, [ty_rec:intersect(S, T) || {S, T} <- lists:zip(Refs, Refs2)]}
                 end, X, Y).
 
-substitute(_MkTy, {ty_tuple, Dim, Refs}, Map, Memo) ->
+substitute(_MkTy, {ty_tuple, _Dim, Refs}, Map, Memo) ->
     NewS = lists:map(fun(E) -> ty_rec:substitute(E, Map, Memo) end, Refs),
     tuple(NewS).
 
