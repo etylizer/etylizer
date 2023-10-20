@@ -11,6 +11,7 @@
 check_ok_fun(Filename, Tab, Decl = {function, L, Name, Arity, _}, Ty) ->
     Ctx = typing:new_ctx(Tab, error),
     try
+      io:format(user, "Testing ~p~n", [Name]),
         typing:check(Ctx, Decl, Ty)
     catch
         throw:{ety, ty_error, Msg} ->
@@ -106,10 +107,14 @@ simple_test_() ->
     % FIXME #36 impossible branches
     "foo2",
     "inter_03_fail",
-    % TODO 14s
+    % TODO 11s
+    "fun_local_02",
+    % TODO 7s
     "fun_local_03",
-    % TODO 14s
-    "fun_local_04"
+    % TODO 23s
+    "fun_local_04",
+    % TODO 4s
+    "inter_01", "inter_02"
             ],
   check_decls_in_file("test_files/tycheck_simple.erl",
                       {exclude, sets:from_list(WhatNot)}).
