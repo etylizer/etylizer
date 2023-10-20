@@ -96,7 +96,9 @@ is_subtype(S, T) ->
     Symtab = symtab:empty(),
     subty:is_subty(Symtab, S, T).
 
+-spec reset_ets() -> ok.
 reset_ets() ->
     ty_ref:reset(),
     ty_variable:reset(),
-    ast_lib:reset().
+    ast_lib:reset(),
+    ok.
