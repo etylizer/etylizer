@@ -11,7 +11,6 @@
 check_ok_fun(Filename, Tab, Decl = {function, L, Name, Arity, _}, Ty) ->
     Ctx = typing:new_ctx(Tab, error),
     try
-      io:format(user, "Testing ~p~n", [Name]),
         typing:check(Ctx, Decl, Ty)
     catch
         throw:{ety, ty_error, Msg} ->
