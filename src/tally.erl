@@ -31,12 +31,11 @@ tally(_SymTab, Constraints, FixedVars, Order) ->
   InternalResult = etally:tally(InternalConstraints, sets:from_list([ast_lib:ast_to_erlang_ty_var({var, Var}) || Var <- lists:sort(sets:to_list(FixedVars))])),
 %%  io:format(user, "Got Constraints ~n~p~n~p~n", [InternalConstraints, InternalResult]),
 
-  X = case InternalResult of
+  case InternalResult of
         {error, []} ->
           {error, []};
         _ ->
           % transform to subst:t()
           % TODO sanity variable Id == variable name
           [maps:from_list([{VarName, ast_lib:erlang_ty_to_ast(Ty)} || {{var, _, VarName}, Ty} <- Subst]) || Subst <- InternalResult]
-      end,
-  X.
+  end.
