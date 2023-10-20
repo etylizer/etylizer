@@ -51,7 +51,7 @@ find_subst(X = [{Low, High} | OtherTests], [Subst | Others], AllTally) ->
 
 tally_01_test() ->
     test_tally(
-      [], %TODO
+      [alpha],
       [{tvar(alpha), tint()}],
       [{
         #{ alpha => tnone()},
@@ -61,7 +61,7 @@ tally_01_test() ->
 
 tally_02_test() ->
     test_tally(
-      [], %TODO
+      [alpha],
       [{tint(), tvar(alpha)}],
       [{
         #{ alpha => tint()},
@@ -71,7 +71,7 @@ tally_02_test() ->
 
 tally_03_test() ->
   test_tally(
-    [], %TODO
+    [zero],
     [
     {ttuple([]), tvar(zero)},
     {tvar(zero), ttuple([])}
@@ -86,7 +86,7 @@ tally_04_test() ->
     Alpha = tvar(alpha),
     Beta = tvar(beta),
     test_tally(
-      [], % TODO
+      [alpha, beta],
       [
       {Alpha, ttuple1(tany())},
       {ttuple1(Beta), Alpha},
@@ -102,7 +102,7 @@ tally_05_test() ->
     Alpha = tvar(alpha),
     Beta = tvar(beta),
     test_tally(
-      [], % TODO
+      [beta, alpha],
       [
       {tlist(Beta), Alpha}
     ],
@@ -118,7 +118,7 @@ tally_06_test() ->
     Alpha = tvar(alpha),
     Beta = tvar(beta),
     test_tally(
-      [], %TODO
+      [beta, alpha],
       [{Beta, Alpha}],
       [{
         #{ alpha => Beta },
@@ -132,7 +132,7 @@ tally_07_test() ->
   Alpha = tvar(alpha),
   Beta = tvar(beta),
   test_tally(
-    [], %TODO
+    [beta, alpha],
     [
     {tlist(Beta), Alpha}
   ],
@@ -153,7 +153,7 @@ tally_08_test() ->
   OneOrTwo = tunion(tint(1), tint(2)),
   OneOrTwoRange = trange(1, 2),
   test_tally(
-    [], % TODO
+    [alpha, beta],
     [
       {OneOrTwo, Alpha},
       {Beta, OneOrTwo},
@@ -184,7 +184,7 @@ tally_09_test() ->
     I = tint(),
     F = tfloat(),
     test_tally(
-      [], %TODO
+      [delta, beta, alpha, gamma],
       [{tinter([tfun2(I, I, I), tfun2(I, F, F), tfun2(F, I, F), tfun2(F, F, F)]), tfun2(Alpha, Beta, Gamma)},
        {tinter(I, tnot(OneOrTwo)), Alpha},
        {One, Beta},
@@ -220,7 +220,7 @@ tally_10_test() ->
     TupleAny = ttuple1(tany()),
     LargeInter = tinter([V0, tnot(tinter([ttuple1(A), TupleAny])), ttuple1(B), TupleAny]),
     test_tally(
-      Order, %TODO
+      Order,
       [{tinter([V0, ttuple1(A), TupleAny]), ttuple1(V3)},
        {tunion([tinter([ttuple1(A), TupleAny]), tinter([ttuple1(B), TupleAny])]), ttuple1(V8)},
        {ttuple1(V2), V0},
@@ -254,7 +254,7 @@ tally_10_test() ->
 tally_issue_8_test() ->
   A0 = tvar(alpha0), A1 = tvar(alpha1), A2 = tvar(alpha2), A3 = tvar(alpha3), A4 = tvar(alpha4), A5 = tvar(alpha5), A6 = tvar(alpha6),
   test_tally(
-    [], %TODo
+    [alpha4,alpha6,alpha1,alpha2,alpha0,alpha3,alpha5],
     [
       {tfun_full([A1], A2), A0},
       {A4, A2},
@@ -395,7 +395,7 @@ tally_fun_cons_test() ->
   A4 = tvar(a4),
 
   test_tally(
-    [], %TODO
+    [a2, a1, a3, a4],
     [
       {tempty_list(), A1},
       {tempty_list(), A2},
