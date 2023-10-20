@@ -2,9 +2,12 @@
 
 -export([
   tally/2,
-  tally/3,
-  tally/4
+  tally/3
 ]).
+
+-ifdef(TEST).
+-export([tally/4]). % extra tally function used to specify variable order to ensure a deterministic number of solutions
+-endif.
 
 tally(SymTab, Constraints) -> tally(SymTab, Constraints, sets:new()) .
 
@@ -12,9 +15,12 @@ tally(SymTab, Constraints, FixedVars) ->
   tally(SymTab, Constraints, FixedVars, fun() -> noop end).
 
 tally(_SymTab, Constraints, FixedVars, Order) ->
+  % reset the global cache, will be fixed in the future
   ty_ref:reset(),
   ty_variable:reset(),
   ast_lib:reset(),
+  % the order is a function which is executed here
+  % it essentially should instantiate the type variable by name via ast_lib:ast_to_erlang_ty once to fix the order
   Order(),
 
   InternalConstraints = lists:map(
