@@ -183,34 +183,49 @@ function() ->
 
 -spec intersect(ty_ref(), ty_ref()) -> ty_ref().
 intersect(TyRef1, TyRef2) ->
-  #ty{predef = P1, atom = A1, interval = I1, list = L1, tuple = T1, function = F1} = ty_ref:load(TyRef1),
-  #ty{predef = P2, atom = A2, interval = I2, list = L2, tuple = T2, function = F2} = ty_ref:load(TyRef2),
-  ty_ref:store(#ty{
-    predef = dnf_var_predef:intersect(P1, P2),
-    atom = dnf_var_ty_atom:intersect(A1, A2),
-    interval = dnf_var_int:intersect(I1, I2),
-    list = dnf_var_ty_list:intersect(L1, L2),
-    tuple = multi_intersect(T1, T2),
-    function = multi_intersect_fun(F1, F2)
-  }).
+  ty_ref:op_cache(intersect, {TyRef1, TyRef2},
+    fun() ->
+      #ty{predef = P1, atom = A1, interval = I1, list = L1, tuple = T1, function = F1} = ty_ref:load(TyRef1),
+      #ty{predef = P2, atom = A2, interval = I2, list = L2, tuple = T2, function = F2} = ty_ref:load(TyRef2),
+      ty_ref:store(#ty{
+        predef = dnf_var_predef:intersect(P1, P2),
+        atom = dnf_var_ty_atom:intersect(A1, A2),
+        interval = dnf_var_int:intersect(I1, I2),
+        list = dnf_var_ty_list:intersect(L1, L2),
+        tuple = multi_intersect(T1, T2),
+        function = multi_intersect_fun(F1, F2)
+      })
+    end
+    ).
 
 -spec negate(ty_ref()) -> ty_ref().
 negate(TyRef1) ->
-   #ty{predef = P1, atom = A1, interval = I1, list = L1, tuple = {DT, T}, function = {DF, F}} = ty_ref:load(TyRef1),
-  ty_ref:store(#ty{
-    predef = dnf_var_predef:negate(P1),
-    atom = dnf_var_ty_atom:negate(A1),
-    interval = dnf_var_int:negate(I1),
-    list = dnf_var_ty_list:negate(L1),
-    tuple = {dnf_var_ty_tuple:negate(DT), maps:map(fun(_K,V) -> dnf_var_ty_tuple:negate(V) end, T)},
-    function = {dnf_var_ty_function:negate(DF), maps:map(fun(_K,V) -> dnf_var_ty_function:negate(V) end, F)}
-  }).
+  ty_ref:op_cache(negate, {TyRef1},
+    fun() ->
+      #ty{predef = P1, atom = A1, interval = I1, list = L1, tuple = {DT, T}, function = {DF, F}} = ty_ref:load(TyRef1),
+      ty_ref:store(#ty{
+        predef = dnf_var_predef:negate(P1),
+        atom = dnf_var_ty_atom:negate(A1),
+        interval = dnf_var_int:negate(I1),
+        list = dnf_var_ty_list:negate(L1),
+        tuple = {dnf_var_ty_tuple:negate(DT), maps:map(fun(_K,V) -> dnf_var_ty_tuple:negate(V) end, T)},
+        function = {dnf_var_ty_function:negate(DF), maps:map(fun(_K,V) -> dnf_var_ty_function:negate(V) end, F)}
+      })
+    end).
 
 -spec diff(ty_ref(), ty_ref()) -> ty_ref().
-diff(A, B) -> intersect(A, negate(B)).
+diff(A, B) ->
+  ty_ref:op_cache(diff, {A, B},
+    fun() ->
+      intersect(A, negate(B))
+    end).
 
 -spec union(ty_ref(), ty_ref()) -> ty_ref().
-union(A, B) -> negate(intersect(negate(A), negate(B))).
+union(A, B) ->
+  ty_ref:op_cache(union, {A, B},
+    fun() ->
+  negate(intersect(negate(A), negate(B)))
+     end).
 
 multi_intersect({DefaultT1, T1}, {DefaultT2, T2}) ->
   % get all keys
