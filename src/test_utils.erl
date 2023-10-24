@@ -98,7 +98,5 @@ is_subtype(S, T) ->
 
 -spec reset_ets() -> ok.
 reset_ets() ->
-    ty_ref:reset(),
-    ty_variable:reset(),
-    ast_lib:reset(),
+    ecache:reset_all(),
     ok.
