@@ -35,7 +35,7 @@
 -type constr_case() :: {ccase,
                         locs(),
                         Scrutiny::constrs(),
-                        Exhaustiveness::constrs(),
+                        {ast:ty(), ast:ty()}, % exhaustiveness check
                         [constr_case_body()]}.
 -type constr_case_body() ::
         {locs(), Guard::constrs_with_env(), Body::constrs_with_env(), BodyCond::ast:ty()}.

@@ -114,34 +114,37 @@ simp_constr(Ctx, C) ->
         {cdef, _Locs, Env, Cs} ->
             NewCtx = extend_env(Ctx, Env),
             simp_constrs(NewCtx, Cs);
-        {ccase, Locs, CsScrut, CsEx, Bodies} ->
-            Cs = sets:union(CsScrut, CsEx),
+        {ccase, Locs, CsScrut, {ExhauLeft, ExhauRight}, Bodies} ->
             case Ctx#ctx.sanity of
                 {ok, TyMap0} ->
-                    constr_gen:sanity_check(CsScrut, TyMap0),
-                    constr_gen:sanity_check(CsEx, TyMap0);
+                    constr_gen:sanity_check(CsScrut, TyMap0);
                 error -> ok
             end,
             simp_constrs_if_ok(
-                simp_constrs(Ctx, Cs),
-                fun(_, Dss) ->
+                simp_constrs(Ctx, CsScrut),
+                fun(_, DssScrut) ->
                     FreeSet = tyutils:free_in_poly_env(Ctx#ctx.env),
                     ?LOG_DEBUG("Checking which branches of case at ~s should be ignored.~n" ++
-                               "Env: ~s~nFixed tyvars: ~w~nConstraints for scrutiny/exhaustiveness check:~n~s",
+                               "Env: ~s~nFixed tyvars: ~w~nConstraints for scrutiny:~n~s~n" ++
+                               "exhaustivness check: ~s <= ~s",
                                ast:format_loc(loc(Locs)),
                                pretty:render_poly_env(Ctx#ctx.env),
                                sets:to_list(FreeSet),
-                               pretty:render_constr(Dss)),
+                               pretty:render_constr(DssScrut),
+                               pretty:render_ty(ExhauLeft),
+                               pretty:render_ty(ExhauRight)),
+                    Exhau = sets:from_list([{csubty, Locs, ExhauLeft, ExhauRight}]),
                     Substs =
                         lists:flatmap(
-                          fun(Ds) ->
-                                  ?LOG_DEBUG("Invoking tally while simplifying constraints. " ++
-                                                 "FreeSet=~w, Constraints:~n~s",
-                                             sets:to_list(FreeSet),
-                                             pretty:render_constr(Ds)),
-                                  get_substs(tally:tally(Ctx#ctx.symtab, Ds, FreeSet), Locs)
+                          fun(DsScrut) ->
+                                Ds = sets:union(DsScrut, Exhau),
+                                ?LOG_DEBUG("Invoking tally while simplifying constraints. " ++
+                                                "FreeSet=~w, Constraints:~n~s",
+                                            sets:to_list(FreeSet),
+                                            pretty:render_constr(Ds)),
+                                get_substs(tally:tally(Ctx#ctx.symtab, Ds, FreeSet), Locs)
                           end,
-                          Dss),
+                          DssScrut),
                     ?LOG_TRACE("Env=~s, FreeSet=~200p", pretty:render_poly_env(Ctx#ctx.env),
                             sets:to_list(FreeSet)),
                     case Substs of
@@ -164,7 +167,7 @@ simp_constr(Ctx, C) ->
                                     % returns simp_constrs_result()
                                     fun(_, {simp_constrs_error, _} = Err) -> Err;
                                        ({BodyLocs, {GuardsGammaI, GuardCsI}, {BodyGammaI, BodyCsI}, TI}, BeforeDss) ->
-                                            NewGuardsCtx = extend_env(Ctx, apply_subst_to_env(Subst, GuardsGammaI)),
+                                            NewGuardsCtx = inter_env(Ctx, apply_subst_to_env(Subst, GuardsGammaI)),
                                             simp_constrs_if_ok(simp_constrs(NewGuardsCtx, GuardCsI),
                                                 fun(GuardDss, _) ->
                                                     MatchTy = subst:apply(Subst, TI),
@@ -192,7 +195,7 @@ simp_constr(Ctx, C) ->
                                                                 _ -> ok
                                                             end,
                                                             NewBodyCtx =
-                                                                extend_env(Ctx,
+                                                                inter_env(Ctx,
                                                                         apply_subst_to_env(Subst, BodyGammaI)),
                                                             BodyDss = simp_constrs(NewBodyCtx, BodyCsI),
                                                             cross_union(cross_union(BeforeDss, GuardDss), BodyDss)
@@ -221,24 +224,19 @@ simp_constr(Ctx, C) ->
                                     % so the tally invocation for typing the scrutiny above failed.
                                     % Hence, we return an error
                                     ?LOG_DEBUG("MultiResults is empty, checking whether typing the scrutiny or the exhaustiveness check fails."),
-                                    ?LOG_DEBUG("Solving constraints for scrutiny: ~s", pretty:render_constr(CsScrut)),
-                                    simp_constrs_if_ok(
-                                        simp_constrs(Ctx, CsScrut),
-                                        fun(_, DsScrutList) ->
-                                            case
-                                                lists:flatmap(
-                                                    fun(Ds) -> get_substs(tally:tally(Ctx#ctx.symtab, Ds, FreeSet), Locs) end,
-                                                DsScrutList)
-                                            of
-                                                [] ->
-                                                    ?LOG_DEBUG("Typing the scrutiny failed"),
-                                                    LocScrut = loc(locs_from_constrs(CsScrut), loc(Locs)),
-                                                    {simp_constrs_error, {tyerror, LocScrut}};
-                                                _ ->
-                                                    ?LOG_DEBUG("Typing the scrutiny succeed, so it's a non-exhaustive case"),
-                                                    {simp_constrs_error, {non_exhaustive_case, loc(Locs)}}
-                                            end
-                                        end);
+                                    case
+                                        lists:flatmap(
+                                            fun(Ds) -> get_substs(tally:tally(Ctx#ctx.symtab, Ds, FreeSet), Locs) end,
+                                        DssScrut)
+                                    of
+                                        [] ->
+                                            ?LOG_DEBUG("Typing the scrutiny failed"),
+                                            LocScrut = loc(locs_from_constrs(CsScrut), loc(Locs)),
+                                            {simp_constrs_error, {tyerror, LocScrut}};
+                                        _ ->
+                                            ?LOG_DEBUG("Typing the scrutiny succeed, so it's a non-exhaustive case"),
+                                            {simp_constrs_error, {non_exhaustive_case, loc(Locs)}}
+                                    end;
                                 {value, Err} ->
                                     % there are nested errors, return the first
                                     Err
@@ -341,9 +339,28 @@ extend_env(Ctx, Env) ->
     PolyEnv =
         maps:map(fun(_Key, T) -> {ty_scheme, [], T} end, Env),
     NewEnv = maps:merge(Ctx#ctx.env, PolyEnv), % values from the second parameter have precedence
-    ?LOG_TRACE("extend_env(~s, ~s) = ~s", pretty:render_poly_env(Ctx#ctx.env),
+    ?LOG_TRACE("extend_env(~s, ~s) = ~s",
+        pretty:render_poly_env(Ctx#ctx.env),
         pretty:render_mono_env(Env),
-    pretty:render_poly_env(NewEnv)),
+        pretty:render_poly_env(NewEnv)),
+    Ctx#ctx { env = NewEnv }.
+
+-spec inter_env(ctx(), constr:constr_env()) -> ctx().
+inter_env(Ctx, Env) ->
+    PolyEnv =
+        maps:map(fun(_Key, T) -> {ty_scheme, [], T} end, Env),
+    Combiner =
+        fun (_Key, {ty_scheme, [], OldTy}, {ty_scheme, [], NewTy}) ->
+            {ty_scheme, [], stdtypes:tinter(OldTy, NewTy)};
+            (_Key, OldTy, NewTy) ->
+                ?ABORT("BUG: inter_env, cannot combine polymorphic types ~s and ~s",
+                    pretty:render_tyscheme(OldTy), pretty:render_tyscheme(NewTy))
+        end,
+    NewEnv = maps:merge_with(Combiner, Ctx#ctx.env, PolyEnv), % values from the second parameter have precedence
+    ?LOG_TRACE("inter_env(~s, ~s) = ~s",
+        pretty:render_poly_env(Ctx#ctx.env),
+        pretty:render_mono_env(Env),
+        pretty:render_poly_env(NewEnv)),
     Ctx#ctx { env = NewEnv }.
 
 -spec apply_subst_to_env(subst:t(), constr:constr_env()) -> constr:constr_env().
@@ -353,7 +370,7 @@ apply_subst_to_env(Subst, Env) ->
 -spec sanity_check(any(), ast_check:ty_map()) -> ok.
 sanity_check({simp_constrs_ok, Dss}, Spec) ->
     if
-        is_list(Dss) -> ?ABORT("List of constraint sets is not a list: ~w", Dss);
+        not is_list(Dss) -> ?ABORT("List of constraint sets is not a list: ~w", Dss);
         true ->
             lists:foreach(
               fun(Ds) ->

@@ -155,7 +155,7 @@ main(Args) ->
                 end,
             if
                 IsExpected ->
-                    ?LOG_NOTE("~s", Raw),
+                    ?LOG_DEBUG("~s", Raw),
                     io:format("~s~n", [Msg]);
                 true ->
                     ?LOG_ERROR("~s", Raw),
