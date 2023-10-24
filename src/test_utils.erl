@@ -12,7 +12,8 @@
 -export([
     extract_tests/1,
     is_equiv/2,
-    is_subtype/2
+    is_subtype/2,
+    reset_ets/0
 ]).
 
 -export_type([
@@ -84,11 +85,20 @@ extract_tests_test() ->
 
 -spec is_equiv(ast:ty(), ast:ty()) -> boolean().
 is_equiv(S, T) ->
+    reset_ets(),
     Symtab = symtab:empty(),
     subty:is_subty(Symtab, S, T) andalso
         subty:is_subty(Symtab, T, S).
 
 -spec is_subtype(ast:ty(), ast:ty()) -> boolean().
 is_subtype(S, T) ->
+    reset_ets(),
     Symtab = symtab:empty(),
     subty:is_subty(Symtab, S, T).
+
+-spec reset_ets() -> ok.
+reset_ets() ->
+    ty_ref:reset(),
+    ty_variable:reset(),
+    ast_lib:reset(),
+    ok.

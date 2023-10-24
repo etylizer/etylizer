@@ -137,6 +137,7 @@ is_smaller(C1, [{_V2, _, _} | C2]) ->
 -include_lib("eunit/include/eunit.hrl").
 
 smaller_test() ->
+  test_utils:reset_ets(),
   % {(β≤0)} <: {(β≤0) (β≤α)}
   Alpha = ty_variable:new("alpha"),
   Beta = ty_variable:new("beta"),
@@ -148,6 +149,7 @@ smaller_test() ->
   ok.
 
 smaller2_test() ->
+  test_utils:reset_ets(),
   % C1 :: {(atom≤β≤1)}
   % C2 :: {(   1≤β≤1)}
   Beta = ty_variable:new("beta"),
@@ -162,6 +164,7 @@ smaller2_test() ->
   ok.
 
 paper_example_test() ->
+  test_utils:reset_ets(),
   % C1 :: {(β≤α≤1)    (0≤β≤0)} :: {(β≤α)    (β≤0)}
   % C2 :: {(β≤α≤1) (atom≤β≤1)} :: {(atom≤β) (β≤α)}
   % C3 :: {           (0≤β≤0)} :: {(0≤β)         }

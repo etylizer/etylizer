@@ -109,11 +109,11 @@ transform({node, Variable, PositiveEdge, NegativeEdge},
     Intersect([Negate(AstVar), transform(NegativeEdge, Ops)])
   ]).
 
-
 -ifdef(TEST).
 -include_lib("eunit/include/eunit.hrl").
 
 usage_test() ->
+  test_utils:reset_ets(),
   %   a1 ^ !a3 ^ 2-10
   % U a1 ^ 1-10
   % U !a2 ^ 5-8
@@ -144,6 +144,7 @@ usage_test() ->
   ok.
 
 compact_ints_test() ->
+  test_utils:reset_ets(),
   %   1-5
   % U 6-10 -> 1-10
   Ia = ty_interval:interval(1, 5),
@@ -160,3 +161,4 @@ compact_ints_test() ->
   ok.
 
 -endif.
+

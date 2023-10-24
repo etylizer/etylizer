@@ -4,16 +4,16 @@
 % heavily derived from the erlang ast (defined in ast_erl.erl). See the README for
 % a description of the properties of the internal AST.
 
--export([setup_ets/0, ast_to_erlang_ty/1, erlang_ty_to_ast/1, ast_to_erlang_ty_var/1, erlang_ty_var_to_var/1]).
--on_load(setup_ets/0).
+-export([reset/0, ast_to_erlang_ty/1, erlang_ty_to_ast/1, ast_to_erlang_ty_var/1, erlang_ty_var_to_var/1]).
 -define(VAR_ETS, ast_norm_var_memo). % remember variable name -> variable ID to convert variables properly
 
 -export([
     mk_intersection/1, mk_union/1, mk_negation/1, mk_diff/2
 ]).
 
--spec setup_ets() -> ok.
-setup_ets() -> spawn(fun() -> catch(begin ets:new(?VAR_ETS, [public, named_table]), receive _ -> ok end end) end), ok.
+reset() ->
+    catch ets:delete(?VAR_ETS),
+    ets:new(?VAR_ETS, [public, named_table]).
 
 
 % smart constructors for intersection, union and negation
