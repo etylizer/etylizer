@@ -23,26 +23,26 @@
 %%  io:format(user,"~s~n", [pretty:render_ty(Pretty)]),
 %%
 %%  ok.
-%%
-%%variable_union3_test() ->
-%%  ecache:reset_all(),
-%%  A = tunion([tvar(a), tvar(b), tvar(c), tatom(foo)]),
-%%  B = ast_lib:ast_to_erlang_ty(A),
-%%  Pretty = ast_lib:erlang_ty_to_ast(B),
-%%  true = subty:is_equivalent(none, A, Pretty),
-%%  io:format(user,"~s~n", [pretty:render_ty(Pretty)]),
-%%
-%%  ok.
 
-variable_union4_test() ->
+variable_union3_test() ->
   ecache:reset_all(),
-  A = tunion([tvar(a), tvar(b), tvar(c), tvar(d), tatom(foo)]),
+  A = tunion([tvar(a), tvar(b), tvar(c), tatom(foo)]),
   B = ast_lib:ast_to_erlang_ty(A),
   Pretty = ast_lib:erlang_ty_to_ast(B),
   true = subty:is_equivalent(none, A, Pretty),
   io:format(user,"~s~n", [pretty:render_ty(Pretty)]),
 
   ok.
+
+%%variable_union4_test() ->
+%%  ecache:reset_all(),
+%%  A = tunion([tvar(a), tvar(b), tvar(c), tvar(d), tatom(foo)]),
+%%  B = ast_lib:ast_to_erlang_ty(A),
+%%  Pretty = ast_lib:erlang_ty_to_ast(B),
+%%  true = subty:is_equivalent(none, A, Pretty),
+%%  io:format(user,"~s~n", [pretty:render_ty(Pretty)]),
+%%
+%%  ok.
 
 %%other_test() ->
 %%  ecache:reset_all(),

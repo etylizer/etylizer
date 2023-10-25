@@ -4,7 +4,7 @@
 % heavily derived from the erlang ast (defined in ast_erl.erl). See the README for
 % a description of the properties of the internal AST.
 
--export([reduce_until/1, reset/0, ast_to_erlang_ty/1, erlang_ty_to_ast/1, ast_to_erlang_ty_var/1, erlang_ty_var_to_var/1]).
+-export([simplify/1, reduce_until/1, reset/0, ast_to_erlang_ty/1, erlang_ty_to_ast/1, ast_to_erlang_ty_var/1, erlang_ty_var_to_var/1]).
 -define(VAR_ETS, ast_norm_var_memo). % remember variable name -> variable ID to convert variables properly
 
 -export([
@@ -121,8 +121,11 @@ erlang_ty_to_ast(X) ->
             intersect => fun ast_lib:mk_intersection/1,
             negate => fun ast_lib:mk_negation/1
         }),
+    Full.
+
+simplify(Full) ->
     % io:format(user, ">> Full~n~p~n", [Full]),
-    (Dnf = {union, Unions}) = dnf:to_dnf(dnf:to_nnf(Full)),
+    (_Dnf = {union, Unions}) = dnf:to_dnf(dnf:to_nnf(Full)),
     % io:format(user, ">> Dnf~n~p~n", [Dnf]),
     % filter empty intersections
     FilterEmpty = {union, lists:filter(fun(E) -> not ty_rec:is_empty(ast_to_erlang_ty(E)) end, Unions)},
