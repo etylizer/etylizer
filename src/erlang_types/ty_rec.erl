@@ -5,7 +5,7 @@
 
 -export([empty/0, any/0]).
 -export([union/2, negate/1, intersect/2, diff/2, is_any/1]).
--export([is_empty/1]).
+-export([is_empty/1, extract_variables/1]).
 
 % additional type constructors
 -export([predef/0, predef/1, variable/1, atom/1, interval/1, tuple/2]).
@@ -55,20 +55,41 @@ transform(TyRef, Ops =
     any_atom := Atoms,
     any_predef := Predef,
     union := Union,
-    intersect := Intersect
+    intersect := Intersect,
+    var := Var,
+    any := Any
   }) ->
-  Ty = ty_ref:load(TyRef),
-  #ty{predef = P, atom = A, interval = I, list = L, tuple = {DT, T}, function = {DF, F}} = Ty,
+
+
+
+  OldTy = ty_ref:load(TyRef),
+  {Variables, Ty} = ty_rec:extract_variables(OldTy),
+  #ty{predef = P, atom = A, interval = I, list = L, tuple = {DT, T}, function = {DF, F}} = ty_ref:load(Ty),
+
 
   NP = Intersect([Predef(), dnf_var_predef:transform(P, Ops)]),
   NA = Intersect([Atoms(), dnf_var_ty_atom:transform(A, Ops)]),
   NI = Intersect([Intervals(), dnf_var_int:transform(I, Ops)]),
   NL = Intersect([Lists(), dnf_var_ty_list:transform(L, Ops)]),
-  NT = Intersect([Tuples(), multi_transform(DT, T, Ops)]),
-  NF = Intersect([Functions(), multi_transform_fun(DF, F, Ops)]),
+  Z2 = multi_transform_fun(DF, F, Ops),
+  NF = case subty:is_subty(none, Z2, Functions()) of
+         true -> Z2;
+         false ->
+%%      io:format(user, "~p is not~n~p~n", [Z2, Functions()]),
+%%           error(todo)
+           Intersect([Functions(), Z2])
+       end,
+
+  Z1 = multi_transform(DT, T, Ops),
+  NT = Intersect([Tuples(), Z1]),
 
 
-  Union([NP, NA, NI, NL, NT, NF]).
+  ZZ = Union([Var(V) || V <- Variables] ++ [NP, NA, NI, NL, NT, NF]),
+  case ty_rec:is_subtype(ty_rec:any(), TyRef) of
+    true -> Any();
+    _ -> ZZ
+  end.
+
 
 multi_transform(DefaultT, T, Ops = #{negate := Negate, union := Union, intersect := Intersect}) ->
   X1 = dnf_var_ty_tuple:transform(DefaultT, Ops),
@@ -82,6 +103,30 @@ multi_transform_fun(DefaultF, F, Ops = #{negate := Negate, union := Union, inter
 
   Union([Intersect([X1, Negate(Union(Xs))]), Union(Xs)]).
 
+
+extract_variables(Ty = #ty{ predef = P, atom = A, interval = I, list = L, tuple = T, function = F }) ->
+  PossibleVars = lists:foldl(fun(E, Acc) ->
+    sets:intersection(sets:from_list(E), Acc)
+              end, sets:from_list(dnf_var_predef:all_variables(P)),
+    [
+      dnf_var_ty_atom:all_variables(A),
+      dnf_var_int:all_variables(I),
+      dnf_var_ty_list:all_variables(L),
+      dnf_var_ty_tuple:all_variables(T),
+      dnf_var_ty_function:all_variables(F)
+    ]),
+
+
+  {Vars, NewTy} = lists:foldl(fun(Var, {ExtractedVars, TTy}) ->
+    case ty_rec:is_subtype(ty_rec:variable(Var), TTy) of
+      true ->
+        {[Var | ExtractedVars],
+        ty_rec:diff(TTy, ty_rec:variable(Var))};
+      false -> {ExtractedVars, TTy}
+    end
+                      end, {[], ty_ref:store(Ty)}, sets:to_list(PossibleVars)),
+
+  {Vars, NewTy}.
 
 % ======
 % Type constructors

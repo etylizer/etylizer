@@ -78,7 +78,7 @@ render(D) ->
     prettypr:format(D, 200).
 
 -spec render_ty(ast:ty()) -> string().
-render_ty(T) -> render(ty(ast_lib:simplify(T))).
+render_ty(T) -> render(ty(T)).
 
 -spec render_tys([ast:ty()]) -> string().
 render_tys(T) -> render(tys(T)).
