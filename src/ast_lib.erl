@@ -121,9 +121,12 @@ erlang_ty_to_ast(X) ->
             intersect => fun ast_lib:mk_intersection/1,
             negate => fun ast_lib:mk_negation/1
         }),
-    {union, Unions} = dnf:to_dnf(dnf:to_nnf(Full)),
+    % io:format(user, ">> Full~n~p~n", [Full]),
+    (Dnf = {union, Unions}) = dnf:to_dnf(dnf:to_nnf(Full)),
+    % io:format(user, ">> Dnf~n~p~n", [Dnf]),
     % filter empty intersections
     FilterEmpty = {union, lists:filter(fun(E) -> not ty_rec:is_empty(ast_to_erlang_ty(E)) end, Unions)},
+    % io:format(user, ">> Empty~n~p~n", [FilterEmpty]),
 
     % for any variable, extract them
     E = ast_to_erlang_ty(FilterEmpty),
@@ -139,39 +142,29 @@ erlang_ty_to_ast(X) ->
     Next = reduce_until(ToReduce),
     Next.
 
-reduce_until(ToReduce) ->
-    Next = find_first_reduce(ToReduce, ToReduce, []),
-    case Next of
-        ok -> ToReduce;
-        {reduced, NewReduced} ->
-            reduce_until(NewReduced)
-    end.
+reduce_until(ToReduce) -> find_first_reduce(ToReduce, ToReduce, []).
 
-find_first_reduce(_OriginalTy, {union, []}, _OlderLines) -> ok;
+find_first_reduce(_OriginalTy, {union, []}, OlderLines) -> {union, OlderLines};
 find_first_reduce(OriginalTy, {union, [{intersection, Line} | Lines]}, OlderLines) ->
     WithoutLine = {union, Lines ++ OlderLines},
     case subty:is_equivalent(none, WithoutLine, OriginalTy) of % TODO symtab?
-        true -> {reduced, WithoutLine};
+        true ->
+            % is equivalent without the whole line
+            find_first_reduce(OriginalTy, {union, Lines}, OlderLines);
         false ->
-            Try = all_possible_lines(Line, [], []),
-            Res = catch lists:foreach(fun(ReplaceLine) ->
-                ReducedTry = {union, [{intersection, ReplaceLine} | Lines] ++ OlderLines},
-                case subty:is_equivalent(none, ReducedTry, OriginalTy) of % TODO symtab?
-                    true -> throw(ReducedTry);
-                    false -> ok
-                end
-                                      end, Try),
-
-            case Res of
-                ok -> find_first_reduce(OriginalTy, {union, Lines}, [{intersection, Line} | OlderLines]);
-                _ -> {reduced, Res}
-            end
+            ToReplaceLine = find_line_reduce(OriginalTy, {union, Lines ++ OlderLines}, {intersection, Line}, []),
+            find_first_reduce(OriginalTy, {union, Lines}, [ToReplaceLine | OlderLines])
     end.
 
-
-all_possible_lines([], _Prev, All) -> All;
-all_possible_lines([Atom | Rest], Prev, All) ->
-    all_possible_lines(Rest, [Atom | Prev], [Prev ++ Rest | All]).
+find_line_reduce(_OriginalTy, {union, _Lines}, {intersection, []}, OtherPartsOfLine) -> {intersection, OtherPartsOfLine};
+find_line_reduce(OriginalTy, {union, Lines}, {intersection, [Atom | Atoms]}, OtherPartsOfLine) ->
+    ReducedTry = {union, [{intersection, Atoms ++ OtherPartsOfLine} | Lines]},
+    case subty:is_equivalent(none, ReducedTry, OriginalTy) of % TODO symtab?
+        true ->
+            find_line_reduce(OriginalTy, {union, Lines}, {intersection, Atoms}, OtherPartsOfLine);
+        false ->
+            find_line_reduce(OriginalTy, {union, Lines}, {intersection, Atoms}, [Atom | OtherPartsOfLine])
+    end.
 
 
 extract_variables(ETy, [], ExtractedVars) -> {ETy, ExtractedVars};

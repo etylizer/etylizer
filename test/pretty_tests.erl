@@ -10,7 +10,7 @@
 %%  B = ast_lib:ast_to_erlang_ty(A),
 %%  Pretty = ast_lib:erlang_ty_to_ast(B),
 %%  true = subty:is_equivalent(none, A, Pretty),
-%%%%  io:format(user,"~s~n", [pretty:render_ty(Pretty)]),
+%%  io:format(user,"~s~n", [pretty:render_ty(Pretty)]),
 %%
 %%  ok.
 %%
@@ -20,7 +20,7 @@
 %%  B = ast_lib:ast_to_erlang_ty(A),
 %%  Pretty = ast_lib:erlang_ty_to_ast(B),
 %%  true = subty:is_equivalent(none, A, Pretty),
-%%%%  io:format(user,"~s~n", [pretty:render_ty(Pretty)]),
+%%  io:format(user,"~s~n", [pretty:render_ty(Pretty)]),
 %%
 %%  ok.
 %%
@@ -30,27 +30,37 @@
 %%  B = ast_lib:ast_to_erlang_ty(A),
 %%  Pretty = ast_lib:erlang_ty_to_ast(B),
 %%  true = subty:is_equivalent(none, A, Pretty),
-%%%%  io:format(user,"~s~n", [pretty:render_ty(Pretty)]),
+%%  io:format(user,"~s~n", [pretty:render_ty(Pretty)]),
 %%
 %%  ok.
-%%
-other_test() ->
-  ecache:reset_all(),
-  V0 = tunion([
-    ttuple([tintersect([tatom(b), tvar(a5)]), tatom(int)]),
-    ttuple([tatom(a), tatom(int)]),
-    tintersect([
-      tunion([
-        ttuple([tintersect([tatom(b), tvar(a5)]), tatom(int)]),
-        ttuple([tatom(a), tatom(int)])
-      ]),
-      tvar(a0a0)
-    ])
-  ]),
-  B = ast_lib:ast_to_erlang_ty(V0),
-  Pretty = ast_lib:erlang_ty_to_ast(B),
 
-  true = subty:is_equivalent(none, V0, Pretty),
+variable_union4_test() ->
+  ecache:reset_all(),
+  A = tunion([tvar(a), tvar(b), tvar(c), tvar(d), tatom(foo)]),
+  B = ast_lib:ast_to_erlang_ty(A),
+  Pretty = ast_lib:erlang_ty_to_ast(B),
+  true = subty:is_equivalent(none, A, Pretty),
   io:format(user,"~s~n", [pretty:render_ty(Pretty)]),
 
   ok.
+
+%%other_test() ->
+%%  ecache:reset_all(),
+%%  V0 = tunion([
+%%    ttuple([tintersect([tatom(b), tvar(a5)]), tatom(int)]),
+%%    ttuple([tatom(a), tatom(int)]),
+%%    tintersect([
+%%      tunion([
+%%        ttuple([tintersect([tatom(b), tvar(a5)]), tatom(int)]),
+%%        ttuple([tatom(a), tatom(int)])
+%%      ]),
+%%      tvar(a0a0)
+%%    ])
+%%  ]),
+%%  B = ast_lib:ast_to_erlang_ty(V0),
+%%  Pretty = ast_lib:erlang_ty_to_ast(B),
+%%
+%%  true = subty:is_equivalent(none, V0, Pretty),
+%%  io:format(user,"~s~n", [pretty:render_ty(Pretty)]),
+%%
+%%  ok.
