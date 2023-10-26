@@ -124,7 +124,8 @@ simp_constr(Ctx, C) ->
                 simp_constrs(Ctx, CsScrut),
                 fun(_, DssScrut) ->
                     FreeSet = tyutils:free_in_poly_env(Ctx#ctx.env),
-                    ?LOG_DEBUG("Checking which branches of case at ~s should be ignored.~n" ++
+                    ?LOG_DEBUG("Solving constraints for scrutiny of case at ~s in order to check " ++
+                               "which branches should be ignored.~n" ++
                                "Env: ~s~nFixed tyvars: ~w~nConstraints for scrutiny:~n~s~n" ++
                                "exhaustivness check: ~s <= ~s",
                                ast:format_loc(loc(Locs)),
@@ -138,10 +139,6 @@ simp_constr(Ctx, C) ->
                         lists:flatmap(
                           fun(DsScrut) ->
                                 Ds = sets:union(DsScrut, Exhau),
-                                ?LOG_DEBUG("Invoking tally while simplifying constraints. " ++
-                                                "FreeSet=~w, Constraints:~n~s",
-                                            sets:to_list(FreeSet),
-                                            pretty:render_constr(Ds)),
                                 get_substs(tally:tally(Ctx#ctx.symtab, Ds, FreeSet), Locs)
                           end,
                           DssScrut),
