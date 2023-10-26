@@ -2,9 +2,8 @@
 
 -export([setup_ets/0, any/0, store/1, load/1, new_ty_ref/0, define_ty_ref/2, is_empty_cached/1, store_is_empty_cached/2, store_recursive_variable/2, check_recursive_variable/1]).
 -export([memoize/1, is_empty_memoized/1, reset/0, is_normalized_memoized/3]).
--export([memoize_norm/2, normalized_memoized/1, setup_all/0]).
+-export([op_cache/3, memoize_norm/2, normalized_memoized/1, setup_all/0]).
 
--on_load(setup_ets/0).
 -define(TY_UTIL, ty_counter).        % counter store
 -define(TY_MEMORY, ty_mem).          % id -> ty
 -define(TY_UNIQUE_TABLE, ty_unique). % ty -> id
@@ -19,11 +18,22 @@
 % it is treated as a recursive bound variable instead of a free one
 -define(RECURSIVE_TABLE, remember_recursive_variables_ets).
 
+op_cache(Op, K, Fun) ->
+  case get({Op, K}) of
+    undefined ->
+      Res = Fun(),
+      put({Op, K}, Res),
+      Res;
+    Z ->
+      Z
+  end.
+
 all_tables() ->
   [?TY_UNIQUE_TABLE, ?TY_MEMORY, ?TY_UTIL, ?EMPTY_MEMO, ?EMPTY_CACHE, ?RECURSIVE_TABLE, ?NORMALIZE_CACHE].
 
 reset() ->
-  lists:foreach(fun(Tab) -> ets:delete(Tab) end, all_tables()),
+  erase(),
+  catch lists:foreach(fun(Tab) -> catch ets:delete(Tab) end, all_tables()),
   setup_all()
 .
 
@@ -47,12 +57,7 @@ setup_all() ->
 
 -spec setup_ets() -> ok.
 setup_ets() ->
-  spawn(fun() ->
-    catch(begin
-            setup_all(),
-            receive _ -> ok end
-           end)
-        end),
+  setup_all(),
   ok.
 
 any() -> {ty_ref, 0}.
@@ -124,7 +129,6 @@ store(Ty) ->
       Id = ets:update_counter(?TY_UTIL, ty_number, {2, 1}),
       ets:insert(?TY_UNIQUE_TABLE, {Ty, Id}),
       ets:insert(?TY_MEMORY, {Id, Ty}),
-%%      io:format(user, "Store: ~p :=~n~p~n", [Id, Ty]),
       {ty_ref, Id};
     [{_, Id}] ->
       {ty_ref, Id}

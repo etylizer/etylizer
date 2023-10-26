@@ -10,6 +10,8 @@ is_valid_substitution([], _) -> true;
 is_valid_substitution([{Left, Right} | Cs], Substitution) ->
   SubstitutedLeft = ty_rec:substitute(Left, Substitution),
   SubstitutedRight = ty_rec:substitute(Right, Substitution),
+%%  io:format(user, "Left: ~p -> ~p~n", [Left, SubstitutedLeft]),
+%%  io:format(user, "Right: ~p -> ~p~n", [Right, SubstitutedRight]),
   Res = ty_rec:is_subtype(SubstitutedLeft, SubstitutedRight) ,
   Res andalso
     is_valid_substitution(Cs, Substitution).
@@ -47,6 +49,7 @@ tally(Constraints, FixedVars) ->
         _ ->
           % TODO expensive sanity check
           % sanity: every substitution satisfies all given constraints
+%%          io:format(user, "Solved: ~p~n", [Solved]),
           [ true = is_valid_substitution(Constraints, maps:from_list(Subst)) || Subst <- Solved],
           Solved
       end.
