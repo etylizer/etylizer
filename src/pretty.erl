@@ -143,7 +143,7 @@ ty(Prec, T) ->
         {empty_list} ->
             text("[]");
         {list, U} ->
-            beside(text("list"), parens(ty(U)));
+            beside(text("["), parens(ty(U)), text("]"));
         {nonempty_list, U} ->
             beside(text("nonempty_list"), parens(ty(U)));
         {improper_list, U, V} ->
