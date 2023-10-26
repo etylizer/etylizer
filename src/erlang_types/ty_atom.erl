@@ -1,21 +1,16 @@
 -module(ty_atom).
 
 %% Efficient atom representation
-
-
 -export([compare/2, equal/2]).
-
-
 -export([empty/0, any/0]).
 -export([union/2, intersect/2, diff/2, negate/1, is_any/1]).
--export([is_empty/1, eval/1]).
-
+-export([is_empty/1]).
 -export([transform/2]).
-
-
 -export([finite/1, cofinite/1]).
+-export([normalize/5, substitute/4, all_variables/1]).
 
--export([normalize/5]).
+all_variables(_) -> [].
+substitute(_, Ty, _, _) -> Ty.
 
 transform({Atoms, finite}, #{to_atom := ToAtom, union := Union}) ->
   Union(lists:map(fun(A) -> ToAtom(A) end, gb_sets:to_list(Atoms)));
@@ -53,8 +48,6 @@ diff(S,T) -> intersect(S, negate(T)).
 equal({_, finite},{_, cofinite}) -> false;
 equal({_, cofinite},{_, finite}) -> false;
 equal({S, _}, {T, _}) -> gb_sets:is_subset(S,T) andalso gb_sets:is_subset(T,S).
-
-eval(_Rep) -> erlang:error("TODO").
 
 is_empty(Rep) ->
   case Rep of

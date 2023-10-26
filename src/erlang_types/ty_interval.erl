@@ -8,11 +8,11 @@
 
 -export([empty/0, any/0]).
 -export([union/2, intersect/2, diff/2, negate/1, is_any/1]).
--export([is_empty/1, eval/1, normalize/5]).
+-export([is_empty/1, eval/1, normalize/5, substitute/4, all_variables/1]).
 
 
 -export([interval/2, cointerval/2]).
--export([transform/2]).
+-export([transform/2, map_pi/1]).
 
 transform([], #{empty := E}) -> E();
 transform([any_int], #{any := E}) -> E();
@@ -153,6 +153,10 @@ normalize(TyInterval, PVar, NVar, Fixed, M) ->
     % ntlv rule
     ty_variable:normalize(Ty, PVar, NVar, Fixed, fun(Var) -> ty_rec:interval(dnf_var_int:var(Var)) end, M).
 
+substitute(_, Ty, _, _) -> Ty.
+% there is nothing to substitute in a ty_interval
+map_pi(_) -> #{}.
+all_variables(_) -> [].
 
 -ifdef(TEST).
 -include_lib("eunit/include/eunit.hrl").

@@ -3,54 +3,43 @@
 -define(P, {bdd_bool, ty_list}).
 -define(F(Z), fun() -> Z end).
 
-
 -export([equal/2, compare/2]).
-
-
 -export([empty/0, any/0, union/2, intersect/2, diff/2, negate/1]).
--export([is_empty/1, is_any/1, normalize/5, substitute/3]).
-
+-export([is_empty/1, is_any/1, normalize/5, substitute/4]).
 -export([list/1, all_variables/1, has_ref/2, transform/2]).
 
 list(TyList) -> gen_bdd:element(?P, TyList).
 
-% ==
-% type interface
-% ==
+% fully generic
 empty() -> gen_bdd:empty(?P).
 any() -> gen_bdd:any(?P).
-
+substitute(MkTy, TyBDD, Map, Memo) -> gen_bdd:substitute(?P, MkTy, TyBDD, Map, Memo).
 union(B1, B2) -> gen_bdd:union(?P, B1, B2).
 intersect(B1, B2) -> gen_bdd:intersect(?P, B1, B2).
 diff(B1, B2) -> gen_bdd:diff(?P, B1, B2).
 negate(B1) -> gen_bdd:negate(?P, B1).
-
 is_any(B) -> gen_bdd:is_any(?P, B).
-
-% ==
-% basic interface
-% ==
-
+has_ref(TyBDD, Ref) -> gen_bdd:has_ref(?P, TyBDD, Ref).
+all_variables(TyBDD) -> gen_bdd:all_variables(?P, TyBDD).
+transform(TyBDD, OpMap) -> gen_bdd:transform(?P, TyBDD, OpMap).
 equal(B1, B2) -> gen_bdd:equal(?P, B1, B2).
 compare(B1, B2) -> gen_bdd:compare(?P, B1, B2).
 
-is_empty(TyBDD) -> is_empty(
-  TyBDD,
-  ty_rec:any(),
-  ty_rec:any(),
-  _NegatedLists = []
-).
+% partially generic
+is_empty(TyBDD) -> gen_bdd:dnf(?P, TyBDD, {fun is_empty_coclause/3, fun gen_bdd:is_empty_union/2}).
 
-is_empty(0, _, _, _) -> true;
-is_empty({terminal, 1}, S1, S2, N) ->
-  phi(S1, S2, N);
-is_empty({node, TyList, L_BDD, R_BDD}, BigS1, BigS2, Negated) ->
-  S1 = ty_list:pi1(TyList),
-  S2 = ty_list:pi2(TyList),
-
-  is_empty(L_BDD, ty_rec:intersect(S1, BigS1), ty_rec:intersect(S2, BigS2), Negated)
-  andalso
-    is_empty(R_BDD, BigS1, BigS2, [TyList | Negated]).
+% module specific implementations
+is_empty_coclause(Pos, Neg, T) ->
+  case bdd_bool:empty() of
+    T -> true;
+    _ ->
+      Big = ty_list:big_intersect(Pos),
+      S1 = ty_list:pi1(Big),
+      S2 = ty_list:pi2(Big),
+      ty_rec:is_empty(S1) orelse
+        ty_rec:is_empty(S2) orelse
+        phi(S1, S2, Neg)
+  end.
 
 phi(S1, S2, []) ->
   ty_rec:is_empty(S1)
@@ -70,22 +59,27 @@ phi(S1, S2, [Ty | N]) ->
   ).
 
 normalize(TyList, [], [], Fixed, M) ->
-  normalize_no_vars(TyList, ty_rec:any(), ty_rec:any(), _NegatedLists = [], Fixed, M);
+  gen_bdd:dnf(?P, TyList, {
+    fun(Pos, Neg, DnfTyList) ->
+      normalize_coclause(Pos, Neg, DnfTyList, Fixed, M)
+                                 end,
+    fun constraint_set:meet/2
+  });
 normalize(DnfTyList, PVar, NVar, Fixed, M) ->
   Ty = ty_rec:list(dnf_var_ty_list:list(DnfTyList)),
   % ntlv rule
   ty_variable:normalize(Ty, PVar, NVar, Fixed, fun(Var) -> ty_rec:list(dnf_var_ty_list:var(Var)) end, M).
 
-normalize_no_vars(0, _, _, _, _Fixed, _) -> [[]]; % empty
-normalize_no_vars({terminal, 1}, S1, S2, N, Fixed, M) ->
-  phi_norm(S1, S2, N, Fixed, M);
-normalize_no_vars({node, TyList, L_BDD, R_BDD}, BigS1, BigS2, Negated, Fixed, M) ->
-  S1 = ty_list:pi1(TyList),
-  S2 = ty_list:pi2(TyList),
 
-  X1 = ?F(normalize_no_vars(L_BDD, ty_rec:intersect(S1, BigS1), ty_rec:intersect(S2, BigS2), Negated, Fixed, M)),
-  X2 = ?F(normalize_no_vars(R_BDD, BigS1, BigS2, [TyList | Negated], Fixed, M)),
-  constraint_set:meet(X1, X2).
+normalize_coclause(Pos, Neg, T, Fixed, M) ->
+  case bdd_bool:empty() of
+    T -> [[]];
+    _ ->
+      Big = ty_list:big_intersect(Pos),
+      S1 = ty_list:pi1(Big),
+      S2 = ty_list:pi2(Big),
+      phi_norm(S1, S2, Neg, Fixed, M)
+  end.
 
 phi_norm(S1, S2, [], Fixed, M) ->
   T1 = ?F(ty_rec:normalize(S1, Fixed, M)),
@@ -105,49 +99,3 @@ phi_norm(S1, S2, [Ty | N], Fixed, M) ->
     end),
 
   constraint_set:join(T1, ?F(constraint_set:join(T2, T3))).
-
-
-substitute(0, _, _) -> 0;
-substitute({terminal, 1}, _, _) ->
-  {terminal, 1};
-substitute({node, TyList, L_BDD, R_BDD}, Map, Memo) ->
-  S1 = ty_list:pi1(TyList),
-  S2 = ty_list:pi2(TyList),
-
-  NewS1 = ty_rec:substitute(S1, Map, Memo),
-  NewS2 = ty_rec:substitute(S2, Map, Memo),
-
-  NewTyList = ty_list:list(NewS1, NewS2),
-
-  union(
-    intersect(list(NewTyList), substitute(L_BDD, Map, Memo)),
-    intersect(negate(list(NewTyList)), substitute(R_BDD, Map, Memo))
-    ).
-
-has_ref(0, _) -> false;
-has_ref({terminal, _}, _) -> false;
-has_ref({node, List, PositiveEdge, NegativeEdge}, Ref) ->
-  ty_list:has_ref(List, Ref)
-    orelse
-    has_ref(PositiveEdge, Ref)
-    orelse
-    has_ref(NegativeEdge, Ref).
-
-all_variables(0) -> [];
-all_variables({terminal, _}) -> [];
-all_variables({node, List, PositiveEdge, NegativeEdge}) ->
-  ty_rec:all_variables(ty_list:pi1(List))
-  ++ ty_rec:all_variables(ty_list:pi2(List))
-    ++ all_variables(PositiveEdge)
-    ++ all_variables(NegativeEdge).
-
-transform(0, #{empty := F}) -> F();
-transform({terminal, 1}, #{any_list := F}) -> F();
-transform({node, List, PositiveEdge, NegativeEdge}, Ops = #{negate := N, union := U, intersect := I} ) ->
-  NF = ty_list:transform(List, Ops),
-
-  U([
-    I([NF, transform(PositiveEdge, Ops)]),
-    I([N(NF), transform(NegativeEdge, Ops)])
-  ]).
-

@@ -4,10 +4,10 @@
 -export([setup_all/0, reset/0]).
 -define(VAR_ETS, variable_counter_ets_table).
 
--export([equal/2, compare/2]).
+-export([equal/2, compare/2, substitute/4, has_ref/2, all_variables/1]).
 
 
--export([new/1, smallest/3, normalize/6]).
+-export([new/1, smallest/3, normalize/6, transform/2]).
 
 -record(var, {id, name}).
 -type var() :: #var{id :: integer(), name :: string()}.
@@ -29,6 +29,8 @@ compare(#var{id = Id1}, #var{id = Id2}) when Id1 > Id2 -> +1;
 compare(_, _) -> 0.
 
 leq(#var{id = Id1}, #var{id = Id2}) -> Id1 =< Id2.
+
+has_ref(_, _) -> false.
 
 -spec new(string()) -> var().
 new(Name) ->
@@ -54,8 +56,8 @@ smallest(PositiveVariables, NegativeVariables, FixedVariables) ->
 
 
 single(Pol, VPos, VNeg, Ty, VarToTy) ->
-  AccP = lists:foldl(fun(Var, Ty) -> ty_rec:intersect(Ty, VarToTy(Var)) end, Ty, VPos),
-  AccN = lists:foldl(fun(Var, Ty) -> ty_rec:union(Ty, VarToTy(Var)) end, ty_rec:empty(), VNeg),
+  AccP = lists:foldl(fun(Var, TTy) -> ty_rec:intersect(TTy, VarToTy(Var)) end, Ty, VPos),
+  AccN = lists:foldl(fun(Var, TTy) -> ty_rec:union(TTy, VarToTy(Var)) end, ty_rec:empty(), VNeg),
   S = ty_rec:diff(AccP, AccN),
   case Pol of
     true -> ty_rec:negate(S);
@@ -78,7 +80,12 @@ normalize(Ty, PVar, NVar, Fixed, VarToTy, Mx) ->
       ty_rec:normalize(Ty, Fixed, Mx)
   end.
 
+substitute(MkTy, Var, Map, _Memo) ->
+  X = maps:get(Var, Map, ty_rec:variable(Var)),
+  MkTy(X).
 
+all_variables(Var) -> [Var].
+transform(Ty, #{var := ToVar}) -> ToVar(Ty).
 
 -ifdef(TEST).
 -include_lib("eunit/include/eunit.hrl").
@@ -103,3 +110,4 @@ same_name_different_id_test() ->
   ok.
 
 -endif.
+
