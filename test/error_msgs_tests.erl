@@ -16,7 +16,10 @@ run_typechecker(File) ->
     try
         ety_main:doWork(Opts),
         ok
-    catch throw:{ety, ty_error, Msg}:_ -> {fail, Msg} end.
+    catch
+        throw:{ety, ty_error, Msg}:_ -> {fail, Msg};
+        throw:{ety, parse_error, Msg}:_ -> {fail, Msg}
+    end.
 
 -spec expect_ty_error(file:name(), string()) -> ok.
 expect_ty_error(File, Expected) ->
@@ -25,6 +28,7 @@ expect_ty_error(File, Expected) ->
         {fail, Msg} ->
             case string:find(Msg, Expected) of
                 nomatch ->
+                    io:format("Error message:~n~s", [Msg]),
                     error(utils:sformat("Error message did not include expected string: ~s", Msg));
                 _ -> ok
             end
@@ -34,7 +38,26 @@ file_changes_test_() ->
     [?_test(expect_ty_error("test_files/type_errors/invalid_arg.erl",
         "test_files/type_errors/invalid_arg.erl:11:1: " ++
         "Type error: function make_even/1 failed to type check against type fun((integer()) -> integer())")),
-     ?_test(expect_ty_error("test_files/type_errors/invalid_map.erl",
-        "test_files/type_errors/invalid_map.erl:10:1: " ++
-        "Type error: function foo/1 failed to type check against type fun(([integer()]) -> [integer()])"))
+     ?_test(expect_ty_error("test_files/type_errors/invalid_op.erl",
+        "test_files/type_errors/invalid_op.erl:7:1: " ++
+        "Type error: function make_foo/1 failed to type check against type fun((string()) -> boolean())")),
+     ?_test(expect_ty_error("test_files/type_errors/invalid_result.erl",
+        "test_files/type_errors/invalid_result.erl:7:1: " ++
+        "Type error: function make_even/1 failed to type check against type fun((integer()) -> integer())")),
+     ?_test(expect_ty_error("test_files/type_errors/non_exhaustive_case.erl",
+        "test_files/type_errors/non_exhaustive_case.erl:8:5: Type error: not all cases are covered")),
+     ?_test(expect_ty_error("test_files/type_errors/seq.erl",
+        "test_files/type_errors/seq.erl:14:9: Type error: expression failed to type check\n" ++
+        "%   14|     X = foo(J), % error here")),
+     ?_test(expect_ty_error("test_files/type_errors/syntax_error.erl",
+        "Error parsing test_files/type_errors/syntax_error.erl"))
+    % MISSING: redundant_branch.erl
+    % Timeout under rebar
+    % ?_test(expect_ty_error("test_files/type_errors/invalid_map.erl",
+    %    "test_files/type_errors/invalid_map.erl:10:1: " ++
+    %    "Type error: function foo/1 failed to type check against type fun(([integer()]) -> [integer()])")),
+    % ?_test(expect_ty_error("test_files/type_errors/invalid_scrutiny.erl",
+    %    "test_files/type_errors/invalid_scrutiny.erl:11:10: Type error: expression failed to type check\n" ++
+    %    "%   11|     case bar(X) of\n" ++
+    %    "%     |          ^"))
     ].

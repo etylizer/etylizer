@@ -148,6 +148,7 @@ main(Args) ->
                 case K of
                     ty_error -> true;
                     name_error -> true;
+                    parse_error -> true;
                     _ -> false
                 end,
             if
