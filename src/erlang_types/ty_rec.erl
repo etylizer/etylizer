@@ -12,7 +12,7 @@
 % type constructors with type refs
 -export([list/1, function/2]).
 % top type constructors
--export([function/0, atom/0, interval/0, tuple/0, ty_of/6]).
+-export([list/0, function/0, atom/0, interval/0, tuple/0, ty_of/6]).
 
 -export([is_equivalent/2, is_subtype/2, normalize/3]).
 
@@ -46,6 +46,12 @@ is_subtype(TyRef1, TyRef2) ->
 is_equivalent(TyRef1, TyRef2) ->
   is_subtype(TyRef1, TyRef2) andalso is_subtype(TyRef2, TyRef1).
 
+maybe_intersect(Z2, Other, Intersect) ->
+  case subty:is_subty(none, Z2, Other) of %TODO symtab?
+    true -> Z2;
+    false -> Intersect([Other, Z2])
+  end.
+
 transform(TyRef, Ops =
   #{
     any_list := Lists,
@@ -56,46 +62,146 @@ transform(TyRef, Ops =
     any_predef := Predef,
     union := Union,
     intersect := Intersect,
+    negate := Negate,
     var := Var,
     any := Any
   }) ->
+%%  io:format(user,"<~p> Transforming: ~p~n~p~n", [Ref = make_ref(), TyRef, ty_ref:load(TyRef)]),
+  DnfMap = prepare(TyRef),
+%%  io:format(user, "<~p> Prepared: ~n~p~n", [Ref, DnfMap]),
+
+  Mapped = maps:map(fun({Pv, Nv}, TyR) ->
+    NewVars = lists:map(fun(K) -> Var(K) end, Pv),
+    NewVarsN = lists:map(fun(K) -> Negate(Var(K)) end, Nv),
+    case ty_rec:is_subtype(ty_rec:any(), TyR) of
+      true ->
+        Intersect(NewVars ++ NewVarsN);
+      _ ->
+        #ty{predef = P, atom = A, interval = I, list = L, tuple = {DT, T}, function = {DF, F}} = ty_ref:load(TyR),
+        NP = maybe_intersect(dnf_var_predef:transform(P, Ops), Predef(), Intersect),
+        NA = maybe_intersect(dnf_var_ty_atom:transform(A, Ops), Atoms(), Intersect),
+        NI = maybe_intersect(dnf_var_int:transform(I, Ops), Intervals(), Intersect),
+        NL = maybe_intersect(dnf_var_ty_list:transform(L, Ops), Lists(), Intersect),
+
+        Z1 = multi_transform(DT, T, Ops),
+        NT = maybe_intersect(Z1, Tuples(), Intersect),
+        %NT = Intersect([Tuples(), Z1]),
+
+        Z2 = multi_transform_fun(DF, F, Ops),
+        NF = maybe_intersect(Z2, Functions(), Intersect),
+        %NF = Intersect([Functions(), Z2]),
+        Intersect(NewVars ++ NewVarsN ++ [Union([NP, NA, NI, NL, NT, NF])])
+    end
+           end, DnfMap),
+
+  Ety = Union(maps:values(Mapped)),
+%%  io:format(user,"<~p> Result: ~p~n", [Ref, Ety]),
+  Sanity = ast_lib:ast_to_erlang_ty(Ety),
+%%  io:format(user,"<~p> Sanity: ~p~n", [Ref, Sanity]),
+  case is_equivalent(TyRef, Sanity) of
+    true -> ok;
+    false ->
+%%      io:format(user, "~p~n", [ty_ref:load(TyRef)]),
+%%      io:format(user, "~p~n", [Ety]),
+      error(todo)
+  end,
+  Ety.
+
+prepare(TyRef) ->
+  #ty{predef = P, atom = A, interval = I, list = L, tuple = {DT, T}, function = {DF, F}} = ty_ref:load(TyRef),
+  VarMap = #{},
+
+  PDnf = dnf_var_predef:get_dnf(P),
+  ADnf = dnf_var_ty_atom:get_dnf(A),
+  IDnf = dnf_var_int:get_dnf(I),
+  LDnf = dnf_var_ty_list:get_dnf(L),
+
+  PMapped = lists:map(fun({Pv, Nv, T}) -> {{Pv, Nv}, ty_rec:predef(dnf_var_predef:predef(T))} end, PDnf),
+  AMapped = lists:map(fun({Pv, Nv, T}) -> {{Pv, Nv}, ty_rec:atom(dnf_var_ty_atom:ty_atom(T))} end, ADnf),
+  IMapped = lists:map(fun({Pv, Nv, T}) -> {{Pv, Nv}, ty_rec:interval(dnf_var_int:int(T))} end, IDnf),
+  LMapped = lists:map(fun({Pv, Nv, T}) -> {{Pv, Nv}, ty_rec:list(dnf_var_ty_list:list(T))} end, LDnf),
+
+
+  TupleMapped = lists:map(fun({Pv, Nv, Tp}) -> {{Pv, Nv}, ty_rec:tuple({default, maps:keys(T)}, dnf_var_ty_tuple:tuple(Tp))} end, dnf_var_ty_tuple:get_dnf(DT)),
+  TupleExplicitMapped = lists:flatten(lists:map(fun({Size, Tuple}) ->
+    DnfTuples = dnf_var_ty_tuple:get_dnf(Tuple),
+    _DnfTupleMapped = lists:map(fun({Pv, Nv, Tp}) -> {{Pv, Nv}, ty_rec:tuple(Size, dnf_var_ty_tuple:tuple(Tp))} end, DnfTuples)
+                                  end, maps:to_list(T))),
+
+  FunctionMapped = lists:map(fun({Pv, Nv, Tp}) -> {{Pv, Nv}, ty_rec:function({default, maps:keys(F)}, dnf_var_ty_function:function(Tp))} end, dnf_var_ty_function:get_dnf(DF)),
+  FunctionExplicitMapped = lists:map(fun({Size, Function}) ->
+    DnfFunctions = dnf_var_ty_function:get_dnf(Function),
+    _DnfFunctionMapped = lists:map(fun({Pv, Nv, Tp}) -> {{Pv, Nv}, ty_rec:function(Size, dnf_var_ty_function:function(Tp))} end, DnfFunctions)
+%%    error(todo),
+%%    dnf_var_ty_function:get_dnf(Function)
+                                     end, maps:to_list(F)),
+
+%%  io:format(user, "FunctionMapped: ~n~p~n", [TupleExplicitMapped]),
+%%  error(todo),
+
+  AllKinds = lists:flatten([PMapped, AMapped, IMapped, LMapped, TupleMapped, FunctionMapped, TupleExplicitMapped, FunctionExplicitMapped]),
+
+  UpdateKey = fun(_Key, Ty1, Ty2) -> ty_rec:union(Ty1, Ty2) end,
+  AllUnions = lists:foldl(fun({VarKey, Ty}, CurrentMap) ->
+    NewMap = #{VarKey => Ty},
+    maps:merge_with(UpdateKey, CurrentMap, NewMap)
+                          end, VarMap, AllKinds),
+
+  SubsumedUnions = maps:fold(fun({Pv, Nv}, Ty, CurrentMap) ->
+    subsume_variables(Pv, Nv, Ty, CurrentMap)
+                             end, AllUnions, AllUnions),
+
+%%  io:format(user, "All: ~n~p~n", [AllUnions]),
+%%  io:format(user, "Subsumed: ~n~p~n", [SubsumedUnions]),
 
 
 
-  OldTy = ty_ref:load(TyRef),
-  {Variables, Ty} = ty_rec:extract_variables(OldTy),
-  #ty{predef = P, atom = A, interval = I, list = L, tuple = {DT, T}, function = {DF, F}} = ty_ref:load(Ty),
+  % Distribute top types to all variables redundantly, if any
+  % atom() | a & (Any \ atom)
+  % => atom() | a
+  TopTypes = [ty_rec:atom(), ty_rec:interval(), ty_rec:tuple(), ty_rec:function(), ty_rec:list(), ty_rec:predef()],
+  NoVarsType = maps:get({[], []}, SubsumedUnions, ty_rec:empty()),
+
+  RedundantUnions = lists:foldl(fun(Top, Acc) ->
+    case ty_rec:is_subtype(Top, NoVarsType) of
+      true ->
+        maps:map(fun(_, V) -> ty_rec:union(Top, V) end, Acc);
+      _ -> Acc
+    end
+                                end, SubsumedUnions, TopTypes),
 
 
-  NP = Intersect([Predef(), dnf_var_predef:transform(P, Ops)]),
-  NA = Intersect([Atoms(), dnf_var_ty_atom:transform(A, Ops)]),
-  NI = Intersect([Intervals(), dnf_var_int:transform(I, Ops)]),
-  NL = Intersect([Lists(), dnf_var_ty_list:transform(L, Ops)]),
-  Z2 = multi_transform_fun(DF, F, Ops),
-  NF = case subty:is_subty(none, Z2, Functions()) of
-         true -> Z2;
-         false ->
-%%      io:format(user, "~p is not~n~p~n", [Z2, Functions()]),
-%%           error(todo)
-           Intersect([Functions(), Z2])
-       end,
-
-  Z1 = multi_transform(DT, T, Ops),
-  NT = Intersect([Tuples(), Z1]),
+  RedundantUnions.
 
 
-  ZZ = Union([Var(V) || V <- Variables] ++ [NP, NA, NI, NL, NT, NF]),
-  case ty_rec:is_subtype(ty_rec:any(), TyRef) of
-    true -> Any();
-    _ -> ZZ
-  end.
+subsume_variables(Pv, Nv, T, VarMap) ->
+
+  maps:fold(fun({Pv1, Nv1}, T1, CurrentMap) ->
+    case {Pv1, Nv1, T1} of
+      {Pv, Nv, T} -> CurrentMap; % skip, same entry
+      _ -> case ty_rec:is_subtype(T1, T) of
+             true ->
+               % if other dnf is subtype of current dnf,
+               % remove all other negative variables that are in the current positive variables
+               NewMap = maps:remove({Pv1, Nv1}, CurrentMap),
+               NewKey = {Pv1, Nv1 -- Pv},
+               OldValue = maps:get(NewKey, CurrentMap, ty_rec:empty()),
+               NewValue = ty_rec:union(OldValue, T1),
+               maps:put(NewKey, NewValue, NewMap);
+             false -> CurrentMap
+           end
+    end
+           end, VarMap, VarMap).
 
 
-multi_transform(DefaultT, T, Ops = #{negate := Negate, union := Union, intersect := Intersect}) ->
+
+multi_transform(DefaultT, T, Ops = #{any_tuple_i := Tuple, any_tuple := Tuples, negate := Negate, union := Union, intersect := Intersect}) ->
   X1 = dnf_var_ty_tuple:transform(DefaultT, Ops),
   Xs = lists:map(fun({_Size, Tuple}) -> dnf_var_ty_tuple:transform(Tuple, Ops) end, maps:to_list(T)),
+  Sizes = maps:keys(T),
 
-  Union([Intersect([X1, Negate(Union(Xs))]), Union(Xs)]).
+  DefaultTuplesWithoutExplicitTuples = Intersect([X1, Tuples(), Negate(Union([Tuple(I) || I <- Sizes]))]),
+  Union([DefaultTuplesWithoutExplicitTuples, Union(Xs)]).
 
 multi_transform_fun(DefaultF, F, Ops = #{negate := Negate, union := Union, intersect := Intersect}) ->
   X1 = dnf_var_ty_function:transform(DefaultF, Ops),
@@ -163,6 +269,7 @@ variable(Var) ->
     function ={dnf_var_ty_function:var(Var), #{}}
   }).
 
+list() -> list(dnf_var_ty_list:any()).
 list(List) ->
   Empty = ty_ref:load(empty()),
   ty_ref:store(Empty#ty{ list = List }).
@@ -187,6 +294,7 @@ predef(Predef) ->
   Empty = ty_ref:load(empty()),
   ty_ref:store(Empty#ty{ predef = Predef }).
 predef() -> predef(dnf_var_predef:any()).
+
 
 %%-spec tuple(ty_tuple()) -> ty_ref().
 tuple({default, Sizes}, Tuple) ->

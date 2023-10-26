@@ -49,161 +49,161 @@ find_subst(X = [{Low, High} | OtherTests], [Subst | Others], AllTally) ->
     false -> find_subst(OtherTests, AllTally -- [Subst], AllTally -- [Subst])
   end.
 
-%%tally_01_test() ->
-%%    test_tally(
-%%      [alpha],
-%%      [{tvar(alpha), tint()}],
-%%      [{
-%%        #{ alpha => tnone()},
-%%        #{ alpha => tint()}
-%%      }]
-%%    ).
-%%
-%%tally_02_test() ->
-%%    test_tally(
-%%      [alpha],
-%%      [{tint(), tvar(alpha)}],
-%%      [{
-%%        #{ alpha => tint()},
-%%        #{ alpha => tany()}
-%%      }]
-%%    ).
-%%
-%%tally_03_test() ->
-%%  test_tally(
-%%    [zero],
-%%    [
-%%    {ttuple([]), tvar(zero)},
-%%    {tvar(zero), ttuple([])}
-%%  ],
-%%    [{
-%%      #{ zero => ttuple([])},
-%%      #{ zero => ttuple([])}
-%%    }]
-%%  ).
-%%
-%%tally_04_test() ->
-%%    Alpha = tvar(alpha),
-%%    Beta = tvar(beta),
-%%    test_tally(
-%%      [alpha, beta],
-%%      [
-%%      {Alpha, ttuple1(tany())},
-%%      {ttuple1(Beta), Alpha},
-%%      {tint(), Beta}
-%%    ],
-%%      [{
-%%        #{ alpha => ttuple([tint()]), beta => tint()},
-%%        #{ alpha => ttuple([tany()]), beta => tany()}
-%%      }]
-%%    ).
-%%
-%%tally_05_test() ->
-%%    Alpha = tvar(alpha),
-%%    Beta = tvar(beta),
-%%    test_tally(
-%%      [beta, alpha],
-%%      [
-%%      {tlist(Beta), Alpha}
-%%    ],
-%%      [{
-%%        #{ alpha => tlist(Beta)},
-%%        #{ alpha => tany() }
-%%      }]
-%%    ).
-%%
-%%% debug tallying (['b] [ ('b, 'a2) ]);;
-%%% result:[{'a2:='b}]
-%%tally_06_test() ->
-%%    Alpha = tvar(alpha),
-%%    Beta = tvar(beta),
-%%    test_tally(
-%%      [beta, alpha],
-%%      [{Beta, Alpha}],
-%%      [{
-%%        #{ alpha => Beta },
-%%        #{ alpha => tany() }
-%%      }],
-%%      [beta]).
-%%
-%%% debug tallying (['b] [ (['b*], 'a2) ]);;
-%%% result:[{'a2:=[ 'b* ]}]
-%%tally_07_test() ->
-%%  Alpha = tvar(alpha),
-%%  Beta = tvar(beta),
-%%  test_tally(
-%%    [beta, alpha],
-%%    [
-%%    {tlist(Beta), Alpha}
-%%  ],
-%%    [{
-%%      #{ alpha => tlist(Beta)},
-%%      #{ alpha => tany() }
-%%    }],
-%%    [beta]
-%%  ).
-%%
-%%% see #36
-%%% # debug tallying ([] [(1|2, 'alpha) ( (Int -> Int) & ((1|2) -> (1|2)), 'alpha -> 'beta) ('beta, 1|2)]);;
-%%% [DEBUG:tallying]
-%%% Result:[{'beta:=1--2 | 1--2 & 'a6a6; 'alpha:=1--2 | 1--2 & 'a6a6}]
-%%tally_08_test() ->
-%%  Alpha = tvar(alpha),
-%%  Beta = tvar(beta),
-%%  OneOrTwo = tunion(tint(1), tint(2)),
-%%  OneOrTwoRange = trange(1, 2),
-%%  test_tally(
-%%    [alpha, beta],
-%%    [
-%%      {OneOrTwo, Alpha},
-%%      {Beta, OneOrTwo},
-%%      {tinter(tfun1(tint(), tint()), tfun1(OneOrTwo, OneOrTwo)), tfun1(Alpha, Beta)}
-%%    ],
-%%    [{
-%%      #{ alpha => OneOrTwoRange, beta => OneOrTwoRange },
-%%      #{ alpha => OneOrTwoRange, beta => OneOrTwoRange }
-%%    }]).
-%%
-%%% Also see #36
-%%% #debug tallying ([] [( ((Int, Int) -> Int) & ((Int, Float) -> Float) & ((Float, Int) -> Float) & ((Float, Float) -> Float), ('alpha, 'beta) -> 'gamma ) (Int \ (1--2), 'alpha) (1, 'beta) (1, 'delta) (2, 'delta) ('delta, Int) ('gamma, 'delta)]);;
-%%% [DEBUG:tallying]
-%%% Result:[{
-%%%  'gamma:=Int;
-%%%  'delta:=Int;
-%%%  'beta:=1 | Int & 'betabeta;
-%%%  'alpha:=*--0 | 3--* | Int & 'alphaalpha
-%%% }]
-%%tally_09_test() ->
-%%    Alpha = tvar(alpha),
-%%    Beta = tvar(beta),
-%%    Gamma = tvar(gamma),
-%%    Delta = tvar(delta),
-%%    One = tint(1),
-%%    Two = tint(2),
-%%    OneOrTwo = tunion(One, Two),
-%%    I = tint(),
-%%    F = tfloat(),
-%%    test_tally(
-%%      [delta, beta, alpha, gamma],
-%%      [{tinter([tfun2(I, I, I), tfun2(I, F, F), tfun2(F, I, F), tfun2(F, F, F)]), tfun2(Alpha, Beta, Gamma)},
-%%       {tinter(I, tnot(OneOrTwo)), Alpha},
-%%       {One, Beta},
-%%       {One, Delta},
-%%       {Two, Delta},
-%%       {Delta, I},
-%%       {Gamma, Delta}],
-%%
-%%      [{
-%%        #{ alpha => tunion(tunion([trange(3, '*')]), tunion([trange('*', 0)])),
-%%          beta => trange(1, 1),
-%%          gamma => I,
-%%          delta => I },
-%%        #{ alpha => tint(),
-%%          beta => tint(),
-%%          gamma => I,
-%%          delta => I }
-%%      }]
-%%    ).
+tally_01_test() ->
+    test_tally(
+      [alpha],
+      [{tvar(alpha), tint()}],
+      [{
+        #{ alpha => tnone()},
+        #{ alpha => tint()}
+      }]
+    ).
+
+tally_02_test() ->
+    test_tally(
+      [alpha],
+      [{tint(), tvar(alpha)}],
+      [{
+        #{ alpha => tint()},
+        #{ alpha => tany()}
+      }]
+    ).
+
+tally_03_test() ->
+  test_tally(
+    [zero],
+    [
+    {ttuple([]), tvar(zero)},
+    {tvar(zero), ttuple([])}
+  ],
+    [{
+      #{ zero => ttuple([])},
+      #{ zero => ttuple([])}
+    }]
+  ).
+
+tally_04_test() ->
+    Alpha = tvar(alpha),
+    Beta = tvar(beta),
+    test_tally(
+      [alpha, beta],
+      [
+      {Alpha, ttuple1(tany())},
+      {ttuple1(Beta), Alpha},
+      {tint(), Beta}
+    ],
+      [{
+        #{ alpha => ttuple([tint()]), beta => tint()},
+        #{ alpha => ttuple([tany()]), beta => tany()}
+      }]
+    ).
+
+tally_05_test() ->
+    Alpha = tvar(alpha),
+    Beta = tvar(beta),
+    test_tally(
+      [beta, alpha],
+      [
+      {tlist(Beta), Alpha}
+    ],
+      [{
+        #{ alpha => tlist(Beta)},
+        #{ alpha => tany() }
+      }]
+    ).
+
+% debug tallying (['b] [ ('b, 'a2) ]);;
+% result:[{'a2:='b}]
+tally_06_test() ->
+    Alpha = tvar(alpha),
+    Beta = tvar(beta),
+    test_tally(
+      [beta, alpha],
+      [{Beta, Alpha}],
+      [{
+        #{ alpha => Beta },
+        #{ alpha => tany() }
+      }],
+      [beta]).
+
+% debug tallying (['b] [ (['b*], 'a2) ]);;
+% result:[{'a2:=[ 'b* ]}]
+tally_07_test() ->
+  Alpha = tvar(alpha),
+  Beta = tvar(beta),
+  test_tally(
+    [beta, alpha],
+    [
+    {tlist(Beta), Alpha}
+  ],
+    [{
+      #{ alpha => tlist(Beta)},
+      #{ alpha => tany() }
+    }],
+    [beta]
+  ).
+
+% see #36
+% # debug tallying ([] [(1|2, 'alpha) ( (Int -> Int) & ((1|2) -> (1|2)), 'alpha -> 'beta) ('beta, 1|2)]);;
+% [DEBUG:tallying]
+% Result:[{'beta:=1--2 | 1--2 & 'a6a6; 'alpha:=1--2 | 1--2 & 'a6a6}]
+tally_08_test() ->
+  Alpha = tvar(alpha),
+  Beta = tvar(beta),
+  OneOrTwo = tunion(tint(1), tint(2)),
+  OneOrTwoRange = trange(1, 2),
+  test_tally(
+    [alpha, beta],
+    [
+      {OneOrTwo, Alpha},
+      {Beta, OneOrTwo},
+      {tinter(tfun1(tint(), tint()), tfun1(OneOrTwo, OneOrTwo)), tfun1(Alpha, Beta)}
+    ],
+    [{
+      #{ alpha => OneOrTwoRange, beta => OneOrTwoRange },
+      #{ alpha => OneOrTwoRange, beta => OneOrTwoRange }
+    }]).
+
+% Also see #36
+% #debug tallying ([] [( ((Int, Int) -> Int) & ((Int, Float) -> Float) & ((Float, Int) -> Float) & ((Float, Float) -> Float), ('alpha, 'beta) -> 'gamma ) (Int \ (1--2), 'alpha) (1, 'beta) (1, 'delta) (2, 'delta) ('delta, Int) ('gamma, 'delta)]);;
+% [DEBUG:tallying]
+% Result:[{
+%  'gamma:=Int;
+%  'delta:=Int;
+%  'beta:=1 | Int & 'betabeta;
+%  'alpha:=*--0 | 3--* | Int & 'alphaalpha
+% }]
+tally_09_test() ->
+    Alpha = tvar(alpha),
+    Beta = tvar(beta),
+    Gamma = tvar(gamma),
+    Delta = tvar(delta),
+    One = tint(1),
+    Two = tint(2),
+    OneOrTwo = tunion(One, Two),
+    I = tint(),
+    F = tfloat(),
+    test_tally(
+      [delta, beta, alpha, gamma],
+      [{tinter([tfun2(I, I, I), tfun2(I, F, F), tfun2(F, I, F), tfun2(F, F, F)]), tfun2(Alpha, Beta, Gamma)},
+       {tinter(I, tnot(OneOrTwo)), Alpha},
+       {One, Beta},
+       {One, Delta},
+       {Two, Delta},
+       {Delta, I},
+       {Gamma, Delta}],
+
+      [{
+        #{ alpha => tunion(tunion([trange(3, '*')]), tunion([trange('*', 0)])),
+          beta => trange(1, 1),
+          gamma => I,
+          delta => I },
+        #{ alpha => tint(),
+          beta => tint(),
+          gamma => I,
+          delta => I }
+      }]
+    ).
 
 tally_10_test() ->
     Order = [v2, v0, v8, v7, v6, v5, v4, v3],
@@ -232,220 +232,234 @@ tally_10_test() ->
        {tinter([V0, ttuple1(A), TupleAny]), ttuple1(V4)}],
       [{#{}, #{}}]).
 
-%%% debug tallying ([] [] [('a1 -> 'a2, 'a0) ('a4, 'a2) (42, 'a4) ('a3 & Int, 'a4) ('a3 & Int, 'a5) (Any -> Bool, 'a5 -> 'a6) ('a6, Bool) ('a1, 'a3)]);;
-%%%[DEBUG:tallying]
-%%%Result:[
-%%%   {
-%%%      'a1:=('a1a1 & 'a3a3) \ Int;
-%%%      'a3:='a3a3 \ Int;
-%%%      'a6:=Bool & 'a6a6;
-%%%      'a5:=Empty;
-%%%      'a4:=42 | 'a4a4 & 'a2a2;
-%%%      'a2:=42 | 'a2a2;
-%%%      'a0:=(('a1a1 & 'a3a3) \ Int -> 42 | 'a2a2) | 'a0a0};
-%%%   {
-%%%      'a1:=Int & 'a5 & 'a1a1 & 'a3a3 & 'a4a4 & 'a2a2 | 42 & 'a5 & 'a1a1 & 'a3a3 | ('a1a1 & 'a3a3) \ Int;
-%%%      'a3:=Int & 'a5 & 'a3a3 & 'a4a4 & 'a2a2 | 42 & 'a5 & 'a3a3 | 'a3a3 \ Int;
-%%%      'a6:=Bool;
-%%%      'a4:=42 | 'a4a4 & 'a2a2;
-%%%      'a2:=42 | 'a2a2;
-%%%      'a0:=(Int & 'a5 & 'a1a1 & 'a3a3 & 'a4a4 & 'a2a2 | 42 & 'a5 & 'a1a1 & 'a3a3 | ('a1a1 & 'a3a3) \ Int -> 42 | 'a2a2) | 'a0a0
-%%%   }]
-%%tally_issue_8_test() ->
-%%  A0 = tvar(alpha0), A1 = tvar(alpha1), A2 = tvar(alpha2), A3 = tvar(alpha3), A4 = tvar(alpha4), A5 = tvar(alpha5), A6 = tvar(alpha6),
-%%  test_tally(
-%%    [alpha4,alpha6,alpha1,alpha2,alpha0,alpha3,alpha5],
-%%    [
-%%      {tfun_full([A1], A2), A0},
-%%      {A4, A2},
-%%      {tint(42), A4},
-%%      {tintersect([A3, tint()]), A4},
-%%      {tintersect([A3, tint()]), A5},
-%%      {tfun_full([tany()], tbool()), tfun_full([A5], A6)},
-%%      {A6, tbool()},
-%%      {A1, A3}
-%%    ],
-%%    [
-%%      {
-%%        #{ alpha2 => tint(42), alpha1 => tnone(), alpha3 => tnone(), alpha6 => tbool(), alpha4 => tint(42) },
-%%        #{ alpha2 => tany(), alpha1 => tany(), alpha3 => tany(), alpha6 => tbool(), alpha4 => tany() }
-%%      },
-%%      {
-%%        #{ alpha0 => tfun_full([tany()], tint(42)), alpha5 => tnone(), alpha2 => tint(42), alpha1 => tnone(), alpha3 => tnone(), alpha6 => tnone(), alpha4 => tnone() },
-%%        #{ alpha0 => tany(), alpha5 => tnone(), alpha2 => tany(), alpha1 => tinter([tany(), tnegate(tint())]), alpha3 => tinter([tany(), tnegate(tint())]), alpha6 => tbool(), alpha4 => tany() }
-%%      }
-%%    ]).
-%%
-%%
-%%tally_issue_14_test() ->
-%%  Order = [v2, v0, v8, v7, v6, v5, v4, v3],
-%%  V0 = tvar(v0),
-%%  V2 = tvar(v2),
-%%  V3 = tvar(v3),
-%%  V4 = tvar(v4),
-%%  V5 = tvar(v5),
-%%  V6 = tvar(v6),
-%%  V7 = tvar(v7),
-%%  V8 = tvar(v8),
-%%  A = tatom(a),
-%%  B = tatom(b),
-%%  TupleAny = ttuple1(tany()),
-%%  LargeInter = tinter([V0, tnot(tinter([ttuple1(A), TupleAny])), ttuple1(B), TupleAny]),
-%%  test_tally(
-%%    Order,
-%%    [{tinter([V0, ttuple1(A), TupleAny]), ttuple1(V3)},
-%%      {tunion([tinter([ttuple1(A), TupleAny]), tinter([ttuple1(B), TupleAny])]), ttuple1(V8)},
-%%      {ttuple1(V2), V0},
-%%      {LargeInter, ttuple1(V8)},
-%%      {LargeInter, ttuple1(V7)},
-%%      {LargeInter, ttuple1(V6)},
-%%      {tinter([V0, ttuple1(A), TupleAny]), ttuple1(V5)},
-%%      {A, V2},
-%%      {tinter([V0, ttuple1(A), TupleAny]), ttuple1(V4)}],
-%%    [{#{}, #{}}]).
-%%
-%%
-%%% constraints:
-%%% { {$2},  $0 }
-%%% { ($0 /\ not({a} /\ {any()})) /\ ({b} /\ {any()}), {$6} }
-%%% { ($0 /\ not({a} /\ {any()})) /\ ({b} /\ {any()}), {$5} }
-%%% { a, $2},
-%%% {$0, {a} /\ {any()} | {b} /\ {any()}},
-%%% {$0 /\ ({a} /\ {any()}), {$4}},
-%%% {$0 /\ ({a} /\ {any()}), {$3}}]}
-%%%
-%%% cduce
-%%% debug tallying (['a0 'a1 'a2 'a3 'a4 'a5 'a6] [] [
-%%% (('a2, 42), 'a0)
-%%% ('a0 & (`b, 42) \ (`a, 42), ('a6, 42))
-%%% ('a0 & (`b, 42) \ (`a, 42), ('a5, 42))
-%%% (`a, 'a2)
-%%% ('a0, (`a, 42) | (`b, 42))
-%%% (('a0 & (`a, 42)), ('a4, 42))
-%%% (('a0 & (`a, 42)), ('a3, 42))
-%%% ]);;
-%%% Result:
-%%% [{
-%%%   'a0:=(`b & 'a5 & 'a6 & 'a2a2,42) | (`b & 'a5 & 'a6 & 'a2a2 & 'a3a3 & 'a4a4,42) | (`a,42) | ((`b & 'a5 & 'a6,42) | (`b & 'a5 & 'a6 & 'a3a3 & 'a4a4,42) | (`a,42)) & 'a0a0;
-%%%   'a2:=`a | `b & 'a5 & 'a6 & 'a2a2 | (`b | `a) & 'a5 & 'a6 & 'a2a2 & 'a3a3 & 'a4a4;
-%%%   'a3:=`a | 'a3a3;
-%%%   'a4:=`a | 'a4a4
-%%% }]
-%%tally_foo2_test() ->
-%%  % changing variable order might produce a different number of solutions
-%%  Order = ['$0', '$1', '$2', '$3', '$4', '$5', '$6'],
-%%
-%%  % (('a2, 42), 'a0)
-%%  C1 = {{tuple,[{var,'$2'}, {singleton, tag}]},{var,'$0'}},
-%%  % (`a, 'a2)
-%%  C2 = {{singleton,a},{var,'$2'}},
-%%  % (('a0 & (`a, 42)), ('a4, 42))
-%%  C3 = {
-%%    {intersection,[ {var,'$0'}, {tuple,[{singleton,a}, {singleton, tag}]} ]},
-%%    {tuple,[{var,'$4'}, {singleton, tag}]}
-%%  },
-%%  % (('a0 & (`a, 42)), ('a3, 42))
-%%  C4 = {
-%%    {intersection,[{var,'$0'}, {tuple,[{singleton,a}, {singleton, tag}]}]},
-%%    {tuple,[{var,'$3'}, {singleton, tag}]}
-%%  },
-%%  % ('a0, (`a, 42) | (`b, 42))
-%%  C5 = {
-%%    {var,'$0'},
-%%    {union,[
-%%      {tuple,[{singleton,a}, {singleton, tag}]},
-%%      {tuple,[{singleton,b}, {singleton, tag}]}
-%%    ]}
-%%  },
-%%  % ('a0 & (`b, 42) \ (`a, 42), ('a6, 42))
-%%  C6 = {
-%%    {intersection, [
-%%      {var,'$0'},
-%%      {negation, {tuple,[{singleton,a}, {singleton, tag}]} },
-%%      {tuple,[{singleton,b}, {singleton, tag}]}
-%%    ]},
-%%    {tuple,[{var,'$6'}, {singleton, tag}]}},
-%%
-%%  % ('a0 & (`b, 42) \ (`a, 42), ('a5, 42))
-%%  C7 = {
-%%    {intersection, [
-%%      {var,'$0'},
-%%      {negation, {tuple,[{singleton,a}, {singleton, tag}]}},
-%%      {tuple,[{singleton,b}, {singleton, tag}]}
-%%    ]},
-%%    {tuple,[{var,'$5'}, {singleton, tag}]}
-%%  },
-%%
-%%  test_tally(
-%%    Order,
-%%    [
-%%      C1, C2, C3, C4, C5, C6, C7
-%%    ],
-%%    [
-%%      {
-%%        #{'$0' => ttuple([tatom(a), tatom(tag)])                                          , '$2' => tatom(a),                     '$3' => tatom(a), '$4' => tatom(a) },
-%%        #{'$0' => tunion([ttuple([tatom(a), tatom(tag)]), ttuple([tatom(b), tatom(tag)])]), '$2' => tunion([tatom(a), tatom(b)]), '$3' => tany(),   '$4' => tany() }
-%%      }
-%%    ]).
-%%
-%%tally_fun_cons_test() ->
-%%  A1 = tvar(a1),
-%%  A2 = tvar(a2),
-%%  A3 = tvar(a3),
-%%  A4 = tvar(a4),
-%%
-%%  test_tally(
-%%    [a2, a1, a3, a4],
-%%    [
-%%      {tempty_list(), A1},
-%%      {tempty_list(), A2},
-%%      {A3, stdtypes:tlist(tint())},
-%%      {tfun2(A4, A4, A4), tfun2(A1, A2, A3)}
-%%    ],
-%%    [{
-%%      #{ },
-%%      #{ }
-%%    }]).
-%%
-%%tally_fun_cons3_test() ->
-%%
-%%  test_tally(
-%%    ['$2', '$0', '$3', '$4', '$1', 'a@0'],
-%%    [
-%%      {{empty_list},{var,'$3'}},
-%%      {{var,'$0'},{intersection,[{tuple,[]},{tuple,[]}]}},
-%%      {{var,'$1'},{list,{predef,integer}}},
-%%      {{fun_full,[{list,{intersection,[{var,a@0},{predef,any}]}},
-%%        {list,{intersection,[{var,a@0},{predef,any}]}}],
-%%        {list,{intersection,[{var,a@0},{predef,any}]}}},
-%%        {fun_full,[{var,'$2'},{var,'$3'}],{var,'$4'}}},
-%%      {{empty_list},{var,'$2'}},
-%%      {{var,'$4'},{var,'$1'}},
-%%      {{intersection,[{var,'$0'},{intersection,[{tuple,[]},{tuple,[]}]}]},
-%%        {tuple,[]}},
-%%      {{tuple,[]},{var,'$0'}}
-%%    ],
-%%    [{
-%%      #{ },
-%%      #{ }
-%%    }]).
-%%
-%%sol_number_test() ->
-%%  % changing variable order produces a different number of solutions
-%%
-%%  % ('a2, 42) <=  ('a1, 42)
-%%  C1 = { {tuple,[{var,'$2'}, {singleton, tag}]}, {tuple,[{var,'$1'}, {singleton, tag}]}},
-%%
-%%  % single solution variable order says
-%%  % 'a2 is replaced by 'a1 & 'mu1
-%%
-%%  % multiple solution variable order says
-%%  % EITHER    'a2 is empty
-%%  % OR        'a1 is replaced by 'a2 U 'mu1
-%%  % both tally results are equivalent
-%%
-%%  % variable order determines if a variable is used as a lower or upper bound for another variable
-%%  Order1 = ['$2', '$1'],
-%%  Order2 = ['$1', '$2'],
-%%  test_tally( Order1, [ C1 ], [ { #{}, #{} } ]),
-%%  test_tally( Order2, [ C1 ], [ { #{}, #{} }, { #{}, #{} } ]).
+% debug tallying ([] [] [('a1 -> 'a2, 'a0) ('a4, 'a2) (42, 'a4) ('a3 & Int, 'a4) ('a3 & Int, 'a5) (Any -> Bool, 'a5 -> 'a6) ('a6, Bool) ('a1, 'a3)]);;
+%[DEBUG:tallying]
+%Result:[
+%   {
+%      'a1:=('a1a1 & 'a3a3) \ Int;
+%      'a3:='a3a3 \ Int;
+%      'a6:=Bool & 'a6a6;
+%      'a5:=Empty;
+%      'a4:=42 | 'a4a4 & 'a2a2;
+%      'a2:=42 | 'a2a2;
+%      'a0:=(('a1a1 & 'a3a3) \ Int -> 42 | 'a2a2) | 'a0a0};
+%   {
+%      'a1:=Int & 'a5 & 'a1a1 & 'a3a3 & 'a4a4 & 'a2a2 | 42 & 'a5 & 'a1a1 & 'a3a3 | ('a1a1 & 'a3a3) \ Int;
+%      'a3:=Int & 'a5 & 'a3a3 & 'a4a4 & 'a2a2 | 42 & 'a5 & 'a3a3 | 'a3a3 \ Int;
+%      'a6:=Bool;
+%      'a4:=42 | 'a4a4 & 'a2a2;
+%      'a2:=42 | 'a2a2;
+%      'a0:=(Int & 'a5 & 'a1a1 & 'a3a3 & 'a4a4 & 'a2a2 | 42 & 'a5 & 'a1a1 & 'a3a3 | ('a1a1 & 'a3a3) \ Int -> 42 | 'a2a2) | 'a0a0
+%   }]
+tally_issue_8_test() ->
+  A0 = tvar(alpha0), A1 = tvar(alpha1), A2 = tvar(alpha2), A3 = tvar(alpha3), A4 = tvar(alpha4), A5 = tvar(alpha5), A6 = tvar(alpha6),
+  test_tally(
+    [alpha4,alpha6,alpha1,alpha2,alpha0,alpha3,alpha5],
+    [
+      {tfun_full([A1], A2), A0},
+      {A4, A2},
+      {tint(42), A4},
+      {tintersect([A3, tint()]), A4},
+      {tintersect([A3, tint()]), A5},
+      {tfun_full([tany()], tbool()), tfun_full([A5], A6)},
+      {A6, tbool()},
+      {A1, A3}
+    ],
+    [
+      {
+        #{ alpha2 => tint(42), alpha1 => tnone(), alpha3 => tnone(), alpha6 => tbool(), alpha4 => tint(42) },
+        #{ alpha2 => tany(), alpha1 => tany(), alpha3 => tany(), alpha6 => tbool(), alpha4 => tany() }
+      },
+      {
+        #{ alpha0 => tfun_full([tany()], tint(42)), alpha5 => tnone(), alpha2 => tint(42), alpha1 => tnone(), alpha3 => tnone(), alpha6 => tnone(), alpha4 => tnone() },
+        #{ alpha0 => tany(), alpha5 => tnone(), alpha2 => tany(), alpha1 => tinter([tany(), tnegate(tint())]), alpha3 => tinter([tany(), tnegate(tint())]), alpha6 => tbool(), alpha4 => tany() }
+      }
+    ]).
+
+
+tally_issue_14_test() ->
+  Order = [v2, v0, v8, v7, v6, v5, v4, v3],
+  V0 = tvar(v0),
+  V2 = tvar(v2),
+  V3 = tvar(v3),
+  V4 = tvar(v4),
+  V5 = tvar(v5),
+  V6 = tvar(v6),
+  V7 = tvar(v7),
+  V8 = tvar(v8),
+  A = tatom(a),
+  B = tatom(b),
+  TupleAny = ttuple1(tany()),
+  LargeInter = tinter([V0, tnot(tinter([ttuple1(A), TupleAny])), ttuple1(B), TupleAny]),
+  test_tally(
+    Order,
+    [{tinter([V0, ttuple1(A), TupleAny]), ttuple1(V3)},
+      {tunion([tinter([ttuple1(A), TupleAny]), tinter([ttuple1(B), TupleAny])]), ttuple1(V8)},
+      {ttuple1(V2), V0},
+      {LargeInter, ttuple1(V8)},
+      {LargeInter, ttuple1(V7)},
+      {LargeInter, ttuple1(V6)},
+      {tinter([V0, ttuple1(A), TupleAny]), ttuple1(V5)},
+      {A, V2},
+      {tinter([V0, ttuple1(A), TupleAny]), ttuple1(V4)}],
+    [{#{}, #{}}]).
+
+
+% constraints:
+% { {$2},  $0 }
+% { ($0 /\ not({a} /\ {any()})) /\ ({b} /\ {any()}), {$6} }
+% { ($0 /\ not({a} /\ {any()})) /\ ({b} /\ {any()}), {$5} }
+% { a, $2},
+% {$0, {a} /\ {any()} | {b} /\ {any()}},
+% {$0 /\ ({a} /\ {any()}), {$4}},
+% {$0 /\ ({a} /\ {any()}), {$3}}]}
+%
+% cduce
+% debug tallying (['a0 'a1 'a2 'a3 'a4 'a5 'a6] [] [
+% (('a2, 42), 'a0)
+% ('a0 & (`b, 42) \ (`a, 42), ('a6, 42))
+% ('a0 & (`b, 42) \ (`a, 42), ('a5, 42))
+% (`a, 'a2)
+% ('a0, (`a, 42) | (`b, 42))
+% (('a0 & (`a, 42)), ('a4, 42))
+% (('a0 & (`a, 42)), ('a3, 42))
+% ]);;
+% Result:
+% [{
+%   'a0:=(`b & 'a5 & 'a6 & 'a2a2,42) | (`b & 'a5 & 'a6 & 'a2a2 & 'a3a3 & 'a4a4,42) | (`a,42) | ((`b & 'a5 & 'a6,42) | (`b & 'a5 & 'a6 & 'a3a3 & 'a4a4,42) | (`a,42)) & 'a0a0;
+%   'a2:=`a | `b & 'a5 & 'a6 & 'a2a2 | (`b | `a) & 'a5 & 'a6 & 'a2a2 & 'a3a3 & 'a4a4;
+%   'a3:=`a | 'a3a3;
+%   'a4:=`a | 'a4a4
+% }]
+tally_foo2_test() ->
+  % changing variable order might produce a different number of solutions
+  Order = ['$0', '$1', '$2', '$3', '$4', '$5', '$6'],
+
+  % (('a2, 42), 'a0)
+  C1 = {{tuple,[{var,'$2'}, {singleton, tag}]},{var,'$0'}},
+  % (`a, 'a2)
+  C2 = {{singleton,a},{var,'$2'}},
+  % (('a0 & (`a, 42)), ('a4, 42))
+  C3 = {
+    {intersection,[ {var,'$0'}, {tuple,[{singleton,a}, {singleton, tag}]} ]},
+    {tuple,[{var,'$4'}, {singleton, tag}]}
+  },
+  % (('a0 & (`a, 42)), ('a3, 42))
+  C4 = {
+    {intersection,[{var,'$0'}, {tuple,[{singleton,a}, {singleton, tag}]}]},
+    {tuple,[{var,'$3'}, {singleton, tag}]}
+  },
+  % ('a0, (`a, 42) | (`b, 42))
+  C5 = {
+    {var,'$0'},
+    {union,[
+      {tuple,[{singleton,a}, {singleton, tag}]},
+      {tuple,[{singleton,b}, {singleton, tag}]}
+    ]}
+  },
+  % ('a0 & (`b, 42) \ (`a, 42), ('a6, 42))
+  C6 = {
+    {intersection, [
+      {var,'$0'},
+      {negation, {tuple,[{singleton,a}, {singleton, tag}]} },
+      {tuple,[{singleton,b}, {singleton, tag}]}
+    ]},
+    {tuple,[{var,'$6'}, {singleton, tag}]}},
+
+  % ('a0 & (`b, 42) \ (`a, 42), ('a5, 42))
+  C7 = {
+    {intersection, [
+      {var,'$0'},
+      {negation, {tuple,[{singleton,a}, {singleton, tag}]}},
+      {tuple,[{singleton,b}, {singleton, tag}]}
+    ]},
+    {tuple,[{var,'$5'}, {singleton, tag}]}
+  },
+
+  test_tally(
+    Order,
+    [
+      C1, C2, C3, C4, C5, C6, C7
+    ],
+    [
+      {
+        #{'$0' => ttuple([tatom(a), tatom(tag)])                                          , '$2' => tatom(a),                     '$3' => tatom(a), '$4' => tatom(a) },
+        #{'$0' => tunion([ttuple([tatom(a), tatom(tag)]), ttuple([tatom(b), tatom(tag)])]), '$2' => tunion([tatom(a), tatom(b)]), '$3' => tany(),   '$4' => tany() }
+      }
+    ]).
+
+tally_fun_cons_test() ->
+  A1 = tvar(a1),
+  A2 = tvar(a2),
+  A3 = tvar(a3),
+  A4 = tvar(a4),
+
+  test_tally(
+    [a2, a1, a3, a4],
+    [
+      {tempty_list(), A1},
+      {tempty_list(), A2},
+      {A3, stdtypes:tlist(tint())},
+      {tfun2(A4, A4, A4), tfun2(A1, A2, A3)}
+    ],
+    [{
+      #{ },
+      #{ }
+    }]).
+
+tally_fun_cons3_test() ->
+
+  test_tally(
+    ['$2', '$0', '$3', '$4', '$1', 'a@0'],
+    [
+      {{empty_list},{var,'$3'}},
+      {{var,'$0'},{intersection,[{tuple,[]},{tuple,[]}]}},
+      {{var,'$1'},{list,{predef,integer}}},
+      {{fun_full,[{list,{intersection,[{var,a@0},{predef,any}]}},
+        {list,{intersection,[{var,a@0},{predef,any}]}}],
+        {list,{intersection,[{var,a@0},{predef,any}]}}},
+        {fun_full,[{var,'$2'},{var,'$3'}],{var,'$4'}}},
+      {{empty_list},{var,'$2'}},
+      {{var,'$4'},{var,'$1'}},
+      {{intersection,[{var,'$0'},{intersection,[{tuple,[]},{tuple,[]}]}]},
+        {tuple,[]}},
+      {{tuple,[]},{var,'$0'}}
+    ],
+    [{
+      #{ },
+      #{ }
+    }]).
+
+sol_number_test() ->
+  % changing variable order produces a different number of solutions
+
+  % ('a2, 42) <=  ('a1, 42)
+  C1 = { {tuple,[{var,'$2'}, {singleton, tag}]}, {tuple,[{var,'$1'}, {singleton, tag}]}},
+
+  % single solution variable order says
+  % 'a2 is replaced by 'a1 & 'mu1
+
+  % multiple solution variable order says
+  % EITHER    'a2 is empty
+  % OR        'a1 is replaced by 'a2 U 'mu1
+  % both tally results are equivalent
+
+  % variable order determines if a variable is used as a lower or upper bound for another variable
+  Order1 = ['$2', '$1'],
+  Order2 = ['$1', '$2'],
+  test_tally( Order1, [ C1 ], [ { #{}, #{} } ]),
+  test_tally( Order2, [ C1 ], [ { #{}, #{} }, { #{}, #{} } ]).
+
+pretty_printing_bug_test() ->
+  Order = [v1, v2],
+  V0 = tvar(v1),
+  V6 = tvar(v2),
+  A = tatom(a),
+  B = tatom(b),
+  test_tally(
+    Order,
+    [{
+      tinter([V0, tnot(ttuple1(A)), ttuple1(B)]),
+      V6
+    }],
+    [{#{}, #{}}]).

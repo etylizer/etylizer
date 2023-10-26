@@ -39,6 +39,12 @@ unfold_intersection([{intersection, Components} | Rest], All) ->
 unfold_intersection([X | Rest], All) ->
     unfold_intersection(Rest, All ++ [X]) .
 
+unfold_union([], All) -> All;
+unfold_union([{union, Components} | Rest], All) ->
+    unfold_union(Components ++ Rest, All);
+unfold_union([X | Rest], All) ->
+    unfold_union(Rest, All ++ [X]) .
+
 
 simplify_line(Atoms) ->
     % atoms
@@ -81,6 +87,7 @@ mk_intersection(Tys) ->
                 lists:filter(
                     fun(T) ->
                         case T of
+                            [] -> false;
                             {predef, any} -> false;
                             {negation, {predef, none}} -> false;
                             _ -> true
@@ -90,7 +97,7 @@ mk_intersection(Tys) ->
             case Filtered of
                 [] -> {predef, any};
                 [T] -> T;
-                _ -> {intersection, Filtered}
+                _ -> {intersection, unfold_intersection(Filtered, [])}
             end
     end.
 
@@ -125,7 +132,7 @@ mk_union(Tys) ->
             case Filtered of
                 [] -> {predef, none};
                 [T] -> T;
-                _ -> {union, Filtered}
+                _ -> {union, unfold_union(Filtered, [])}
             end
     end.
 
@@ -153,6 +160,7 @@ erlang_ty_to_ast(X) ->
             to_int => fun(X, Y) -> stdtypes:trange(X, Y) end,
             to_predef => fun('[]') -> stdtypes:tempty_list(); (Predef) -> {predef, Predef} end,
             any_tuple => fun stdtypes:ttuple_any/0,
+            any_tuple_i => fun(Size) -> stdtypes:ttuple([stdtypes:tany() || _ <- lists:seq(1, Size)]) end,
             any_fun => fun stdtypes:tfun_any/0,
             any_int => fun stdtypes:tint/0,
             any_list => fun stdtypes:tlist_any/0,
@@ -163,13 +171,14 @@ erlang_ty_to_ast(X) ->
             var => fun erlang_ty_var_to_var/1,
             diff => fun ast_lib:mk_diff/2,
             union => fun ast_lib:mk_union/1,
-            intersect => fun ast_lib:mk_intersection_simple/1,
+            intersect => fun ast_lib:mk_intersection/1,
             negate => fun ast_lib:mk_negation/1
         }),
+    % FIXME hack
     Full.
 
 simplify(Full) ->
-    io:format(user, ">> Full~n~p~n", [Full]),
+%%    io:format(user, ">> Full~n~p~n", [Full]),
     (_Dnf = {union, Unions}) = dnf:to_dnf(dnf:to_nnf(Full)),
 %%    io:format(user, ">> DNF~n~p~n", [_Dnf]),
     % filter empty intersections
@@ -187,8 +196,8 @@ simplify(Full) ->
     ToReduce = dnf:to_dnf(dnf:to_nnf(R)),
     % reduce everything rigorously until there are no redundant parts in the type
     % a full reduce is very expensive
-%%    reduce_until(ToReduce).
-    ToReduce.
+    reduce_until(ToReduce).
+%%    ToReduce.
 
 reduce_until(ToReduce) -> find_first_reduce(ToReduce, ToReduce, []).
 
@@ -310,11 +319,15 @@ ast_to_erlang_ty_var({var, Name}) when is_atom(Name) ->
     maybe_new_variable(Name).
 
 maybe_new_variable(Name) ->
+%%    io:format(user, "Var: ~p~n", [Name]),
     Object = ets:lookup(?VAR_ETS, Name),
     case Object of
         [] ->
             Var = ty_variable:new(Name),
+%%            io:format(user, "New: ~p~nPrev: ~p~n", [Var, ets:tab2list(?VAR_ETS)]),
             ets:insert(?VAR_ETS, {Name, Var}),
             Var;
-        [{_, Variable}] -> Variable
+        [{_, Variable}] ->
+%%            io:format(user, "Old: ~p~n", [Variable]),
+            Variable
     end.
