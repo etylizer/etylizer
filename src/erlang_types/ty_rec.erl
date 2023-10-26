@@ -47,7 +47,7 @@ is_equivalent(TyRef1, TyRef2) ->
   is_subtype(TyRef1, TyRef2) andalso is_subtype(TyRef2, TyRef1).
 
 maybe_intersect(Z2, Other, Intersect) ->
-  case subty:is_subty(none, Z2, Other) of %TODO symtab?
+  case subty:is_subty(symtab:empty(), Z2, Other) of %TODO symtab?
     true -> Z2;
     false -> Intersect([Other, Z2])
   end.

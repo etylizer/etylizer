@@ -59,7 +59,7 @@ simplify_line(Atoms) ->
 reduce_intersection([], OtherPartsOfLine) -> OtherPartsOfLine;
 reduce_intersection(Full = [Atom | Atoms], OtherPartsOfLine) ->
     ReducedTry = {intersection, Atoms ++ OtherPartsOfLine},
-    case subty:is_equivalent(none, ReducedTry, {intersection, Full ++ OtherPartsOfLine}) of % TODO symtab?
+    case subty:is_equivalent(symtab:empty(), ReducedTry, {intersection, Full ++ OtherPartsOfLine}) of % TODO symtab?
         true -> reduce_intersection(Atoms, OtherPartsOfLine);
         false -> reduce_intersection(Atoms, [Atom | OtherPartsOfLine])
     end.
@@ -204,7 +204,7 @@ reduce_until(ToReduce) -> find_first_reduce(ToReduce, ToReduce, []).
 find_first_reduce(_OriginalTy, {union, []}, OlderLines) -> {union, OlderLines};
 find_first_reduce(OriginalTy, {union, [{intersection, Line} | Lines]}, OlderLines) ->
     WithoutLine = {union, Lines ++ OlderLines},
-    case subty:is_equivalent(none, WithoutLine, OriginalTy) of % TODO symtab?
+    case subty:is_equivalent(symtab:empty(), WithoutLine, OriginalTy) of % TODO symtab?
         true ->
             % is equivalent without the whole line
             find_first_reduce(OriginalTy, {union, Lines}, OlderLines);
@@ -216,7 +216,7 @@ find_first_reduce(OriginalTy, {union, [{intersection, Line} | Lines]}, OlderLine
 find_line_reduce(_OriginalTy, {union, _Lines}, {intersection, []}, OtherPartsOfLine) -> {intersection, OtherPartsOfLine};
 find_line_reduce(OriginalTy, {union, Lines}, {intersection, [Atom | Atoms]}, OtherPartsOfLine) ->
     ReducedTry = {union, [{intersection, Atoms ++ OtherPartsOfLine} | Lines]},
-    case subty:is_equivalent(none, ReducedTry, OriginalTy) of % TODO symtab?
+    case subty:is_equivalent(symtab:empty(), ReducedTry, OriginalTy) of % TODO symtab?
         true ->
             find_line_reduce(OriginalTy, {union, Lines}, {intersection, Atoms}, OtherPartsOfLine);
         false ->
