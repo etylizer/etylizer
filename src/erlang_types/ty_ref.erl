@@ -2,7 +2,7 @@
 
 -export([setup_ets/0, any/0, store/1, load/1, new_ty_ref/0, define_ty_ref/2, is_empty_cached/1, store_is_empty_cached/2, store_recursive_variable/2, check_recursive_variable/1]).
 -export([memoize/1, is_empty_memoized/1, reset/0, is_normalized_memoized/3]).
--export([memoize_norm/2, normalized_memoized/1, setup_all/0]).
+-export([op_cache/3, memoize_norm/2, normalized_memoized/1, setup_all/0]).
 
 -define(TY_UTIL, ty_counter).        % counter store
 -define(TY_MEMORY, ty_mem).          % id -> ty
@@ -18,10 +18,21 @@
 % it is treated as a recursive bound variable instead of a free one
 -define(RECURSIVE_TABLE, remember_recursive_variables_ets).
 
+op_cache(Op, K, Fun) ->
+  case get({Op, K}) of
+    undefined ->
+      Res = Fun(),
+      put({Op, K}, Res),
+      Res;
+    Z ->
+      Z
+  end.
+
 all_tables() ->
   [?TY_UNIQUE_TABLE, ?TY_MEMORY, ?TY_UTIL, ?EMPTY_MEMO, ?EMPTY_CACHE, ?RECURSIVE_TABLE, ?NORMALIZE_CACHE].
 
 reset() ->
+  erase(),
   catch lists:foreach(fun(Tab) -> catch ets:delete(Tab) end, all_tables()),
   setup_all()
 .

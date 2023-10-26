@@ -104,6 +104,7 @@ fix_load_path(Opts) ->
 -spec doWork(#opts{}) -> [file:filename()].
 doWork(Opts) ->
     ?LOG_INFO("Initializing ETS tables"),
+    ecache:reset_all(),
     parse_cache:init(Opts),
     stdtypes:init(),
     try
