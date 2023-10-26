@@ -4,14 +4,28 @@
 -import(stdtypes, [tvar/1, ttuple_any/0, tnegate/1, tatom/0, tatom/1, tfun_full/2, trange/2, tunion/1, tintersect/1, trange_any/0, ttuple/1, tany/0, tnone/0]).
 -import(test_utils, [is_subtype/2, is_equiv/2]).
 
-tuple_1_test() ->
+%%tuple_1_test() ->
+%%  ecache:reset_all(),
+%%  A =
+%%    tintersect([
+%%      tnegate(ttuple([tatom(b)]))
+%%    ])
+%%  ,
+%%  B = ast_lib:ast_to_erlang_ty(A),
+%%  Pretty = ast_lib:erlang_ty_to_ast(B),
+%%  true = subty:is_equivalent(none, A, Pretty),
+%%  io:format(user,"~s~n", [pretty:render_ty(Pretty)]),
+%%
+%%  ok.
+
+var_inter_test() ->
   ecache:reset_all(),
   A =
-    tintersect([
-      tnegate(ttuple([tatom(a)])),
-      tnegate(ttuple([tatom(b)]))
-    ])
-  ,
+    tunion([
+      tintersect([ tvar(mu5), tvar(mu6) ]),
+      tintersect([ tnegate(tvar(mu6)), tatom(bool) ]),
+      tintersect([ tnegate(tvar(mu5)), tatom(bool) ])
+  ]),
   B = ast_lib:ast_to_erlang_ty(A),
   Pretty = ast_lib:erlang_ty_to_ast(B),
   true = subty:is_equivalent(none, A, Pretty),

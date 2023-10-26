@@ -56,15 +56,14 @@ transform(TyRef, Ops =
   #{
     any_list := Lists,
     any_tuple := Tuples,
-    any_fun := Functions,
+    any_function := Functions,
     any_int := Intervals,
     any_atom := Atoms,
     any_predef := Predef,
     union := Union,
     intersect := Intersect,
     negate := Negate,
-    var := Var,
-    any := Any
+    var := Var
   }) ->
 %%  io:format(user,"<~p> Transforming: ~p~n~p~n", [Ref = make_ref(), TyRef, ty_ref:load(TyRef)]),
   DnfMap = prepare(TyRef),
@@ -132,12 +131,7 @@ prepare(TyRef) ->
   FunctionExplicitMapped = lists:map(fun({Size, Function}) ->
     DnfFunctions = dnf_var_ty_function:get_dnf(Function),
     _DnfFunctionMapped = lists:map(fun({Pv, Nv, Tp}) -> {{Pv, Nv}, ty_rec:function(Size, dnf_var_ty_function:function(Tp))} end, DnfFunctions)
-%%    error(todo),
-%%    dnf_var_ty_function:get_dnf(Function)
                                      end, maps:to_list(F)),
-
-%%  io:format(user, "FunctionMapped: ~n~p~n", [TupleExplicitMapped]),
-%%  error(todo),
 
   AllKinds = lists:flatten([PMapped, AMapped, IMapped, LMapped, TupleMapped, FunctionMapped, TupleExplicitMapped, FunctionExplicitMapped]),
 
@@ -151,8 +145,13 @@ prepare(TyRef) ->
     subsume_variables(Pv, Nv, Ty, CurrentMap)
                              end, AllUnions, AllUnions),
 
+  SubsumedUnions2 = maps:fold(fun({Pv, Nv}, Ty, CurrentMap) ->
+    subsume_coclauses(Pv, Nv, Ty, CurrentMap)
+                             end, SubsumedUnions, SubsumedUnions),
+
 %%  io:format(user, "All: ~n~p~n", [AllUnions]),
 %%  io:format(user, "Subsumed: ~n~p~n", [SubsumedUnions]),
+%%  io:format(user, "Subsumed all: ~n~p~n", [SubsumedUnions2]),
 
 
 
@@ -160,7 +159,7 @@ prepare(TyRef) ->
   % atom() | a & (Any \ atom)
   % => atom() | a
   TopTypes = [ty_rec:atom(), ty_rec:interval(), ty_rec:tuple(), ty_rec:function(), ty_rec:list(), ty_rec:predef()],
-  NoVarsType = maps:get({[], []}, SubsumedUnions, ty_rec:empty()),
+  NoVarsType = maps:get({[], []}, SubsumedUnions2, ty_rec:empty()),
 
   RedundantUnions = lists:foldl(fun(Top, Acc) ->
     case ty_rec:is_subtype(Top, NoVarsType) of
@@ -168,31 +167,57 @@ prepare(TyRef) ->
         maps:map(fun(_, V) -> ty_rec:union(Top, V) end, Acc);
       _ -> Acc
     end
-                                end, SubsumedUnions, TopTypes),
+                                end, SubsumedUnions2, TopTypes),
 
 
   RedundantUnions.
 
 
 subsume_variables(Pv, Nv, T, VarMap) ->
-
   maps:fold(fun({Pv1, Nv1}, T1, CurrentMap) ->
     case {Pv1, Nv1, T1} of
       {Pv, Nv, T} -> CurrentMap; % skip, same entry
-      _ -> case ty_rec:is_subtype(T1, T) of
-             true ->
-               % if other dnf is subtype of current dnf,
-               % remove all other negative variables that are in the current positive variables
-               NewMap = maps:remove({Pv1, Nv1}, CurrentMap),
-               NewKey = {Pv1, Nv1 -- Pv},
-               OldValue = maps:get(NewKey, CurrentMap, ty_rec:empty()),
-               NewValue = ty_rec:union(OldValue, T1),
-               maps:put(NewKey, NewValue, NewMap);
-             false -> CurrentMap
-           end
+      _ -> maybe_remove_redundant_negative_variables(CurrentMap, T1, T, Pv, Pv1, Nv1)
     end
-           end, VarMap, VarMap).
+            end, VarMap, VarMap).
 
+
+subsume_coclauses(Pv, Nv, T, VarMap) ->
+   maps:fold(fun({Pv1, Nv1}, T1, CurrentMap) ->
+    case {Pv1, Nv1, T1} of
+      {Pv, Nv, T} -> CurrentMap; % skip, same entry
+      _ -> maybe_remove_subsumed_coclauses(CurrentMap, {Pv, Nv, T}, {Pv1, Nv1, T1})
+    end
+             end, VarMap, VarMap).
+
+maybe_remove_subsumed_coclauses(CurrentMap, _CurrentCoclause = {Pv, Nv, T}, _OtherCoclause = {Pv1, Nv1, T1}) ->
+  S = fun(E) -> sets:from_list(E) end,
+  % other variables in current variables
+  % other neg variables in current neg variables
+  % other ty in current ty
+  % => remove other coclause
+%%  io:format(user,"Check current~n~p~n against other ~n~p~n", [{Pv, Nv, T}, {Pv1, Nv1, T1}]),
+  case sets:is_subset(S(Pv), S(Pv1)) andalso sets:is_subset(S(Nv), S(Nv1)) andalso ty_rec:is_subtype(T1, T) of
+    true ->
+%%      io:format(user, "Removing~n~p~n because ~n~p~n is bigger from current map: ~p~n", [{Pv1, Nv1, T1}, {Pv, Nv, T}, CurrentMap]),
+      maps:remove({Pv1, Nv1}, CurrentMap);
+    _ ->
+      CurrentMap
+  end.
+
+
+maybe_remove_redundant_negative_variables(CurrentMap, T1, T, Pv, Pv1, Nv1) ->
+  % if other dnf is subtype of current dnf,
+  % remove all other negative variables that are in the current positive variables
+  case ty_rec:is_subtype(T1, T) of
+    true ->
+      NewMap = maps:remove({Pv1, Nv1}, CurrentMap),
+      NewKey = {Pv1, Nv1 -- Pv},
+      OldValue = maps:get(NewKey, CurrentMap, ty_rec:empty()),
+      NewValue = ty_rec:union(OldValue, T1),
+      maps:put(NewKey, NewValue, NewMap);
+    false -> CurrentMap
+  end.
 
 
 multi_transform(DefaultT, T, Ops = #{any_tuple_i := Tuple, any_tuple := Tuples, negate := Negate, union := Union, intersect := Intersect}) ->
@@ -203,11 +228,13 @@ multi_transform(DefaultT, T, Ops = #{any_tuple_i := Tuple, any_tuple := Tuples, 
   DefaultTuplesWithoutExplicitTuples = Intersect([X1, Tuples(), Negate(Union([Tuple(I) || I <- Sizes]))]),
   Union([DefaultTuplesWithoutExplicitTuples, Union(Xs)]).
 
-multi_transform_fun(DefaultF, F, Ops = #{negate := Negate, union := Union, intersect := Intersect}) ->
+multi_transform_fun(DefaultF, F, Ops = #{any_function_i := Function, any_function := Functions, negate := Negate, union := Union, intersect := Intersect}) ->
   X1 = dnf_var_ty_function:transform(DefaultF, Ops),
   Xs = lists:map(fun({_Size, Function}) -> dnf_var_ty_function:transform(Function, Ops) end, maps:to_list(F)),
+  Sizes = maps:keys(F),
 
-  Union([Intersect([X1, Negate(Union(Xs))]), Union(Xs)]).
+  DefaultFunctionsWithoutExplicitFunctions = Intersect([X1, Functions(), Negate(Union([Function(I) || I <- Sizes]))]),
+  Union([DefaultFunctionsWithoutExplicitFunctions, Union(Xs)]).
 
 
 extract_variables(Ty = #ty{ predef = P, atom = A, interval = I, list = L, tuple = T, function = F }) ->
