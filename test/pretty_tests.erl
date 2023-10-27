@@ -19,35 +19,35 @@
 %%
 %%  ok.
 
-%%var_inter2_test() ->
-%%  ecache:reset_all(),
-%%  A =
-%%    tunion([
-%%      tintersect([ tvar(mu5), tvar(mu6) ]),
-%%      tintersect([ tnegate(tvar(mu6)), tatom(bool) ]),
-%%      tintersect([ tnegate(tvar(mu5)), tatom(bool) ])
-%%    ]),
-%%  B = ast_lib:ast_to_erlang_ty(A),
-%%  Pretty = ast_lib:erlang_ty_to_ast(B),
-%%  true = subty:is_equivalent(none, A, Pretty),
-%%  io:format(user,"~s~n", [pretty:render_ty(Pretty)]),
-%%
-%%  ok.
-
-var_neg_inter_test() ->
+var_inter2_test() ->
   ecache:reset_all(),
   A =
-    tnegate(tunion([
+    tunion([
       tintersect([ tvar(mu5), tvar(mu6) ]),
-      tintersect([ tvar(mu6), tatom(bool) ]),
+      tintersect([ tnegate(tvar(mu6)), tatom(bool) ]),
       tintersect([ tnegate(tvar(mu5)), tatom(bool) ])
-    ])),
+    ]),
   B = ast_lib:ast_to_erlang_ty(A),
   Pretty = ast_lib:erlang_ty_to_ast(B),
   true = subty:is_equivalent(none, A, Pretty),
   io:format(user,"~s~n", [pretty:render_ty(Pretty)]),
 
   ok.
+
+%%var_neg_inter_test() ->
+%%  ecache:reset_all(),
+%%  A =
+%%    (tunion([
+%%      tintersect([ tvar(mu5), tvar(mu6) ]),
+%%      tintersect([ tvar(mu6), tatom(bool) ]),
+%%      tintersect([ tnegate(tvar(mu5)), tatom(bool) ])
+%%    ])),
+%%  B = ast_lib:ast_to_erlang_ty(A),
+%%  Pretty = ast_lib:erlang_ty_to_ast(B),
+%%  true = subty:is_equivalent(none, A, Pretty),
+%%  io:format(user,"~s~n", [pretty:render_ty(Pretty)]),
+%%
+%%  ok.
 
 %%worth_negate_test() ->
 %%  ecache:reset_all(),
