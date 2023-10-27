@@ -5,6 +5,7 @@
 -import(test_utils, [is_subtype/2, is_equiv/2]).
 
 % TODO simplifications
+% the heuristic in gen_bdd:do_dnf already handles these cases, but it's only a heuristic
 % S1: distribution over multiple coclauses
 % not(mu5) /\ bool | not(mu6) /\ bool | mu6 /\ mu5 => bool | mu5 /\ mu6
 % S2: redundant negations on the monomorphic DNF level
@@ -19,7 +20,7 @@ var_inter_test() ->
   B = ast_lib:ast_to_erlang_ty(A),
   Pretty = ast_lib:erlang_ty_to_ast(B),
   true = subty:is_equivalent(none, A, Pretty),
-  ?assertEqual("not(mu6) /\\ bool | mu6 /\\ mu5", pretty:render_ty(Pretty)),
+  ?assertEqual("not(mu6) /\\ bool | mu5 /\\ bool | mu6 /\\ mu5", pretty:render_ty(Pretty)),
   ok.
 
 var_inter2_test() ->
@@ -33,9 +34,7 @@ var_inter2_test() ->
   B = ast_lib:ast_to_erlang_ty(A),
   Pretty = ast_lib:erlang_ty_to_ast(B),
   true = subty:is_equivalent(none, A, Pretty),
-  ?assertEqual("not(mu5) /\\ bool | not(mu6) /\\ bool | mu6 /\\ mu5", pretty:render_ty(Pretty)),
-  % TODO S1: can be simplified further
-  %?assertEqual("bool | mu6 /\\ mu5", pretty:render_ty(Pretty)),
+  ?assertEqual("bool | mu6 /\\ mu5", pretty:render_ty(Pretty)),
   ok.
 
 var_neg_dnf_test() ->
@@ -64,9 +63,7 @@ var_neg_inter_test() ->
   B = ast_lib:ast_to_erlang_ty(A),
   Pretty = ast_lib:erlang_ty_to_ast(B),
   true = subty:is_equivalent(none, A, Pretty),
-  ?assertEqual("not(not(mu5) /\\ bool | not(mu6) /\\ bool | mu6 /\\ mu5)", pretty:render_ty(Pretty)),
-  % TODO after S1 should be
-  % ?assertEqual("not(bool | mu6 /\\ mu5)", pretty:render_ty(Pretty)),
+  ?assertEqual("not(bool | mu6 /\\ mu5)", pretty:render_ty(Pretty)),
 
   ok.
 
@@ -175,8 +172,6 @@ other_test() ->
   Pretty = ast_lib:erlang_ty_to_ast(B),
 
   true = subty:is_equivalent(none, V0, Pretty),
-  ?assertEqual("{a5 /\\ b, int} | {a, int} /\\ not({a5 /\\ b, int})", pretty:render_ty(Pretty)),
-  % TODO S2
-  % ?assertEqual("{a5 /\\ b, int} | {a, int}", pretty:render_ty(Pretty)),
+  ?assertEqual("{a5 /\\ b, int} | {a, int}", pretty:render_ty(Pretty)),
 
   ok.

@@ -146,17 +146,17 @@ dnf(I, Bdd, {ProcessCoclause, CombineResults}) ->
 
 do_dnf(I = {Terminal, _E}, {node, Element, Left, Right}, F = {_Process, Combine}, Pos, Neg) ->
   % heuristic: if Left is positive & 1, skip adding the negated Element to the right path
-%%  case {terminal, Terminal:any()} of
-%%    Left ->
-%%      F1 = fun() -> do_dnf(I, Left, F, [Element | Pos], Neg) end,
-%%      F2 = fun() -> do_dnf(I, Right, F, Pos, Neg) end,
-%%      Combine(F1, F2);
-%%    _ ->
+  % TODO can use the see simplifications done in ty_rec:transform to simplify DNF before processing?
+  case {terminal, Terminal:any()} of
+    Left ->
+      F1 = fun() -> do_dnf(I, Left, F, [Element | Pos], Neg) end,
+      F2 = fun() -> do_dnf(I, Right, F, Pos, Neg) end,
+      Combine(F1, F2);
+    _ ->
       F1 = fun() -> do_dnf(I, Left, F, [Element | Pos], Neg) end,
       F2 = fun() -> do_dnf(I, Right, F, Pos, [Element | Neg]) end,
-      Combine(F1, F2);
-%%  end;
-%%  io:format(user,"P: ~nP: ~p~nN: ~p~nTL ~p~n", [P, N, T]),
+      Combine(F1, F2)
+  end;
 do_dnf(_, {terminal, Terminal}, {Proc, _Comb}, Pos, Neg) ->
   Proc(Pos, Neg, Terminal).
 

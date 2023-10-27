@@ -160,7 +160,7 @@ erlang_ty_to_ast(X) ->
             to_tuple => fun(Ts) -> stdtypes:ttuple(lists:map(fun(T) -> (erlang_ty_to_ast(T)) end,Ts)) end,
             to_atom => fun(A) -> stdtypes:tatom(A) end,
             to_list => fun(A, B) -> stdtypes:tlist_improper((erlang_ty_to_ast(A)), (erlang_ty_to_ast(B))) end,
-            to_int => fun(X, Y) -> stdtypes:trange(X, Y) end,
+            to_int => fun(S, T) -> stdtypes:trange(S, T) end,
             to_predef => fun('[]') -> stdtypes:tempty_list(); (Predef) -> {predef, Predef} end,
             any_tuple => fun stdtypes:ttuple_any/0,
             any_tuple_i => fun(Size) -> stdtypes:ttuple([stdtypes:tany() || _ <- lists:seq(1, Size)]) end,
@@ -325,15 +325,12 @@ ast_to_erlang_ty_var({var, Name}) when is_atom(Name) ->
     maybe_new_variable(Name).
 
 maybe_new_variable(Name) ->
-%%    io:format(user, "Var: ~p~n", [Name]),
     Object = ets:lookup(?VAR_ETS, Name),
     case Object of
         [] ->
             Var = ty_variable:new(Name),
-%%            io:format(user, "New: ~p~nPrev: ~p~n", [Var, ets:tab2list(?VAR_ETS)]),
             ets:insert(?VAR_ETS, {Name, Var}),
             Var;
         [{_, Variable}] ->
-%%            io:format(user, "Old: ~p~n", [Variable]),
             Variable
     end.

@@ -130,10 +130,10 @@ prepare(TyRef) ->
   IDnf = dnf_var_int:get_dnf(I),
   LDnf = dnf_var_ty_list:get_dnf(L),
 
-  PMapped = lists:map(fun({Pv, Nv, T}) -> {{Pv, Nv}, ty_rec:predef(dnf_var_predef:predef(T))} end, PDnf),
-  AMapped = lists:map(fun({Pv, Nv, T}) -> {{Pv, Nv}, ty_rec:atom(dnf_var_ty_atom:ty_atom(T))} end, ADnf),
-  IMapped = lists:map(fun({Pv, Nv, T}) -> {{Pv, Nv}, ty_rec:interval(dnf_var_int:int(T))} end, IDnf),
-  LMapped = lists:map(fun({Pv, Nv, T}) -> {{Pv, Nv}, ty_rec:list(dnf_var_ty_list:list(T))} end, LDnf),
+  PMapped = lists:map(fun({Pv, Nv, Ty}) -> {{Pv, Nv}, ty_rec:predef(dnf_var_predef:predef(Ty))} end, PDnf),
+  AMapped = lists:map(fun({Pv, Nv, Ty}) -> {{Pv, Nv}, ty_rec:atom(dnf_var_ty_atom:ty_atom(Ty))} end, ADnf),
+  IMapped = lists:map(fun({Pv, Nv, Ty}) -> {{Pv, Nv}, ty_rec:interval(dnf_var_int:int(Ty))} end, IDnf),
+  LMapped = lists:map(fun({Pv, Nv, Ty}) -> {{Pv, Nv}, ty_rec:list(dnf_var_ty_list:list(Ty))} end, LDnf),
 
 
   TupleMapped = lists:map(fun({Pv, Nv, Tp}) -> {{Pv, Nv}, ty_rec:tuple({default, maps:keys(T)}, dnf_var_ty_tuple:tuple(Tp))} end, dnf_var_ty_tuple:get_dnf(DT)),
@@ -277,7 +277,7 @@ maybe_remove_redundant_negative_variables(CurrentMap, T1, T, Pv, Nv, Pv1, Nv1) -
 
 multi_transform(DefaultT, T, Ops = #{any_tuple_i := Tuple, any_tuple := Tuples, negate := Negate, union := Union, intersect := Intersect}) ->
   X1 = dnf_var_ty_tuple:transform(DefaultT, Ops),
-  Xs = lists:map(fun({_Size, Tuple}) -> dnf_var_ty_tuple:transform(Tuple, Ops) end, maps:to_list(T)),
+  Xs = lists:map(fun({_Size, Tup}) -> dnf_var_ty_tuple:transform(Tup, Ops) end, maps:to_list(T)),
   Sizes = maps:keys(T),
 
   DefaultTuplesWithoutExplicitTuples = Intersect([X1, Tuples(), Negate(Union([Tuple(I) || I <- Sizes]))]),
@@ -285,7 +285,7 @@ multi_transform(DefaultT, T, Ops = #{any_tuple_i := Tuple, any_tuple := Tuples, 
 
 multi_transform_fun(DefaultF, F, Ops = #{any_function_i := Function, any_function := Functions, negate := Negate, union := Union, intersect := Intersect}) ->
   X1 = dnf_var_ty_function:transform(DefaultF, Ops),
-  Xs = lists:map(fun({_Size, Function}) -> dnf_var_ty_function:transform(Function, Ops) end, maps:to_list(F)),
+  Xs = lists:map(fun({_Size, Func}) -> dnf_var_ty_function:transform(Func, Ops) end, maps:to_list(F)),
   Sizes = maps:keys(F),
 
   DefaultFunctionsWithoutExplicitFunctions = Intersect([X1, Functions(), Negate(Union([Function(I) || I <- Sizes]))]),
@@ -319,9 +319,6 @@ extract_variables(Ty = #ty{ predef = P, atom = A, interval = I, list = L, tuple 
 % ======
 % Type constructors
 % ======
-
-%%rep_map_any()  -> {dnf_ty_variable:any(), #{}}.
-%%rep_map_none() -> {dnf_ty_variable:empty(), #{}}.
 
 -spec empty() -> ty_ref().
 empty() ->
@@ -392,17 +389,10 @@ tuple() ->
   Empty = ty_ref:load(empty()),
   ty_ref:store(Empty#ty{ tuple = {dnf_var_ty_tuple:any(), #{}} }).
 
-%%-spec function(ty_ref(), ty_ref()) -> ty_ref().
-%%function(A, B) ->
-%%  Empty = ty_ref:load(empty()),
-%%  Fun = dnf_var_ty_function:function(dnf_ty_function:function(ty_function:function(A, B))),
-%%  ty_ref:store(Empty#ty{ function = Fun }).
-
 function({default, Sizes}, Function) ->
   NotCaptured = maps:from_list(lists:map(fun(Size) -> {Size, dnf_var_ty_function:empty()} end, Sizes)),
   Empty = ty_ref:load(empty()),
   ty_ref:store(Empty#ty{ function = {Function, NotCaptured}});
-%%-spec function(ty_function()) -> ty_ref().
 function(ComponentSize, Fun) ->
   Empty = ty_ref:load(empty()),
   ty_ref:store(Empty#ty{ function = {dnf_var_ty_function:empty(), #{ComponentSize => Fun} }}).
