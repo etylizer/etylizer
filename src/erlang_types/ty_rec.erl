@@ -97,11 +97,9 @@ transform_p(TyRef, Ops =
 
         Z1 = multi_transform(DT, T, Ops),
         NT = maybe_intersect(Z1, Tuples(), Intersect),
-        %NT = Intersect([Tuples(), Z1]),
 
         Z2 = multi_transform_fun(DF, F, Ops),
         NF = maybe_intersect(Z2, Functions(), Intersect),
-        %NF = Intersect([Functions(), Z2]),
         Intersect(NewVars ++ NewVarsN ++ [Union([NP, NA, NI, NL, NT, NF])])
     end
            end, DnfMap),
@@ -110,6 +108,7 @@ transform_p(TyRef, Ops =
 %%  io:format(user,"<~p> Result: ~p~n", [Ref, Ety]),
   Sanity = ast_lib:ast_to_erlang_ty(Ety),
 %%  io:format(user,"<~p> Sanity: ~p~n", [Ref, Sanity]),
+  % leave this sanity check for a while
   case is_equivalent(TyRef, Sanity) of
     true -> ok;
     false ->
@@ -120,7 +119,7 @@ transform_p(TyRef, Ops =
   end,
   Ety.
 
-% TODO refactor this properly
+% TODO refactor this properly it's ugly
 prepare(TyRef) ->
   #ty{predef = P, atom = A, interval = I, list = L, tuple = {DT, T}, function = {DF, F}} = ty_ref:load(TyRef),
   VarMap = #{},
@@ -166,6 +165,7 @@ prepare(TyRef) ->
            end,
   SubsumedUnions1 = Phase1(AllUnions),
 
+  % TODO repeat phase2 like phase1
   SubsumedUnions2 = maps:fold(fun({Pv, Nv}, Ty, CurrentMap) ->
     subsume_coclauses(Pv, Nv, Ty, CurrentMap)
                              end, SubsumedUnions1, SubsumedUnions1),
@@ -175,8 +175,7 @@ prepare(TyRef) ->
 %%  io:format(user, "Subsumed all: ~n~p~n", [SubsumedUnions2]),
 
   % Distribute top types to all variables redundantly, if any
-  % atom() | a & (Any \ atom)
-  % => atom() | a
+  % atom() | a & (Any \ atom) => atom() | a
   TopTypes = [ty_rec:atom(), ty_rec:interval(), ty_rec:tuple(), ty_rec:function(), ty_rec:list(), ty_rec:predef()],
   NoVarsType = maps:get({[], []}, SubsumedUnions2, ty_rec:empty()),
 
@@ -187,7 +186,6 @@ prepare(TyRef) ->
       _ -> Acc
     end
                                 end, SubsumedUnions2, TopTypes),
-
 
   RedundantUnions.
 
@@ -374,8 +372,6 @@ predef(Predef) ->
   ty_ref:store(Empty#ty{ predef = Predef }).
 predef() -> predef(dnf_var_predef:any()).
 
-
-%%-spec tuple(ty_tuple()) -> ty_ref().
 tuple({default, Sizes}, Tuple) ->
   NotCaptured = maps:from_list(lists:map(fun(Size) -> {Size, dnf_var_ty_tuple:empty()} end, Sizes)),
   Empty = ty_ref:load(empty()),
