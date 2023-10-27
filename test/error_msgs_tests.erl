@@ -51,8 +51,8 @@ file_changes_test_() ->
         "%   14|     X = foo(J), % error here")),
      ?_test(expect_ty_error("test_files/type_errors/syntax_error.erl",
         "Error parsing test_files/type_errors/syntax_error.erl"))
-    % MISSING: redundant_branch.erl
-    % Timeout under rebar
+    % missing: redundant_branch.erl (see bug #55)
+    % Timeout under rebar (see bug #54)
     % ?_test(expect_ty_error("test_files/type_errors/invalid_map.erl",
     %    "test_files/type_errors/invalid_map.erl:10:1: " ++
     %    "Type error: function foo/1 failed to type check against type fun(([integer()]) -> [integer()])")),
