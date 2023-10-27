@@ -52,19 +52,7 @@ maybe_intersect(Z2, Other, Intersect) ->
     false -> Intersect([Other, Z2])
   end.
 
-transform(TyRef, Ops =
-  #{
-    any_list := Lists,
-    any_tuple := Tuples,
-    any_function := Functions,
-    any_int := Intervals,
-    any_atom := Atoms,
-    any_predef := Predef,
-    union := Union,
-    intersect := Intersect,
-    negate := Negate,
-    var := Var
-  }) ->
+transform(TyRef, Ops) ->
   % Do things twice, pos and neg
   Pos = transform_p(TyRef, Ops),
   Neg = transform_p(ty_rec:negate(TyRef), Ops),
@@ -76,8 +64,6 @@ transform(TyRef, Ops =
     false -> {pos, Pos};
     _ -> {neg, Neg}
   end.
-%%  {neg, Neg}.
-%%  {pos, Pos}.
 
 transform_p(TyRef, Ops =
   #{
@@ -134,6 +120,7 @@ transform_p(TyRef, Ops =
   end,
   Ety.
 
+% TODO refactor this properly
 prepare(TyRef) ->
   #ty{predef = P, atom = A, interval = I, list = L, tuple = {DT, T}, function = {DF, F}} = ty_ref:load(TyRef),
   VarMap = #{},
@@ -169,21 +156,23 @@ prepare(TyRef) ->
     maps:merge_with(UpdateKey, CurrentMap, NewMap)
                           end, VarMap, AllKinds),
 
-
 %%  io:format(user,"All unions;~n~p~n", [AllUnions]),
-  SubsumedUnions = maps:fold(fun({Pv, Nv}, Ty, CurrentMap) ->
-    subsume_variables(Pv, Nv, Ty, CurrentMap)
-                             end, AllUnions, AllUnions),
+  Phase1 = fun Loop(Map) ->
+    Res = catch maps:fold(fun({Pv, Nv}, Ty, CurrentMap) -> subsume_variables(Pv, Nv, Ty, CurrentMap) end, Map, Map),
+    case Res of
+      {modified, NewMap} -> Loop(NewMap);
+      _ -> Res
+    end
+           end,
+  SubsumedUnions1 = Phase1(AllUnions),
 
   SubsumedUnions2 = maps:fold(fun({Pv, Nv}, Ty, CurrentMap) ->
     subsume_coclauses(Pv, Nv, Ty, CurrentMap)
-                             end, SubsumedUnions, SubsumedUnions),
+                             end, SubsumedUnions1, SubsumedUnions1),
 
 %%  io:format(user, "All: ~n~p~n", [AllUnions]),
 %%  io:format(user, "Subsumed: ~n~p~n", [SubsumedUnions]),
 %%  io:format(user, "Subsumed all: ~n~p~n", [SubsumedUnions2]),
-
-
 
   % Distribute top types to all variables redundantly, if any
   % atom() | a & (Any \ atom)
@@ -206,8 +195,10 @@ prepare(TyRef) ->
 subsume_variables(Pv, Nv, T, VarMap) ->
   maps:fold(fun({Pv1, Nv1}, T1, CurrentMap) ->
     case {Pv1, Nv1, T1} of
-      {Pv, Nv, T} -> CurrentMap; % skip, same entry
-      _ -> maybe_remove_redundant_negative_variables(CurrentMap, T1, T, Pv, Nv, Pv1, Nv1)
+      {Pv, Nv, T} ->
+        CurrentMap; % skip, same entry
+      _ ->
+        maybe_remove_redundant_negative_variables(CurrentMap, T1, T, Pv, Nv, Pv1, Nv1)
     end
             end, VarMap, VarMap).
 
@@ -236,7 +227,6 @@ maybe_remove_subsumed_coclauses(CurrentMap, _CurrentCoclause = {Pv, Nv, T}, _Oth
   end.
 
 
-maybe_remove_redundant_negative_variables(CurrentMap, T1, T, [], Nv, Pv1, Nv1) -> CurrentMap;
 maybe_remove_redundant_negative_variables(CurrentMap, T1, T, Pv, Nv, Pv1, Nv1) ->
   S = fun(E) -> sets:from_list(E) end,
   % if other dnf is subtype of current dnf,
@@ -245,9 +235,10 @@ maybe_remove_redundant_negative_variables(CurrentMap, T1, T, Pv, Nv, Pv1, Nv1) -
 %%  io:format(user,"Other Clause ~p~n", [{Pv1, Nv1, T1}]),
 %%  io:format(user,"Check~n~p <: ~p~n~p in ~p~n~p in ~p~n", [T1, T, Pv, Nv1, Nv, Nv1]),
   case
-    ty_rec:is_equivalent(T1, T)
-      andalso sets:is_subset(S(Pv), S(Nv1)) % removeable variables
+    ty_rec:is_subtype(T1, T)
+      andalso sets:is_subset(S(Pv), S(Nv1))
       andalso sets:is_subset(S(Nv), S(Nv1 -- Pv))
+%%      andalso sets:is_subset(S(Pv1), S(Pv)) % TODO why is this not needed?
   of
     true ->
       NewMap = maps:remove({Pv1, Nv1}, CurrentMap),
@@ -255,8 +246,32 @@ maybe_remove_redundant_negative_variables(CurrentMap, T1, T, Pv, Nv, Pv1, Nv1) -
       OldValue = maps:get(NewKey, CurrentMap, ty_rec:empty()),
       NewValue = ty_rec:union(OldValue, T1),
 %%      io:format(user, "Removing subsumed positive variable ~p from ~n~p~nResulting in ~p~n", [Pv, {Pv1, Nv1}, NewValue]),
-      maps:put(NewKey, NewValue, NewMap);
-    false -> CurrentMap
+      NewNewMap = maps:put(NewKey, NewValue, NewMap),
+      % FIXME skip this case instead
+      case NewNewMap == CurrentMap of
+        true -> NewNewMap;
+        _ -> throw({modified, NewNewMap})
+      end;
+    false ->
+      case
+        ty_rec:is_equivalent(T1, T)
+          andalso sets:is_subset(S(Pv), S([]))
+          andalso Pv1 == Nv
+      of
+        true ->
+          NewMap = maps:remove({Pv1, Nv1}, CurrentMap),
+          NewKey = {Pv1 -- Nv, Nv1},
+          OldValue = maps:get(NewKey, CurrentMap, ty_rec:empty()),
+          NewValue = ty_rec:union(OldValue, T1),
+          NewNewMap = maps:put(NewKey, NewValue, NewMap),
+          % FIXME skip this case instead
+          case NewNewMap == CurrentMap of
+            true -> NewNewMap;
+            _ -> throw({modified, NewNewMap})
+          end;
+        false ->
+          CurrentMap
+      end
   end.
 
 

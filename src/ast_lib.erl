@@ -180,7 +180,7 @@ erlang_ty_to_ast(X) ->
         }),
     case Pol of
         pos -> Full;
-        neg -> stdtypes:tintersect([stdtypes:any(), stdtypes:tnegate(Full)])
+        neg -> stdtypes:tnegate(Full)
     end.
 
 simplify(Full) ->

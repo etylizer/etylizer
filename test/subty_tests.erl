@@ -521,3 +521,186 @@ bug1_test() ->
 
   ok.
 
+simplification_1_test() ->
+  S =
+  tunion([
+    tintersect([tnegate(tvar(a5)), tnegate(tvar(a6)), tatom(bool)]),
+    tintersect([tvar(a5), tnegate(tvar(a6)), tatom(bool)])
+  ]),
+  T =
+    tunion([
+      tintersect([tnegate(tvar(a6)), tatom(bool)]),
+      tintersect([tvar(a5), tnegate(tvar(a6)), tatom(bool)])
+    ]),
+  true = is_subtype(S, T),
+  true = is_subtype(T, S).
+
+simplification_2_test() ->
+  S =
+    tunion([
+      tintersect([(tvar(a5)), (tvar(a6))]),
+      tintersect([tnegate(tvar(a5)), tatom(bool)]),
+      tintersect([tnegate(tvar(a6)), tatom(bool)])
+    ]),
+  T =
+    tunion([
+      tintersect([(tvar(a5)), (tvar(a6))]),
+      tintersect([tnegate(tvar(a5)), tatom(bool)]),
+      tintersect([tvar(a5), tnegate(tvar(a6)), tatom(bool)])
+    ]),
+  true = is_subtype(S, T),
+  true = is_subtype(T, S).
+
+simplification_3_test() ->
+  S =
+    tunion([
+      tintersect([(tvar(a5)), (tvar(a6))]),
+      tintersect([tnegate(tvar(a5)), tatom(bool)]),
+      tintersect([tvar(a5), tnegate(tvar(a6)), tatom(bool)])
+    ]),
+  T =
+    tunion([
+      tintersect([(tvar(a5)), (tvar(a6))]),
+      tintersect([tatom(bool)]),
+      tintersect([tvar(a5), tnegate(tvar(a6)), tatom(bool)])
+    ]),
+  true = is_subtype(S, T),
+  true = is_subtype(T, S).
+
+simplification_4_test() ->
+  S =
+    tunion([
+      tintersect([(tvar(a5)), (tvar(a6))]),
+      tintersect([tatom(bool)]),
+      tintersect([tvar(a5), tnegate(tvar(a6)), tatom(bool)])
+    ]),
+  T =
+    tunion([
+      tintersect([(tvar(a5)), (tvar(a6))]),
+      tintersect([tatom(bool)])
+    ]),
+  true = is_subtype(S, T),
+  true = is_subtype(T, S).
+
+simplification_5_test() ->
+  S =
+    tunion([
+      tintersect([(tvar(a5)), (tvar(a6))]),
+      tintersect([tnegate(tvar(a5)), tatom(bool)]),
+      tintersect([tnegate(tvar(a6)), tatom(bool)])
+    ]),
+  T =
+    tunion([
+      tintersect([(tvar(a5)), (tvar(a6))]),
+      tatom(bool)
+    ]),
+  true = is_subtype(S, T),
+  true = is_subtype(T, S).
+
+simplification_6_test() ->
+  S =
+    (tunion([
+      tintersect([ tvar(mu5), tvar(mu6) ]),
+      tintersect([ tnegate(tvar(mu6)), tatom(bool) ]),
+      tintersect([ tnegate(tvar(mu5)), tatom(bool) ])
+    ])),
+  true = is_subtype(S, tnegate(tnegate(S))),
+  true = is_subtype(tnegate(tnegate(S)), S).
+
+simplification_7_test() ->
+  S =
+    tnegate(tunion([
+      tintersect([ tvar(mu5), tvar(mu6) ]),
+      tintersect([ tnegate(tvar(mu6)), tatom(bool) ]),
+      tintersect([ tnegate(tvar(mu5)), tatom(bool) ])
+    ])),
+  T =
+    (tintersect([
+      (tunion([ tnegate(tvar(mu5)), tnegate(tvar(mu6)) ])),
+      (tunion([ (tvar(mu6)), tnegate(tatom(bool)) ])),
+      (tunion([ (tvar(mu5)), tnegate(tatom(bool)) ]))
+    ])),
+  true = is_subtype(S, T),
+  true = is_subtype(T, S).
+
+simplification_8_test() ->
+  % X ∩ (A∪B)=(X∩A)∪(X∩B)
+  S =
+    (tintersect([
+      (tunion([ A = tnegate(tvar(mu5)), B = tnegate(tvar(mu6)) ])),
+      X = tintersect([
+        (tunion([ (tvar(mu6)), tnegate(tatom(bool)) ])),
+        (tunion([ (tvar(mu5)), tnegate(tatom(bool)) ]))
+      ])
+    ])),
+  T =
+  tunion([
+    tintersect([A, X]),
+    tintersect([B, X])
+  ]),
+  T2 =
+    tunion([
+      tintersect([tvar(mu6), tnegate(tvar(mu5)), tnegate(tatom(bool))]),
+      tintersect([tnegate(tvar(mu5)), tnegate(tatom(bool))]),
+      tintersect([(B), X])
+    ]),
+  T3 =
+    tunion([
+      tintersect([tvar(mu6), tnegate(tvar(mu5)), tnegate(tatom(bool))]),
+      tintersect([tnegate(tvar(mu5)), tnegate(tatom(bool))]),
+      tintersect([B, tunion([
+        tintersect([tvar(mu6), tvar(mu5)]),
+        tintersect([tvar(mu5), tnegate(tatom(bool))]),
+        tintersect([tvar(mu6), tnegate(tatom(bool))]),
+        tnegate(tatom(bool))
+      ])])
+    ]),
+  T4 =
+    tunion([
+      tintersect([tvar(mu6), tnegate(tvar(mu5)), tnegate(tatom(bool))]),
+      tintersect([tnegate(tvar(mu5)), tnegate(tatom(bool))]),
+      tintersect([tnegate(tvar(mu6)), tnegate(tatom(bool))]),
+      tintersect([tvar(mu5), tnegate(tvar(mu6)), tnegate(tatom(bool))])
+    ]),
+
+  true = is_equiv(S, T),
+  true = is_equiv(T, T2),
+  true = is_equiv(T2, T3),
+  true = is_equiv(T3, T4),
+
+  ok.
+
+simplification_9_test() ->
+  % X ∩ (A∪B)=(X∩A)∪(X∩B)
+  S =
+    tunion([
+      tintersect([tvar(mu6), tnegate(tvar(mu5)), (tatom(bool))]),
+      tintersect([tnegate(tvar(mu5)), (tatom(bool))]),
+      tintersect([tnegate(tvar(mu6)), (tatom(bool))]),
+      tintersect([tvar(mu5), tnegate(tvar(mu6)), (tatom(bool))])
+    ]),
+  T =
+    tunion([
+      tintersect([tnegate(tvar(mu5)), (tatom(bool))]),
+      tintersect([tnegate(tvar(mu6)), (tatom(bool))])
+    ]),
+  true = is_equiv(S, T),
+
+  ok.
+
+simplification_10_test() ->
+  S =
+    tunion([
+      tintersect([tvar(mu6), tnegate(tvar(mu5))]),
+      tnegate(tvar(mu5)),
+      tnegate(tvar(mu6)),
+      tintersect([tvar(mu5), tnegate(tvar(mu6))])
+    ]),
+  T =
+    tunion([
+      tnegate(tvar(mu5)),
+      tnegate(tvar(mu6))
+    ]),
+  true = is_equiv(S, T),
+
+  ok.
