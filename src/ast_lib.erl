@@ -7,31 +7,11 @@
 -export([simplify/1, reset/0, ast_to_erlang_ty/1, erlang_ty_to_ast/1, ast_to_erlang_ty_var/1, erlang_ty_var_to_var/1]).
 -define(VAR_ETS, ast_norm_var_memo). % remember variable name -> variable ID to convert variables properly
 
--export([
-    mk_intersection/1, mk_union/1, mk_negation/1, mk_diff/2,
-    mk_intersection_simple/1,
-    mk_union_simple/1
-]).
+-export([mk_intersection/1, mk_union/1, mk_negation/1, mk_diff/2]).
 
 reset() ->
     catch ets:delete(?VAR_ETS),
     ets:new(?VAR_ETS, [public, named_table]).
-
-
-% TODO continue here
-% try to pretty print variable unions
-mk_intersection_simple(Tys) ->
-    X = mk_intersection(Tys),
-    Unfolded = case X of
-        {intersection, Z} ->
-            Unfold = unfold_intersection(Z, []),
-            Simplified = simplify_line(Unfold),
-            {intersection, reduce_intersection(Simplified, [])};
-        _ -> X
-    end,
-
-
-    Unfolded.
 
 unfold_intersection([], All) -> All;
 unfold_intersection([{intersection, Components} | Rest], All) ->
@@ -44,28 +24,6 @@ unfold_union([{union, Components} | Rest], All) ->
     unfold_union(Components ++ Rest, All);
 unfold_union([X | Rest], All) ->
     unfold_union(Rest, All ++ [X]) .
-
-
-simplify_line(Atoms) ->
-    % atoms
-    case
-        lists:member(stdtypes:tatom(), Atoms) andalso
-        length([Z || {singleton, Z} <- Atoms, is_atom(Z)]) > 0 of
-        true -> Atoms -- [stdtypes:tatom()];
-        _ -> Atoms
-    end.
-
-
-reduce_intersection([], OtherPartsOfLine) -> OtherPartsOfLine;
-reduce_intersection(Full = [Atom | Atoms], OtherPartsOfLine) ->
-    ReducedTry = {intersection, Atoms ++ OtherPartsOfLine},
-    case subty:is_equivalent(symtab:empty(), ReducedTry, {intersection, Full ++ OtherPartsOfLine}) of % TODO symtab?
-        true -> reduce_intersection(Atoms, OtherPartsOfLine);
-        false -> reduce_intersection(Atoms, [Atom | OtherPartsOfLine])
-    end.
-
-mk_union_simple(Tys) ->
-    mk_union(Tys).
 
 % smart constructors for intersection, union and negation
 -spec mk_intersection([ast:ty()]) -> ast:ty().
@@ -203,7 +161,6 @@ simplify(Full) ->
     % reduce everything rigorously until there are no redundant parts in the type
     % a full reduce is very expensive
     reduce_until(ToReduce).
-%%    ToReduce.
 
 reduce_until(ToReduce) -> find_first_reduce(ToReduce, ToReduce, []).
 
