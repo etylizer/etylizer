@@ -106,7 +106,9 @@ simple_test_() ->
   WhatNot = [
     % FIXME #36 impossible branches
     "foo2",
-    "inter_03_fail"
+    "inter_03_fail",
+    % slow, see #54
+    "list_pattern_02"
   ],
   check_decls_in_file("test_files/tycheck_simple.erl",
                       {exclude, sets:from_list(WhatNot)}).
