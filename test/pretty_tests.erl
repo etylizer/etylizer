@@ -76,6 +76,15 @@ worth_negate_test() ->
   ?assertEqual("not(a)", pretty:render_ty(Pretty)),
   ok.
 
+worth_negate2_test() ->
+  ecache:reset_all(),
+  A = tintersect([tnegate(tatom(a)), tnegate(tatom(b))]),
+  B = ast_lib:ast_to_erlang_ty(A),
+  Pretty = ast_lib:erlang_ty_to_ast(B),
+  true = subty:is_equivalent(none, A, Pretty),
+  ?assertEqual("not(a | b)", pretty:render_ty(Pretty)),
+  ok.
+
 ex1_test() ->
   ecache:reset_all(),
   A = {intersection, [
