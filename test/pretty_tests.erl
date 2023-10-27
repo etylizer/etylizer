@@ -4,19 +4,22 @@
 -import(stdtypes, [tvar/1, ttuple_any/0, tnegate/1, tatom/0, tatom/1, tfun_full/2, trange/2, tunion/1, tintersect/1, trange_any/0, ttuple/1, tany/0, tnone/0]).
 -import(test_utils, [is_subtype/2, is_equiv/2]).
 
+% TODO simplifications
+% S1: distribution over multiple coclauses
+% not(mu5) /\ bool | not(mu6) /\ bool | mu6 /\ mu5 => bool | mu5 /\ mu6
+% S2: redundant negations on the monomorphic DNF level
+% {a5 /\ b, int} | {a, int} /\ not({a5 /\ b, int}) => {a5 /\ b, int} | {a, int}
+
 var_inter_test() ->
   ecache:reset_all(),
-  A =
-    tunion([
-      tintersect([ tvar(mu5), tvar(mu6) ]),
-      tintersect([ tnegate(tvar(mu6)), tatom(bool) ])
-    ]),
-
+  A = tunion([
+    tintersect([ tvar(mu5), tvar(mu6) ]),
+    tintersect([ tnegate(tvar(mu6)), tatom(bool) ])
+  ]),
   B = ast_lib:ast_to_erlang_ty(A),
   Pretty = ast_lib:erlang_ty_to_ast(B),
   true = subty:is_equivalent(none, A, Pretty),
-  % io:format(user,"~s~n", [pretty:render_ty(Pretty)]),
-
+  ?assertEqual("not(mu6) /\\ bool | mu6 /\\ mu5", pretty:render_ty(Pretty)),
   ok.
 
 var_inter2_test() ->
@@ -30,8 +33,9 @@ var_inter2_test() ->
   B = ast_lib:ast_to_erlang_ty(A),
   Pretty = ast_lib:erlang_ty_to_ast(B),
   true = subty:is_equivalent(none, A, Pretty),
-  % io:format(user,"~s~n", [pretty:render_ty(Pretty)]),
-
+  ?assertEqual("not(mu5) /\\ bool | not(mu6) /\\ bool | mu6 /\\ mu5", pretty:render_ty(Pretty)),
+  % TODO S1: can be simplified further
+  %?assertEqual("bool | mu6 /\\ mu5", pretty:render_ty(Pretty)),
   ok.
 
 var_neg_dnf_test() ->
@@ -46,10 +50,7 @@ var_neg_dnf_test() ->
   B = ast_lib:ast_to_erlang_ty(A),
   Pretty = ast_lib:erlang_ty_to_ast(B),
   true = subty:is_equivalent(none, A, Pretty),
-  % io:format(user,"~s~n", [pretty:render_ty(Pretty)]),
-  % expected
-  % !mu5 & bool | !mu6 & bool
-
+  ?assertEqual("not(mu6) /\\ bool | not(mu5) /\\ bool", pretty:render_ty(Pretty)),
   ok.
 
 var_neg_inter_test() ->
@@ -63,7 +64,9 @@ var_neg_inter_test() ->
   B = ast_lib:ast_to_erlang_ty(A),
   Pretty = ast_lib:erlang_ty_to_ast(B),
   true = subty:is_equivalent(none, A, Pretty),
-  % io:format(user,"~s~n", [pretty:render_ty(Pretty)]),
+  ?assertEqual("not(not(mu5) /\\ bool | not(mu6) /\\ bool | mu6 /\\ mu5)", pretty:render_ty(Pretty)),
+  % TODO after S1 should be
+  % ?assertEqual("not(bool | mu6 /\\ mu5)", pretty:render_ty(Pretty)),
 
   ok.
 
@@ -73,8 +76,7 @@ worth_negate_test() ->
   B = ast_lib:ast_to_erlang_ty(A),
   Pretty = ast_lib:erlang_ty_to_ast(B),
   true = subty:is_equivalent(none, A, Pretty),
-  % io:format(user,"~s~n", [pretty:render_ty(Pretty)]),
-
+  ?assertEqual("not(a)", pretty:render_ty(Pretty)),
   ok.
 
 ex1_test() ->
@@ -87,7 +89,7 @@ ex1_test() ->
   B = ast_lib:ast_to_erlang_ty(A),
   Pretty = ast_lib:erlang_ty_to_ast(B),
   true = subty:is_equivalent(none, A, Pretty),
-  % io:format(user,"~s~n", [pretty:render_ty(Pretty)]),
+  ?assertEqual("$0 /\\ {b, tag} /\\ not({a, tag})", pretty:render_ty(Pretty)),
 
   ok.
 
@@ -97,7 +99,7 @@ variable_simple_union_test() ->
   B = ast_lib:ast_to_erlang_ty(A),
   Pretty = ast_lib:erlang_ty_to_ast(B),
   true = subty:is_equivalent(none, A, Pretty),
-  % io:format(user,"~s~n", [pretty:render_ty(Pretty)]),
+  ?assertEqual("a | b", pretty:render_ty(Pretty)),
 
   ok.
 
@@ -107,8 +109,7 @@ variable_union_test() ->
   B = ast_lib:ast_to_erlang_ty(A),
   Pretty = ast_lib:erlang_ty_to_ast(B),
   true = subty:is_equivalent(none, A, Pretty),
-  % io:format(user,"~s~n", [pretty:render_ty(Pretty)]),
-
+  ?assertEqual("foo | a", pretty:render_ty(Pretty)),
   ok.
 
 variable_union2_test() ->
@@ -117,8 +118,7 @@ variable_union2_test() ->
   B = ast_lib:ast_to_erlang_ty(A),
   Pretty = ast_lib:erlang_ty_to_ast(B),
   true = subty:is_equivalent(none, A, Pretty),
-  %% io:format(user,"~s~n", [pretty:render_ty(Pretty)]),
-
+  ?assertEqual("foo | a | b", pretty:render_ty(Pretty)),
   ok.
 
 variable_union3_test() ->
@@ -126,9 +126,8 @@ variable_union3_test() ->
   A = tunion([tvar(a), tvar(b), tvar(c), tatom(foo)]),
   B = ast_lib:ast_to_erlang_ty(A),
   Pretty = ast_lib:erlang_ty_to_ast(B),
-  % io:format(user,"~s~n", [pretty:render_ty(Pretty)]),
   true = subty:is_equivalent(none, A, Pretty),
-
+  ?assertEqual("foo | a | b | c", pretty:render_ty(Pretty)),
   ok.
 
 variable_union4_test() ->
@@ -136,9 +135,8 @@ variable_union4_test() ->
   A = tunion([tvar(a),tatom()]),
   B = ast_lib:ast_to_erlang_ty(A),
   Pretty = ast_lib:erlang_ty_to_ast(B),
-  % io:format(user,"~s~n", [pretty:render_ty(Pretty)]),
   true = subty:is_equivalent(none, A, Pretty),
-
+  ?assertEqual("atom() | a", pretty:render_ty(Pretty)),
   ok.
 
 variable_union5_test() ->
@@ -146,9 +144,8 @@ variable_union5_test() ->
   A = tunion([tvar(a),tatom(), trange(2,4)]),
   B = ast_lib:ast_to_erlang_ty(A),
   Pretty = ast_lib:erlang_ty_to_ast(B),
-  % io:format(user,"~s~n", [pretty:render_ty(Pretty)]),
   true = subty:is_equivalent(none, A, Pretty),
-
+  ?assertEqual("atom() | 2..4 | a", pretty:render_ty(Pretty)),
   ok.
 
 variable_union6_test() ->
@@ -157,9 +154,7 @@ variable_union6_test() ->
   B = ast_lib:ast_to_erlang_ty(A),
   Pretty = ast_lib:erlang_ty_to_ast(B),
   true = subty:is_equivalent(none, A, Pretty),
-
-  % io:format(user,"~s~n", [pretty:render_ty(Pretty)]),
-
+  ?assertEqual("foo | 4..9 | a | b | c | d", pretty:render_ty(Pretty)),
   ok.
 
 
@@ -180,6 +175,8 @@ other_test() ->
   Pretty = ast_lib:erlang_ty_to_ast(B),
 
   true = subty:is_equivalent(none, V0, Pretty),
-  % io:format(user,"~s~n", [pretty:render_ty(Pretty)]),
+  ?assertEqual("{a5 /\\ b, int} | {a, int} /\\ not({a5 /\\ b, int})", pretty:render_ty(Pretty)),
+  % TODO S2
+  % ?assertEqual("{a5 /\\ b, int} | {a, int}", pretty:render_ty(Pretty)),
 
   ok.
