@@ -65,6 +65,33 @@ transform(TyRef, Ops =
     negate := Negate,
     var := Var
   }) ->
+  % Do things twice, pos and neg
+  Pos = transform_p(TyRef, Ops),
+%%  Neg = transform_p(ty_rec:negate(TyRef), Ops),
+
+%%  io:format(user, "Positive:~n~p~n", [Pos]),
+%%  io:format(user, "Negative:~n~p~n", [Neg]),
+  % very dumb heuristic: smaller is better
+%%  case size(term_to_binary(Pos)) > size(term_to_binary(Neg)) of
+%%    false -> {pos, Pos};
+%%    _ -> {neg, Neg}
+%%  end.
+%%  {neg, Neg}.
+  {pos, Pos}.
+
+transform_p(TyRef, Ops =
+  #{
+    any_list := Lists,
+    any_tuple := Tuples,
+    any_function := Functions,
+    any_int := Intervals,
+    any_atom := Atoms,
+    any_predef := Predef,
+    union := Union,
+    intersect := Intersect,
+    negate := Negate,
+    var := Var
+  }) ->
 %%  io:format(user,"<~p> Transforming: ~p~n~p~n", [Ref = make_ref(), TyRef, ty_ref:load(TyRef)]),
   DnfMap = prepare(TyRef),
 %%  io:format(user, "<~p> Prepared: ~n~p~n", [Ref, DnfMap]),
@@ -100,8 +127,9 @@ transform(TyRef, Ops =
   case is_equivalent(TyRef, Sanity) of
     true -> ok;
     false ->
-%%      io:format(user, "~p~n", [ty_ref:load(TyRef)]),
-%%      io:format(user, "~p~n", [Ety]),
+      io:format(user, "--------~n", []),
+      io:format(user, "~p~n", [ty_ref:load(TyRef)]),
+      io:format(user, "~p~n", [Ety]),
       error(todo)
   end,
   Ety.
@@ -141,6 +169,8 @@ prepare(TyRef) ->
     maps:merge_with(UpdateKey, CurrentMap, NewMap)
                           end, VarMap, AllKinds),
 
+
+  io:format(user,"All unions;~n~p~n", [AllUnions]),
   SubsumedUnions = maps:fold(fun({Pv, Nv}, Ty, CurrentMap) ->
     subsume_variables(Pv, Nv, Ty, CurrentMap)
                              end, AllUnions, AllUnions),
@@ -177,7 +207,7 @@ subsume_variables(Pv, Nv, T, VarMap) ->
   maps:fold(fun({Pv1, Nv1}, T1, CurrentMap) ->
     case {Pv1, Nv1, T1} of
       {Pv, Nv, T} -> CurrentMap; % skip, same entry
-      _ -> maybe_remove_redundant_negative_variables(CurrentMap, T1, T, Pv, Pv1, Nv1)
+      _ -> maybe_remove_redundant_negative_variables(CurrentMap, T1, T, Pv, Nv, Pv1, Nv1)
     end
             end, VarMap, VarMap).
 
@@ -199,22 +229,32 @@ maybe_remove_subsumed_coclauses(CurrentMap, _CurrentCoclause = {Pv, Nv, T}, _Oth
 %%  io:format(user,"Check current~n~p~n against other ~n~p~n", [{Pv, Nv, T}, {Pv1, Nv1, T1}]),
   case sets:is_subset(S(Pv), S(Pv1)) andalso sets:is_subset(S(Nv), S(Nv1)) andalso ty_rec:is_subtype(T1, T) of
     true ->
-%%      io:format(user, "Removing~n~p~n because ~n~p~n is bigger from current map: ~p~n", [{Pv1, Nv1, T1}, {Pv, Nv, T}, CurrentMap]),
+      io:format(user, "Removing~n~p~n because ~n~p~n is bigger from current map: ~p~n", [{Pv1, Nv1, T1}, {Pv, Nv, T}, CurrentMap]),
       maps:remove({Pv1, Nv1}, CurrentMap);
     _ ->
       CurrentMap
   end.
 
 
-maybe_remove_redundant_negative_variables(CurrentMap, T1, T, Pv, Pv1, Nv1) ->
+maybe_remove_redundant_negative_variables(CurrentMap, T1, T, [], Nv, Pv1, Nv1) -> CurrentMap;
+maybe_remove_redundant_negative_variables(CurrentMap, T1, T, Pv, Nv, Pv1, Nv1) ->
+  S = fun(E) -> sets:from_list(E) end,
   % if other dnf is subtype of current dnf,
   % remove all other negative variables that are in the current positive variables
-  case ty_rec:is_subtype(T1, T) of
+  io:format(user,"Clause ~p~n", [{Pv, Nv, T}]),
+  io:format(user,"Other Clause ~p~n", [{Pv1, Nv1, T1}]),
+  io:format(user,"Check~n~p <: ~p~n~p in ~p~n~p in ~p~n", [T1, T, Pv, Nv1, Nv, Nv1]),
+  case
+    ty_rec:is_equivalent(T1, T)
+      andalso sets:is_subset(S(Pv1), S(Pv))
+      andalso sets:is_subset(S(Nv1 -- Pv), S(Nv))
+  of
     true ->
       NewMap = maps:remove({Pv1, Nv1}, CurrentMap),
       NewKey = {Pv1, Nv1 -- Pv},
       OldValue = maps:get(NewKey, CurrentMap, ty_rec:empty()),
       NewValue = ty_rec:union(OldValue, T1),
+      io:format(user, "Removing subsumed positive variable ~p from ~n~p~nResulting in ~p~n", [Pv, {Pv1, Nv1}, NewValue]),
       maps:put(NewKey, NewValue, NewMap);
     false -> CurrentMap
   end.

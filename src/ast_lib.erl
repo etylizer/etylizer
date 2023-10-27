@@ -150,13 +150,16 @@ erlang_ty_var_to_var({var, Id, Name}) ->
     end.
 
 erlang_ty_to_ast(X) ->
-    Full = ty_rec:transform(
+    {Pol, Full} = ty_rec:transform(
         X,
         #{
-            to_fun => fun(S, T) -> stdtypes:tfun_full(lists:map(fun(F) -> erlang_ty_to_ast(F) end,S), erlang_ty_to_ast(T)) end,
-            to_tuple => fun(Ts) -> stdtypes:ttuple(lists:map(fun(T) -> erlang_ty_to_ast(T) end,Ts)) end,
+            to_fun => fun(S, T) -> stdtypes:tfun_full(lists:map(fun(F) ->
+                (erlang_ty_to_ast(F)) end,S),
+                (erlang_ty_to_ast(T))
+            ) end,
+            to_tuple => fun(Ts) -> stdtypes:ttuple(lists:map(fun(T) -> (erlang_ty_to_ast(T)) end,Ts)) end,
             to_atom => fun(A) -> stdtypes:tatom(A) end,
-            to_list => fun(A, B) -> stdtypes:tlist_improper(erlang_ty_to_ast(A), erlang_ty_to_ast(B)) end,
+            to_list => fun(A, B) -> stdtypes:tlist_improper((erlang_ty_to_ast(A)), (erlang_ty_to_ast(B))) end,
             to_int => fun(X, Y) -> stdtypes:trange(X, Y) end,
             to_predef => fun('[]') -> stdtypes:tempty_list(); (Predef) -> {predef, Predef} end,
             any_tuple => fun stdtypes:ttuple_any/0,
@@ -175,8 +178,10 @@ erlang_ty_to_ast(X) ->
             intersect => fun ast_lib:mk_intersection/1,
             negate => fun ast_lib:mk_negation/1
         }),
-    % FIXME hack
-    Full.
+    case Pol of
+        pos -> Full;
+        neg -> stdtypes:tintersect([stdtypes:any(), stdtypes:tnegate(Full)])
+    end.
 
 simplify(Full) ->
 %%    io:format(user, ">> Full~n~p~n", [Full]),
