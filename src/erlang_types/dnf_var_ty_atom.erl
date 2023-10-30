@@ -6,7 +6,7 @@
 -export([empty/0, any/0, union/2, intersect/2, diff/2, negate/1]).
 -export([is_empty/1, is_any/1, normalize/3, substitute/4]).
 -export([ty_var/1, ty_atom/1, all_variables/1]).
--export([transform/2]).
+-export([transform/2, get_dnf/1]).
 
 ty_atom(Atom) -> gen_bdd:terminal(?P, Atom).
 ty_var(Var) -> gen_bdd:element(?P, Var).
@@ -24,6 +24,7 @@ compare(B1, B2) -> gen_bdd:compare(?P, B1, B2).
 substitute(MkTy, T, M, _) -> gen_bdd:substitute(?P, MkTy, T, M, sets:new()).
 all_variables(TyBDD) -> gen_bdd:all_variables(?P, TyBDD).
 transform(Ty, Ops) -> gen_bdd:transform(?P, Ty, Ops).
+get_dnf(Bdd) -> gen_bdd:get_dnf(?P, Bdd).
 
 % partially generic
 is_empty(TyBDD) -> gen_bdd:dnf(?P, TyBDD, {fun is_empty_coclause/3, fun gen_bdd:is_empty_union/2}).

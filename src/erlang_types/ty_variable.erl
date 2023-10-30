@@ -7,7 +7,7 @@
 -export([equal/2, compare/2, substitute/4, has_ref/2, all_variables/1]).
 
 
--export([new/1, smallest/3, normalize/6, transform/2]).
+-export([new/1, smallest/3, normalize/6, transform/2, get_new_id/0]).
 
 -record(var, {id, name}).
 -type var() :: #var{id :: integer(), name :: string()}.
@@ -36,6 +36,9 @@ has_ref(_, _) -> false.
 new(Name) ->
   NewId = ets:update_counter(?VAR_ETS, variable_id, {2,1}),
   #var{id = NewId, name = Name}.
+
+get_new_id() ->
+  ets:update_counter(?VAR_ETS, variable_id, {2,1}).
 
 % assumption: PVars U NVars is not empty
 smallest(PositiveVariables, NegativeVariables, FixedVariables) ->

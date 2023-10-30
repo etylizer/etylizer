@@ -10,7 +10,7 @@
 -export([empty/0, any/0, union/2, intersect/2, diff/2, negate/1]).
 -export([is_any/1, normalize/4, substitute/4]).
 
--export([var/1, function/1, all_variables/1, has_ref/2, transform/2]).
+-export([var/1, function/1, all_variables/1, has_ref/2, transform/2, get_dnf/1]).
 
 function(Tuple) -> gen_bdd:terminal(?P, Tuple).
 var(Var) -> gen_bdd:element(?P, Var).
@@ -26,6 +26,7 @@ equal(B1, B2) -> gen_bdd:equal(?P, B1, B2).
 compare(B1, B2) -> gen_bdd:compare(?P, B1, B2).
 substitute(MkTy, T, M, Memo) -> gen_bdd:substitute(?P, MkTy, T, M, Memo).
 has_ref(Ty, Ref) -> gen_bdd:has_ref(?P, Ty, Ref).
+get_dnf(Bdd) -> gen_bdd:get_dnf(?P, Bdd).
 
 all_variables({Default, Others}) when is_map(Others) ->
   lists:usort(
