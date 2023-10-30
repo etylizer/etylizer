@@ -107,7 +107,7 @@ simple_test_() ->
     % FIXME #36 impossible branches
     "foo2",
     "inter_03_fail",
-    % slow, see #54
+    % slow, see #57
     "list_pattern_02",
     "list_pattern_07",
     "some_fun",
