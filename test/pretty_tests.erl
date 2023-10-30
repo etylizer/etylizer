@@ -184,3 +184,16 @@ other_test() ->
   ?assertEqual("{a5 /\\ b, int} | {a, int}", pretty:render_ty(Pretty)),
 
   ok.
+
+var_condition_test() ->
+  ecache:reset_all(),
+  A = tunion([
+    tintersect([tnegate(tvar(a)), tvar(c)]),
+    tintersect([tnegate(tvar(b)), tnegate(tvar(c))])
+  ]),
+  B = ast_lib:ast_to_erlang_ty(A),
+  Pretty = ast_lib:erlang_ty_to_ast(B),
+  true = subty:is_equivalent(none, A, Pretty),
+%%  ?assertEqual("{a5 /\\ b, int} | {a, int}", pretty:render_ty(Pretty)),
+
+  ok.

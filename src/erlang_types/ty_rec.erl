@@ -236,7 +236,7 @@ maybe_remove_redundant_negative_variables(CurrentMap, T1, T, Pv, Nv, Pv1, Nv1) -
     ty_rec:is_subtype(T1, T)
       andalso sets:is_subset(S(Pv), S(Nv1))
       andalso sets:is_subset(S(Nv), S(Nv1 -- Pv))
-%%      andalso sets:is_subset(S(Pv1), S(Pv)) % TODO why is this not needed?
+      andalso sets:is_subset(S(Pv1), S(Pv))
   of
     true ->
       NewMap = maps:remove({Pv1, Nv1}, CurrentMap),
