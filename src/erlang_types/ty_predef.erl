@@ -20,7 +20,12 @@ predef(Predef) ->
     [Predef].
 
 transform([], #{empty := E}) -> E();
-transform([Predef | Others], Ops = #{union := U}) -> U([transform_single(Predef, Ops), transform(Others, Ops)]).
+transform(All = [Predef | Others], Ops = #{union := U, any := A}) ->
+    AllS = lists:sort(All),
+    case any() of
+        AllS -> A();
+        _ -> U([transform_single(Predef, Ops), transform(Others, Ops)])
+    end.
 
 transform_single(Predef, #{to_predef := P}) ->
     P(Predef).

@@ -6,7 +6,7 @@
 -export([equal/2, compare/2]).
 -export([empty/0, any/0, union/2, intersect/2, diff/2, negate/1]).
 -export([is_any/1, normalize/4, substitute/4]).
--export([var/1, tuple/1, all_variables/1, has_ref/2, transform/2, is_empty/1]).
+-export([var/1, tuple/1, all_variables/1, has_ref/2, transform/2, is_empty/1, get_dnf/1]).
 
 tuple(Tuple) -> gen_bdd:terminal(?P, Tuple).
 var(Var) -> gen_bdd:element(?P, Var).
@@ -22,6 +22,7 @@ equal(B1, B2) -> gen_bdd:equal(?P, B1, B2).
 compare(B1, B2) -> gen_bdd:compare(?P, B1, B2).
 substitute(MkTy, T, M, Memo) -> gen_bdd:substitute(?P, MkTy, T, M, Memo).
 transform(Ty, Ops) -> gen_bdd:transform(?P, Ty, Ops).
+get_dnf(Bdd) -> gen_bdd:get_dnf(?P, Bdd).
 
 is_empty(TyBDD) -> gen_bdd:dnf(?P, TyBDD, {fun is_empty_coclause/3, fun gen_bdd:is_empty_union/2}).
 is_empty_coclause(_Pos, _Neg, T) -> dnf_ty_tuple:is_empty(T).

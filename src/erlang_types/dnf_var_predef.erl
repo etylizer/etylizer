@@ -5,7 +5,7 @@
 -export([equal/2, compare/2]).
 -export([empty/0, any/0, union/2, intersect/2, diff/2, negate/1]).
 -export([is_empty/1, is_any/1, normalize/3, substitute/4]).
--export([var/1, predef/1,  all_variables/1, transform/2]).
+-export([var/1, predef/1,  all_variables/1, transform/2, get_dnf/1]).
 
 % generic
 predef(Predef) -> gen_bdd:terminal(?P, Predef).
@@ -22,6 +22,8 @@ compare(B1, B2) -> gen_bdd:compare(?P, B1, B2).
 substitute(MkTy, T, M, _) -> gen_bdd:substitute(?P, MkTy, T, M, sets:new()).
 all_variables(TyBDD) -> gen_bdd:all_variables(?P, TyBDD).
 transform(Ty, Ops) -> gen_bdd:transform(?P, Ty, Ops).
+
+get_dnf(TyBDD) -> gen_bdd:get_dnf(?P, TyBDD).
 
 % partially generic
 is_empty(TyBDD) -> gen_bdd:dnf(?P, TyBDD, {fun is_empty_coclause/3, fun gen_bdd:is_empty_union/2}).

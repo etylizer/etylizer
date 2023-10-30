@@ -449,3 +449,17 @@ sol_number_test() ->
   Order2 = ['$1', '$2'],
   test_tally( Order1, [ C1 ], [ { #{}, #{} } ]),
   test_tally( Order2, [ C1 ], [ { #{}, #{} }, { #{}, #{} } ]).
+
+pretty_printing_bug_test() ->
+  Order = [v1, v2],
+  V0 = tvar(v1),
+  V6 = tvar(v2),
+  A = tatom(a),
+  B = tatom(b),
+  test_tally(
+    Order,
+    [{
+      tinter([V0, tnot(ttuple1(A)), ttuple1(B)]),
+      V6
+    }],
+    [{#{}, #{}}]).
