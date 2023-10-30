@@ -15,7 +15,7 @@
     mkdirs/1, hash_sha1/1, hash_file/1,
     list_uniq/1, lists_enumerate/1, lists_enumerate/2,
     with_default/2, compare/2,
-    mingle/5
+    mingle/5, timing/1
 ]).
 
 mingle(LeftDefault, RightDefault, AllLeft, AllRight, Op) ->
@@ -297,3 +297,11 @@ lists_enumerate_1(_Index, []) ->
 -spec with_default(T | undefined, T) -> T.
 with_default(undefined, Def) -> Def;
 with_default(X, _) -> X.
+
+-spec timing(fun(() -> {T, integer()})) -> {T, integer()}.
+timing(F) ->
+    Start = erlang:timestamp(),
+    Res = F(),
+    End = erlang:timestamp(),
+    Delta = round(timer:now_diff(End, Start) / 1000),
+    {Res, Delta}.

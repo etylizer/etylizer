@@ -135,21 +135,27 @@ simp_constr(Ctx, C) ->
                                pretty:render_ty(ExhauLeft),
                                pretty:render_ty(ExhauRight)),
                     Exhau = sets:from_list([{csubty, Locs, ExhauLeft, ExhauRight}]),
-                    Substs =
-                        lists:flatmap(
-                          fun(DsScrut) ->
-                                Ds = sets:union(DsScrut, Exhau),
-                                get_substs(tally:tally(Ctx#ctx.symtab, Ds, FreeSet), Locs)
-                          end,
-                          DssScrut),
+                    {Substs, Delta} =
+                        utils:timing(
+                            fun() ->
+                                lists:flatmap(
+                                fun(DsScrut) ->
+                                        Ds = sets:union(DsScrut, Exhau),
+                                        get_substs(tally:tally(Ctx#ctx.symtab, Ds, FreeSet), Locs)
+                                end,
+                                DssScrut)
+                            end),
                     ?LOG_TRACE("Env=~s, FreeSet=~200p", pretty:render_poly_env(Ctx#ctx.env),
                             sets:to_list(FreeSet)),
                     case Substs of
-                        [] -> ?LOG_DEBUG("No substitutions returned from tally."); % a type error is returned later
-                        [{S, _}] -> ?LOG_DEBUG("Unique substitution:~n~s",
-                                            pretty:render_subst(S));
-                        L -> ?LOG_DEBUG("~w substitutions: ~s",
-                                        length(L),
+                        [] ->
+                            % a type error is returned later
+                            ?LOG_DEBUG("Tally time: ~pms, no substitutions returned from tally", Delta);
+                        [{S, _}] ->
+                            ?LOG_DEBUG("Tally time: ~pms, unique substitution:~n~s", Delta, pretty:render_subst(S));
+                        L ->
+                            ?LOG_DEBUG("Tally time: ~pms, ~w substitutions: ~s",
+                                        Delta, length(L),
                                         pretty:render_substs(lists:map(fun({S, _}) -> S end, L)))
                     end,
                     % Non-determinism here because of multiple solutions from tally

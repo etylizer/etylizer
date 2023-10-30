@@ -205,17 +205,18 @@ infer(Ctx, Decls) ->
               ?LOG_DEBUG("Simplified constraint set ~w/~w, now " ++
                              "invoking tally on it:~n~s",
                          Idx, Total, pretty:render_constr(Ds)),
-              case tally:tally(Tab, Ds) of
-                  {error, ErrList} ->
+              case utils:timing(fun () -> tally:tally(Tab, Ds) end) of
+                  {{error, ErrList}, Delta} ->
                       ErrStr = format_tally_error(Idx, ErrList),
-                      ?LOG_DEBUG("tally finished with errors: ~s", ErrStr),
+                      ?LOG_DEBUG("Tally time: ~pms, tally finished with errors: ~s", Delta, ErrStr),
                       [];
-                  Substs ->
+                  {Substs, Delta} ->
                       NumSubsts = length(Substs),
                       utils:map_flip(
                         utils:with_index(1, Substs),
                         fun({SubstIdx, Subst}) ->
-                                ?LOG_DEBUG("Substitution ~w/~w:~n~s", SubstIdx, NumSubsts,
+                                ?LOG_DEBUG("Tally time: ~pms, substitution ~w/~w:~n~s",
+                                           Delta, SubstIdx, NumSubsts,
                                            pretty:render_subst(Subst)),
                                 ResultEnv = maps:from_list(utils:map_flip(
                                   Decls,
@@ -330,17 +331,20 @@ check_alt(Ctx, Decl = {function, Loc, Name, Arity, _}, FunTy, BranchMode) ->
                                     Idx, Total, Name, Arity, ast:format_loc(Loc),
                                     sets:to_list(FreeSet),
                                     pretty:render_constr(Ds)),
-                        Substs = tally:tally(Tab, Ds, FreeSet),
+                        {Substs, Delta} = utils:timing(fun () -> tally:tally(Tab, Ds, FreeSet) end),
                         case Substs of
                             {error, ErrList} ->
                                 ErrStr = format_tally_error(Idx, ErrList),
-                                ?LOG_DEBUG("tally finished with errors: ~s", ErrStr),
+                                ?LOG_DEBUG("Tally time: ~pms, tally finished with errors: ~s",
+                                    Delta, ErrStr),
                                 {false, Idx + 1};
                             [S] ->
-                                ?LOG_DEBUG("Unique substitution:~n~s", [pretty:render_subst(S)]),
+                                ?LOG_DEBUG("Tally time: ~pms, unique substitution:~n~s",
+                                    Delta, [pretty:render_subst(S)]),
                                 {true, Idx + 1};
                             L ->
-                                ?LOG_DEBUG("~w substitutions: ~200p", length(L), pretty:render_substs(L)),
+                                ?LOG_DEBUG("Tally time: ~pms, ~w substitutions: ~200p",
+                                    Delta, length(L), pretty:render_substs(L)),
                                 {true, Idx + 1}
                         end
                 end
@@ -417,7 +421,9 @@ more_general(Ts1, Ts2, Tab) ->
     {Mono1, _, Next} = mono_ty(Ts1, 0),
     {Mono2, A2, _} = mono_ty(Ts2, Next),
     C = {csubty, sets:new(), Mono1, Mono2},
-    case tally:tally(Tab, sets:from_list([C]), A2) of
+    {Res, Delta} = utils:timing(fun() -> tally:tally(Tab, sets:from_list([C]), A2) end),
+    ?LOG_DEBUG("Tally time: ~pms", Delta),
+    case Res of
         [] -> false;
         _ -> true
     end.
