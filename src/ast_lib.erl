@@ -227,6 +227,13 @@ ast_to_erlang_ty({fun_full, Comps, Result}) ->
     T = dnf_var_ty_function:function(dnf_ty_function:function(ty_function:function(ETy, TyB))),
     ty_rec:function(length(Comps), T);
 
+% maps
+ast_to_erlang_ty({map_any}) -> ty_rec:map();
+ast_to_erlang_ty({map, []}) -> ty_rec:map(dnf_var_ty_map:empty());
+ast_to_erlang_ty({map, _AssocList}) -> erlang:error({"Not implemented yet"});
+
+% TODO records
+
 % var
 ast_to_erlang_ty({var, A}) ->
     ty_rec:variable(maybe_new_variable(A));
@@ -290,4 +297,23 @@ maybe_new_variable(Name) ->
             Var;
         [{_, Variable}] ->
             Variable
+    end.
+
+allowed_key_types({map_field_assoc, Ty1, _Ty2}) ->
+    case Ty1 of
+        {predef, any} -> true;
+        {predef, none} -> true;
+        {predef, atom} -> true;
+        {predef, integer} -> true;
+        {tuple_any} -> true;
+        {tuple, [{predef, any}, {predef, any}]} -> true;
+        {singleton, T} when is_atom(T) or is_integer(T) -> true;
+        {predef_alias, boolean} -> true;
+        _ -> erlang:error({"Not supported key type"}) % TODO ty vars, more finite types?
+    end;
+allowed_key_types({map_field_exact, Ty1, _Ty2}) ->
+    case Ty1 of
+        {singleton, T} when is_atom(T) or is_integer(T) -> true;
+        {predef_alias, boolean} -> true;
+        _ -> erlang:error({"Not supported key type"}) % TODO ty vars, more finite types?
     end.
