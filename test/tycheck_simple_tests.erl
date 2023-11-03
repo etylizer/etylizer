@@ -1,11 +1,9 @@
--module(typing_test).
+-module(tycheck_simple_tests).
+
+% Test setup for all functions in test_files/tycheck_simple.erl
 
 -include_lib("eunit/include/eunit.hrl").
--include_lib("log.hrl").
-
-% FIXME: remove export_all once the tests are active
--compile(export_all).
--compile(nowarn_export_all).
+-include_lib("../src/log.hrl").
 
 -spec check_ok_fun(string(), symtab:t(), ast:fun_decl(), ast:ty_scheme()) -> ok.
 check_ok_fun(Filename, Tab, Decl = {function, L, Name, Arity, _}, Ty) ->
@@ -87,30 +85,38 @@ check_decls_in_file(F, What, NoInfer) ->
     case Decl of
       {function, Loc, Name, Arity, _} ->
         NameStr = atom_to_list(Name),
-        case should_run(NameStr, What) of
-          true ->
-            TestCases ++ [
-              {timeout, 10, {NameStr, fun() ->
+        Ty = symtab:lookup_fun({ref, Name, Arity}, Loc, Tab),
+        ShouldFail = utils:string_ends_with(NameStr, "_fail"),
+        RunTest =
+          {timeout, 10, {NameStr, fun() ->
                 ?LOG_NOTE("Type checking ~s from ~s", NameStr, F),
                 test_utils:reset_ets(),
-                Ty = symtab:lookup_fun({ref, Name, Arity}, Loc, Tab),
-                case utils:string_ends_with(NameStr, "_fail") of
+                case ShouldFail of
                   true -> check_fail_fun(F, Tab, Decl, Ty);
                   false ->
-                    check_ok_fun(F, Tab, Decl, Ty),
-                    case sets:is_element(NameStr, NoInfer) of
-                      true -> ok;
-                      false -> check_infer_ok_fun(F, Tab, Decl, Ty)
-                    end
+                    check_ok_fun(F, Tab, Decl, Ty)
                 end
-              end}}
-            ];
-          false -> TestCases
-        end;
+              end}
+            },
+        InferTest =
+          {timeout, 10, {NameStr ++ " (infer)", fun() ->
+                ?LOG_NOTE("Infering type for ~s from ~s", NameStr, F),
+                test_utils:reset_ets(),
+                check_infer_ok_fun(F, Tab, Decl, Ty)
+              end}
+          },
+        ShouldRun = should_run(NameStr, What),
+        ShouldInfer = not ShouldFail andalso not sets:is_element(NameStr, NoInfer),
+        ExtraTestCases =
+          case {ShouldRun, ShouldInfer} of
+            {false, _} -> [];
+            {true, true} -> [InferTest];
+            {true, false} -> [RunTest]
+          end,
+        TestCases ++ ExtraTestCases;
       _ -> TestCases
     end
-                 end,
-
+  end,
   lists:foldl(CollectDecls, [], Forms).
 
 -spec should_run(string(), what()) -> boolean().
@@ -119,6 +125,7 @@ should_run(Name, {include,Set}) -> sets:is_element(Name, Set);
 should_run(Name, {exclude,Set}) -> not sets:is_element(Name, Set).
 
 simple_test_() ->
+  % The following functions are currently excluded from being tested.
   WhatNot = [
     % FIXME #36 impossible branches
     "foo2",
@@ -130,7 +137,9 @@ simple_test_() ->
     "fun_local_03",
     "fun_local_04"
   ],
-  NoInfer = [],
+  % The following functions are excluded from the type inference test because
+  % we do not support inference of intersection types.
+  NoInfer = ["inter_01", "inter_02"],
   check_decls_in_file("test_files/tycheck_simple.erl",
                       {exclude, sets:from_list(WhatNot)},
                       %{include, sets:from_list(What)},
