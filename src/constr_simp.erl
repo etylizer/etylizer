@@ -123,14 +123,12 @@ simp_constr(Ctx, C) ->
             simp_constrs_if_ok(
                 simp_constrs(Ctx, CsScrut),
                 fun(_, DssScrut) ->
-                    FreeSet = tyutils:free_in_poly_env(Ctx#ctx.env),
                     ?LOG_DEBUG("Solving constraints for scrutiny of case at ~s in order to check " ++
                                "which branches should be ignored.~n" ++
-                               "Env: ~s~nFixed tyvars: ~w~nConstraints for scrutiny:~n~s~n" ++
+                               "Env: ~s~nConstraints for scrutiny:~n~s~n" ++
                                "exhaustivness check: ~s <= ~s",
                                ast:format_loc(loc(Locs)),
                                pretty:render_poly_env(Ctx#ctx.env),
-                               sets:to_list(FreeSet),
                                pretty:render_constr(DssScrut),
                                pretty:render_ty(ExhauLeft),
                                pretty:render_ty(ExhauRight)),
@@ -141,12 +139,11 @@ simp_constr(Ctx, C) ->
                                 lists:flatmap(
                                 fun(DsScrut) ->
                                         Ds = sets:union(DsScrut, Exhau),
-                                        get_substs(tally:tally(Ctx#ctx.symtab, Ds, FreeSet), Locs)
+                                        get_substs(tally:tally(Ctx#ctx.symtab, Ds), Locs)
                                 end,
                                 DssScrut)
                             end),
-                    ?LOG_TRACE("Env=~s, FreeSet=~200p", pretty:render_poly_env(Ctx#ctx.env),
-                            sets:to_list(FreeSet)),
+                    ?LOG_TRACE("Env=~s", pretty:render_poly_env(Ctx#ctx.env)),
                     case Substs of
                         [] ->
                             % a type error is returned later
@@ -229,7 +226,7 @@ simp_constr(Ctx, C) ->
                                     ?LOG_DEBUG("MultiResults is empty, checking whether typing the scrutiny or the exhaustiveness check fails."),
                                     case
                                         lists:flatmap(
-                                            fun(Ds) -> get_substs(tally:tally(Ctx#ctx.symtab, Ds, FreeSet), Locs) end,
+                                            fun(Ds) -> get_substs(tally:tally(Ctx#ctx.symtab, Ds), Locs) end,
                                         DssScrut)
                                     of
                                         [] ->
