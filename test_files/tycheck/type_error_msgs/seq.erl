@@ -1,3 +1,6 @@
+% ERROR
+% test_files/tycheck/type_error_msgs/seq.erl:17:9: Type error: expression failed to type check
+% %   17|     X = foo(J), % error here
 -module(seq).
 
 -compile(export_all).

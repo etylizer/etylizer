@@ -1,3 +1,5 @@
+% ERROR
+% test_files/tycheck/type_error_msgs/invalid_result.erl:9:1: Type error: function make_even/1 failed to type check against type fun((integer()) -> integer())
 -module(invalid_result).
 
 -compile(export_all).
