@@ -1,0 +1,15 @@
+-module(redundant_branch).
+
+-compile(export_all).
+-compile(nowarn_export_all).
+
+-spec bar(integer()) -> a | b |c .
+bar(_) -> a.
+
+-spec foo(a | b | c) -> integer().
+foo(X) ->
+    case bar(X) of
+        a -> 1;
+        b -> 2;
+        c -> 3
+    end.

@@ -3,21 +3,29 @@
 -include_lib("log.hrl").
 
 -export([
-         gen_constrs_fun_group/1, gen_constrs_annotated_fun/2,
+         gen_constrs_fun_group/2, gen_constrs_annotated_fun/3,
          sanity_check/2
         ]).
+
+-ifdef(TEST).
+-export([
+         pat_guard_lower_upper/4,
+         ty_of_pat/4
+        ]).
+-endif.
 
 -compile([nowarn_shadow_vars]).
 
 -record(ctx,
-        { var_counter :: counters:counters_ref()
+        { var_counter :: counters:counters_ref(),
+          symtab :: symtab:t()
         }).
 -type ctx() :: #ctx{}.
 
--spec new_ctx() -> ctx().
-new_ctx() ->
+-spec new_ctx(symtab:t()) -> ctx().
+new_ctx(Symtab) ->
     Counter = counters:new(2, []),
-    Ctx = #ctx{ var_counter = Counter },
+    Ctx = #ctx{ var_counter = Counter, symtab = Symtab },
     Ctx.
 
 -spec fresh_tyvar(ctx()) -> ast:ty_var().
@@ -50,9 +58,9 @@ single(X) -> sets:from_list([X]).
 mk_locs(Label, X) -> {Label, single(X)}.
 
 % Inference for a group of mutually recursive functions without type annotations.
--spec gen_constrs_fun_group([ast:fun_decl()]) -> {constr:constrs(), constr:constr_env()}.
-gen_constrs_fun_group(Decls) ->
-    Ctx = new_ctx(),
+-spec gen_constrs_fun_group(symtab:t(), [ast:fun_decl()]) -> {constr:constrs(), constr:constr_env()}.
+gen_constrs_fun_group(Symtab, Decls) ->
+    Ctx = new_ctx(Symtab),
     lists:foldl(
       fun({function, L, Name, Arity, FunClauses}, {Cs, Env}) ->
               Exp = {'fun', L, no_name, FunClauses},
@@ -66,9 +74,9 @@ gen_constrs_fun_group(Decls) ->
 % This function is invoked for each branch of the intersection type in the type spec.
 % The idea is that we can give better error messages by pointing out which part of the
 % intersection did not type check.
--spec gen_constrs_annotated_fun(ast:ty_full_fun(), ast:fun_decl()) -> constr:constrs().
-gen_constrs_annotated_fun({fun_full, ArgTys, ResTy}, {function, L, Name, Arity, FunClauses}) ->
-    Ctx = new_ctx(),
+-spec gen_constrs_annotated_fun(symtab:t(), ast:ty_full_fun(), ast:fun_decl()) -> constr:constrs().
+gen_constrs_annotated_fun(Symtab, {fun_full, ArgTys, ResTy}, {function, L, Name, Arity, FunClauses}) ->
+    Ctx = new_ctx(Symtab),
     {Args, Body} = fun_clauses_to_exp(Ctx, L, FunClauses),
     if length(Args) =/= length(ArgTys) orelse length(Args) =/= Arity ->
             errors:ty_error(L, "Arity mismatch for function ~w", Name);
@@ -111,7 +119,7 @@ exp_constrs(Ctx, E, T) ->
             Alpha = fresh_tyvar(Ctx),
             Beta = fresh_tyvar(Ctx),
             Cs0 = exp_constrs(Ctx, ScrutE, Alpha),
-            {BodyList, _Lowers, Uppers, CsCases} =
+            {BodyList, Lowers, _Uppers, CsCases} =
                 lists:foldl(fun (Clause = {case_clause, LocClause, _, _, _},
                                  {BodyList, Lowers, Uppers, AccCs}) ->
                                     ?LOG_TRACE("Generating constraint for case clause at ~s: Lowers=~s, Uppers=~s",
@@ -121,7 +129,7 @@ exp_constrs(Ctx, E, T) ->
                                     {ThisLower, ThisUpper, ThisCs, ThisConstrBody} =
                                         case_clause_constrs(
                                           Ctx,
-                                          ty_without(Alpha, ast:mk_union(Lowers)),
+                                          ty_without(Alpha, ast_lib:mk_union(Lowers)),
                                           ScrutE,
                                           Clause,
                                           Beta),
@@ -132,11 +140,10 @@ exp_constrs(Ctx, E, T) ->
                             end,
                             {[], [], [], sets:new()},
                             Clauses),
-            AllCs = sets:union([Cs0, CsCases,
-                                single({csubty, mk_locs("exhaustiveness check", L),
-                                        Alpha, ast:mk_union(Uppers)})]),
+            CsScrut = sets:union(Cs0, CsCases),
+            Exhaust = {Alpha, ast_lib:mk_union(Lowers)},
             sets:from_list([
-                {ccase, mk_locs("case", L), AllCs, BodyList},
+                {ccase, mk_locs("case", L), CsScrut, Exhaust, BodyList},
                 {csubty, mk_locs("result of case", L), Beta, T}
             ]);
         {'catch', L, CatchE} ->
@@ -244,7 +251,7 @@ exp_constrs(Ctx, E, T) ->
     end.
 
 -spec ty_without(ast:ty(), ast:ty()) -> ast:ty().
-ty_without(T1, T2) -> ast:mk_intersection([T1, ast:mk_negation(T2)]).
+ty_without(T1, T2) -> ast_lib:mk_intersection([T1, ast_lib:mk_negation(T2)]).
 
 -spec case_clause_constrs(ctx(), ast:ty(), ast:exp(), ast:case_clause(), ast:ty())
                          -> {ast:ty(), ast:ty(), constr:constrs(), constr:constr_case_body()}.
@@ -268,33 +275,37 @@ case_clause_constrs(Ctx, TyScrut, Scrut, {case_clause, L, Pat, Guards, Exps}, Be
 -spec case_clause_env(ctx(), ast:loc(), ast:ty(), ast:exp(), ast:pat(), [ast:guard()]) ->
           {ast:ty(), ast:ty(), ast:ty(), constr:constrs(), symtab:fun_env()}.
 case_clause_env(Ctx, L, TyScrut, Scrut, Pat, Guards) ->
-    {Lower, Upper} = pat_guard_lower_upper(Pat, Guards, Scrut),
-    Ti = ast:mk_intersection([TyScrut, Upper]),
+    {Lower, Upper} = pat_guard_lower_upper(Ctx#ctx.symtab, Pat, Guards, Scrut),
+    Ti = ast_lib:mk_intersection([TyScrut, Upper]),
     {Ci0, Gamma0} = pat_env(Ctx, L, Ti, pat_of_exp(Scrut)),
     {Ci1, Gamma1} = pat_guard_env(Ctx, L, Ti, Pat, Guards),
     Gamma2 = intersect_envs(Gamma1, Gamma0),
     {Lower, Upper, Ti, sets:union(Ci0, Ci1), Gamma2}.
 
 % ⌊ p when g ⌋_e and ⌈ p when g ⌉_e
--spec pat_guard_lower_upper(ast:pat(), [ast:guard()], ast:exp()) -> {ast:ty(), ast:ty()}.
-pat_guard_lower_upper(P, Gs, E) ->
+-spec pat_guard_lower_upper(symtab:t(), ast:pat(), [ast:guard()], ast:exp()) -> {ast:ty(), ast:ty()}.
+pat_guard_lower_upper(Symtab, P, Gs, E) ->
     % Env has type constr:constr_env() = #{ast:any_ref() => ast:ty()}
     {Env, Status} = guard_seq_env(Gs),
     EPat = pat_of_exp(E),
-    PatTy = ty_of_pat(Env, P),
-    ETy = ty_of_pat(Env, EPat),
-    Upper = ast:mk_intersection([PatTy, ETy]),
+    UpperPatTy = ty_of_pat(Symtab, Env, P, upper),
+    LowerPatTy = ty_of_pat(Symtab, Env, P, lower),
+    UpperETy = ty_of_pat(Symtab, Env, EPat, upper),
+    LowerETy = ty_of_pat(Symtab, Env, EPat, lower),
+    Upper = ast_lib:mk_intersection([UpperPatTy, UpperETy]),
     VarsOfGuards = sets:from_list(lists:filtermap(fun ast:local_varname_from_any_ref/1, maps:keys(Env))),
     BoundVars = sets:union(bound_vars_pat(P), bound_vars_pat(EPat)),
     Lower =
         case {Status, sets:is_subset(VarsOfGuards, BoundVars)} of
-            {safe, true} -> Upper;
+            {safe, true} -> ast_lib:mk_intersection([LowerPatTy, LowerETy]);
             _ -> {predef, none}
         end,
-    ?LOG_TRACE("EPat=~200p, PatTy=~s, ETy=~s, Upper=~s, Lower=~s, VarsOfGuards=~200p, BoundVars=~w, Status=~w",
+    ?LOG_TRACE("EPat=~200p, UpperPatTy=~s, LowerPatTy=~s, UpperETy=~s, LowerETy=~s Upper=~s, Lower=~s, VarsOfGuards=~200p, BoundVars=~w, Status=~w",
                EPat,
-               pretty:render_ty(PatTy),
-               pretty:render_ty(ETy),
+               pretty:render_ty(UpperPatTy),
+               pretty:render_ty(LowerPatTy),
+               pretty:render_ty(UpperETy),
+               pretty:render_ty(LowerETy),
                pretty:render_ty(Upper),
                pretty:render_ty(Lower),
                maps:keys(Env),
@@ -337,9 +348,39 @@ bound_vars_pat(P) ->
     end.
 
 
+% ty_of_pat
 % \lbag p \rbag_\Gamma
--spec ty_of_pat(constr:constr_env(), ast:pat()) -> ast:ty().
-ty_of_pat(Env, P) ->
+%
+% In the paper, the type t of a pattern p has the following semantics:
+%     Expression e matches p if, and only if, e has type t
+%
+% With list patterns, this is no longer true.
+%
+% Example 1: pattern [1 | _].
+% For the => direction above, consider an expression e that matches
+% this pattern. From this, all we know is that e must have type nonempty_list(any()).
+% (e could be any of the following expressions: [1,2,3] or [1, "foo"] or [1]).
+% For the <= direction, e must have type nonempty_list(1) if we want to make sure
+% that the pattern definitely matches.
+% Example 2: pattern [_ | _ | _].
+% For the => direction, consider an expression e that matches the pattern.
+% From this, all we know is that e has type nonempy_list() because there is no
+% type for lists with at least length two.
+% For the <= direction, no type except none() guarantees that e matches the pattern.
+%
+% Hence, we introduce a mode for ty_of_pat, which can be either upper or lower.
+%
+% - Mode upper deals with the potential type. Any expression matching p must
+%   be of this type.
+%   Example 1: the potential type is nonempty_list(any()).
+%   Example 2: the potential type is nonempty_list(any()).
+%
+% - Mode lower deals with the accepting type. If e has this type, then p definitely
+%   matches.
+%   Example 1: the accepting type is nonempty_list(1).
+%   Example 2: the accepting type is none()
+-spec ty_of_pat(symtab:t(), constr:constr_env(), ast:pat(), upper | lower) -> ast:ty().
+ty_of_pat(Symtab, Env, P, Mode) ->
     case P of
         {'atom', _L, A} -> {singleton, A};
         {'char', _L, C} -> {singleton, C};
@@ -347,22 +388,45 @@ ty_of_pat(Env, P) ->
         {'float', _L, _F} -> {predef, float};
         {'string', _L, _S} -> {predef_alias, string};
         {bin, L, _Elems} -> errors:unsupported(L, "bitstring patterns");
-        {match, _L, P1, P2} -> ast:mk_intersection([ty_of_pat(Env, P1), ty_of_pat(Env, P2)]);
+        {match, _L, P1, P2} ->
+            ast_lib:mk_intersection([ty_of_pat(Symtab, Env, P1, Mode), ty_of_pat(Symtab, Env, P2, Mode)]);
         {nil, _L} -> {empty_list};
         {cons, _L, P1, P2} ->
-            %% FIXME: this is wrong. It should be the union of {list, ty_of_pat(Env, P1)}
-            %% and ty_of_pat(Env, P2), intersected with type list(any()).
-            %% Accepting and potential types of list patterns are also wrong.
-            ast:mk_intersection([{list, ty_of_pat(Env, P1)}, ty_of_pat(Env, P2)]);
+            case Mode of
+                upper ->
+                    T1 = ty_of_pat(Symtab, Env, P1, Mode),
+                    T2 = ty_of_pat(Symtab, Env, P2, Mode),
+                    case subty:is_subty(Symtab, T2, stdtypes:tempty_list()) of
+                        true -> stdtypes:tnonempty_list(T1);
+                        false ->
+                            case subty:is_subty(Symtab, T2, stdtypes:tnonempty_list()) of
+                                true -> ast_lib:mk_union([stdtypes:tnonempty_list(T1), T2]);
+                                false ->
+                                    case subty:is_any(T2, Symtab) of
+                                        true -> stdtypes:tnonempty_list();
+                                        false -> stdtypes:tnonempty_improper_list(T1, T2)
+                                    end
+                            end
+                    end;
+                lower ->
+                    T1 = {nonempty_list, ty_of_pat(Symtab, Env, P1, Mode)},
+                    T2 = ty_of_pat(Symtab, Env, P2, Mode),
+                    % FIXME: can we encode this choice as a type?
+                    case subty:is_any(T2, Symtab) of
+                        true -> T1;
+                        false -> stdtypes:empty()
+                    end
+            end;
         {op, _, '++', [P1, P2]} ->
-            ast:mk_intersection([ty_of_pat(Env, P1), ty_of_pat(Env, P2), {predef_alias, list}]);
+            ast_lib:mk_intersection([ty_of_pat(Symtab, Env, P1, Mode), ty_of_pat(Symtab, Env, P2, Mode),
+                                 {predef_alias, string}]);
         {op, _, '-', [SubP]} ->
-            ast:mk_intersection([ty_of_pat(Env, SubP), {predef_alias, number}]);
+            ast_lib:mk_intersection([ty_of_pat(Symtab, Env, SubP, Mode), {predef_alias, number}]);
         {op, L, Op, _} -> errors:unsupported(L, "operator ~w in patterns", Op);
         {map, L, _Assocs} -> errors:unsupported(L, "map patterns");
         {record, L, _Name, _Fields} -> errors:unsupported(L, "record patterns");
         {record_index, L, _Name, _Field} -> errors:unsupported(L, "record index patterns");
-        {tuple, _L, Ps} -> {tuple, lists:map(fun(P) -> ty_of_pat(Env, P) end, Ps)};
+        {tuple, _L, Ps} -> {tuple, lists:map(fun(P) -> ty_of_pat(Symtab, Env, P, Mode) end, Ps)};
         {wildcard, _L} -> {predef, any};
         {var, _L, {local_bind, V}} -> maps:get({local_ref, V}, Env, {predef, any});
         {var, _L, {local_ref, _V}} -> {predef, any} % we could probably do better here
@@ -370,14 +434,14 @@ ty_of_pat(Env, P) ->
 
 % t // pg
 -spec pat_guard_env(ctx(), ast:loc(), ast:ty(), ast:pat(), [ast:guard()]) ->
-          {const:constrs(), constr:constr_env()}.
+          {constr:constrs(), constr:constr_env()}.
 pat_guard_env(Ctx, L, T, P, Gs) ->
     {Cs, Env} = pat_env(Ctx, L, T, P),
     {EnvGuards, _} = guard_seq_env(Gs),
     {Cs, intersect_envs(Env, EnvGuards)}.
 
 % t // p
--spec pat_env(ctx(), ast:loc(), ast:ty(), ast:pat()) -> {const:constrs(), constr:constr_env()}.
+-spec pat_env(ctx(), ast:loc(), ast:ty(), ast:pat()) -> {constr:constrs(), constr:constr_env()}.
 pat_env(Ctx, OuterL, T, P) ->
     Empty = {sets:new(), #{}},
     case P of
@@ -456,7 +520,7 @@ pat_of_exp(E) ->
 % Γ //\\ Γ
 -spec intersect_envs(constr:constr_env(), constr:constr_env()) -> constr:constr_env().
 intersect_envs(Env1, Env2) ->
-    combine_envs(Env1, Env2, fun(T1, T2) -> ast:mk_intersection([T1, T2]) end).
+    combine_envs(Env1, Env2, fun(T1, T2) -> ast_lib:mk_intersection([T1, T2]) end).
 
 -spec combine_envs(
         constr:constr_env(),
@@ -483,10 +547,10 @@ combine_envs(Env1, Env2, F) ->
 % Γ \\// Γ
 -spec union_envs(constr:constr_env(), constr:constr_env()) -> constr:constr_env().
 union_envs(Env1, Env2) ->
-    combine_envs(Env1, Env2, fun(T1, T2) -> ast:mk_union([T1, T2]) end).
+    combine_envs(Env1, Env2, fun(T1, T2) -> ast_lib:mk_union([T1, T2]) end).
 
 -spec negate_env(constr:constr_env()) -> constr:constr_env().
-negate_env(Env) -> maps:map(fun (_Key, T) -> ast:mk_negation(T) end, Env).
+negate_env(Env) -> maps:map(fun (_Key, T) -> ast_lib:mk_negation(T) end, Env).
 
 % env(g)
 -spec guard_seq_env([ast:guard()]) -> {constr:constr_env(), safe | unsafe}.
@@ -509,6 +573,9 @@ combine_guard_result(Guards, RecFun, CombineFun) ->
                 {#{}, safe},
                 lists:map(RecFun, Guards)).
 
+% Constructs an environment and a status from a guard test. The status 'safe' expresses
+% that the the type checker could fully analyze the guard, that is the guard test
+% does not use anything like the "oracle" from the IFL 2022 paper.
 -spec guard_test_env(ast:guard_test()) -> {constr:constr_env(), safe | unsafe}.
 guard_test_env(G) ->
     Default = {#{}, unsafe},
@@ -538,6 +605,8 @@ guard_test_env(G) ->
         {op, _L, 'not', Exp} ->
             {Env, Status} = guard_test_env(Exp),
             {negate_env(Env), Status};
+        {'atom', _Loc, true} ->
+            {#{}, safe};
         _ -> Default
     end.
 
@@ -567,7 +636,7 @@ var_test_env(FunExp, X, RestArgs) ->
                             Arity =:= 2 orelse Arity =:= 3 ->
                                 case RestArgs of
                                     [{'atom', _, RecordName} | _] ->
-                                        #{XRef => {record, RecordName, []}};
+                                        {#{XRef => {record, RecordName, []}}, safe};
                                     _ -> Default
                                 end;
                             true -> Default
@@ -577,7 +646,7 @@ var_test_env(FunExp, X, RestArgs) ->
                             [{'integer', _, N}] ->
                                 % The top type for functions with arity N
                                 TopFunTy = {fun_full, utils:replicate(N, {predef, any}), {predef, none}},
-                                #{XRef => TopFunTy};
+                                {#{XRef => TopFunTy}, safe};
                             _ -> Default
                         end;
                     {Name, 1} ->
@@ -690,7 +759,7 @@ if_exp_to_case_exp({'if', L, IfClauses}) ->
                   end, IfClauses),
     {'case', L, ScrutExp, CaseClauses}.
 
--spec sanity_check(const:constrs(), ast_spec:ty_map()) -> ok.
+-spec sanity_check(constr:constrs(), ast_check:ty_map()) -> ok.
 sanity_check(Cs, Spec) ->
     case ast_check:check_against_type(Spec, constr, constrs, Cs) of
         true ->

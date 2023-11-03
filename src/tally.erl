@@ -1,66 +1,41 @@
 -module(tally).
 
--include_lib("log.hrl").
-
 -export([
   tally/2,
   tally/3
 ]).
 
--spec tally(symtab:t(), constr:simp_constrs(), sets:set(ast:ty_varname())) -> [subst:t()] | {error, [{error, string()}]}.
-tally(Symtab, Constraints, FixedVars) ->
-  N = tally_norm:norm_api(Constraints, FixedVars, Symtab),
-  M = case N of [] -> {fail, norm}; _ -> N end,
+-ifdef(TEST).
+-export([tally/4]). % extra tally function used to specify variable order to ensure a deterministic number of solutions
+-endif.
 
-  S = tally_solve:solve(M, FixedVars, Symtab),
+tally(SymTab, Constraints) -> tally(SymTab, Constraints, sets:new()) .
 
-  Min = minimize_solutions(S, Symtab),
-  X = case Min of
-    {fail, _X} ->
-      {error, []};
-    _ ->
-      % transform to subst:t()
-      [maps:from_list([{VarName, Ty} || {{var, VarName}, Ty} <- Subst]) || Subst <- S]
-  end,
+tally(SymTab, Constraints, FixedVars) ->
+  tally(SymTab, Constraints, FixedVars, fun() -> noop end).
 
-  X.
+tally(_SymTab, Constraints, FixedVars, Order) ->
+  % reset the global cache, will be fixed in the future
+  ty_ref:reset(),
+  ty_variable:reset(),
+  ast_lib:reset(),
+  % the order is a function which is executed here
+  % it essentially should instantiate the type variable by name via ast_lib:ast_to_erlang_ty once to fix the order
+  Order(),
 
--spec tally(symtab:t(), constr:simp_constrs()) -> [subst:t()] | {error, [{error, string()}]}.
-tally(Symtab, Constraints) ->
-  tally(Symtab, Constraints, sets:new()).
+  InternalConstraints = lists:map(
+    fun({csubty, _, S, T}) -> {ast_lib:ast_to_erlang_ty(S), ast_lib:ast_to_erlang_ty(T)} end,
+    lists:sort(fun({csubty, _, S, T}, {csubty, _, X, Y}) -> ({S, T}) < ({X, Y}) end,
+      sets:to_list(Constraints))
+  ),
+  InternalResult = etally:tally(InternalConstraints, sets:from_list([ast_lib:ast_to_erlang_ty_var({var, Var}) || Var <- lists:sort(sets:to_list(FixedVars))])),
+%%  io:format(user, "Got Constraints ~n~p~n~p~n", [InternalConstraints, InternalResult]),
 
-
-minimize_solutions(X = {fail, _}, _) -> X;
-minimize_solutions(M, Sym) ->
-  R = lists:filter(fun(Sigma) -> not can_be_removed(Sigma, M, Sym) end, M),
-
-  case R of
-    M -> M;
-    _ ->
-      ?LOG_DEBUG("Successfully reduced tally solution size! ~p -> ~p", length(M), length(R)),
-      R
+  case InternalResult of
+        {error, []} ->
+          {error, []};
+        _ ->
+          % transform to subst:t()
+          % TODO sanity variable Id == variable name
+          [maps:from_list([{VarName, ast_lib:erlang_ty_to_ast(Ty)} || {{var, _, VarName}, Ty} <- Subst]) || Subst <- InternalResult]
   end.
-
-can_be_removed(Sigma, AllSubs, Sym) ->
-  % does Sigma' exist such that
-  lists:any(fun(SigmaPrime) ->
-    % dom(Sigma') <: dom(Sigma)
-    domain(SigmaPrime, Sigma)
-    andalso
-    %for all alpha \in dom(sigma'): sigma'(alpha) ~ sigma(alpha)
-    sub_domain_equivalent(SigmaPrime, Sigma, Sym)
-            end, lists:delete(Sigma, AllSubs)).
-
-
-domain(Sigma1, Sigma2) ->
-  S1 = [Var || {Var, _} <- Sigma1],
-  S2 = [Var || {Var, _} <- Sigma2],
-  gb_sets:is_subset(gb_sets:from_list(S1), gb_sets:from_list(S2)).
-
-sub_domain_equivalent(S1, S2, Sym) ->
-  SAll = [Var || {Var, _} <- S1],
-  lists:all(fun(Var) ->
-    [Ty] = [T || {V, T} <- S1, V == Var],
-    [Ty2] = [T || {V, T} <- S2, V == Var],
-    subty:is_equivalent(Sym, Ty, Ty2)
-            end, SAll).

@@ -1,8 +1,12 @@
 #!/bin/bash
 
+D=$( cd -- "$( dirname -- "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )
+
 if [ "$1" == "--build" ]; then
     shift
+    pushd $D
     make build || exit 1
+    popd
 fi
 
-$(dirname $0)/_build/default/bin/ety "$@"
+$D/_build/default/bin/ety "$@"

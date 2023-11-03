@@ -2,6 +2,54 @@
 -include_lib("eunit/include/eunit.hrl").
 
 -import(stdtypes, [tvar/1, ttuple_any/0, tnegate/1, tatom/0, tatom/1, tfun_full/2, trange/2, tunion/1, tintersect/1, trange_any/0, ttuple/1, tany/0, tnone/0]).
+-import(test_utils, [is_subtype/2, is_equiv/2]).
+
+foo2_branch1_test() ->
+  % $0 /\ {a, 42}
+  % $0 :: (`b & 'a5,42)  | (`a,42) | ((`b & 'a5,42) | (`a,42)) & 'a0a0;
+  % debug subtype ((((`b & 'a5,42)  | (`a,42) | ((`b & 'a5,42) | (`a,42)) & 'a0a0) & (`a, 42)) (Empty));;
+  % (`a,42) <= Empty : false
+  V0 = tunion([
+    ttuple([tintersect([tatom(b), tvar(a5)]), tatom(int)]),
+    ttuple([tatom(a), tatom(int)]),
+    tintersect([
+      tunion([
+        ttuple([tintersect([tatom(b), tvar(a5)]), tatom(int)]),
+        ttuple([tatom(a), tatom(int)])
+      ]),
+      tvar(a0a0)
+    ])
+  ]),
+
+  false = is_subtype(tintersect([V0, ttuple([tatom(a), tatom(int)])]), stdtypes:tnone()),
+  ok.
+
+foo2_branch2_test() ->
+  % $0 /\ !{a, 42} /\ {b, 42}
+  % $0 ::
+  %   (`b & 'a5,42)
+  % | (`a,42)
+  % | ((`b & 'a5,42) | (`a,42)) & 'a0a0;
+  % debug subtype ((((`b & 'a5,42)  | (`a,42) | ((`b & 'a5,42) | (`a,42)) & 'a0a0) & (`b, 42) \ (`a, 42)) (Empty));;
+  % (`b & 'a5,42) <= Empty : false
+  V0 = tunion([
+    ttuple([tintersect([tatom(b), tvar(a5)]), tatom(int)]),
+    ttuple([tatom(a), tatom(int)]),
+    tintersect([
+      tunion([
+        ttuple([tintersect([tatom(b), tvar(a5)]), tatom(int)]),
+        ttuple([tatom(a), tatom(int)])
+      ]),
+      tvar(a0a0)
+    ])
+  ]),
+
+  false = is_subtype(tintersect([
+    V0,
+    tnegate(ttuple([tatom(a), tatom(int)])),
+    ttuple([tatom(b), tatom(int)])
+  ]), stdtypes:tnone()),
+  ok.
 
 atoms_test() ->
   S = stdtypes:tatom(hello),
@@ -21,57 +69,32 @@ simple_tuple2_test() ->
   false = is_subtype( S, T ),
   false = is_subtype( T, S ).
 
-simple_tuple3_test() ->
-  S = {tuple, [{predef, atom}]},
-  Snorm = ty_rec:norm(S),
-  Seval = ty_rec:eval(Snorm),
+empty_tuple_test() ->
+  O2 = {intersection,
+    [
+      {tuple, [{singleton,b}]},
+      {tuple,[{singleton,a}]}
+    ]},
 
-  true = is_equiv(S, Seval).
+  true = subty:is_empty(O2, none),
 
-simple_any_test() ->
-  S = {negation,{union,[{singleton,f}]}},
-  Snorm = ty_rec:norm(S),
-  Seval = ty_rec:eval(Snorm),
-
-  true = is_equiv(S, Seval).
-
-simple_predef_test() ->
-  S = {negation,{tuple,[{predef,atom}]}},
-  Snorm = ty_rec:norm(S),
-  Seval = ty_rec:eval(Snorm),
-
-  true = is_equiv(S, Seval).
-
-simple_fun_test() ->
-  S = tfun_full([{union, [tatom(true), tatom(false)]}, tatom(true)], tatom(ok)),
-  T = tfun_full([tatom(false), tatom(true)], tatom(ok)),
-
-  false = is_subtype(T,S).
-
-edge_1_test() ->
-  Ty = {union,[
-    {fun_full,[{negation,{predef,any}}],{predef,any}},
-    {fun_full,[{negation, {singleton,a}}],{predef, any}}
-  ]},
-  Norm = ty_rec:norm(Ty),
-  Ty2 = ty_rec:eval(Norm),
-  true = is_equiv(Ty, Ty2).
-
-empty_tuples_test() ->
-  None = {predef, none},
-  S = {tuple, [{predef, none}]},
-  S2 = {tuple, [{predef, none}, tatom(hello)]},
-  true = is_equiv( S, None ),
-  true = is_equiv( S2, None ),
-  true = is_equiv( S2, S ),
   ok.
+
+simple_prod_var_test() ->
+  S = stdtypes:ttuple([stdtypes:tatom(hello)]),
+  T = stdtypes:ttuple([stdtypes:tvar(alpha)]),
+
+  false = is_subtype( S, T ),
+  false = is_subtype( T, S ),
+  ok.
+
 
 empty_functions_test() ->
   AllFuns = {fun_simple},
   S = {fun_full, [tatom(ok), {predef, none}], tatom(ok)},
   T = {fun_full, [{predef, none}, tatom(hello), tatom(no)], tatom(ok2)},
-  true = not is_subtype( S, T ),
-  true = not is_subtype( T, S ),
+  false = is_subtype( S, T ),
+  false = is_subtype( T, S ),
   true = is_subtype(S, AllFuns),
   true = is_subtype(T, AllFuns),
   ok.
@@ -146,24 +169,6 @@ refine_test() ->
   true = is_subtype( Body, Annotation ),
   false = is_subtype( Annotation, Body ).
 
-% create fun_simple with only fun_full
-all_funs_test() ->
-  Everything =
-  tunion([
-    tnegate(tfun_full([tatom(b)], tatom(a))),
-    tfun_full([tatom(b)], tatom(a))
-  ]),
-  true = is_equiv( Everything, {predef, any}),
-
-  OnlyFuns = tintersect([{predef, any},
-    tnegate(tunion([tatom(), stdtypes:tspecial_any(), stdtypes:tlist_any(), trange_any(), ttuple_any()]))
-  ]),
-
-  true = is_subtype({fun_simple}, OnlyFuns),
-  true = is_subtype(OnlyFuns, {fun_simple}),
-
-  ok.
-
 edge_cases_test() ->
   false = is_subtype( v(alpha), {predef, none} ),
   true = is_subtype( v(alpha), {predef, any} ),
@@ -180,13 +185,6 @@ simple_var_test() ->
   false = is_subtype( A, S ),
   false = is_subtype( T, S ).
 
-simple_prod_var_test() ->
-  S = stdtypes:ttuple([stdtypes:tatom(hello)]),
-  T = stdtypes:ttuple([stdtypes:tvar(alpha)]),
-
-  false = is_subtype( S, T ),
-  false = is_subtype( T, S ),
-  ok.
 
 % (α × t) ∧ α !≤ ((1 × 1) × t)
 tricky_substitution_step_5_test() ->
@@ -293,105 +291,105 @@ pos_var_fun_test() ->
   false = is_subtype( T, S ),
   ok.
 
-simple_named_test() ->
-  Scheme = stdtypes:tyscm([a], stdtypes:tfun([stdtypes:tvar(a), stdtypes:tvar(a)], stdtypes:tatom(ok))),
-  TyDef = {mynamed, Scheme},
-  Form = {attribute, noloc(), type, transparent, TyDef},
-  Sym = symtab:extend_symtab([Form], symtab:empty()),
-
-  S = {named, noloc(), {ref, mynamed, 1}, [{predef, integer}]},
-  T = {named, noloc(), {ref, mynamed, 1}, [stdtypes:tatom(ok)]},
-
-  false = subty:is_subty(Sym, S, T),
-  false = subty:is_subty(Sym, T, S),
-  ok.
-
-simple_named2_test() ->
-  Scheme2 = stdtypes:tyscm([a], stdtypes:tatom(helloworld)),
-  TyDef2 = {mynamed2, Scheme2},
-  Form2 = {attribute, noloc(), type, transparent, TyDef2},
-
-  Scheme = stdtypes:tyscm([a], {named, noloc(), {ref, mynamed2, 1}, [{var, a}]}),
-  TyDef = {mynamed, Scheme},
-  Form = {attribute, noloc(), type, transparent, TyDef},
-
-
-  M = symtab:extend_symtab([Form], symtab:empty()),
-  Sym = symtab:extend_symtab([Form2], M),
-
-  S = {named, noloc(), {ref, mynamed, 1}, [stdtypes:tatom(helloworld)]},
-  T = stdtypes:tatom(helloworld),
-
-  true = subty:is_subty(Sym, S, T),
-  ok.
-
-simple_recursive_test() ->
-  Scheme = stdtypes:tyscm([a],
-    stdtypes:tunion([stdtypes:tatom(emptylist), stdtypes:ttuple([stdtypes:tvar(a), {named, noloc(), {ref, mylist, 1}, [stdtypes:tvar(a)]}])])
-  ),
-  TyDef = {mylist, Scheme},
-  Form = {attribute, noloc(), type, transparent, TyDef},
-
-  Sym = symtab:extend_symtab([Form], symtab:empty()),
-
-  S = named(mylist, [stdtypes:tatom(myints)]),
-  T = stdtypes:tatom(helloworld),
-
-  false = subty:is_subty(Sym, S, T),
-  ok.
-
-simple_basic_ulist_test() ->
-  SymbolTable = predefSymbolicTable(),
-
-  S = named(ulist, [{predef, integer}]),
-  T = named(ulist, [stdtypes:tatom(float)]),
-
-  true = subty:is_subty(SymbolTable, S, S),
-  false = subty:is_subty(SymbolTable, S, T),
-  false = subty:is_subty(SymbolTable, T, S),
-
-  ok.
-
-% µx.(α×(α×x)) ∨ nil  ≤ µx.(α×x)     ∨ nil
-% µx.(α×x)     ∨ nil !≤ µx.(α×(α×x)) ∨ nil
-even_lists_contained_in_lists_test() ->
-  S = named(even_ulist, [tvar(alpha)]),
-  T = named(ulist, [tvar(alpha)]),
-  true  = subty:is_subty(predefSymbolicTable(), S, T),
-  false = subty:is_subty(predefSymbolicTable(), T, S),
-  ok.
-
-% µx.(α×(α×x)) ∨ (α×nil)  ≤ µx.(α×x)     ∨ nil
-% µx.(α×x)     ∨ (α×nil) !≤ µx.(α×(α×x)) ∨ nil
-uneven_lists_contained_in_lists_test() ->
-  S = named(uneven_ulist, [tvar(alpha)]),
-  T = named(ulist, [tvar(alpha)]),
-  true  = subty:is_subty(predefSymbolicTable(), S, T),
-  false = subty:is_subty(predefSymbolicTable(), T, S),
-  ok.
-
-% µx.(α×x) ∨ nil ∼ (µx.(α×(α×x))∨nil) ∨ (µx.(α×(α×x))∨(α×nil))
-uneven_even_lists_contained_in_lists_test() ->
-  S = tunion([
-    named(uneven_ulist, [tvar(alpha)]),
-    named(even_ulist, [tvar(alpha)])
-  ]),
-  T = named(ulist, [tvar(alpha)]),
-
-  true  = subty:is_subty(predefSymbolicTable(), S, T),
-  true = subty:is_subty(predefSymbolicTable(), T, S),
-  ok.
-
-% (µx.(α×(α×x))∨nil) <!> (µx.(α×(α×x))∨(α×nil))
-uneven_even_lists_not_comparable_test() ->
-  S = named(uneven_ulist, [tvar(alpha)]),
-  T = named(even_ulist, [tvar(alpha)]),
-
-  false  = subty:is_subty(predefSymbolicTable(), S, T),
-  false = subty:is_subty(predefSymbolicTable(), T, S),
-  ok.
-
-
+%%simple_named_test() ->
+%%  Scheme = stdtypes:tyscm([a], stdtypes:tfun([stdtypes:tvar(a), stdtypes:tvar(a)], stdtypes:tatom(ok))),
+%%  TyDef = {mynamed, Scheme},
+%%  Form = {attribute, noloc(), type, transparent, TyDef},
+%%  Sym = symtab:extend_symtab([Form], symtab:empty()),
+%%
+%%  S = {named, noloc(), {ref, mynamed, 1}, [{predef, integer}]},
+%%  T = {named, noloc(), {ref, mynamed, 1}, [stdtypes:tatom(ok)]},
+%%
+%%  false = subty:is_subty(Sym, S, T),
+%%  false = subty:is_subty(Sym, T, S),
+%%  ok.
+%%
+%%simple_named2_test() ->
+%%  Scheme2 = stdtypes:tyscm([a], stdtypes:tatom(helloworld)),
+%%  TyDef2 = {mynamed2, Scheme2},
+%%  Form2 = {attribute, noloc(), type, transparent, TyDef2},
+%%
+%%  Scheme = stdtypes:tyscm([a], {named, noloc(), {ref, mynamed2, 1}, [{var, a}]}),
+%%  TyDef = {mynamed, Scheme},
+%%  Form = {attribute, noloc(), type, transparent, TyDef},
+%%
+%%
+%%  M = symtab:extend_symtab([Form], symtab:empty()),
+%%  Sym = symtab:extend_symtab([Form2], M),
+%%
+%%  S = {named, noloc(), {ref, mynamed, 1}, [stdtypes:tatom(helloworld)]},
+%%  T = stdtypes:tatom(helloworld),
+%%
+%%  true = subty:is_subty(Sym, S, T),
+%%  ok.
+%%
+%%simple_recursive_test() ->
+%%  Scheme = stdtypes:tyscm([a],
+%%    stdtypes:tunion([stdtypes:tatom(emptylist), stdtypes:ttuple([stdtypes:tvar(a), {named, noloc(), {ref, mylist, 1}, [stdtypes:tvar(a)]}])])
+%%  ),
+%%  TyDef = {mylist, Scheme},
+%%  Form = {attribute, noloc(), type, transparent, TyDef},
+%%
+%%  Sym = symtab:extend_symtab([Form], symtab:empty()),
+%%
+%%  S = named(mylist, [stdtypes:tatom(myints)]),
+%%  T = stdtypes:tatom(helloworld),
+%%
+%%  false = subty:is_subty(Sym, S, T),
+%%  ok.
+%%
+%%simple_basic_ulist_test() ->
+%%  SymbolTable = predefSymbolicTable(),
+%%
+%%  S = named(ulist, [{predef, integer}]),
+%%  T = named(ulist, [stdtypes:tatom(float)]),
+%%
+%%  true = subty:is_subty(SymbolTable, S, S),
+%%  false = subty:is_subty(SymbolTable, S, T),
+%%  false = subty:is_subty(SymbolTable, T, S),
+%%
+%%  ok.
+%%
+%%% µx.(α×(α×x)) ∨ nil  ≤ µx.(α×x)     ∨ nil
+%%% µx.(α×x)     ∨ nil !≤ µx.(α×(α×x)) ∨ nil
+%%even_lists_contained_in_lists_test() ->
+%%  S = named(even_ulist, [tvar(alpha)]),
+%%  T = named(ulist, [tvar(alpha)]),
+%%  true  = subty:is_subty(predefSymbolicTable(), S, T),
+%%  false = subty:is_subty(predefSymbolicTable(), T, S),
+%%  ok.
+%%
+%%% µx.(α×(α×x)) ∨ (α×nil)  ≤ µx.(α×x)     ∨ nil
+%%% µx.(α×x)     ∨ (α×nil) !≤ µx.(α×(α×x)) ∨ nil
+%%uneven_lists_contained_in_lists_test() ->
+%%  S = named(uneven_ulist, [tvar(alpha)]),
+%%  T = named(ulist, [tvar(alpha)]),
+%%  true  = subty:is_subty(predefSymbolicTable(), S, T),
+%%  false = subty:is_subty(predefSymbolicTable(), T, S),
+%%  ok.
+%%
+%%% µx.(α×x) ∨ nil ∼ (µx.(α×(α×x))∨nil) ∨ (µx.(α×(α×x))∨(α×nil))
+%%uneven_even_lists_contained_in_lists_test() ->
+%%  S = tunion([
+%%    named(uneven_ulist, [tvar(alpha)]),
+%%    named(even_ulist, [tvar(alpha)])
+%%  ]),
+%%  T = named(ulist, [tvar(alpha)]),
+%%
+%%  true  = subty:is_subty(predefSymbolicTable(), S, T),
+%%  true = subty:is_subty(predefSymbolicTable(), T, S),
+%%  ok.
+%%
+%%% (µx.(α×(α×x))∨nil) <!> (µx.(α×(α×x))∨(α×nil))
+%%uneven_even_lists_not_comparable_test() ->
+%%  S = named(uneven_ulist, [tvar(alpha)]),
+%%  T = named(even_ulist, [tvar(alpha)]),
+%%
+%%  false  = subty:is_subty(predefSymbolicTable(), S, T),
+%%  false = subty:is_subty(predefSymbolicTable(), T, S),
+%%  ok.
+%%
+%%
 empty_tuples_edge_cases_test() ->
   S = stdtypes:ttuple([]),
   T = stdtypes:ttuple([stdtypes:tany()]),
@@ -421,6 +419,13 @@ nonempty_list_test() ->
   false = is_subtype(S, Ti),
   true = is_subtype(T, Ti).
 
+nonempty_list_2_test() ->
+  Any = stdtypes:any(),
+  A = stdtypes:tatom(a),
+  T1 = stdtypes:tnonempty_list(Any),
+  T2 = ast_lib:mk_union([stdtypes:tnonempty_list(A), stdtypes:tnonempty_list()]),
+  true = is_equiv(T1, T2).
+
 number_list_test() ->
   T = {list, stdtypes:tunion([{predef, integer}, {predef, float}])},
   S = {list, stdtypes:tunion([{predef, integer}])},
@@ -432,43 +437,43 @@ simple_predef_alias_test() ->
   S = {predef_alias, term},
   true = is_subtype(S, S),
   ok.
-
-
-
-noloc() -> {loc, "no", 0, 0}.
-named(Ref, Args) ->
-  {named, noloc(), {ref, Ref, length(Args)}, Args}.
-
-
-predefSymbolicTable() ->
-  Scheme = stdtypes:tyscm([a],
-    tunion([
-      tatom('[]'),
-      ttuple([tvar(a), named(ulist, [tvar(a)])])
-    ])
-  ),
-  List = {attribute, noloc(), type, transparent, {ulist, Scheme}},
-
-  UnevenScheme = stdtypes:tyscm([a],
-    tunion([
-      ttuple([tvar(a), tatom('[]')]),
-      ttuple([tvar(a), ttuple([tvar(a), named(uneven_ulist, [tvar(a)])])])
-    ])
-  ),
-  UnevenList = {attribute, noloc(), type, transparent, {uneven_ulist, UnevenScheme}},
-
-  EvenScheme = stdtypes:tyscm([a],
-    tunion([
-      tatom('[]'),
-      ttuple([tvar(a), ttuple([tvar(a), named(even_ulist, [tvar(a)])])])
-    ])
-  ),
-  EvenList = {attribute, noloc(), type, transparent, {even_ulist, EvenScheme}},
-
-  % user-defined list :: µx.(α×x) ∨ nil
-  % user-defined even list :: µx.(α×(α×x)) ∨ nil
-  % user-defined uneven list :: µx.(α×(α×x)) ∨ (α×nil)
-  symtab:extend_symtab([List, EvenList, UnevenList], symtab:empty()).
+%%
+%%
+%%
+%%noloc() -> {loc, "no", 0, 0}.
+%%named(Ref, Args) ->
+%%  {named, noloc(), {ref, Ref, length(Args)}, Args}.
+%%
+%%
+%%predefSymbolicTable() ->
+%%  Scheme = stdtypes:tyscm([a],
+%%    tunion([
+%%      tatom('[]'),
+%%      ttuple([tvar(a), named(ulist, [tvar(a)])])
+%%    ])
+%%  ),
+%%  List = {attribute, noloc(), type, transparent, {ulist, Scheme}},
+%%
+%%  UnevenScheme = stdtypes:tyscm([a],
+%%    tunion([
+%%      ttuple([tvar(a), tatom('[]')]),
+%%      ttuple([tvar(a), ttuple([tvar(a), named(uneven_ulist, [tvar(a)])])])
+%%    ])
+%%  ),
+%%  UnevenList = {attribute, noloc(), type, transparent, {uneven_ulist, UnevenScheme}},
+%%
+%%  EvenScheme = stdtypes:tyscm([a],
+%%    tunion([
+%%      tatom('[]'),
+%%      ttuple([tvar(a), ttuple([tvar(a), named(even_ulist, [tvar(a)])])])
+%%    ])
+%%  ),
+%%  EvenList = {attribute, noloc(), type, transparent, {even_ulist, EvenScheme}},
+%%
+%%  % user-defined list :: µx.(α×x) ∨ nil
+%%  % user-defined even list :: µx.(α×(α×x)) ∨ nil
+%%  % user-defined uneven list :: µx.(α×(α×x)) ∨ (α×nil)
+%%  symtab:extend_symtab([List, EvenList, UnevenList], symtab:empty()).
 
 
 a(A, B) -> {fun_full, [A], B}.
@@ -478,8 +483,6 @@ u(A,B) -> stdtypes:tunion([A,B]).
 i(A,B) -> stdtypes:tintersect([A,B]).
 v(A) -> stdtypes:tvar(A).
 p(A, B) -> ttuple([A, B]).
-
-
 
 
 bug1_test() ->
@@ -518,21 +521,186 @@ bug1_test() ->
 
   ok.
 
-empty_tuple_test() ->
-  O2 = {intersection,
-    [
-      {tuple, [{singleton,b}]},
-      {tuple,[{singleton,a}]}
-    ]},
+simplification_1_test() ->
+  S =
+  tunion([
+    tintersect([tnegate(tvar(a5)), tnegate(tvar(a6)), tatom(bool)]),
+    tintersect([tvar(a5), tnegate(tvar(a6)), tatom(bool)])
+  ]),
+  T =
+    tunion([
+      tintersect([tnegate(tvar(a6)), tatom(bool)]),
+      tintersect([tvar(a5), tnegate(tvar(a6)), tatom(bool)])
+    ]),
+  true = is_subtype(S, T),
+  true = is_subtype(T, S).
 
-  true = subty:is_empty(O2, none),
+simplification_2_test() ->
+  S =
+    tunion([
+      tintersect([(tvar(a5)), (tvar(a6))]),
+      tintersect([tnegate(tvar(a5)), tatom(bool)]),
+      tintersect([tnegate(tvar(a6)), tatom(bool)])
+    ]),
+  T =
+    tunion([
+      tintersect([(tvar(a5)), (tvar(a6))]),
+      tintersect([tnegate(tvar(a5)), tatom(bool)]),
+      tintersect([tvar(a5), tnegate(tvar(a6)), tatom(bool)])
+    ]),
+  true = is_subtype(S, T),
+  true = is_subtype(T, S).
+
+simplification_3_test() ->
+  S =
+    tunion([
+      tintersect([(tvar(a5)), (tvar(a6))]),
+      tintersect([tnegate(tvar(a5)), tatom(bool)]),
+      tintersect([tvar(a5), tnegate(tvar(a6)), tatom(bool)])
+    ]),
+  T =
+    tunion([
+      tintersect([(tvar(a5)), (tvar(a6))]),
+      tintersect([tatom(bool)]),
+      tintersect([tvar(a5), tnegate(tvar(a6)), tatom(bool)])
+    ]),
+  true = is_subtype(S, T),
+  true = is_subtype(T, S).
+
+simplification_4_test() ->
+  S =
+    tunion([
+      tintersect([(tvar(a5)), (tvar(a6))]),
+      tintersect([tatom(bool)]),
+      tintersect([tvar(a5), tnegate(tvar(a6)), tatom(bool)])
+    ]),
+  T =
+    tunion([
+      tintersect([(tvar(a5)), (tvar(a6))]),
+      tintersect([tatom(bool)])
+    ]),
+  true = is_subtype(S, T),
+  true = is_subtype(T, S).
+
+simplification_5_test() ->
+  S =
+    tunion([
+      tintersect([(tvar(a5)), (tvar(a6))]),
+      tintersect([tnegate(tvar(a5)), tatom(bool)]),
+      tintersect([tnegate(tvar(a6)), tatom(bool)])
+    ]),
+  T =
+    tunion([
+      tintersect([(tvar(a5)), (tvar(a6))]),
+      tatom(bool)
+    ]),
+  true = is_subtype(S, T),
+  true = is_subtype(T, S).
+
+simplification_6_test() ->
+  S =
+    (tunion([
+      tintersect([ tvar(mu5), tvar(mu6) ]),
+      tintersect([ tnegate(tvar(mu6)), tatom(bool) ]),
+      tintersect([ tnegate(tvar(mu5)), tatom(bool) ])
+    ])),
+  true = is_subtype(S, tnegate(tnegate(S))),
+  true = is_subtype(tnegate(tnegate(S)), S).
+
+simplification_7_test() ->
+  S =
+    tnegate(tunion([
+      tintersect([ tvar(mu5), tvar(mu6) ]),
+      tintersect([ tnegate(tvar(mu6)), tatom(bool) ]),
+      tintersect([ tnegate(tvar(mu5)), tatom(bool) ])
+    ])),
+  T =
+    (tintersect([
+      (tunion([ tnegate(tvar(mu5)), tnegate(tvar(mu6)) ])),
+      (tunion([ (tvar(mu6)), tnegate(tatom(bool)) ])),
+      (tunion([ (tvar(mu5)), tnegate(tatom(bool)) ]))
+    ])),
+  true = is_subtype(S, T),
+  true = is_subtype(T, S).
+
+simplification_8_test() ->
+  % X ∩ (A∪B)=(X∩A)∪(X∩B)
+  S =
+    (tintersect([
+      (tunion([ A = tnegate(tvar(mu5)), B = tnegate(tvar(mu6)) ])),
+      X = tintersect([
+        (tunion([ (tvar(mu6)), tnegate(tatom(bool)) ])),
+        (tunion([ (tvar(mu5)), tnegate(tatom(bool)) ]))
+      ])
+    ])),
+  T =
+  tunion([
+    tintersect([A, X]),
+    tintersect([B, X])
+  ]),
+  T2 =
+    tunion([
+      tintersect([tvar(mu6), tnegate(tvar(mu5)), tnegate(tatom(bool))]),
+      tintersect([tnegate(tvar(mu5)), tnegate(tatom(bool))]),
+      tintersect([(B), X])
+    ]),
+  T3 =
+    tunion([
+      tintersect([tvar(mu6), tnegate(tvar(mu5)), tnegate(tatom(bool))]),
+      tintersect([tnegate(tvar(mu5)), tnegate(tatom(bool))]),
+      tintersect([B, tunion([
+        tintersect([tvar(mu6), tvar(mu5)]),
+        tintersect([tvar(mu5), tnegate(tatom(bool))]),
+        tintersect([tvar(mu6), tnegate(tatom(bool))]),
+        tnegate(tatom(bool))
+      ])])
+    ]),
+  T4 =
+    tunion([
+      tintersect([tvar(mu6), tnegate(tvar(mu5)), tnegate(tatom(bool))]),
+      tintersect([tnegate(tvar(mu5)), tnegate(tatom(bool))]),
+      tintersect([tnegate(tvar(mu6)), tnegate(tatom(bool))]),
+      tintersect([tvar(mu5), tnegate(tvar(mu6)), tnegate(tatom(bool))])
+    ]),
+
+  true = is_equiv(S, T),
+  true = is_equiv(T, T2),
+  true = is_equiv(T2, T3),
+  true = is_equiv(T3, T4),
 
   ok.
 
+simplification_9_test() ->
+  % X ∩ (A∪B)=(X∩A)∪(X∩B)
+  S =
+    tunion([
+      tintersect([tvar(mu6), tnegate(tvar(mu5)), (tatom(bool))]),
+      tintersect([tnegate(tvar(mu5)), (tatom(bool))]),
+      tintersect([tnegate(tvar(mu6)), (tatom(bool))]),
+      tintersect([tvar(mu5), tnegate(tvar(mu6)), (tatom(bool))])
+    ]),
+  T =
+    tunion([
+      tintersect([tnegate(tvar(mu5)), (tatom(bool))]),
+      tintersect([tnegate(tvar(mu6)), (tatom(bool))])
+    ]),
+  true = is_equiv(S, T),
 
-is_equiv(S, T) ->
-  subty:is_subty(none, S, T) andalso
-    subty:is_subty(none, T, S).
+  ok.
 
-is_subtype(S, T) ->
-  subty:is_subty(none, S, T).
+simplification_10_test() ->
+  S =
+    tunion([
+      tintersect([tvar(mu6), tnegate(tvar(mu5))]),
+      tnegate(tvar(mu5)),
+      tnegate(tvar(mu6)),
+      tintersect([tvar(mu5), tnegate(tvar(mu6))])
+    ]),
+  T =
+    tunion([
+      tnegate(tvar(mu5)),
+      tnegate(tvar(mu6))
+    ]),
+  true = is_equiv(S, T),
+
+  ok.

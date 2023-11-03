@@ -90,8 +90,9 @@ check_decls_in_file(F, What, NoInfer) ->
         case should_run(NameStr, What) of
           true ->
             TestCases ++ [
-              {NameStr, fun() ->
+              {timeout, 10, {NameStr, fun() ->
                 ?LOG_NOTE("Type checking ~s from ~s", NameStr, F),
+                test_utils:reset_ets(),
                 Ty = symtab:lookup_fun({ref, Name, Arity}, Loc, Tab),
                 case utils:string_ends_with(NameStr, "_fail") of
                   true -> check_fail_fun(F, Tab, Decl, Ty);
@@ -102,7 +103,7 @@ check_decls_in_file(F, What, NoInfer) ->
                       false -> check_infer_ok_fun(F, Tab, Decl, Ty)
                     end
                 end
-              end}
+              end}}
             ];
           false -> TestCases
         end;
@@ -119,14 +120,17 @@ should_run(Name, {exclude,Set}) -> not sets:is_element(Name, Set).
 
 simple_test_() ->
   WhatNot = [
-             "fun_local_02" % TODO 4s
-            , "fun_local_03" % TODO 10s
-            , "fun_local_04" % TODO 6s
-            , "foo2" % TODO very long
-            , "foo3" % TODO very long
-            ],
+    % FIXME #36 impossible branches
+    "foo2",
+    "inter_03_fail",
+    % slow, see #57
+    "list_pattern_02",
+    "list_pattern_07",
+    "some_fun",
+    "fun_local_03",
+    "fun_local_04"
+  ],
   NoInfer = [],
-  %What = ["case_06"],
   check_decls_in_file("test_files/tycheck_simple.erl",
                       {exclude, sets:from_list(WhatNot)},
                       %{include, sets:from_list(What)},

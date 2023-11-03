@@ -8,6 +8,7 @@
 % Type for flatten from "Castagna, Programming with union, intersection, and negation types"
 -type tree(T) :: ety:without(T, list()) | list(tree(T)).
 
+% -spec flatten(tree(T)) -> list(ety:without(T, list())).
 -spec flatten(tree(T)) -> list(T).
 flatten([]) -> [];
 flatten([H | T]) -> flatten(H) ++ flatten(T);
