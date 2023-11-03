@@ -91,7 +91,9 @@ analyze_test_file(File) ->
     end.
 
 tycheck_test_() ->
-    Files = filelib:wildcard("test_files/tycheck/**/*.erl"),
+    Files1 = filelib:wildcard("test_files/tycheck/**/*.erl"),
+    Files2 = filelib:wildcard("test_files/tycheck_no_tests/**/*.erl"),
+    Files = Files1 ++ Files2,
     case Files of
         [] -> error("No test files found");
         _ -> ok

@@ -20,6 +20,7 @@ test: build testtest
 testtest:
 	@echo "Running unit tests for tests ..."
 	$(REBAR) eunit -d test_files/tycheck/
+	$(REBAR) eunit -d test_files/tycheck_disabled/
 
 check:
 	$(REBAR) dialyzer

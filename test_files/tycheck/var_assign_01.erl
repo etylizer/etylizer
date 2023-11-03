@@ -1,4 +1,4 @@
--module(invalid_arg).
+-module(var_assign_01).
 % Bug #53
 
 -compile(export_all).

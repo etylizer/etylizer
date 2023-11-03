@@ -1,6 +1,6 @@
 % ERROR
 % test_files/tycheck/type_error_msgs/non_exhaustive_case.erl:10:5: Type error: not all cases are covered
--module(redundant_branch).
+-module(non_exhaustive_case).
 
 -compile(export_all).
 -compile(nowarn_export_all).
