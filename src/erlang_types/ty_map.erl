@@ -6,8 +6,8 @@
 -define(MAN, mandatory).
 -define(A, fun(A, ?OPT) -> ?MAN; (A, _) -> A end).
 
--export([compare/2, equal/2, all_variables/1]).
--export([map/2, b_anymap/0, b_empty/0, b_intersect/2, b_diff/2, pi/2, pi_var/2, pi_tag/2, key_domain/0, key_domain/2, value_domain/1]).
+-export([compare/2, equal/2, substitute/4, all_variables/1]).
+-export([map/2, b_anymap/0, b_emptymap/0, b_empty/0, b_intersect/2, b_diff/2, pi/2, pi_var/2, pi_tag/2, key_domain/0, key_domain/2, value_domain/1]).
 
 -type ty_map() :: term().
 -type ty_ref() :: {ty_ref, integer()}.
@@ -32,10 +32,16 @@ map(Labels, Steps) -> {ty_map, Labels, Steps}.
 -spec b_empty() -> ty_map().
 b_empty() -> {ty_map, #{}, #{}}.
 
+-spec b_emptymap() -> ty_map().
+b_emptymap() ->
+  Labels = #{},
+  Steps = #{S => ty_rec:empty() || S <- step_names()},
+  {ty_map, Labels, Steps}.
+
 -spec b_anymap() -> ty_map().
 b_anymap() ->
   Labels = #{},
-  Steps = #{atom_key => ty_rec:any(), integer_key => ty_rec:any(), tuple_key => ty_rec:any()},
+  Steps = #{S => ty_rec:any() || S <- step_names()},
   {ty_map, Labels, Steps}.
 
 
@@ -137,17 +143,39 @@ value_domain({ty_map, Labels, Steps}) ->
   u([Ref || _ := Ref <- Steps] ++ [Ref || _ := Ref <- Labels]).
 
 
+substitute(_MkTy, {ty_map, Labels, Steps}, SubstituteMap, Memo) ->
+  NewLs = maps:fold(fun({A, {Tag, TyRef1}}, TyRef2, Acc) ->
+    S1 = ty_rec:substitute(TyRef1, SubstituteMap, Memo),
+    S2 = ty_rec:substitute(TyRef2, SubstituteMap, Memo),
+    AL = {A, {Tag, S1}},
+    % t := 0 not allowed; maybe infinite := t ?
+    % in that case, don't add field
+    case ?MAN == A andalso ty_rec:is_empty(S2) of
+      true -> Acc;
+      false -> Acc#{AL => S2}
+    end
+                    end, #{}, Labels
+  ),
+  NewSt = maps:map(fun(_, TyRef) -> ty_rec:substitute(TyRef, SubstituteMap, Memo) end, Steps),
+
+  case maps:size(NewLs) < maps:size(Labels) of
+    true -> ty_rec:empty();
+    false -> map(NewLs, NewSt)
+  end.
+
+
 all_variables({ty_map, Labels, Steps}) ->
   TySt = [T || _ := T <- Steps],
   TyLsKey = [T || {_, {_, T}} := _ <- Labels],
   TyLsVal = [T || _ := T <- Labels],
-  [ty_rec:all_variables(T) || T <- TySt ++ TyLsKey ++ TyLsVal].
+  ty_rec:all_variables(TySt) ++ ty_rec:all_variables(TyLsKey) ++ ty_rec:all_variables(TyLsVal).
 
 
 u(Tys) -> lists:foldr(fun ty_rec:union/2, ty_rec:empty(), Tys).
 step_ty(atom_key) -> ty_rec:atom();
 step_ty(integer_key) -> ty_rec:interval();
 step_ty(tuple_key) -> ty_rec:tuple().
+step_names() -> [atom_key, integer_key, tuple_key].
 pi_h(AL = {_, L}, Map) -> % helper
   {_, Ref1} = pi(L, Map),
   Ref2 = pi_var(AL, Map),

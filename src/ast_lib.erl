@@ -228,9 +228,13 @@ ast_to_erlang_ty({fun_full, Comps, Result}) ->
     ty_rec:function(length(Comps), T);
 
 % maps
-ast_to_erlang_ty({map_any}) -> ty_rec:map();
-ast_to_erlang_ty({map, []}) -> ty_rec:map(dnf_var_ty_map:empty());
-ast_to_erlang_ty({map, _AssocList}) -> erlang:error({"Not implemented yet"});
+ast_to_erlang_ty({map_any}) ->
+    ty_rec:map(dnf_var_ty_map:map(dnf_ty_map:map(ty_map:b_anymap())));
+ast_to_erlang_ty({map, []}) ->
+    ty_rec:map(dnf_var_ty_map:map(dnf_ty_map:map(ty_map:b_emptymap())));
+ast_to_erlang_ty({map, AssocList}) ->
+    {LabelMappings, StepMappings} = convert_associations(AssocList),
+    ty_rec:map(dnf_var_ty_map:map(dnf_ty_map:map(ty_map:map(LabelMappings, StepMappings))));
 
 % TODO records
 
@@ -299,21 +303,86 @@ maybe_new_variable(Name) ->
             Variable
     end.
 
-allowed_key_types({map_field_assoc, Ty1, _Ty2}) ->
-    case Ty1 of
-        {predef, any} -> true;
-        {predef, none} -> true;
-        {predef, atom} -> true;
-        {predef, integer} -> true;
-        {tuple_any} -> true;
-        {tuple, [{predef, any}, {predef, any}]} -> true;
-        {singleton, T} when is_atom(T) or is_integer(T) -> true;
-        {predef_alias, boolean} -> true;
-        _ -> erlang:error({"Not supported key type"}) % TODO ty vars, more finite types?
-    end;
-allowed_key_types({map_field_exact, Ty1, _Ty2}) ->
-    case Ty1 of
-        {singleton, T} when is_atom(T) or is_integer(T) -> true;
-        {predef_alias, boolean} -> true;
-        _ -> erlang:error({"Not supported key type"}) % TODO ty vars, more finite types?
+convert_associations(AssocList) ->
+    EmptySteps = #{S => ty_rec:empty() || S <- [atom_key, integer_key, tuple_key]},
+    EmptyLabels = #{},
+    lists:foldr(
+        fun({Association, Key, Val}, {X, Y}) ->
+            case Association of
+                map_field_assoc ->
+                    Convert = optional_converter(Val),
+                    Convert(Key, {X, Y});
+                map_field_exact ->
+                    Convert = mandatory_converter(Val),
+                    Convert(Key, {X, Y})
+            end
+        end, {EmptyLabels, EmptySteps}, AssocList).
+
+optional_converter(ValTy) ->
+    O = optional, ATOM = atom_key, INT = integer_key, TUP = tuple_key, VAR = var_key,
+    Ty2 = ast_to_erlang_ty(ValTy),
+
+    fun Converter(Type, {X, Y}) ->
+        Ty1 = ast_to_erlang_ty(Type),
+        case Type of
+            {singleton, T} when is_atom(T) ->
+                Label = {O, {ATOM, Ty1}},
+                {X#{Label => Ty2}, Y};
+            {singleton, T} when is_integer(T) ->
+                Label = {O, {INT, Ty1}},
+                {X#{Label => Ty2}, Y};
+            {predef_alias, boolean} ->
+                Label = {O, {ATOM, Ty1}},
+                {X#{Label => Ty2}, Y};
+            {var, _} ->
+                Label = {O, {VAR, Ty1}},
+                {X#{Label => Ty2}, Y};
+            {tuple_any} ->
+                #{TUP := T} = Y,
+                {X, Y#{TUP := ty_rec:union(T, Ty2)}};
+            {tuple, _} ->
+                #{TUP := T} = Y,
+                {X, Y#{TUP := ty_rec:union(T, Ty2)}};
+            {predef, any} ->
+                YY = maps:map(fun(_, T) -> ty_rec:union(T, Ty2) end, Y),
+                {X, YY};
+            {predef, none} ->
+                {X, Y};
+            {predef, atom} ->
+                #{ATOM := T} = Y,
+                {X, Y#{ATOM := ty_rec:union(T, Ty2)}};
+            {predef, integer} ->
+                #{INT := T} = Y,
+                {X, Y#{INT := ty_rec:union(T, Ty2)}};
+            {union, Tys} ->
+                lists:foldr(Converter, {X, Y}, Tys);
+            _ ->
+                erlang:error("Not supported optional key type!")
+        end
+    end.
+
+mandatory_converter(ValTy) ->
+    M = mandatory, ATOM = atom_key, INT = integer_key, VAR = var_key,
+    Ty2 = ast_to_erlang_ty(ValTy),
+
+    fun Converter(Type, {X, Y}) ->
+        Ty1 = ast_to_erlang_ty(Type),
+        case Type of
+            {singleton, T} when is_atom(T) ->
+                Label = {M, {ATOM, Ty1}},
+                {X#{Label => Ty2}, Y};
+            {singleton, T} when is_integer(T) ->
+                Label = {M, {INT, Ty1}},
+                {X#{Label => Ty2}, Y};
+            {predef_alias, boolean} ->
+                Label = {M, {ATOM, Ty1}},
+                {X#{Label => Ty2}, Y};
+            {var, _} ->
+                Label = {M, {VAR, Ty1}},
+                {X#{Label => Ty2}, Y};
+            {union, Tys} ->
+                lists:foldr(Converter, {X, Y}, Tys);
+            _ ->
+                erlang:error("Not supported mandatory key type!")
+        end
     end.

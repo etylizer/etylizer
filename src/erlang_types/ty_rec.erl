@@ -290,7 +290,7 @@ multi_transform_fun(DefaultF, F, Ops = #{any_function_i := Function, any_functio
   Union([DefaultFunctionsWithoutExplicitFunctions, Union(Xs)]).
 
 
-extract_variables(Ty = #ty{ predef = P, atom = A, interval = I, list = L, tuple = T, function = F }) ->
+extract_variables(Ty = #ty{ predef = P, atom = A, interval = I, list = L, tuple = T, function = F, map = M }) ->
   PossibleVars = lists:foldl(fun(E, Acc) ->
     sets:intersection(sets:from_list(E), Acc)
               end, sets:from_list(dnf_var_predef:all_variables(P)),
@@ -299,7 +299,8 @@ extract_variables(Ty = #ty{ predef = P, atom = A, interval = I, list = L, tuple 
       dnf_var_int:all_variables(I),
       dnf_var_ty_list:all_variables(L),
       dnf_var_ty_tuple:all_variables(T),
-      dnf_var_ty_function:all_variables(F)
+      dnf_var_ty_function:all_variables(F),
+      dnf_var_ty_map:all_variables(M)
     ]),
 
 
@@ -622,7 +623,8 @@ substitute(TyRef, SubstituteMap, OldMemo) ->
         interval = Ints,
         list = Lists,
         tuple = {DefaultT, AllTuples},
-        function = {DefaultF, AllFunctions}
+        function = {DefaultF, AllFunctions},
+        map = Maps
       } = ty_ref:load(TyRef),
 
 
@@ -636,7 +638,8 @@ substitute(TyRef, SubstituteMap, OldMemo) ->
             interval = dnf_var_int:substitute(fun(TTy) -> pi(interval, TTy) end, Ints, SubstituteMap, Memo),
             list = dnf_var_ty_list:substitute(fun(TTy) -> pi(list, TTy) end, Lists, SubstituteMap, Memo),
             tuple = multi_substitute(DefaultT, AllTuples, SubstituteMap, Memo),
-            function = multi_substitute_fun(DefaultF, AllFunctions, SubstituteMap, Memo)
+            function = multi_substitute_fun(DefaultF, AllFunctions, SubstituteMap, Memo),
+            map = dnf_var_ty_map:substitute(fun(TTy) -> pi(map, TTy) end, Maps, SubstituteMap, Memo)
           },
           ty_ref:define_ty_ref(RecursiveNewRef, NewTy);
         false ->
@@ -646,7 +649,8 @@ substitute(TyRef, SubstituteMap, OldMemo) ->
             interval = dnf_var_int:substitute(fun(TTy) -> pi(interval, TTy) end, Ints, SubstituteMap, OldMemo),
             list = dnf_var_ty_list:substitute(fun(TTy) -> pi(list, TTy) end, Lists, SubstituteMap, OldMemo),
             tuple = multi_substitute(DefaultT, AllTuples, SubstituteMap, OldMemo),
-            function = multi_substitute_fun(DefaultF, AllFunctions, SubstituteMap, OldMemo)
+            function = multi_substitute_fun(DefaultF, AllFunctions, SubstituteMap, OldMemo),
+            map = dnf_var_ty_map:substitute(fun(TTy) -> pi(map, TTy) end, Maps, SubstituteMap, OldMemo)
           },
 %%          io:format(user, "Substitute ~p to ~p~nGot ~p~n", [Ty, SubstituteMap, NewTy]),
           ty_ref:store(NewTy)

@@ -9,7 +9,7 @@
 -export([struct_selection/2, map_selection/2, delete/2, update/3, concat/2]).
 
 %% usual operations
--export([map/1, empty/0, any/0, union/2, b_intersect/2, b_diff/2]).
+-export([map/1, empty/0, any/0, b_union/2, b_intersect/2, b_diff/2]).
 
 -type ty_map() :: term().
 -type ty_ref() :: {ty_ref, integer()}.
@@ -50,7 +50,7 @@ concat(_, _) -> todo.
 empty() -> [].
 any() -> [ty_map:b_anymap()].
 
-union(U1, U2) -> U1 ++ U2.
+b_union(U1, U2) -> U1 ++ U2.
 
 b_intersect([], _) -> [];
 b_intersect(_, []) -> [];
