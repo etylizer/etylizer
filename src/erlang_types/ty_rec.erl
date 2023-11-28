@@ -60,9 +60,16 @@ transform(TyRef, Ops) ->
 %%  io:format(user, "Positive:~n~p~n", [Pos]),
 %%  io:format(user, "Negative:~n~p~n", [Neg]),
   % very dumb heuristic: smaller is better
-  case size(term_to_binary(Pos)) > size(term_to_binary(Neg)) of
+  case
+    size(term_to_binary(Pos)) > size(term_to_binary(Neg))
+  of
     false -> {pos, Pos};
-    _ -> {neg, Neg}
+    _ ->
+      % fix1: any is smaller than none, pick none anyway
+      case stdtypes:tnone() of
+        Pos -> {pos, Pos};
+        _ -> {neg, Neg}
+      end
   end.
 
 transform_p(TyRef, Ops =
