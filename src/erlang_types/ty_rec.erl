@@ -73,6 +73,7 @@ transform_p(TyRef, Ops =
     any_int := Intervals,
     any_atom := Atoms,
     any_predef := Predef,
+    any_map := Maps,
     union := Union,
     intersect := Intersect,
     negate := Negate,
@@ -89,18 +90,19 @@ transform_p(TyRef, Ops =
       true ->
         Intersect(NewVars ++ NewVarsN);
       _ ->
-        #ty{predef = P, atom = A, interval = I, list = L, tuple = {DT, T}, function = {DF, F}} = ty_ref:load(TyR),
+        #ty{predef = P, atom = A, interval = I, list = L, map = M, tuple = {DT, T}, function = {DF, F}} = ty_ref:load(TyR),
         NP = maybe_intersect(dnf_var_predef:transform(P, Ops), Predef(), Intersect),
         NA = maybe_intersect(dnf_var_ty_atom:transform(A, Ops), Atoms(), Intersect),
         NI = maybe_intersect(dnf_var_int:transform(I, Ops), Intervals(), Intersect),
         NL = maybe_intersect(dnf_var_ty_list:transform(L, Ops), Lists(), Intersect),
+        NM = maybe_intersect(dnf_var_ty_map:transform(M, Ops), Maps(), Intersect),
 
         Z1 = multi_transform(DT, T, Ops),
         NT = maybe_intersect(Z1, Tuples(), Intersect),
 
         Z2 = multi_transform_fun(DF, F, Ops),
         NF = maybe_intersect(Z2, Functions(), Intersect),
-        Intersect(NewVars ++ NewVarsN ++ [Union([NP, NA, NI, NL, NT, NF])])
+        Intersect(NewVars ++ NewVarsN ++ [Union([NP, NA, NI, NL, NT, NF, NM])])
     end
            end, DnfMap),
 
@@ -121,18 +123,20 @@ transform_p(TyRef, Ops =
 
 % TODO refactor this properly it's ugly
 prepare(TyRef) ->
-  #ty{predef = P, atom = A, interval = I, list = L, tuple = {DT, T}, function = {DF, F}} = ty_ref:load(TyRef),
+  #ty{predef = P, atom = A, interval = I, list = L, tuple = {DT, T}, function = {DF, F}, map = M} = ty_ref:load(TyRef),
   VarMap = #{},
 
   PDnf = dnf_var_predef:get_dnf(P),
   ADnf = dnf_var_ty_atom:get_dnf(A),
   IDnf = dnf_var_int:get_dnf(I),
   LDnf = dnf_var_ty_list:get_dnf(L),
+  MDnf = dnf_var_ty_map:get_dnf(M),
 
   PMapped = lists:map(fun({Pv, Nv, Ty}) -> {{Pv, Nv}, ty_rec:predef(dnf_var_predef:predef(Ty))} end, PDnf),
   AMapped = lists:map(fun({Pv, Nv, Ty}) -> {{Pv, Nv}, ty_rec:atom(dnf_var_ty_atom:ty_atom(Ty))} end, ADnf),
   IMapped = lists:map(fun({Pv, Nv, Ty}) -> {{Pv, Nv}, ty_rec:interval(dnf_var_int:int(Ty))} end, IDnf),
   LMapped = lists:map(fun({Pv, Nv, Ty}) -> {{Pv, Nv}, ty_rec:list(dnf_var_ty_list:list(Ty))} end, LDnf),
+  MMapped = lists:map(fun({Pv, Nv, Ty}) -> {{Pv, Nv}, ty_rec:map(dnf_var_ty_map:map(Ty))} end, MDnf),
 
 
   TupleMapped = lists:map(fun({Pv, Nv, Tp}) -> {{Pv, Nv}, ty_rec:tuple({default, maps:keys(T)}, dnf_var_ty_tuple:tuple(Tp))} end, dnf_var_ty_tuple:get_dnf(DT)),
@@ -147,7 +151,7 @@ prepare(TyRef) ->
     _DnfFunctionMapped = lists:map(fun({Pv, Nv, Tp}) -> {{Pv, Nv}, ty_rec:function(Size, dnf_var_ty_function:function(Tp))} end, DnfFunctions)
                                      end, maps:to_list(F)),
 
-  AllKinds = lists:flatten([PMapped, AMapped, IMapped, LMapped, TupleMapped, FunctionMapped, TupleExplicitMapped, FunctionExplicitMapped]),
+  AllKinds = lists:flatten([PMapped, AMapped, IMapped, LMapped, MMapped, TupleMapped, FunctionMapped, TupleExplicitMapped, FunctionExplicitMapped]),
 
   UpdateKey = fun(_Key, Ty1, Ty2) -> ty_rec:union(Ty1, Ty2) end,
   AllUnions = lists:foldl(fun({VarKey, Ty}, CurrentMap) ->
@@ -176,7 +180,7 @@ prepare(TyRef) ->
 
   % Distribute top types to all variables redundantly, if any
   % atom() | a & (Any \ atom) => atom() | a
-  TopTypes = [ty_rec:atom(), ty_rec:interval(), ty_rec:tuple(), ty_rec:function(), ty_rec:list(), ty_rec:predef()],
+  TopTypes = [ty_rec:atom(), ty_rec:interval(), ty_rec:tuple(), ty_rec:function(), ty_rec:list(), ty_rec:predef(), ty_rec:map()],
   NoVarsType = maps:get({[], []}, SubsumedUnions2, ty_rec:empty()),
 
   RedundantUnions = lists:foldl(fun(Top, Acc) ->
@@ -752,7 +756,7 @@ multi_substitute_fun(DefaultFunction, AllFunctions, SubstituteMap, Memo) ->
 
   {NewDefaultFunction, NewOtherFunctions}.
 
-has_ref(#ty{list = Lists, tuple = {Default, AllTuple}, function = {DefaultF, AllFunction}}, TyRef) ->
+has_ref(#ty{map = _Map, list = Lists, tuple = {Default, AllTuple}, function = {DefaultF, AllFunction}}, TyRef) ->
   % TODO sanity remove
   false = dnf_var_ty_tuple:has_ref(Default, TyRef), % should never happen
   false = dnf_var_ty_function:has_ref(DefaultF, TyRef), % should never happen

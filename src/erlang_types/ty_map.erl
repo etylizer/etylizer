@@ -6,7 +6,7 @@
 -define(MAN, mandatory).
 -define(A, fun(A, ?OPT) -> ?MAN; (A, _) -> A end).
 
--export([compare/2, equal/2, substitute/4, all_variables/1]).
+-export([compare/2, equal/2, transform/2, substitute/4, all_variables/1]).
 -export([map/2, b_anymap/0, b_emptymap/0, b_empty/0, b_intersect/2, b_diff/2, pi/2, pi_var/2, pi_tag/2, key_domain/0, key_domain/2, value_domain/1]).
 
 -type ty_map() :: term().
@@ -143,25 +143,47 @@ value_domain({ty_map, Labels, Steps}) ->
   u([Ref || _ := Ref <- Steps] ++ [Ref || _ := Ref <- Labels]).
 
 
-substitute(_MkTy, {ty_map, Labels, Steps}, SubstituteMap, Memo) ->
-  NewLs = maps:fold(fun({A, {Tag, TyRef1}}, TyRef2, Acc) ->
-    S1 = ty_rec:substitute(TyRef1, SubstituteMap, Memo),
-    S2 = ty_rec:substitute(TyRef2, SubstituteMap, Memo),
-    AL = {A, {Tag, S1}},
-    % t := 0 not allowed; maybe infinite := t ?
-    % in that case, don't add field
-    case ?MAN == A andalso ty_rec:is_empty(S2) of
-      true -> Acc;
-      false -> Acc#{AL => S2}
+transform({ty_map, Labels, Steps}, #{to_map := ToMap}) ->
+  {Mans, Opts} = maps:fold(fun(AL, Ref2, {M, O}) ->
+    {A, {_, Ref1}} = AL,
+    KeyVal = {Ref1, Ref2},
+    case A of
+      ?OPT -> {M, [KeyVal | O]};
+      ?MAN -> {[KeyVal | M], O}
     end
-                    end, #{}, Labels
-  ),
-  NewSt = maps:map(fun(_, TyRef) -> ty_rec:substitute(TyRef, SubstituteMap, Memo) end, Steps),
+                           end, {[], []}, Labels),
+  ToMap(Mans, Opts ++ [{step_ty(S), Ref} || S := Ref <- Steps]).
 
-  case maps:size(NewLs) < maps:size(Labels) of
-    true -> ty_rec:empty();
-    false -> map(NewLs, NewSt)
-  end.
+
+substitute(_MkTy, {ty_map, Labels, Steps}, SubstituteMap, Memo) ->
+  {NewLs, UpdatedSt} = maps:fold(fun(AL, Ref2, {Ls, St}) ->
+    {A, {Tag, Ref1}} = AL,
+    S1 = ty_rec:substitute(Ref1, SubstituteMap, Memo),
+    S2 = ty_rec:substitute(Ref2, SubstituteMap, Memo),
+    case Tag of
+      var_key ->
+        % 0 => t,  0 := t,  t := 0  are not allowed
+        case ty_rec:is_empty(S1) orelse (?MAN == A andalso ty_rec:is_empty(S2)) of
+          true -> {maps:remove(AL, Ls), St};
+          false -> case A of
+                     ?OPT ->
+                       Stt = maps:map(fun(S, Ref) -> case ty_rec:is_empty(ty_rec:intersect(step_ty(S), S1)) of
+                                                       true -> Ref;
+                                                       false -> ty_rec:union(Ref, S2)
+                                                     end
+                                      end, St),
+                       {Ls#{AL := S2}, Stt};
+
+                     ?MAN ->
+                       {Ls#{AL := S2}, St}
+                   end
+        end;
+      _ ->
+        {Ls#{AL := S2}, St}
+    end
+                                 end, {Labels, Steps}, Labels),
+  NewSt = maps:map(fun(_, Ref) -> ty_rec:substitute(Ref, SubstituteMap, Memo) end, UpdatedSt),
+  map(NewLs, NewSt).
 
 
 all_variables({ty_map, Labels, Steps}) ->

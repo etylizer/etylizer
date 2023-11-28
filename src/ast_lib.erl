@@ -120,6 +120,7 @@ erlang_ty_to_ast(X) ->
             to_list => fun(A, B) -> stdtypes:tlist_improper((erlang_ty_to_ast(A)), (erlang_ty_to_ast(B))) end,
             to_int => fun(S, T) -> stdtypes:trange(S, T) end,
             to_predef => fun('[]') -> stdtypes:tempty_list(); (Predef) -> {predef, Predef} end,
+            to_map => fun(Mans, Opts) -> stdtypes:tmap([stdtypes:tmap_field_man(erlang_ty_to_ast(T1), erlang_ty_to_ast(T2)) || {T1, T2} <- Mans] ++ [stdtypes:tmap_field_opt(erlang_ty_to_ast(T1), erlang_ty_to_ast(T2)) || {T1, T2} <- Opts]) end,
             any_tuple => fun stdtypes:ttuple_any/0,
             any_tuple_i => fun(Size) -> stdtypes:ttuple([stdtypes:tany() || _ <- lists:seq(1, Size)]) end,
             any_function => fun stdtypes:tfun_any/0,
@@ -128,6 +129,7 @@ erlang_ty_to_ast(X) ->
             any_list => fun stdtypes:tlist_any/0,
             any_atom => fun stdtypes:tatom/0,
             any_predef => fun stdtypes:tspecial_any/0,
+            any_map => fun stdtypes:tmap_any/0,
             empty => fun stdtypes:tnone/0,
             any => fun stdtypes:tany/0,
             var => fun erlang_ty_var_to_var/1,
@@ -331,9 +333,8 @@ optional_converter(ValTy) ->
             {singleton, T} when is_integer(T) ->
                 Label = {O, {INT, Ty1}},
                 {X#{Label => Ty2}, Y};
-            {predef_alias, boolean} ->
-                Label = {O, {ATOM, Ty1}},
-                {X#{Label => Ty2}, Y};
+            {predef_alias, Alias} ->
+                Converter(stdtypes:expand_predef_alias(Alias), {X, Y});
             {var, _} ->
                 Label = {O, {VAR, Ty1}},
                 {X#{Label => Ty2}, Y};
@@ -357,7 +358,7 @@ optional_converter(ValTy) ->
             {union, Tys} ->
                 lists:foldr(Converter, {X, Y}, Tys);
             _ ->
-                erlang:error("Not supported optional key type!")
+                erlang:error({"Not supported optional key type", Type})
         end
     end.
 
@@ -374,15 +375,14 @@ mandatory_converter(ValTy) ->
             {singleton, T} when is_integer(T) ->
                 Label = {M, {INT, Ty1}},
                 {X#{Label => Ty2}, Y};
-            {predef_alias, boolean} ->
-                Label = {M, {ATOM, Ty1}},
-                {X#{Label => Ty2}, Y};
+            {predef_alias, Alias} ->
+                Converter(stdtypes:expand_predef_alias(Alias), {X, Y});
             {var, _} ->
                 Label = {M, {VAR, Ty1}},
                 {X#{Label => Ty2}, Y};
             {union, Tys} ->
                 lists:foldr(Converter, {X, Y}, Tys);
             _ ->
-                erlang:error("Not supported mandatory key type!")
+                erlang:error({"Not supported mandatory key type", Type})
         end
     end.
