@@ -11,6 +11,12 @@
 % S2: redundant negations on the monomorphic DNF level
 % {a5 /\ b, int} | {a, int} /\ not({a5 /\ b, int}) => {a5 /\ b, int} | {a, int}
 
+empty_tuple_test() ->
+  ecache:reset_all(),
+  A = ast_lib:erlang_ty_to_ast(ast_lib:ast_to_erlang_ty(stdtypes:ttuple2(stdtypes:tint(), tnone()))),
+  A = tnone(),
+  ok.
+
 any_empty_test() ->
   ecache:reset_all(),
   % syntactically same none and any representations

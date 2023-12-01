@@ -9,7 +9,6 @@
 -export([
     clean/2,
     apply/2,
-    napply/2,
     domain/1,
     from_list/1
 ]).
@@ -25,7 +24,10 @@ clean(T, Fixed) ->
     % negations have to be pushed down
     Cleaned = clean_type(dnf:to_nnf(T), Fixed),
     % simplify by converting into internal type and back (processes any() and none() replacements)
-    ast_lib:erlang_ty_to_ast(ast_lib:ast_to_erlang_ty(Cleaned)).
+    Res = ast_lib:erlang_ty_to_ast(X = ast_lib:ast_to_erlang_ty(Cleaned)),
+    % FIXME remove sanity at some point
+    true = ty_rec:is_subtype(X, ast_lib:ast_to_erlang_ty(T)),
+    Res.
 
 -spec apply(t(), ast:ty()) -> ast:ty().
 apply(S, T) ->
@@ -63,50 +65,8 @@ apply(S, T) ->
         {negation, U} -> {negation, apply(S, U)}
     end.
 
-% same as apply, but replaces the negated T by the same mapping (needed for cleaning variables)
-% ast:ty() is required to be in nnf!
--spec napply(t(), ast:ty()) -> ast:ty().
-napply(S, T) ->
-    case T of
-        {singleton, _} -> T;
-        {binary, _, _} -> T;
-        {empty_list} -> T;
-        {list, U} -> {list, napply(S, U)};
-        {nonempty_list, U} -> {nonempty_list, napply(S, U)};
-        {improper_list, U, V} -> {improper_list, napply(S, U), napply(S, V)};
-        {nonempty_improper_list, U, V} -> {nonempty_improper_list, napply(S, U), napply(S, V)};
-        {fun_simple} -> T;
-        {fun_any_arg, U} -> {fun_any_arg, napply(S, U)};
-        {fun_full, Args, U} -> {fun_full, napply_list(S, Args), napply(S, U)};
-        {range, _, _} -> T;
-        {map_any} -> T;
-        {map, Assocs} ->
-            {map, lists:map(fun({Kind, U, V}) -> {Kind, napply(S, U), napply(S, V)} end, Assocs)};
-        {predef, _} -> T;
-        {predef_alias, _} -> T;
-        {record, Name, Fields} ->
-            {record, Name,
-                lists:map(fun({FieldName, U}) -> {FieldName, napply(S, U)} end, Fields)};
-        {named, Loc, Name, Args} ->
-            {named, Loc, Name, napply_list(S, Args)};
-        {tuple_any} -> T;
-        {tuple, Args} -> {tuple, napply_list(S, Args)};
-        {negation, X = {var, _}} -> napply(S, X);
-        {var, Alpha} ->
-            case maps:find(Alpha, S) of
-                error -> {var, Alpha};
-                {ok, U} -> U
-            end;
-        {union, Args} -> {union, napply_list(S, Args)};
-        {intersection, Args} -> {intersection, napply_list(S, Args)};
-        {negation, U} -> {negation, napply(S, U)}
-    end.
-
 -spec apply_list(t(), [ast:ty()]) -> [ast:ty()].
 apply_list(S, L) -> lists:map(fun(T) -> apply(S, T) end, L).
-
--spec napply_list(t(), [ast:ty()]) -> [ast:ty()].
-napply_list(S, L) -> lists:map(fun(T) -> napply(S, T) end, L).
 
 -spec from_list([{ast:ty_varname(), ast:ty()}]) -> t().
 from_list(L) -> maps:from_list(L).
@@ -124,7 +84,7 @@ clean_type(Ty, Fix) ->
                 [0] ->
                     % !a => none
                     %  a => none
-                    R = subst:napply(#{VariableName => {predef, none}}, Tyy),
+                    R = subst:apply(#{VariableName => {predef, none}}, Tyy),
                     R;
                 [1] ->
                     subst:apply(#{VariableName => {predef, any}}, Tyy);
@@ -146,7 +106,7 @@ collect_vars({fun_full, Components, Target}, CPos, Pos, Fix) ->
     M1 = lists:foldl(fun(FPos, Current) -> maps:merge_with(fun combine_vars/3, FPos, Current) end, #{}, VPos),
     M2 = collect_vars(Target, CPos, Pos, Fix),
     maps:merge_with(fun combine_vars/3, M1, M2);
-collect_vars({negation, Ty}, CPos, Pos, Fix) -> collect_vars(Ty, CPos, Pos, Fix);
+collect_vars({negation, Ty}, CPos, Pos, Fix) -> collect_vars(Ty, 1 - CPos, Pos, Fix);
 collect_vars({predef, _}, _CPos, Pos, _) -> Pos;
 collect_vars({predef_alias, _}, _CPos, Pos, _) -> Pos;
 collect_vars({singleton, _}, _CPos, Pos, _) -> Pos;
@@ -192,7 +152,7 @@ clean_test() ->
     % union: covariant
     E = clean(stdtypes:tunion(A, B), sets:new()),
 
-    % negation: covariant
+    % negation: flip
     E = clean(stdtypes:tnegate(A), sets:new()),
 
     % function type flips argument variable position
@@ -214,6 +174,27 @@ clean_negate_var_test() ->
     E = clean(stdtypes:tnegate(A), sets:new()),
     % test nnf
     E = clean(stdtypes:tnegate(stdtypes:tunion(A, stdtypes:tnegate(stdtypes:tatom()))), sets:new()).
+
+clean_tuples_test() ->
+    ecache:reset_all(),
+
+    A = stdtypes:tvar('a'),
+    E = stdtypes:tnone(),
+    T = stdtypes:tany(),
+
+    % clean((int, a)) = (int, Bottom) = Bottom
+    Ty1 = clean(stdtypes:ttuple2(stdtypes:tint(), A), sets:new()),
+    Ty1 = E,
+
+    % clean(!(int, a)) = !(int, Top)
+    Ty2 = clean(stdtypes:tnegate(stdtypes:ttuple2(stdtypes:tint(), A)), sets:new()),
+    Ty2 = stdtypes:tnegate(stdtypes:ttuple2(stdtypes:tint(), T)),
+
+    % clean(!(int, !(int, a))) = !(int, !(int, Bottom)) = !(int, Top) = !(int, Top)
+    Ty3 = clean(stdtypes:tnegate(stdtypes:ttuple2(stdtypes:tint(), stdtypes:tnegate(stdtypes:ttuple2(stdtypes:tint(), A)))), sets:new()),
+    Ty3 = stdtypes:tnegate(stdtypes:ttuple2(stdtypes:tint(), T)),
+
+    ok.
 
 -endif.
 
