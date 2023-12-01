@@ -190,9 +190,13 @@ clean_tuples_test() ->
     Ty2 = clean(stdtypes:tnegate(stdtypes:ttuple2(stdtypes:tint(), A)), sets:new()),
     Ty2 = stdtypes:tnegate(stdtypes:ttuple2(stdtypes:tint(), T)),
 
-    % clean(!(int, !(int, a))) = !(int, !(int, Bottom)) = !(int, Top) = !(int, Top)
-    Ty3 = clean(stdtypes:tnegate(stdtypes:ttuple2(stdtypes:tint(), stdtypes:tnegate(stdtypes:ttuple2(stdtypes:tint(), A)))), sets:new()),
+    % clean(!(int, !a)) = !(int, !Empty) = !(int, Top)
+    Ty3 = clean(stdtypes:tnegate(stdtypes:ttuple2(stdtypes:tint(), stdtypes:tnegate(A))), sets:new()),
     Ty3 = stdtypes:tnegate(stdtypes:ttuple2(stdtypes:tint(), T)),
+
+    % clean(!(int, !(int, a))) = !(int, !(int, Bottom)) = !(int, Top) = !(int, Top)
+    Ty4 = clean(stdtypes:tnegate(stdtypes:ttuple2(stdtypes:tint(), stdtypes:tnegate(stdtypes:ttuple2(stdtypes:tint(), A)))), sets:new()),
+    Ty4 = stdtypes:tnegate(stdtypes:ttuple2(stdtypes:tint(), T)),
 
     ok.
 
