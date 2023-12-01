@@ -52,7 +52,7 @@ parse_file(Path, Opts) ->
                             error
                     end;
                 error ->
-                    ?LOG_WARN("Error parsing ~s", Path),
+                    ?LOG_NOTE("Error parsing ~s", Path),
                     error
             end;
         true ->
@@ -67,7 +67,7 @@ parse_file_or_die(Path) -> parse_file_or_die(Path, #parse_opts{}).
 parse_file_or_die(Path, Opts) ->
     case parse_file(Path, Opts) of
         {ok, Forms} -> Forms;
-        error -> ?ABORT("Error parsing ~s", Path)
+        error -> errors:parse_error(utils:sformat("Error parsing ~s", Path))
     end.
 
 -spec parse_transform(any(), any()) -> ok.

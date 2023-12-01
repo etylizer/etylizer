@@ -75,7 +75,7 @@ traverse_and_check([], _, _, _, Index) ->
 traverse_and_check([CurrentFile | RemainingFiles], Symtab, SearchPath, Opts, Index) ->
     case log:allow(note) of
         true -> ?LOG_NOTE("Checking ~s", CurrentFile);
-        false -> io:format("Checking ~s", [CurrentFile])
+        false -> io:format("Checking ~s~n", [CurrentFile])
     end,
     Forms = parse_cache:parse(intern, CurrentFile),
     ExpandedSymtab = symtab:extend_symtab_with_module_list(Symtab, SearchPath, ast_utils:referenced_modules(Forms)),

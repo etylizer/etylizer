@@ -140,11 +140,10 @@ exp_constrs(Ctx, E, T) ->
                             end,
                             {[], [], [], sets:new()},
                             Clauses),
-            AllCs = sets:union([Cs0, CsCases,
-                                single({csubty, mk_locs("exhaustiveness check", L),
-                                        Alpha, ast_lib:mk_union(Lowers)})]),
+            CsScrut = sets:union(Cs0, CsCases),
+            Exhaust = {Alpha, ast_lib:mk_union(Lowers)},
             sets:from_list([
-                {ccase, mk_locs("case", L), AllCs, BodyList},
+                {ccase, mk_locs("case", L), CsScrut, Exhaust, BodyList},
                 {csubty, mk_locs("result of case", L), Beta, T}
             ]);
         {'catch', L, CatchE} ->

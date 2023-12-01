@@ -134,7 +134,7 @@
 ]).
 
 -export([
-    format_loc/1, to_loc/2, loc_auto/0, is_predef_name/1, is_predef_alias_name/1,
+    format_loc/1, to_loc/2, loc_auto/0, min_loc/2, is_predef_name/1, is_predef_alias_name/1,
     local_varname_from_any_ref/1
 ]).
 
@@ -161,6 +161,19 @@ to_loc(Path, Anno) ->
 
 -spec loc_auto() -> loc().
 loc_auto() -> {loc, "AUTO", -1, -1}.
+
+-spec min_loc(loc(), loc()) -> loc().
+min_loc(L1 = {loc, _, Line1, Col1}, L2 = {loc, _, Line2, Col2}) ->
+    case utils:compare(Line1, Line2) of
+        less -> L1;
+        greater -> L2;
+        equal ->
+            case utils:compare(Col1, Col2) of
+                less -> L1;
+                greater -> L2;
+                equal -> L1
+            end
+    end.
 
 -spec local_varname_from_any_ref(any_ref()) -> {true, local_varname()} | false.
 local_varname_from_any_ref(Ref) ->

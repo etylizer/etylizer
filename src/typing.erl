@@ -23,6 +23,40 @@ new_ctx(Tab, Sanity) ->
     Ctx = #ctx{ symtab = Tab, sanity = Sanity },
     Ctx.
 
+-spec format_src_loc(ast:loc()) -> string().
+format_src_loc({loc, File, LineNo, ColumnNo}) ->
+    ErrMsg = "",
+    case utils:file_get_lines(File) of
+        {error, _} -> ErrMsg;
+        {ok, Lines} ->
+            N = length(Lines),
+            if
+                LineNo >= 1 andalso LineNo =< N ->
+                    Line = string:trim(lists:nth(LineNo, Lines), trailing),
+                    ColumnSpace = lists:duplicate(ColumnNo - 1, $\s),
+                    utils:sformat("%~5.B| ~s~n%     | ~s^", LineNo, Line, ColumnSpace);
+                true ->
+                    ErrMsg
+            end
+    end.
+
+-spec report_tyerror(constr_simp:simp_constrs_result(), string()) -> nonempty_list(constr:simp_constrs()).
+report_tyerror({simp_constrs_ok, L}, _) ->
+    case length(L) of
+        0 -> errors:bug("empty list of simple constraints returned from constr_simp:simp_constrs");
+        _ -> L
+    end;
+report_tyerror({simp_constrs_error, {Kind, Loc}}, What) ->
+    Msg =
+        case Kind of
+            tyerror -> "expression failed to type check";
+            redundant_branch -> "this branch never matches";
+            non_exhaustive_case -> "not all cases are covered"
+        end,
+    SrcCtx = format_src_loc(Loc),
+    errors:ty_error(Loc, "~s~n~s~n~n  ~s", [Msg, SrcCtx, What]).
+
+
 % Checks all forms of a module
 -spec check_forms(ctx(), string(), ast:forms(), sets:set(string())) -> ok.
 check_forms(Ctx, FileName, Forms, Only) ->
@@ -147,9 +181,16 @@ infer(Ctx, Decls) ->
     PolyEnv = maps:map(fun(_Key, T) -> {ty_scheme, [], T} end, Env),
     Tab = Ctx#ctx.symtab,
     SimpCtx = constr_simp:new_ctx(Tab, PolyEnv, Ctx#ctx.sanity, report),
-    Dss = constr_simp:simp_constrs(SimpCtx, Cs),
+    Funs =
+        lists:map(
+            fun({function, _Loc, Name, Arity, _}) ->
+                    utils:sformat("~w/~w", Name, Arity)
+            end,
+            Decls),
+    Dss = report_tyerror(constr_simp:simp_constrs(SimpCtx, Cs),
+        utils:sformat("while infering types of mutually recursive functions ~w", Funs)),
     case Ctx#ctx.sanity of
-        {ok, TyMap2} -> constr_simp:sanity_check(Dss, TyMap2, report);
+        {ok, TyMap2} -> constr_simp:sanity_check(Dss, TyMap2);
         error -> ok
     end,
     Total = length(Dss),
@@ -164,17 +205,18 @@ infer(Ctx, Decls) ->
               ?LOG_DEBUG("Simplified constraint set ~w/~w, now " ++
                              "invoking tally on it:~n~s",
                          Idx, Total, pretty:render_constr(Ds)),
-              case tally:tally(Tab, Ds) of
-                  {error, ErrList} ->
+              case utils:timing(fun () -> tally:tally(Tab, Ds) end) of
+                  {{error, ErrList}, Delta} ->
                       ErrStr = format_tally_error(Idx, ErrList),
-                      ?LOG_DEBUG("tally finished with errors: ~s", ErrStr),
+                      ?LOG_DEBUG("Tally time: ~pms, tally finished with errors: ~s", Delta, ErrStr),
                       [];
-                  Substs ->
+                  {Substs, Delta} ->
                       NumSubsts = length(Substs),
                       utils:map_flip(
                         utils:with_index(1, Substs),
                         fun({SubstIdx, Subst}) ->
-                                ?LOG_DEBUG("Substitution ~w/~w:~n~s", SubstIdx, NumSubsts,
+                                ?LOG_DEBUG("Tally time: ~pms, substitution ~w/~w:~n~s",
+                                           Delta, SubstIdx, NumSubsts,
                                            pretty:render_subst(Subst)),
                                 ResultEnv = maps:from_list(utils:map_flip(
                                   Decls,
@@ -242,8 +284,7 @@ check(Ctx, Decl = {function, Loc, Name, Arity, _}, PolyTy) ->
         case AltTys of
             [_] -> report;
             [] ->
-                errors:ty_error(Loc, "Invalid spec for ~w/~w: ~w",
-                                [Name, Arity, PolyTy]);
+                errors:ty_error(Loc, "Invalid spec for ~w/~w: ~w", [Name, Arity, PolyTy]);
             _ -> ignore_branch
         end,
     lists:foreach(
@@ -251,8 +292,7 @@ check(Ctx, Decl = {function, Loc, Name, Arity, _}, PolyTy) ->
               case Ty of
                   {fun_full, _, _} -> check_alt(Ctx, Decl, Ty, BranchMode);
                   _ ->
-                    errors:ty_error(Loc, "Invalid spec for ~w/~w: ~w",
-                                       [Name, Arity, PolyTy])
+                    errors:ty_error(Loc, "Invalid spec for ~w/~w: ~w", [Name, Arity, PolyTy])
               end
       end,
       AltTys),
@@ -275,45 +315,41 @@ check_alt(Ctx, Decl = {function, Loc, Name, Arity, _}, FunTy, BranchMode) ->
     ?LOG_DEBUG("Constraints:~n~s", pretty:render_constr(Cs)),
     Tab = Ctx#ctx.symtab,
     SimpCtx = constr_simp:new_ctx(Tab, #{}, Ctx#ctx.sanity, BranchMode),
-    Dss = constr_simp:simp_constrs(SimpCtx, Cs),
-    case Ctx#ctx.sanity of
-        {ok, TyMap2} -> constr_simp:sanity_check(Dss, TyMap2, BranchMode);
-        error -> ok
-    end,
+    Dss = report_tyerror(constr_simp:simp_constrs(SimpCtx, Cs),
+        utils:sformat("while checking function ~w/~w against type ~s",
+            Name, Arity, pretty:render_ty(FunTy))),
     Total = length(Dss),
-    if Total =:= 0 ->
-            errors:ty_error(Loc, "Function ~w/~w failed to type check against type ~s",
-                            [Name, Arity, pretty:render_ty(FunTy)]);
-       true -> ok
-    end,
-    {Status, Errors, _} =
+    {Status, _} =
         lists:foldl(
-          fun(Ds, {Status, Errors, Idx}) ->
-                  case Status of
-                      true -> {Status, [], Idx + 1};
-                      false ->
-                          FreeSet = tyutils:free_in_ty(FunTy),
-                          ?LOG_DEBUG("Simplified constraint set ~w/~w for ~w/~w at ~s, now " ++
-                                     "invoking tally on it.~nFixed tyvars: ~w~nConstraints:~n~s",
-                                     Idx, Total, Name, Arity, ast:format_loc(Loc),
-                                     sets:to_list(FreeSet),
-                                     pretty:render_constr(Ds)),
-                          Substs = tally:tally(Tab, Ds, FreeSet),
-                          case Substs of
-                              {error, ErrList} ->
-                                  ErrStr = format_tally_error(Idx, ErrList),
-                                  ?LOG_DEBUG("tally finished with errors: ~s", ErrStr),
-                                  {false, [ErrStr | Errors], Idx + 1};
-                              [S] ->
-                                  ?LOG_DEBUG("Unique substitution:~n~s", [pretty:render_subst(S)]),
-                                  {true, [], Idx + 1};
-                              L ->
-                                  ?LOG_DEBUG("~w substitutions: ~200p", length(L), pretty:render_substs(L)),
-                                  {true, [], Idx + 1}
-                          end
-                  end
+          fun(Ds, {Status, Idx}) ->
+                case Status of
+                    true -> {Status, Idx + 1};
+                    false ->
+                        FreeSet = tyutils:free_in_ty(FunTy),
+                        ?LOG_DEBUG("Simplified constraint set ~w/~w for ~w/~w at ~s, now " ++
+                                    "invoking tally on it.~nFixed tyvars: ~w~nConstraints:~n~s",
+                                    Idx, Total, Name, Arity, ast:format_loc(Loc),
+                                    sets:to_list(FreeSet),
+                                    pretty:render_constr(Ds)),
+                        {Substs, Delta} = utils:timing(fun () -> tally:tally(Tab, Ds, FreeSet) end),
+                        case Substs of
+                            {error, ErrList} ->
+                                ErrStr = format_tally_error(Idx, ErrList),
+                                ?LOG_DEBUG("Tally time: ~pms, tally finished with errors: ~s",
+                                    Delta, ErrStr),
+                                {false, Idx + 1};
+                            [S] ->
+                                ?LOG_DEBUG("Tally time: ~pms, unique substitution:~n~s",
+                                    Delta, [pretty:render_subst(S)]),
+                                {true, Idx + 1};
+                            L ->
+                                ?LOG_DEBUG("Tally time: ~pms, ~w substitutions: ~200p",
+                                    Delta, length(L), pretty:render_substs(L)),
+                                {true, Idx + 1}
+                        end
+                end
           end,
-          {false, [], 1},
+          {false, 1},
           Dss),
     case Status of
         true ->
@@ -323,8 +359,9 @@ check_alt(Ctx, Decl = {function, Loc, Name, Arity, _}, FunTy, BranchMode) ->
                        ast:format_loc(Loc),
                        pretty:render_ty(FunTy));
         false ->
-            errors:ty_error(Loc, "Function ~w/~w failed to type check against type ~s~n~s",
-                            [Name, Arity, pretty:render_ty(FunTy), string:join(Errors, "\n\n")])
+            SrcCtx = format_src_loc(Loc),
+            errors:ty_error(Loc, "function ~w/~w failed to type check against type ~s~n~s",
+                            [Name, Arity, pretty:render_ty(FunTy), SrcCtx])
     end.
 
 -spec format_tally_error(integer(), [string()]) -> string().
@@ -384,7 +421,9 @@ more_general(Ts1, Ts2, Tab) ->
     {Mono1, _, Next} = mono_ty(Ts1, 0),
     {Mono2, A2, _} = mono_ty(Ts2, Next),
     C = {csubty, sets:new(), Mono1, Mono2},
-    case tally:tally(Tab, sets:from_list([C]), A2) of
+    {Res, Delta} = utils:timing(fun() -> tally:tally(Tab, sets:from_list([C]), A2) end),
+    ?LOG_DEBUG("Tally time: ~pms", Delta),
+    case Res of
         [] -> false;
         _ -> true
     end.

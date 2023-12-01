@@ -16,6 +16,7 @@
          render_constr/1,
          render_substs/1,
          render_subst/1,
+         render_mono_env/1,
          render_poly_env/1,
          render_fun_env/1,
          render_any_ref/1,
@@ -98,6 +99,9 @@ render_subst(S) -> render(subst(S)).
 -spec render_poly_env(constr:constr_poly_env()) -> string().
 render_poly_env(S) -> render(poly_env(S)).
 
+-spec render_mono_env(constr:constr_poly_env()) -> string().
+render_mono_env(S) -> render(mono_env(S)).
+
 -spec render_fun_env(symtab:fun_env()) -> string().
 render_fun_env(S) -> render(fun_env(S)).
 
@@ -139,7 +143,7 @@ ty(Prec, T) ->
         {empty_list} ->
             text("[]");
         {list, U} ->
-            beside(text("list"), parens(ty(U)));
+            beside(text("["), ty(U), text("]"));
         {nonempty_list, U} ->
             beside(text("nonempty_list"), parens(ty(U)));
         {improper_list, U, V} ->
@@ -291,10 +295,11 @@ constr(X) ->
                                        locs(Locs),
                                        constr_env(Env),
                                        constr(Cs)]));
-               {ccase, Locs, Cs, Bodies} ->
+               {ccase, Locs, CsScrut, {ExhauLeft, ExhauRight}, Bodies} ->
                    brackets(comma_sep([text("ccase"),
                                        locs(Locs),
-                                       constr(Cs),
+                                       constr(CsScrut),
+                                       beside(ty(ExhauLeft), text(" <= "), ty(ExhauRight)),
                                        constr_bodies(Bodies)]));
                {cunsatisfiable, Locs, Msg} ->
                    brackets(comma_sep([text("cunsatisfiable"),
@@ -345,6 +350,18 @@ poly_env(Env) ->
 
 -spec fun_env(symtab:fun_env()) -> doc().
 fun_env(Env) -> poly_env(Env).
+
+-spec mono_env(constr:constr_env()) -> doc().
+mono_env(Env) ->
+    Elems =
+        lists:map(
+          fun({Ref, T}) ->
+                 beside(ref(Ref),
+                        text(" => "),
+                        ty(T))
+          end,
+          maps:to_list(Env)),
+    brackets(comma_sep(Elems)).
 
 -spec render_list(fun((T) -> doc()), list(T)) -> string().
 render_list(Fun, L) ->
