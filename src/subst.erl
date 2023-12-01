@@ -21,8 +21,7 @@ domain(S) -> maps:keys(S).
 -spec clean(ast:ty(), sets:set()) -> ast:ty().
 clean(T, Fixed) ->
     % clean
-    % negations have to be pushed down
-    Cleaned = clean_type(dnf:to_nnf(T), Fixed),
+    Cleaned = clean_type(T, Fixed),
     % simplify by converting into internal type and back (processes any() and none() replacements)
     Res = ast_lib:erlang_ty_to_ast(X = ast_lib:ast_to_erlang_ty(Cleaned)),
     % FIXME remove sanity at some point
