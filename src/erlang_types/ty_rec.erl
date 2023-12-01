@@ -60,9 +60,16 @@ transform(TyRef, Ops) ->
 %%  io:format(user, "Positive:~n~p~n", [Pos]),
 %%  io:format(user, "Negative:~n~p~n", [Neg]),
   % very dumb heuristic: smaller is better
-  case size(term_to_binary(Pos)) > size(term_to_binary(Neg)) of
+  case
+    size(term_to_binary(Pos)) > size(term_to_binary(Neg))
+  of
     false -> {pos, Pos};
-    _ -> {neg, Neg}
+    _ ->
+      % fix1: any is smaller than none, pick none anyway
+      case stdtypes:tnone() of
+        Pos -> {pos, Pos};
+        _ -> {neg, Neg}
+      end
   end.
 
 transform_p(TyRef, Ops =
@@ -275,7 +282,13 @@ maybe_remove_redundant_negative_variables(CurrentMap, T1, T, Pv, Nv, Pv1, Nv1) -
 
 multi_transform(DefaultT, T, Ops = #{any_tuple_i := Tuple, any_tuple := Tuples, negate := Negate, union := Union, intersect := Intersect}) ->
   X1 = dnf_var_ty_tuple:transform(DefaultT, Ops),
-  Xs = lists:map(fun({_Size, Tup}) -> dnf_var_ty_tuple:transform(Tup, Ops) end, maps:to_list(T)),
+  Xs = lists:map(fun({_Size, Tup}) ->
+    % if a tuple is semantically equivalent to empty, return empty instead of the empty tuple
+    case dnf_var_ty_tuple:is_empty(Tup) of
+      true -> dnf_var_ty_tuple:transform(dnf_var_ty_tuple:empty(), Ops);
+      _ -> dnf_var_ty_tuple:transform(Tup, Ops)
+    end
+                 end, maps:to_list(T)),
   Sizes = maps:keys(T),
 
   DefaultTuplesWithoutExplicitTuples = Intersect([X1, Tuples(), Negate(Union([Tuple(I) || I <- Sizes]))]),
