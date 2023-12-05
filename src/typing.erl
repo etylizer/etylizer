@@ -183,7 +183,7 @@ infer(Ctx, Decls) ->
             end,
             Decls),
     Dss = report_tyerror(constr_simp:simp_constrs(SimpCtx, Cs),
-        utils:sformat("while infering types of function(s) ~s", FunsStr)),
+        utils:sformat("while infering types of mutually recursive functions ~w", Funs)),
     case Ctx#ctx.sanity of
         {ok, TyMap2} -> constr_simp:sanity_check(Dss, TyMap2);
         error -> ok

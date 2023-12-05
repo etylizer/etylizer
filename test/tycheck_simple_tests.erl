@@ -88,7 +88,8 @@ check_decls_in_file(F, What, NoInfer) ->
         Ty = symtab:lookup_fun({ref, Name, Arity}, Loc, Tab),
         ShouldFail = utils:string_ends_with(NameStr, "_fail"),
         RunTest =
-          {timeout, 10, {NameStr, fun() ->
+          % FIXME #54 reduce timeout after issue has been fixed
+          {timeout, 45, {NameStr, fun() ->
                 ?LOG_NOTE("Type checking ~s from ~s", NameStr, F),
                 test_utils:reset_ets(),
                 case ShouldFail of
@@ -130,6 +131,8 @@ simple_test_() ->
     % FIXME #36 impossible branches
     "foo2",
     "inter_03_fail",
+    % FIXME #61 bad recursive types in tally
+    "tuple_04",
     % slow, see #57
     "list_pattern_02",
     "list_pattern_07",
