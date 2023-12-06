@@ -34,7 +34,8 @@ run_failing_test(File, ExpectedErrMsg) ->
                     case string:find(Msg, ExpectedErrMsg) of
                         nomatch ->
                             ?LOG_NOTE("Error message:~n~s", Msg),
-                            error(utils:sformat("Error message did not include expected string: ~s", Msg));
+                            error(utils:sformat("Error message did not include expected string:~n" ++
+                                "Expected: ~s~nGiven   : ~s", ExpectedErrMsg, Msg));
                         _ ->
                             ?LOG_NOTE("Test ~s failed as expected with the right error message", File)
                     end

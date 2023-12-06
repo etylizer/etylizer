@@ -1,5 +1,5 @@
 % ERROR
-% Error parsing test_files/tycheck/type_error_msgs/syntax_error.erl
+% Error parsing
 -module(test).
 
 -compile(export_all).
