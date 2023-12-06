@@ -141,7 +141,7 @@ simp_constr(Ctx, C) ->
                                 lists:flatmap(
                                 fun(DsScrut) ->
                                         Ds = sets:union(DsScrut, Exhau),
-                                        get_substs(tally:tally(Ctx#ctx.symtab, Ds, FreeSet), Locs)
+                                        get_substs(tally:tally(Ctx#ctx.symtab, Ds, FreeSet), Locs, FreeSet)
                                 end,
                                 DssScrut)
                             end),
@@ -170,10 +170,10 @@ simp_constr(Ctx, C) ->
                                     % returns simp_constrs_result()
                                     fun(_, {simp_constrs_error, _} = Err) -> Err;
                                        ({BodyLocs, {GuardsGammaI, GuardCsI}, {BodyGammaI, BodyCsI}, TI}, BeforeDss) ->
-                                            NewGuardsCtx = inter_env(Ctx, apply_subst_to_env(Subst, GuardsGammaI)),
+                                            NewGuardsCtx = inter_env(Ctx, apply_subst_to_env(Subst, GuardsGammaI, FreeSet)),
                                             simp_constrs_if_ok(simp_constrs(NewGuardsCtx, GuardCsI),
                                                 fun(GuardDss, _) ->
-                                                    MatchTy = subst:apply(Subst, TI),
+                                                    MatchTy = subst:clean(subst:apply(Subst, TI), FreeSet),
                                                     IsBottom = subty:is_subty(Ctx#ctx.symtab,
                                                                                 MatchTy,
                                                                                 {predef, none}),
@@ -199,7 +199,7 @@ simp_constr(Ctx, C) ->
                                                             end,
                                                             NewBodyCtx =
                                                                 inter_env(Ctx,
-                                                                        apply_subst_to_env(Subst, BodyGammaI)),
+                                                                        apply_subst_to_env(Subst, BodyGammaI, FreeSet)),
                                                             BodyDss = simp_constrs(NewBodyCtx, BodyCsI),
                                                             cross_union(cross_union(BeforeDss, GuardDss), BodyDss)
                                                     end
@@ -229,7 +229,7 @@ simp_constr(Ctx, C) ->
                                     ?LOG_DEBUG("MultiResults is empty, checking whether typing the scrutiny or the exhaustiveness check fails."),
                                     case
                                         lists:flatmap(
-                                            fun(Ds) -> get_substs(tally:tally(Ctx#ctx.symtab, Ds, FreeSet), Locs) end,
+                                            fun(Ds) -> get_substs(tally:tally(Ctx#ctx.symtab, Ds, FreeSet), Locs, FreeSet) end,
                                         DssScrut)
                                     of
                                         [] ->
@@ -310,8 +310,8 @@ locs_from_constrs(Cs) ->
             end, sets:to_list(Cs))
     ).
 
--spec get_substs([subst:t()], constr:locs()) -> [{subst:t(), constr:simpl_constrs()}].
-get_substs(Substs, Locs) ->
+-spec get_substs([subst:t()], constr:locs(), sets:set(ast:ty_var())) -> [{subst:t(), constr:simpl_constrs()}].
+get_substs(Substs, Locs, FreeSet) ->
     case Substs of
         {error, _} ->
             % We cannot throw an error here because other branches might return a solvable constraint
@@ -324,7 +324,7 @@ get_substs(Substs, Locs) ->
                       EquivCs =
                           lists:foldl(
                             fun(Alpha, Acc) ->
-                                    T = subst:apply(Subst, {var, Alpha}),
+                                    T = subst:clean(subst:apply(Subst, {var, Alpha}), FreeSet),
                                     sets:add_element(
                                       {csubty, Locs, T, {var, Alpha}},
                                       sets:add_element({csubty, Locs, {var, Alpha}, T}, Acc))
@@ -366,9 +366,9 @@ inter_env(Ctx, Env) ->
         pretty:render_poly_env(NewEnv)),
     Ctx#ctx { env = NewEnv }.
 
--spec apply_subst_to_env(subst:t(), constr:constr_env()) -> constr:constr_env().
-apply_subst_to_env(Subst, Env) ->
-    maps:map(fun(_Key, T) -> subst:apply(Subst, T) end, Env).
+-spec apply_subst_to_env(subst:t(), constr:constr_env(), sets:set(ast:ty_var())) -> constr:constr_env().
+apply_subst_to_env(Subst, Env, FreeSet) ->
+    maps:map(fun(_Key, T) -> subst:clean(subst:apply(Subst, T), FreeSet) end, Env).
 
 -spec sanity_check(any(), ast_check:ty_map()) -> ok.
 sanity_check({simp_constrs_ok, Dss}, Spec) ->

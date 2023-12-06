@@ -109,13 +109,7 @@ simple_test_() ->
     "foo2",
     "inter_03_fail",
     % FIXME #61 bad recursive types in tally
-    "tuple_04",
-    % slow, see #57
-    "list_pattern_02",
-    "list_pattern_07",
-    "some_fun",
-    "fun_local_03",
-    "fun_local_04"
+    "tuple_04"
   ],
   check_decls_in_file("test_files/tycheck_simple.erl",
                       {exclude, sets:from_list(WhatNot)}).

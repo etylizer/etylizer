@@ -116,6 +116,8 @@ collect_vars({tuple_any}, _CPos, Pos, _) -> Pos;
 collect_vars({fun_simple}, _CPos, Pos, _) -> Pos;
 collect_vars({list, A}, CPos, Pos, Fix) ->
     collect_vars(A, CPos, Pos, Fix);
+collect_vars({nonempty_list, A}, CPos, Pos, Fix) ->
+    collect_vars(A, CPos, Pos, Fix);
 collect_vars({improper_list, A, B}, CPos, Pos, Fix) ->
     M1 = collect_vars(A, CPos, Pos, Fix),
     M2 = collect_vars(B, CPos, Pos, Fix),
