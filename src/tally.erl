@@ -37,5 +37,5 @@ tally(_SymTab, Constraints, FixedVars, Order) ->
         _ ->
           % transform to subst:t()
           % TODO sanity variable Id == variable name
-          [maps:from_list([{VarName, ast_lib:erlang_ty_to_ast(Ty)} || {{var, _, VarName}, Ty} <- Subst]) || Subst <- InternalResult]
+          [maps:from_list([{VarName, ast_lib:erlang_ty_to_ast(Ty)} || {{var, _, VarName}, Ty} <- maps:to_list(Subst)]) || Subst <- InternalResult]
   end.
