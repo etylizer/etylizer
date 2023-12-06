@@ -20,16 +20,15 @@ test: build testtest
 advtest: build
 	@echo "Running advanced tests for type checker ..."
 	rm -rf _etylizer #TODO --force flag?
-	# TODO slow
-	# ./ety -l debug test_files/tycheck/check_if.erl -o foo -o bar
+	./ety -l debug test_files/tycheck/check_if.erl -o foo -o bar
 	! ./ety -l debug test_files/tycheck/check_if_fail.erl -o foo -o bar
 	./ety -l debug test_files/tycheck/concat.erl
 	! ./ety -l debug test_files/tycheck/concat_fail.erl
 	# TODO bug
 	#./ety -l debug test_files/tycheck/filtermap.erl -o my_filtermap
+	! ./ety -l debug test_files/tycheck/filtermap_fail0.erl
 	# TODO slow
-	#! ./ety -l debug test_files/tycheck/filtermap_fail0.erl
-	! ./ety -l debug test_files/tycheck/filtermap_fail1.erl
+	#! ./ety -l debug test_files/tycheck/filtermap_fail1.erl
 	! ./ety -l debug test_files/tycheck/filtermap_fail2.erl
 	! ./ety -l debug test_files/tycheck/filtermap_fail3.erl
 	# TODO -type support
@@ -55,8 +54,8 @@ advtest: build
 	#./ety -l debug test_files/tycheck/match2.erl -o foo
 	! ./ety -l debug test_files/tycheck/match_fail.erl
 	! ./ety -l debug test_files/tycheck/match_fail2.erl
+	./ety -l debug test_files/tycheck/my_and.erl -o my_and_infer -o my_and2_infer
 	# TODO slow
-	#./ety -l debug test_files/tycheck/my_and.erl -o my_and_infer -o my_and2_infer
 	#! ./ety -l debug test_files/tycheck/my_and_fail.erl
 	./ety -l debug test_files/tycheck/overloaded_fun.erl -o foo -o bar -o egg_infer
 	./ety -l debug test_files/tycheck/overloaded_fun2.erl -o foo
