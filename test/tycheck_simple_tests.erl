@@ -140,9 +140,13 @@ simple_test_() ->
     "fun_local_03",
     "fun_local_04"
   ],
-  % The following functions are excluded from the type inference test because
-  % we do not support inference of intersection types.
-  NoInfer = ["inter_01", "inter_02"],
+
+  NoInfer = [
+    % The following functions are excluded from the type inference test because
+    % we do not support inference of intersection types.
+    "inter_01", "inter_02",
+    % slow, see #62
+    "foo3"],
   check_decls_in_file("test_files/tycheck_simple.erl",
                       {exclude, sets:from_list(WhatNot)},
                       %{include, sets:from_list(What)},
