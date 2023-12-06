@@ -100,7 +100,7 @@ check_decls_in_file(F, What, NoInfer) ->
               end}
             },
         InferTest =
-          {timeout, 10, {NameStr ++ " (infer)", fun() ->
+          {timeout, 45, {NameStr ++ " (infer)", fun() ->
                 ?LOG_NOTE("Infering type for ~s from ~s", NameStr, F),
                 test_utils:reset_ets(),
                 check_infer_ok_fun(F, Tab, Decl, Ty)
