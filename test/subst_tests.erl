@@ -15,3 +15,10 @@ all_variables_fun_test() ->
   Ty = ast_lib:ast_to_erlang_ty(T),
   true = eq_list([ast_lib:ast_to_erlang_ty_var(V) || V <- [tvar('$0'), tvar('$1'), tvar('$2')]], ty_rec:all_variables(Ty)),
   ok.
+
+all_variables_tuple_test() ->
+  test_utils:reset_ets(),
+  T = ttuple([tvar('$0'), tvar('$1'), tvar('$2')]),
+  Ty = ast_lib:ast_to_erlang_ty(T),
+  true = eq_list([ast_lib:ast_to_erlang_ty_var(V) || V <- [tvar('$0'), tvar('$1'), tvar('$2')]], ty_rec:all_variables(Ty)),
+  ok.

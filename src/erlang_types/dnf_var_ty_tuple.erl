@@ -28,10 +28,10 @@ is_empty(TyBDD) -> gen_bdd:dnf(?P, TyBDD, {fun is_empty_coclause/3, fun gen_bdd:
 is_empty_coclause(_Pos, _Neg, T) -> dnf_ty_tuple:is_empty(T).
 
 all_variables({Default, Others}) when is_map(Others) ->
-  lists:usort(
+  lists:usort(lists:flatten(
     gen_bdd:all_variables(?P, Default) ++
     lists:map(fun({_K,V}) -> gen_bdd:all_variables(?P, V) end, maps:to_list(Others))
-  );
+  ));
 all_variables(Ty) -> gen_bdd:all_variables(?P, Ty).
 
 normalize(Size, Ty, Fixed, M) -> gen_bdd:dnf(?P, Ty, {
