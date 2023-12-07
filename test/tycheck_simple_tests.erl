@@ -139,6 +139,7 @@ simple_test_() ->
     "some_fun",
     "fun_local_03",
     "fun_local_04",
+    "fun_local_02_plus",
     "my_plus"
   ],
 
