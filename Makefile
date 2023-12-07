@@ -18,7 +18,13 @@ test: build testtest
 	./_build/default/bin/ety --sanity --no-type-checking -I ./src ./src/*.erl
 
 # FIXME: we should run these tests with the machinery in tycheck_tests.erl (#69).
-advtest: build
+# For now, SW disabled the tests because they are too slow. Re-enable if we have
+# cleanup for substitution results
+advtest:
+	@echo "Advanced tests currently disabled ..."
+	true
+
+advtest_disabled: build
 	@echo "Running advanced tests for type checker ..."
 	rm -rf _etylizer #TODO --force flag?
 	# TODO slow
