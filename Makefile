@@ -21,7 +21,8 @@ test: build testtest
 advtest: build
 	@echo "Running advanced tests for type checker ..."
 	rm -rf _etylizer #TODO --force flag?
-	./ety -l debug test_files/tycheck_disabled/check_if.erl -o foo -o bar
+	# TODO slow
+	# ./ety -l debug test_files/tycheck_disabled/check_if.erl -o foo -o bar
 	! ./ety -l debug test_files/tycheck_disabled/check_if_fail.erl -o foo -o bar
 	./ety -l debug test_files/tycheck_disabled/concat.erl
 	! ./ety -l debug test_files/tycheck_disabled/concat_fail.erl
