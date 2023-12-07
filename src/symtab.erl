@@ -26,6 +26,10 @@
     extend_symtab_with_module_list/3
 ]).
 
+-export_type([
+    fun_env/0
+]).
+
 -type fun_env() :: #{ ast:global_ref() => ast:ty_scheme() }.
 
 -record(tab, {

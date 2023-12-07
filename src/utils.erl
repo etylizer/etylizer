@@ -233,7 +233,7 @@ with_index(Start, L) ->
                            {Start, []}, L),
     lists:reverse(Rev).
 
--spec mkdirs(filename:name()) -> ok | {error, string()}.
+-spec mkdirs(file:filename()) -> ok | {error, string()}.
 mkdirs(D) ->
     ok = filelib:ensure_dir(filename:join(D, "XXX")). % only creates the parent!
 

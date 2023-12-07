@@ -15,6 +15,7 @@
     local_ref_bind/0,
     loc/0,
     fun_with_arity/0,
+    ty_with_arity/0,
     export_form/0,
     export_type_form/0,
     import_form/0,
@@ -130,7 +131,8 @@
     tydef/0,
     ty_constraint/0,
     unique_tok/0,
-    local_varname/0
+    local_varname/0,
+    predef_alias_name/0
 ]).
 
 -export([

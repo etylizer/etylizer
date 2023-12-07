@@ -85,7 +85,7 @@ render_ty(T) -> render(ty(T)).
 -spec render_tys([ast:ty()]) -> string().
 render_tys(T) -> render(tys(T)).
 
--spec render_tyscheme(ast:tyscheme()) -> string().
+-spec render_tyscheme(ast:ty_scheme()) -> string().
 render_tyscheme(T) -> render(tyscheme(T)).
 
 -spec render_constr(all_constrs()) -> string().
