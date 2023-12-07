@@ -160,12 +160,7 @@ infer_all(Ctx, FileName, Decls) ->
 -spec infer(ctx(), [ast:fun_decl()]) -> [symtab:fun_env()].
 infer(_, []) -> errors:bug("typing:infer called with empty list of declarations");
 infer(Ctx, Decls) ->
-    Funs =
-        lists:map(
-          fun({function, _Loc, Name, Arity, _}) ->
-                  utils:sformat("~w/~w", Name, Arity)
-          end,
-          Decls),
+    Funs = lists:map(fun ast:get_fun_name/1, Decls),
     FunsStr = string:join(Funs, ", "),
     ?LOG_INFO("Inferring types of the following functions: ~s", FunsStr),
     Loc =
@@ -411,22 +406,32 @@ mono_ty(TyScm = {ty_scheme, Tyvars, T}, FreshStart) ->
          ),
     Subst = subst:from_list(Kvs),
     Res = subst:apply(Subst, T),
-    ?LOG_DEBUG("Result of monomorphizing type scheme ~s:~n~s",
-               pretty:render_tyscheme(TyScm), pretty:render_ty(Res)),
+    ?LOG_DEBUG("Result of monomorphizing type scheme ~s:~n~s~nFresh: ~200p",
+               pretty:render_tyscheme(TyScm), pretty:render_ty(Res), Freshs),
     {Res, sets:from_list(Freshs), I}.
 
 % more_general(T1, T2, Sym) return true of T1 is more general than T2
 -spec more_general(ast:ty_scheme(), ast:ty_scheme(), symtab:t()) -> boolean().
 more_general(Ts1, Ts2, Tab) ->
+    % Ts1 is more general than Ts2 iff for every instantiation Mono2 of Ts2, there
+    % exists an instantition Mono1 of Ts1 such that Mono1 <= Mono2.
+    % A flexible instantiation of Ts1 with type variables that can be further instantiated by tally
     {Mono1, _, Next} = mono_ty(Ts1, 0),
+    % Arbitrary instantiation of Ts2, the type variables A2 are fix
     {Mono2, A2, _} = mono_ty(Ts2, Next),
     C = {csubty, sets:new(), Mono1, Mono2},
-    {Res, Delta} = utils:timing(fun() -> tally:tally(Tab, sets:from_list([C]), A2) end),
+    {TallyRes, Delta} = utils:timing(fun() -> tally:tally(Tab, sets:from_list([C]), A2) end),
     ?LOG_DEBUG("Tally time: ~pms", Delta),
-    case Res of
-        [] -> false;
-        _ -> true
-    end.
+    Result =
+        case TallyRes of
+            {error, _} -> false;
+            _ -> true
+        end,
+    ?LOG_DEBUG("T1=~s (Mono1=~s) is more general than T2=~s (Mono2=~s): ~s",
+        pretty:render_tyscheme(Ts1), pretty:render_ty(Mono1),
+        pretty:render_tyscheme(Ts2), pretty:render_ty(Mono2),
+        Result),
+    Result.
 
 % Generalize generalizes the type of a top-level function. As there is no outer
 % environment, we may simply quantify over all free type variables.

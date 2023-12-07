@@ -21,6 +21,7 @@
          render_fun_env/1,
          render_any_ref/1,
          render_list/2,
+         render_list/3,
          ref/1
         ]).
 
@@ -107,6 +108,10 @@ render_fun_env(S) -> render(fun_env(S)).
 
 -spec render_any_ref(ast:any_ref()) -> string().
 render_any_ref(R) -> render(ref(R)).
+
+-spec render_list(string(), [T], fun((T) -> doc())) -> string().
+render_list(Sep, L, F) ->
+    render(sep_by(text(Sep), lists:map(F, L))).
 
 -spec tyscheme(ast:ty_scheme()) -> doc().
 tyscheme({ty_scheme, [], Ty}) -> ty(Ty);
