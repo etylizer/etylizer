@@ -13,7 +13,9 @@
     extract_tests/1,
     is_equiv/2,
     is_subtype/2,
-    reset_ets/0
+    reset_ets/0,
+    ety_to_cduce_tally/2,
+    format_tally_config/2
 ]).
 
 -export_type([
@@ -100,3 +102,54 @@ is_subtype(S, T) ->
 reset_ets() ->
     ecache:reset_all(),
     ok.
+
+% transforms a tally:tally constraints to a config file which can be loaded in the tally_tests.erl tests
+% TODO free variables #74
+format_tally_config(Constraints, _FixedVars) ->
+    "[" ++ lists:join(",", [io_lib:format("{~p, ~p}", [S, T]) || {_, _, S, T} <- Constraints]) ++ "].".
+
+% translates the ety tally input constraints to a cduce tally call
+% not all constructs are supported
+% TODO free variables #73
+-spec ety_to_cduce_tally(list({term(), term()}), list()) -> string().
+ety_to_cduce_tally(Constraints, Order) ->
+    VariableOrder = io_lib:format("~s", [lists:join(" ", [to_var({var, V}) || V <- Order])]),
+    PairsOfConstraints = lists:map(fun({S, T}) -> "\n("++ to_cduce(S) ++ ", "++ to_cduce(T) ++ ")" end, Constraints),
+    "debug tallying ([" ++ VariableOrder ++ "] [] [" ++ PairsOfConstraints ++ "]);;".
+
+
+to_cduce({predef, any}) -> "Any";
+to_cduce({predef, none}) -> "Empty";
+to_cduce({predef, integer}) -> "Int";
+% floats are treated to tags in CDuce
+to_cduce({predef, float}) -> "`float";
+to_cduce({singleton, float}) -> "`float";
+to_cduce({range, X, Y}) -> io_lib:format("(~s--~s)",[erlang:integer_to_list(X), erlang:integer_to_list(Y)]);
+to_cduce({singleton, I}) when is_integer(I) -> erlang:integer_to_list(I);
+to_cduce({negation, X}) -> io_lib:format("(Any \\ ~s)", [to_cduce(X)]);
+to_cduce({tuple, [A, B]}) -> io_lib:format("(~s, ~s)", [to_cduce(A), to_cduce(B)]);
+to_cduce({intersection, X}) -> "(" ++ lists:join(" & ", [to_cduce(Z) || Z <- X]) ++ ")";
+to_cduce({union, X}) -> "(" ++ lists:join(" | ", [to_cduce(Z) || Z <- X]) ++ ")";
+to_cduce({var, Name}) -> to_var({var, Name});
+to_cduce({fun_full, [S], T}) -> io_lib:format("(~s -> ~s)", [to_cduce(S), to_cduce(T)]);
+to_cduce(Ast) ->
+    error({construct_not_supported, Ast}).
+
+% we use $ in the variable name which is not a valid character in OCaml
+% replace this with some other character
+to_var({var, Name}) ->
+    "'" ++ string:replace(erlang:atom_to_list(Name), "$", "u").
+
+
+-ifdef(TEST).
+-include_lib("eunit/include/eunit.hrl").
+
+cduce_translation_test() ->
+    test_utils:reset_ets(),
+    {ok, [Cons]} = file:consult("test_files/tally/fun_local_02_plus.config"),
+    % should not crash
+    _Str = ety_to_cduce_tally(Cons, []),
+    % io:format(user, "~s~n", [_Str]),
+    ok.
+
+-endif.
