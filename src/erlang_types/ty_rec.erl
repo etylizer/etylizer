@@ -777,34 +777,35 @@ all_variables(TyRef) ->
   ++ dnf_var_ty_tuple:all_variables(Tuples)
   ++ dnf_var_ty_function:all_variables(Functions)).
 
-%%-ifdef(TEST).
-%%-include_lib("eunit/include/eunit.hrl").
-%%
-%%usage_test() ->
-%%  Lists = ty_ref:new_ty_ref(),
-%%  ListsBasic = ty_ref:new_ty_ref(),
-%%
-%%  % nil
-%%  Nil = ty_rec:atom(dnf_var_ty_atom:ty_atom(ty_atom:finite([nil]))),
-%%
-%%  % (alpha, Lists)
-%%  Alpha = ty_variable:new("alpha"),
-%%  AlphaTy = ty_rec:variable(Alpha),
-%%  Tuple = ty_rec:tuple(dnf_var_ty_tuple:tuple(dnf_ty_tuple:tuple(ty_tuple:tuple([AlphaTy, Lists])))),
-%%  Recursive = ty_rec:union(Nil, Tuple),
-%%
-%%  ty_ref:define_ty_ref(Lists, ty_ref:load(Recursive)),
-%%
-%%  SomeBasic = ty_rec:atom(dnf_var_ty_atom:ty_atom(ty_atom:finite([somebasic]))),
-%%  SubstMap = #{Alpha => SomeBasic},
-%%  Res = ty_rec:substitute(Lists, SubstMap),
-%%
-%%  Tuple2 = ty_rec:tuple(dnf_var_ty_tuple:tuple(dnf_ty_tuple:tuple(ty_tuple:tuple([SomeBasic, ListsBasic])))),
-%%  Expected = ty_rec:union(Nil, Tuple2),
-%%  ty_ref:define_ty_ref(ListsBasic, ty_ref:load(Expected)),
-%%
-%%  true = ty_rec:is_equivalent(Res, Expected),
-%%
-%%  ok.
-%%
-%%-endif.
+-ifdef(TEST).
+-include_lib("eunit/include/eunit.hrl").
+
+recursive_definition_test() ->
+  test_utils:reset_ets(),
+  Lists = ty_ref:new_ty_ref(),
+  ListsBasic = ty_ref:new_ty_ref(),
+
+  % nil
+  Nil = ty_rec:atom(dnf_var_ty_atom:ty_atom(ty_atom:finite([nil]))),
+
+  % (alpha, Lists)
+  Alpha = ty_variable:new("alpha"),
+  AlphaTy = ty_rec:variable(Alpha),
+  Tuple = ty_rec:tuple(2, dnf_var_ty_tuple:tuple(dnf_ty_tuple:tuple(ty_tuple:tuple([AlphaTy, Lists])))),
+  Recursive = ty_rec:union(Nil, Tuple),
+
+  ty_ref:define_ty_ref(Lists, ty_ref:load(Recursive)),
+
+  SomeBasic = ty_rec:atom(dnf_var_ty_atom:ty_atom(ty_atom:finite([somebasic]))),
+  SubstMap = #{Alpha => SomeBasic},
+  Res = ty_rec:substitute(Lists, SubstMap),
+
+  Tuple2 = ty_rec:tuple(2, dnf_var_ty_tuple:tuple(dnf_ty_tuple:tuple(ty_tuple:tuple([SomeBasic, ListsBasic])))),
+  Expected = ty_rec:union(Nil, Tuple2),
+  % Expected is invalid after define_ty_ref!
+  NewTy = ty_ref:define_ty_ref(ListsBasic, ty_ref:load(Expected)),
+
+  true = ty_rec:is_equivalent(Res, NewTy),
+  ok.
+
+-endif.
