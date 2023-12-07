@@ -29,10 +29,10 @@ has_ref(Ty, Ref) -> gen_bdd:has_ref(?P, Ty, Ref).
 get_dnf(Bdd) -> gen_bdd:get_dnf(?P, Bdd).
 
 all_variables({Default, Others}) when is_map(Others) ->
-  lists:usort(
+  lists:usort(lists:flatten(
     gen_bdd:all_variables(?P, Default) ++
     lists:map(fun({_K,V}) -> gen_bdd:all_variables(?P, V) end, maps:to_list(Others))
-  );
+  ));
 all_variables(Ty) -> gen_bdd:all_variables(?P, Ty).
 
 is_empty(TyBDD) -> gen_bdd:dnf(?P, TyBDD, {fun is_empty_coclause/3, fun gen_bdd:is_empty_union/2}).
