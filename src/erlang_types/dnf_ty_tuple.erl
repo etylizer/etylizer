@@ -28,15 +28,17 @@ is_empty(TyBDD) ->
   gen_bdd:dnf(?P, TyBDD, {fun is_empty_coclause/3, fun gen_bdd:is_empty_union/2}).
 
 is_empty_coclause(Pos, Neg, T) ->
-  case bdd_bool:empty() of
-    T -> true;
-    _ -> case Pos of
-           % TODO check correctness of this
-           [] -> false;
-           _ ->
-             BigS = ty_tuple:big_intersect(Pos),
-             phi(ty_tuple:components(BigS), Neg)
-         end
+  case {Pos, Neg, bdd_bool:empty()} of
+    {_, _, T} -> true;
+    {[], [], _} -> false;
+    {[], [TNeg | _], _} ->
+      Dim = length(ty_tuple:components(TNeg)),
+      PosAny = ty_tuple:any(Dim),
+      BigS = ty_tuple:big_intersect([PosAny]),
+      phi(ty_tuple:components(BigS), Neg);
+    {Pos, Neg, _} ->
+      BigS = ty_tuple:big_intersect(Pos),
+      phi(ty_tuple:components(BigS), Neg)
   end.
 
 phi(BigS, []) ->
@@ -105,3 +107,13 @@ phi_norm(Size, BigS, [Ty | N], Fixed, M) ->
     ?F(lists:foldl(fun(S, Res) -> constraint_set:join(?F(Res), ?F(ty_rec:normalize(S, Fixed, M))) end, [], BigS)),
     ?F(lists:foldl(Solve, [[]], lists:zip(lists:seq(1, length(ty_tuple:components(Ty))), lists:zip(BigS, ty_tuple:components(Ty)))))
   ).
+
+-ifdef(TEST).
+-include_lib("eunit/include/eunit.hrl").
+
+empty_0tuple_test() ->
+  Tuple = {node,{ty_tuple,0,[]},{terminal,0},{terminal,1}},
+  true = is_empty(Tuple),
+  ok.
+
+-endif.

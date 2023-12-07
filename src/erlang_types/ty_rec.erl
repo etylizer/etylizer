@@ -40,7 +40,6 @@ ty_of(Predef, Atom, Int, List, Tuple, Function) ->
 
 is_subtype(TyRef1, TyRef2) ->
   NewTy = intersect(TyRef1, ty_rec:negate(TyRef2)),
-
   is_empty(NewTy).
 
 is_equivalent(TyRef1, TyRef2) ->
@@ -806,6 +805,25 @@ recursive_definition_test() ->
   NewTy = ty_ref:define_ty_ref(ListsBasic, ty_ref:load(Expected)),
 
   true = ty_rec:is_equivalent(Res, NewTy),
+  ok.
+
+any_0tuple_test() ->
+  AnyTuple = ty_rec:tuple(0, dnf_var_ty_tuple:tuple(dnf_ty_tuple:tuple(ty_tuple:tuple([])))),
+  AnyTuple2 = ty_rec:tuple(0, dnf_var_ty_tuple:any()),
+  true = ty_rec:is_equivalent(AnyTuple, AnyTuple2),
+  ok.
+
+any_tuple_test() ->
+  AnyTuple = ty_rec:tuple(1, dnf_var_ty_tuple:tuple(dnf_ty_tuple:tuple(ty_tuple:tuple([ty_rec:any()])))),
+  AnyTuple2 = ty_rec:tuple(1, dnf_var_ty_tuple:any()),
+  true = ty_rec:is_equivalent(AnyTuple, AnyTuple2),
+  ok.
+
+nonempty_function_test() ->
+  Function = ty_rec:function(1, dnf_var_ty_function:function(dnf_ty_function:function(ty_function:function([ty_rec:empty()], ty_rec:any())))),
+  Function2 = ty_rec:function(1, dnf_var_ty_function:any()),
+  true = ty_rec:is_subtype(Function, Function2),
+  true = ty_rec:is_subtype(Function2, Function),
   ok.
 
 -endif.
