@@ -8,7 +8,10 @@
     sanity_check/2
 ]).
 
--export_type([unmatched_branch_mode/0]).
+-export_type([
+    unmatched_branch_mode/0,
+    simp_constrs_result/0
+]).
 
 -record(ctx,
         { symtab :: symtab:t(),
@@ -307,7 +310,7 @@ locs_from_constrs(Cs) ->
             end, sets:to_list(Cs))
     ).
 
--spec get_substs([subst:t()], constr:locs()) -> [{subst:t(), constr:simpl_constrs()}].
+-spec get_substs([subst:t()], constr:locs()) -> [{subst:t(), constr:simp_constrs()}].
 get_substs(Substs, Locs) ->
     case Substs of
         {error, _} ->

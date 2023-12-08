@@ -3,6 +3,8 @@
 -export([with_graph/1, add_vertex/2, add_edge/3, out_neighbours/2,
          strong_components/1, topsort/1, to_list/2]).
 
+-export_type([graph/1]).
+
 -type digraph(_V) :: digraph:graph().
 -type table(_V) :: ets:table().
 % A graph consists of a diagraph and a table mapping extern vertices of

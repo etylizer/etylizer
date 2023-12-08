@@ -690,7 +690,7 @@ var_test_env(FunExp, X, RestArgs) ->
 %   ...
 %   (pm1, pm2, ..., pmn) -> em
 % end
--spec fun_clauses_to_exp(ctx(), ast:loc(), [ast:fun_clauses()]) -> {[ast:local_varname()], ast:exps()}.
+-spec fun_clauses_to_exp(ctx(), ast:loc(), [ast:fun_clause()]) -> {[ast:local_varname()], ast:exps()}.
 fun_clauses_to_exp(Ctx, _, FunClauses = [{fun_clause, L, Pats, [], Body}]) ->
     % special case: only one clause, no guards, all patterns are variables
     Vars =
@@ -708,7 +708,7 @@ fun_clauses_to_exp(Ctx, _, FunClauses = [{fun_clause, L, Pats, [], Body}]) ->
 fun_clauses_to_exp(Ctx, L, FunClauses) ->
     fun_clauses_to_exp_aux(Ctx, L, FunClauses).
 
--spec fun_clauses_to_exp_aux(ctx(), ast:loc(), [ast:fun_clauses()]) -> {[ast:local_varname()], ast:exps()}.
+-spec fun_clauses_to_exp_aux(ctx(), ast:loc(), [ast:fun_clause()]) -> {[ast:local_varname()], ast:exps()}.
 fun_clauses_to_exp_aux(Ctx, L, FunClauses) ->
     Arity =
         case FunClauses of
@@ -749,7 +749,7 @@ fun_clause_to_case_clause({fun_clause, L, Pats, Guards, Exps}) ->
 %   ...
 %   _ when gn -> en
 % end
--spec if_exp_to_case_exp(ast:if_exp()) -> ast:case_exp().
+-spec if_exp_to_case_exp(ast:exp_if()) -> ast:exp_case().
 if_exp_to_case_exp({'if', L, IfClauses}) ->
     ScrutExp = {tuple, L, []},
     Pat = {wildcard, L},
