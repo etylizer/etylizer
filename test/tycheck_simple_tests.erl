@@ -138,7 +138,9 @@ simple_test_() ->
     "list_pattern_07",
     "some_fun",
     "fun_local_03",
-    "fun_local_04"
+    "fun_local_04",
+    "fun_local_02_plus",
+    "my_plus"
   ],
 
   NoInfer = [
