@@ -338,7 +338,7 @@ subst(S) ->
                         text(" => "),
                         ty(T))
           end,
-          maps:to_list(S)),
+          maps:to_list(subst:base_subst(S))),
     brackets(comma_sep(Elems)).
 
 -spec poly_env(constr:constr_poly_env()) -> doc().

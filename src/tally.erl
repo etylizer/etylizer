@@ -9,10 +9,13 @@
 -export([tally/4]). % extra tally function used to specify variable order to ensure a deterministic number of solutions
 -endif.
 
--spec tally(symtab:t(), constr:simp_constrs()) -> [subst:t()] | {error, [{error, string()}]}.
+-type tally_res() :: {error, [{error, string()}]} | nonempty_list(subst:t()).
+
+-spec tally(symtab:t(), constr:simp_constrs()) -> tally_res().
 tally(SymTab, Constraints) -> tally(SymTab, Constraints, sets:new()) .
 
--spec tally(symtab:t(), constr:simp_constrs(), sets:set(ast:ty_varname())) -> [subst:t()] | {error, [{error, string()}]}.
+
+-spec tally(symtab:t(), constr:simp_constrs(), sets:set(ast:ty_varname())) -> tally_res().
 tally(SymTab, Constraints, FixedVars) ->
   tally(SymTab, Constraints, FixedVars, fun() -> noop end).
 
@@ -34,7 +37,9 @@ tally(_SymTab, Constraints, FixedVars, Order) ->
     lists:sort(fun({csubty, _, S, T}, {csubty, _, X, Y}) -> ({S, T}) < ({X, Y}) end,
       sets:to_list(Constraints))
   ),
-  InternalResult = etally:tally(InternalConstraints, sets:from_list([ast_lib:ast_to_erlang_ty_var({var, Var}) || Var <- lists:sort(sets:to_list(FixedVars))])),
+  FixedTallyTyvars =
+    [ast_lib:ast_to_erlang_ty_var({var, Var}) || Var <- lists:sort(sets:to_list(FixedVars))],
+  InternalResult = etally:tally(InternalConstraints, sets:from_list(FixedTallyTyvars)),
 %%  io:format(user, "Got Constraints ~n~p~n~p~n", [InternalConstraints, InternalResult]),
 
   case InternalResult of
@@ -43,5 +48,10 @@ tally(_SymTab, Constraints, FixedVars, Order) ->
         _ ->
           % transform to subst:t()
           % TODO sanity variable Id == variable name
-          [maps:from_list([{VarName, ast_lib:erlang_ty_to_ast(Ty)} || {{var, _, VarName}, Ty} <- maps:to_list(Subst)]) || Subst <- InternalResult]
+          [subst:mk_tally_subst(
+            FixedVars,
+            maps:from_list([{VarName, ast_lib:erlang_ty_to_ast(Ty)}
+                          || {{var, _, VarName}, Ty} <- maps:to_list(Subst)]))
+          || Subst <- InternalResult]
+
   end.
