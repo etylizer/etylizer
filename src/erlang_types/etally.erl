@@ -5,21 +5,24 @@
   tally/2
 ]).
 
+-define(debug, true).
 
-is_valid_substitution([], _) -> true;
-is_valid_substitution([{Left, Right} | Cs], Substitution) ->
-  SubstitutedLeft = ty_rec:substitute(Left, Substitution),
-  SubstitutedRight = ty_rec:substitute(Right, Substitution),
-%%  io:format(user, "Left: ~p -> ~p~n", [Left, SubstitutedLeft]),
-%%  io:format(user, "Right: ~p -> ~p~n", [Right, SubstitutedRight]),
-  Res = ty_rec:is_subtype(SubstitutedLeft, SubstitutedRight) ,
-  Res andalso
-    is_valid_substitution(Cs, Substitution).
+-include_lib("../log.hrl").
+-include_lib("sanity.hrl").
 
+tally(Constraints) -> tally(Constraints, sets:new()).
 
 tally(Constraints, FixedVars) ->
+  Normalized = ?TIME(tally_normalize, tally_normalize(Constraints, FixedVars)),
+  Saturated = ?TIME(tally_saturate, tally_saturate(Normalized, FixedVars)),
+  Solved = ?TIME(tally_solve, tally_solve(Saturated, FixedVars)),
+  % sanity: every substitution satisfies all given constraints, if no error
+  ?SANITY(substitutions_solve_input_constraints, case Solved of {error, _} -> ok; _ -> [ true = is_valid_substitution(Constraints, Subst) || Subst <- Solved] end),
+  Solved.
+
+tally_normalize(Constraints, FixedVars) ->
   % TODO heuristic here and benchmark
-  Normalized = lists:foldl(fun({S, T}, A) ->
+  lists:foldl(fun({S, T}, A) ->
     constraint_set:meet(
       fun() -> A end,
       fun() ->
@@ -27,40 +30,24 @@ tally(Constraints, FixedVars) ->
         ty_rec:normalize(SnT, FixedVars, sets:new())
       end
     )
-              end, [[]], Constraints),
+              end, [[]], Constraints).
 
-
-  Saturated = lists:foldl(fun(ConstraintSet, A) ->
+tally_saturate(Normalized, FixedVars) ->
+  lists:foldl(fun(ConstraintSet, A) ->
     constraint_set:join(
       fun() -> A end,
       fun() -> constraint_set:saturate(ConstraintSet, FixedVars, sets:new()) end
     )
-                           end, [], Normalized),
+              end, [], Normalized).
 
-
-  Solved = case Saturated of
-    [] -> {error, []};
-    _ -> solve(Saturated, FixedVars)
-  end,
-
-  case Solved of
-        {error, []} ->
-          {error, []};
-        _ ->
-          % TODO expensive sanity check
-          % sanity: every substitution satisfies all given constraints
-%%          io:format(user, "Solved: ~p~n", [Solved]),
-          [ true = is_valid_substitution(Constraints, maps:from_list(Subst)) || Subst <- Solved],
-          Solved
-      end.
-
-%%-spec tally(constraint:simple_constraints()) -> [substitution:t()] | {error, [{error, string()}]}.
-tally(Constraints) ->
-  tally(Constraints, sets:new()).
+tally_solve([], _FixedVars) -> {error, []};
+tally_solve(Saturated, FixedVars) ->
+  Solved = solve(Saturated, FixedVars),
+  [ maps:from_list(Subst) || Subst <- Solved].
 
 solve(SaturatedSetOfConstraintSets, FixedVariables) ->
   S = ([ solve_single(C, [], FixedVariables) || C <- SaturatedSetOfConstraintSets]),
-  [unify(E) || E <- S].
+  [ unify(E) || E <- S].
 
 solve_single([], Equations, _) -> Equations;
 solve_single([{SmallestVar, Left, Right} | Cons], Equations, Fix) ->
@@ -80,25 +67,23 @@ unify(EquationList) ->
   % sort to smallest variable
   % select in E the equation α = tα for smallest α
   [Eq = {eq, Var, TA} | _Tail] = lists:usort(fun({_, Var, _}, {_, Var2, _}) -> ty_variable:compare(Var, Var2) =< 0 end, EquationList),
-
   Vars = ty_rec:all_variables(TA),
-
   NewTA = case length([Z || Z <- Vars, Z == Var]) of
-    0 ->
-      TA;
-    _ ->
-      % TODO this should work, but not tested yet. Needs a test case
-      error({todo, implement_recursive_unification}),
-      % create new recursive type μX
-      MuX = ty_ref:new_ty_ref(),
+            0 ->
+              TA;
+            _ ->
+              % TODO this should work, but not tested yet. Needs a test case
+              error({todo, implement_recursive_unification}),
+              % create new recursive type μX
+              MuX = ty_ref:new_ty_ref(),
 
-      % define type
-      % μX.(tα{X/α}) (X fresh)
-      Mapping = #{Var => MuX},
-      Inner = ty_rec:substitute(TA, Mapping),
-      ty_ref:define_ty_ref(MuX, ty_ref:load(Inner)),
-      MuX
-  end,
+              % define type
+              % μX.(tα{X/α}) (X fresh)
+              Mapping = #{Var => MuX},
+              Inner = ty_rec:substitute(TA, Mapping),
+              ty_ref:define_ty_ref(MuX, ty_ref:load(Inner)),
+              MuX
+          end,
 
   NewMap = #{Var => NewTA},
 
@@ -107,7 +92,7 @@ unify(EquationList) ->
     (X = {eq, XA, TAA}) <- EquationList, X /= Eq
   ],
 
-  true = length(EquationList) - 1 == length(E_),
+  ?SANITY(solve_equation_list_length, true = length(EquationList) - 1 == length(E_)),
 
   Sigma = unify(E_),
   NewTASigma = apply_substitution(NewTA, Sigma),
@@ -121,7 +106,7 @@ apply_substitution(Ty, Substitutions) ->
     Result = ty_rec:substitute(Tyy, Mapping),
     sanity_substitution({Var, To}, Tyy, Result),
     Result
-    end,
+             end,
   lists:foldl(SubstFun, Ty, Substitutions).
 
 sanity_substitution({Var, _To}, Ty, TyAfter) ->
@@ -135,38 +120,18 @@ sanity_substitution({Var, _To}, Ty, TyAfter) ->
       end
   end.
 
-% TODO implement & benchmark the minimization
-%%minimize_solutions(X = {fail, _}) -> X;
-%%minimize_solutions(M) ->
-%%  R = lists:filter(fun(Sigma) -> not can_be_removed(Sigma, M) end, M),
-%%
-%%  case R of
-%%    M -> M;
-%%    _ ->
-%%      % ?LOG_DEBUG("Successfully reduced tally solution size! ~p -> ~p", length(M), length(R)),
-%%      R
-%%  end.
-%%
-%%can_be_removed(Sigma, AllSubs) ->
-%%  % does Sigma' exist such that
-%%  lists:any(fun(SigmaPrime) ->
-%%    % dom(Sigma') <: dom(Sigma)
-%%    domain(SigmaPrime, Sigma)
-%%    andalso
-%%    %for all alpha \in dom(sigma'): sigma'(alpha) ~ sigma(alpha)
-%%    sub_domain_equivalent(SigmaPrime, Sigma)
-%%            end, lists:delete(Sigma, AllSubs)).
-%%
-%%
-%%domain(Sigma1, Sigma2) ->
-%%  S1 = [Var || {Var, _} <- Sigma1],
-%%  S2 = [Var || {Var, _} <- Sigma2],
-%%  gb_sets:is_subset(gb_sets:from_list(S1), gb_sets:from_list(S2)).
-%%
-%%sub_domain_equivalent(S1, S2) ->
-%%  SAll = [Var || {Var, _} <- S1],
-%%  lists:all(fun(Var) ->
-%%    [Ty] = [T || {V, T} <- S1, V == Var],
-%%    [Ty2] = [T || {V, T} <- S2, V == Var],
-%%    ty_rec:is_equivalent(Ty, Ty2)
-%%            end, SAll).
+
+% sanity check
+is_valid_substitution([], _) -> true;
+is_valid_substitution([{Left, Right} | Cs], Substitution) ->
+  SubstitutedLeft = ty_rec:substitute(Left, Substitution),
+  SubstitutedRight = ty_rec:substitute(Right, Substitution),
+  Res = ty_rec:is_subtype(SubstitutedLeft, SubstitutedRight) ,
+  case Res of
+    false ->
+      io:format(user, "Left: ~s -> ~s~n", [ty_rec:print(Left), ty_rec:print(SubstitutedLeft)]),
+      io:format(user, "Right: ~s -> ~s~n", [ty_rec:print(Right), ty_rec:print(SubstitutedRight)]);
+    _ -> ok
+  end,
+  Res andalso
+    is_valid_substitution(Cs, Substitution).
