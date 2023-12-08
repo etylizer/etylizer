@@ -10,7 +10,6 @@
 
 -export([equal/2, compare/2]).
 
-%%
 -export([empty/0, any/0, union/2, intersect/2, diff/2, negate/1]).
 -export([is_any/1, normalize/6, substitute/4, is_empty/1]).
 
@@ -42,19 +41,24 @@ is_empty(TyBDD) ->
   gen_bdd:dnf(?P, TyBDD, {fun is_empty_coclause/3, fun gen_bdd:is_empty_union/2}).
 
 is_empty_coclause(AllPos, Neg, T) ->
-  case bdd_bool:empty() of
-    T -> true;
-    _ -> case AllPos of
-           [] -> false;
-           [P | Pos] ->
-             % TODO here do these simplifications
-             % A -> B && C -> B == A|C -> B
-             % A -> B && A -> C == A -> B&C
-             BigSTuple = lists:foldl(fun(FunTy, Acc) ->
-               ty_rec:union(Acc, domains_to_tuple(ty_function:domains(FunTy)))
-                                     end, domains_to_tuple(ty_function:domains(P)), Pos),
-             is_empty_cont(BigSTuple, AllPos, Neg)
-         end
+  case {AllPos, Neg, bdd_bool:empty()} of
+    {_, _, T} -> true;
+    {[], [], _} -> false;
+    {[], Neg = [TNeg | _], _} ->
+      Dim = length(ty_function:domains(TNeg)),
+      P = ty_function:function([ty_rec:empty() || _ <- lists:seq(1, Dim)], ty_rec:any()),
+      BigSTuple = lists:foldl(fun(FunTy, Acc) ->
+        ty_rec:union(Acc, domains_to_tuple(ty_function:domains(FunTy)))
+                              end, domains_to_tuple(ty_function:domains(P)), []),
+      is_empty_cont(BigSTuple, AllPos, Neg);
+    {[P | Pos], Neg, _} ->
+      % TODO here do these simplifications
+      % A -> B && C -> B == A|C -> B
+      % A -> B && A -> C == A -> B&C
+      BigSTuple = lists:foldl(fun(FunTy, Acc) ->
+        ty_rec:union(Acc, domains_to_tuple(ty_function:domains(FunTy)))
+                              end, domains_to_tuple(ty_function:domains(P)), Pos),
+      is_empty_cont(BigSTuple, AllPos, Neg)
   end.
 
 is_empty_cont(_, _, []) -> false;
