@@ -1,4 +1,4 @@
--module(poly_fail_01).
+-module(poly_fail01).
 
 -compile(export_all).
 -compile(nowarn_export_all).
