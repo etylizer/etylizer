@@ -657,12 +657,9 @@ function_keys(TyRef) ->
   {_T, Map} = Ty#ty.function,
   maps:fold(fun(K,_,AccIn) -> [K | AccIn] end, [], Map).
 
-
 multi_substitute(DefaultTuple, AllTuples, SubstituteMap, Memo) ->
   % substitute default tuple, get a new default tuple
-%%  io:format(user, "From default: ~p~n", [DefaultTuple]),
   NewDefaultTuple = dnf_var_ty_tuple:substitute( fun(Ty) -> pi({tuple, default}, Ty) end, DefaultTuple, SubstituteMap, Memo),
-%%  io:format(user, "Into new default: ~p~n", [NewDefaultTuple]),
 
   % the default tuple can be substituted to contain other explicit tuple lengths
   % example: {alpha, 0} with alpha := {1,1} ==> {0, 2 -> {1,1}}
@@ -675,38 +672,20 @@ multi_substitute(DefaultTuple, AllTuples, SubstituteMap, Memo) ->
   % note: OtherTupleKeys not be included in the AllTuples keys, they are known
   % TODO erlang 26 map comprehensions
   Keys = maps:fold(fun(K,V,AccIn) -> case lists:member(K, AllVars) of true -> tuple_keys(V) -- maps:keys(AllTuples) ++ AccIn; _ -> AccIn end end, [], SubstituteMap),
-%%  Keys = [(tuple_keys(V) -- maps:keys(AllTuples)) || K := V <- SubstituteMap, lists:member(K, AllVars)],
+  % Keys = [(tuple_keys(V) -- maps:keys(AllTuples)) || K := V <- SubstituteMap, lists:member(K, AllVars)],
   OtherTupleKeys = lists:usort(lists:flatten(Keys)),
   NewDefaultOtherTuples = maps:from_list([{Length, dnf_var_ty_tuple:substitute( fun(Ty) -> pi({tuple, Length}, Ty) end, DefaultTuple, SubstituteMap, Memo)} || Length <- OtherTupleKeys]),
 
   % all explicit keys are now all defined tuples and all newly explicit tuples after default substitution
   AllKeys = maps:keys(AllTuples) ++ maps:keys(NewDefaultOtherTuples),
 
-  % TODO the above can happen with explicit tuples, introducing new explicit tuples not known before
-  % TODO test case:
-  % {0, 2 => alpha} with alpha := {1,1,1} ==> {0, 3 => {1,1,1}}
+  % {alpha, 0 => alpha} with alpha := {1} ==> {0, 1 => {1}}
   % for explicit tuples, collect all other lengths into a new map, yielding a list of maps
   % merge (union) these maps into NewOtherTuples
   NewOtherTuples = maps:from_list(lists:map(fun(Key) ->
     {Key, case maps:is_key(Key, AllTuples) of
             true ->
-              OtherFixedTuples = maps:from_list([
-                {Length, dnf_var_ty_tuple:substitute( fun(Ty) -> pi({tuple, Length}, Ty) end, maps:get(Key, AllTuples), SubstituteMap, Memo)} || Length <- OtherTupleKeys
-              ]),
-              case length(maps:keys(OtherFixedTuples)) > 0 of true ->
-                io:format(user, "Doing a substitution with this tuple: ~p~n", [{DefaultTuple, AllTuples}]),
-                io:format(user, "With the map: ~p~n", [SubstituteMap]),
-                io:format(user, "Creates new tuples!: ~p~n", [OtherFixedTuples]),
-                error({todo, othertuples, OtherFixedTuples});
-                false -> ok end,
-%%              io:format(user, "Substitute ~p with ~p~n", [maps:get(Key, AllTuples), SubstituteMap]),
-              E = dnf_var_ty_tuple:substitute( fun(Ty) ->
-%%                io:format(user, "Got ~p~n All Tuples: ~p~n", [ty_ref:load(Ty), AllTuples]),
-                pi({tuple, Key}, Ty)
-                                           end, maps:get(Key, AllTuples), SubstituteMap, Memo),
-%%              io:format(user, "DONE~n", []),
-              E
-            ;
+              dnf_var_ty_tuple:substitute( fun(Ty) -> pi({tuple, Key}, Ty) end, maps:get(Key, AllTuples), SubstituteMap, Memo);
             _ -> maps:get(Key, NewDefaultOtherTuples, NewDefaultTuple)
           end}
                                             end, AllKeys)),
@@ -720,20 +699,14 @@ multi_substitute_fun(DefaultFunction, AllFunctions, SubstituteMap, Memo) ->
   AllVars = dnf_var_ty_tuple:all_variables(DefaultFunction),
   % TODO erlang 26 map comprehensions
   Keys = maps:fold(fun(K,V,AccIn) -> case lists:member(K, AllVars) of true -> function_keys(V) -- maps:keys(AllFunctions) ++ AccIn; _ -> AccIn end end, [], SubstituteMap),
-%%  Keys = [function_keys(V) || K := V <- SubstituteMap, lists:member(K, AllVars)],
+  % Keys = [function_keys(V) || K := V <- SubstituteMap, lists:member(K, AllVars)],
   OtherFunctionKeys = lists:usort(lists:flatten(Keys)),
   NewDefaultOtherFunctions = maps:from_list([{Length, dnf_var_ty_function:substitute( fun(Ty) -> pi({function, Length}, Ty) end, DefaultFunction, SubstituteMap, Memo)} || Length <- OtherFunctionKeys]),
   AllKeys = maps:keys(AllFunctions) ++ maps:keys(NewDefaultOtherFunctions),
 
-  % TODO FIXME same problem as tuples, see multi_substitute
   NewOtherFunctions = maps:from_list(lists:map(fun(Key) ->
     {Key, case maps:is_key(Key, AllFunctions) of
-            true ->
-              OtherFixedFunctions = maps:from_list([
-                {Length, dnf_var_ty_function:substitute( fun(Ty) -> pi({function, Length}, Ty) end, maps:get(Key, AllFunctions), SubstituteMap, Memo)} || Length <- OtherFunctionKeys
-              ]),
-              case length(maps:keys(OtherFixedFunctions)) > 0 of true -> error({todo, otherfunctions, OtherFixedFunctions}); false -> ok end,
-              dnf_var_ty_function:substitute( fun(Ty) -> pi({function, Key}, Ty) end, maps:get(Key, AllFunctions), SubstituteMap, Memo) ;
+            true -> dnf_var_ty_function:substitute( fun(Ty) -> pi({function, Key}, Ty) end, maps:get(Key, AllFunctions), SubstituteMap, Memo);
             _ -> maps:get(Key, NewDefaultOtherFunctions, NewDefaultFunction)
           end}
                                             end, AllKeys)),
