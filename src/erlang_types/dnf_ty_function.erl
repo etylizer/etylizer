@@ -4,41 +4,28 @@
 -export([explore_function_norm/6]).
 -endif.
 
--define(P, {bdd_bool, ty_function}).
+-define(ELEMENT, ty_function).
+-define(TERMINAL, bdd_bool).
+
 -define(F(Z), fun() -> Z end).
 
+-export([apply_to_node/3]).
+-export([normalize/6, substitute/4, is_empty/1]).
 
--export([equal/2, compare/2]).
-
--export([empty/0, any/0, union/2, intersect/2, diff/2, negate/1]).
--export([is_any/1, normalize/6, substitute/4, is_empty/1]).
-
--export([function/1, all_variables/1, has_ref/2, transform/2]).
+-export([function/1, all_variables/1, transform/2]).
 
 -type ty_ref() :: {ty_ref, integer()}.
 -type dnf_function() :: term().
--type ty_function() :: dnf_function(). % ty_function:type()
+-type ty_function() :: dnf_function().
 -type dnf_ty_function() :: term().
 
--spec function(ty_function()) -> dnf_ty_function().
-function(TyFunction) -> gen_bdd:element(?P, TyFunction).
+-include("bdd_node.hrl").
 
-empty() -> gen_bdd:empty(?P).
-any() -> gen_bdd:any(?P).
-transform(Ty, Ops) -> gen_bdd:transform(?P, Ty, Ops).
-substitute(MkTy, TyBDD, Map, Memo) -> gen_bdd:substitute(?P, MkTy, TyBDD, Map, Memo).
-union(B1, B2) -> gen_bdd:union(?P, B1, B2).
-intersect(B1, B2) -> gen_bdd:intersect(?P, B1, B2).
-diff(B1, B2) -> gen_bdd:diff(?P, B1, B2).
-negate(B1) -> gen_bdd:negate(?P, B1).
-is_any(B) -> gen_bdd:is_any(?P, B).
-has_ref(Ty, Ref) -> gen_bdd:has_ref(?P, Ty, Ref).
-all_variables(TyBDD) -> gen_bdd:all_variables(?P, TyBDD).
-equal(B1, B2) -> gen_bdd:equal(?P, B1, B2).
-compare(B1, B2) -> gen_bdd:compare(?P, B1, B2).
+-spec function(ty_function()) -> dnf_ty_function().
+function(TyFunction) -> node(TyFunction).
 
 is_empty(TyBDD) ->
-  gen_bdd:dnf(?P, TyBDD, {fun is_empty_coclause/3, fun gen_bdd:is_empty_union/2}).
+  dnf(TyBDD, {fun is_empty_coclause/3, fun is_empty_union/2}).
 
 is_empty_coclause(AllPos, Neg, T) ->
   case {AllPos, Neg, bdd_bool:empty()} of
@@ -97,7 +84,7 @@ explore_function(Ts, T2, [Function | P]) ->
     end.
 
 normalize(_Size, DnfTyFunction, [], [], Fixed, M) ->
-  gen_bdd:dnf(?P, DnfTyFunction, {
+  dnf(DnfTyFunction, {
     fun(Pos, Neg, DnfTyList) -> normalize_coclause(Pos, Neg, DnfTyList, Fixed, M) end,
     fun constraint_set:meet/2
   })
@@ -149,3 +136,6 @@ explore_function_norm(Size, T1, T2, [Function | P], Fixed, M) ->
   constraint_set:join(NT1,
     ?F(constraint_set:join(NT2,
       ?F(constraint_set:meet(NS1, NS2))))).
+
+apply_to_node(Node, Map, Memo) ->
+  substitute(Node, Map, Memo, fun(N, S, M) -> ty_function:substitute(N, S, M) end).

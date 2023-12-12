@@ -12,7 +12,9 @@
 
 
 -export([interval/2, cointerval/2]).
--export([transform/2, map_pi/1]).
+-export([transform/2, map_pi/1, has_ref/2]).
+
+has_ref(_, _) -> false.
 
 transform([], #{empty := E}) -> E();
 transform([any_int], #{any := E}) -> E();
@@ -37,6 +39,7 @@ transform_single({right, R}, M = #{union := U}) when R < 1 ->
 
 %% representation
 %% left? range* right?
+
 
 % TODO witness
 eval(_) -> erlang:error("TODO").
