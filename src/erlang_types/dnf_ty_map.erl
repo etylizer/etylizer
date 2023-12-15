@@ -4,6 +4,7 @@
 -define(OPT, optional).
 -define(MAN, mandatory).
 -define(F(Z), fun() -> Z end).
+-define(NORM, fun ty_rec:normalize/3).
 
 -export([equal/2, compare/2]).
 -export([empty/0, any/0, union/2, intersect/2, diff/2, negate/1]).
@@ -34,31 +35,19 @@ is_empty(TyBDD) ->
 is_empty_coclause(Pos, Neg, T) ->
   case bdd_bool:empty() of
     T -> true;
-    _ ->
-      BigIntersect = lists:foldr(fun ty_map:b_intersect/2, ty_map:b_anymap(), Pos),
-      phi(BigIntersect, Neg)
-  end.
+    _ -> phi(ty_map:big_intersect(Pos), Neg)
+end.
 
-phi(P, []) ->
-  {ty_map, Labels, Steps} = P,
-  #{} == filter_empty_labels(Labels) andalso #{} == Steps;
-phi(P, [N]) ->
-  {ty_map, LsDiff, StDiff} = ty_map:b_diff(P, N),
-  NoEmpties = maps:filter(fun(_, TyRef) -> not ty_rec:is_empty(TyRef) end, StDiff),
-  phi(ty_map:map(LsDiff, NoEmpties), []);
+phi(_, []) -> false;
 phi(P, [N | Ns]) ->
-  {ty_map, Labels, Steps} = P,
-  % ∀ ℓ ∈ L . P(ℓ) \ N(ℓ)
-  % ∀ 𝑘 ∈ Steps . (def(P))𝑘 \ (def(N))𝑘
-  {ty_map, LsDiff, StDiff} = ty_map:b_diff(P, N),
-  % ∀ 𝑘 . (def(P))𝑘 \ (def(N))𝑘 ~ 0
-  case lists:all(fun ty_rec:is_empty/1, maps:values(StDiff)) of
+  StepsDiff = ty_map:diff_k_steps(P, N),
+  W1Diff = ty_map:diff_omega1_step(P, N),
+
+  case lists:all(fun ty_rec:is_empty/1, [W1Diff | maps:values(StepsDiff)]) of
     true ->
-      % ∀ ℓ ∈ L . P(ℓ) \ N(ℓ) <> 0
-      Rest = filter_empty_labels(LsDiff),
-      % ∀ ℓ ∈ Rest . Φ(P ∧ {ℓ : ¬N(ℓ)}, Ns)
+      Rest = filter_empty_labels(ty_map:diff_labels(P, N)),
       lists:all(
-        fun({AL, TyRef}) -> phi(ty_map:map(Labels#{AL => TyRef}, Steps), Ns) end,
+        fun({AL, TyRef}) -> phi(ty_map:intersect(P, anymap(AL, TyRef)), Ns) end,
         maps:to_list(Rest)
       );
     false -> phi(P, Ns)
@@ -76,100 +65,51 @@ normalize(DnfTyMap, PVar, NVar, Fixed, M) ->
 normalize_coclause(Fixed, M) -> fun(Pos, Neg, T) ->
   case bdd_bool:empty() of
     T -> [[]];
-    _ ->
-      BigIntersect = lists:foldr(fun ty_map:b_intersect/2, ty_map:b_anymap(), Pos),
-      phi_norm(BigIntersect, Neg, Fixed, M)
+    _ -> phi_norm(ty_map:big_intersect(Pos), Neg, Fixed, M)
   end
                                 end.
 
-phi_norm({ty_map, Labels, Steps}, _, _, _) when Labels == #{}, Steps == #{} ->
-  [[]];
-phi_norm(P, Ns, Fixed, M) ->
-  {ty_map, _, _} = P,
-  KeyConstr = ?F(norm_key_variables(P, Fixed, M)),
-  NsConstr = ?F(norm_ns(P, Ns, Fixed, M)),
-  meet_all([KeyConstr, NsConstr]).
+phi_norm(_, [], _, _) -> [];
+phi_norm(P, [N | Ns], Fixed, M) ->
+  StepsDiff = ty_map:diff_k_steps(P, N),
+  W1Diff = ty_map:diff_omega1_step(P, N),
+  LabelsDiff = ty_map:diff_labels(P, N),
+  {O1, O2} = ty_map:omegas(P),
+  {O11, O22} = ty_map:omegas(N),
 
-norm_ns(_, [], _, _) -> [];
-norm_ns(P, [N | Ns], Fixed, M) ->
-  constraint_set:join(?F(norm_n(P, N, Ns, Fixed, M)), ?F(norm_ns(P, Ns, Fixed, M))).
+  NormedKeyVars = ?F(norm_key_variables(O1, O11, O2, O22, ty_map:key_variables(P), ty_map:key_variables(N), Fixed, M)),
 
-norm_n(P, N, Ns, Fixed, M) ->
-  {ty_map, Labels, Steps} = P,
-  % ∀ 𝑘 ∈ Steps . (def'(P))𝑘 \ (def'(N))𝑘
-  StepConstr = ?F(norm_steps(P, N, Fixed, M)),
-  % ∀ ℓ ∈ L . P(ℓ)' \ N(ℓ)'
-  {_, LsDiff, _} = ty_map:b_diff(P, N),
+  ToNorm1 = [?F(?NORM(TyRef, Fixed, M)) || TyRef <- [W1Diff | maps:values(StepsDiff)]],
+  ToNorm2 = [begin
+               X = ?F(elim_assoc_conflict(?NORM(TyRef, Fixed, M), A)),
+               Y = ?F(elim_assoc_conflict(phi_norm(ty_map:intersect(P, anymap(AL, TyRef)), Ns, Fixed, M), A)),
+               ?F(constraint_set:join(X, Y))
+             end || AL = {A, _} := TyRef <- LabelsDiff],
 
-  KeyConstr1 = ?F(norm_key_variables(N, Fixed, M)),
-  KeyConstr2 = ?F(norm_key_variables(P, N, Fixed, M)),
-  LabelConstrList = [begin
-                       ValConstr = ?F(elim_assoc_conflict(ty_rec:normalize(TyRef, Fixed, M), A)),
-                       RestConstr = ?F(elim_assoc_conflict(norm_ns(ty_map:map(Labels#{AL => TyRef}, Steps), Ns, Fixed, M), A)),
-                       ?F(constraint_set:join(ValConstr, RestConstr))
-                     end
-    || AL = {A, _} := TyRef <- LsDiff],
-  meet_all([KeyConstr1, KeyConstr2, StepConstr | LabelConstrList]).
+  constraint_set:join(
+    ?F(meet_all([NormedKeyVars | ToNorm1 ++ ToNorm2])),
+    ?F(phi_norm(P, Ns, Fixed, M))
+  ).
 
 
-norm_steps(TyMap1, TyMap2, Fixed, M) ->
-  {_, Labels, Steps} = TyMap1,
-  {_, NegLabels, NegSteps} = TyMap2,
-  VarValues1 = [Ty || {A, {Tag, _}} := Ty <- Labels, optional == A, var_key == Tag],
-  VarValues2 = [Ty || {A, {Tag, _}} := Ty <- NegLabels, optional == A, var_key == Tag],
-  meet_all([begin
-              #{S := T2} = NegSteps,
-              T11 = u([T1 | VarValues1]),
-              T22 = u([T2 | VarValues2]),
-              case T22 == ty_rec:empty() of
-                true -> ?F(ty_rec:normalize(T1, Fixed, M));
-                false -> ?F(ty_rec:normalize(ty_rec:diff(T11, T22), Fixed, M))
-              end
-            end
-    || S := T1 <- Steps]).
+norm_key_variables(O1, O11, O2, O22, KeyVarsInPos, KeyVarsInNeg, Fixed, M) ->
+  Bound = fun(Var, Lower, Upper) -> constraint_set:meet(
+    ?F(?NORM(ty_rec:diff(Lower, Var), Fixed, M)),
+    ?F(?NORM(ty_rec:diff(Var, Upper), Fixed, M)))
+           end,
+  NormPos = [case A of
+               ?MAN -> ?F(Bound(Var, ty_rec:diff(O1, O11), ty_rec:diff(O1, O11)));
+               ?OPT -> ?F(Bound(Var, ty_rec:diff(O2, O22), ty_rec:diff(O2, O22)))
+             end || {A, Var} <- KeyVarsInPos],
+  NormNeg = [case A of
+               ?MAN -> ?F(Bound(Var, ty_rec:diff(O11, O1), ty_rec:diff(O11, O1)));
+               ?OPT -> ?F(Bound(Var, ty_rec:diff(O22, O2), O22))
+             end || {A, Var} <- KeyVarsInNeg],
+
+  meet_all(NormPos ++ NormNeg).
 
 
-%% Set upper bound for key variables in Map
-norm_key_variables(TyMap = {_, Labels, _}, Fixed, M) ->
-  UndefinedKeys = ty_rec:diff(ty_map:key_domain(), ty_map:key_domain(TyMap, false)),
-  meet_all([case A of
-              optional ->
-                Upper = ty_rec:diff(TyVar, UndefinedKeys),
-                ?F(ty_rec:normalize(Upper, Fixed, M));
-              mandatory ->
-                LabelKeys = u([TyRef || {_, {T, TyRef}} := _ <- Labels, var_key =/= T]),
-                Upper = ty_rec:diff(TyVar, ty_rec:negate(LabelKeys)),
-                ?F(ty_rec:normalize(Upper, Fixed, M))
-            end
-    || {A, {Tag, TyVar}} := _ <- Labels, var_key == Tag]).
-
-
-%% Set lower bound for key variables in Map1 with respect to Map2 and vice versa
-norm_key_variables(TyMap1, TyMap2, Fixed, M) ->
-  DefinedKeys1 = ty_map:key_domain(TyMap1, true),
-  DefinedKeys2 = ty_map:key_domain(TyMap2, true),
-  Constrain =
-    fun({_, Labels1, _}, {_, Labels2, _}, Flag) ->
-      meet_all([case A of
-                  optional ->
-                    Lower = case Flag of 1 -> ty_rec:diff(TyVar, DefinedKeys2); 2 -> ty_rec:diff(DefinedKeys1, TyVar) end,
-                    ?F(ty_rec:normalize(Lower, Fixed, M));
-                  mandatory ->
-                    case [TyRef || {AA, {_, TyRef}} := _ <- Labels2, mandatory == AA] of
-                      [] when Flag == 1 -> ?F([[]]); % case: no mandatory keys in neg map
-                      % [] when Flag == 2 -> ?F([]); % case: no mandatory keys in pos map -- handled it below, by setting var to 0, thus var discarded by substitution
-                      X ->
-                        LabelKeys = u(X),
-                        Lower = ty_rec:diff(LabelKeys, TyVar),
-                        Upper = ty_rec:diff(TyVar, LabelKeys),
-                        ?F(constraint_set:meet(?F(ty_rec:normalize(Lower, Fixed, M)), ?F(ty_rec:normalize(Upper, Fixed, M))))
-                    end
-                end
-        || {A, {Tag, TyVar}} := _ <- Labels1, var_key == Tag])
-    end,
-  constraint_set:meet(?F(Constrain(TyMap1, TyMap2, 1)), ?F(Constrain(TyMap2, TyMap1, 2))).
-
-
+anymap(AL, TyRef) -> ty_map:map(#{AL => TyRef}, #{S => ty_rec:any() || S <- ty_map:step_names()}).
 filter_empty_labels(Labels) -> maps:filter(
   fun({?OPT, _}, _) -> true;
      ({?MAN, _}, TyRef) -> not ty_rec:is_empty(TyRef)
@@ -180,5 +120,4 @@ elim_assoc_conflict(_Constraints = C, _Association = A) ->
     {[], ?OPT} -> [[]]; % ⊥ exists as solution
     _ -> C
   end.
-u(Tys) -> lists:foldr(fun ty_rec:union/2, ty_rec:empty(), Tys).
 meet_all(Cs) -> lists:foldr(fun(C, Rest) -> constraint_set:meet(C, ?F(Rest)) end, [[]], Cs).

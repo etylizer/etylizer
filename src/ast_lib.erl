@@ -231,9 +231,11 @@ ast_to_erlang_ty({fun_full, Comps, Result}) ->
 
 % maps
 ast_to_erlang_ty({map_any}) ->
-    ty_rec:map(dnf_var_ty_map:map(dnf_ty_map:map(ty_map:b_anymap())));
+    ty_rec:map();
 ast_to_erlang_ty({map, []}) ->
-    ty_rec:map(dnf_var_ty_map:map(dnf_ty_map:map(ty_map:b_emptymap())));
+    EmptyMap = ty_map:map(#{}, #{S => ty_rec:empty() || S <- ty_map:step_names()}),
+    T = dnf_var_ty_map:map(dnf_ty_map:map(EmptyMap)),
+    ty_rec:map(T);
 ast_to_erlang_ty({map, AssocList}) ->
     {LabelMappings, StepMappings} = convert_associations(AssocList),
     ty_rec:map(dnf_var_ty_map:map(dnf_ty_map:map(ty_map:map(LabelMappings, StepMappings))));
@@ -306,7 +308,7 @@ maybe_new_variable(Name) ->
     end.
 
 convert_associations(AssocList) ->
-    EmptySteps = #{S => ty_rec:empty() || S <- [atom_key, integer_key, tuple_key]},
+    EmptySteps = #{S => ty_rec:empty() || S <- ty_map:step_names()},
     EmptyLabels = #{},
     lists:foldr(
         fun({Association, Key, Val}, {X, Y}) ->
@@ -321,7 +323,7 @@ convert_associations(AssocList) ->
         end, {EmptyLabels, EmptySteps}, AssocList).
 
 optional_converter(ValTy) ->
-    O = optional, ATOM = atom_key, INT = integer_key, TUP = tuple_key, VAR = var_key,
+    O = optional, [ATOM, INT, TUP | _] = ty_map:step_names(), VAR = var_key,
     Ty2 = ast_to_erlang_ty(ValTy),
 
     fun Converter(Type, {X, Y}) ->
@@ -363,7 +365,7 @@ optional_converter(ValTy) ->
     end.
 
 mandatory_converter(ValTy) ->
-    M = mandatory, ATOM = atom_key, INT = integer_key, VAR = var_key,
+    M = mandatory, [ATOM, INT | _] = ty_map:step_names(), VAR = var_key,
     Ty2 = ast_to_erlang_ty(ValTy),
 
     fun Converter(Type, {X, Y}) ->

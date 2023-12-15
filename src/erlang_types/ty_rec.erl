@@ -16,7 +16,7 @@
 
 -export([is_equivalent/2, is_subtype/2, normalize/3]).
 
--export([substitute/2, substitute/3, pi/2, pi_all/1, all_variables/1]).
+-export([substitute/2, substitute/3, pi/2, all_variables/1]).
 
 -export([transform/2, print/1]).
 
@@ -756,10 +756,12 @@ multi_substitute_fun(DefaultFunction, AllFunctions, SubstituteMap, Memo) ->
 
   {NewDefaultFunction, NewOtherFunctions}.
 
-has_ref(#ty{map = _Map, list = Lists, tuple = {Default, AllTuple}, function = {DefaultF, AllFunction}}, TyRef) ->
+has_ref(#ty{map = Maps, list = Lists, tuple = {Default, AllTuple}, function = {DefaultF, AllFunction}}, TyRef) ->
   % TODO sanity remove
   false = dnf_var_ty_tuple:has_ref(Default, TyRef), % should never happen
   false = dnf_var_ty_function:has_ref(DefaultF, TyRef), % should never happen
+  dnf_var_ty_map:has_ref(Maps, TyRef)
+  orelse
   dnf_var_ty_list:has_ref(Lists, TyRef)
   orelse
   maps:fold(fun(_K,T, All) -> All orelse dnf_var_ty_tuple:has_ref(T, TyRef) end, false, AllTuple)
@@ -804,9 +806,6 @@ pi(map, TyRef) ->
   Ty = ty_ref:load(TyRef),
   Ty#ty.map.
 
-pi_all(TyRef) ->
-  Ty = ty_ref:load(TyRef),
-  {Ty#ty.predef, Ty#ty.atom, Ty#ty.interval, Ty#ty.list, Ty#ty.tuple, Ty#ty.function, Ty#ty.map}.
 
 all_variables(TyRef) ->
   #ty{
