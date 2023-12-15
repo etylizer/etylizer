@@ -700,7 +700,7 @@ multi_substitute_fun(DefaultFunction, AllFunctions, SubstituteMap, Memo) ->
   % see multi_substitute for comments
   % TODO refactor abstract into one function for both tuples and funcions
   NewDefaultFunction = dnf_var_ty_function:substitute(DefaultFunction, SubstituteMap, Memo, fun(Ty) -> pi({function, default}, Ty) end),
-  AllVars = dnf_var_ty_tuple:all_variables(DefaultFunction),
+  AllVars = dnf_var_ty_function:all_variables(DefaultFunction),
   % TODO erlang 26 map comprehensions
   Keys = maps:fold(fun(K,V,AccIn) -> case lists:member(K, AllVars) of true -> function_keys(V) -- maps:keys(AllFunctions) ++ AccIn; _ -> AccIn end end, [], SubstituteMap),
   % Keys = [function_keys(V) || K := V <- SubstituteMap, lists:member(K, AllVars)],
