@@ -18,7 +18,7 @@
 -spec domain(t()) -> [ast:ty_varname()].
 domain(S) -> maps:keys(S).
 
--spec clean(ast:ty(), sets:set()) -> ast:ty().
+-spec clean(ast:ty(), sets:set(ast:ty_varname())) -> ast:ty().
 clean(T, Fixed) ->
     % clean
     Cleaned = clean_type(T, Fixed),

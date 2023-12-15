@@ -1,11 +1,7 @@
 -module(ty_function).
 
 %% domain -> co-domain function representation
-
-
--export([compare/2, equal/2, substitute/4, all_variables/1]).
-
-%%
+-export([compare/2, equal/2, all_variables/1, substitute/3]).
 -export([function/2, domains/1, codomain/1, codomains_intersect/1, has_ref/2, transform/2]).
 
 compare(A, B) when A < B -> -1;
@@ -37,7 +33,7 @@ has_ref({ty_function, Refs, _}, Ref) -> lists:member(Ref, Refs).
 transform({ty_function, Ref1, Ref2}, #{to_fun := Fun}) ->
     Fun(Ref1, Ref2).
 
-substitute(_, {ty_function, Refs, B}, Map, Memo) ->
+substitute({ty_function, Refs, B}, Map, Memo) ->
     {ty_function,
         lists:map(fun(C) -> ty_rec:substitute(C, Map, Memo) end, Refs),
         ty_rec:substitute(B, Map, Memo)

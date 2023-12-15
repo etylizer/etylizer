@@ -111,13 +111,18 @@ format_tally_config(Constraints, _FixedVars) ->
 % translates the ety tally input constraints to a cduce tally call
 % not all constructs are supported
 % TODO free variables #73
--spec ety_to_cduce_tally(list({term(), term()}), list()) -> string().
+-spec ety_to_cduce_tally(list(constr:simp_constr()) | list({ast:ty(), ast:ty()}), list(ast:ty_varname())) -> string().
 ety_to_cduce_tally(Constraints, Order) ->
     VariableOrder = io_lib:format("~s", [lists:join(" ", [to_var({var, V}) || V <- Order])]),
-    PairsOfConstraints = lists:map(fun({S, T}) -> "\n("++ to_cduce(S) ++ ", "++ to_cduce(T) ++ ")" end, Constraints),
+    PairsOfConstraints = lists:map(
+        fun
+            ({S, T}) -> "\n("++ to_cduce(S) ++ ", "++ to_cduce(T) ++ ")";
+            ({csuby, _, S, T}) -> "\n("++ to_cduce(S) ++ ", "++ to_cduce(T) ++ ")"
+        end, Constraints),
     "debug tallying ([" ++ VariableOrder ++ "] [] [" ++ PairsOfConstraints ++ "]);;".
 
 
+-spec to_cduce(ast:ty()) -> string().
 to_cduce({predef, any}) -> "Any";
 to_cduce({predef, none}) -> "Empty";
 to_cduce({predef, integer}) -> "Int";
@@ -137,6 +142,7 @@ to_cduce(Ast) ->
 
 % we use $ in the variable name which is not a valid character in OCaml
 % replace this with some other character
+-spec to_var(ast:ty_var()) -> string().
 to_var({var, Name}) ->
     "'" ++ string:replace(erlang:atom_to_list(Name), "$", "u").
 

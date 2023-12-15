@@ -10,7 +10,9 @@
 -export([union/2, intersect/2, diff/2, negate/1, is_any/1]).
 -export([is_empty/1, eval/1, normalize/5, substitute/4]).
 
--export([predef/1, transform/2, all_variables/1]).
+-export([has_ref/2, predef/1, transform/2, all_variables/1]).
+
+has_ref(_, _) -> false.
 
 substitute(_, Ty, _, _) ->  Ty.
 

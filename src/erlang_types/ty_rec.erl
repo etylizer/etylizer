@@ -1,5 +1,9 @@
 -module(ty_rec).
 
+-define(debug, true).
+
+-include_lib("sanity.hrl").
+
 -define(F(Z), fun() -> Z end).
 
 
@@ -310,8 +314,8 @@ extract_variables(Ty = #ty{ predef = P, atom = A, interval = I, list = L, tuple 
       dnf_var_ty_atom:all_variables(A),
       dnf_var_int:all_variables(I),
       dnf_var_ty_list:all_variables(L),
-      dnf_var_ty_tuple:all_variables(T),
-      dnf_var_ty_function:all_variables(F)
+      dnf_var_ty_tuple:mall_variables(T),
+      dnf_var_ty_function:mall_variables(F)
     ]),
 
 
@@ -351,7 +355,7 @@ variable(Var) ->
 
   ty_ref:store(Any#ty{
     predef = dnf_var_predef:intersect(Any#ty.predef, dnf_var_predef:var(Var)),
-    atom = dnf_var_ty_atom:intersect(Any#ty.atom, dnf_var_ty_atom:ty_var(Var)),
+    atom = dnf_var_ty_atom:intersect(Any#ty.atom, dnf_var_ty_atom:var(Var)),
     interval = dnf_var_int:intersect(Any#ty.interval, dnf_var_int:var(Var)),
     list = dnf_var_ty_list:intersect(Any#ty.list, dnf_var_ty_list:var(Var)),
     tuple = {dnf_var_ty_tuple:var(Var), #{}},
@@ -599,7 +603,7 @@ multi_normalize_functions({Default, AllFunctions}, Fixed, M) ->
 substitute(TyRef, SubstituteMap) ->
   % the left map is the current projection
   % the right map is the original substitution map
-  substitute(TyRef, SubstituteMap, #{}).
+  ?TIME(substitute, substitute(TyRef, SubstituteMap, #{})).
 
 % var => ty_rec
 % once the map arrives here, is should be the same again
@@ -622,22 +626,22 @@ substitute(TyRef, SubstituteMap, OldMemo) ->
           RecursiveNewRef = ty_ref:new_ty_ref(),
           Memo = OldMemo#{TyRef => RecursiveNewRef},
           NewTy = #ty{
-            predef = dnf_var_predef:substitute(fun(TTy) -> pi(predef, TTy) end, Predef, SubstituteMap, Memo),
-            atom = dnf_var_ty_atom:substitute(fun(TTy) -> pi(atom, TTy) end,Atoms, SubstituteMap, Memo),
-            interval = dnf_var_int:substitute(fun(TTy) -> pi(interval, TTy) end, Ints, SubstituteMap, Memo),
-            list = dnf_var_ty_list:substitute(fun(TTy) -> pi(list, TTy) end, Lists, SubstituteMap, Memo),
-            tuple = multi_substitute(DefaultT, AllTuples, SubstituteMap, Memo),
-            function = multi_substitute_fun(DefaultF, AllFunctions, SubstituteMap, Memo)
+            predef = ?TIME(vardef, dnf_var_predef:substitute(Predef, SubstituteMap, Memo, fun(TTy) -> pi(predef, TTy) end)),
+            atom = ?TIME(atom, dnf_var_ty_atom:substitute(Atoms, SubstituteMap, Memo, fun(TTy) -> pi(atom, TTy) end)),
+            interval = ?TIME(int, dnf_var_int:substitute(Ints, SubstituteMap, Memo, fun(TTy) -> pi(interval, TTy) end)),
+            list = ?TIME(list, dnf_var_ty_list:substitute(Lists, SubstituteMap, Memo, fun(TTy) -> pi(list, TTy) end)),
+            tuple = ?TIME(multi_tuple, multi_substitute(DefaultT, AllTuples, SubstituteMap, Memo)),
+            function = ?TIME(multi_fun, multi_substitute_fun(DefaultF, AllFunctions, SubstituteMap, Memo))
           },
           ty_ref:define_ty_ref(RecursiveNewRef, NewTy);
         false ->
           NewTy = #ty{
-            predef = dnf_var_predef:substitute(fun(TTy) -> pi(predef, TTy) end, Predef, SubstituteMap, OldMemo),
-            atom = dnf_var_ty_atom:substitute(fun(TTy) -> pi(atom, TTy) end, Atoms, SubstituteMap, OldMemo),
-            interval = dnf_var_int:substitute(fun(TTy) -> pi(interval, TTy) end, Ints, SubstituteMap, OldMemo),
-            list = dnf_var_ty_list:substitute(fun(TTy) -> pi(list, TTy) end, Lists, SubstituteMap, OldMemo),
-            tuple = multi_substitute(DefaultT, AllTuples, SubstituteMap, OldMemo),
-            function = multi_substitute_fun(DefaultF, AllFunctions, SubstituteMap, OldMemo)
+            predef = ?TIME(vardef, dnf_var_predef:substitute(Predef, SubstituteMap, OldMemo, fun(TTy) -> pi(predef, TTy) end)),
+            atom = ?TIME(atom, dnf_var_ty_atom:substitute(Atoms, SubstituteMap, OldMemo, fun(TTy) -> pi(atom, TTy) end)),
+            interval = ?TIME(int, dnf_var_int:substitute(Ints, SubstituteMap, OldMemo, fun(TTy) -> pi(interval, TTy) end)),
+            list = ?TIME(list, dnf_var_ty_list:substitute(Lists, SubstituteMap, OldMemo, fun(TTy) -> pi(list, TTy) end)),
+            tuple = ?TIME(multi_tuple, multi_substitute(DefaultT, AllTuples, SubstituteMap, OldMemo)),
+            function = ?TIME(multi_fun, multi_substitute_fun(DefaultF, AllFunctions, SubstituteMap, OldMemo))
           },
 %%          io:format(user, "Substitute ~p to ~p~nGot ~p~n", [Ty, SubstituteMap, NewTy]),
           ty_ref:store(NewTy)
@@ -658,7 +662,8 @@ function_keys(TyRef) ->
 
 multi_substitute(DefaultTuple, AllTuples, SubstituteMap, Memo) ->
   % substitute default tuple, get a new default tuple
-  NewDefaultTuple = dnf_var_ty_tuple:substitute( fun(Ty) -> pi({tuple, default}, Ty) end, DefaultTuple, SubstituteMap, Memo),
+%%  NewDefaultTuple = dnf_var_ty_tuple:csubstitute( fun(Ty) -> pi({tuple, default}, Ty) end, {tuple, default}, DefaultTuple, SubstituteMap, Memo),
+  NewDefaultTuple = dnf_var_ty_tuple:substitute(DefaultTuple, SubstituteMap, Memo, fun(Ty) -> pi({tuple, default}, Ty) end),
 
   % the default tuple can be substituted to contain other explicit tuple lengths
   % example: {alpha, 0} with alpha := {1,1} ==> {0, 2 -> {1,1}}
@@ -673,7 +678,7 @@ multi_substitute(DefaultTuple, AllTuples, SubstituteMap, Memo) ->
   Keys = maps:fold(fun(K,V,AccIn) -> case lists:member(K, AllVars) of true -> tuple_keys(V) -- maps:keys(AllTuples) ++ AccIn; _ -> AccIn end end, [], SubstituteMap),
   % Keys = [(tuple_keys(V) -- maps:keys(AllTuples)) || K := V <- SubstituteMap, lists:member(K, AllVars)],
   OtherTupleKeys = lists:usort(lists:flatten(Keys)),
-  NewDefaultOtherTuples = maps:from_list([{Length, dnf_var_ty_tuple:substitute( fun(Ty) -> pi({tuple, Length}, Ty) end, DefaultTuple, SubstituteMap, Memo)} || Length <- OtherTupleKeys]),
+  NewDefaultOtherTuples = maps:from_list([{Length, dnf_var_ty_tuple:substitute(DefaultTuple, SubstituteMap, Memo, fun(Ty) -> pi({tuple, Length}, Ty) end)} || Length <- OtherTupleKeys]),
 
   % all explicit keys are now all defined tuples and all newly explicit tuples after default substitution
   AllKeys = maps:keys(AllTuples) ++ maps:keys(NewDefaultOtherTuples),
@@ -684,7 +689,7 @@ multi_substitute(DefaultTuple, AllTuples, SubstituteMap, Memo) ->
   NewOtherTuples = maps:from_list(lists:map(fun(Key) ->
     {Key, case maps:is_key(Key, AllTuples) of
             true ->
-              dnf_var_ty_tuple:substitute( fun(Ty) -> pi({tuple, Key}, Ty) end, maps:get(Key, AllTuples), SubstituteMap, Memo);
+            dnf_var_ty_tuple:substitute(maps:get(Key, AllTuples), SubstituteMap, Memo, fun(Ty) -> pi({tuple, Key}, Ty) end);
             _ -> maps:get(Key, NewDefaultOtherTuples, NewDefaultTuple)
           end}
                                             end, AllKeys)),
@@ -694,18 +699,18 @@ multi_substitute(DefaultTuple, AllTuples, SubstituteMap, Memo) ->
 multi_substitute_fun(DefaultFunction, AllFunctions, SubstituteMap, Memo) ->
   % see multi_substitute for comments
   % TODO refactor abstract into one function for both tuples and funcions
-  NewDefaultFunction = dnf_var_ty_function:substitute( fun(Ty) -> pi({function, default}, Ty) end, DefaultFunction, SubstituteMap, Memo),
+  NewDefaultFunction = dnf_var_ty_function:substitute(DefaultFunction, SubstituteMap, Memo, fun(Ty) -> pi({function, default}, Ty) end),
   AllVars = dnf_var_ty_tuple:all_variables(DefaultFunction),
   % TODO erlang 26 map comprehensions
   Keys = maps:fold(fun(K,V,AccIn) -> case lists:member(K, AllVars) of true -> function_keys(V) -- maps:keys(AllFunctions) ++ AccIn; _ -> AccIn end end, [], SubstituteMap),
   % Keys = [function_keys(V) || K := V <- SubstituteMap, lists:member(K, AllVars)],
   OtherFunctionKeys = lists:usort(lists:flatten(Keys)),
-  NewDefaultOtherFunctions = maps:from_list([{Length, dnf_var_ty_function:substitute( fun(Ty) -> pi({function, Length}, Ty) end, DefaultFunction, SubstituteMap, Memo)} || Length <- OtherFunctionKeys]),
+  NewDefaultOtherFunctions = maps:from_list([{Length, dnf_var_ty_function:substitute(DefaultFunction, SubstituteMap, Memo, fun(Ty) -> pi({function, Length}, Ty) end)} || Length <- OtherFunctionKeys]),
   AllKeys = maps:keys(AllFunctions) ++ maps:keys(NewDefaultOtherFunctions),
 
   NewOtherFunctions = maps:from_list(lists:map(fun(Key) ->
     {Key, case maps:is_key(Key, AllFunctions) of
-            true -> dnf_var_ty_function:substitute( fun(Ty) -> pi({function, Key}, Ty) end, maps:get(Key, AllFunctions), SubstituteMap, Memo);
+            true -> dnf_var_ty_function:substitute(maps:get(Key, AllFunctions), SubstituteMap, Memo, fun(Ty) -> pi({function, Key}, Ty) end);
             _ -> maps:get(Key, NewDefaultOtherFunctions, NewDefaultFunction)
           end}
                                             end, AllKeys)),
@@ -773,8 +778,8 @@ all_variables(TyRef) ->
   ++  dnf_var_ty_atom:all_variables(Atoms)
   ++ dnf_var_int:all_variables(Ints)
   ++ dnf_var_ty_list:all_variables(Lists)
-  ++ dnf_var_ty_tuple:all_variables(Tuples)
-  ++ dnf_var_ty_function:all_variables(Functions)).
+  ++ dnf_var_ty_tuple:mall_variables(Tuples)
+  ++ dnf_var_ty_function:mall_variables(Functions)).
 
 -ifdef(TEST).
 -include_lib("eunit/include/eunit.hrl").

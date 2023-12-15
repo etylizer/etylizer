@@ -1,38 +1,29 @@
 -module(dnf_var_int).
 
--define(P, {ty_interval, ty_variable}).
+-define(ELEMENT, ty_variable).
+-define(TERMINAL, ty_interval).
 
--export([equal/2, compare/2]).
--export([empty/0, any/0, union/2, intersect/2, diff/2, negate/1]).
--export([is_empty/1, is_any/1, normalize/3, substitute/4]).
--export([var/1, int/1,  all_variables/1, transform/2, get_dnf/1]).
+-export([is_empty/1, normalize/3, substitute/4]).
+-export([var/1, int/1, all_variables/1, transform/2, apply_to_node/3]).
 
-int(Interval) -> gen_bdd:terminal(?P, Interval).
-var(Var) -> gen_bdd:element(?P, Var).
+-include("bdd_var.hrl").
 
-% generic
-empty() -> gen_bdd:empty(?P).
-any() -> gen_bdd:any(?P).
-union(B1, B2) -> gen_bdd:union(?P, B1, B2).
-intersect(B1, B2) -> gen_bdd:intersect(?P, B1, B2).
-diff(B1, B2) -> gen_bdd:diff(?P, B1, B2).
-negate(B1) -> gen_bdd:negate(?P, B1).
-is_any(B) -> gen_bdd:is_any(?P, B).
-equal(B1, B2) -> gen_bdd:equal(?P, B1, B2).
-compare(B1, B2) -> gen_bdd:compare(?P, B1, B2).
-substitute(MkTy, T, M, Memo) -> gen_bdd:substitute(?P, MkTy, T, M, Memo).
-all_variables(TyBDD) -> gen_bdd:all_variables(?P, TyBDD).
-transform(Ty, Ops) -> gen_bdd:transform(?P, Ty, Ops).
-get_dnf(Bdd) -> gen_bdd:get_dnf(?P, Bdd).
+int(Interval) -> terminal(Interval).
+var(Var) -> node(Var).
 
 % partially generic
-is_empty(TyBDD) -> gen_bdd:dnf(?P, TyBDD, {fun is_empty_coclause/3, fun gen_bdd:is_empty_union/2}).
+is_empty(TyBDD) -> dnf( TyBDD, {fun is_empty_coclause/3, fun is_empty_union/2}).
 is_empty_coclause(_Pos, _Neg, T) -> ty_interval:is_empty(T).
 
-normalize(Ty, Fixed, M) -> gen_bdd:dnf(?P, Ty, {
+normalize(Ty, Fixed, M) -> dnf(Ty, {
   fun(Pos, Neg, Atom) -> ty_interval:normalize(Atom, Pos, Neg, Fixed, M) end,
   fun constraint_set:meet/2
 }).
+
+% not recursive, no op substitution
+apply_to_node(Node, _StdMap, _Memo) ->
+  Node.
+
 
 -ifdef(TEST).
 -include_lib("eunit/include/eunit.hrl").
@@ -80,7 +71,6 @@ compact_ints_test() ->
 
   Bdd = dnf_var_int:union(BIntA, BIntB),
 
-%%  io:format(user, "~p~n", [Bdd]),
   false = dnf_var_int:is_empty(Bdd),
 
   ok.
