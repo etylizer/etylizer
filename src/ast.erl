@@ -15,6 +15,7 @@
     local_ref_bind/0,
     loc/0,
     fun_with_arity/0,
+    ty_with_arity/0,
     export_form/0,
     export_type_form/0,
     import_form/0,
@@ -130,12 +131,13 @@
     tydef/0,
     ty_constraint/0,
     unique_tok/0,
-    local_varname/0
+    local_varname/0,
+    predef_alias_name/0
 ]).
 
 -export([
-    format_loc/1, to_loc/2, loc_auto/0, is_predef_name/1, is_predef_alias_name/1,
-    local_varname_from_any_ref/1
+    format_loc/1, to_loc/2, loc_auto/0, min_loc/2, is_predef_name/1, is_predef_alias_name/1,
+    local_varname_from_any_ref/1, get_fun_name/1
 ]).
 
 % General
@@ -162,6 +164,19 @@ to_loc(Path, Anno) ->
 -spec loc_auto() -> loc().
 loc_auto() -> {loc, "AUTO", -1, -1}.
 
+-spec min_loc(loc(), loc()) -> loc().
+min_loc(L1 = {loc, _, Line1, Col1}, L2 = {loc, _, Line2, Col2}) ->
+    case utils:compare(Line1, Line2) of
+        less -> L1;
+        greater -> L2;
+        equal ->
+            case utils:compare(Col1, Col2) of
+                less -> L1;
+                greater -> L2;
+                equal -> L1
+            end
+    end.
+
 -spec local_varname_from_any_ref(any_ref()) -> {true, local_varname()} | false.
 local_varname_from_any_ref(Ref) ->
     case Ref of
@@ -177,6 +192,10 @@ local_varname_from_any_ref(Ref) ->
 -type import_form() :: {attribute, loc(), import, {Mod::atom(),[fun_with_arity()]}}.
 -type mod_form() :: {attribute, loc(), module, Mod::atom()}.
 -type fun_decl() :: {function, loc(), Name::atom(), Arity::arity(), [fun_clause()]}.
+
+-spec get_fun_name(fun_decl()) -> string().
+get_fun_name({function, _Loc, Name, Arity, _}) -> utils:sformat("~w/~w", Name, Arity).
+
 -type fun_spec() :: {attribute, loc(), spec | callback, Name::atom(), Arity::arity(),
                      ty_scheme(),
                      % wether the spec was written with an explicit module name or not

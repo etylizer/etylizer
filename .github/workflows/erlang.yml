@@ -10,7 +10,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy: 
       matrix:
-        erlang: [ 24,25 ]
+        erlang: [ 24,25,26 ]
 
     container:
       image: erlang:${{ matrix.erlang }}
@@ -23,7 +23,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy: 
       matrix:
-        erlang: [ 24,25 ]
+        erlang: [ 24,25,26 ]
 
     container:
       image: erlang:${{ matrix.erlang }}
@@ -40,12 +40,28 @@ jobs:
         #      env:
         #        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         #      run: ./rebar3 as test coveralls send
+        #
+        #
+  advtest:
+    runs-on: ubuntu-latest
+    strategy: 
+      matrix:
+        erlang: [ 24,25,26 ]
+
+    container:
+      image: erlang:${{ matrix.erlang }}
+
+    steps:
+    - uses: actions/checkout@v2
+    - run: make build
+    - name: Advanced Tests
+      run: make advtest
 
   verify:
     runs-on: ubuntu-latest
     strategy: 
       matrix:
-        erlang: [ 24,25 ]
+        erlang: [ 24,25,26 ]
 
     container:
       image: erlang:${{ matrix.erlang }}

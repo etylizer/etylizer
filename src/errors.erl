@@ -4,7 +4,7 @@
     unsupported/3, unsupported/2,
     name_error/3, name_error/2,
     uncovered_case/3, bug/2, bug/1,
-    ty_error/2, ty_error/3, ty_error/1, not_implemented/1
+    ty_error/2, ty_error/3, ty_error/1, not_implemented/1, parse_error/1
 ]).
 
 -spec generic_error(atom(), string()) -> no_return().
@@ -54,3 +54,6 @@ ty_error(Msg) -> generic_error(ty_error, Msg).
 
 -spec not_implemented(string()) -> no_return().
 not_implemented(Msg) -> throw({ety, not_implemented, Msg}).
+
+-spec parse_error(string()) -> no_return().
+parse_error(Msg) -> generic_error(parse_error, Msg).

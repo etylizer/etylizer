@@ -6,16 +6,16 @@
     map_opt/3, map_opt/2,
     quit/3, quit/2, undefined/0, everywhere/2, everything/2, error/1, error/2,
     is_string/1, is_char/1,
-    sformat_raw/2, sformat/2, sformat/3, sformat/4, sformat/5, sformat/6, sformat/7,
+    sformat_raw/2, sformat/2, sformat1/2, sformat/3, sformat/4, sformat/5, sformat/6, sformat/7,
     diff_terms/3, if_true/2,
     file_get_lines/1, set_add_many/2, assert_no_error/1,
     replicate/2, unconsult/2,
     string_ends_with/2, shorten/2,
-    flatmap_flip/2, map_flip/2, with_index/1, with_index/2,
+    flatmap_flip/2, map_flip/2, foreach/2, with_index/1, with_index/2,
     mkdirs/1, hash_sha1/1, hash_file/1,
     list_uniq/1, lists_enumerate/1, lists_enumerate/2,
-    with_default/2,
-    mingle/5
+    with_default/2, compare/2,
+    mingle/5, timing/1
 ]).
 
 mingle(LeftDefault, RightDefault, AllLeft, AllRight, Op) ->
@@ -73,6 +73,9 @@ sformat(Msg, X) ->
                 end
         end,
     sformat_raw(Msg, L).
+
+-spec sformat1(string(), term()) -> string().
+sformat1(Msg, X1) -> sformat_raw(Msg, [X1]).
 
 -spec sformat(string(), term(), term()) -> string().
 sformat(Msg, X1, X2) -> sformat_raw(Msg, [X1, X2]).
@@ -218,6 +221,9 @@ flatmap_flip(L, F) -> lists:flatmap(F, L).
 -spec map_flip([A], fun((A) -> B)) -> [B].
 map_flip(L, F) -> lists:map(F, L).
 
+-spec foreach([T], fun((T) -> any())) -> ok.
+foreach(L, F) -> lists:foreach(F, L).
+
 -spec with_index([A]) -> [{integer(), A}].
 with_index(L) -> with_index(0, L).
 
@@ -227,7 +233,7 @@ with_index(Start, L) ->
                            {Start, []}, L),
     lists:reverse(Rev).
 
--spec mkdirs(filename:name()) -> ok | {error, string()}.
+-spec mkdirs(file:filename()) -> ok | {error, string()}.
 mkdirs(D) ->
     ok = filelib:ensure_dir(filename:join(D, "XXX")). % only creates the parent!
 
@@ -242,6 +248,17 @@ hash_file(Path) ->
     case file:read_file(Path) of
         {ok, FileContent} -> utils:hash_sha1(FileContent);
         X -> X
+    end.
+
+-spec compare(integer(), integer()) -> less | equal | greater.
+compare(I1, I2) ->
+    case I1 < I2 of
+        true -> less;
+        false ->
+            case I1 > I2 of
+                true -> greater;
+                false -> equal
+            end
     end.
 
 % Some functions copied from OTP 25 (we still support OTP 24)
@@ -286,3 +303,11 @@ lists_enumerate_1(_Index, []) ->
 -spec with_default(T | undefined, T) -> T.
 with_default(undefined, Def) -> Def;
 with_default(X, _) -> X.
+
+-spec timing(fun(() -> {T, integer()})) -> {T, integer()}.
+timing(F) ->
+    Start = erlang:timestamp(),
+    Res = F(),
+    End = erlang:timestamp(),
+    Delta = round(timer:now_diff(End, Start) / 1000),
+    {Res, Delta}.

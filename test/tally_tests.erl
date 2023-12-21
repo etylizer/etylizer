@@ -10,6 +10,7 @@
                    tmap/1, tmap_any/0, tmap_field_opt/2, tmap_field_man/2
                   ]).
 
+
 -spec test_tally(any(), list({ast:ty(), ast:ty()}), #{ atom() => ast:ty()}) -> ok.
 test_tally(Order, ConstrList, ExpectedSubst) ->
     test_tally(Order, ConstrList, ExpectedSubst, []).
@@ -17,19 +18,15 @@ test_tally(Order, ConstrList, ExpectedSubst) ->
 -spec test_tally(any(), list({ast:ty(), ast:ty()}), #{ atom() => ast:ty()}, [ast:ty_varname()]) -> ok.
 test_tally(_Order, _ConstrList, [], _FixedVars) -> ok;
 test_tally(Order, ConstrList, AllTests, FixedVars) ->
-  Constrs = sets:from_list(
+    Constrs = sets:from_list(
                 lists:map(
                   fun ({T, U}) -> {csubty, sets:from_list([ast:loc_auto()]), T, U} end,
                   ConstrList
                  )),
-  OrderFun = fun() -> [ast_lib:ast_to_erlang_ty({var, X}) || X <- Order] end,
 
-  case tally:tally(symtab:empty(), Constrs, sets:from_list(FixedVars), OrderFun) of
-    {error, []} ->
-      find_subst(AllTests, [], []);
-    Res ->
-      find_subst(AllTests, Res, Res)
-  end.
+  OrderFun = fun() -> [ast_lib:ast_to_erlang_ty({var, X}) || X <- Order] end,
+  Res = tally:tally(symtab:empty(), Constrs, sets:from_list(FixedVars), OrderFun),
+  find_subst(AllTests, Res, Res).
 
 find_subst([], [], _) -> ok;
 find_subst([{Low, High} | _], [], Sols) ->
@@ -42,7 +39,7 @@ find_subst([{Low, High} | _], [], Sols) ->
 find_subst([], [_X | _Xs], _) -> error({"Too many substitutions"});
 find_subst(X = [{Low, High} | OtherTests], [Subst | Others], AllTally) ->
   Valid = lists:any(
-    fun({{Var, LowerBound}, {Var, UpperBound}}) ->
+    fun({{_Var, LowerBound}, {Var, UpperBound}}) ->
       begin
         TyOther = maps:get(Var, Subst, {var, Var}),
         not (subty:is_subty(none, LowerBound, TyOther) andalso
@@ -53,6 +50,9 @@ find_subst(X = [{Low, High} | OtherTests], [Subst | Others], AllTally) ->
     true -> find_subst(X, Others, AllTally);
     false -> find_subst(OtherTests, AllTally -- [Subst], AllTally -- [Subst])
   end.
+
+solutions(Number) ->
+  [{#{}, #{}} || _ <- lists:seq(1, Number)].
 
 tally_01_test() ->
     test_tally(
@@ -468,6 +468,26 @@ pretty_printing_bug_test() ->
       V6
     }],
     [{#{}, #{}}]).
+
+fun_local_own_test_() ->
+  {timeout, 15000, {"fun_local_02_plus", fun() ->
+    ecache:reset_all(),
+    {ok, [Cons]} = file:consult("test_files/tally/fun_local_02_plus.config"),
+    Vars = lists:foldl(fun({S, T}, Acc) -> (ty_rec:all_variables(ast_lib:ast_to_erlang_ty(S)) ++ ty_rec:all_variables(ast_lib:ast_to_erlang_ty(T)) ++ Acc) end, [], Cons),
+    VarOrder = lists:map(fun(V) -> {var, Name} = ast_lib:erlang_ty_var_to_var(V), Name end,lists:sort(lists:flatten(Vars))),
+
+    % to print out cduce command
+    % io:format(user, "~s~n", [test_utils:ety_to_cduce_tally(Cons, VarOrder)]),
+
+    test_tally(
+      VarOrder,
+      Cons,
+      % TODO CDuce has 50 solutions, order is not used properly, see #72
+      solutions(58)
+    ),
+    ok
+                                         end}}
+.
 
 % =====
 % Map Normalization

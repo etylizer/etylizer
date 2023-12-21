@@ -521,12 +521,25 @@ foo(L) ->
         [_X|XS] -> XS
     end.
 
--spec foo2 (a) -> 1; (b) -> 2.
+-spec foo2(a) -> 1; (b) -> 2.
 foo2(a) -> 1;
 foo2(b) -> 2.
 
-
--spec foo3
-    (a|b) -> 1|true.
+-spec foo3(a|b) -> 1|true.
 foo3(a) -> 1;
 foo3(b) -> true.
+
+% same as fun_local_02 but transformed
+% such that there are no n-tuples and n-functions anymore
+-spec fun_local_02_plus() -> integer().
+fun_local_02_plus() ->
+    F = fun Add(X) ->
+        case X of
+            0 -> 0;
+            Y -> my_plus({Y, Add(my_plus({X, -1}))})
+        end
+        end,
+    F(3).
+
+-spec my_plus({integer(), integer()}) -> integer(); ({float(), integer()}) -> float(); ({integer(), float()}) -> float(); ({float(), float()}) -> float().
+my_plus({A, B}) -> A + B.

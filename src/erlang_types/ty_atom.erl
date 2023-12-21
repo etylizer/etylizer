@@ -7,8 +7,9 @@
 -export([is_empty/1]).
 -export([transform/2]).
 -export([finite/1, cofinite/1]).
--export([normalize/5, substitute/4, all_variables/1]).
+-export([has_ref/2, normalize/5, substitute/4, all_variables/1]).
 
+has_ref(_, _) -> false.
 all_variables(_) -> [].
 substitute(_, Ty, _, _) -> Ty.
 
@@ -73,6 +74,6 @@ normalize(TyAtom, [], [], _Fixed, _) ->
 normalize(TyAtom, PVar, NVar, Fixed, M) ->
   Ty = ty_rec:atom(dnf_var_ty_atom:ty_atom(TyAtom)),
   % ntlv rule
-  ty_variable:normalize(Ty, PVar, NVar, Fixed, fun(Var) -> ty_rec:atom(dnf_var_ty_atom:ty_var(Var)) end, M).
+  ty_variable:normalize(Ty, PVar, NVar, Fixed, fun(Var) -> ty_rec:atom(dnf_var_ty_atom:var(Var)) end, M).
 
 

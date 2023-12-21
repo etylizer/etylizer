@@ -1,42 +1,31 @@
 -module(dnf_ty_tuple).
 
--define(P, {bdd_bool, ty_tuple}).
+-define(ELEMENT, ty_tuple).
+-define(TERMINAL, bdd_bool).
 -define(F(Z), fun() -> Z end).
 
--export([equal/2, compare/2]).
--export([empty/0, any/0, union/2, intersect/2, diff/2, negate/1]).
--export([is_empty/1, is_any/1, normalize/6, substitute/4]).
--export([tuple/1, all_variables/1, has_ref/2, transform/2]).
+-export([is_empty/1, normalize/6, substitute/4, apply_to_node/3]).
+-export([tuple/1, all_variables/1, transform/2]).
 
-tuple(TyTuple) -> gen_bdd:element(?P, TyTuple).
+-include("bdd_node.hrl").
 
-empty() -> gen_bdd:empty(?P).
-any() -> gen_bdd:any(?P).
-all_variables(TyBDD) -> gen_bdd:all_variables(?P, TyBDD).
-substitute(MkTy, TyBDD, Map, Memo) -> gen_bdd:substitute(?P, MkTy, TyBDD, Map, Memo).
-union(B1, B2) -> gen_bdd:union(?P, B1, B2).
-intersect(B1, B2) -> gen_bdd:intersect(?P, B1, B2).
-diff(B1, B2) -> gen_bdd:diff(?P, B1, B2).
-negate(B1) -> gen_bdd:negate(?P, B1).
-is_any(B) -> gen_bdd:is_any(?P, B).
-has_ref(Ty, Ref) -> gen_bdd:has_ref(?P, Ty, Ref).
-equal(B1, B2) -> gen_bdd:equal(?P, B1, B2).
-compare(B1, B2) -> gen_bdd:compare(?P, B1, B2).
-transform(Ty, Ops) -> gen_bdd:transform(?P, Ty, Ops).
+tuple(TyTuple) -> node(TyTuple).
 
 is_empty(TyBDD) ->
-  gen_bdd:dnf(?P, TyBDD, {fun is_empty_coclause/3, fun gen_bdd:is_empty_union/2}).
+  dnf(TyBDD, {fun is_empty_coclause/3, fun is_empty_union/2}).
 
 is_empty_coclause(Pos, Neg, T) ->
-  case bdd_bool:empty() of
-    T -> true;
-    _ -> case Pos of
-           % TODO check correctness of this
-           [] -> false;
-           _ ->
-             BigS = ty_tuple:big_intersect(Pos),
-             phi(ty_tuple:components(BigS), Neg)
-         end
+  case {Pos, Neg, bdd_bool:empty()} of
+    {_, _, T} -> true;
+    {[], [], _} -> false;
+    {[], [TNeg | _], _} ->
+      Dim = length(ty_tuple:components(TNeg)),
+      PosAny = ty_tuple:any(Dim),
+      BigS = ty_tuple:big_intersect([PosAny]),
+      phi(ty_tuple:components(BigS), Neg);
+    {Pos, Neg, _} ->
+      BigS = ty_tuple:big_intersect(Pos),
+      phi(ty_tuple:components(BigS), Neg)
   end.
 
 phi(BigS, []) ->
@@ -64,7 +53,7 @@ phi(BigS, [Ty | N]) ->
       lists:foldl(Solve, true, lists:zip(lists:seq(1, length(ty_tuple:components(Ty))), lists:zip(BigS, ty_tuple:components(Ty)))).
 
 normalize(Size, Ty, [], [], Fixed, M) ->
-  gen_bdd:dnf(?P, Ty, {
+  dnf(Ty, {
     fun(Pos, Neg, T) ->
       case bdd_bool:empty() of
         T -> [[]];
@@ -105,3 +94,17 @@ phi_norm(Size, BigS, [Ty | N], Fixed, M) ->
     ?F(lists:foldl(fun(S, Res) -> constraint_set:join(?F(Res), ?F(ty_rec:normalize(S, Fixed, M))) end, [], BigS)),
     ?F(lists:foldl(Solve, [[]], lists:zip(lists:seq(1, length(ty_tuple:components(Ty))), lists:zip(BigS, ty_tuple:components(Ty)))))
   ).
+
+
+apply_to_node(Node, Map, Memo) ->
+  substitute(Node, Map, Memo, fun(N, S, M) -> ty_tuple:substitute(N, S, M) end).
+
+-ifdef(TEST).
+-include_lib("eunit/include/eunit.hrl").
+
+empty_0tuple_test() ->
+  Tuple = {node,{ty_tuple,0,[]},{terminal,0},{terminal,1}},
+  true = is_empty(Tuple),
+  ok.
+
+-endif.

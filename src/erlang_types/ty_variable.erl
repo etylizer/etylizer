@@ -4,7 +4,7 @@
 -export([setup_all/0, reset/0]).
 -define(VAR_ETS, variable_counter_ets_table).
 
--export([equal/2, compare/2, substitute/4, has_ref/2, all_variables/1]).
+-export([equal/2, compare/2, substitute/4, has_ref/2, all_variables/1, name/1]).
 
 
 -export([new/1, smallest/3, normalize/6, transform/2, get_new_id/0]).
@@ -31,6 +31,9 @@ compare(_, _) -> 0.
 leq(#var{id = Id1}, #var{id = Id2}) -> Id1 =< Id2.
 
 has_ref(_, _) -> false.
+
+-spec name(var()) -> atom().
+name(#var{name = Name}) -> Name.
 
 -spec new(string()) -> var().
 new(Name) ->

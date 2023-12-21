@@ -63,7 +63,7 @@ really_parse_file(Kind, File, Opts) ->
             {extern, Includes} ->
                 #parse_opts{ verbose = false, includes = Includes, defines = Opts#opts.defines }
         end,
-    ?LOG_INFO("Parsing ~s with options ~p ...", File, ParseOpts),
+    ?LOG_DEBUG("Parsing ~s with options ~p ...", File, ParseOpts),
     RawForms = parse:parse_file_or_die(File, ParseOpts),
     if  Opts#opts.dump_raw -> ?LOG_NOTE("Raw forms in ~s:~n~p", File, RawForms);
         true -> ok
