@@ -659,7 +659,7 @@ substitute(TyRef, SubstituteMap, OldMemo) ->
             list = ?TIME(list, dnf_var_ty_list:substitute(Lists, SubstituteMap, Memo, fun(TTy) -> pi(list, TTy) end)),
             tuple = ?TIME(multi_tuple, multi_substitute(DefaultT, AllTuples, SubstituteMap, Memo)),
             function = ?TIME(multi_fun, multi_substitute_fun(DefaultF, AllFunctions, SubstituteMap, Memo)),
-            map = dnf_var_ty_map:substitute(fun(TTy) -> pi(map, TTy) end, Maps, SubstituteMap, Memo)
+            map = ?TIME(map, dnf_var_ty_map:substitute(Maps, SubstituteMap, Memo, fun(TTy) -> pi(map, TTy) end))
           },
           ty_ref:define_ty_ref(RecursiveNewRef, NewTy);
         false ->
@@ -670,7 +670,7 @@ substitute(TyRef, SubstituteMap, OldMemo) ->
             list = ?TIME(list, dnf_var_ty_list:substitute(Lists, SubstituteMap, OldMemo, fun(TTy) -> pi(list, TTy) end)),
             tuple = ?TIME(multi_tuple, multi_substitute(DefaultT, AllTuples, SubstituteMap, OldMemo)),
             function = ?TIME(multi_fun, multi_substitute_fun(DefaultF, AllFunctions, SubstituteMap, OldMemo)),
-            map = dnf_var_ty_map:substitute(fun(TTy) -> pi(map, TTy) end, Maps, SubstituteMap, OldMemo)
+            map = ?TIME(map, dnf_var_ty_map:substitute(Maps, SubstituteMap, OldMemo, fun(TTy) -> pi(map, TTy) end))
           },
 %%          io:format(user, "Substitute ~p to ~p~nGot ~p~n", [Ty, SubstituteMap, NewTy]),
           ty_ref:store(NewTy)

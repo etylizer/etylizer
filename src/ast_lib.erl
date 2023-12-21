@@ -233,12 +233,14 @@ ast_to_erlang_ty({fun_full, Comps, Result}) ->
 ast_to_erlang_ty({map_any}) ->
     ty_rec:map();
 ast_to_erlang_ty({map, []}) ->
-    EmptyMap = ty_map:map(#{}, #{S => ty_rec:empty() || S <- ty_map:step_names()}),
+    EmptyMap = ty_map:map(#{}, maps:from_keys(ty_map:step_names(), ty_rec:empty())),
     T = dnf_var_ty_map:map(dnf_ty_map:map(EmptyMap)),
     ty_rec:map(T);
 ast_to_erlang_ty({map, AssocList}) ->
     {LabelMappings, StepMappings} = convert_associations(AssocList),
-    ty_rec:map(dnf_var_ty_map:map(dnf_ty_map:map(ty_map:map(LabelMappings, StepMappings))));
+    Map = ty_map:map(LabelMappings, StepMappings),
+    T = dnf_var_ty_map:map(dnf_ty_map:map(Map)),
+    ty_rec:map(T);
 
 % TODO records
 
@@ -308,7 +310,7 @@ maybe_new_variable(Name) ->
     end.
 
 convert_associations(AssocList) ->
-    EmptySteps = #{S => ty_rec:empty() || S <- ty_map:step_names()},
+    EmptySteps = maps:from_keys(ty_map:step_names(), ty_rec:empty()),
     EmptyLabels = #{},
     lists:foldr(
         fun({Association, Key, Val}, {X, Y}) ->
