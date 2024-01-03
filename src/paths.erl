@@ -161,7 +161,7 @@ generate_input_file_list(Opts) ->
     case Opts#opts.src_paths of
         [] ->
             case Opts#opts.files of
-                [] -> utils:quit(1, "No input files given, aborting. Use -h to print help.\n");
+                [] -> utils:quit(1, "No input files given, aborting. Use -h to print help.~n");
                 Files -> Files
             end;
         Paths ->
