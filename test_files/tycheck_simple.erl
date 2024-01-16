@@ -543,3 +543,13 @@ fun_local_02_plus() ->
 
 -spec my_plus({integer(), integer()}) -> integer(); ({float(), integer()}) -> float(); ({integer(), float()}) -> float(); ({float(), float()}) -> float().
 my_plus({A, B}) -> A + B.
+
+% Polymorphic
+-spec poly_01(T) -> T.
+poly_01(X) -> X.
+
+-spec poly_02(T) -> T.
+poly_02(X) ->
+  case X of
+    Y -> Y
+  end.

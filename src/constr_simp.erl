@@ -4,21 +4,26 @@
 
 -export([
     simp_constrs/2,
-    new_ctx/4,
+    new_ctx/5,
     sanity_check/2
 ]).
 
 -export_type([
     unmatched_branch_mode/0,
-    simp_constrs_result/0
+    simp_constrs_result/0,
+    ctx/0,
+    fixed_tyvars/0
 ]).
+
+-type fixed_tyvars() :: sets:set(ast:ty_varname()).
 
 -record(ctx,
         { symtab :: symtab:t(),
           env :: constr:constr_poly_env(),
           tyvar_counter :: counters:counters_ref(),
           sanity :: t:opt(ast_check:ty_map()),
-          unmatched_branch :: unmatched_branch_mode()
+          unmatched_branch :: unmatched_branch_mode(),
+          fixed_tyvars :: fixed_tyvars()
         }).
 -type ctx() :: #ctx{}.
 
@@ -35,12 +40,15 @@
 % is excluded for every element of the intersection. But this is not implemented.
 -type unmatched_branch_mode() :: ignore_branch | report.
 
--spec new_ctx(symtab:t(), constr:constr_poly_env(),
-              t:opt(ast_check:ty_map()), unmatched_branch_mode()) -> ctx().
-new_ctx(Tab, Env, Sanity, BranchMode) ->
+-spec new_ctx(symtab:t(),
+              constr:constr_poly_env(),
+              t:opt(ast_check:ty_map()),
+              unmatched_branch_mode(),
+              fixed_tyvars()) -> ctx().
+new_ctx(Tab, Env, Sanity, BranchMode, Fixed) ->
     Counter = counters:new(1, []),
     Ctx = #ctx{ tyvar_counter = Counter, env = Env, symtab = Tab, sanity = Sanity,
-                unmatched_branch = BranchMode },
+                unmatched_branch = BranchMode, fixed_tyvars = Fixed },
     Ctx.
 
 % The result of constraint simplication is either a single error or potentially several sets
@@ -123,6 +131,7 @@ simp_constr(Ctx, C) ->
                     constr_gen:sanity_check(CsScrut, TyMap0);
                 error -> ok
             end,
+            Fixed = Ctx#ctx.fixed_tyvars,
             simp_constrs_if_ok(
                 simp_constrs(Ctx, CsScrut),
                 fun(_, DssScrut) ->
@@ -142,7 +151,7 @@ simp_constr(Ctx, C) ->
                                 lists:flatmap(
                                 fun(DsScrut) ->
                                         Ds = sets:union(DsScrut, Exhau),
-                                        get_substs(tally:tally(Ctx#ctx.symtab, Ds), Locs)
+                                        get_substs(tally:tally(Ctx#ctx.symtab, Ds, Fixed), Locs)
                                 end,
                                 DssScrut)
                             end),
@@ -186,6 +195,11 @@ simp_constr(Ctx, C) ->
                                                                         ),
                                                             cross_union(BeforeDss, GuardDss);
                                                         {true, report} ->
+                                                            ?LOG_DEBUG("Redundant branch at ~s, match type ~s (unsubstituted: ~s) equivalent to none()",
+                                                                        ast:format_loc(loc(BodyLocs)),
+                                                                        pretty:render_ty(MatchTy),
+                                                                        pretty:render_ty(TI)
+                                                                        ),
                                                             {simp_constrs_error, {redundant_branch, loc(BodyLocs)}};
                                                         _ ->
                                                             case Ctx#ctx.unmatched_branch of
@@ -229,7 +243,7 @@ simp_constr(Ctx, C) ->
                                     ?LOG_DEBUG("MultiResults is empty, checking whether typing the scrutiny or the exhaustiveness check fails."),
                                     case
                                         lists:flatmap(
-                                            fun(Ds) -> get_substs(tally:tally(Ctx#ctx.symtab, Ds), Locs) end,
+                                            fun(Ds) -> get_substs(tally:tally(Ctx#ctx.symtab, Ds, Fixed), Locs) end,
                                         DssScrut)
                                     of
                                         [] ->
