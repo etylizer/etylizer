@@ -345,7 +345,7 @@ get_substs(Substs, {LocName, LocSet}) ->
                       EquivCs =
                           lists:foldl(
                             fun(Alpha, Acc) ->
-                                    T = subst:apply(Subst, {var, Alpha}),
+                                    T = subst:apply(Subst, {var, Alpha}, no_clean),
                                     sets:add_element(
                                       {csubty, NewLocs, T, {var, Alpha}},
                                       sets:add_element({csubty, NewLocs, {var, Alpha}, T}, Acc))

@@ -1,6 +1,6 @@
 -module(subst).
 
--compile({no_auto_import,[apply/2]}).
+-compile({no_auto_import,[apply/2, apply/3]}).
 
 -include_lib("log.hrl").
 
@@ -11,6 +11,7 @@
 
 -export([
     apply/2,
+    apply/3,
     domain/1,
     from_list/1,
     mk_tally_subst/2,
@@ -42,16 +43,26 @@ clean(T, Fixed) ->
     Res.
 
 -spec apply(t(), ast:ty()) -> ast:ty().
-apply(Subst = {tally_subst, BaseSubst, Fixed}, T) ->
+apply(Subst, T) ->
+    apply(Subst, T, clean).
+
+-type clean_mode() :: clean | no_clean.
+
+-spec apply(t(), ast:ty(), clean_mode()) -> ast:ty().
+apply(Subst = {tally_subst, BaseSubst, Fixed}, T, CleanMode) ->
     U = apply_base(BaseSubst, T),
-    Res = clean(U, Fixed),
-    ?LOG_DEBUG("subst:apply, T=~s, Subst=~s, U=~s, Res=~s",
+    Res =
+        case CleanMode of
+            clean -> clean(U, Fixed);
+            no_clean -> U
+        end,
+    ?LOG_TRACE("subst:apply, T=~s, Subst=~s, U=~s, Res=~s",
         pretty:render_ty(T),
         pretty:render_subst(Subst),
         pretty:render_ty(U),
         pretty:render_ty(Res)),
     Res;
-apply(S, T) -> apply_base(S, T).
+apply(S, T, _) -> apply_base(S, T).
 
 -spec apply_base(base_subst(), ast:ty()) -> ast:ty().
 apply_base(S, T) ->
