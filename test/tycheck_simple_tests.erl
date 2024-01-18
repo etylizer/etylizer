@@ -74,6 +74,10 @@ check_fail_fun(Filename, Tab, Decl = {function, L, Name, Arity, _}, Ty) ->
 
 -type what() :: all | {include, sets:set(string())} | {exclude, sets:set(string())}.
 
+-spec has_intersection(ast:ty_scheme()) -> boolean().
+has_intersection({ty_scheme, _, {intersection, _}}) -> true;
+has_intersection({ty_scheme, _, _}) -> false.
+
 -spec check_decls_in_file(string(), what(), sets:set(string())) -> ok.
 check_decls_in_file(F, What, NoInfer) ->
   RawForms = parse:parse_file_or_die(F),
@@ -107,7 +111,8 @@ check_decls_in_file(F, What, NoInfer) ->
               end}
           },
         ShouldRun = should_run(NameStr, What),
-        ShouldInfer = not ShouldFail andalso not sets:is_element(NameStr, NoInfer),
+        ShouldInfer = not ShouldFail andalso not sets:is_element(NameStr, NoInfer)
+          andalso not has_intersection(Ty),
         ExtraTestCases =
           case {ShouldRun, ShouldInfer} of
             {false, _} -> [];
@@ -144,9 +149,6 @@ simple_test_() ->
   ],
 
   NoInfer = [
-    % The following functions are excluded from the type inference test because
-    % we do not support inference of intersection types.
-    "inter_01", "inter_02",
     % slow, see #62
     "foo3"],
   check_decls_in_file("test_files/tycheck_simple.erl",
