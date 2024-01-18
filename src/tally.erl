@@ -42,6 +42,8 @@ tally(_SymTab, Constraints, FixedVars, Order) ->
   InternalResult = etally:tally(InternalConstraints, sets:from_list(FixedTallyTyvars)),
 %%  io:format(user, "Got Constraints ~n~p~n~p~n", [InternalConstraints, InternalResult]),
 
+  Free = tyutils:free_in_simp_constrs(Constraints),
+
   case InternalResult of
         {error, []} ->
           {error, []};
@@ -49,7 +51,7 @@ tally(_SymTab, Constraints, FixedVars, Order) ->
           % transform to subst:t()
           % TODO sanity variable Id == variable name
           [subst:mk_tally_subst(
-            FixedVars,
+            sets:union(FixedVars, Free),
             maps:from_list([{VarName, ast_lib:erlang_ty_to_ast(Ty)}
                           || {{var, _, VarName}, Ty} <- maps:to_list(Subst)]))
           || Subst <- InternalResult]
