@@ -9,6 +9,8 @@
 
 -export([new/1, smallest/3, normalize/6, transform/2, get_new_id/0]).
 
+-export_type([var/0]).
+
 -record(var, {id, name}).
 -type var() :: #var{id :: integer(), name :: string()}.
 
