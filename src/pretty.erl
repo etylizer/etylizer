@@ -205,7 +205,7 @@ ty(Prec, T) ->
         {named, _Loc, Ref, Args} ->
             RefP =
                 case Ref of
-                    {ref, Name, _} -> text(atom(Name));
+                    {ref, Name, _} -> atom(Name);
                     {qref, Mod, Name, _} ->
                         beside(atom(Mod), text(":"), atom(Name))
                 end,

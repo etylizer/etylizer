@@ -170,16 +170,25 @@ simp_constr(Ctx, C) ->
                     % Non-determinism here because of multiple solutions from tally
                     % MultiResults has type [simp_constrs_result()]
                     % It contains a simp_constrs_result() for each substitution returned from tally.
+                    NSubsts = length(Substs),
+                    NBodies = length(Bodies),
                     MultiResults = lists:map(
-                        fun({Subst, EquivDs}) ->
+                        fun({SubstPos, {Subst, EquivDs}}) ->
                                 % returns simp_constrs_result(): if there is at least one
                                 % branch that fails then the whole cases fails for the given
                                 % substitution
                                 lists:foldl(
                                     % returns simp_constrs_result()
                                     fun(_, {simp_constrs_error, _} = Err) -> Err;
-                                       ({BodyLocs, {GuardsGammaI, GuardCsI}, {BodyGammaI, BodyCsI}, TI}, BeforeDss) ->
+                                       ({BodyPos, {BodyLocs, {GuardsGammaI, GuardCsI}, {BodyGammaI, BodyCsI}, TI}}, BeforeDss) ->
                                             NewGuardsCtx = inter_env(Ctx, apply_subst_to_env(Subst, GuardsGammaI)),
+                                            NewBodyCtx =
+                                                inter_env(Ctx,
+                                                        apply_subst_to_env(Subst, BodyGammaI)),
+                                            ?LOG_DEBUG("Simplifying constraints for branch ~w/~w of case at ~s (subst ~w/~w)~n  NewBodyEnv=~s~n  NewGuardsEnv=~s",
+                                                BodyPos, NBodies, ast:format_loc(loc(BodyLocs)), SubstPos, NSubsts,
+                                                pretty:render_poly_env(NewBodyCtx#ctx.env),
+                                                pretty:render_poly_env(NewGuardsCtx#ctx.env)),
                                             simp_constrs_if_ok(simp_constrs(NewGuardsCtx, GuardCsI),
                                                 fun(GuardDss, _) ->
                                                     MatchTy = subst:apply(Subst, TI),
@@ -211,18 +220,15 @@ simp_constr(Ctx, C) ->
                                                                             );
                                                                 _ -> ok
                                                             end,
-                                                            NewBodyCtx =
-                                                                inter_env(Ctx,
-                                                                        apply_subst_to_env(Subst, BodyGammaI)),
                                                             BodyDss = simp_constrs(NewBodyCtx, BodyCsI),
                                                             cross_union(cross_union(BeforeDss, GuardDss), BodyDss)
                                                     end
                                                 end)
                                     end,
-                                    {simp_constrs_ok, [EquivDs]}, Bodies
+                                    {simp_constrs_ok, [EquivDs]}, lists:zip(utils:from_to(1, NBodies), Bodies)
                                 )
                         end,
-                        Substs
+                        lists:zip(utils:from_to(1, NSubsts), Substs)
                     ),
                     ?LOG_TRACE("MultiResults: ~w", MultiResults),
                     case lists:filtermap(
@@ -325,7 +331,7 @@ locs_from_constrs(Cs) ->
     ).
 
 -spec get_substs([subst:t()], constr:locs()) -> [{subst:t(), constr:simp_constrs()}].
-get_substs(Substs, Locs) ->
+get_substs(Substs, {LocName, LocSet}) ->
     case Substs of
         {error, _} ->
             % We cannot throw an error here because other branches might return a solvable constraint
@@ -335,13 +341,14 @@ get_substs(Substs, Locs) ->
             lists:map(
               fun(Subst) ->
                       Alphas = subst:domain(Subst),
+                      NewLocs = {LocName ++ " (equiv)", LocSet},
                       EquivCs =
                           lists:foldl(
                             fun(Alpha, Acc) ->
                                     T = subst:apply(Subst, {var, Alpha}),
                                     sets:add_element(
-                                      {csubty, Locs, T, {var, Alpha}},
-                                      sets:add_element({csubty, Locs, {var, Alpha}, T}, Acc))
+                                      {csubty, NewLocs, T, {var, Alpha}},
+                                      sets:add_element({csubty, NewLocs, {var, Alpha}, T}, Acc))
                             end,
                             sets:new(),
                             Alphas),
