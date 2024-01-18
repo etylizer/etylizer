@@ -546,6 +546,25 @@ foo2_case(X) ->
 foo3(a) -> 1;
 foo3(b) -> true.
 
+% See #56
+-spec foo4
+    (integer()) -> integer();
+    (1) -> 2.
+foo4(X) ->
+    case X of
+        1 -> 2;
+        _ -> X
+    end.
+-spec foo4_b
+    (integer()) -> integer();
+    (1) -> 2.
+foo4_b(X) ->
+    case X of
+        1 -> 2;
+        3 -> 3;
+        _ -> X
+    end.
+
 % same as fun_local_02 but transformed
 % such that there are no n-tuples and n-functions anymore
 -spec fun_local_02_plus() -> integer().
