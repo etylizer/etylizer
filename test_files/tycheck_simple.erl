@@ -424,6 +424,16 @@ fun_local_05_fail(X) ->
     F = fun(Y) -> X + Y end,
     F("foo").
 
+-spec fun_local_06() -> foobar.
+fun_local_06() ->
+  F = fun(X) ->
+        case X of
+            spam -> foobar;
+            _ -> foobar
+        end
+      end,
+  F(spam).
+
 % if
 -spec if_01(integer()) -> integer().
 if_01(X) ->
@@ -524,6 +534,13 @@ foo(L) ->
 -spec foo2(a) -> 1; (b) -> 2.
 foo2(a) -> 1;
 foo2(b) -> 2.
+
+-spec foo2_case(a) -> 1; (b) -> 2.
+foo2_case(X) ->
+    case X of
+        a -> 1;
+        b -> 2
+    end.
 
 -spec foo3(a|b) -> 1|true.
 foo3(a) -> 1;
