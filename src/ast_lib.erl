@@ -278,6 +278,7 @@ ast_to_erlang_ty({negation, Ty}) -> ty_rec:negate(ast_to_erlang_ty(Ty));
 ast_to_erlang_ty(T) ->
     erlang:error({"Norm not implemented or malformed type", T}).
 
+-spec ast_to_erlang_ty_var(ast:ty_var()) -> ty_variable:var().
 ast_to_erlang_ty_var({var, Name}) when is_atom(Name) ->
     maybe_new_variable(Name).
 

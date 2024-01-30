@@ -141,6 +141,7 @@ check_forms(Ctx, FileName, Forms, Only) ->
 
 % Infers the types of all the given functions.
 -spec infer_all(ctx(), string(), [ast:fun_decl()]) -> [symtab:fun_env()].
+infer_all(_, _, []) -> [#{}];
 infer_all(Ctx, FileName, Decls) ->
     ?LOG_INFO("Inferring types of functions without specs in ~s", FileName),
     % FIXME: need to build strongly connected components to infer each group in isolation
@@ -175,15 +176,9 @@ infer(Ctx, Decls) ->
     ?LOG_DEBUG("Constraints:~n~s", pretty:render_constr(Cs)),
     PolyEnv = maps:map(fun(_Key, T) -> {ty_scheme, [], T} end, Env),
     Tab = Ctx#ctx.symtab,
-    SimpCtx = constr_simp:new_ctx(Tab, PolyEnv, Ctx#ctx.sanity, report),
-    Funs =
-        lists:map(
-            fun({function, _Loc, Name, Arity, _}) ->
-                    utils:sformat("~w/~w", Name, Arity)
-            end,
-            Decls),
+    SimpCtx = constr_simp:new_ctx(Tab, PolyEnv, Ctx#ctx.sanity, report, sets:new()),
     Dss = report_tyerror(constr_simp:simp_constrs(SimpCtx, Cs),
-        utils:sformat("while infering types of mutually recursive functions ~w", Funs)),
+        utils:sformat("while infering types of mutually recursive functions ~s", FunsStr)),
     case Ctx#ctx.sanity of
         {ok, TyMap2} -> constr_simp:sanity_check(Dss, TyMap2);
         error -> ok
@@ -269,7 +264,7 @@ check_all(Ctx, FileName, Env, Decls) ->
 check(Ctx, Decl = {function, Loc, Name, Arity, _}, PolyTy) ->
     ?LOG_INFO("Type checking ~w/~w at ~s against type ~s",
               Name, Arity, ast:format_loc(Loc), pretty:render_tyscheme(PolyTy)),
-    MonoTy = mono_ty(PolyTy),
+    {MonoTy, Fixed, _} = mono_ty(PolyTy, no_fresh),
     AltTys =
         case MonoTy of
             {intersection, L} -> L;
@@ -285,7 +280,7 @@ check(Ctx, Decl = {function, Loc, Name, Arity, _}, PolyTy) ->
     lists:foreach(
       fun(Ty) ->
               case Ty of
-                  {fun_full, _, _} -> check_alt(Ctx, Decl, Ty, BranchMode);
+                  {fun_full, _, _} -> check_alt(Ctx, Decl, Ty, BranchMode, Fixed);
                   _ ->
                     errors:ty_error(Loc, "Invalid spec for ~w/~w: ~w", [Name, Arity, PolyTy])
               end
@@ -295,8 +290,9 @@ check(Ctx, Decl = {function, Loc, Name, Arity, _}, PolyTy) ->
     ok.
 
 % Checks a function against an alternative of an intersection type.
--spec check_alt(ctx(), ast:fun_decl(), ast:ty_full_fun(), constr_simp:unmatched_branch_mode()) -> ok.
-check_alt(Ctx, Decl = {function, Loc, Name, Arity, _}, FunTy, BranchMode) ->
+-spec check_alt(ctx(), ast:fun_decl(), ast:ty_full_fun(),
+                constr_simp:unmatched_branch_mode(), constr_simp:fixed_tyvars()) -> ok.
+check_alt(Ctx, Decl = {function, Loc, Name, Arity, _}, FunTy, BranchMode, Fixed) ->
     ?LOG_INFO("Checking function ~w/~w at ~s against type ~s",
                Name,
                Arity,
@@ -309,7 +305,7 @@ check_alt(Ctx, Decl = {function, Loc, Name, Arity, _}, FunTy, BranchMode) ->
     end,
     ?LOG_DEBUG("Constraints:~n~s", pretty:render_constr(Cs)),
     Tab = Ctx#ctx.symtab,
-    SimpCtx = constr_simp:new_ctx(Tab, #{}, Ctx#ctx.sanity, BranchMode),
+    SimpCtx = constr_simp:new_ctx(Tab, #{}, Ctx#ctx.sanity, BranchMode, Fixed),
     Dss = report_tyerror(constr_simp:simp_constrs(SimpCtx, Cs),
         utils:sformat("while checking function ~w/~w against type ~s",
             Name, Arity, pretty:render_ty(FunTy))),
@@ -371,13 +367,6 @@ format_tally_error(ConstrIdx, ErrList) ->
             true -> utils:sformat("~n    (skipped ~w lines)", N)
          end).
 
-% Creates the monomorphic version of the given type scheme, does not
-% replace the universally quantified type variables with fresh ones.
--spec mono_ty(ast:ty_scheme()) -> ast:ty().
-mono_ty(TyScm) ->
-    {U, _, _} = mono_ty(TyScm, no_fresh),
-    U.
-
 -spec fresh_tyvar(ast:ty_varname(), integer() | no_fresh) ->
           {ast:ty_varname(), integer() | no_fresh}.
 fresh_tyvar(Alpha, no_fresh) -> {Alpha, no_fresh};
@@ -390,7 +379,7 @@ fresh_tyvar(Alpha, I) ->
 % The second parameter is the start number for the fresh type variable
 % generator.
 -spec mono_ty(ast:ty_scheme(), integer() | no_fresh) ->
-          {ast:ty(), sets:set(ast:ty_varname()), integer() | no_fresh}.
+          {ast:ty(), constr_simp:fixed_tyvars(), integer() | no_fresh}.
 mono_ty(TyScm = {ty_scheme, Tyvars, T}, FreshStart) ->
     ?LOG_DEBUG("Monomorphizing type scheme ~s", pretty:render_tyscheme(TyScm)),
     {Kvs, Freshs, I} =

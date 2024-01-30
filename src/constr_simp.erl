@@ -4,21 +4,26 @@
 
 -export([
     simp_constrs/2,
-    new_ctx/4,
+    new_ctx/5,
     sanity_check/2
 ]).
 
 -export_type([
     unmatched_branch_mode/0,
-    simp_constrs_result/0
+    simp_constrs_result/0,
+    ctx/0,
+    fixed_tyvars/0
 ]).
+
+-type fixed_tyvars() :: sets:set(ast:ty_varname()).
 
 -record(ctx,
         { symtab :: symtab:t(),
           env :: constr:constr_poly_env(),
           tyvar_counter :: counters:counters_ref(),
           sanity :: t:opt(ast_check:ty_map()),
-          unmatched_branch :: unmatched_branch_mode()
+          unmatched_branch :: unmatched_branch_mode(),
+          fixed_tyvars :: fixed_tyvars()
         }).
 -type ctx() :: #ctx{}.
 
@@ -35,12 +40,15 @@
 % is excluded for every element of the intersection. But this is not implemented.
 -type unmatched_branch_mode() :: ignore_branch | report.
 
--spec new_ctx(symtab:t(), constr:constr_poly_env(),
-              t:opt(ast_check:ty_map()), unmatched_branch_mode()) -> ctx().
-new_ctx(Tab, Env, Sanity, BranchMode) ->
+-spec new_ctx(symtab:t(),
+              constr:constr_poly_env(),
+              t:opt(ast_check:ty_map()),
+              unmatched_branch_mode(),
+              fixed_tyvars()) -> ctx().
+new_ctx(Tab, Env, Sanity, BranchMode, Fixed) ->
     Counter = counters:new(1, []),
     Ctx = #ctx{ tyvar_counter = Counter, env = Env, symtab = Tab, sanity = Sanity,
-                unmatched_branch = BranchMode },
+                unmatched_branch = BranchMode, fixed_tyvars = Fixed },
     Ctx.
 
 % The result of constraint simplication is either a single error or potentially several sets
@@ -123,6 +131,7 @@ simp_constr(Ctx, C) ->
                     constr_gen:sanity_check(CsScrut, TyMap0);
                 error -> ok
             end,
+            Fixed = Ctx#ctx.fixed_tyvars,
             simp_constrs_if_ok(
                 simp_constrs(Ctx, CsScrut),
                 fun(_, DssScrut) ->
@@ -142,7 +151,7 @@ simp_constr(Ctx, C) ->
                                 lists:flatmap(
                                 fun(DsScrut) ->
                                         Ds = sets:union(DsScrut, Exhau),
-                                        get_substs(tally:tally(Ctx#ctx.symtab, Ds), Locs)
+                                        get_substs(tally:tally(Ctx#ctx.symtab, Ds, Fixed), Locs)
                                 end,
                                 DssScrut)
                             end),
@@ -161,16 +170,25 @@ simp_constr(Ctx, C) ->
                     % Non-determinism here because of multiple solutions from tally
                     % MultiResults has type [simp_constrs_result()]
                     % It contains a simp_constrs_result() for each substitution returned from tally.
+                    NSubsts = length(Substs),
+                    NBodies = length(Bodies),
                     MultiResults = lists:map(
-                        fun({Subst, EquivDs}) ->
+                        fun({SubstPos, {Subst, EquivDs}}) ->
                                 % returns simp_constrs_result(): if there is at least one
                                 % branch that fails then the whole cases fails for the given
                                 % substitution
                                 lists:foldl(
                                     % returns simp_constrs_result()
                                     fun(_, {simp_constrs_error, _} = Err) -> Err;
-                                       ({BodyLocs, {GuardsGammaI, GuardCsI}, {BodyGammaI, BodyCsI}, TI}, BeforeDss) ->
+                                       ({BodyPos, {BodyLocs, {GuardsGammaI, GuardCsI}, {BodyGammaI, BodyCsI}, TI}}, BeforeDss) ->
                                             NewGuardsCtx = inter_env(Ctx, apply_subst_to_env(Subst, GuardsGammaI)),
+                                            NewBodyCtx =
+                                                inter_env(Ctx,
+                                                        apply_subst_to_env(Subst, BodyGammaI)),
+                                            ?LOG_DEBUG("Simplifying constraints for branch ~w/~w of case at ~s (subst ~w/~w)~n  NewBodyEnv=~s~n  NewGuardsEnv=~s",
+                                                BodyPos, NBodies, ast:format_loc(loc(BodyLocs)), SubstPos, NSubsts,
+                                                pretty:render_poly_env(NewBodyCtx#ctx.env),
+                                                pretty:render_poly_env(NewGuardsCtx#ctx.env)),
                                             simp_constrs_if_ok(simp_constrs(NewGuardsCtx, GuardCsI),
                                                 fun(GuardDss, _) ->
                                                     MatchTy = subst:apply(Subst, TI),
@@ -186,6 +204,11 @@ simp_constr(Ctx, C) ->
                                                                         ),
                                                             cross_union(BeforeDss, GuardDss);
                                                         {true, report} ->
+                                                            ?LOG_DEBUG("Redundant branch at ~s, match type ~s (unsubstituted: ~s) equivalent to none()",
+                                                                        ast:format_loc(loc(BodyLocs)),
+                                                                        pretty:render_ty(MatchTy),
+                                                                        pretty:render_ty(TI)
+                                                                        ),
                                                             {simp_constrs_error, {redundant_branch, loc(BodyLocs)}};
                                                         _ ->
                                                             case Ctx#ctx.unmatched_branch of
@@ -197,18 +220,15 @@ simp_constr(Ctx, C) ->
                                                                             );
                                                                 _ -> ok
                                                             end,
-                                                            NewBodyCtx =
-                                                                inter_env(Ctx,
-                                                                        apply_subst_to_env(Subst, BodyGammaI)),
                                                             BodyDss = simp_constrs(NewBodyCtx, BodyCsI),
                                                             cross_union(cross_union(BeforeDss, GuardDss), BodyDss)
                                                     end
                                                 end)
                                     end,
-                                    {simp_constrs_ok, [EquivDs]}, Bodies
+                                    {simp_constrs_ok, [EquivDs]}, lists:zip(utils:from_to(1, NBodies), Bodies)
                                 )
                         end,
-                        Substs
+                        lists:zip(utils:from_to(1, NSubsts), Substs)
                     ),
                     ?LOG_TRACE("MultiResults: ~w", MultiResults),
                     case lists:filtermap(
@@ -229,7 +249,7 @@ simp_constr(Ctx, C) ->
                                     ?LOG_DEBUG("MultiResults is empty, checking whether typing the scrutiny or the exhaustiveness check fails."),
                                     case
                                         lists:flatmap(
-                                            fun(Ds) -> get_substs(tally:tally(Ctx#ctx.symtab, Ds), Locs) end,
+                                            fun(Ds) -> get_substs(tally:tally(Ctx#ctx.symtab, Ds, Fixed), Locs) end,
                                         DssScrut)
                                     of
                                         [] ->
@@ -311,7 +331,7 @@ locs_from_constrs(Cs) ->
     ).
 
 -spec get_substs([subst:t()], constr:locs()) -> [{subst:t(), constr:simp_constrs()}].
-get_substs(Substs, Locs) ->
+get_substs(Substs, {LocName, LocSet}) ->
     case Substs of
         {error, _} ->
             % We cannot throw an error here because other branches might return a solvable constraint
@@ -321,13 +341,14 @@ get_substs(Substs, Locs) ->
             lists:map(
               fun(Subst) ->
                       Alphas = subst:domain(Subst),
+                      NewLocs = {LocName ++ " (equiv)", LocSet},
                       EquivCs =
                           lists:foldl(
                             fun(Alpha, Acc) ->
-                                    T = subst:apply(Subst, {var, Alpha}),
+                                    T = subst:apply(Subst, {var, Alpha}, no_clean),
                                     sets:add_element(
-                                      {csubty, Locs, T, {var, Alpha}},
-                                      sets:add_element({csubty, Locs, {var, Alpha}, T}, Acc))
+                                      {csubty, NewLocs, T, {var, Alpha}},
+                                      sets:add_element({csubty, NewLocs, {var, Alpha}, T}, Acc))
                             end,
                             sets:new(),
                             Alphas),

@@ -1,21 +1,35 @@
 -module(subst).
 
--compile({no_auto_import,[apply/2]}).
+-compile({no_auto_import,[apply/2, apply/3]}).
+
+-include_lib("log.hrl").
 
 -export_type([
-    t/0
+    t/0,
+    base_subst/0
 ]).
 
 -export([
-    clean/2,
     apply/2,
+    apply/3,
     domain/1,
-    from_list/1
+    from_list/1,
+    mk_tally_subst/2,
+    base_subst/1
 ]).
 
--type t() :: #{ ast:ty_varname() => ast:ty() }.
+-type base_subst() :: #{ ast:ty_varname() => ast:ty() }.
+
+-type tally_subst() :: {tally_subst, base_subst(), sets:set(ast:ty_varname())}.
+
+-type t() :: base_subst() | tally_subst().
+
+-spec base_subst(t()) -> base_subst().
+base_subst({tally_subst, S, _}) -> S;
+base_subst(S) -> S.
 
 -spec domain(t()) -> [ast:ty_varname()].
+domain({tally_subst, S, _}) -> domain(S);
 domain(S) -> maps:keys(S).
 
 -spec clean(ast:ty(), sets:set(ast:ty_varname())) -> ast:ty().
@@ -29,27 +43,49 @@ clean(T, Fixed) ->
     Res.
 
 -spec apply(t(), ast:ty()) -> ast:ty().
-apply(S, T) ->
+apply(Subst, T) ->
+    apply(Subst, T, clean).
+
+-type clean_mode() :: clean | no_clean.
+
+-spec apply(t(), ast:ty(), clean_mode()) -> ast:ty().
+apply(Subst = {tally_subst, BaseSubst, Fixed}, T, CleanMode) ->
+    U = apply_base(BaseSubst, T),
+    Res =
+        case CleanMode of
+            clean -> clean(U, Fixed);
+            no_clean -> U
+        end,
+    ?LOG_TRACE("subst:apply, T=~s, Subst=~s, U=~s, Res=~s",
+        pretty:render_ty(T),
+        pretty:render_subst(Subst),
+        pretty:render_ty(U),
+        pretty:render_ty(Res)),
+    Res;
+apply(S, T, _) -> apply_base(S, T).
+
+-spec apply_base(base_subst(), ast:ty()) -> ast:ty().
+apply_base(S, T) ->
     case T of
         {singleton, _} -> T;
         {binary, _, _} -> T;
         {empty_list} -> T;
-        {list, U} -> {list, apply(S, U)};
-        {nonempty_list, U} -> {nonempty_list, apply(S, U)};
-        {improper_list, U, V} -> {improper_list, apply(S, U), apply(S, V)};
-        {nonempty_improper_list, U, V} -> {nonempty_improper_list, apply(S, U), apply(S, V)};
+        {list, U} -> {list, apply_base(S, U)};
+        {nonempty_list, U} -> {nonempty_list, apply_base(S, U)};
+        {improper_list, U, V} -> {improper_list, apply_base(S, U), apply_base(S, V)};
+        {nonempty_improper_list, U, V} -> {nonempty_improper_list, apply_base(S, U), apply_base(S, V)};
         {fun_simple} -> T;
-        {fun_any_arg, U} -> {fun_any_arg, apply(S, U)};
-        {fun_full, Args, U} -> {fun_full, apply_list(S, Args), apply(S, U)};
+        {fun_any_arg, U} -> {fun_any_arg, apply_base(S, U)};
+        {fun_full, Args, U} -> {fun_full, apply_list(S, Args), apply_base(S, U)};
         {range, _, _} -> T;
         {map_any} -> T;
         {map, Assocs} ->
-            {map, lists:map(fun({Kind, U, V}) -> {Kind, apply(S, U), apply(S, V)} end, Assocs)};
+            {map, lists:map(fun({Kind, U, V}) -> {Kind, apply_base(S, U), apply_base(S, V)} end, Assocs)};
         {predef, _} -> T;
         {predef_alias, _} -> T;
         {record, Name, Fields} ->
             {record, Name,
-             lists:map(fun({FieldName, U}) -> {FieldName, apply(S, U)} end, Fields)};
+             lists:map(fun({FieldName, U}) -> {FieldName, apply_base(S, U)} end, Fields)};
         {named, Loc, Name, Args} ->
             {named, Loc, Name, apply_list(S, Args)};
         {tuple_any} -> T;
@@ -61,15 +97,17 @@ apply(S, T) ->
             end;
         {union, Args} -> {union, apply_list(S, Args)};
         {intersection, Args} -> {intersection, apply_list(S, Args)};
-        {negation, U} -> {negation, apply(S, U)}
+        {negation, U} -> {negation, apply_base(S, U)}
     end.
 
--spec apply_list(t(), [ast:ty()]) -> [ast:ty()].
-apply_list(S, L) -> lists:map(fun(T) -> apply(S, T) end, L).
+-spec apply_list(base_subst(), [ast:ty()]) -> [ast:ty()].
+apply_list(S, L) -> lists:map(fun(T) -> apply_base(S, T) end, L).
 
 -spec from_list([{ast:ty_varname(), ast:ty()}]) -> t().
 from_list(L) -> maps:from_list(L).
 
+-spec mk_tally_subst(sets:set(ast:ty_varname()), base_subst()) -> t().
+mk_tally_subst(Fixed, Base) -> {tally_subst, Base, Fixed}.
 
 clean_type(Ty, Fix) ->
     %% collect ALL vars in all positions
@@ -83,10 +121,12 @@ clean_type(Ty, Fix) ->
                 [0] ->
                     % !a => none
                     %  a => none
-                    R = subst:apply(#{VariableName => {predef, none}}, Tyy),
+                    % FIXME (SW, 2023-12-08): this has bad performance. Better build one substitution
+                    % and apply it once.
+                    R = apply_base(#{VariableName => {predef, none}}, Tyy),
                     R;
                 [1] ->
-                    subst:apply(#{VariableName => {predef, any}}, Tyy);
+                    apply_base(#{VariableName => {predef, any}}, Tyy);
                 _ -> Tyy
             end
         end, Ty, VarPositions),

@@ -424,6 +424,16 @@ fun_local_05_fail(X) ->
     F = fun(Y) -> X + Y end,
     F("foo").
 
+-spec fun_local_06() -> foobar.
+fun_local_06() ->
+  F = fun(X) ->
+        case X of
+            spam -> foobar;
+            _ -> foobar
+        end
+      end,
+  F(spam).
+
 % if
 -spec if_01(integer()) -> integer().
 if_01(X) ->
@@ -525,9 +535,35 @@ foo(L) ->
 foo2(a) -> 1;
 foo2(b) -> 2.
 
+-spec foo2_case(a) -> 1; (b) -> 2.
+foo2_case(X) ->
+    case X of
+        a -> 1;
+        b -> 2
+    end.
+
 -spec foo3(a|b) -> 1|true.
 foo3(a) -> 1;
 foo3(b) -> true.
+
+% See #56
+-spec foo4
+    (integer()) -> integer();
+    (1) -> 2.
+foo4(X) ->
+    case X of
+        1 -> 2;
+        _ -> X
+    end.
+-spec foo4_b
+    (integer()) -> integer();
+    (1) -> 2.
+foo4_b(X) ->
+    case X of
+        1 -> 2;
+        3 -> 3;
+        _ -> X
+    end.
 
 % same as fun_local_02 but transformed
 % such that there are no n-tuples and n-functions anymore
@@ -543,3 +579,13 @@ fun_local_02_plus() ->
 
 -spec my_plus({integer(), integer()}) -> integer(); ({float(), integer()}) -> float(); ({integer(), float()}) -> float(); ({float(), float()}) -> float().
 my_plus({A, B}) -> A + B.
+
+% Polymorphic
+-spec poly_01(T) -> T.
+poly_01(X) -> X.
+
+-spec poly_02(T) -> T.
+poly_02(X) ->
+  case X of
+    Y -> Y
+  end.
