@@ -27,10 +27,10 @@ end.
 
 phi(_, []) -> false;
 phi(P, [N | Ns]) ->
-  StepsDiff = ty_map:diff_k_steps(P, N),
-  W1Diff = ty_map:diff_omega1_step(P, N),
-
-  case lists:all(fun ty_rec:is_empty/1, [W1Diff | maps:values(StepsDiff)]) of
+  StepsDiff = ty_map:diff_steps(P, N),
+  % without w1: classic phi function for quasi-k-step functions
+  % checking w1 not needed when type variables not present
+  case lists:all(fun ty_rec:is_empty/1, maps:values(StepsDiff)) of
     true ->
       Rest = filter_empty_labels(ty_map:diff_labels(P, N)),
       lists:all(
@@ -58,42 +58,42 @@ normalize_coclause(Fixed, M) -> fun(Pos, Neg, T) ->
 
 phi_norm(_, [], _, _) -> [];
 phi_norm(P, [N | Ns], Fixed, M) ->
-  StepsDiff = ty_map:diff_k_steps(P, N),
-  W1Diff = ty_map:diff_omega1_step(P, N),
+  StepsDiff = ty_map:diff_steps(P, N),
+  W1Diff = ty_map:diff_w1(P, N),
   LabelsDiff = ty_map:diff_labels(P, N),
-  {O1, O2} = ty_map:omegas(P),
-  {O11, O22} = ty_map:omegas(N),
 
-  NormedKeyVars = ?F(norm_key_variables(O1, O11, O2, O22, ty_map:key_variables(P), ty_map:key_variables(N), Fixed, M)),
-
-  ToNorm1 = [?F(?NORM(TyRef, Fixed, M)) || TyRef <- [W1Diff | maps:values(StepsDiff)]],
-  ToNorm2 = [begin
-               X = ?F(elim_assoc_conflict(?NORM(TyRef, Fixed, M), A)),
-               Y = ?F(elim_assoc_conflict(phi_norm(ty_map:intersect(P, anymap(AL, TyRef)), Ns, Fixed, M), A)),
-               ?F(constraint_set:join(X, Y))
-             end || {AL = {A, _}, TyRef} <- maps:to_list(LabelsDiff)],
+  NormedKeyVars = ?F(norm_key_variables(
+    ty_map:key_variable_suit(P), ty_map:key_variable_suit(N),
+    Fixed,
+    M
+  )),
+  NormedSteps = [?F(?NORM(TyRef, Fixed, M)) || TyRef <- [W1Diff | maps:values(StepsDiff)]],
+  NormedLabels = [begin
+                    X = ?F(elim_assoc_conflict(?NORM(TyRef, Fixed, M), A)),
+                    Y = ?F(elim_assoc_conflict(phi_norm(ty_map:intersect(P, anymap(AL, TyRef)), Ns, Fixed, M), A)),
+                    ?F(constraint_set:join(X, Y))
+                  end || {AL = {A, _}, TyRef} <- maps:to_list(LabelsDiff)],
 
   constraint_set:join(
-    ?F(meet_all([NormedKeyVars | ToNorm1 ++ ToNorm2])),
+    ?F(meet_all([NormedKeyVars | NormedSteps ++ NormedLabels])),
     ?F(phi_norm(P, Ns, Fixed, M))
   ).
 
 
-norm_key_variables(O1, O11, O2, O22, KeyVarsInPos, KeyVarsInNeg, Fixed, M) ->
-  Bound = fun(Var, Lower, Upper) -> constraint_set:meet(
-    ?F(?NORM(ty_rec:diff(Lower, Var), Fixed, M)),
-    ?F(?NORM(ty_rec:diff(Var, Upper), Fixed, M)))
-           end,
-  NormPos = [case A of
-               ?MAN -> ?F(Bound(Var, ty_rec:diff(O1, O11), ty_rec:diff(O1, O11)));
-               ?OPT -> ?F(Bound(Var, ty_rec:diff(O2, O22), ty_rec:diff(O2, O22)))
-             end || {A, Var} <- KeyVarsInPos],
-  NormNeg = [case A of
-               ?MAN -> ?F(Bound(Var, ty_rec:diff(O11, O1), ty_rec:diff(O11, O1)));
-               ?OPT -> ?F(Bound(Var, ty_rec:diff(O22, O2), O22))
-             end || {A, Var} <- KeyVarsInNeg],
+norm_key_variables({O1, O2, PosManU, PosOptU}, {O11, O22, NegManU, NegOptU}, Fixed, M) ->
+  Bound = fun(VarUnion, Lower, Upper) -> constraint_set:meet(
+    ?F(?NORM(ty_rec:diff(Lower, VarUnion), Fixed, M)),
+    ?F(?NORM(ty_rec:diff(VarUnion, Upper), Fixed, M)))
+          end,
+  {PosO1, PosO2} = {ty_rec:diff(O1, O11), ty_rec:diff(O2, O22)},
+  {NegO1, NegO2} = {ty_rec:diff(O11, O1), ty_rec:diff(O22, O2)},
 
-  meet_all(NormPos ++ NormNeg).
+  meet_all([
+    ?F(Bound(PosManU, PosO1, PosO1)),
+    ?F(Bound(PosOptU, PosO2, PosO2)),
+    ?F(Bound(NegManU, NegO1, NegO1)),
+    ?F(Bound(NegOptU, NegO2, NegO2))
+  ]).
 
 
 apply_to_node(Node, SubstituteMap, Memo) ->

@@ -496,11 +496,10 @@ maps_norm_simple1_test() ->
   % #{int() => int()}  ≤  #{a => β}
   L = tmap([tmap_field_opt(tint(), tint())]),
   R = tmap([tmap_field_opt(tvar(alpha), tvar(beta))]),
-  KeyDom = tunion([tatom(), tint(), ttuple_any()]),
 
   test_tally([alpha, beta], [{L, R}],
     [{#{alpha => tint(), beta => tint()},
-      #{alpha => KeyDom, beta => tany()}}
+      #{alpha => tint(), beta => tany()}}
     ]).
 
 maps_norm_simple2_test() ->
@@ -510,11 +509,10 @@ maps_norm_simple2_test() ->
     tmap_field_opt(tatom(), tatom())
   ]),
   R = tmap([tmap_field_opt(tvar(alpha), tvar(beta))]),
-  KeyDom = tunion([tatom(), tint(), ttuple_any()]),
 
   test_tally([alpha, beta], [{L, R}],
     [{#{alpha => tunion(tint(), tatom()), beta => tunion(tint(), tatom())},
-      #{alpha => KeyDom, beta => tany()}}
+      #{alpha => tunion(tint(), tatom()), beta => tany()}}
     ]).
 
 maps_norm_simple3_test() ->
@@ -540,11 +538,10 @@ maps_norm_simple4_test() ->
   % #{int() => β}  ≤  #{a => int()}
   L2 = tmap([tmap_field_opt(tint(), tvar(beta))]),
   R2 = tmap([tmap_field_opt(tvar(alpha), tint())]),
-  KeyDom = tunion([tatom(), tint(), ttuple_any()]),
 
   test_tally([alpha, beta], [{L2, R2}],
     [{#{alpha => tint(), beta => tnone()},
-      #{alpha => KeyDom, beta => tint()}}
+      #{alpha => tint(), beta => tint()}}
     ]).
 
 maps_norm_simple5_test() ->
@@ -594,7 +591,7 @@ maps_norm_complex2_test() ->
   catch test_tally([alpha, beta], [{L, R}], [{#{}, #{}}]). % should normalize to []
 
 maps_norm_complex3_test() ->
-  % #{foo := 1, bar := 2}  ≤  #{a := 1, β := γ}
+  % #{foo := 1, bar := 2}  ≤  #{a := 1, β := γ} = #{a|β := 1|γ}
   L = tmap([
     tmap_field_man(tatom(foo), tint(1)),
     tmap_field_man(tatom(bar), tint(2))
@@ -604,8 +601,9 @@ maps_norm_complex3_test() ->
     tmap_field_man(tvar(beta), tvar(gamma))
     ]),
   U = tunion(tatom(foo), tatom(bar)),
+
   test_tally([alpha, beta, gamma], [{L, R}],
-    [{#{alpha => U, beta => U, gamma => tint(2)},
+    [{#{alpha => tnone(), beta => tnone(), gamma => tint(2)},
       #{alpha => U, beta => U, gamma => tany()}}]).
 
 maps_norm_complex4_test() ->
@@ -661,13 +659,13 @@ maps_norm_complex6_test() ->
       tmap_field_opt(tany(), tany())
     ])
   ),
+  Foo = tatom(foo),
+
+  % One redundant "sub constraint" is discarded
   test_tally([alpha, beta, gamma, delta], [{L, R}],
-    [{#{alpha => tatom(foo), beta => tint()},
-      #{alpha => tatom(foo), beta => tany()}},
+    [{#{alpha => Foo, beta => tint()},
+      #{alpha => Foo, beta => tany()}},
 
-      {#{gamma => tatom(foo), delta => tint()},
-        #{gamma => tatom(foo), delta => tany()}},
-
-      {#{alpha => tatom(foo),  beta => tatom(), gamma => tatom(foo), delta => tatom()},
-        #{alpha => tatom(foo), beta => tany(),  gamma => tatom(foo), delta => tany()}}
+      {#{gamma => Foo, delta => tint()},
+        #{gamma => Foo, delta => tany()}}
     ]).
