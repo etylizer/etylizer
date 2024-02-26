@@ -63,7 +63,7 @@ phi_norm(P, [N | Ns], Fixed, M) ->
   LabelsDiff = ty_map:diff_labels(P, N),
 
   NormedKeyVars = ?F(norm_key_variables(
-    ty_map:key_variable_suit(P), ty_map:key_variable_suit(N),
+    ty_map:key_variable_suite(P), ty_map:key_variable_suite(N),
     Fixed,
     M
   )),

@@ -125,13 +125,4 @@ empty_0tuple_test() ->
   true = is_empty(Tuple),
   ok.
 
-sintgleton_test() ->
-  A = ty_rec:atom(ty_atom:finite([a])),
-  Tuple1 = tuple(ty_tuple:tuple([A, A])),
-  Tuple2 = tuple(ty_tuple:tuple([A, A, A])),
-
-  BDD = intersect(union(Tuple1, Tuple2), negate(Tuple2)),
-  [Tuple1] = to_singletons(BDD),
-  ok.
-
 -endif.

@@ -9,8 +9,9 @@
 -define(ASSOC_INT, fun(A, ?OPT) -> A; (_, ?MAN) -> ?MAN end).
 
 -export([compare/2, equal/2, has_ref/2, substitute/3, transform/2, all_variables/1]).
--export([map/2, big_intersect/1, intersect/2, diff_labels/2, diff_steps/2, diff_w1/2, key_variable_suit/1, step_names/0, key_domain/0]).
+-export([map/2, big_intersect/1, intersect/2, diff_labels/2, diff_steps/2, diff_w1/2, key_variable_suite/1, step_names/0, key_domain/0]).
 -import(maps, [to_list/1, keys/1, values/1]).
+-export_type([l/0]).
 
 -record(ty_map, {
   labels :: labels(),
@@ -133,8 +134,8 @@ diff_w1(Map1, Map2) ->
   end.
 
 
--spec key_variable_suit(ty_map()) -> {ty_ref(), ty_ref(), ty_ref(), ty_ref()}.
-key_variable_suit(#ty_map{ omegas = {O1, O2, _}, key_variables = {ManU, OptU} }) -> {O1, O2, ManU, OptU}.
+-spec key_variable_suite(ty_map()) -> {ty_ref(), ty_ref(), ty_ref(), ty_ref()}.
+key_variable_suite(#ty_map{ omegas = {O1, O2, _}, key_variables = {ManU, OptU} }) -> {O1, O2, ManU, OptU}.
 
 
 -spec pi(l(), ty_map()) -> {assoc(), ty_ref()}.
