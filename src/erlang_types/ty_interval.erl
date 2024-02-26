@@ -8,7 +8,7 @@
 
 -export([empty/0, any/0]).
 -export([union/2, intersect/2, diff/2, negate/1, is_any/1]).
--export([is_empty/1, eval/1, normalize/5, substitute/4, all_variables/1]).
+-export([is_empty/1, eval/1, normalize/5, substitute/4, all_variables/1, to_singletons/1]).
 
 
 -export([interval/2, cointerval/2]).
@@ -35,7 +35,11 @@ transform_single({right, R}, M = #{diff := D}) when R > 1 ->
 transform_single({right, R}, M = #{union := U}) when R < 1 ->
     U([{predef_alias, pos_integer}, transform_single({range, R, 1}, M)]).
 
-
+to_singletons([]) -> [];
+to_singletons([{range, A, B} | Ints]) ->
+    [ty_rec:interval(dnf_var_int:int(interval(X, X))) || X <- lists:seq(A, B)] ++ to_singletons(Ints);
+to_singletons(_) ->
+    error(illegal_state).
 
 %% representation
 %% left? range* right?

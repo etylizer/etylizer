@@ -5,7 +5,7 @@
 -define(F(Z), fun() -> Z end).
 
 -export([normalize/4, substitute/4]).
--export([var/1, tuple/1, all_variables/1, mall_variables/1, transform/2, is_empty/1, apply_to_node/3]).
+-export([var/1, tuple/1, all_variables/1, mall_variables/1, transform/2, is_empty/1, apply_to_node/3, to_singletons/1]).
 
 % implementations provided by bdd_var.hrl
 -include("bdd_var.hrl").
@@ -45,3 +45,8 @@ normalize_coclause(Size, PVar, NVar, Tuple, Fixed, M) ->
 % substitution delegates to dnf_ty_tuple substitution
 apply_to_node(Node, Map, Memo) ->
   dnf_ty_tuple:substitute(Node, Map, Memo, fun(N, Subst, M) -> ty_tuple:substitute(N, Subst, M) end).
+
+to_singletons(TyBDD) -> dnf(TyBDD, {
+  fun(_Pos = [], _Neg = [], T) -> dnf_ty_tuple:to_singletons(T); (_, _, _) -> [] end,
+  fun(F1, F2) -> F1() ++ F2() end
+}).

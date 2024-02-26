@@ -7,7 +7,7 @@
 -export([apply_to_node/3]).
 -export([is_empty/1, normalize/3, substitute/4]).
 -export([var/1, ty_atom/1, all_variables/1]).
--export([transform/2]).
+-export([to_singletons/1, transform/2]).
 
 -include("bdd_var.hrl").
 
@@ -27,3 +27,8 @@ normalize(Ty, Fixed, M) -> dnf(Ty, {
 % not recursive, no op substitution
 apply_to_node(Node, _StdMap, _Memo) ->
   Node.
+
+to_singletons(TyBDD) -> dnf(TyBDD, {
+  fun([], [], T) -> ty_atom:to_singletons(T); (_, _, _) -> [] end,
+  fun erlang:'++'/2
+  }).

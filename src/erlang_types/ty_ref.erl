@@ -72,8 +72,9 @@ define_any() ->
   Tyl = dnf_var_ty_list:any(),
   Ty3 = {dnf_var_ty_tuple:any(), #{}},
   Ty4 = {dnf_var_ty_function:any(), #{}},
+  Ty5 = dnf_var_ty_map:any(),
 
-  Ty = ty_rec:ty_of(Ty0, Ty1, Ty2, Tyl, Ty3, Ty4),
+  Ty = ty_rec:ty_of(Ty0, Ty1, Ty2, Tyl, Ty3, Ty4, Ty5),
 
   % define
   ty_ref:define_ty_ref(Any, Ty),
