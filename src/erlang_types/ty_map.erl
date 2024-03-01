@@ -13,12 +13,18 @@
 -import(maps, [to_list/1, keys/1, values/1]).
 -export_type([l/0]).
 
--record(ty_map, {
-  labels :: labels(),
-  steps  :: steps(),
-  omegas :: { O1 :: ty_ref(), O2 :: ty_ref(), W1 :: use_step | ty_ref() },
-  key_variables :: { ManKeyVarUnion :: ty_ref(), OptKeyVarUnion :: ty_ref() }
-}).
+-record(ty_map, { labels :: labels(),
+                  steps  :: steps(),
+                  omegas :: {
+                    O1 :: ty_ref(),
+                    O2 :: ty_ref(),
+                    W1 :: use_step | ty_ref()
+                  },
+                  key_variables :: {
+                    ManKeyVarUnion :: ty_ref(),
+                    OptKeyVarUnion :: ty_ref()
+                  }
+                }).
 
 -type ty_map() :: #ty_map{}.
 -type ty_ref() :: {ty_ref, integer()}.
@@ -99,17 +105,23 @@ labels_apply({Combiner, Associate}, Map1, Map2) ->
   #ty_map{ labels = Labels1 } = Map1,
   #ty_map{ labels = Labels2 } = Map2,
 
-  LsDiff1 = maps:fold(fun({A1, L}, Ref1, Ls) ->
-    {A2, Ref2} = pi(L, Map2),
-    AL = {Associate(A1, A2), L},
-    Ls#{AL => Combiner(Ref1, Ref2)}
-                      end, #{}, Labels1),
+  LsDiff1 =
+    maps:fold(
+      fun({A1, L}, Ref1, Ls) ->
+        {A2, Ref2} = pi(L, Map2),
+        AL = {Associate(A1, A2), L},
+        Ls#{AL => Combiner(Ref1, Ref2)}
+      end,
+      #{}, Labels1),
 
-  LsDiff2 = maps:fold(fun({A2, L}, Ref2, Ls) ->
-    {A1, Ref1} = pi(L, Map1),
-    AL = {Associate(A1, A2), L},
-    Ls#{AL => Combiner(Ref1, Ref2)}
-                      end, #{}, Labels2),
+  LsDiff2 =
+    maps:fold(
+      fun({A2, L}, Ref2, Ls) ->
+        {A1, Ref1} = pi(L, Map1),
+        AL = {Associate(A1, A2), L},
+        Ls#{AL => Combiner(Ref1, Ref2)}
+      end,
+      #{}, Labels2),
 
   maps:merge(LsDiff1, LsDiff2).
 
@@ -190,7 +202,13 @@ substitute(Map, SubstituteMap, Memo) ->
 
 transform(Map, #{to_map := ToMap}) ->
   #ty_map{ labels = Labels, steps = Steps, omegas = {_, _, W1}, key_variables = {ManU, _} } = Map,
-  {ManLs, OptLs} = lists:partition(fun({{?MAN, _}, _}) -> true; ({?OPT, _}) -> false end, to_list(Labels)),
+
+  {ManLs, OptLs} = lists:partition(
+    fun ({{?MAN, _}, _}) -> true;
+        ({?OPT, _}) -> false
+    end,
+    to_list(Labels)),
+
   ManKeyVars = case ty_rec:is_empty(ManU) of
                  true -> [];
                  false -> [{ManU, W1}]
