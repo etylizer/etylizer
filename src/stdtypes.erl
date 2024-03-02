@@ -27,6 +27,7 @@
     tarrow_n/1,
     tfun_full/2,
     tfun/2, tfun1/2, tfun2/3, tfun_any/0,
+    tmap/1, tmap_field_opt/2, tmap_field_man/2, tmap_any/0,
     tvar/1,
     trange_any/0, trange/2,
     expand_predef_alias/1,
@@ -82,6 +83,15 @@ tfloat() -> {predef, float}.
 -spec tlist(ast:ty()) -> ast:ty().
 tlist(Arg) -> {list, Arg}.
 
+-spec tmap([ast:ty_map_assoc()]) -> ast:ty().
+tmap(AssocList) -> {map, AssocList}.
+
+-spec tmap_field_opt(ast:ty(), ast:ty()) -> ast:ty_map_assoc_opt().
+tmap_field_opt(K, V) -> {map_field_assoc, K, V}.
+
+-spec tmap_field_man(ast:ty(), ast:ty()) -> ast:ty_map_assoc_req().
+tmap_field_man(K, V) -> {map_field_exact, K, V}.
+
 -spec ttuple_n(pos_integer()) -> ast:ty().
 ttuple_n(Size) ->
     {tuple, [{predef, any} || _ <- lists:seq(1, Size)]}.
@@ -131,6 +141,9 @@ ttuple_any() ->
 
 tfun_any() ->
     {fun_simple}.
+
+tmap_any() ->
+    {map_any}.
 
 trange_any() ->
     {predef, integer}.

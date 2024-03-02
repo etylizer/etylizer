@@ -95,8 +95,9 @@ normalize(Size, DnfTyFunction, PVar, NVar, Fixed, M) ->
   ty_variable:normalize(Ty, PVar, NVar, Fixed, fun(Var) -> ty_rec:function(Size, dnf_var_ty_function:var(Var)) end, M).
 
 normalize_coclause(Pos, Neg, T, Fixed, M) ->
-  case bdd_bool:empty() of
-    T -> [[]];
+  case {bdd_bool:empty(), Pos, Neg} of
+    {T, _, _} -> [[]];
+    {_, [], []} -> [];
     _ ->
       [First | _] = Pos ++ Neg,
       Size = length(ty_function:domains(First)),
