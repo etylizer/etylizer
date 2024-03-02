@@ -205,7 +205,7 @@ transform(Map, #{to_map := ToMap}) ->
 
   {ManLs, OptLs} = lists:partition(
     fun ({{?MAN, _}, _}) -> true;
-        ({?OPT, _}) -> false
+        ({{?OPT, _}, _}) -> false
     end,
     to_list(Labels)),
 

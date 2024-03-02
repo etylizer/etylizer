@@ -70,7 +70,7 @@ phi_norm(P, [N | Ns], Fixed, M) ->
   NormedSteps = [?F(?NORM(TyRef, Fixed, M)) || TyRef <- [W1Diff | maps:values(StepsDiff)]],
   NormedLabels = [begin
                     X = ?F(elim_assoc_conflict(?NORM(TyRef, Fixed, M), A)),
-                    Y = ?F(elim_assoc_conflict(phi_norm(ty_map:intersect(P, anymap(AL, TyRef)), Ns, Fixed, M), A)),
+                    Y = ?F(phi_norm(ty_map:intersect(P, anymap(AL, TyRef)), Ns, Fixed, M)),
                     ?F(constraint_set:join(X, Y))
                   end || {AL = {A, _}, TyRef} <- maps:to_list(LabelsDiff)],
 
