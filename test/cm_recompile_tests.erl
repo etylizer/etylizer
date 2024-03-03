@@ -162,8 +162,7 @@ file_changes_test_() ->
         #{1 => ["bar.erl", "foo.erl", "main.erl"], 2 => ["foo.erl"]})),
      ?_test(test_recompile("file_changes2",
         #{1 => ["bar.erl", "foo.erl", "main.erl"], 2 => ["foo.erl"]})),
-      % FIXME: substitution of tally variables causes a timeout
-     ?_test(test_recompile_dont_tycheck("change_tyspec",
+     ?_test(test_recompile("change_tyspec",
         #{1 => ["bar.erl", "foo.erl", "main.erl"], 2 => ["main.erl", "foo.erl"]})),
      ?_test(test_recompile("change_local_tyspec",
         #{1 => ["bar.erl", "foo.erl", "main.erl"], 2 => ["foo.erl"]})),

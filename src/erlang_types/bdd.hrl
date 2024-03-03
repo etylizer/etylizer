@@ -198,6 +198,8 @@ all_variables(Ty) ->
   }).
 
 
+% dnf_var_ty_ref uses a special transform 
+-ifndef(TRANSFORM).
 transform(Ty, Ops = #{negate := Negate, intersect := Intersect, union := Union}) ->
   dnf(Ty, {
     fun
@@ -209,3 +211,4 @@ transform(Ty, Ops = #{negate := Negate, intersect := Intersect, union := Union})
     end,
     fun(F1, F2) -> Union([F1(), F2()]) end
   }).
+-endif.

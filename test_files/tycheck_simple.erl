@@ -478,6 +478,12 @@ tuple_05_fail(X) ->
         {A, _} -> A
     end.
 
+-spec tuple_06({any(), integer()}) -> integer().
+tuple_06({_, I}) -> I.
+
+-spec tuple_07({atom(), integer()}) -> integer().
+tuple_07({_, I}) -> I.
+
 % Intersection
 -spec use_atom(atom()) -> atom().
 use_atom(X) -> X.

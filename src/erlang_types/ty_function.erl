@@ -40,8 +40,5 @@ substitute({ty_function, Refs, B}, Map, Memo) ->
     }.
 
 all_variables({ty_function, Domain, Codomain}) ->
-  ty_rec:all_variables(domains_to_tuple(Domain))
+  ty_rec:all_variables(dnf_ty_function:domains_to_tuple(Domain))
     ++ ty_rec:all_variables(Codomain).
-
-domains_to_tuple(Domains) ->
-    ty_rec:tuple(length(Domains), dnf_var_ty_tuple:tuple(dnf_ty_tuple:tuple(ty_tuple:tuple(Domains)))).
