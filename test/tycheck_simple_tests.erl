@@ -131,12 +131,7 @@ simple_test_() ->
     % FIXME #36 impossible branches
     "foo2",
     "inter_03_fail",
-    % FIXME #61 bad recursive types in tally
-    "tuple_04",
     % slow, see #57
-    "list_pattern_02",
-    "list_pattern_07",
-    "some_fun",
     "fun_local_03",
     "fun_local_04",
     "fun_local_02_plus",
@@ -148,7 +143,10 @@ simple_test_() ->
     % we do not support inference of intersection types.
     "inter_01", "inter_02",
     % slow, see #62
-    "foo3"],
+    "list_pattern_02", "foo3",
+    % tally recursive unification, see #TODO
+    "some_fun"
+  ],
   check_decls_in_file("test_files/tycheck_simple.erl",
                       {exclude, sets:from_list(WhatNot)},
                       %{include, sets:from_list(What)},

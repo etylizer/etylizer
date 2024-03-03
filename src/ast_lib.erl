@@ -7,7 +7,7 @@
 -export([simplify/1, reset/0, ast_to_erlang_ty/1, erlang_ty_to_ast/1, ast_to_erlang_ty_var/1, erlang_ty_var_to_var/1]).
 -define(VAR_ETS, ast_norm_var_memo). % remember variable name -> variable ID to convert variables properly
 
--export([mk_intersection/1, mk_union/1, mk_negation/1, mk_diff/2]).
+-export([splitIntoProducts/2, mk_intersection/1, mk_union/1, mk_negation/1, mk_diff/2]).
 
 reset() ->
     catch ets:delete(?VAR_ETS),
@@ -108,14 +108,21 @@ erlang_ty_var_to_var({var, Id, Name}) ->
     end.
 
 erlang_ty_to_ast(X) ->
-    {Pol, Full} = ty_rec:transform(
+    ty_rec:transform(
         X,
         #{
             to_fun => fun(S, T) -> stdtypes:tfun_full(lists:map(fun(F) ->
                 (erlang_ty_to_ast(F)) end,S),
                 (erlang_ty_to_ast(T))
             ) end,
-            to_tuple => fun(Ts) -> stdtypes:ttuple(lists:map(fun(T) -> (erlang_ty_to_ast(T)) end,Ts)) end,
+            to_tuple => fun(Ts) -> 
+                Components = lists:map(fun(T) -> (erlang_ty_to_ast(T)) end,Ts),
+                case lists:any(fun({predef, none}) -> true ;(_) -> false end, Components) of
+                    true -> stdtypes:tnone();
+                    _ ->
+                        stdtypes:ttuple(Components) 
+                end
+            end,
             to_atom => fun(A) -> stdtypes:tatom(A) end,
             to_list => fun(A, B) -> stdtypes:tlist_improper((erlang_ty_to_ast(A)), (erlang_ty_to_ast(B))) end,
             to_int => fun(S, T) -> stdtypes:trange(S, T) end,
@@ -135,11 +142,7 @@ erlang_ty_to_ast(X) ->
             union => fun ast_lib:mk_union/1,
             intersect => fun ast_lib:mk_intersection/1,
             negate => fun ast_lib:mk_negation/1
-        }),
-    case Pol of
-        pos -> Full;
-        neg -> stdtypes:tnegate(Full)
-    end.
+        }).
 
 simplify(Full) ->
 %%    io:format(user, ">> Full~n~p~n", [Full]),
@@ -198,6 +201,15 @@ extract_variables(ETy, [Var | OtherVars], ExtractedVars) ->
             extract_variables(ETy, OtherVars, ExtractedVars)
     end.
 
+    %[a,b,c] 3
+splitIntoProducts([X = {ty_ref, _}], _) -> X;
+splitIntoProducts([X | Xs], 0) ->
+    Split = splitIntoProducts(Xs, 0),
+    ty_rec:tuple(2, dnf_var_ty_tuple:tuple(dnf_ty_product:tuple(ty_tuple:tuple([X, Split]))));
+splitIntoProducts([X | Xs], Dim) when Dim /= 2 ->
+    Split = splitIntoProducts(Xs, 0),
+    ty_rec:tuple(Dim, dnf_var_ty_tuple:tuple(dnf_ty_product:tuple(ty_tuple:tuple([X, Split])))).
+
 ast_to_erlang_ty({singleton, Atom}) when is_atom(Atom) ->
     TyAtom = ty_atom:finite([Atom]),
     TAtom = dnf_var_ty_atom:ty_atom(TyAtom),
@@ -211,11 +223,20 @@ ast_to_erlang_ty({binary, _, _}) ->
 
 ast_to_erlang_ty({tuple_any}) ->
     ty_rec:tuple();
-ast_to_erlang_ty({tuple, Comps}) when is_list(Comps)->
+ast_to_erlang_ty({tuple, []}) -> 
+    T = dnf_var_ty_bool:any(),
+    ty_rec:tuple(0, T);
+ast_to_erlang_ty({tuple, [X]}) -> 
+    Inner = ast_to_erlang_ty(X),
+    T = dnf_var_ty_ref:ref(Inner),
+    ty_rec:tuple(1, T);
+ast_to_erlang_ty({tuple, Comps = [_, _]}) ->
     ETy = lists:map(fun(T) -> ast_to_erlang_ty(T) end, Comps),
-
-    T = dnf_var_ty_tuple:tuple(dnf_ty_tuple:tuple(ty_tuple:tuple(ETy))),
-    ty_rec:tuple(length(Comps), T);
+    T = dnf_var_ty_tuple:tuple(dnf_ty_product:tuple(ty_tuple:tuple(ETy))),
+    ty_rec:tuple(2, T);
+ast_to_erlang_ty({tuple, Cs}) ->
+    AllComponentsAsRefs = [ast_to_erlang_ty(C) || C <- Cs],
+    splitIntoProducts(AllComponentsAsRefs, length(Cs));
 
 % funs
 ast_to_erlang_ty({fun_simple}) ->
