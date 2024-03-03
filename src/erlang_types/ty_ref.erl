@@ -1,6 +1,6 @@
 -module(ty_ref).
 
--export([setup_ets/0, any/0, store/1, load/1, new_ty_ref/0, define_ty_ref/2, is_empty_cached/1, store_is_empty_cached/2, store_recursive_variable/2, check_recursive_variable/1]).
+-export([setup_ets/0, empty/0, any/0, store/1, load/1, new_ty_ref/0, define_ty_ref/2, is_empty_cached/1, store_is_empty_cached/2, store_recursive_variable/2, check_recursive_variable/1]).
 -export([memoize/1, is_empty_memoized/1, reset/0, is_normalized_memoized/3]).
 -export([op_cache/3, memoize_norm/2, normalized_memoized/1, setup_all/0]).
 
@@ -17,6 +17,9 @@
 % once a bound variable is encountered in ty_rec:variable,
 % it is treated as a recursive bound variable instead of a free one
 -define(RECURSIVE_TABLE, remember_recursive_variables_ets).
+
+% uncomment this to dump the type store to a local type.db file
+-define(PRINT_DB, true).
 
 op_cache(Op, K, Fun) ->
   case get({Op, K}) of
@@ -40,10 +43,11 @@ reset() ->
 setup_all() ->
   % spawns a new process that is the owner of the variable id ETS table
   lists:foreach(fun(Tab) -> ets:new(Tab, [public, named_table]) end, all_tables()),
-  ets:insert(?TY_UTIL, {ty_number, 0}),
+  ets:insert(?TY_UTIL, {ty_number, 1}), % skip 0 and 1, any empty IDs
 
-  % define ANY node once
+  % define ANY EMPTY node once
   ok = define_any(),
+  ok = define_empty(),
 
   % memoize ANY as not empty
   {ty_ref, AnyId} = ty_rec:any(),
@@ -61,6 +65,7 @@ setup_ets() ->
   ok.
 
 any() -> {ty_ref, 0}.
+empty() -> {ty_ref, 1}.
 
 define_any() ->
   Any = {ty_ref, 0},
@@ -70,7 +75,7 @@ define_any() ->
   Ty1 = dnf_var_ty_atom:any(),
   Ty2 = dnf_var_int:any(),
   Tyl = dnf_var_ty_list:any(),
-  Ty3 = {dnf_var_ty_tuple:any(), #{}},
+  Ty3 = {dnf_var_ty_tuple:any(), dnf_var_ty_bool:any(), dnf_var_ty_ref:ref(Any), #{}},
   Ty4 = {dnf_var_ty_function:any(), #{}},
   Ty5 = dnf_var_ty_map:any(),
 
@@ -78,6 +83,25 @@ define_any() ->
 
   % define
   ty_ref:define_ty_ref(Any, Ty),
+
+  ok.
+
+define_empty() ->
+  Empty = {ty_ref, 1},
+
+  % union
+  Ty0 = dnf_var_predef:empty(),
+  Ty1 = dnf_var_ty_atom:empty(),
+  Ty2 = dnf_var_int:empty(),
+  Tyl = dnf_var_ty_list:empty(),
+  Ty3 = {dnf_var_ty_tuple:empty(), dnf_var_ty_bool:empty(), dnf_var_ty_ref:ref(Empty), #{}},
+  Ty4 = {dnf_var_ty_function:empty(), #{}},
+  Ty5 = dnf_var_ty_map:empty(),
+
+  Ty = ty_rec:ty_of(Ty0, Ty1, Ty2, Tyl, Ty3, Ty4, Ty5),
+
+  % define
+  ty_ref:define_ty_ref(Empty, Ty),
 
   ok.
 
@@ -90,6 +114,17 @@ new_ty_ref() ->
   % Insert empty only in memory, not in unique table
   ets:insert(?TY_MEMORY, {Id, ty_ref:load(ty_rec:empty())}),
   NewEmptyRef.
+
+-ifdef(PRINT_DB).
+maybe_print(Id, Ty) ->
+  {ok, FD} = file:open("type.db",[read, write, append]),
+  io:fwrite(FD, "Store: ~p :=~n~p~n", [Id, Ty]),
+  file:close(FD).
+  %io:format(user, "Store: ~p :=~n~p~n", [Id, Ty]).
+-endif.
+-ifndef(PRINT_DB).
+maybe_print(_, _) -> ok.
+-endif.
 
 define_ty_ref({ty_ref, Id}, Ty) ->
   % when defining new (recursive) types manually,
@@ -115,7 +150,7 @@ define_ty_ref({ty_ref, Id}, Ty) ->
       ok
   end,
 
-  % io:format(user, "Store (manual): ~p :=~n~p~n", [Id, Ty]),
+  maybe_print(Id, Ty),
   ets:insert(?TY_UNIQUE_TABLE, {Ty, Id}),
   ets:insert(?TY_MEMORY, {Id, Ty}),
   {ty_ref, Id}.
@@ -132,9 +167,9 @@ store(Ty) ->
   case Object of
     [] ->
       Id = ets:update_counter(?TY_UTIL, ty_number, {2, 1}),
+      maybe_print(Id, Ty),
       ets:insert(?TY_UNIQUE_TABLE, {Ty, Id}),
       ets:insert(?TY_MEMORY, {Id, Ty}),
-      % io:format(user, "Store: ~p :=~n~p~n", [Id, Ty]),
       {ty_ref, Id};
     [{_, Id}] ->
       {ty_ref, Id}

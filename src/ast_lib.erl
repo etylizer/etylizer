@@ -3,7 +3,7 @@
 -export([simplify/2, reset/0, ast_to_erlang_ty/1, ast_to_erlang_ty/2, erlang_ty_to_ast/1, erlang_ty_to_ast/2, ast_to_erlang_ty_var/1, erlang_ty_var_to_var/1]).
 -define(VAR_ETS, ast_norm_var_memo). % remember variable name -> variable ID to convert variables properly
 
--export([
+-export([splitIntoProducts/2, 
     mk_intersection/1,
     mk_intersection/2,
     mk_union/1,
@@ -133,8 +133,11 @@ maybe_transform(V, _, _) ->
 
 erlang_ty_to_ast(X, M) ->
         case M of
-            #{X := Var} -> Var;
+            #{X := Var} -> 
+                io:format(user, "DONE~n", []),
+                Var;
             _ ->
+        io:format(user, "Not matched ~p in ~n~p~n", [X, M]),
         % Given a X = ... equation, create a new
         % TODO discuss how to ensure uniqueness
         RecVarID = erlang:unique_integer(),
@@ -149,7 +152,14 @@ erlang_ty_to_ast(X, M) ->
                     (erlang_ty_to_ast(F, NewM)) end,S),
                     (erlang_ty_to_ast(T, NewM))
                 ) end,
-                to_tuple => fun(Ts) -> stdtypes:ttuple(lists:map(fun(T) -> (erlang_ty_to_ast(T, NewM)) end,Ts)) end,
+                to_tuple => fun(Ts) -> 
+                    Components = lists:map(fun(T) -> (erlang_ty_to_ast(T, NewM)) end,Ts),
+                    case lists:any(fun({predef, none}) -> true ;(_) -> false end, Components) of
+                        true -> stdtypes:tnone();
+                        _ ->
+                            stdtypes:ttuple(Components) 
+                    end
+                end,
                 to_atom => fun(A) -> stdtypes:tatom(A) end,
                 to_list => fun(A, B) -> stdtypes:tlist_improper((erlang_ty_to_ast(A, NewM)), (erlang_ty_to_ast(B, NewM))) end,
                 to_int => fun(S, T) -> stdtypes:trange(S, T) end,
@@ -183,6 +193,7 @@ erlang_ty_to_ast(X, M) ->
         % TODO check if Var in NewTy
         % if not, return just NewTy
         Vars = ast_utils:referenced_variables(NewTy),
+        %io:format(user, "Is var ~p in ty ~p?~n", [Var, NewTy]),
         FinalTy = case lists:member(Var, Vars) of
             true ->
                 {mu, Var, NewTy};
@@ -262,6 +273,15 @@ extract_variables(ETy, [Var | OtherVars], ExtractedVars) ->
             extract_variables(ETy, OtherVars, ExtractedVars)
     end.
 
+    %[a,b,c] 3
+splitIntoProducts([X = {ty_ref, _}], _) -> X;
+splitIntoProducts([X | Xs], 0) ->
+    Split = splitIntoProducts(Xs, 0),
+    ty_rec:tuple(2, dnf_var_ty_tuple:tuple(dnf_ty_product:tuple(ty_tuple:tuple([X, Split]))));
+splitIntoProducts([X | Xs], Dim) when Dim /= 2 ->
+    Split = splitIntoProducts(Xs, 0),
+    ty_rec:tuple(Dim, dnf_var_ty_tuple:tuple(dnf_ty_product:tuple(ty_tuple:tuple([X, Split])))).
+
 ast_to_erlang_ty(Ty) ->
     ast_to_erlang_ty(Ty, symtab:empty(), #{}).
 
@@ -281,11 +301,22 @@ ast_to_erlang_ty({binary, _, _}, _Sym, _) ->
 
 ast_to_erlang_ty({tuple_any}, _Sym, _) ->
     ty_rec:tuple();
-ast_to_erlang_ty({tuple, Comps}, Sym, M) when is_list(Comps)->
+ast_to_erlang_ty({tuple, []}, _Sym, _) -> 
+    T = dnf_var_ty_bool:any(),
+    ty_rec:tuple(0, T);
+ast_to_erlang_ty({tuple, [X]}, Sym, M) -> 
+    Inner = ast_to_erlang_ty(X, Sym, M),
+    T = dnf_var_ty_ref:ref(Inner),
+    ty_rec:tuple(1, T);
+ast_to_erlang_ty({tuple, Comps = [_, _]}, Sym, M) ->
+    io:format(user,"Transforming tuple of ~p~n", [Comps]),
     ETy = lists:map(fun(T) -> ast_to_erlang_ty(T, Sym, M) end, Comps),
-
-    T = dnf_var_ty_tuple:tuple(dnf_ty_tuple:tuple(ty_tuple:tuple(ETy))),
-    ty_rec:tuple(length(Comps), T);
+    T = dnf_var_ty_tuple:tuple(dnf_ty_product:tuple(ty_tuple:tuple(ETy))),
+    io:format(user,"Got ~p~n", [T]),
+    ty_rec:tuple(2, T);
+ast_to_erlang_ty({tuple, Cs}, Sym, M) ->
+    AllComponentsAsRefs = [ast_to_erlang_ty(C, Sym, M) || C <- Cs],
+    splitIntoProducts(AllComponentsAsRefs, length(Cs));
 
 % funs
 ast_to_erlang_ty({fun_simple}, _Sym, _) ->
@@ -300,18 +331,18 @@ ast_to_erlang_ty({fun_full, Comps, Result}, Sym, M) ->
 % maps
 ast_to_erlang_ty({map_any}, _Sym, _M) ->
     ty_rec:map();
-ast_to_erlang_ty({map, AssocList}, _Sym, _M) ->
+ast_to_erlang_ty({map, AssocList}, Sym, M) ->
     {_, TupPartTy, FunPartTy} = lists:foldl(
         fun({Association, Key, Val}, {PrecedenceDomain, Tuples, Functions}) ->
             case Association of
                 map_field_opt ->
                     % tuples only
-                    Tup = ast_to_erlang_ty({tuple, [mk_diff(Key, PrecedenceDomain), Val]}),
+                    Tup = ast_to_erlang_ty({tuple, [mk_diff(Key, PrecedenceDomain), Val]}, Sym, M),
                     {mk_union(PrecedenceDomain, Key), ty_rec:union(Tuples, Tup), Functions};
                 map_field_req ->
                     % tuples & functions
-                    Tup = ast_to_erlang_ty({tuple, [mk_diff(Key, PrecedenceDomain), Val]}),
-                    Fun = ast_to_erlang_ty({fun_full, [mk_diff(Key, PrecedenceDomain)], Val}),
+                    Tup = ast_to_erlang_ty({tuple, [mk_diff(Key, PrecedenceDomain), Val]}, Sym, M),
+                    Fun = ast_to_erlang_ty({fun_full, [mk_diff(Key, PrecedenceDomain)], Val}, Sym, M),
                     {mk_union(PrecedenceDomain, Key), ty_rec:union(Tuples, Tup), ty_rec:intersect(Functions, Fun)}
             end
         end, {stdtypes:tnone(), ty_rec:empty(), ty_rec:function()}, AssocList),
@@ -324,9 +355,12 @@ ast_to_erlang_ty({map, AssocList}, _Sym, _M) ->
 
 % var
 ast_to_erlang_ty(V = {var, A}, _Sym, M) ->
+    io:format(user,"Processing Var ~p with memo ~p~n", [V, M]),
     % FIXME overloading of mu variables and normal variables
     case M of
-        #{V := Ref} -> Ref;
+        #{V := Ref} -> 
+            io:format(user,"GOT MEMO ref ~p -> ~p~n", [V, Ref]),
+            Ref;
         _ -> ty_rec:variable(maybe_new_variable(A))
     end;
 
@@ -380,8 +414,16 @@ ast_to_erlang_ty({range, From, To}, _, _) ->
     ty_rec:interval(Int);
 
 ast_to_erlang_ty({union, []}, _, _) -> ty_rec:empty();
-ast_to_erlang_ty({union, [A]}, Sym, M) -> ast_to_erlang_ty(A, Sym, M);
-ast_to_erlang_ty({union, [A|T]}, Sym, M) -> ty_rec:union(ast_to_erlang_ty(A, Sym, M), ast_to_erlang_ty({union, T}, Sym, M));
+ast_to_erlang_ty({union, [A]}, Sym, M) -> 
+    ast_to_erlang_ty(A, Sym, M);
+ast_to_erlang_ty({union, [A|T]}, Sym, M) -> 
+    io:format(user,"Do union now: ~p~n", [{A, T}]),
+    Left = ast_to_erlang_ty(A, Sym, M),
+    Right = ast_to_erlang_ty({union, T}, Sym, M),
+    Res = ty_rec:union(Left, Right),
+    io:format(user,"Union result: ~p and ~p~nEqual:~n~p~n", [Left, Right, Res]),
+    Res
+    ;
 
 ast_to_erlang_ty({intersection, []}, _, _) -> ty_rec:any();
 ast_to_erlang_ty({intersection, [A]}, Sym, M) -> ast_to_erlang_ty(A, Sym, M);
@@ -392,7 +434,10 @@ ast_to_erlang_ty({negation, Ty}, Sym, M) -> ty_rec:negate(ast_to_erlang_ty(Ty, S
 ast_to_erlang_ty({mu, RecVar, Ty}, Sym, M) ->
     NewRef = ty_ref:new_ty_ref(),
     Mp = M#{RecVar => NewRef},
+    io:format(user,"Store Memo ref ~p -> ~p~n", [RecVar, NewRef]),
+    %io:format(user,"Got my: ~p . ~p~n", [RecVar, Ty]),
     InternalTy = ast_to_erlang_ty(Ty, Sym, Mp),
+    %io:format(user,"Internal ty: ~s~n", [ty_rec:print(InternalTy)]),
     _NewRes = ty_ref:define_ty_ref(NewRef, ty_ref:load(InternalTy))
     ;
 

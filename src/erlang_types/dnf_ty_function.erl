@@ -12,7 +12,7 @@
 -export([apply_to_node/3]).
 -export([normalize/6, substitute/4, is_empty/1]).
 
--export([function/1, all_variables/2, transform/2]).
+-export([domains_to_tuple/1, function/1, all_variables/1, transform/2]).
 
 -type ty_ref() :: {ty_ref, integer()}.
 -type dnf_function() :: term().
@@ -64,8 +64,17 @@ is_empty_cont(BigSTuple, P, [Function | N]) ->
     orelse
     is_empty_cont(BigSTuple, P, N).
 
-domains_to_tuple(Domains) ->
-  ty_rec:tuple(length(Domains), dnf_var_ty_tuple:tuple(dnf_ty_tuple:tuple(ty_tuple:tuple(Domains)))).
+domains_to_tuple([]) -> 
+    T = dnf_var_ty_bool:any(),
+    ty_rec:tuple(0, T);
+domains_to_tuple([Inner]) -> 
+    T = dnf_var_ty_ref:ref(Inner),
+    ty_rec:tuple(1, T);
+domains_to_tuple(ETy = [_, _]) ->
+    T = dnf_var_ty_tuple:tuple(dnf_ty_product:tuple(ty_tuple:tuple(ETy))),
+    ty_rec:tuple(2, T);
+domains_to_tuple(AllComponentsAsRefs) ->
+    ast_lib:splitIntoProducts(AllComponentsAsRefs, length(AllComponentsAsRefs)).
 
 % optimized phi' (4.10) from paper covariance and contravariance
 % justification for this version of phi can be found in `prop_phi_function.erl`

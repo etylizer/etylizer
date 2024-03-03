@@ -28,10 +28,10 @@ is_empty_coclause(Pos, Neg, T) ->
       P2 = ty_rec:function(2, dnf_var_ty_function:any()),
       PPos = ty_tuple:tuple([P1, P2]),
       BigS = ty_tuple:big_intersect([PPos]),
-      dnf_ty_tuple:phi(ty_tuple:components(BigS), Neg);
+      dnf_ty_product:phi(ty_tuple:components(BigS), Neg);
     {Pos, Neg, _} ->
       BigS = ty_tuple:big_intersect(Pos),
-      dnf_ty_tuple:phi(ty_tuple:components(BigS), Neg)
+      dnf_ty_product:phi(ty_tuple:components(BigS), Neg)
   end.
 
 normalize(TyMap, [], [], Fixed, M) ->
@@ -48,14 +48,14 @@ normalize(TyMap, [], [], Fixed, M) ->
             P2 = ty_rec:function(2, dnf_var_ty_function:any()),
             PPos = ty_tuple:tuple([P1, P2]),
             BigS = ty_tuple:big_intersect([PPos]),
-            dnf_ty_tuple:phi_norm(2, ty_tuple:components(BigS), Neg, Fixed, M)
+            dnf_ty_product:phi_norm(2, ty_tuple:components(BigS), Neg, Fixed, M)
         end;
       (Pos, Neg, T) ->
         case bdd_bool:empty() of
           T -> [[]];
           _ ->
             BigS = ty_tuple:big_intersect(Pos),
-            dnf_ty_tuple:phi_norm(2, ty_tuple:components(BigS), Neg, Fixed, M)
+            dnf_ty_product:phi_norm(2, ty_tuple:components(BigS), Neg, Fixed, M)
         end
     end,
     fun constraint_set:meet/2});

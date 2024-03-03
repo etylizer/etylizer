@@ -83,3 +83,6 @@ op_13_fail() -> true andalso no.
 
 -spec op_14_fail() -> boolean().
 op_14_fail() -> false orelse no.
+
+-spec op_15({integer(), integer()}) -> integer(); ({float(), integer()}) -> float(); ({integer(), float()}) -> float(); ({float(), float()}) -> float().
+op_15({A, B}) -> A + B.
