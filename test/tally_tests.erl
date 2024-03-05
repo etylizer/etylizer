@@ -491,6 +491,7 @@ fun_local_own_test_() ->
 
 % =====
 % Map Normalization
+% TODO prepare associations in ast_lib
 % =====
 maps_norm_simple1_test() ->
   % #{int() => int()}  ≤  #{a => β}
@@ -568,3 +569,107 @@ maps_norm_simple5_test() ->
   test_tally([alpha, beta], [{R, L}], [
     {#{beta => tnone()}, #{beta => tnone()}}
   ]).
+
+maps_norm_simple6_test() -> % interesting property or to be fixed?
+  % #{}  ≤  #{a := β}
+  L = tmap([]),
+  R = tmap([
+    tmap_field_man(tvar(alpha), tvar(beta))
+  ]),
+  test_tally([alpha, beta], [{L, R}], [
+    {#{alpha => tnone()}, #{alpha => tnone()}}
+  ]).
+
+maps_norm1_test() ->
+  % #{bar := int(), _ => any()}  !≤  #{foo := 1, a => β} -- constraint gen: a ≤ -RestKeys
+  L = tmap([
+    tmap_field_man(tatom(bar), tint()),
+    tmap_field_opt(tnegate(tatom(bar)), tany())
+  ]),
+  R = tmap([
+    tmap_field_man(tatom(foo), tint(1)),
+    tmap_field_opt(tinter(tnegate(tatom(foo)), tvar(alpha)), tvar(beta))
+  ]),
+  catch test_tally([alpha, beta], [{L, R}], []).
+
+maps_norm2_todo_test() ->
+  % #{foo := 1, bar := 2}  ≤  #{a := 1, β := γ}
+  L = tmap([
+    tmap_field_man(tatom(foo), tint(1)),
+    tmap_field_man(tatom(bar), tint(2))
+  ]),
+  R = tmap([
+    tmap_field_man(tvar(alpha), tint(1)),
+    tmap_field_man(tvar(beta), tvar(gamma))
+  ]),
+  % TODO
+  test_tally([alpha, beta, gamma], [{L, R}], []).
+
+maps_norm3_todo_test() ->
+  % #{a := β, _ => any()}  ≤  #{γ := δ, _ => any()}
+  L = tmap([
+    tmap_field_man(tvar(alpha), tvar(beta)),
+    tmap_field_opt(tnegate(tvar(alpha)), tany())
+  ]),
+  R = tmap([
+    tmap_field_man(tvar(gamma), tvar(delta)),
+    tmap_field_opt(tnegate(tvar(gamma)), tany())
+  ]),
+  % TODO
+  test_tally([alpha, beta, gamma, delta], [{L, R}], []).
+
+maps_norm4_test() ->
+  % #{i := vi}  ≤  #{a := v1, β := γ} -- efficiency
+  Ks = [1,2,3],
+  Vs = [v1,v2,v3],
+  L = tmap([tmap_field_man(tint(K), tatom(V)) || {K, V} <- lists:zip(Ks, Vs)]),
+  R = tmap([
+    tmap_field_man(tvar(alpha), tatom(v1)),
+    tmap_field_man(tvar(beta), tvar(gamma))
+  ]),
+  % TODO
+  test_tally([alpha, beta, gamma], [{L, R}], []).
+
+maps_norm5_test() ->
+  % #{int() => atom(), atom() => int()}  ≤  #{int() => a, atom() => β, γ => δ}
+  Rest = tnegate(tunion(tint(), tatom())),
+  L = tmap([
+    tmap_field_opt(tint(), tatom()),
+    tmap_field_opt(tatom(), tint())
+  ]),
+  R = tmap([
+    tmap_field_opt(tint(), tvar(alpha)),
+    tmap_field_opt(tatom(), tvar(beta)),
+    tmap_field_opt(tinter(Rest, tvar(gamma)), tvar(delta))
+  ]),
+  test_tally([alpha, beta, gamma, delta], [{L, R}], [
+    {#{alpha => tatom(), beta => tint()},
+      #{alpha => tany(), beta => tany()}}
+  ]).
+
+maps_norm6_todo_test() ->
+  % #{foo := int(), _ => any()}  ≤  #{a := β, _ => any()} | #{γ := δ, _ => any()}
+  L = tmap([
+    tmap_field_man(tatom(foo), tint()),
+    tmap_field_opt(tnegate(tatom(foo)), tany())
+  ]),
+  R1 = tmap([
+    tmap_field_man(tvar(alpha), tvar(alpha)),
+    tmap_field_opt(tnegate(tvar(alpha)), tany())
+  ]),
+  R2 = tmap([
+    tmap_field_man(tvar(gamma), tvar(delta)),
+    tmap_field_opt(tnegate(tvar(gamma)), tany())
+  ]),
+  % TODO
+  test_tally([alpha, beta, gamma, delta], [{L, tunion(R1, R2)}], []).
+
+maps_norm7_test() ->
+  % #{foo => 1}  !≤  #{foo := 1}
+  L = tmap([
+    tmap_field_opt(tatom(foo), tint(1))
+  ]),
+  R = tmap([
+    tmap_field_man(tatom(foo), tint(1))
+  ]),
+  test_tally([], [{L, R}], []).

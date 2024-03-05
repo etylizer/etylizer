@@ -236,8 +236,8 @@ ast_to_erlang_ty({map, []}) ->
     T = dnf_var_ty_map:map(dnf_ty_map:map(ty_map:emptymap())),
     ty_rec:map(T);
 ast_to_erlang_ty({map, AssocList}) ->
-    {LabelMappings, StepMappings} = convert_associations(AssocList),
-    ty_rec:map(dnf_var_ty_map:map(dnf_ty_map:map(ty_map:map(LabelMappings, StepMappings))));
+    {Relation, Function} = convert_associations(AssocList),
+    ty_rec:map(dnf_var_ty_map:map(dnf_ty_map:map(ty_map:map(Relation, Function))));
 
 % TODO records
 
@@ -306,6 +306,7 @@ maybe_new_variable(Name) ->
             Variable
     end.
 
+
 convert_associations([]) ->
     {_Opt = dnf_ty_tuple:empty(), _Man = dnf_ty_function:any()};
 
@@ -316,5 +317,8 @@ convert_associations([{map_field_assoc, Key, Val} | Rest]) ->
 
 convert_associations([{map_field_exact, Key, Val} | Rest]) ->
     {Opt, Man} = convert_associations(Rest),
-    Fun = dnf_ty_function:function(ty_function:function([ast_to_erlang_ty(Key)], ast_to_erlang_ty(Val))),
-    {Opt, dnf_ty_function:intersect(Man, Fun)}.
+    TKey = ast_to_erlang_ty(Key),
+    TVal = ast_to_erlang_ty(Val),
+    Tup = dnf_ty_tuple:tuple(ty_tuple:tuple([TKey, TVal])),
+    Fun = dnf_ty_function:function(ty_function:function([TKey], TVal)),
+    {dnf_ty_tuple:union(Opt, Tup), dnf_ty_function:intersect(Man, Fun)}.
