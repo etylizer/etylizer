@@ -533,7 +533,7 @@ maps_norm_simple4_test() ->
   % #{a => int()}  !≤  #{int() => β}
   L1 = tmap([tmap_field_opt(tvar(alpha), tint())]),
   R1 = tmap([tmap_field_opt(tint(), tvar(beta))]),
-  catch test_tally([alpha, beta], [{L1, R1}], [{#{}, #{}}]), % should normalize to []
+  catch test_tally([alpha, beta], [{L1, R1}], [{#{}, #{}}]),
 
   % #{int() => β}  ≤  #{a => int()}
   L2 = tmap([tmap_field_opt(tint(), tvar(beta))]),
@@ -554,8 +554,12 @@ maps_norm_simple5_test() ->
     tmap_field_opt(tvar(beta), tunion(tatom(), tint()))
   ]),
   KeyDom = tunion([tatom(), tint(), ttuple_any()]),
-  test_tally([alpha, beta], [{L, R}], [{#{alpha => tnone(), beta => KeyDom}, #{alpha => tnone(), beta => KeyDom}}]),
-  catch test_tally([alpha, beta], [{R, L}], [{#{}, #{}}]). % should normalize to []
+  test_tally([alpha, beta], [{L, R}], [
+    {#{alpha => tnone(), beta => KeyDom},
+      #{alpha => tnone(), beta => KeyDom}}
+  ]),
+  % #{β => atom() | int()}  !≤  #{a => int(), _ => atom()}
+  catch test_tally([alpha, beta], [{R, L}], [{#{}, #{}}]).
 
 maps_norm_simple_additional_test() ->
   % #{a => atom()}  ≤  #{β => any()}
@@ -566,14 +570,19 @@ maps_norm_simple_additional_test() ->
     tmap_field_opt(tvar(beta), tany())
   ]),
   KeyDom = tunion([tatom(), tint(), ttuple_any()]),
-  test_tally([alpha, beta], [{L, R}], [{#{alpha => tnone(), beta => tnone()}, #{alpha => KeyDom, beta => KeyDom}}]).
+  test_tally([alpha, beta], [{L, R}], [
+    {#{alpha => tnone(), beta => tnone()},
+      #{alpha => KeyDom, beta => KeyDom}}
+  ]).
 
 maps_norm_complex1_test() ->
-  % #{}  !≤  #{a := β}
+  % #{}  ≤  #{a := β}
   L = tmap([]),
   R1 = tmap([tmap_field_man(tvar(alpha), tvar(beta))]),
-  catch test_tally([alpha, beta], [{L, R1}], [{#{}, #{}}]), % should normalize to []
-
+  test_tally([alpha, beta], [{L, R1}], [
+    {#{alpha => tnone()},
+      #{alpha => tnone()}}
+  ]),
   % #{}  ≤  #{a := β} /\ #{}
   R2 = tintersect([R1, L]),
   test_tally([alpha, beta], [{L, R2}], [{#{}, #{}}]).
@@ -669,3 +678,32 @@ maps_norm_complex6_test() ->
       {#{gamma => Foo, delta => tint()},
         #{gamma => Foo, delta => tany()}}
     ]).
+
+maps_norm_example1_test() ->
+  % #{foo := 1, bar => 2}  ≤  #{β => 1|2}
+  L = tmap([
+    tmap_field_man(tatom(foo), tint(1)),
+    tmap_field_opt(tatom(bar), tint(2))
+  ]),
+  R = tmap([
+    tmap_field_opt(tvar(beta), tunion(tint(1), tint(2)))
+  ]),
+  test_tally([beta], [{L, R}], [
+    {#{beta => tunion(tatom(foo), tatom(bar))},
+      #{beta => tunion(tatom(foo), tatom(bar))}}
+  ]).
+
+maps_norm_example2_test() ->
+  % #{foo := 1, bar => 2}  !≤  #{a := 1, β => 2}
+  L = tmap([
+    tmap_field_man(tatom(foo), tint(1)),
+    tmap_field_opt(tatom(bar), tint(2))
+  ]),
+  R = tmap([
+    tmap_field_man(tvar(alpha), tint(1)),
+    tmap_field_opt(tvar(beta), tint(2))
+  ]),
+  catch test_tally([alpha, beta], [{L, R}], [
+    {#{beta => tunion(tatom(foo), tatom(bar))},
+      #{beta => tunion(tatom(foo), tatom(bar))}}
+  ]).

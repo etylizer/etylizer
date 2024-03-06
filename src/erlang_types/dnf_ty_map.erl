@@ -28,9 +28,9 @@ end.
 phi(_, []) -> false;
 phi(P, [N | Ns]) ->
   StepsDiff = ty_map:diff_steps(P, N),
-  % without w1: classic phi function for quasi-k-step functions
-  % checking w1 not needed when type variables not present
-  case lists:all(fun ty_rec:is_empty/1, maps:values(StepsDiff)) of
+  W1Diff = ty_map:diff_w1(P, N),
+
+  case lists:all(fun ty_rec:is_empty/1, [W1Diff | maps:values(StepsDiff)]) of
     true ->
       Rest = filter_empty_labels(ty_map:diff_labels(P, N)),
       lists:all(
@@ -81,9 +81,14 @@ phi_norm(P, [N | Ns], Fixed, M) ->
 
 
 norm_key_variables({O1, O2, PosManU, PosOptU}, {O11, O22, NegManU, NegOptU}, Fixed, M) ->
-  Bound = fun(VarUnion, Lower, Upper) -> constraint_set:meet(
-    ?F(?NORM(ty_rec:diff(Lower, VarUnion), Fixed, M)),
-    ?F(?NORM(ty_rec:diff(VarUnion, Upper), Fixed, M)))
+  Bound = fun(VarUnion, Lower, Upper) ->
+    case ty_rec:is_empty(VarUnion) of
+      true -> [[]];
+      false ->
+        constraint_set:meet(
+          ?F(?NORM(ty_rec:diff(Lower, VarUnion), Fixed, M)),
+          ?F(?NORM(ty_rec:diff(VarUnion, Upper), Fixed, M)))
+    end
           end,
   {PosO1, PosO2} = {ty_rec:diff(O1, O11), ty_rec:diff(O2, O22)},
   {NegO1, NegO2} = {ty_rec:diff(O11, O1), ty_rec:diff(O22, O2)},

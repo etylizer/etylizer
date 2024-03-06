@@ -60,7 +60,7 @@ map(LabelsVar, Steps) ->
   StepsWithOmega = maps:merge(Steps, maps:from_keys(EmptySteps, W2)), % w2 embedded in steps
 
   O1 = o1(Labels),
-  O2 = o2(Steps),
+  O2 = o2(O1, Steps),
   W11 = case ty_rec:is_empty(W1) of
           true -> use_step; % no mandatory key type vars
           false -> W1
@@ -82,7 +82,7 @@ intersect(Map1, Map2) ->
   StInt = maps:merge_with(fun(_, Ref1, Ref2) -> ty_rec:intersect(Ref1, Ref2) end, Steps1, Steps2),
 
   O1Int = o1(LsInt), % = O1 U O11
-  O2Int = o2(StInt), % = O2 U O22
+  O2Int = o2(O1Int, StInt), % = O2 U O22
   W1Int = case {W1, W11} of
             {use_step, use_step} -> use_step;
             {_, use_step} -> ty_rec:intersect(W1, union(values(Steps2)));
@@ -193,7 +193,7 @@ substitute(Map, SubstituteMap, Memo) ->
   StepsUpd = maps:merge(SSteps, maps:from_keys(NotAvailable, ty_rec:empty())), % not type checkable unless n-element list types present
 
   O11 = o1(LabelsUpd),
-  O22 = o2(StepsUpd),
+  O22 = o2(O11, StepsUpd),
   W11 = case ManLabels of [] -> SW1; _ -> use_step end,
   KeyVars = {ty_rec:intersect(ManU, SManKeyVars), ty_rec:intersect(OptU, SOptKeyVars)},
 
@@ -239,6 +239,6 @@ key_domain() -> union([ty_rec:interval(), ty_rec:atom(), ty_rec:tuple()]).
 negate_to_key_domain(Ref) -> ty_rec:diff(key_domain(), Ref).
 o1(Labels) ->
   negate_to_key_domain(union([Ref || {_, {_, Ref}} <- keys(Labels)])).
-o2(Steps) ->
-  % TODO imp detail: explain why O2 disregards labels
-  union([step_ty(S) || {S, Ref} <- to_list(Steps), ty_rec:is_empty(Ref)]).
+o2(O1, Steps) ->
+  ty_rec:intersect(O1,
+    union([step_ty(S) || {S, Ref} <- to_list(Steps), ty_rec:is_empty(Ref)])).
