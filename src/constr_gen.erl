@@ -198,9 +198,9 @@ exp_constrs(Ctx, E, T) ->
             errors:unsupported(L, "function calls with dynamically computed modules");
         ({'if', _, _} = IfExp) ->
             exp_constrs(Ctx, if_exp_to_case_exp(IfExp), T);
-        {lc, _L, _E, _Qs} -> sets:new(); % FIXME
-        {map_create, _L, _Assocs} -> sets:new(); % FIXME
-        {map_update, _L, _MapExp, _Assocs} -> sets:new(); % FIXME
+        {lc, _L, _E, _Qs} -> halt(5); % FIXME
+        {map_create, _L, _Assocs} -> halt(5); % FIXME
+        {map_update, _L, _MapExp, _Assocs} -> halt(5); % FIXME
         {nil, L} ->
             single({csubty, mk_locs("result of nil", L), {empty_list}, T});
         {op, L, Op, Lhs, Rhs} ->
@@ -225,12 +225,12 @@ exp_constrs(Ctx, E, T) ->
                      [{cop, mk_locs(MsgArg, L), Op, 1, {fun_full, [Alpha], Beta}},
                       {csubty, mk_locs(MsgRes, L), Beta, T}]),
             sets:union(ArgCs, OpCs);
-        {'receive', _L, _CaseClauses} -> sets:new(); % FIXME
-        {receive_after, _L, _CauseClauses, _TimeoutExp, _Body} -> sets:new(); % FIXME
-        {record_create, _L, _Name, _Fields} -> sets:new(); % FIXME
-        {record_field, _L, _Exp, _Name, _Field} -> sets:new(); % FIXME
-        {record_index, _L, _Name, _Field} -> sets:new(); % FIXME
-        {record_update, _L, _Exp, _Name, _Fields} -> sets:new(); % FIXME
+        {'receive', _L, _CaseClauses} -> halt(5); % FIXME
+        {receive_after, _L, _CauseClauses, _TimeoutExp, _Body} -> halt(5); % FIXME
+        {record_create, _L, _Name, _Fields} -> halt(5); % FIXME
+        {record_field, _L, _Exp, _Name, _Field} -> halt(5); % FIXME
+        {record_index, _L, _Name, _Field} -> halt(5); % FIXME
+        {record_update, _L, _Exp, _Name, _Fields} -> halt(5); % FIXME
         {tuple, L, Args} ->
             {Tys, Cs} =
                 lists:foldr(
@@ -243,7 +243,7 @@ exp_constrs(Ctx, E, T) ->
                   Args),
             TupleC = {csubty, mk_locs("tuple constructor", L), {tuple, Tys}, T},
             sets:add_element(TupleC, Cs);
-        {'try', _L, _Exps, _CaseClauses, _CatchClauses, _AfterBody} -> sets:new(); % FIXME
+        {'try', _L, _Exps, _CaseClauses, _CatchClauses, _AfterBody} -> halt(5); % FIXME
         {var, L, AnyRef} ->
             Msg = utils:sformat("var ~s", pretty:render(pretty:ref(AnyRef))),
             single({cvar, mk_locs(Msg, L), AnyRef, T});
