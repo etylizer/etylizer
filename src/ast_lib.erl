@@ -108,7 +108,15 @@ erlang_ty_var_to_var({var, Id, Name}) ->
     end.
 
 erlang_ty_to_ast(X) ->
-    {Pol, Full} = ty_rec:transform(
+    {Pol, Full} = maybe_transform(get({ty_ast_cache, X}), X),
+    case Pol of
+        pos -> Full;
+        neg -> stdtypes:tnegate(Full)
+    end.
+
+% Checks the cache before performing excessive transformations.
+maybe_transform(undefined, X) ->
+    V = ty_rec:transform(
         X,
         #{
             to_fun => fun(S, T) -> stdtypes:tfun_full(lists:map(fun(F) ->
@@ -136,10 +144,12 @@ erlang_ty_to_ast(X) ->
             intersect => fun ast_lib:mk_intersection/1,
             negate => fun ast_lib:mk_negation/1
         }),
-    case Pol of
-        pos -> Full;
-        neg -> stdtypes:tnegate(Full)
-    end.
+    put({ty_ast_cache, X}, V),
+    V;
+
+maybe_transform(V, _) ->
+    V.
+
 
 simplify(Full) ->
 %%    io:format(user, ">> Full~n~p~n", [Full]),
