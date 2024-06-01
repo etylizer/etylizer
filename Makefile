@@ -1,8 +1,11 @@
-.PHONY: build test check all clean gradualize check_ast_trans_ty \
+.PHONY: release build test check all clean gradualize check_ast_trans_ty \
 	check_syntax_antidote check_ast_trans_antidote check_types_antidote \
 	check_syntax_riak check_ast_trans_riak check_types_riak
 
 REBAR = ./rebar3
+
+release:
+	$(REBAR) as prod escriptize
 
 build:
 	$(REBAR) escriptize
