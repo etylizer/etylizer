@@ -11,6 +11,7 @@
 
 reset() ->
     catch ets:delete(?VAR_ETS),
+    erlang:put(ty_asy_cache, #{}),
     ets:new(?VAR_ETS, [public, named_table]).
 
 unfold_intersection([], All) -> All;
@@ -108,14 +109,16 @@ erlang_ty_var_to_var({var, Id, Name}) ->
     end.
 
 erlang_ty_to_ast(X) ->
-    {Pol, Full} = maybe_transform(get({ty_ast_cache, X}), X),
+    Cache = erlang:get(ty_ast_cache),
+    Cached = maps:get(X, Cache, undefined),
+    {Pol, Full} = maybe_transform(Cached, X, Cache),
     case Pol of
         pos -> Full;
         neg -> stdtypes:tnegate(Full)
     end.
 
 % Checks the cache before performing excessive transformations.
-maybe_transform(undefined, X) ->
+maybe_transform(undefined, X, Cache) ->
     V = ty_rec:transform(
         X,
         #{
@@ -144,10 +147,11 @@ maybe_transform(undefined, X) ->
             intersect => fun ast_lib:mk_intersection/1,
             negate => fun ast_lib:mk_negation/1
         }),
-    put({ty_ast_cache, X}, V),
+    CacheNew = maps:put(X, V, Cache),
+    put(ty_ast_cache, CacheNew),
     V;
 
-maybe_transform(V, _) ->
+maybe_transform(V, _, _) ->
     V.
 
 
