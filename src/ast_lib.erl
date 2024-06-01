@@ -11,7 +11,7 @@
 
 reset() ->
     catch ets:delete(?VAR_ETS),
-    erlang:put(ty_asy_cache, #{}),
+    erlang:put(ty_ast_cache, #{}),
     ets:new(?VAR_ETS, [public, named_table]).
 
 unfold_intersection([], All) -> All;
