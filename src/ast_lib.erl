@@ -207,7 +207,7 @@ ast_to_erlang_ty({singleton, IntOrChar}) ->
     ty_rec:interval(Int);
 % TODO
 ast_to_erlang_ty({binary, _, _}) ->
-    erlang:error("Bitstrings not implemented yet");
+    errors:not_implemented("Bitstrings not implemented yet");
 
 ast_to_erlang_ty({tuple_any}) ->
     ty_rec:tuple();
@@ -244,7 +244,7 @@ ast_to_erlang_ty({predef, T}) when T == pid; T == port; T == reference; T == flo
 
 % named
 ast_to_erlang_ty({named, _, _Ref, _Args}) ->
-    erlang:error("named references not implemented yet");
+    errors:not_implemented("named references not implemented yet");
 
 % ty_predef_alias
 ast_to_erlang_ty({predef_alias, Alias}) ->
@@ -276,7 +276,7 @@ ast_to_erlang_ty({intersection, [A|T]}) -> ty_rec:intersect(ast_to_erlang_ty(A),
 ast_to_erlang_ty({negation, Ty}) -> ty_rec:negate(ast_to_erlang_ty(Ty));
 
 ast_to_erlang_ty(T) ->
-    erlang:error({"Norm not implemented or malformed type", T}).
+    errors:not_implemented("Norm not implemented or malformed type").
 
 ast_to_erlang_ty_var({var, Name}) when is_atom(Name) ->
     maybe_new_variable(Name).

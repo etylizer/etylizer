@@ -110,7 +110,7 @@ check_ty(Spec, CurModule, Ty, Form) ->
         {integer, _, Int} -> Int =:= Form;
         {char, _, Char} -> Char =:= Form;
         {type, _, binary, [{integer, _, _I1}, {integer, _, _I2}]} ->
-            utils:error("Checking of types for bitstrings not implemented: ~p", Ty);
+            errors:not_implemented("Checking of types for bitstrings not implemented");
         {type, _, nil, []} -> Form =:= [];
         {type, _, list, [Ty2]} ->
             is_list(Form) andalso lists:all(fun (X) -> check_ty(Spec, CurModule, Ty2, X) end, Form);
@@ -119,7 +119,7 @@ check_ty(Spec, CurModule, Ty, Form) ->
         {type, _, bounded_fun, [_, _]} ->
             utils:error("Cannot check form against function type ~p", Ty);
         {type, _, range, [{integer, _, _I1}, {integer, _, _I2}]} ->
-            utils:error("Checking of types for integer ranges not implemented: ~p", Ty);
+            errors:not_implemented("Checking of types for integer ranges not implemented: ~p");
         {type, _, map, any} ->
             #{} =:= Form;
         {type, Anno, map, TyAssocs} ->
