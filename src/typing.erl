@@ -338,7 +338,7 @@ check_alt(Ctx, Decl = {function, Loc, Name, Arity, _}, FunTy, BranchMode) ->
                                     Delta, [pretty:render_subst(S)]),
                                 {true, Idx + 1};
                             L ->
-                                ?LOG_DEBUG("Tally time: ~pms, ~w substitutions: ~200p",
+                                ?LOG_DEBUG("Tally time: ~pms, ~w substitutions:~n~s",
                                     Delta, length(L), pretty:render_substs(L)),
                                 {true, Idx + 1}
                         end

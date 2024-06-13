@@ -144,9 +144,8 @@ traverse_module_list(SearchPath, Symtab, [CurrentModule | RemainingModules]) ->
     Entry = paths:find_module_path(SearchPath, CurrentModule),
     Forms = retrieve_forms_for_source(Entry),
     NewSymtab = extend_symtab(Forms, CurrentModule, Symtab),
-    NewSymbols = symbols_for_module(CurrentModule, NewSymtab),
-    ?LOG_DEBUG("Extended symtab with entries from ~p: ~s", CurrentModule,
-        pretty:render_list(fun pretty:ref/1, NewSymbols)),
+    % NewSymbols = symbols_for_module(CurrentModule, NewSymtab),
+    ?LOG_DEBUG("Extended symtab with entries from ~p", CurrentModule),
     traverse_module_list(SearchPath, NewSymtab, RemainingModules);
 
 traverse_module_list(_, Symtab, []) ->
