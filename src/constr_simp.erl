@@ -93,24 +93,30 @@ simp_constrs(Ctx, Cs) ->
       end,
       zero_simp_constrs_result(), Cs).
 
+-spec varTy(ast:any_ref(), ctx(), constr:locs()) -> ast:ty_scheme().
+varTy(X, Ctx, Locs) ->
+    case maps:find(X, Ctx#ctx.env) of
+        {ok, U} -> U;
+        error ->
+            case X of
+                {local_ref, Y} ->
+                    errors:bug("Unbound variable in constraint simplification ~w", Y);
+                GlobalX ->
+                    symtab:lookup_fun(GlobalX, loc(Locs), Ctx#ctx.symtab)
+            end
+    end.
+
 -spec simp_constr(ctx(), constr:constr()) -> simp_constrs_result().
 simp_constr(Ctx, C) ->
     ?LOG_TRACE("simp_constr, C=~w", C),
     case C of
         {csubty, _, _, _} -> {simp_constrs_ok, [single(C)]};
         {cvar, Locs, X, T} ->
-            PolyTy =
-                case maps:find(X, Ctx#ctx.env) of
-                    {ok, U} -> U;
-                    error ->
-                        case X of
-                            {local_ref, Y} ->
-                                errors:bug("Unbound variable in constraint simplification ~w", Y);
-                            GlobalX ->
-                                symtab:lookup_fun(GlobalX, loc(Locs), Ctx#ctx.symtab)
-                        end
-                end,
+            PolyTy = varTy(X, Ctx, Locs),
             {simp_constrs_ok, [single({csubty, Locs, fresh_ty_scheme(Ctx, PolyTy), T})]};
+        {cvar_rev, Locs, T, X} ->
+            PolyTy = varTy(X, Ctx, Locs),
+            {simp_constrs_ok, [single({csubty, Locs, T, fresh_ty_scheme(Ctx, PolyTy)})]};
         {cop, Locs, OpName, OpArity, T} ->
             PolyTy = symtab:lookup_op(OpName, OpArity, loc(Locs), Ctx#ctx.symtab),
             {simp_constrs_ok, [single({csubty, Locs, fresh_ty_scheme(Ctx, PolyTy), T})]};
@@ -302,6 +308,7 @@ locs_from_constrs(Cs) ->
                 case C of
                     {csubty, {_, Locs}, _, _} -> Locs;
                     {cvar, {_, Locs}, _, _} -> Locs;
+                    {cvar_rev, {_, Locs}, _, _} -> Locs;
                     {cop, {_, Locs}, _, _, _} -> Locs;
                     {cdef, {_, Locs}, _, _} -> Locs;
                     {ccase, {_, Locs}, _, _, _} -> Locs;

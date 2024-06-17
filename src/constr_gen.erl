@@ -65,7 +65,7 @@ gen_constrs_fun_group(Symtab, Decls) ->
       fun({function, L, Name, Arity, FunClauses}, {Cs, Env}) ->
               Exp = {'fun', L, no_name, FunClauses},
               Alpha = fresh_tyvar(Ctx),
-              ThisCs = exp_constrs(Ctx, Exp, Alpha),
+              ThisCs = exp_constrs(Ctx, Exp, Alpha, subty),
               Ref = {ref, Name, Arity},
               {sets:union(ThisCs, Cs), maps:put(Ref, Alpha, Env)}
       end, {sets:new(), #{}}, Decls).
@@ -84,19 +84,19 @@ gen_constrs_annotated_fun(Symtab, {fun_full, ArgTys, ResTy}, {function, L, Name,
     end,
     ArgRefs = lists:map(fun(V) -> {local_ref, V} end, Args),
     Env = maps:from_list(lists:zip(ArgRefs, ArgTys)),
-    BodyCs = exps_constrs(Ctx, L, Body, ResTy),
+    BodyCs = exps_constrs(Ctx, L, Body, ResTy, subty),
     Msg = utils:sformat("definition of ~w/~w", Name, Arity),
     single({cdef, mk_locs(Msg, L), Env, BodyCs}).
 
--spec exps_constrs(ctx(), ast:loc(), [ast:exp()], ast:ty()) -> constr:constrs().
-exps_constrs(Ctx, L, Es, T) ->
+-spec exps_constrs(ctx(), ast:loc(), [ast:exp()], ast:ty(), exp_constrs_mode()) -> constr:constrs().
+exps_constrs(Ctx, L, Es, T, Mode) ->
     case lists:reverse(Es) of
         [] -> single({cunsatisfiable, L, "empty list of expressions"});
         [Last | Init] ->
-            Cs0 = exp_constrs(Ctx, Last, T),
+            Cs0 = exp_constrs(Ctx, Last, T, Mode),
             lists:foldl(fun (E, Acc) ->
                                 Alpha = fresh_tyvar(Ctx),
-                                Cs = exp_constrs(Ctx, E, Alpha),
+                                Cs = exp_constrs(Ctx, E, Alpha, subty),
                                 % Question: Constraint Alpha to unit?
                                 sets:union(Acc, Cs)
                         end,
@@ -104,21 +104,35 @@ exps_constrs(Ctx, L, Es, T) ->
                         Init)
     end.
 
--spec exp_constrs(ctx(), ast:exp(), ast:ty()) -> constr:constrs().
-exp_constrs(Ctx, E, T) ->
+-type exp_constrs_mode() :: subty | equiv.
+
+-spec mk_constrs(constr:locs(), ast:ty(), ast:ty(), exp_constrs_mode()) -> constr:constrs().
+mk_constrs(Locs, Ty1, Ty2, subty) ->
+    single({csubty, Locs, Ty1, Ty2});
+mk_constrs(Locs, Ty1, Ty2, equiv) ->
+    sets:from_list([{csubty, Locs, Ty1, Ty2}, {csubty, Locs, Ty2, Ty1}]).
+
+-spec mk_var_constrs(constr:locs(), ast:ty(), ast:ty(), exp_constrs_mode()) -> constr:constrs().
+mk_var_constrs(Locs, X, Ty, subty) ->
+    single({cvar, Locs, X, Ty});
+mk_var_constrs(Locs, X, Ty, equiv) ->
+    sets:from_list([{cvar, Locs, X, Ty}, {cvar_rev, Locs, Ty, X}]).
+
+-spec exp_constrs(ctx(), ast:exp(), ast:ty(), exp_constrs_mode()) -> constr:constrs().
+exp_constrs(Ctx, E, T, Mode) ->
     case E of
-        {'atom', L, A} -> single({csubty, mk_locs("atom literal", L), {singleton, A}, T});
-        {'char', L, C} -> single({csubty, mk_locs("char literal", L), {singleton, C}, T});
-        {'integer', L, I} -> single({csubty, mk_locs("int literal", L), {singleton, I}, T});
-        {'float', L, _F} -> single({csubty, mk_locs("float literal", L), {predef, float}, T});
-        {'string', L, ""} -> single({csubty, mk_locs("empty string literal", L), {empty_list}, T});
-        {'string', L, _S} -> single({csubty, mk_locs("string literal", L), {predef_alias, string}, T});
+        {'atom', L, A} -> mk_constrs(mk_locs("atom literal", L), {singleton, A}, T, Mode);
+        {'char', L, C} -> mk_constrs(mk_locs("char literal", L), {singleton, C}, T, Mode);
+        {'integer', L, I} -> mk_constrs(mk_locs("int literal", L), {singleton, I}, T, Mode);
+        {'float', L, _F} -> mk_constrs(mk_locs("float literal", L), {predef, float}, T, Mode);
+        {'string', L, ""} -> mk_constrs(mk_locs("empty string literal", L), {empty_list}, T, Mode);
+        {'string', L, _S} -> mk_constrs(mk_locs("string literal", L), {predef_alias, string}, T, Mode);
         {bc, L, _E, _Qs} -> errors:unsupported(L, "bitstrings");
-        {block, L, Es} -> exps_constrs(Ctx, L, Es, T);
+        {block, L, Es} -> exps_constrs(Ctx, L, Es, T, Mode);
         {'case', L, ScrutE, Clauses} ->
             Alpha = fresh_tyvar(Ctx),
             Beta = fresh_tyvar(Ctx),
-            Cs0 = exp_constrs(Ctx, ScrutE, Alpha),
+            Cs0 = exp_constrs(Ctx, ScrutE, Alpha, equiv),
             {BodyList, Lowers, _Uppers, CsCases} =
                 lists:foldl(fun (Clause = {case_clause, LocClause, _, _, _},
                                  {BodyList, Lowers, Uppers, AccCs}) ->
@@ -142,88 +156,84 @@ exp_constrs(Ctx, E, T) ->
                             Clauses),
             CsScrut = sets:union(Cs0, CsCases),
             Exhaust = {Alpha, ast_lib:mk_union(Lowers)},
-            sets:from_list([
-                {ccase, mk_locs("case", L), CsScrut, Exhaust, BodyList},
-                {csubty, mk_locs("result of case", L), Beta, T}
-            ]);
+            sets:union(single({ccase, mk_locs("case", L), CsScrut, Exhaust, BodyList}),
+                mk_constrs(mk_locs("result of case", L), Beta, T, Mode));
         {'catch', L, CatchE} ->
             Top = {predef, any},
-            Cs = exp_constrs(Ctx, CatchE, Top),
-            sets:add_element({csubty, mk_locs("result of catch", L), Top, T}, Cs);
+            Cs = exp_constrs(Ctx, CatchE, Top, subty),
+            sets:union(mk_constrs(mk_locs("result of catch", L), Top, T, Mode), Cs);
         {cons, L, Head, Tail} ->
             Alpha = fresh_tyvar(Ctx),
-            CsHead = exp_constrs(Ctx, Head, Alpha),
-            CsTail = exp_constrs(Ctx, Tail, T),
-            sets:add_element({csubty, mk_locs("result of cons", L), {list, Alpha}, T},
-                             sets:union(CsHead, CsTail));
+            CsHead = exp_constrs(Ctx, Head, Alpha, subty),
+            CsTail = exp_constrs(Ctx, Tail, T, subty),
+            sets:union([mk_constrs(mk_locs("result of cons", L), {list, Alpha}, T, Mode),
+                        CsHead, CsTail]);
         {fun_ref, L, GlobalRef} ->
-            single({cvar, mk_locs("function ref", L), GlobalRef, T});
+            mk_var_constrs(mk_locs("function ref", L), GlobalRef, T, Mode);
         {'fun', L, RecName, FunClauses} ->
             {Args, BodyExps} = fun_clauses_to_exp(Ctx, L, FunClauses),
             ArgTys = lists:map(fun(X) -> {{local_ref, X}, fresh_tyvar(Ctx)} end, Args),
             ArgEnv = maps:from_list(ArgTys),
             ResTy = fresh_tyvar(Ctx),
             FunTy = {fun_full, lists:map(fun({_, Ty}) -> Ty end, ArgTys), ResTy},
-            CsBody = exps_constrs(Ctx, L, BodyExps, ResTy),
+            CsBody = exps_constrs(Ctx, L, BodyExps, ResTy, subty),
             BodyEnv =
                 case RecName of
                     no_name -> ArgEnv;
                     {local_bind, F} -> maps:put({local_ref, F}, FunTy, ArgEnv)
                 end,
-            sets:from_list([{cdef, mk_locs("function def", L), BodyEnv, CsBody},
-                            {csubty, mk_locs("result of fun exp", L), FunTy, T}]);
+            sets:union(single({cdef, mk_locs("function def", L), BodyEnv, CsBody}),
+                    mk_constrs(mk_locs("result of fun exp", L), FunTy, T, Mode));
         {call, L, FunExp, Args} ->
             {ArgCs, ArgTys} =
                 lists:foldr(
                   fun(ArgExp, {AccCs, AccTys}) ->
                           Alpha = fresh_tyvar(Ctx),
-                          Cs = exp_constrs(Ctx, ArgExp, Alpha),
+                          Cs = exp_constrs(Ctx, ArgExp, Alpha, subty),
                           {sets:union(AccCs, Cs), [Alpha | AccTys]}
                   end,
                   {sets:new(), []},
                   Args),
             Beta = fresh_tyvar(Ctx),
             FunTy = {fun_full, ArgTys, Beta},
-            FunCs = exp_constrs(Ctx, FunExp, FunTy),
+            FunCs = exp_constrs(Ctx, FunExp, FunTy, subty),
             Description =
                 case FunExp of
                     {var, _, AnyRef} ->
                         "result of calling " ++ pretty:render_any_ref(AnyRef);
                     _ -> "result of function call"
                 end,
-            sets:add_element(
-              {csubty, mk_locs(Description, L), Beta, T},
-              sets:union(FunCs, ArgCs));
+            sets:union([FunCs, ArgCs, mk_constrs(mk_locs(Description, L), Beta, T, Mode)]);
         {call_remote, L, _ModExp, _FunExp, _Args} ->
             errors:unsupported(L, "function calls with dynamically computed modules");
         ({'if', _, _} = IfExp) ->
-            exp_constrs(Ctx, if_exp_to_case_exp(IfExp), T);
+            exp_constrs(Ctx, if_exp_to_case_exp(IfExp), T, Mode);
         {lc, _L, _E, _Qs} -> sets:new(); % FIXME
         {map_create, _L, _Assocs} -> sets:new(); % FIXME
         {map_update, _L, _MapExp, _Assocs} -> sets:new(); % FIXME
         {nil, L} ->
-            single({csubty, mk_locs("result of nil", L), {empty_list}, T});
+            mk_constrs(mk_locs("result of nil", L), {empty_list}, T, Mode);
         {op, L, Op, Lhs, Rhs} ->
             Alpha1 = fresh_tyvar(Ctx),
-            Cs1 = exp_constrs(Ctx, Lhs, Alpha1),
+            Cs1 = exp_constrs(Ctx, Lhs, Alpha1, subty),
             Alpha2 = fresh_tyvar(Ctx),
-            Cs2 = exp_constrs(Ctx, Rhs, Alpha2),
+            Cs2 = exp_constrs(Ctx, Rhs, Alpha2, subty),
             Beta = fresh_tyvar(Ctx),
             MsgArg = utils:sformat("args of op ~w", Op),
             MsgRes = utils:sformat("result of op ~w", Op),
-            OpCs = sets:from_list(
-                     [{cop, mk_locs(MsgArg, L), Op, 2, {fun_full, [Alpha1, Alpha2], Beta}},
-                      {csubty, mk_locs(MsgRes, L), Beta, T}]),
+            OpCs = sets:union(
+                      single({cop, mk_locs(MsgArg, L), Op, 2, {fun_full, [Alpha1, Alpha2], Beta}}),
+                      mk_constrs(mk_locs(MsgRes, L), Beta, T, Mode)),
             sets:union([Cs1, Cs2, OpCs]);
         {op, L, Op, Arg} ->
             Alpha = fresh_tyvar(Ctx),
-            ArgCs = exp_constrs(Ctx, Arg, Alpha),
+            ArgCs = exp_constrs(Ctx, Arg, Alpha, subty),
             Beta = fresh_tyvar(Ctx),
             MsgArg = utils:sformat("arg of op ~w", Op),
             MsgRes = utils:sformat("result of op ~w", Op),
-            OpCs = sets:from_list(
-                     [{cop, mk_locs(MsgArg, L), Op, 1, {fun_full, [Alpha], Beta}},
-                      {csubty, mk_locs(MsgRes, L), Beta, T}]),
+            OpCs = sets:union(
+                     single({cop, mk_locs(MsgArg, L), Op, 1, {fun_full, [Alpha], Beta}}),
+                     mk_constrs(mk_locs(MsgRes, L), Beta, T, Mode)),
             sets:union(ArgCs, OpCs);
         {'receive', _L, _CaseClauses} -> sets:new(); % FIXME
         {receive_after, _L, _CauseClauses, _TimeoutExp, _Body} -> sets:new(); % FIXME
@@ -236,17 +246,17 @@ exp_constrs(Ctx, E, T) ->
                 lists:foldr(
                   fun(Arg, {Tys, Cs}) ->
                           Alpha = fresh_tyvar(Ctx),
-                          ThisCs = exp_constrs(Ctx, Arg, Alpha),
+                          ThisCs = exp_constrs(Ctx, Arg, Alpha, subty),
                           {[Alpha | Tys], sets:union(Cs, ThisCs)}
                   end,
                   {[], sets:new()},
                   Args),
-            TupleC = {csubty, mk_locs("tuple constructor", L), {tuple, Tys}, T},
-            sets:add_element(TupleC, Cs);
+            TupleCs = mk_constrs(mk_locs("tuple constructor", L), {tuple, Tys}, T, Mode),
+            sets:union(TupleCs, Cs);
         {'try', _L, _Exps, _CaseClauses, _CatchClauses, _AfterBody} -> sets:new(); % FIXME
         {var, L, AnyRef} ->
             Msg = utils:sformat("var ~s", pretty:render(pretty:ref(AnyRef))),
-            single({cvar, mk_locs(Msg, L), AnyRef, T});
+            mk_var_constrs(mk_locs(Msg, L), AnyRef, T, Mode);
         X -> errors:uncovered_case(?FILE, ?LINE, X)
     end.
 
@@ -260,12 +270,12 @@ case_clause_constrs(Ctx, TyScrut, Scrut, {case_clause, L, Pat, Guards, Exps}, Be
         case_clause_env(Ctx, L, TyScrut, Scrut, Pat, Guards),
     {_, _, _, GuardEnvCs, GuardEnv} = case_clause_env(Ctx, L, TyScrut, Scrut, Pat, []),
     ?LOG_TRACE("TyScrut=~w, Scrut=~w, GuardEnv=~w, BodyEnv=~w", TyScrut, Scrut, GuardEnv, BodyEnv),
-    InnerCs = exps_constrs(Ctx, L, Exps, Beta),
+    InnerCs = exps_constrs(Ctx, L, Exps, Beta, subty),
     CGuards =
         sets:union(
           lists:map(
             fun(Guard) ->
-                    exps_constrs(Ctx, L, Guard, {predef_alias, boolean})
+                    exps_constrs(Ctx, L, Guard, {predef_alias, boolean}, subty)
             end,
             Guards)),
     ConstrBody = {mk_locs("case branch", L), {GuardEnv, CGuards}, {BodyEnv, InnerCs}, BodyTi},

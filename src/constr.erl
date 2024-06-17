@@ -29,7 +29,8 @@
 -type simp_constr() :: constr_subty() | constr_unsatisfiable().
 
 -type constr_subty() :: {csubty, locs(), ast:ty(), ast:ty()}.
--type constr_var() :: {cvar, locs(), ast:any_ref(), ast:ty()}.
+-type constr_var() :: {cvar, locs(), ast:any_ref(), ast:ty()}
+                    | {cvar_rev, locs(), ast:ty(), ast:any_ref()}.
 -type constr_op() :: {cop, locs(), atom(), arity(), ast:ty()}.
 -type constr_def() :: {cdef, locs(), constr_env(), constrs()}.
 -type constr_case() :: {ccase,

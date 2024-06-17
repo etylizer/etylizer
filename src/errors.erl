@@ -40,7 +40,7 @@ bug(Msg, Args) ->
 
 -spec uncovered_case(file:filename(), t:lineno(), any()) -> no_return().
 uncovered_case(File, Line, X) ->
-    bug("uncovered case in ~s:~w, unmatched value: ~w", [File, Line, X]).
+    bug("uncovered case in ~s:~w, unmatched value:~n~200p", [File, Line, X]).
 
 -spec ty_error(ast:loc(), string(), any()) -> no_return().
 ty_error(Loc, Msg, Args) ->

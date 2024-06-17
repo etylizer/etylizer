@@ -535,6 +535,7 @@ foo(L) ->
 foo2(a) -> 1;
 foo2(b) -> 2.
 
+% See #36
 -spec foo2_case(a) -> 1; (b) -> 2.
 foo2_case(X) ->
     case X of
@@ -564,6 +565,13 @@ foo4_b(X) ->
         3 -> 3;
         _ -> X
     end.
+
+-spec foo5(integer()) -> 1.
+foo5(X) ->
+       case X of
+           1 -> X;
+           _ -> 1
+       end.
 
 % same as fun_local_02 but transformed
 % such that there are no n-tuples and n-functions anymore

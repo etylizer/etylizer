@@ -290,6 +290,11 @@ constr(X) ->
                                        locs(Locs),
                                        ref(Ref),
                                        ty(T)]));
+               {cvar_rev, Locs, T, Ref} ->
+                   brackets(comma_sep([text("cvar_rev"),
+                                       locs(Locs),
+                                       ty(T),
+                                       ref(Ref)]));
                {cop, Locs, Name, Arity, T} ->
                    brackets(comma_sep([text("cop"),
                                        locs(Locs),
