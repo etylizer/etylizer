@@ -133,9 +133,6 @@ should_run(Name, {exclude,Set}) -> not sets:is_element(Name, Set).
 simple_test_() ->
   % The following functions are currently excluded from being tested.
   WhatNot = [
-    % FIXME #36 impossible branches
-    "foo2",
-    "inter_03_fail",
     % FIXME #61 bad recursive types in tally
     "tuple_04",
     % slow, see #57
