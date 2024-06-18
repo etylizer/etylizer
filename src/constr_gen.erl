@@ -106,18 +106,6 @@ exps_constrs(Ctx, L, Es, T, Mode) ->
 
 -type exp_constrs_mode() :: subty | equiv.
 
--spec mk_constrs(constr:locs(), ast:ty(), ast:ty(), exp_constrs_mode()) -> constr:constrs().
-mk_constrs(Locs, Ty1, Ty2, subty) ->
-    single({csubty, Locs, Ty1, Ty2});
-mk_constrs(Locs, Ty1, Ty2, equiv) ->
-    sets:from_list([{csubty, Locs, Ty1, Ty2}, {csubty, Locs, Ty2, Ty1}]).
-
--spec mk_var_constrs(constr:locs(), ast:ty(), ast:ty(), exp_constrs_mode()) -> constr:constrs().
-mk_var_constrs(Locs, X, Ty, subty) ->
-    single({cvar, Locs, X, Ty});
-mk_var_constrs(Locs, X, Ty, equiv) ->
-    sets:from_list([{cvar, Locs, X, Ty}, {cvar_rev, Locs, Ty, X}]).
-
 -spec exp_constrs(ctx(), ast:exp(), ast:ty(), exp_constrs_mode()) -> constr:constrs().
 exp_constrs(Ctx, E, T, Mode) ->
     case E of
@@ -259,6 +247,18 @@ exp_constrs(Ctx, E, T, Mode) ->
             mk_var_constrs(mk_locs(Msg, L), AnyRef, T, Mode);
         X -> errors:uncovered_case(?FILE, ?LINE, X)
     end.
+
+-spec mk_constrs(constr:locs(), ast:ty(), ast:ty(), exp_constrs_mode()) -> constr:constrs().
+mk_constrs(Locs, Ty1, Ty2, subty) ->
+    single({csubty, Locs, Ty1, Ty2});
+mk_constrs(Locs, Ty1, Ty2, equiv) ->
+    sets:from_list([{csubty, Locs, Ty1, Ty2}, {csubty, Locs, Ty2, Ty1}]).
+
+-spec mk_var_constrs(constr:locs(), ast:any_ref(), ast:ty(), exp_constrs_mode()) -> constr:constrs().
+mk_var_constrs(Locs, X, Ty, subty) ->
+    single({cvar, Locs, X, Ty});
+mk_var_constrs(Locs, X, Ty, equiv) ->
+    sets:from_list([{cvar, Locs, X, Ty}, {cvar_rev, Locs, Ty, X}]).
 
 -spec ty_without(ast:ty(), ast:ty()) -> ast:ty().
 ty_without(T1, T2) -> ast_lib:mk_intersection([T1, ast_lib:mk_negation(T2)]).
