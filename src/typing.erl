@@ -137,14 +137,11 @@ check_forms(Ctx, FileName, Forms, Only) ->
 
 % Infers the types of all the given functions.
 -spec infer_all(ctx(), string(), [ast:fun_decl()]) -> [symtab:fun_env()].
+infer_all(_Ctx, _FileName, []) -> [#{}];
 infer_all(Ctx, FileName, Decls) ->
     ?LOG_INFO("Inferring types of functions without specs in ~s", FileName),
     % FIXME: need to build strongly connected components to infer each group in isolation
-    L =
-        case Decls of
-            [] -> [#{}];
-            _ -> infer(Ctx, Decls)
-        end,
+    L = infer(Ctx, Decls),
     ?LOG_INFO("Inferring types of functions without specs returned ~w environments in total",
               length(L)),
     L.
@@ -171,7 +168,7 @@ infer(Ctx, Decls) ->
     ?LOG_DEBUG("Constraints:~n~s", pretty:render_constr(Cs)),
     PolyEnv = maps:map(fun(_Key, T) -> {ty_scheme, [], T} end, Env),
     Tab = Ctx#ctx.symtab,
-    SimpCtx = constr_simp:new_ctx(Tab, PolyEnv, Ctx#ctx.sanity, report),
+    SimpCtx = constr_simp:new_ctx(Tab, PolyEnv, Ctx#ctx.sanity, unmatched_branch_dont_check, sets:new()),
     Funs =
         lists:map(
             fun({function, _Loc, Name, Arity, _}) ->
@@ -179,7 +176,8 @@ infer(Ctx, Decls) ->
             end,
             Decls),
     Ds = report_tyerror(constr_simp:simp_constrs(SimpCtx, Cs),
-        utils:sformat("while infering types of mutually recursive functions ~w", Funs)),
+        utils:sformat("while infering types of mutually recursive functions: ~s",
+            string:join(Funs, ","))),
     case Ctx#ctx.sanity of
         {ok, TyMap2} -> constr_simp:sanity_check(Ds, TyMap2);
         error -> ok
@@ -266,7 +264,7 @@ check(Ctx, Decl = {function, Loc, Name, Arity, _}, PolyTy) ->
             [_] -> report;
             [] ->
                 errors:ty_error(Loc, "Invalid spec for ~w/~w: ~w", [Name, Arity, PolyTy]);
-            _ -> ignore_branch
+            _ -> unmatched_branch_ignore
         end,
     lists:foreach(
       fun(Ty) ->
@@ -295,11 +293,11 @@ check_alt(Ctx, Decl = {function, Loc, Name, Arity, _}, FunTy, BranchMode) ->
     end,
     ?LOG_DEBUG("Constraints:~n~s", pretty:render_constr(Cs)),
     Tab = Ctx#ctx.symtab,
-    SimpCtx = constr_simp:new_ctx(Tab, #{}, Ctx#ctx.sanity, BranchMode),
+    FreeSet = tyutils:free_in_ty(FunTy),
+    SimpCtx = constr_simp:new_ctx(Tab, #{}, Ctx#ctx.sanity, BranchMode, FreeSet),
     Ds = report_tyerror(constr_simp:simp_constrs(SimpCtx, Cs),
         utils:sformat("while checking function ~w/~w against type ~s",
             Name, Arity, pretty:render_ty(FunTy))),
-    FreeSet = tyutils:free_in_ty(FunTy),
     ?LOG_DEBUG("Simplified constraint set for ~w/~w at ~s, now " ++
                 "invoking tally on it.~nFixed tyvars: ~w~nConstraints:~n~s",
                 Name, Arity, ast:format_loc(Loc),
@@ -336,16 +334,16 @@ check_alt(Ctx, Decl = {function, Loc, Name, Arity, _}, FunTy, BranchMode) ->
     end.
 
 -spec format_tally_error([string()]) -> string().
+format_tally_error([]) -> "(no specific error messages)";
 format_tally_error(ErrList) ->
     {ErrListShort, N} = utils:shorten(ErrList, 20),
-    "  Errors for constraint set:~n" ++
-        string:join(
-          lists:map(
-            fun({error, Msg}) -> "    " ++ Msg end, ErrListShort),
-          "\n") ++
-        (if N =:= 0 -> "";
-            true -> utils:sformat("~n    (skipped ~w lines)", N)
-         end).
+    "\n" ++ string:join(
+      lists:map(
+        fun({error, Msg}) -> "    " ++ Msg end, ErrListShort),
+      "\n") ++
+    (if N =:= 0 -> "";
+        true -> utils:sformat("~n    (skipped ~w lines)", N)
+     end).
 
 % Creates the monomorphic version of the given type scheme, does not
 % replace the universally quantified type variables with fresh ones.

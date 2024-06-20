@@ -517,6 +517,13 @@ inter_03_fail(X) ->
         _ -> X + 2
     end.
 
+-spec inter_04_ok([T]) -> [T].
+inter_04_ok(L) ->
+    case L of
+        [] -> [];
+        [_X | XS] -> XS
+    end.
+
 -spec inter_04_fail([T]) -> [T] ; ([T]) -> [T].
 inter_04_fail(L) ->
     case L of
@@ -607,3 +614,18 @@ fun_local_02_plus() ->
 
 -spec my_plus({integer(), integer()}) -> integer(); ({float(), integer()}) -> float(); ({integer(), float()}) -> float(); ({float(), float()}) -> float().
 my_plus({A, B}) -> A + B.
+
+% The first branch of the case is not redundant
+-spec poly(T) -> T.
+poly(X) ->
+    case X of
+        1 -> X;
+        _ -> X
+    end.
+
+-spec poly_inter(T) -> T; (T) -> T.
+poly_inter(X) ->
+    case X of
+        1 -> X;
+        _ -> X
+    end.

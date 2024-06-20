@@ -4,7 +4,7 @@
 
 -export([
     simp_constrs/2,
-    new_ctx/4,
+    new_ctx/5,
     sanity_check/2
 ]).
 
@@ -18,29 +18,42 @@
           env :: constr:constr_poly_env(),
           tyvar_counter :: counters:counters_ref(),
           sanity :: t:opt(ast_check:ty_map()),
-          unmatched_branch :: unmatched_branch_mode()
+          unmatched_branch :: unmatched_branch_mode(),
+          fixed_tyvars :: sets:set(ast:ty_varname())
         }).
 -type ctx() :: #ctx{}.
 
-% Mode ignore_branch specifies that branches of a case that cannot be matched
-% are excluded while type-checking.
-
-% Mode report should report an error in case a branch cannot be match.
+% unmatched_branch_mode specifies how we deal with branches of a case that cannot be
+% matched. There are three possible alternatives:
+%
+% - unmatched_branch_ignore: specifies that branches of a case that cannot be matched
+%   are excluded while type-checking.
+% - unmatched_branch_report: report an error in case a branch cannot be match.
+% - unmatched_branch_dont_check: do not check for unmatched branches at all.
 %
 % When type-checking a function against an intersection type, we use mode
-% ignore_branch. Otherwise, we use report.
+% unmatched_branch_ignore.
+%
+% When type-checking a function against an non-intersection type, we use mode
+% unmatched_branch_report.
+%
+% When inferring the type of a top-level function, we use mode unmatched_branch_dont_check.
 %
 % Currently, it is not possible to check for unmatched branches when type-checking
 % against an intersection type. Here, we could report an error if the same branch
 % is excluded for every element of the intersection. But this is not implemented.
--type unmatched_branch_mode() :: ignore_branch | report.
+-type unmatched_branch_mode() ::
+    unmatched_branch_ignore | unmatched_branch_dont_check | unmatched_branch_report.
 
--spec new_ctx(symtab:t(), constr:constr_poly_env(),
-              t:opt(ast_check:ty_map()), unmatched_branch_mode()) -> ctx().
-new_ctx(Tab, Env, Sanity, BranchMode) ->
+-spec new_ctx(symtab:t(),
+             constr:constr_poly_env(),
+             t:opt(ast_check:ty_map()),
+             unmatched_branch_mode(),
+             sets:set(ast:ty_varname())) -> ctx().
+new_ctx(Tab, Env, Sanity, BranchMode, Fixed) ->
     Counter = counters:new(1, []),
     Ctx = #ctx{ tyvar_counter = Counter, env = Env, symtab = Tab, sanity = Sanity,
-                unmatched_branch = BranchMode },
+                unmatched_branch = BranchMode, fixed_tyvars = Fixed },
     Ctx.
 
 % The result of constraint simplication is either a single error or potentially several sets
@@ -64,7 +77,7 @@ simp_constrs(Ctx, Cs) ->
 
 -spec simp_constrs_intern(ctx(), constr:constrs()) -> constr:simp_constrs().
 simp_constrs_intern(Ctx, Cs) ->
-    ?LOG_TRACE("simp_constrs, Cs=~w", Cs),
+    ?LOG_TRACE("simp_constrs, Cs=~s", pretty:render_constr(Cs)),
     L = lists:map(fun(C) ->
             Ds = simp_constr(Ctx, C),
             case Ctx#ctx.sanity of
@@ -117,12 +130,13 @@ simp_constr(Ctx, C) ->
 simp_case_body(Ctx, {ccase_body, BodyLocs, {GuardsGammaI, GuardCsI}, {BodyGammaI, BodyCsI}, ReduCsOrNone}) ->
     FormattedLocs = ast:format_loc(loc(BodyLocs)),
     BranchIsRedundant =
-        case ReduCsOrNone of
-            none -> false;
-            ReduCs ->
+        case {ReduCsOrNone, Ctx#ctx.unmatched_branch} of
+            {none, _} -> false;
+            {_, unmatched_branch_dont_check} -> false;
+            {ReduCs, _} ->
                 ReduDs = simp_constrs_intern(Ctx, ReduCs),
                 case utils:timing_log(
-                    fun () -> tally:tally(Ctx#ctx.symtab, ReduDs) end,
+                    fun () -> tally:tally(Ctx#ctx.symtab, ReduDs, Ctx#ctx.fixed_tyvars) end,
                     10,
                     utils:sformat("tally time for redundancy checking of branch ~s", FormattedLocs))
                 of
@@ -142,15 +156,15 @@ simp_case_body(Ctx, {ccase_body, BodyLocs, {GuardsGammaI, GuardCsI}, {BodyGammaI
     NewGuardsCtx = inter_env(Ctx, GuardsGammaI),
     GuardsRes = simp_constrs_intern(NewGuardsCtx, GuardCsI),
     case {BranchIsRedundant, Ctx#ctx.unmatched_branch} of
-        {true, ignore_branch} ->
+        {true, unmatched_branch_ignore} ->
             ?LOG_DEBUG("Ignoring branch at ~s", FormattedLocs),
             GuardsRes; % FIXME: check if we have a test that complains if we return sets:new() here
-        {true, report} ->
+        {true, unmatched_branch_report} ->
             ?LOG_DEBUG("Branch at ~s is redundant, reporting this as an error", FormattedLocs),
             throw({simp_constrs_error, {redundant_branch, loc(BodyLocs)}});
         _ ->
             case Ctx#ctx.unmatched_branch of
-                ignore_branch -> ?LOG_DEBUG("Not ignoring branch at ~s", FormattedLocs);
+                unmatched_branch_ignore -> ?LOG_DEBUG("Not ignoring branch at ~s", FormattedLocs);
                 _ -> ok
             end,
             NewBodyCtx = inter_env(Ctx, BodyGammaI),
