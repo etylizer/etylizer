@@ -52,6 +52,12 @@
              sets:set(ast:ty_varname())) -> ctx().
 new_ctx(Tab, Env, Sanity, BranchMode, Fixed) ->
     Counter = counters:new(1, []),
+    case BranchMode of
+        unmatched_branch_ignore -> ok;
+        unmatched_branch_dont_check -> ok;
+        unmatched_branch_report -> ok;
+        _ -> ?ABORT("Invalid value for unmatched_branch_mode: ~p", BranchMode)
+    end,
     Ctx = #ctx{ tyvar_counter = Counter, env = Env, symtab = Tab, sanity = Sanity,
                 unmatched_branch = BranchMode, fixed_tyvars = Fixed },
     Ctx.
@@ -155,10 +161,11 @@ simp_case_body(Ctx, {ccase_body, BodyLocs, {GuardsGammaI, GuardCsI}, {BodyGammaI
         end,
     NewGuardsCtx = inter_env(Ctx, GuardsGammaI),
     GuardsRes = simp_constrs_intern(NewGuardsCtx, GuardCsI),
+    ?LOG_DEBUG("~p", Ctx#ctx.unmatched_branch),
     case {BranchIsRedundant, Ctx#ctx.unmatched_branch} of
         {true, unmatched_branch_ignore} ->
             ?LOG_DEBUG("Ignoring branch at ~s", FormattedLocs),
-            GuardsRes; % FIXME: check if we have a test that complains if we return sets:new() here
+            GuardsRes;
         {true, unmatched_branch_report} ->
             ?LOG_DEBUG("Branch at ~s is redundant, reporting this as an error", FormattedLocs),
             throw({simp_constrs_error, {redundant_branch, loc(BodyLocs)}});

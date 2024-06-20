@@ -119,7 +119,7 @@ exp_constrs(Ctx, E, T) ->
             Alpha = fresh_tyvar(Ctx),
             Beta = fresh_tyvar(Ctx),
             Cs0 = exp_constrs(Ctx, ScrutE, Alpha),
-            NeedsRedundancyCheck = true, % FIXME be more clever
+            NeedsUnmatchedCheck = needs_unmatched_check(Clauses),
             {BodyList, Lowers, _Uppers, CsCases} =
                 lists:foldl(fun (Clause = {case_clause, LocClause, _, _, _},
                                  {BodyList, Lowers, Uppers, AccCs}) ->
@@ -132,7 +132,7 @@ exp_constrs(Ctx, E, T) ->
                                           Ctx,
                                           ty_without(Alpha, ast_lib:mk_union(Lowers)),
                                           ScrutE,
-                                          NeedsRedundancyCheck,
+                                          NeedsUnmatchedCheck,
                                           Lowers,
                                           Clause,
                                           Beta),
@@ -257,6 +257,18 @@ exp_constrs(Ctx, E, T) ->
 -spec ty_without(ast:ty(), ast:ty()) -> ast:ty().
 ty_without(T1, T2) -> ast_lib:mk_intersection([T1, ast_lib:mk_negation(T2)]).
 
+-spec needs_unmatched_check(list(ast:case_clause())) -> boolean().
+needs_unmatched_check(Clauses) ->
+    case Clauses of
+        [{case_clause, _, Pat, [], _}] ->
+            case Pat of
+                {wildcard, _} -> false;
+                {var, _, _} -> false;
+                _ -> true
+            end;
+        _ -> true
+    end.
+
 % Computes the redudance constraints of a case clause. The clause is redudandant iff the
 % constraints are satisfiable.
 % Parameters:
@@ -267,9 +279,9 @@ ty_without(T1, T2) -> ast_lib:mk_intersection([T1, ast_lib:mk_negation(T2)]).
 %   ast:exp(): scrutiny of the whole case
 % Result:
 %   constr:constr_case_body_cond(): set of constraints
--spec case_clause_redudancy_constraints(ctx(), list(ast:ty()), ast:ty(), ast:exp()) ->
+-spec case_clause_unmatched_constraints(ctx(), list(ast:ty()), ast:ty(), ast:exp()) ->
     constr:constr_case_body_cond().
-case_clause_redudancy_constraints(Ctx, LowersBefore, Upper, Scrut) ->
+case_clause_unmatched_constraints(Ctx, LowersBefore, Upper, Scrut) ->
     Ui = ast_lib:mk_union([ast_lib:mk_negation(Upper) | LowersBefore]),
     exp_constrs(Ctx, Scrut, Ui).
 
@@ -290,7 +302,7 @@ case_clause_redudancy_constraints(Ctx, LowersBefore, Upper, Scrut) ->
 -spec case_clause_constrs(
     ctx(), ast:ty(), ast:exp(), boolean(), list(ast:ty()), ast:case_clause(), ast:ty()
 ) -> {ast:ty(), ast:ty(), constr:constrs(), constr:constr_case_body()}.
-case_clause_constrs(Ctx, TyScrut, Scrut, NeedsRedundancyCheck, LowersBefore,
+case_clause_constrs(Ctx, TyScrut, Scrut, NeedsUnmatchedCheck, LowersBefore,
     {case_clause, L, Pat, Guards, Exps}, Beta) ->
     {BodyLower, BodyUpper, BodyEnvCs, BodyEnv} =
         case_clause_env(Ctx, L, TyScrut, Scrut, Pat, Guards),
@@ -306,8 +318,8 @@ case_clause_constrs(Ctx, TyScrut, Scrut, NeedsRedundancyCheck, LowersBefore,
             Guards)),
     RedundancyCs =
         if
-            NeedsRedundancyCheck ->
-                case_clause_redudancy_constraints(Ctx, LowersBefore, BodyUpper, Scrut);
+            NeedsUnmatchedCheck ->
+                case_clause_unmatched_constraints(Ctx, LowersBefore, BodyUpper, Scrut);
             true -> none
         end,
     ConstrBody = {ccase_body, mk_locs("case branch", L), {GuardEnv, CGuards}, {BodyEnv, InnerCs},

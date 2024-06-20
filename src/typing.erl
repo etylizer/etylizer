@@ -261,7 +261,7 @@ check(Ctx, Decl = {function, Loc, Name, Arity, _}, PolyTy) ->
         end,
     BranchMode =
         case AltTys of
-            [_] -> report;
+            [_] -> unmatched_branch_report;
             [] ->
                 errors:ty_error(Loc, "Invalid spec for ~w/~w: ~w", [Name, Arity, PolyTy]);
             _ -> unmatched_branch_ignore

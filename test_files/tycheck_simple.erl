@@ -7,7 +7,7 @@
 % against its spec, inference is also tested.
 % If the name ends with _fail, the test must fail.
 
-% Atoms
+%%%%%%%%%%%%%%%%%%%%%%%% ATOMS %%%%%%%%%%%%%%%%%%%%%%%s
 -spec atom_01() -> foobar.
 atom_01() -> foobar.
 
@@ -54,7 +54,8 @@ char_08_fail() -> foobar.
 -spec char_09_fail() -> $a.
 char_09_fail() -> $b.
 
-% Integers
+%%%%%%%%%%%%%%%%%%%%%%%% INTEGERS %%%%%%%%%%%%%%%%%%%%%%%
+
 -spec integer_01() -> 42.
 integer_01() -> 42.
 
@@ -76,7 +77,8 @@ integer_06_fail() -> 43.
 -spec integer_07() -> number().
 integer_07() -> 42.
 
-% Floats
+%%%%%%%%%%%%%%%%%%%%%%%% FLOATS %%%%%%%%%%%%%%%%%%%%%%%
+
 -spec float_01() -> float().
 float_01() -> 3.14.
 
@@ -92,7 +94,8 @@ float_04_fail() -> "bass".
 -spec float_05_fail() -> atom().
 float_05_fail() -> 3.14.
 
-% Strings
+%%%%%%%%%%%%%%%%%%%%%%%% STRINGS %%%%%%%%%%%%%%%%%%%%%%%
+
 -spec string_01() -> string().
 string_01() -> "bass".
 
@@ -117,7 +120,8 @@ string_07() -> "bass".
 -spec string_08_fail() -> 1.
 string_08_fail() -> "bass".
 
-% Simple functions
+%%%%%%%%%%%%%%%%%%%%%%%% SIMPLE FUNCTIONS %%%%%%%%%%%%%%%%%%%%%%%
+
 -spec fun_01(any()) -> any().
 fun_01(X) -> X.
 
@@ -133,7 +137,8 @@ fun_04_fail(X, _Y) -> X.
 -spec fun_05(integer()) -> any().
 fun_05(X) -> X.
 
-% Operators
+%%%%%%%%%%%%%%%%%%%%%%%% OPERATORS %%%%%%%%%%%%%%%%%%%%%%%
+
 -spec op_01() -> integer().
 op_01() -> 1 + 2.
 
@@ -163,7 +168,8 @@ op_08() -> [1,2] ++ ["foo", "bar"].
 -spec op_09() -> list(integer()).
 op_09() -> [] ++ [].
 
-% Case
+%%%%%%%%%%%%%%%%%%%%%%%% CASE %%%%%%%%%%%%%%%%%%%%%%%
+
 -spec case_01(atom()) -> foobar.
 case_01(X) ->
     case X of
@@ -236,7 +242,20 @@ case_10_fail(X) ->
         _ -> 42
     end.
 
-% Blocks
+-spec case_11_fail(integer()) -> integer().
+case_11_fail(X) ->
+    case X of
+        none -> 0 % branch cannot match
+    end.
+
+-spec case_12_fail(integer()) -> integer().
+case_12_fail(X) ->
+    case X of
+        1 -> 0 % branch is not exhaustive
+    end.
+
+%%%%%%%%%%%%%%%%%%%%%%%% BLOCKS %%%%%%%%%%%%%%%%%%%%%%%
+
 -spec block_01() -> integer().
 block_01() ->
     X = 1 + 3,
@@ -258,7 +277,8 @@ block_03() ->
     _ = 1 + 3,
     _ = 4.
 
-% Catch
+%%%%%%%%%%%%%%%%%%%%%%%% CATCH %%%%%%%%%%%%%%%%%%%%%%%
+
 -spec catch_01() -> any().
 catch_01() -> catch (2/10).
 
@@ -273,7 +293,8 @@ catch_02() ->
 -spec catch_03_fail() -> float().
 catch_03_fail() -> catch (1/10) + 1.
 
-% Cons and nil
+%%%%%%%%%%%%%%%%%%%%%%%% CONS, NIL %%%%%%%%%%%%%%%%%%%%%%%
+
 -spec cons_01() -> list(integer()).
 cons_01() -> [1 | [2 | []]].
 
@@ -374,7 +395,8 @@ list_pattern_07(L) ->
         [_X | _] -> 3
     end.
 
-% fun ref and call
+%%%%%%%%%%%%%%%%%%%%%%%% FUN REF AND CALL %%%%%%%%%%%%%%%%%%%%%%%
+
 -spec some_fun(string(), integer()) -> string().
 some_fun(S, _) -> S.
 
@@ -387,7 +409,8 @@ fun_ref_02_fail() -> some_fun("foo", 42).
 -spec fun_ref_03_fail() -> string().
 fun_ref_03_fail() -> some_fun("foo", "42").
 
-% fun
+%%%%%%%%%%%%%%%%%%%%%%%% FUN %%%%%%%%%%%%%%%%%%%%%%%
+
 -spec fun_local_01() -> integer().
 fun_local_01() ->
     F = fun(X, Y) -> X + Y end,
@@ -434,7 +457,8 @@ fun_local_06() ->
       end,
   F(spam).
 
-% if
+%%%%%%%%%%%%%%%%%%%%%%%% IF %%%%%%%%%%%%%%%%%%%%%%%
+
 -spec if_01(integer()) -> integer().
 if_01(X) ->
     if X =:= 0 -> 42;
@@ -465,8 +489,8 @@ if_05(X) ->
         true -> 1
     end.
 
+%%%%%%%%%%%%%%%%%%%%%%%% TUPLES %%%%%%%%%%%%%%%%%%%%%%%
 
-% Tuples
 -spec tuple_01() -> {integer(), string()}.
 tuple_01() -> {42, "foo"}.
 
@@ -488,7 +512,8 @@ tuple_05_fail(X) ->
         {A, _} -> A
     end.
 
-% Intersection
+%%%%%%%%%%%%%%%%%%%%%%%% INTERSECTION %%%%%%%%%%%%%%%%%%%%%%%%
+
 -spec use_atom(atom()) -> atom().
 use_atom(X) -> X.
 
@@ -599,6 +624,17 @@ foo4_b(X) ->
         3 -> 3;
         _ -> X
     end.
+
+-spec inter_with_guard_constraints_fail(any()) -> integer(); (any()) -> integer().
+inter_with_guard_constraints_fail(X) ->
+    case X of
+        % should fail because Y does not have type integer
+        % in the guard but abs requires a number
+        Y when abs(Y) > 2 andalso is_integer(Y) -> Y;
+        _ -> 42
+    end.
+
+%%%%%%%%%%%%%%%%%%%%%%%% MISC %%%%%%%%%%%%%%%%%%%%%%%%
 
 % same as fun_local_02 but transformed
 % such that there are no n-tuples and n-functions anymore

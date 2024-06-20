@@ -326,7 +326,7 @@ get_fun_name({function, _Loc, Name, Arity, _}) -> utils:sformat("~w/~w", Name, A
 -type exc_type_pat() :: pat_wildcard() | pat_var() | rep_atom().
 -type stacktrace_pat() :: pat_wildcard() | pat_var().
 
--type case_clause() :: {case_clause, loc(), Pat::pat(),   Guards::[guard()], Body::exps()}.
+-type case_clause() :: {case_clause, loc(), Pat::pat(), Guards::[guard()], Body::exps()}.
 -type fun_clause()  :: {fun_clause, loc(), Pats::[pat()], Guards::[guard()], Body::exps()}.
 -type if_clause()   :: {if_clause, loc(), Guards::[guard()], Body::exps()}.
 
