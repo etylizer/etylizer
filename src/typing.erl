@@ -175,9 +175,9 @@ infer(Ctx, Decls) ->
                     utils:sformat("~w/~w", Name, Arity)
             end,
             Decls),
-    Ds = report_tyerror(constr_simp:simp_constrs(SimpCtx, Cs),
+    Ds = constr_simp:simp_constrs_of_blocks(report_tyerror(constr_simp:simp_constrs(SimpCtx, Cs),
         utils:sformat("while infering types of mutually recursive functions: ~s",
-            string:join(Funs, ","))),
+            string:join(Funs, ",")))),
     case Ctx#ctx.sanity of
         {ok, TyMap2} -> constr_simp:sanity_check(Ds, TyMap2);
         error -> ok
@@ -295,9 +295,10 @@ check_alt(Ctx, Decl = {function, Loc, Name, Arity, _}, FunTy, BranchMode) ->
     Tab = Ctx#ctx.symtab,
     FreeSet = tyutils:free_in_ty(FunTy),
     SimpCtx = constr_simp:new_ctx(Tab, #{}, Ctx#ctx.sanity, BranchMode, FreeSet),
-    Ds = report_tyerror(constr_simp:simp_constrs(SimpCtx, Cs),
+    Blocks = report_tyerror(constr_simp:simp_constrs(SimpCtx, Cs),
         utils:sformat("while checking function ~w/~w against type ~s",
             Name, Arity, pretty:render_ty(FunTy))),
+    Ds = constr_simp:simp_constrs_of_blocks(Blocks),
     ?LOG_DEBUG("Simplified constraint set for ~w/~w at ~s, now " ++
                 "invoking tally on it.~nFixed tyvars: ~w~nConstraints:~n~s",
                 Name, Arity, ast:format_loc(Loc),
@@ -328,6 +329,8 @@ check_alt(Ctx, Decl = {function, Loc, Name, Arity, _}, FunTy, BranchMode) ->
                        ast:format_loc(Loc),
                        pretty:render_ty(FunTy));
         false ->
+            % FIXME: get better error location
+            ?LOG_DEBUG("Locs of blocks: ~200p", lists:map(fun ({_, L, _}) -> L end, Blocks)),
             SrcCtx = format_src_loc(Loc),
             errors:ty_error(Loc, "function ~w/~w failed to type check against type ~s~n~s",
                             [Name, Arity, pretty:render_ty(FunTy), SrcCtx])
