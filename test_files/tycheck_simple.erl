@@ -531,22 +531,48 @@ foo(L) ->
         [_X|XS] -> XS
     end.
 
--spec foo2(a) -> 1; (b) -> 2.
-foo2(a) -> 1;
-foo2(b) -> 2.
+% See #36
+-spec impossible_branch_f1(a) -> 1; (b) -> 2.
+impossible_branch_f1(a) -> 1;
+impossible_branch_f1(b) -> 2.
 
--spec foo2_case(a) -> 1; (b) -> 2.
-foo2_case(X) ->
+% See #36
+-spec impossible_branch_f1_case(a) -> 1; (b) -> 2.
+impossible_branch_f1_case(X) ->
     case X of
         a -> 1;
         b -> 2
+    end.
+
+% See #36
+-spec impossible_branch_f2({a, integer()}) -> 1; ({b, integer()}) -> 2.
+impossible_branch_f2(X) ->
+    case X of
+        {a, _} -> 1;
+        {b, _} -> 2
+    end.
+
+% See #36
+-spec impossible_branch_f3(a) -> 1; (b) -> 2.
+impossible_branch_f3(X) ->
+    case {X, 5}  of
+        {a, _} -> 1;
+        {b, _} -> 2
+    end.
+
+% See #36
+-spec impossible_branch_f6(integer()) -> 2.
+impossible_branch_f6(X) ->
+    case X of
+      2 -> X;
+      _ -> 2
     end.
 
 -spec foo3(a|b) -> 1|true.
 foo3(a) -> 1;
 foo3(b) -> true.
 
-% See #56
+% See #56 and #36. In #36, the example is called f5
 -spec foo4
     (integer()) -> integer();
     (1) -> 2.
@@ -555,6 +581,8 @@ foo4(X) ->
         1 -> 2;
         _ -> X
     end.
+
+% See #56
 -spec foo4_b
     (integer()) -> integer();
     (1) -> 2.
