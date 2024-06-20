@@ -35,9 +35,10 @@
 -type constr_case() :: {ccase,
                         locs(),
                         Scrutiny::constrs(),
-                        {ast:ty(), ast:ty()}, % exhaustiveness check
                         [constr_case_body()]}.
+-type constr_case_body_cond() :: none | constrs().
 -type constr_case_body() ::
-        {locs(), Guard::constrs_with_env(), Body::constrs_with_env(), BodyCond::ast:ty()}.
+        {ccase_body, locs(), Guard::constrs_with_env(), Body::constrs_with_env(),
+            BodyCond::constr_case_body_cond()}.
 -type constrs_with_env() :: {constr_env(), constrs()}.
 -type constr_unsatisfiable() :: {cunsatisfiable, ast:loc(), string()}.

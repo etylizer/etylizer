@@ -54,7 +54,13 @@ new_ctx(Tab, Env, Sanity, BranchMode) ->
 
 -spec simp_constrs(ctx(), constr:constrs()) -> simp_constrs_result().
 simp_constrs(Ctx, Cs) ->
-    {simp_constrs_ok, simp_constrs_intern(Ctx, Cs)}. % FIXME: handle errors
+    try
+        Ds = simp_constrs_intern(Ctx, Cs),
+        {simp_constrs_ok, Ds}
+    catch
+        throw:{simp_constrs_error, X} ->
+            {simp_constrs_error, X}
+    end.
 
 -spec simp_constrs_intern(ctx(), constr:constrs()) -> constr:simp_constrs().
 simp_constrs_intern(Ctx, Cs) ->
@@ -94,26 +100,62 @@ simp_constr(Ctx, C) ->
         {cdef, _Locs, Env, Cs} ->
             NewCtx = extend_env(Ctx, Env),
             simp_constrs_intern(NewCtx, Cs);
-        {ccase, _Locs, CsScrut, {_ExhauLeft, _ExhauRight}, Bodies} ->
+        {ccase, _Locs, CsScrut, Bodies} ->
             case Ctx#ctx.sanity of
                 {ok, TyMap0} ->
                     constr_gen:sanity_check(CsScrut, TyMap0);
                 error -> ok
             end,
             Ds = simp_constrs_intern(Ctx, CsScrut),
-            L = lists:map(
-                fun ({_BodyLocs, {GuardsGammaI, GuardCsI}, {BodyGammaI, BodyCsI}, _TI}) ->
-                    NewGuardsCtx = inter_env(Ctx, GuardsGammaI),
-                    GuardsRes = simp_constrs_intern(NewGuardsCtx, GuardCsI),
-                    NewBodyCtx = inter_env(Ctx, BodyGammaI),
-                    BodyRes = simp_constrs_intern(NewBodyCtx, BodyCsI), % FIXME: get rid off separate guard constraints
-                    sets:union(GuardsRes, BodyRes)
-                    % FIXME: add redundancy check
-                end,
-                Bodies),
+            L = lists:map(fun (Body) -> simp_case_body(Ctx, Body) end, Bodies),
             sets:union([Ds | L]);
         {cunsatisfiable, Locs, Msg} -> single({cunsatisfiable, Locs, Msg});
         X -> errors:uncovered_case(?FILE, ?LINE, X)
+    end.
+
+-spec simp_case_body(ctx(), constr:constr_case_body()) -> constr:simp_constrs().
+simp_case_body(Ctx, {ccase_body, BodyLocs, {GuardsGammaI, GuardCsI}, {BodyGammaI, BodyCsI}, ReduCsOrNone}) ->
+    FormattedLocs = ast:format_loc(loc(BodyLocs)),
+    BranchIsRedundant =
+        case ReduCsOrNone of
+            none -> false;
+            ReduCs ->
+                ReduDs = simp_constrs_intern(Ctx, ReduCs),
+                case utils:timing_log(
+                    fun () -> tally:tally(Ctx#ctx.symtab, ReduDs) end,
+                    10,
+                    utils:sformat("tally time for redundancy checking of branch ~s", FormattedLocs))
+                of
+                    {error, _} ->
+                        % ReduDs is not satisfiable => Branch could match
+                        false;
+                    [Subst | _] ->
+                        ?LOG_DEBUG(
+                            "Branch at ~s can never match, redundancy constraints satisfiable ~s. First substitution: ~s",
+                            FormattedLocs,
+                            pretty:render_constr(ReduDs),
+                            pretty:render_subst(Subst)
+                            ),
+                        true
+                end
+        end,
+    NewGuardsCtx = inter_env(Ctx, GuardsGammaI),
+    GuardsRes = simp_constrs_intern(NewGuardsCtx, GuardCsI),
+    case {BranchIsRedundant, Ctx#ctx.unmatched_branch} of
+        {true, ignore_branch} ->
+            ?LOG_DEBUG("Ignoring branch at ~s", FormattedLocs),
+            GuardsRes; % FIXME: check if we have a test that complains if we return sets:new() here
+        {true, report} ->
+            ?LOG_DEBUG("Branch at ~s is redundant, reporting this as an error", FormattedLocs),
+            throw({simp_constrs_error, {redundant_branch, loc(BodyLocs)}});
+        _ ->
+            case Ctx#ctx.unmatched_branch of
+                ignore_branch -> ?LOG_DEBUG("Not ignoring branch at ~s", FormattedLocs);
+                _ -> ok
+            end,
+            NewBodyCtx = inter_env(Ctx, BodyGammaI),
+            BodyRes = simp_constrs_intern(NewBodyCtx, BodyCsI),
+            sets:union(GuardsRes, BodyRes)
     end.
 
 -spec inter_env(ctx(), constr:constr_env()) -> ctx().

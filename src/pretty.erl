@@ -262,9 +262,14 @@ constr_bodies(L) ->
     braces(
       comma_sep(
         lists:map(
-          fun({Locs, {GuardEnv, GuardCs}, {BodyEnv, BodyCs}, T}) ->
-                  brackets(comma_sep([locs(Locs), constr_env(GuardEnv), constr(GuardCs),
-                                      constr_env(BodyEnv), constr(BodyCs), ty(T)]))
+          fun({ccase_body, Locs, {GuardEnv, GuardCs}, {BodyEnv, BodyCs}, BodyCondCs}) ->
+                PrettyBodyCond =
+                    case BodyCondCs of
+                        none -> text("none");
+                        X -> constr(X)
+                    end,
+                brackets(comma_sep([locs(Locs), constr_env(GuardEnv), constr(GuardCs),
+                                      constr_env(BodyEnv), constr(BodyCs), PrettyBodyCond]))
           end,
           L))).
 
@@ -300,11 +305,10 @@ constr(X) ->
                                        locs(Locs),
                                        constr_env(Env),
                                        constr(Cs)]));
-               {ccase, Locs, CsScrut, {ExhauLeft, ExhauRight}, Bodies} ->
+               {ccase, Locs, CsScrut, Bodies} ->
                    brackets(comma_sep([text("ccase"),
                                        locs(Locs),
                                        constr(CsScrut),
-                                       beside(ty(ExhauLeft), text(" <= "), ty(ExhauRight)),
                                        constr_bodies(Bodies)]));
                {cunsatisfiable, Locs, Msg} ->
                    brackets(comma_sep([text("cunsatisfiable"),
