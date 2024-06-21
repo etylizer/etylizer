@@ -147,7 +147,9 @@ simple_test_() ->
 
   NoInfer = [
     % slow, see #62
-    "foo3"],
+    "foo3",
+    "poly"
+  ],
   check_decls_in_file("test_files/tycheck_simple.erl",
                       {exclude, sets:from_list(WhatNot)},
                       %{include, sets:from_list(What)},
