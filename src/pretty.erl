@@ -9,6 +9,7 @@
          constr/1,
          substs/1,
          subst/1,
+         simp_constr_block/1,
          render/1,
          render_ty/1,
          render_tys/1,
@@ -371,6 +372,12 @@ mono_env(Env) ->
           end,
           maps:to_list(Env)),
     brackets(comma_sep(Elems)).
+
+-spec simp_constr_block(simp_constr:simp_constr_block()) -> doc().
+simp_constr_block({Kind, Loc, Ds}) ->
+    brackets(comma_sep([text(atom_to_list(Kind)),
+                        loc(Loc),
+                        constr(Ds)])).
 
 -spec render_list(fun((T) -> doc()), list(T)) -> string().
 render_list(Fun, L) ->

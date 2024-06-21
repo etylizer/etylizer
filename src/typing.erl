@@ -330,7 +330,8 @@ check_alt(Ctx, Decl = {function, Loc, Name, Arity, _}, FunTy, BranchMode) ->
                        pretty:render_ty(FunTy));
         false ->
             % FIXME: get better error location
-            ?LOG_DEBUG("Locs of blocks: ~200p", lists:map(fun ({_, L, _}) -> L end, Blocks)),
+            ?LOG_DEBUG("Locs of blocks:~n~s",
+                pretty:render_list(fun pretty:simp_constr_block/1, Blocks)),
             SrcCtx = format_src_loc(Loc),
             errors:ty_error(Loc, "function ~w/~w failed to type check against type ~s~n~s",
                             [Name, Arity, pretty:render_ty(FunTy), SrcCtx])

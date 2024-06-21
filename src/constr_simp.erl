@@ -130,7 +130,7 @@ simp_constrs_intern(Ctx, Cs) ->
                             {[], _} -> true;
                             {_, []} -> false;
                             {[B1 | _], [B2 | _]} ->
-                                ast:loc_leq(loc_of_block(B1), loc_of_block(B2))
+                                ast:leq_loc(loc_of_block(B1), loc_of_block(B2))
                         end
                     end,
                     ListOfBlocks),

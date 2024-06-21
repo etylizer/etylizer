@@ -136,7 +136,7 @@
 ]).
 
 -export([
-    format_loc/1, to_loc/2, loc_auto/0, min_loc/2, loc_leq/2, is_predef_name/1, is_predef_alias_name/1,
+    format_loc/1, to_loc/2, loc_auto/0, min_loc/2, leq_loc/2, is_predef_name/1, is_predef_alias_name/1,
     local_varname_from_any_ref/1, get_fun_name/1
 ]).
 
@@ -164,9 +164,9 @@ to_loc(Path, Anno) ->
 -spec loc_auto() -> loc().
 loc_auto() -> {loc, "AUTO", -1, -1}.
 
-% loc_leq(L1, L2) yields true of L1 <= L2.
--spec loc_leq(loc(), loc()) -> boolean().
-loc_leq({loc, _, Line1, Col1}, {loc, _, Line2, Col2}) ->
+% leq(L1, L2) yields true of L1 <= L2.
+-spec leq_loc(loc(), loc()) -> boolean().
+leq_loc({loc, _, Line1, Col1}, {loc, _, Line2, Col2}) ->
     case utils:compare(Line1, Line2) of
         less -> true;
         greater -> false;
@@ -180,7 +180,7 @@ loc_leq({loc, _, Line1, Col1}, {loc, _, Line2, Col2}) ->
 
 -spec min_loc(loc(), loc()) -> loc().
 min_loc(L1, L2) ->
-    case loc_leq(L1, L2) of
+    case leq_loc(L1, L2) of
         true -> L1;
         false -> L2
     end.
