@@ -91,6 +91,11 @@ loc_of_block({_, L, _}) -> L.
 simp_constrs_of_blocks(Blocks) ->
     sets:union(lists:map(fun ({_, _, Set}) -> Set end, Blocks)).
 
+-spec flatten_blocks(simp_constr_blocks()) -> simp_constr_block().
+flatten_blocks([]) -> ?ABORT("unexpected empty list");
+flatten_blocks([{Kind, Loc, Ds} | Blocks]) ->
+    {Kind, Loc, sets:union(Ds, simp_constrs_of_blocks(Blocks))}.
+
 -spec simp_constrs(ctx(), constr:constrs()) -> simp_constrs_result().
 simp_constrs(Ctx, Cs) ->
     try
@@ -149,7 +154,8 @@ simp_constr(Ctx, C) ->
                     error ->
                         case X of
                             {local_ref, Y} ->
-                                errors:bug("Unbound variable in constraint simplification ~w", Y);
+                                errors:bug("Unbound variable in constraint simplification ~w: ~p",
+                                     [Y, Ctx#ctx.env]);
                             GlobalX ->
                                 symtab:lookup_fun(GlobalX, loc(Locs), Ctx#ctx.symtab)
                         end
@@ -162,18 +168,26 @@ simp_constr(Ctx, C) ->
                 single({csubty, Locs, fresh_ty_scheme(Ctx, PolyTy), T})}];
         {cdef, _Locs, Env, Cs} ->
             NewCtx = extend_env(Ctx, Env),
-            simp_constrs_intern(NewCtx, Cs);
-        {ccase, Locs, CsScrut, Bodies} ->
+            case sets:size(Cs) of
+                1 ->
+                    [X] = sets:to_list(Cs),
+                    simp_constr(NewCtx, X);
+                0 ->
+                    [];
+                _ ->
+                    [flatten_blocks(simp_constrs_intern(NewCtx, Cs))]
+            end;
+        {ccase, Locs, CsScrut, CsExhaust, Bodies} ->
             case Ctx#ctx.sanity of
                 {ok, TyMap0} ->
                     constr_gen:sanity_check(CsScrut, TyMap0);
                 error -> ok
             end,
-            Ds = simp_constrs_of_blocks(simp_constrs_intern(Ctx, CsScrut)),
-            CaseBlock = {simp_constr_block_exp, loc(Locs), Ds},
-            % FIXME: extra block for exhaustiveness
+            CaseBlock = flatten_blocks(simp_constrs_intern(Ctx, CsScrut)),
+            DsExhaust = simp_constrs_of_blocks(simp_constrs_intern(Ctx, CsExhaust)),
+            ExhaustBlock = {simp_constr_block_exhaustiveness, loc(Locs), DsExhaust},
             L = lists:flatmap(fun (Body) -> simp_case_body(Ctx, Body) end, Bodies),
-            [CaseBlock | L];
+            [CaseBlock, ExhaustBlock | L];
         {cunsatisfiable, Locs, Msg} ->
             [{simp_constr_block_exp, loc(Locs), single({cunsatisfiable, Locs, Msg})}];
         X -> errors:uncovered_case(?FILE, ?LINE, X)
@@ -183,8 +197,11 @@ simp_constr(Ctx, C) ->
 single(X) -> sets:from_list([X]).
 
 -spec simp_case_body(ctx(), constr:constr_case_body()) -> simp_constr_blocks().
-simp_case_body(Ctx, {ccase_body, BodyLocs, {GuardsGammaI, GuardCsI}, {BodyGammaI, BodyCsI}, ReduCsOrNone}) ->
-    FormattedLocs = ast:format_loc(loc(BodyLocs)),
+simp_case_body(Ctx, {ccase_branch, BranchLocs, Payload}) ->
+    {GuardsGammaI, GuardCsI} = constr:case_branch_guard(Payload),
+    {BodyGammaI, BodyCsI} = constr:case_branch_body(Payload),
+    ReduCsOrNone = constr:case_branch_bodyCond(Payload),
+    FormattedBranchLocs = ast:format_loc(loc(BranchLocs)),
     BranchIsRedundant =
         case {ReduCsOrNone, Ctx#ctx.unmatched_branch} of
             {none, _} -> false;
@@ -194,7 +211,7 @@ simp_case_body(Ctx, {ccase_body, BodyLocs, {GuardsGammaI, GuardCsI}, {BodyGammaI
                 case utils:timing_log(
                     fun () -> tally:tally(Ctx#ctx.symtab, ReduDs, Ctx#ctx.fixed_tyvars) end,
                     10,
-                    utils:sformat("tally time for redundancy checking of branch ~s", FormattedLocs))
+                    utils:sformat("tally time for redundancy checking of branch ~s", FormattedBranchLocs))
                 of
                     {error, _} ->
                         % ReduDs is not satisfiable => Branch could match
@@ -202,7 +219,7 @@ simp_case_body(Ctx, {ccase_body, BodyLocs, {GuardsGammaI, GuardCsI}, {BodyGammaI
                     [Subst | _] ->
                         ?LOG_DEBUG(
                             "Branch at ~s can never match, redundancy constraints satisfiable ~s. First substitution: ~s",
-                            FormattedLocs,
+                            FormattedBranchLocs,
                             pretty:render_constr(ReduDs),
                             pretty:render_subst(Subst)
                             ),
@@ -213,18 +230,19 @@ simp_case_body(Ctx, {ccase_body, BodyLocs, {GuardsGammaI, GuardCsI}, {BodyGammaI
     GuardsBlocks = simp_constrs_intern(NewGuardsCtx, GuardCsI),
     case {BranchIsRedundant, Ctx#ctx.unmatched_branch} of
         {true, unmatched_branch_ignore} ->
-            ?LOG_DEBUG("Ignoring branch at ~s", FormattedLocs),
+            ?LOG_DEBUG("Ignoring branch at ~s", FormattedBranchLocs),
             GuardsBlocks;
         {true, unmatched_branch_report} ->
-            ?LOG_DEBUG("Branch at ~s is redundant, reporting this as an error", FormattedLocs),
-            throw({simp_constrs_error, {redundant_branch, loc(BodyLocs)}});
+            ?LOG_DEBUG("Branch at ~s is redundant, reporting this as an error", FormattedBranchLocs),
+            throw({simp_constrs_error, {redundant_branch, loc(BranchLocs)}});
         _ ->
             case Ctx#ctx.unmatched_branch of
-                unmatched_branch_ignore -> ?LOG_DEBUG("Not ignoring branch at ~s", FormattedLocs);
+                unmatched_branch_ignore -> ?LOG_DEBUG("Not ignoring branch at ~s", FormattedBranchLocs);
                 _ -> ok
             end,
             NewBodyCtx = inter_env(Ctx, BodyGammaI),
-            BodyBlocks = simp_constrs_intern(NewBodyCtx, BodyCsI),
+            ResultCs = constr:case_branch_result(Payload),
+            BodyBlocks = simp_constrs_intern(NewBodyCtx, sets:union(ResultCs, BodyCsI)),
             GuardsBlocks ++ BodyBlocks
     end.
 

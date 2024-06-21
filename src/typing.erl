@@ -40,18 +40,34 @@ format_src_loc({loc, File, LineNo, ColumnNo}) ->
             end
     end.
 
--spec report_tyerror(constr_simp:simp_constrs_result(), string()) -> nonempty_list(constr:simp_constrs()).
-report_tyerror({simp_constrs_ok, Cs}, _) -> Cs;
-report_tyerror({simp_constrs_error, {Kind, Loc}}, What) ->
-    Msg =
-        case Kind of
-            tyerror -> "expression failed to type check";
-            redundant_branch -> "this branch never matches";
-            non_exhaustive_case -> "not all cases are covered"
-        end,
+-spec tyerror_msg(constr_simp:simp_constrs_error_kind()) -> string().
+tyerror_msg(Kind) ->
+    case Kind of
+        tyerror -> "expression failed to type check";
+        redundant_branch -> "this branch never matches";
+        non_exhaustive_case -> "not all cases are covered"
+    end.
+
+-spec report_tyerror_with_msg(string(), ast:loc(), string()) -> ok.
+report_tyerror_with_msg(Msg, Loc, What) ->
     SrcCtx = format_src_loc(Loc),
     errors:ty_error(Loc, "~s~n~s~n~n  ~s", [Msg, SrcCtx, What]).
 
+-spec report_tyerror(constr_simp:simp_constrs_result(), string()) -> nonempty_list(constr:simp_constrs()).
+report_tyerror({simp_constrs_ok, Cs}, _) -> Cs;
+report_tyerror({simp_constrs_error, {Kind, Loc}}, What) ->
+    Msg = tyerror_msg(Kind),
+    report_tyerror_with_msg(Msg, Loc, What).
+
+-spec report_tyerror_for_block(constr_simp:simp_constr_block_kind(), ast:loc(), string()) -> ok.
+report_tyerror_for_block(BlockKind, Loc, What) ->
+    Kind =
+        case BlockKind of
+            simp_constr_block_exp -> tyerror;
+            simp_constr_block_exhaustiveness -> non_exhaustive_case
+        end,
+    Msg = tyerror_msg(Kind),
+    report_tyerror_with_msg(Msg, Loc, What).
 
 % Checks all forms of a module
 -spec check_forms(ctx(), string(), ast:forms(), sets:set(string())) -> ok.
@@ -295,9 +311,9 @@ check_alt(Ctx, Decl = {function, Loc, Name, Arity, _}, FunTy, BranchMode) ->
     Tab = Ctx#ctx.symtab,
     FreeSet = tyutils:free_in_ty(FunTy),
     SimpCtx = constr_simp:new_ctx(Tab, #{}, Ctx#ctx.sanity, BranchMode, FreeSet),
-    Blocks = report_tyerror(constr_simp:simp_constrs(SimpCtx, Cs),
-        utils:sformat("while checking function ~w/~w against type ~s",
-            Name, Arity, pretty:render_ty(FunTy))),
+    ErrorWhat = utils:sformat("while checking function ~w/~w against type ~s",
+            Name, Arity, pretty:render_ty(FunTy)),
+    Blocks = report_tyerror(constr_simp:simp_constrs(SimpCtx, Cs), ErrorWhat),
     Ds = constr_simp:simp_constrs_of_blocks(Blocks),
     ?LOG_DEBUG("Simplified constraint set for ~w/~w at ~s, now " ++
                 "invoking tally on it.~nFixed tyvars: ~w~nConstraints:~n~s",
@@ -329,12 +345,23 @@ check_alt(Ctx, Decl = {function, Loc, Name, Arity, _}, FunTy, BranchMode) ->
                        ast:format_loc(Loc),
                        pretty:render_ty(FunTy));
         false ->
-            % FIXME: get better error location
-            ?LOG_DEBUG("Locs of blocks:~n~s",
+            ?LOG_DEBUG("Blocks:~n~s",
                 pretty:render_list(fun pretty:simp_constr_block/1, Blocks)),
+            locate_tyerror(Tab, FreeSet, Blocks, ErrorWhat, sets:new()), % aborts if it finds a type error
             SrcCtx = format_src_loc(Loc),
             errors:ty_error(Loc, "function ~w/~w failed to type check against type ~s~n~s",
                             [Name, Arity, pretty:render_ty(FunTy), SrcCtx])
+    end.
+
+-spec locate_tyerror(symtab:t(), sets:set(ast:ty_varname()), simp_constr:simp_constr_blocks(),
+    string(), constr:simp_constrs()) -> ok.
+locate_tyerror(_Tab, _FreeSet, [], _What, _DsAcc) -> ok;
+locate_tyerror(Tab, FreeSet, [{Kind, Loc, Ds} | Blocks], What, DsAcc) ->
+    FullDs = sets:union(Ds, DsAcc),
+    case tally:tally(Tab, FullDs, FreeSet) of
+        {error, _ErrList} ->
+            report_tyerror_for_block(Kind, Loc, What);
+        _ -> locate_tyerror(Tab, FreeSet, Blocks, What, FullDs)
     end.
 
 -spec format_tally_error([string()]) -> string().

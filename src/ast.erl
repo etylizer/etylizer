@@ -137,7 +137,7 @@
 
 -export([
     format_loc/1, to_loc/2, loc_auto/0, min_loc/2, leq_loc/2, is_predef_name/1, is_predef_alias_name/1,
-    local_varname_from_any_ref/1, get_fun_name/1
+    local_varname_from_any_ref/1, get_fun_name/1, loc_exp/1
 ]).
 
 % General
@@ -312,6 +312,9 @@ get_fun_name({function, _Loc, Name, Arity, _}) -> utils:sformat("~w/~w", Name, A
     | exp_var().
 
 -type exps() :: [exp()].
+
+-spec loc_exp(exp()) -> loc().
+loc_exp(X) -> element(2, X).
 
 -type qual_gen() ::  {generate, loc(), pat(), exp()}.
 -type qual_bitstring_gen() ::  {b_generate, loc(), pat(), exp()}.

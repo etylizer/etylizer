@@ -117,7 +117,6 @@ exp_constrs(Ctx, E, T) ->
         {block, L, Es} -> exps_constrs(Ctx, L, Es, T);
         {'case', L, ScrutE, Clauses} ->
             Alpha = fresh_tyvar(Ctx),
-            Beta = fresh_tyvar(Ctx),
             Cs0 = exp_constrs(Ctx, ScrutE, Alpha),
             NeedsUnmatchedCheck = needs_unmatched_check(Clauses),
             {BodyList, Lowers, _Uppers, CsCases} =
@@ -135,7 +134,7 @@ exp_constrs(Ctx, E, T) ->
                                           NeedsUnmatchedCheck,
                                           Lowers,
                                           Clause,
-                                          Beta),
+                                          T),
                                     {BodyList ++ [ThisConstrBody],
                                      Lowers ++ [ThisLower],
                                      Uppers ++ [ThisUpper],
@@ -144,11 +143,10 @@ exp_constrs(Ctx, E, T) ->
                             {[], [], [], sets:new()},
                             Clauses),
             CsScrut = sets:union(Cs0, CsCases),
-            Exhaust = {csubty, mk_locs("case exhaustiveness", L),
-                Alpha, ast_lib:mk_union(Lowers)},
+            Exhaust = single(
+                {csubty, mk_locs("case exhaustiveness", L), Alpha, ast_lib:mk_union(Lowers)}),
             sets:from_list([
-                {ccase, mk_locs("case", L), sets:add_element(Exhaust, CsScrut), BodyList},
-                {csubty, mk_locs("result of case", L), Beta, T}
+                {ccase, mk_locs("case", L), CsScrut, Exhaust, BodyList}
             ]);
         {'catch', L, CatchE} ->
             Top = {predef, any},
@@ -213,20 +211,20 @@ exp_constrs(Ctx, E, T) ->
             Alpha2 = fresh_tyvar(Ctx),
             Cs2 = exp_constrs(Ctx, Rhs, Alpha2),
             Beta = fresh_tyvar(Ctx),
-            MsgArg = utils:sformat("args of op ~w", Op),
+            MsgTy = utils:sformat("type of op ~w", Op),
             MsgRes = utils:sformat("result of op ~w", Op),
             OpCs = sets:from_list(
-                     [{cop, mk_locs(MsgArg, L), Op, 2, {fun_full, [Alpha1, Alpha2], Beta}},
+                     [{cop, mk_locs(MsgTy, L), Op, 2, {fun_full, [Alpha1, Alpha2], Beta}},
                       {csubty, mk_locs(MsgRes, L), Beta, T}]),
             sets:union([Cs1, Cs2, OpCs]);
         {op, L, Op, Arg} ->
             Alpha = fresh_tyvar(Ctx),
             ArgCs = exp_constrs(Ctx, Arg, Alpha),
             Beta = fresh_tyvar(Ctx),
-            MsgArg = utils:sformat("arg of op ~w", Op),
+            MsgTy = utils:sformat("type of op ~w", Op),
             MsgRes = utils:sformat("result of op ~w", Op),
             OpCs = sets:from_list(
-                     [{cop, mk_locs(MsgArg, L), Op, 1, {fun_full, [Alpha], Beta}},
+                     [{cop, mk_locs(MsgTy, L), Op, 1, {fun_full, [Alpha], Beta}},
                       {csubty, mk_locs(MsgRes, L), Beta, T}]),
             sets:union(ArgCs, OpCs);
         {'receive', _L, _CaseClauses} -> sets:new(); % FIXME
@@ -293,7 +291,8 @@ case_clause_unmatched_constraints(Ctx, LowersBefore, Upper, Scrut) ->
 %   list(ast:ty()): accepting types (lower bound) of the guarded patterns of the branches
 %       coming *before* the current branch
 %   ast:case_clause(): cause clause
-%   ast:ty(): expected ty (beta in the typing rules)
+%   ast:ty(): expected ty from the outer context (the "t" in the typing rules).
+%             We generate a separate constraint for each clause for better error messages.
 % Result:
 %   ast:ty(): accepting type (lower bound) of the guarded pattern of the clause
 %   ast:ty(): potential type (upper bound) of the guarded pattern of the clause
@@ -303,11 +302,12 @@ case_clause_unmatched_constraints(Ctx, LowersBefore, Upper, Scrut) ->
     ctx(), ast:ty(), ast:exp(), boolean(), list(ast:ty()), ast:case_clause(), ast:ty()
 ) -> {ast:ty(), ast:ty(), constr:constrs(), constr:constr_case_body()}.
 case_clause_constrs(Ctx, TyScrut, Scrut, NeedsUnmatchedCheck, LowersBefore,
-    {case_clause, L, Pat, Guards, Exps}, Beta) ->
+    {case_clause, L, Pat, Guards, Exps}, ExpectedTy) ->
     {BodyLower, BodyUpper, BodyEnvCs, BodyEnv} =
         case_clause_env(Ctx, L, TyScrut, Scrut, Pat, Guards),
     {_, _, GuardEnvCs, GuardEnv} = case_clause_env(Ctx, L, TyScrut, Scrut, Pat, []),
     ?LOG_TRACE("TyScrut=~w, Scrut=~w, GuardEnv=~w, BodyEnv=~w", TyScrut, Scrut, GuardEnv, BodyEnv),
+    Beta = fresh_tyvar(Ctx),
     InnerCs = exps_constrs(Ctx, L, Exps, Beta),
     CGuards =
         sets:union(
@@ -322,9 +322,18 @@ case_clause_constrs(Ctx, TyScrut, Scrut, NeedsUnmatchedCheck, LowersBefore,
                 case_clause_unmatched_constraints(Ctx, LowersBefore, BodyUpper, Scrut);
             true -> none
         end,
-    ConstrBody = {ccase_body, mk_locs("case branch", L), {GuardEnv, CGuards}, {BodyEnv, InnerCs},
-                  RedundancyCs},
-    {BodyLower, BodyUpper, sets:union([BodyEnvCs, GuardEnvCs]), ConstrBody}.
+    RL =
+        case Exps of
+            [] -> L;
+            [E | _] -> ast:loc_exp(E)
+        end,
+    ResultLocs = mk_locs("case result", RL),
+    ResultCs = single({csubty, ResultLocs, Beta, ExpectedTy}),
+    Payload = constr:mk_case_branch_payload(
+        {GuardEnv, CGuards}, {BodyEnv, InnerCs}, RedundancyCs, ResultCs),
+    ConstrBody = {ccase_branch, mk_locs("case branch", L), Payload},
+    AllCs = sets:union([BodyEnvCs, GuardEnvCs]),
+    {BodyLower, BodyUpper, AllCs, ConstrBody}.
 
 % helper function for case_clause_constrs
 -spec case_clause_env(ctx(), ast:loc(), ast:ty(), ast:exp(), ast:pat(), [ast:guard()]) ->
