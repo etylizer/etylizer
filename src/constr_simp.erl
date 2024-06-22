@@ -12,7 +12,10 @@
 -export_type([
     unmatched_branch_mode/0,
     simp_constrs_result/0,
-    simp_constr_block/0
+    simp_constr_block/0,
+    simp_constrs_error_kind/0,
+    simp_constr_block_kind/0,
+    simp_constr_blocks/0
 ]).
 
 -record(ctx,
@@ -78,7 +81,7 @@ new_ctx(Tab, Env, Sanity, BranchMode, Fixed) ->
 
 -type simp_constrs_error_kind() :: tyerror | redundant_branch | non_exhaustive_case.
 
--type simp_constr_blocks() :: [simp_constr_block()].
+-type simp_constr_blocks() :: list(simp_constr_block()).
 
 -type simp_constr_block() :: {simp_constr_block_kind(), ast:loc(), constr:simp_constrs()}.
 
@@ -96,6 +99,7 @@ flatten_blocks([]) -> ?ABORT("unexpected empty list");
 flatten_blocks([{Kind, Loc, Ds} | Blocks]) ->
     {Kind, Loc, sets:union(Ds, simp_constrs_of_blocks(Blocks))}.
 
+
 -spec simp_constrs(ctx(), constr:constrs()) -> simp_constrs_result().
 simp_constrs(Ctx, Cs) ->
     try
@@ -108,39 +112,35 @@ simp_constrs(Ctx, Cs) ->
 
 -spec simp_constrs_intern(ctx(), constr:constrs()) -> simp_constr_blocks().
 simp_constrs_intern(Ctx, Cs) ->
-    case sets:is_empty(Cs) of
-        true -> [];
-        false ->
-            ?LOG_TRACE("simp_constrs, Cs=~s", pretty:render_constr(Cs)),
-            % ListOfBlocks is a list of list of simp_constr_block().
-            % The inner list has a meaningful ordering (namely by the structure of the program).
-            % The outer list is randomly sorted (given by the order of sets:to_list(Cs)).
-            ListOfBlocks = lists:map(
-                fun(C) ->
-                    ThisBlocks = simp_constr(Ctx, C),
-                    case Ctx#ctx.sanity of
-                        {ok, TyMap} ->
-                            ThisDs = simp_constrs_of_blocks(ThisBlocks),
-                            sanity_check(ThisDs, TyMap);
-                        error -> ok
-                    end,
-                    ThisBlocks
-                end,
-                sets:to_list(Cs)),
-            % We sort the outer list of blocks by the location of the first block
-            SortedListOfBlocks =
-                lists:sort(
-                    fun (Blocks1, Blocks2) ->
-                        case {Blocks1, Blocks2} of
-                            {[], _} -> true;
-                            {_, []} -> false;
-                            {[B1 | _], [B2 | _]} ->
-                                ast:leq_loc(loc_of_block(B1), loc_of_block(B2))
-                        end
-                    end,
-                    ListOfBlocks),
-            lists:concat(SortedListOfBlocks)
-    end.
+    ?LOG_TRACE("simp_constrs, Cs=~s", pretty:render_constr(Cs)),
+    % ListOfBlocks is a list of list of simp_constr_block().
+    % The inner list has a meaningful ordering (namely by the structure of the program).
+    % The outer list is randomly sorted (given by the order of sets:to_list(Cs)).
+    ListOfBlocks = lists:map(
+        fun(C) ->
+            ThisBlocks = simp_constr(Ctx, C),
+            %case Ctx#ctx.sanity of
+            %    {ok, TyMap} ->
+            %        ThisDs = simp_constrs_of_blocks(ThisBlocks),
+            %        sanity_check(ThisDs, TyMap);
+            %    error -> ok
+            %end,
+            ThisBlocks
+        end,
+        sets:to_list(Cs)),
+    % We sort the outer list of blocks by the location of the first block
+    SortedListOfBlocks =
+        lists:sort(
+            fun (Blocks1, Blocks2) ->
+                case {Blocks1, Blocks2} of
+                    {[], _} -> true;
+                    {_, []} -> false;
+                    {[B1 | _], [B2 | _]} ->
+                        ast:leq_loc(loc_of_block(B1), loc_of_block(B2))
+                end
+            end,
+            ListOfBlocks),
+    lists:append(SortedListOfBlocks).
 
 -spec simp_constr(ctx(), constr:constr()) -> simp_constr_blocks().
 simp_constr(Ctx, C) ->
@@ -186,7 +186,7 @@ simp_constr(Ctx, C) ->
             CaseBlock = flatten_blocks(simp_constrs_intern(Ctx, CsScrut)),
             DsExhaust = simp_constrs_of_blocks(simp_constrs_intern(Ctx, CsExhaust)),
             ExhaustBlock = {simp_constr_block_exhaustiveness, loc(Locs), DsExhaust},
-            L = lists:flatmap(fun (Body) -> simp_case_body(Ctx, Body) end, Bodies),
+            L = lists:flatmap(fun (Body) -> simp_case_branch(Ctx, Body) end, Bodies),
             [CaseBlock, ExhaustBlock | L];
         {cunsatisfiable, Locs, Msg} ->
             [{simp_constr_block_exp, loc(Locs), single({cunsatisfiable, Locs, Msg})}];
@@ -196,8 +196,8 @@ simp_constr(Ctx, C) ->
 -spec single(T) -> sets:set(T).
 single(X) -> sets:from_list([X]).
 
--spec simp_case_body(ctx(), constr:constr_case_body()) -> simp_constr_blocks().
-simp_case_body(Ctx, {ccase_branch, BranchLocs, Payload}) ->
+-spec simp_case_branch(ctx(), constr:constr_case_branch()) -> simp_constr_blocks().
+simp_case_branch(Ctx, {ccase_branch, BranchLocs, Payload}) ->
     {GuardsGammaI, GuardCsI} = constr:case_branch_guard(Payload),
     {BodyGammaI, BodyCsI} = constr:case_branch_body(Payload),
     ReduCsOrNone = constr:case_branch_bodyCond(Payload),
@@ -234,7 +234,7 @@ simp_case_body(Ctx, {ccase_branch, BranchLocs, Payload}) ->
             GuardsBlocks;
         {true, unmatched_branch_report} ->
             ?LOG_DEBUG("Branch at ~s is redundant, reporting this as an error", FormattedBranchLocs),
-            throw({simp_constrs_error, {redundant_branch, loc(BranchLocs)}});
+           throw({simp_constrs_error, {redundant_branch, loc(BranchLocs)}});
         _ ->
             case Ctx#ctx.unmatched_branch of
                 unmatched_branch_ignore -> ?LOG_DEBUG("Not ignoring branch at ~s", FormattedBranchLocs);

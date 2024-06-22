@@ -276,9 +276,9 @@ needs_unmatched_check(Clauses) ->
 %   ast:ty(): potential type of the guarded pattern of the current branch
 %   ast:exp(): scrutiny of the whole case
 % Result:
-%   constr:constr_case_body_cond(): set of constraints
+%   constr:constr_case_branc_cond(): set of constraints
 -spec case_clause_unmatched_constraints(ctx(), list(ast:ty()), ast:ty(), ast:exp()) ->
-    constr:constr_case_body_cond().
+    constr:constr_case_branch_cond().
 case_clause_unmatched_constraints(Ctx, LowersBefore, Upper, Scrut) ->
     Ui = ast_lib:mk_union([ast_lib:mk_negation(Upper) | LowersBefore]),
     exp_constrs(Ctx, Scrut, Ui).
@@ -297,10 +297,10 @@ case_clause_unmatched_constraints(Ctx, LowersBefore, Upper, Scrut) ->
 %   ast:ty(): accepting type (lower bound) of the guarded pattern of the clause
 %   ast:ty(): potential type (upper bound) of the guarded pattern of the clause
 %   constr:constrs(): constraints result from the guarded pattern of the clause
-%   constr:constr_case_body(): the body of the case
+%   constr:constr_case_branch(): the body of the case
 -spec case_clause_constrs(
     ctx(), ast:ty(), ast:exp(), boolean(), list(ast:ty()), ast:case_clause(), ast:ty()
-) -> {ast:ty(), ast:ty(), constr:constrs(), constr:constr_case_body()}.
+) -> {ast:ty(), ast:ty(), constr:constrs(), constr:constr_case_branch()}.
 case_clause_constrs(Ctx, TyScrut, Scrut, NeedsUnmatchedCheck, LowersBefore,
     {case_clause, L, Pat, Guards, Exps}, ExpectedTy) ->
     {BodyLower, BodyUpper, BodyEnvCs, BodyEnv} =

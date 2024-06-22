@@ -48,18 +48,18 @@ tyerror_msg(Kind) ->
         non_exhaustive_case -> "not all cases are covered"
     end.
 
--spec report_tyerror_with_msg(string(), ast:loc(), string()) -> ok.
+-spec report_tyerror_with_msg(string(), ast:loc(), string()) -> no_return().
 report_tyerror_with_msg(Msg, Loc, What) ->
     SrcCtx = format_src_loc(Loc),
     errors:ty_error(Loc, "~s~n~s~n~n  ~s", [Msg, SrcCtx, What]).
 
--spec report_tyerror(constr_simp:simp_constrs_result(), string()) -> nonempty_list(constr:simp_constrs()).
-report_tyerror({simp_constrs_ok, Cs}, _) -> Cs;
+-spec report_tyerror(constr_simp:simp_constrs_result(), string()) -> constr_simp:simp_constr_blocks().
+report_tyerror({simp_constrs_ok, Blocks}, _) -> Blocks;
 report_tyerror({simp_constrs_error, {Kind, Loc}}, What) ->
     Msg = tyerror_msg(Kind),
     report_tyerror_with_msg(Msg, Loc, What).
 
--spec report_tyerror_for_block(constr_simp:simp_constr_block_kind(), ast:loc(), string()) -> ok.
+-spec report_tyerror_for_block(constr_simp:simp_constr_block_kind(), ast:loc(), string()) -> no_return().
 report_tyerror_for_block(BlockKind, Loc, What) ->
     Kind =
         case BlockKind of
@@ -353,7 +353,7 @@ check_alt(Ctx, Decl = {function, Loc, Name, Arity, _}, FunTy, BranchMode) ->
                             [Name, Arity, pretty:render_ty(FunTy), SrcCtx])
     end.
 
--spec locate_tyerror(symtab:t(), sets:set(ast:ty_varname()), simp_constr:simp_constr_blocks(),
+-spec locate_tyerror(symtab:t(), sets:set(ast:ty_varname()), constr_simp:simp_constr_blocks(),
     string(), constr:simp_constrs()) -> ok.
 locate_tyerror(_Tab, _FreeSet, [], _What, _DsAcc) -> ok;
 locate_tyerror(Tab, FreeSet, [{Kind, Loc, Ds} | Blocks], What, DsAcc) ->

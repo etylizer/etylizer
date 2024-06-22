@@ -67,7 +67,7 @@
 
 -spec mk_case_branch_payload(
     constrs_with_env(), constrs_with_env(), constr_case_branch_cond(), constrs()
-) -> case_branch_payload.
+) -> case_branch_payload().
 mk_case_branch_payload(G, B, C, R) ->
     #case_branch_payload { guard = G, body = B, bodyCond = C, result = R}.
 
@@ -77,10 +77,10 @@ case_branch_guard(X) -> X#case_branch_payload.guard.
 -spec case_branch_body(case_branch_payload()) -> constrs_with_env().
 case_branch_body(X) -> X#case_branch_payload.body.
 
--spec case_branch_bodyCond(case_branch_payload()) -> constrs_with_env().
+-spec case_branch_bodyCond(case_branch_payload()) -> constr_case_branch_cond().
 case_branch_bodyCond(X) -> X#case_branch_payload.bodyCond.
 
--spec case_branch_result(case_branch_payload()) -> constrs_with_env().
+-spec case_branch_result(case_branch_payload()) -> constrs().
 case_branch_result(X) -> X#case_branch_payload.result.
 
 -type constr_case_branch_cond() :: none | constrs().

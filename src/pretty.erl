@@ -258,7 +258,7 @@ constr_env(Env) ->
             ),
            text("}")).
 
--spec constr_bodies([constr:constr_case_body()]) -> doc().
+-spec constr_bodies([constr:constr_case_branch()]) -> doc().
 constr_bodies(L) ->
     braces(
       comma_sep(
@@ -386,7 +386,7 @@ mono_env(Env) ->
           maps:to_list(Env)),
     brackets(comma_sep(Elems)).
 
--spec simp_constr_block(simp_constr:simp_constr_block()) -> doc().
+-spec simp_constr_block(constr_simp:simp_constr_block()) -> doc().
 simp_constr_block({Kind, Loc, Ds}) ->
     brackets(comma_sep([text(atom_to_list(Kind)),
                         loc(Loc),
