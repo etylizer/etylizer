@@ -2,7 +2,7 @@
 	check_syntax_antidote check_ast_trans_antidote check_types_antidote \
 	check_syntax_riak check_ast_trans_riak check_types_riak
 
-REBAR = ./rebar3
+REBAR = rebar3
 
 build:
 	$(REBAR) escriptize
