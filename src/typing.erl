@@ -320,21 +320,17 @@ check_alt(Ctx, Decl = {function, Loc, Name, Arity, _}, FunTy, BranchMode) ->
                 Name, Arity, ast:format_loc(Loc),
                 sets:to_list(FreeSet),
                 pretty:render_constr(Ds)),
-    {Substs, Delta} = utils:timing(fun () -> tally:tally(Tab, Ds, FreeSet) end),
+    {SatisfyRes, Delta} = utils:timing(fun () -> tally:is_satisfiable(Tab, Ds, FreeSet) end),
     Status =
-        case Substs of
-            {error, ErrList} ->
+        case SatisfyRes of
+            {false, ErrList} ->
                 ErrStr = format_tally_error(ErrList),
                 ?LOG_DEBUG("Tally time: ~pms, tally finished with errors: ~s",
                     Delta, ErrStr),
                 false;
-            [S] ->
-                ?LOG_DEBUG("Tally time: ~pms, unique substitution:~n~s",
+            {true, S} ->
+                ?LOG_DEBUG("Tally time: ~pms, first substitution:~n~s",
                     Delta, [pretty:render_subst(S)]),
-                true;
-            L ->
-                ?LOG_DEBUG("Tally time: ~pms, ~w substitutions:~n~s",
-                    Delta, length(L), pretty:render_substs(L)),
                 true
         end,
     case Status of
@@ -358,9 +354,8 @@ check_alt(Ctx, Decl = {function, Loc, Name, Arity, _}, FunTy, BranchMode) ->
 locate_tyerror(_Tab, _FreeSet, [], _What, _DsAcc) -> ok;
 locate_tyerror(Tab, FreeSet, [{Kind, Loc, Ds} | Blocks], What, DsAcc) ->
     FullDs = sets:union(Ds, DsAcc),
-    case tally:tally(Tab, FullDs, FreeSet) of
-        {error, _ErrList} ->
-            report_tyerror_for_block(Kind, Loc, What);
+    case tally:is_satisfiable(Tab, FullDs, FreeSet) of
+        {false, _} -> report_tyerror_for_block(Kind, Loc, What);
         _ -> locate_tyerror(Tab, FreeSet, Blocks, What, FullDs)
     end.
 
@@ -425,11 +420,11 @@ more_general(Ts1, Ts2, Tab) ->
     % Arbitrary instantiation of Ts2, the type variables A2 are fix
     {Mono2, A2, _} = mono_ty(Ts2, Next),
     C = {csubty, sets:new(), Mono1, Mono2},
-    {TallyRes, Delta} = utils:timing(fun() -> tally:tally(Tab, sets:from_list([C]), A2) end),
+    {SatisfyRes, Delta} = utils:timing(fun() -> tally:is_satisfiable(Tab, sets:from_list([C]), A2) end),
     ?LOG_DEBUG("Tally time: ~pms", Delta),
     Result =
-        case TallyRes of
-            {error, _} -> false;
+        case SatisfyRes of
+            {false, _} -> false;
             _ -> true
         end,
     ?LOG_DEBUG("T1=~s (Mono1=~s) is more general than T2=~s (Mono2=~s): ~s",

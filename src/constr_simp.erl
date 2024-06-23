@@ -209,14 +209,14 @@ simp_case_branch(Ctx, {ccase_branch, BranchLocs, Payload}) ->
             {ReduCs, _} ->
                 ReduDs = simp_constrs_of_blocks(simp_constrs_intern(Ctx, ReduCs)),
                 case utils:timing_log(
-                    fun () -> tally:tally(Ctx#ctx.symtab, ReduDs, Ctx#ctx.fixed_tyvars) end,
+                    fun () -> tally:is_satisfiable(Ctx#ctx.symtab, ReduDs, Ctx#ctx.fixed_tyvars) end,
                     10,
                     utils:sformat("tally time for redundancy checking of branch ~s", FormattedBranchLocs))
                 of
-                    {error, _} ->
+                    {false, _} ->
                         % ReduDs is not satisfiable => Branch could match
                         false;
-                    [Subst | _] ->
+                    {true, Subst} ->
                         ?LOG_DEBUG(
                             "Branch at ~s can never match, redundancy constraints satisfiable ~s. First substitution: ~s",
                             FormattedBranchLocs,
