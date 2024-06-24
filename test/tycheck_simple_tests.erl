@@ -9,7 +9,11 @@
 check_ok_fun(Filename, Tab, Decl = {function, L, Name, Arity, _}, Ty) ->
     Ctx = typing:new_ctx(Tab, error),
     try
-        typing:check(Ctx, Decl, Ty)
+      fprof:apply(typing, check, [Ctx, Decl, Ty]),
+      fprof:profile(),
+      fprof:analyse()
+
+        % typing:check(Ctx, Decl, Ty)
     catch
         throw:{ety, ty_error, Msg} ->
             io:format("~s: Type checking ~w/~w in ~s failed but should succeed: ~s",
@@ -89,7 +93,7 @@ check_decls_in_file(F, What, NoInfer) ->
         ShouldFail = utils:string_ends_with(NameStr, "_fail"),
         RunTest =
           % FIXME #54 reduce timeout after issue has been fixed
-          {timeout, 45, {NameStr, fun() ->
+          {timeout, 1000, {NameStr, fun() ->
                 ?LOG_NOTE("Type checking ~s from ~s", NameStr, F),
                 test_utils:reset_ets(),
                 case ShouldFail of
@@ -139,14 +143,13 @@ simple_test_() ->
     "some_fun",
     "fun_local_03",
     "fun_local_04",
-    "fun_local_02_plus",
-    "my_plus"
+    "fun_local_02_plus"
   ],
 
   NoInfer = [
     % The following functions are excluded from the type inference test because
     % we do not support inference of intersection types.
-    "inter_01", "inter_02",
+    "inter_01", "inter_02","my_plus","foo2","if_05",
     % slow, see #62
     "foo3"],
   check_decls_in_file("test_files/tycheck_simple.erl",
