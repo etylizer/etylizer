@@ -9,6 +9,7 @@
          constr/1,
          substs/1,
          subst/1,
+         atom/1,
          simp_constr_block/1,
          render/1,
          render_ty/1,
@@ -23,6 +24,7 @@
          render_any_ref/1,
          render_list/2,
          render_list/3,
+         render_list_with_braces/2,
          ref/1
         ]).
 
@@ -110,16 +112,15 @@ render_fun_env(S) -> render(fun_env(S)).
 -spec render_any_ref(ast:any_ref()) -> string().
 render_any_ref(R) -> render(ref(R)).
 
--spec render_list(string(), [T], fun((T) -> doc())) -> string().
-render_list(Sep, L, F) ->
-    render(sep_by(text(Sep), lists:map(F, L))).
+-spec atom(atom()) -> doc().
+atom(A) -> text(atom_to_list(A)).
 
 -spec tyscheme(ast:ty_scheme()) -> doc().
 tyscheme({ty_scheme, [], Ty}) -> ty(Ty);
 tyscheme({ty_scheme, Vars, Ty}) ->
     PrettyBound =
         fun({Name, Bound}) ->
-                NameDoc = text(atom_to_list(Name)),
+                NameDoc = atom(Name),
                 case Bound of
                     {predef, any} -> NameDoc;
                     _ -> beside(NameDoc, text(" <: "), ty(Bound))
@@ -140,7 +141,7 @@ ty(Prec, T) ->
     case T of
         {singleton, A} ->
             case A of
-                _ when is_atom(A) -> text(atom_to_list(A));
+                _ when is_atom(A) -> atom(A);
                 _ when is_integer(A) -> text(integer_to_list(A));
                 _ -> text([$$, A]) % must be a char
             end;
@@ -191,23 +192,23 @@ ty(Prec, T) ->
                  ),
             beside(text("#"), brackets(comma_sep(AssocsP)));
         {predef, Name} ->
-            beside(text(atom_to_list(Name)), text("()"));
+            beside(atom(Name), text("()"));
         {predef_alias, Name} ->
-            beside(text(atom_to_list(Name)), text("()"));
+            beside(atom(Name), text("()"));
         {record, Name, Fields} ->
             FieldsP =
                 lists:map(
                   fun({FieldName, U}) ->
-                          beside(text(atom_to_list(FieldName)), text(" :: "), ty(U))
+                          beside(atom(FieldName), text(" :: "), ty(U))
                   end,
                   Fields),
             beside(text("#" ++ atom_to_list(Name)), brackets(comma_sep(FieldsP)));
         {named, _Loc, Ref, Args} ->
             RefP =
                 case Ref of
-                    {ref, Name, _} -> text(atom_to_list(Name));
+                    {ref, Name, _} -> atom(Name);
                     {qref, Mod, Name, _} ->
-                        beside(text(atom_to_list(Mod)), text(":"), text(atom_to_list(Name)))
+                        beside(atom(Mod), text(":"), atom(Name))
                 end,
             beside(RefP, parens(comma_sep(lists:map(fun ty/1, Args))));
         {tuple_any} ->
@@ -215,7 +216,7 @@ ty(Prec, T) ->
         {tuple, Args} ->
             brackets(comma_sep(lists:map(fun ty/1, Args)));
         {var, Name} ->
-            text(atom_to_list(Name));
+            atom(Name);
         {union, []} ->
             text("none()");
         {union, Args} ->
@@ -243,7 +244,7 @@ ref(AnyRef) ->
         {qref, Mod, Name, Arity} ->
             text(utils:sformat("~w:~w/~w", Mod, Name, Arity));
         {local_ref, {Name, Tok}} ->
-            beside(text(atom_to_list(Name)), text("@"), text(utils:sformat("~w", Tok)))
+            beside(atom(Name), text("@"), text(utils:sformat("~w", Tok)))
     end.
 
 -spec constr_env(constr:constr_env()) -> doc().
@@ -311,7 +312,7 @@ constr(X) ->
                {cop, Locs, Name, Arity, T} ->
                    brackets(comma_sep([text("cop"),
                                        locs(Locs),
-                                       beside(text(atom_to_list(Name)), text("/"), text(integer_to_list(Arity))),
+                                       beside(atom(Name), text("/"), text(integer_to_list(Arity))),
                                        ty(T)]));
                {cdef, Locs, Env, Cs} ->
                    brackets(comma_sep([text("cdef"),
@@ -348,15 +349,19 @@ substs(L) ->
     brackets(comma_sep(lists:map(fun subst/1, L))).
 
 -spec subst(subst:t()) -> doc().
+subst({tally_subst, S, Fixed}) ->
+    PrettyS = subst(S),
+    PrettyFixed = braces(comma_sep(lists:map(fun atom/1, sets:to_list(Fixed)))),
+    brackets(comma_sep([text("tally_subst"), PrettyS, PrettyFixed]));
 subst(S) ->
     Elems =
         lists:map(
           fun({V, T}) ->
-                 beside(text(atom_to_list(V)),
+                 beside(atom(V),
                         text(" => "),
                         ty(T))
           end,
-          maps:to_list(S)),
+          maps:to_list(subst:base_subst(S))),
     brackets(comma_sep(Elems)).
 
 -spec poly_env(constr:constr_poly_env()) -> doc().
@@ -395,3 +400,11 @@ simp_constr_block({Kind, Loc, Ds}) ->
 -spec render_list(fun((T) -> doc()), list(T)) -> string().
 render_list(Fun, L) ->
     render(comma_sep(lists:map(Fun, L))).
+
+-spec render_list_with_braces(fun((T) -> doc()), list(T)) -> string().
+render_list_with_braces(Fun, L) ->
+    render(braces(comma_sep(lists:map(Fun, L)))).
+
+-spec render_list(string(), [T], fun((T) -> doc())) -> string().
+render_list(Sep, L, F) ->
+    render(sep_by(text(Sep), lists:map(F, L))).
