@@ -133,21 +133,16 @@ should_run(Name, {exclude,Set}) -> not sets:is_element(Name, Set).
 simple_test_() ->
   % The following functions are currently excluded from being tested.
   WhatNot = [
-    % FIXME #61 bad recursive types in tally
-    "tuple_04",
-    % slow, see #57
-    "list_pattern_02",
-    "list_pattern_07",
-    "some_fun",
+    % buggy, see #36
     "fun_local_03",
-    "fun_local_04",
-    "fun_local_02_plus",
-    "my_plus"
+    "fun_local_07",
+    "fun_local_07_fail"
   ],
 
   NoInfer = [
     % slow, see #62
     "foo3",
+    % buggy, see #101
     "poly"
   ],
   check_decls_in_file("test_files/tycheck_simple.erl",

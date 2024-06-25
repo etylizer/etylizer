@@ -457,6 +457,26 @@ fun_local_06() ->
       end,
   F(spam).
 
+-spec fun_local_07(1) -> a; (2) -> b.
+fun_local_07(X) ->
+    F = fun(Y) ->
+            case Y of
+                1 -> a;
+                2 -> b
+            end
+        end,
+    F(X).
+
+-spec fun_local_07_fail(1) -> a; (2) -> b.
+fun_local_07_fail(X) ->
+    F = fun(Y) ->
+            case Y of
+                1 -> c; % result c has wrong type (must be a)
+                2 -> b
+            end
+        end,
+    F(X).
+
 %%%%%%%%%%%%%%%%%%%%%%%% IF %%%%%%%%%%%%%%%%%%%%%%%
 
 -spec if_01(integer()) -> integer().
