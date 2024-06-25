@@ -2,7 +2,8 @@
 
 -export([
   tally/2,
-  tally/3
+  tally/3,
+  is_satisfiable/3
 ]).
 
 -ifdef(TEST).
@@ -14,6 +15,14 @@
 -spec tally(symtab:t(), constr:simp_constrs()) -> tally_res().
 tally(SymTab, Constraints) -> tally(SymTab, Constraints, sets:new()) .
 
+
+-spec is_satisfiable(symtab:t(), constr:simp_constrs(), sets:set(ast:ty_varname())) ->
+  {false, [{error, string()}]} | {true, subst:t()}. % Then substitution is just returned for debugging purpose.
+is_satisfiable(SymTab, Cs, Fixed) ->
+  case tally(SymTab, Cs, Fixed) of % FIXME: optimize
+    {error, ErrList} -> {false, ErrList};
+    [S | _] -> {true, S}
+  end.
 
 -spec tally(symtab:t(), constr:simp_constrs(), sets:set(ast:ty_varname())) -> tally_res().
 tally(SymTab, Constraints, FixedVars) ->

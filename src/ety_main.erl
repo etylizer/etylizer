@@ -59,7 +59,7 @@ parse_args(Args) ->
                     case O of
                         {log_level, S} ->
                             case log:parse_level(S) of
-                                bad_log_level -> utils:quit(1, "Invalid log level: ~s", S);
+                                bad_log_level -> utils:quit(1, "Invalid log level: ~s~n", S);
                                 L -> Opts#opts{ log_level = L }
                             end;
                         {define, S} ->
@@ -85,7 +85,7 @@ parse_args(Args) ->
     if
         Opts#opts.help ->
             getopt:usage(OptSpecList, "ety"),
-            utils:quit(1, "Aborting");
+            utils:quit(1, "Aborting~n");
         true -> ok
     end,
     Opts.
