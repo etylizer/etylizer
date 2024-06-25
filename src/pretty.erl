@@ -9,6 +9,7 @@
          constr/1,
          substs/1,
          subst/1,
+         simp_constr_block/1,
          render/1,
          render_ty/1,
          render_tys/1,
@@ -257,16 +258,33 @@ constr_env(Env) ->
             ),
            text("}")).
 
--spec constr_bodies([constr:constr_case_body()]) -> doc().
+-spec constr_bodies([constr:constr_case_branch()]) -> doc().
 constr_bodies(L) ->
     braces(
       comma_sep(
         lists:map(
-          fun({Locs, {GuardEnv, GuardCs}, {BodyEnv, BodyCs}, T}) ->
-                  brackets(comma_sep([locs(Locs), constr_env(GuardEnv), constr(GuardCs),
-                                      constr_env(BodyEnv), constr(BodyCs), ty(T)]))
+          fun({ccase_branch, Locs, Payload}) ->
+                {GuardEnv, GuardCs} = constr:case_branch_guard(Payload),
+                {BodyEnv, BodyCs} = constr:case_branch_body(Payload),
+                ResultCs = constr:case_branch_result(Payload),
+                BodyCondCs = constr:case_branch_bodyCond(Payload),
+                PrettyBodyCond =
+                    case BodyCondCs of
+                        none -> text("none");
+                        X -> constr(X)
+                    end,
+                brackets(comma_sep([locs(Locs),
+                    kv("guardEnv", constr_env(GuardEnv)),
+                    kv("guardCs", constr(GuardCs)),
+                    kv("bodyEnv", constr_env(BodyEnv)),
+                    kv("bodyCs", constr(BodyCs)),
+                    kv("bodyCond", PrettyBodyCond),
+                    kv("resultCs", constr(ResultCs))]))
           end,
           L))).
+
+-spec kv(string(), doc()) -> doc().
+kv(K, V) -> beside(text(K), text(":"), V).
 
 -type all_constrs() :: constr:simp_constr() | constr:constr()
                      | sets:set(all_constrs()) | list(all_constrs()).
@@ -300,11 +318,11 @@ constr(X) ->
                                        locs(Locs),
                                        constr_env(Env),
                                        constr(Cs)]));
-               {ccase, Locs, CsScrut, {ExhauLeft, ExhauRight}, Bodies} ->
+               {ccase, Locs, CsScrut, CsExhaust, Bodies} ->
                    brackets(comma_sep([text("ccase"),
                                        locs(Locs),
-                                       constr(CsScrut),
-                                       beside(ty(ExhauLeft), text(" <= "), ty(ExhauRight)),
+                                       kv("scrutiny", constr(CsScrut)),
+                                       kv("exhaus", constr(CsExhaust)),
                                        constr_bodies(Bodies)]));
                {cunsatisfiable, Locs, Msg} ->
                    brackets(comma_sep([text("cunsatisfiable"),
@@ -367,6 +385,12 @@ mono_env(Env) ->
           end,
           maps:to_list(Env)),
     brackets(comma_sep(Elems)).
+
+-spec simp_constr_block(constr_simp:simp_constr_block()) -> doc().
+simp_constr_block({Kind, Loc, Ds}) ->
+    brackets(comma_sep([text(atom_to_list(Kind)),
+                        loc(Loc),
+                        constr(Ds)])).
 
 -spec render_list(fun((T) -> doc()), list(T)) -> string().
 render_list(Fun, L) ->

@@ -27,7 +27,7 @@ check_infer_ok_fun(Filename, Tab, Decl = {function, L, Name, Arity, _}, Ty) ->
            typing:infer(Ctx, [Decl])
        catch
            throw:{ety, ty_error, Msg2} ->
-               io:format("~s: Type checking ~w/~w in ~s failed but should succeed: ~s",
+               io:format("~s: Infering type for ~w/~w in ~s failed but should succeed: ~s",
                      [ast:format_loc(L), Name, Arity, Filename, Msg2]),
                ?assert(false)
        end,
@@ -74,6 +74,10 @@ check_fail_fun(Filename, Tab, Decl = {function, L, Name, Arity, _}, Ty) ->
 
 -type what() :: all | {include, sets:set(string())} | {exclude, sets:set(string())}.
 
+-spec has_intersection(ast:ty_scheme()) -> boolean().
+has_intersection({ty_scheme, _, {intersection, _}}) -> true;
+has_intersection({ty_scheme, _, _}) -> false.
+
 -spec check_decls_in_file(string(), what(), sets:set(string())) -> ok.
 check_decls_in_file(F, What, NoInfer) ->
   RawForms = parse:parse_file_or_die(F),
@@ -107,7 +111,8 @@ check_decls_in_file(F, What, NoInfer) ->
               end}
           },
         ShouldRun = should_run(NameStr, What),
-        ShouldInfer = not ShouldFail andalso not sets:is_element(NameStr, NoInfer),
+        ShouldInfer = not ShouldFail andalso not sets:is_element(NameStr, NoInfer)
+          andalso not has_intersection(Ty),
         ExtraTestCases =
           case {ShouldRun, ShouldInfer} of
             {false, _} -> [];
@@ -128,27 +133,18 @@ should_run(Name, {exclude,Set}) -> not sets:is_element(Name, Set).
 simple_test_() ->
   % The following functions are currently excluded from being tested.
   WhatNot = [
-    % FIXME #36 impossible branches
-    "foo2",
-    "inter_03_fail",
-    % FIXME #61 bad recursive types in tally
-    "tuple_04",
-    % slow, see #57
-    "list_pattern_02",
-    "list_pattern_07",
-    "some_fun",
+    % buggy, see #36
     "fun_local_03",
-    "fun_local_04",
-    "fun_local_02_plus",
-    "my_plus"
+    "fun_local_07",
+    "fun_local_07_fail"
   ],
 
   NoInfer = [
-    % The following functions are excluded from the type inference test because
-    % we do not support inference of intersection types.
-    "inter_01", "inter_02",
     % slow, see #62
-    "foo3"],
+    "foo3",
+    % buggy, see #101
+    "poly"
+  ],
   check_decls_in_file("test_files/tycheck_simple.erl",
                       {exclude, sets:from_list(WhatNot)},
                       %{include, sets:from_list(What)},
