@@ -61,13 +61,20 @@ parse_spec(Path) ->
 -spec merge_specs([ty_map()]) -> ty_map().
 merge_specs(Specs) -> lists:foldl(fun maps:merge/2, #{}, Specs).
 
--spec lookup_ty(ty_map(), atom(), atom(), [ast_erl:ty()]) -> ast_erl:ty().
+-spec lookup_ty_or_die(ty_map(), atom(), atom(), [ast_erl:ty()]) -> ast_erl:ty().
+lookup_ty_or_die(Spec, Mod, Name, Args) ->
+    case lookup_ty(Spec, Mod, Name, Args) of
+        error -> ?ABORT("Type ~p:~p/~w not found. Avaible types:~n~200p",
+                        Mod, Name, length(Args), maps:keys(Spec));
+        {ok, Res} -> Res
+    end.
+
+-spec lookup_ty(ty_map(), atom(), atom(), [ast_erl:ty()]) -> error | {ok, ast_erl:ty()}.
 lookup_ty(Spec, Mod, Name, Args) ->
     Key = {Mod, Name, length(Args)},
     case maps:find(Key, Spec) of
-        error -> ?ABORT("Type ~p not found. Avaible types:~n~200p",
-                        Key, maps:keys(Spec));
-        {ok, {Vars, Ty}} -> inst_ty(Vars, Args, Ty)
+        error -> error;
+        {ok, {Vars, Ty}} -> {ok, inst_ty(Vars, Args, Ty)}
     end.
 
 -spec inst_ty([atom()], [ast_erl:ty()], ast_erl:ty()) -> ast_erl:ty().
@@ -91,37 +98,62 @@ inst_ty(Vars, Args, Ty) ->
     end.
 
 -spec check_against_type(ty_map(), module_name(), atom(), term()) -> boolean().
-check_against_type(Spec, Module, TyName, Term) ->
-    Ty = lookup_ty(Spec, Module, TyName, []),
-    Res = check_ty(Spec, Module, Ty, Term),
-    if
-        Res -> ?LOG_TRACE("Valid term wrt type ~w:~w:~n~200p", Module, TyName, Term);
-        true -> ?LOG_WARN("Invalid term wrt type ~w:~w:~n~200p", Module, TyName, Term)
-    end,
-    Res.
+check_against_type(Spec, Module, Ty, Term) ->
+    ResolvedTy =
+        case lookup_ty(Spec, Module, Ty, []) of
+            error -> Ty;
+            {ok, X} -> X
+        end,
+    Res = check_ty_with_result(Spec, Module, ResolvedTy, Term, 0),
+    case Res of
+        ok ->
+            ?LOG_TRACE("Valid term wrt type ~w:~w:~n~200p", Module, ResolvedTy, Term),
+            true;
+        {SubTy, SubTerm, Depth} ->
+            ?LOG_WARN("Invalid term wrt type ~w:~w:~n~200p~n~nSubterm does not have type ~200p at depth ~p~n~200p",
+                Module, Ty, Term, SubTy, Depth, SubTerm),
+            false
+    end.
 
--spec check_ty(ty_map(), module_name(), ast_erl:ty(), term()) -> boolean().
-check_ty(Spec, CurModule, Ty, Form) ->
-    ?LOG_TRACE("Checking form ~1000p~nagainst type ~1000p", Form, Ty),
+-spec raise_unless(boolean(), ast_erl:ty(), term(), integer()) -> ok.
+raise_unless(false, Ty, Term, Depth) ->
+    throw({ast_check_error, {Ty, Term, Depth}});
+raise_unless(true, _Ty, _Term, _Depth) -> ok.
+
+-spec check_ty_with_result(ty_map(), module_name(), ast_erl:ty(), term(), integer()) ->
+    ok | {ast_erl:ty(), term(), integer()}.
+check_ty_with_result(Spec, CurModule, Ty, Form, Depth) ->
+    try
+        check_ty(Spec, CurModule, Ty, Form, Depth),
+        ok
+    catch
+        throw:{ast_check_error, X} -> X
+    end.
+
+-spec check_ty(ty_map(), module_name(), ast_erl:ty(), term(), integer()) -> ok.
+check_ty(Spec, CurModule, Ty, Form, Depth) ->
+    ?LOG_TRACE("Checking term ~1000p~nagainst type ~1000p", Form, Ty),
     % The type has the form as specified in ast_erl
     R = case Ty of
-        {ann_type, _, [_, Ty2]} -> check_ty(Spec, CurModule, Ty2, Form);
-        {atom, _, Atom} -> Atom =:= Form;
-        {integer, _, Int} -> Int =:= Form;
-        {char, _, Char} -> Char =:= Form;
+        {ann_type, _, [_, Ty2]} -> check_ty(Spec, CurModule, Ty2, Form, Depth);
+        {atom, _, Atom} -> raise_unless(Atom =:= Form, Ty, Form, Depth);
+        {integer, _, Int} -> raise_unless(Int =:= Form, Ty, Form, Depth);
+        {char, _, Char} -> raise_unless(Char =:= Form, Ty, Form, Depth);
         {type, _, binary, [{integer, _, _I1}, {integer, _, _I2}]} ->
             utils:error("Checking of types for bitstrings not implemented: ~p", Ty);
-        {type, _, nil, []} -> Form =:= [];
+        {type, _, nil, []} -> raise_unless(Form =:= [], Ty, Form, Depth);
         {type, _, list, [Ty2]} ->
-            is_list(Form) andalso lists:all(fun (X) -> check_ty(Spec, CurModule, Ty2, X) end, Form);
+            raise_unless(is_list(Form), Ty, Form, Depth),
+            lists:foreach(fun (X) -> check_ty(Spec, CurModule, Ty2, X, Depth + 1) end, Form),
+            ok;
         {type, _, 'fun', _} ->
-            utils:error("Cannot check form against function type ~p", Ty);
+            utils:error("Cannot check term against function type ~p", Ty);
         {type, _, bounded_fun, [_, _]} ->
-            utils:error("Cannot check form against function type ~p", Ty);
+            utils:error("Cannot check term against function type ~p", Ty);
         {type, _, range, [{integer, _, _I1}, {integer, _, _I2}]} ->
             utils:error("Checking of types for integer ranges not implemented: ~p", Ty);
         {type, _, map, any} ->
-            #{} =:= Form;
+            raise_unless({} =:= Form, Ty, Form, Depth);
         {type, Anno, map, TyAssocs} ->
                 case
                     try maps:to_list(Form)
@@ -137,79 +169,72 @@ check_ty(Spec, CurModule, Ty, Form) ->
                                  lists:map(fun({type, _, _, [_, V]}) -> V end, TyAssocs)},
                         KvTy = {type, Anno, tuple, [KeyTy, ValTy]},
                         TotalTy = {type, Anno, list, [KvTy]},
-                        check_ty(Spec, CurModule, TotalTy, List)
+                        check_ty(Spec, CurModule, TotalTy, List, Depth)
                 end;
         {op, _, _, _, _} ->
             utils:error("Checking of types with binary operators not implemented: ~p", Ty);
         {op, _, _, _} ->
             utils:error("Checking of types with unary operators not implemented: ~p", Ty);
-        {type, _, any, []} -> true;
-        {type, _, term, []} -> true;
-        {type, _, none, []} -> false;
-        {type, _, no_return, []} -> false;
-        {type, _, pid, []} -> is_pid(Form);
-        {type, _, port, []} -> is_port(Form);
-        {type, _, reference, []} -> is_reference(Form);
-        {type, _, float, []} -> is_float(Form);
-        {type, _, integer, []} -> is_integer(Form);
-        {type, _, arity, []} -> is_integer(Form) andalso Form >= 0 andalso Form < 256;
-        {type, _, char, []} -> utils:is_char(Form);
-        {type, _, atom, []} -> is_atom(Form);
-        {type, _, boolean, []} -> is_boolean(Form);
-        {type, _, string, []} -> utils:is_string(Form);
+        {type, _, any, []} -> ok;
+        {type, _, term, []} -> ok;
+        {type, _, none, []} -> raise_unless(false, Ty, Form, Depth);
+        {type, _, no_return, []} -> raise_unless(false, Ty, Form, Depth);
+        {type, _, pid, []} -> raise_unless(is_pid(Form), Ty, Form, Depth);
+        {type, _, port, []} -> raise_unless(is_port(Form), Ty, Form, Depth);
+        {type, _, reference, []} -> raise_unless(is_reference(Form), Ty, Form, Depth);
+        {type, _, float, []} -> raise_unless(is_float(Form), Ty, Form, Depth);
+        {type, _, integer, []} -> raise_unless(is_integer(Form), Ty, Form, Depth);
+        {type, _, arity, []} ->
+            raise_unless(is_integer(Form) andalso Form >= 0 andalso Form < 256, Ty, Form, Depth);
+        {type, _, char, []} -> raise_unless(utils:is_char(Form), Ty, Form, Depth);
+        {type, _, atom, []} -> raise_unless(is_atom(Form), Ty, Form, Depth);
+        {type, _, boolean, []} -> raise_unless(is_boolean(Form), Ty, Form, Depth);
+        {type, _, string, []} -> raise_unless(utils:is_string(Form), Ty, Form, Depth);
         {type, _, record, _} ->
             utils:error("Checking of types with records not implemented: ~p", Ty);
         {remote_type, _, [{atom, _, RemoteMod}, {atom, _, Name}, Args]} ->
                 case {RemoteMod, Name, Args} of
                     {sets, set, [Ty2]} ->
-                        sets:is_set(Form) andalso
-                        lists:all(fun (X) -> check_ty(Spec, CurModule, Ty2, X) end,
-                                  sets:to_list(Form));
+                        raise_unless(sets:is_set(Form), Ty, Form, Depth),
+                        lists:foreach(fun (X) -> check_ty(Spec, CurModule, Ty2, X, Depth + 1) end,
+                                  sets:to_list(Form)),
+                        ok;
                     _ ->
-                        Ty3 = lookup_ty(Spec, RemoteMod, Name, Args),
-                        report_result(RemoteMod, Name, Form, check_ty(Spec, RemoteMod, Ty3, Form))
+                        Ty3 = lookup_ty_or_die(Spec, RemoteMod, Name, Args),
+                        check_ty(Spec, RemoteMod, Ty3, Form, Depth)
                 end;
         {type, _,tuple, any} ->
-            is_tuple(Form);
+            raise_unless(is_tuple(Form), Ty, Form, Depth);
         {type, _, tuple, Tys} ->
-           is_tuple(Form) andalso check_tys(Spec, CurModule, Tys, tuple_to_list(Form));
+            raise_unless(is_tuple(Form), Ty, Form, Depth),
+            FormList = tuple_to_list(Form),
+            raise_unless(length(Tys) =:= length(FormList), Ty, Form, Depth),
+            lists:foreach(fun ({T, F}) -> check_ty(Spec, CurModule, T, F, Depth + 1) end,
+                lists:zip(Tys, FormList)),
+            ok;
         {var, _, Name} ->
             utils:error("Found free type variable ~p", Name);
         {type, _, union, Tys} ->
-            X = lists:any(fun (X) -> check_ty(Spec, CurModule, X, Form) end, Tys),
-            if not X -> ?LOG_TRACE("Form not valid wrt type.~nForm: ~200p~nType: ~200p", Form, Ty);
-               true -> ok
-            end,
-            X;
+            Results =
+                lists:map(
+                    fun (T) -> check_ty_with_result(Spec, CurModule, T, Form, Depth + 1) end,
+                    Tys),
+            ?LOG_TRACE("Ty=~200p, Form=~200p, Depth=~w, Results=~200p", Ty, Form, Depth, Results),
+            case lists:search(fun (X) -> X =:= ok end, Results) of
+                {value, _} -> ok;
+                false ->
+                    Errors = lists:filter(fun (X) -> X =/= ok end, Results),
+                    case lists:sort(fun ({_, _, D1}, {_, _, D2}) -> (D2 =< D1) end, Errors) of
+                        [] -> utils:error("empty union ~p", Ty);
+                        [Err | _] -> throw({ast_check_error, Err})
+                    end
+            end;
         {user_type, _, Name, Args} ->
-            Ty2 = lookup_ty(Spec, CurModule, Name, Args),
-            report_result(CurModule, Name, Form, check_ty(Spec, CurModule, Ty2, Form));
+            Ty2 = lookup_ty_or_die(Spec, CurModule, Name, Args),
+            check_ty(Spec, CurModule, Ty2, Form, Depth);
         _ -> utils:error("unsupported type: ~p", Ty)
     end,
     R.
-
--spec check_tys(ty_map(), module_name(), [ast_erl:ty()], [term()]) -> boolean().
-check_tys(Spec, CurModule, Tys, Forms) ->
-    length(Tys) =:= length(Forms) andalso
-        lists:all(fun ({Ty, F}) -> check_ty(Spec, CurModule, Ty, F) end, lists:zip(Tys, Forms)).
-
--spec is_reportable_type(atom(), atom()) -> boolean().
-is_reportable_type(Mod, Name) ->
-    case {Mod, Name} of
-        {ast, form} -> true;
-        _ -> false
-    end.
-
--spec report_result(atom(), atom(), term(), boolean()) -> boolean().
-report_result(ModName, TyName, Form, Result) ->
-    if Result -> Result;
-       true ->
-            B = is_reportable_type(ModName, TyName),
-            if B -> ?LOG_INFO("Term not valid wrt type ~w:~w:~n~200p", ModName, TyName, Form);
-               true -> ok
-            end,
-            Result
-    end.
 
 % Tests
 
@@ -242,7 +267,7 @@ lookup_ty_test() ->
             {gen_funcall, mk_test_ty(TyVar), [{var,Loc,'T'}]}},
     M = prepare_spec(ast_erl, [Attr]),
     ?LOG_TRACE("M = ~p", M),
-    ?assertEqual(mk_test_ty(TyArg), lookup_ty(M, ast_erl, 'gen_funcall', [TyArg])).
+    ?assertEqual(mk_test_ty(TyArg), lookup_ty_or_die(M, ast_erl, 'gen_funcall', [TyArg])).
 
 lookup_ty_realworld_test() ->
     Forms = parse:parse_file_or_die("src/ast_erl.erl"),
@@ -250,7 +275,7 @@ lookup_ty_realworld_test() ->
     ?LOG_TRACE("Forms = ~p", Forms),
     ?LOG_TRACE("M = ~p", M),
     TyArg = {user_type, {1,1}, guard_test,[]},
-    T = lookup_ty(M, ast_erl, 'gen_funcall', [TyArg]),
+    T = lookup_ty_or_die(M, ast_erl, 'gen_funcall', [TyArg]),
     ?assertMatch({type, _, tuple, _}, T).
 
 check_realworld_test() ->
@@ -261,8 +286,8 @@ check_realworld_test() ->
 check_against(TyName, X) ->
     Forms = parse:parse_file_or_die("src/ast_erl.erl"),
     M = prepare_spec(ast_erl, Forms),
-    Ty = lookup_ty(M, ast_erl, TyName, []),
-    true = check_ty(M, ast_erl, Ty, X).
+    Ty = lookup_ty_or_die(M, ast_erl, TyName, []),
+    true = check_against_type(M, ast_erl, Ty, X).
 
 check_antidote1_test() ->
     Exp0 =
