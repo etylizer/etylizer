@@ -89,9 +89,9 @@ gen_constrs_annotated_fun(Symtab, {fun_full, ArgTys, ResTy}, {function, L, Name,
     single({cdef, mk_locs(Msg, L), Env, BodyCs}).
 
 -spec exps_constrs(ctx(), ast:loc(), [ast:exp()], ast:ty()) -> constr:constrs().
-exps_constrs(Ctx, L, Es, T) ->
+exps_constrs(Ctx, _L, Es, T) ->
     case lists:reverse(Es) of
-        [] -> single({cunsatisfiable, L, "empty list of expressions"});
+        [] -> ?ABORT("empty list of expressions");
         [Last | Init] ->
             Cs0 = exp_constrs(Ctx, Last, T),
             lists:foldl(fun (E, Acc) ->
@@ -827,7 +827,8 @@ if_exp_to_case_exp({'if', L, IfClauses}) ->
 sanity_check(Cs, Spec) ->
     case ast_check:check_against_type(Spec, constr, constrs, Cs) of
         true ->
+            ?LOG_DEBUG("Sanity check OK"),
             ok;
         false ->
-            ?ABORT("~s", "Invalid constraint generated")
+            ?ABORT("Sanity check failed: ~s", "invalid constraint generated")
     end.

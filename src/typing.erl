@@ -48,16 +48,19 @@ tyerror_msg(Kind) ->
         non_exhaustive_case -> "not all cases are covered"
     end.
 
--spec report_tyerror_with_msg(string(), ast:loc(), string()) -> no_return().
-report_tyerror_with_msg(Msg, Loc, What) ->
+-spec report_tyerror(constr_simp:simp_constrs_error_kind(), ast:loc(), string()) -> no_return().
+report_tyerror(Kind, Loc, Hint) ->
     SrcCtx = format_src_loc(Loc),
-    errors:ty_error(Loc, "~s~n~s~n~n  ~s", [Msg, SrcCtx, What]).
+    case Hint of
+        "" -> errors:ty_error(Loc, "~s~n~s", [tyerror_msg(Kind), SrcCtx]);
+        _ -> errors:ty_error(Loc, "~s~n~s~n~n  ~s", [tyerror_msg(Kind), SrcCtx, Hint])
+    end.
 
 -spec report_tyerror(constr_simp:simp_constrs_result(), string()) -> constr_simp:simp_constr_blocks().
 report_tyerror({simp_constrs_ok, Blocks}, _) -> Blocks;
 report_tyerror({simp_constrs_error, {Kind, Loc}}, What) ->
     Msg = tyerror_msg(Kind),
-    report_tyerror_with_msg(Msg, Loc, What).
+    report_tyerror(Msg, Loc, What).
 
 -spec report_tyerror_for_block(constr_simp:simp_constr_block_kind(), ast:loc(), string()) -> no_return().
 report_tyerror_for_block(BlockKind, Loc, What) ->
@@ -67,7 +70,7 @@ report_tyerror_for_block(BlockKind, Loc, What) ->
             simp_constr_block_exhaustiveness -> non_exhaustive_case
         end,
     Msg = tyerror_msg(Kind),
-    report_tyerror_with_msg(Msg, Loc, What).
+    report_tyerror(Msg, Loc, What).
 
 % Checks all forms of a module
 -spec check_forms(ctx(), string(), ast:forms(), sets:set(string())) -> ok.
@@ -296,7 +299,7 @@ check(Ctx, Decl = {function, Loc, Name, Arity, _}, PolyTy) ->
 
 % Checks a function against an alternative of an intersection type.
 -spec check_alt(ctx(), ast:fun_decl(), ast:ty_full_fun(), constr_simp:unmatched_branch_mode()) -> ok.
-check_alt(Ctx, Decl = {function, Loc, Name, Arity, _}, FunTy, BranchMode) ->
+check_alt(Ctx, Decl = {function, Loc, Name, Arity, _}, FunTy, _BranchMode) ->
     ?LOG_INFO("Checking function ~w/~w at ~s against type ~s",
                Name,
                Arity,
@@ -310,43 +313,33 @@ check_alt(Ctx, Decl = {function, Loc, Name, Arity, _}, FunTy, BranchMode) ->
     ?LOG_DEBUG("Constraints:~n~s", pretty:render_constr(Cs)),
     Tab = Ctx#ctx.symtab,
     FreeSet = tyutils:free_in_ty(FunTy),
-    SimpCtx = constr_simp:new_ctx(Tab, #{}, Ctx#ctx.sanity, BranchMode, FreeSet),
-    ErrorWhat = utils:sformat("while checking function ~w/~w against type ~s",
-            Name, Arity, pretty:render_ty(FunTy)),
-    Blocks = report_tyerror(constr_simp:simp_constrs(SimpCtx, Cs), ErrorWhat),
-    Ds = constr_simp:simp_constrs_of_blocks(Blocks),
+    SimpCtx = constr_simp:new_ctx(Tab, #{}, Ctx#ctx.sanity),
+    SimpConstrs = constr_simp:simp_constrs(SimpCtx, Cs),
+    case Ctx#ctx.sanity of
+        {ok, TyMap2} -> constr_simp:sanity_check(SimpConstrs, TyMap2);
+        error -> ok
+    end,
     ?LOG_DEBUG("Simplified constraint set for ~w/~w at ~s, now " ++
-                "invoking tally on it.~nFixed tyvars: ~w~nConstraints:~n~s",
+                "checking constraints for.~nFixed tyvars: ~w~nConstraints:~n~s",
                 Name, Arity, ast:format_loc(Loc),
                 sets:to_list(FreeSet),
-                pretty:render_constr(Ds)),
-    {SatisfyRes, Delta} = utils:timing(fun () -> tally:is_satisfiable(Tab, Ds, FreeSet) end),
-    Status =
-        case SatisfyRes of
-            {false, ErrList} ->
-                ErrStr = format_tally_error(ErrList),
-                ?LOG_DEBUG("Tally time: ~pms, tally finished with errors: ~s",
-                    Delta, ErrStr),
-                false;
-            {true, S} ->
-                ?LOG_DEBUG("Tally time: ~pms, first substitution:~n~s",
-                    Delta, [pretty:render_subst(S)]),
-                true
-        end,
-    case Status of
-        true ->
+                pretty:render_constr(SimpConstrs)),
+    Res = constr_solve:check_simp_constrs(Tab, FreeSet, SimpConstrs),
+    case Res of
+        ok ->
             ?LOG_INFO("Success: function ~w/~w at ~s has type ~s.",
                        Name,
                        Arity,
                        ast:format_loc(Loc),
                        pretty:render_ty(FunTy));
-        false ->
-            ?LOG_DEBUG("Blocks:~n~s",
-                pretty:render_list(fun pretty:simp_constr_block/1, Blocks)),
-            locate_tyerror(Tab, FreeSet, Blocks, ErrorWhat, sets:new()), % aborts if it finds a type error
-            SrcCtx = format_src_loc(Loc),
-            errors:ty_error(Loc, "function ~w/~w failed to type check against type ~s~n~s",
-                            [Name, Arity, pretty:render_ty(FunTy), SrcCtx])
+        {error, Err} ->
+            case Err of
+                none ->
+                    errors:ty_error(Loc, "function ~w/~w failed to type check against type ~s~n~s",
+                            [Name, Arity, pretty:render_ty(FunTy), format_src_loc(Loc)]);
+                {Kind, Loc, Hint} ->
+                    report_tyerror(Kind, Loc, Hint)
+            end
     end.
 
 -spec locate_tyerror(symtab:t(), sets:set(ast:ty_varname()), constr_simp:simp_constr_blocks(),

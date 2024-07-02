@@ -283,6 +283,25 @@ constr_bodies(L) ->
           end,
           L))).
 
+-spec sconstr_bodies([constr:sconstr_case_branch()]) -> doc().
+sconstr_bodies(L) ->
+    braces(
+      comma_sep(
+        lists:map(
+          fun({sccase_branch, {GuardsLoc, Guards}, Cond, {BodyLoc, Body}}) ->
+                PrettyCond =
+                    case Cond of
+                        none -> [text("none")];
+                        {L2, X} -> [kv("condLoc", loc(L2)), kv("cond", constr(X))]
+                    end,
+                brackets(comma_sep([
+                    kv("guardLoc", loc(GuardsLoc)),
+                    kv("guard", constr(Guards))] ++ PrettyCond ++ [
+                    kv("bodyLoc", loc(BodyLoc)),
+                    kv("body", constr(Body))]))
+          end,
+          L))).
+
 -spec kv(string(), doc()) -> doc().
 kv(K, V) -> beside(text(K), text(":"), V).
 
@@ -301,6 +320,11 @@ constr(X) ->
                {csubty, Locs, T1, T2} ->
                    brackets(comma_sep([text("csubty"),
                                        locs(Locs),
+                                       ty(T1),
+                                       ty(T2)]));
+               {scsubty, Loc, T1, T2} ->
+                   brackets(comma_sep([text("scsubty"),
+                                       loc(Loc),
                                        ty(T1),
                                        ty(T2)]));
                {cvar, Locs, Ref, T} ->
@@ -324,10 +348,13 @@ constr(X) ->
                                        kv("scrutiny", constr(CsScrut)),
                                        kv("exhaus", constr(CsExhaust)),
                                        constr_bodies(Bodies)]));
-               {cunsatisfiable, Locs, Msg} ->
-                   brackets(comma_sep([text("cunsatisfiable"),
-                                       locs(Locs),
-                                       text(Msg)]))
+               {sccase, {LocScrut, CsScrut}, {LocExhaust, CsExhaust}, Bodies} ->
+                   brackets(comma_sep([text("sccase"),
+                                       kv("scrutinyLoc", loc(LocScrut)),
+                                       kv("scrutiny", constr(CsScrut)),
+                                       kv("exhaustLoc", loc(LocExhaust)),
+                                       kv("exhaus", constr(CsExhaust)),
+                                       sconstr_bodies(Bodies)]))
            end
    end.
 

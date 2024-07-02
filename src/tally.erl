@@ -10,10 +10,10 @@
 -export([tally/4]). % extra tally function used to specify variable order to ensure a deterministic number of solutions
 -endif.
 
--spec tally(symtab:t(), constr:simp_constrs()) -> [subst:t()] | {error, [{error, string()}]}.
+-spec tally(symtab:t(), constr:subty_constrs()) -> [subst:t()] | {error, [{error, string()}]}.
 tally(SymTab, Constraints) -> tally(SymTab, Constraints, sets:new()) .
 
--spec is_satisfiable(symtab:t(), constr:simp_constrs(), sets:set(ast:ty_varname())) ->
+-spec is_satisfiable(symtab:t(), constr:subty_constrs(), sets:set(ast:ty_varname())) ->
   {false, [{error, string()}]} | {true, subst:t()}.
 is_satisfiable(SymTab, Cs, Fixed) ->
   case tally(SymTab, Cs, Fixed) of % FIXME: optimize
@@ -21,11 +21,11 @@ is_satisfiable(SymTab, Cs, Fixed) ->
     [S | _] -> {true, S}
   end.
 
--spec tally(symtab:t(), constr:simp_constrs(), sets:set(ast:ty_varname())) -> [subst:t()] | {error, [{error, string()}]}.
+-spec tally(symtab:t(), constr:subty_constrs(), sets:set(ast:ty_varname())) -> [subst:t()] | {error, [{error, string()}]}.
 tally(SymTab, Constraints, FixedVars) ->
   tally(SymTab, Constraints, FixedVars, fun() -> noop end).
 
--spec tally(symtab:t(), constr:simp_constrs(), sets:set(ast:ty_varname()), fun(() -> any())) -> [subst:t()] | {error, [{error, string()}]}.
+-spec tally(symtab:t(), constr:subty_constrs(), sets:set(ast:ty_varname()), fun(() -> any())) -> [subst:t()] | {error, [{error, string()}]}.
 tally(_SymTab, Constraints, FixedVars, Order) ->
   % reset the global cache, will be fixed in the future
   ty_ref:reset(),

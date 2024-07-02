@@ -7,7 +7,7 @@
 
 -spec check_ok_fun(string(), symtab:t(), ast:fun_decl(), ast:ty_scheme()) -> ok.
 check_ok_fun(Filename, Tab, Decl = {function, L, Name, Arity, _}, Ty) ->
-    Ctx = typing:new_ctx(Tab, error),
+    Ctx = typing:new_ctx(Tab, error), % FIXME: perform sanity check!
     try
         typing:check(Ctx, Decl, Ty)
     catch
