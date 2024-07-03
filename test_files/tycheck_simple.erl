@@ -395,6 +395,15 @@ list_pattern_07(L) ->
         [_X | _] -> 3
     end.
 
+-spec list_pattern_08(list(integer())) -> integer().
+list_pattern_08(L) ->
+    case L of
+        [] -> 1;
+        [1 | _] -> 2;
+        [1, 2 | _] -> 3; % redundant
+        _ -> 4
+    end.
+
 %%%%%%%%%%%%%%%%%%%%%%%% FUN REF AND CALL %%%%%%%%%%%%%%%%%%%%%%%
 
 -spec some_fun(string(), integer()) -> string().
