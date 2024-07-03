@@ -395,8 +395,9 @@ list_pattern_07(L) ->
         [_X | _] -> 3
     end.
 
--spec list_pattern_08(list(integer())) -> integer().
-list_pattern_08(L) ->
+% The redundant branch is not detected atm because our types for lists are too simplistic.
+-spec list_pattern_08_fail(list(integer())) -> integer().
+list_pattern_08_fail(L) ->
     case L of
         [] -> 1;
         [1 | _] -> 2;

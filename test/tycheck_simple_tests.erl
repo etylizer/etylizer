@@ -136,7 +136,9 @@ simple_test_() ->
     % buggy, see #36
     "fun_local_03",
     "fun_local_07",
-    "fun_local_07_fail"
+    "fun_local_07_fail",
+    % Redundancy check for lists is not powerful enough
+    "list_pattern_08_fail"
   ],
 
   NoInfer = [

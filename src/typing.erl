@@ -320,7 +320,7 @@ check_alt(Ctx, Decl = {function, Loc, Name, Arity, _}, FunTy, _BranchMode) ->
         error -> ok
     end,
     ?LOG_DEBUG("Simplified constraint set for ~w/~w at ~s, now " ++
-                "checking constraints for.~nFixed tyvars: ~w~nConstraints:~n~s",
+                "checking constraints for satisfiability.~nFixed tyvars: ~w~nConstraints:~n~s",
                 Name, Arity, ast:format_loc(Loc),
                 sets:to_list(FreeSet),
                 pretty:render_constr(SimpConstrs)),
@@ -337,8 +337,8 @@ check_alt(Ctx, Decl = {function, Loc, Name, Arity, _}, FunTy, _BranchMode) ->
                 none ->
                     errors:ty_error(Loc, "function ~w/~w failed to type check against type ~s~n~s",
                             [Name, Arity, pretty:render_ty(FunTy), format_src_loc(Loc)]);
-                {Kind, Loc, Hint} ->
-                    report_tyerror(Kind, Loc, Hint)
+                {Kind, Loc2, Hint} ->
+                    report_tyerror(Kind, Loc2, Hint)
             end
     end.
 
