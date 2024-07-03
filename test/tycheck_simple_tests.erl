@@ -9,7 +9,7 @@
 check_ok_fun(Filename, Tab, Decl = {function, L, Name, Arity, _}, Ty) ->
     Ctx = typing:new_ctx(Tab, error), % FIXME: perform sanity check!
     try
-        typing:check(Ctx, Decl, Ty)
+        typing_check:check(Ctx, Decl, Ty)
     catch
         throw:{ety, ty_error, Msg} ->
             io:format("~s: Type checking ~w/~w in ~s failed but should succeed: ~s",
@@ -24,7 +24,7 @@ check_infer_ok_fun(Filename, Tab, Decl = {function, L, Name, Arity, _}, Ty) ->
     Ctx = typing:new_ctx(Tab, error),
     Envs =
        try
-           typing:infer(Ctx, [Decl])
+           typing_infer:infer(Ctx, [Decl])
        catch
            throw:{ety, ty_error, Msg2} ->
                io:format("~s: Infering type for ~w/~w in ~s failed but should succeed: ~s",
@@ -44,7 +44,7 @@ check_infer_ok_fun(Filename, Tab, Decl = {function, L, Name, Arity, _}, Ty) ->
     ?LOG_NOTE("Inferred the following types for ~w/~w: ~s", Name, Arity,
       pretty:render_list(", ", InferredTys, fun pretty:tyscheme/1)),
     case lists:any(
-            fun(InferredTy) -> typing:more_general(InferredTy, Ty, Tab) end,
+            fun(InferredTy) -> typing_infer:more_general(InferredTy, Ty, Tab) end,
             InferredTys)
       of
           true -> ok;
@@ -63,7 +63,7 @@ check_infer_ok_fun(Filename, Tab, Decl = {function, L, Name, Arity, _}, Ty) ->
 check_fail_fun(Filename, Tab, Decl = {function, L, Name, Arity, _}, Ty) ->
     Ctx = typing:new_ctx(Tab, error),
     try
-        typing:check(Ctx, Decl, Ty),
+        typing_check:check(Ctx, Decl, Ty),
         io:format("~s: Type checking ~w/~w in ~s succeeded but should fail",
                   [ast:format_loc(L), Name, Arity, Filename]),
         ?assert(false)
@@ -147,6 +147,9 @@ simple_test_() ->
     % buggy, see #101
     "poly"
   ],
+
+  %What = ["atom_03_fail"],
+
   check_decls_in_file("test_files/tycheck_simple.erl",
                       {exclude, sets:from_list(WhatNot)},
                       %{include, sets:from_list(What)},
