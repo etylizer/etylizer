@@ -51,11 +51,8 @@ fresh_vars(Ctx, N) ->
         end,
     Loop(1).
 
--spec single(T) -> sets:set(T).
-single(X) -> sets:from_list([X]).
-
 -spec mk_locs(string(), ast:loc()) -> constr:locs().
-mk_locs(Label, X) -> {Label, single(X)}.
+mk_locs(Label, X) -> {Label, utils:single(X)}.
 
 % Inference for a group of mutually recursive functions without type annotations.
 -spec gen_constrs_fun_group(symtab:t(), [ast:fun_decl()]) -> {constr:constrs(), constr:constr_env()}.
@@ -86,7 +83,7 @@ gen_constrs_annotated_fun(Symtab, {fun_full, ArgTys, ResTy}, {function, L, Name,
     Env = maps:from_list(lists:zip(ArgRefs, ArgTys)),
     BodyCs = exps_constrs(Ctx, L, Body, ResTy),
     Msg = utils:sformat("definition of ~w/~w", Name, Arity),
-    single({cdef, mk_locs(Msg, L), Env, BodyCs}).
+    utils:single({cdef, mk_locs(Msg, L), Env, BodyCs}).
 
 -spec exps_constrs(ctx(), ast:loc(), [ast:exp()], ast:ty()) -> constr:constrs().
 exps_constrs(Ctx, _L, Es, T) ->
@@ -107,12 +104,12 @@ exps_constrs(Ctx, _L, Es, T) ->
 -spec exp_constrs(ctx(), ast:exp(), ast:ty()) -> constr:constrs().
 exp_constrs(Ctx, E, T) ->
     case E of
-        {'atom', L, A} -> single({csubty, mk_locs("atom literal", L), {singleton, A}, T});
-        {'char', L, C} -> single({csubty, mk_locs("char literal", L), {singleton, C}, T});
-        {'integer', L, I} -> single({csubty, mk_locs("int literal", L), {singleton, I}, T});
-        {'float', L, _F} -> single({csubty, mk_locs("float literal", L), {predef, float}, T});
-        {'string', L, ""} -> single({csubty, mk_locs("empty string literal", L), {empty_list}, T});
-        {'string', L, _S} -> single({csubty, mk_locs("string literal", L), {predef_alias, string}, T});
+        {'atom', L, A} -> utils:single({csubty, mk_locs("atom literal", L), {singleton, A}, T});
+        {'char', L, C} -> utils:single({csubty, mk_locs("char literal", L), {singleton, C}, T});
+        {'integer', L, I} -> utils:single({csubty, mk_locs("int literal", L), {singleton, I}, T});
+        {'float', L, _F} -> utils:single({csubty, mk_locs("float literal", L), {predef, float}, T});
+        {'string', L, ""} -> utils:single({csubty, mk_locs("empty string literal", L), {empty_list}, T});
+        {'string', L, _S} -> utils:single({csubty, mk_locs("string literal", L), {predef_alias, string}, T});
         {bc, L, _E, _Qs} -> errors:unsupported(L, "bitstrings");
         {block, L, Es} -> exps_constrs(Ctx, L, Es, T);
         {'case', L, ScrutE, Clauses} ->
@@ -143,7 +140,7 @@ exp_constrs(Ctx, E, T) ->
                             {[], [], [], sets:new()},
                             Clauses),
             CsScrut = sets:union(Cs0, CsCases),
-            Exhaust = single(
+            Exhaust = utils:single(
                 {csubty, mk_locs("case exhaustiveness", L), Alpha, ast_lib:mk_union(Lowers)}),
             sets:from_list([
                 {ccase, mk_locs("case", L), CsScrut, Exhaust, BodyList}
@@ -159,7 +156,7 @@ exp_constrs(Ctx, E, T) ->
             sets:add_element({csubty, mk_locs("result of cons", L), {list, Alpha}, T},
                              sets:union(CsHead, CsTail));
         {fun_ref, L, GlobalRef} ->
-            single({cvar, mk_locs("function ref", L), GlobalRef, T});
+            utils:single({cvar, mk_locs("function ref", L), GlobalRef, T});
         {'fun', L, RecName, FunClauses} ->
             {Args, BodyExps} = fun_clauses_to_exp(Ctx, L, FunClauses),
             ArgTys = lists:map(fun(X) -> {{local_ref, X}, fresh_tyvar(Ctx)} end, Args),
@@ -204,7 +201,7 @@ exp_constrs(Ctx, E, T) ->
         {map_create, _L, _Assocs} -> sets:new(); % FIXME
         {map_update, _L, _MapExp, _Assocs} -> sets:new(); % FIXME
         {nil, L} ->
-            single({csubty, mk_locs("result of nil", L), {empty_list}, T});
+            utils:single({csubty, mk_locs("result of nil", L), {empty_list}, T});
         {op, L, Op, Lhs, Rhs} ->
             Alpha1 = fresh_tyvar(Ctx),
             Cs1 = exp_constrs(Ctx, Lhs, Alpha1),
@@ -248,7 +245,7 @@ exp_constrs(Ctx, E, T) ->
         {'try', _L, _Exps, _CaseClauses, _CatchClauses, _AfterBody} -> sets:new(); % FIXME
         {var, L, AnyRef} ->
             Msg = utils:sformat("var ~s", pretty:render(pretty:ref(AnyRef))),
-            single({cvar, mk_locs(Msg, L), AnyRef, T});
+            utils:single({cvar, mk_locs(Msg, L), AnyRef, T});
         X -> errors:uncovered_case(?FILE, ?LINE, X)
     end.
 
@@ -328,7 +325,7 @@ case_clause_constrs(Ctx, TyScrut, Scrut, NeedsUnmatchedCheck, LowersBefore,
             [E | _] -> ast:loc_exp(E)
         end,
     ResultLocs = mk_locs("case result", RL),
-    ResultCs = single({csubty, ResultLocs, Beta, ExpectedTy}),
+    ResultCs = utils:single({csubty, ResultLocs, Beta, ExpectedTy}),
     Payload = constr:mk_case_branch_payload(
         {GuardEnv, CGuards}, {BodyEnv, InnerCs}, RedundancyCs, ResultCs),
     ConstrBody = {ccase_branch, mk_locs("case branch", L), Payload},

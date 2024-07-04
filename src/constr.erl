@@ -54,7 +54,7 @@
 
 -type simp_constr_case_branch() ::
     {sccase_branch, Guards::simp_constrs_loc(), Cond::simp_constrs_loc() | none,
-        Body::simp_constrs_loc()}.
+        Body::simp_constrs_loc(), Result::simp_constrs_loc()}.
 
 -type constr_subty() :: {csubty, locs(), ast:ty(), ast:ty()}.
 -type constr_var() :: {cvar, locs(), ast:any_ref(), ast:ty()}.

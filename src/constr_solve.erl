@@ -13,7 +13,7 @@
     error_kind/0
 ]).
 
--type error_kind() :: tyerror | redundant_branch | non_exhaustive_case | unsatisfiable.
+-type error_kind() :: constr_error_locs:constr_error_kind().
 -type error() :: {error_kind(), ast:loc(), string()}.
 
 % Ignores unmatched branches, just returns their locations.
@@ -21,7 +21,7 @@
     ok | {error, error() | none, Unmachted::constr:locs()}.
 check_simp_constrs_return_unmatched(Tab, FixedTyvars, Ds) ->
     % FIXME: this implementation is wrong
-    SubtyConstrs = collect_constrs_ignoring_unmatched(Ds),
+    SubtyConstrs = constr_collect:collect_constrs_no_matching_cond(Ds),
     case is_satisfiable(Tab, SubtyConstrs, FixedTyvars, "satisfiability check") of
         true -> ok;
         false -> {error, none, []} % FIXME: error locations
@@ -32,13 +32,19 @@ check_simp_constrs_return_unmatched(Tab, FixedTyvars, Ds) ->
 -spec check_simp_constrs(symtab:t(), sets:set(ast:ty_varname()), constr:simp_constrs()) ->
     ok | {error, error() | none}.
 check_simp_constrs(Tab, FixedTyvars, Ds) ->
-    SubtyConstrs = collect_constrs_ignoring_unmatched(Ds),
+    SubtyConstrs = constr_collect:collect_constrs_no_matching_cond(Ds),
     ?LOG_DEBUG("Checking constraints for satisfiability:~n~s", pretty:render_constr(SubtyConstrs)),
     case is_satisfiable(Tab, SubtyConstrs, FixedTyvars, "satisfiability check") of
         true ->
             % check for redundant branches
-            ReduDs = collect_unmatched_constrs(Ds),
-            ?LOG_DEBUG("Checking ~w branches for redundancy", length(ReduDs)),
+            % FIXME: can we make this more efficient by including some constraints already
+            % in SubtyConstrs? Then we would check whether the extended constraint set is
+            % satisfiable. If not, the function has a type error and we can use the regular
+            % error location mechanism for pointing at the location of the error (which could
+            % be a redundant branch)
+            ReduDs = constr_collect:collect_matching_cond_constrs(Ds),
+            ?LOG_DEBUG("Constraints are satisfiable, now checking ~w branches for redundancy",
+                length(ReduDs)),
             lists:foldl(
                 fun ({Loc, UnmatchedConstrs}, Acc) ->
                     case Acc of
@@ -62,7 +68,21 @@ check_simp_constrs(Tab, FixedTyvars, Ds) ->
                 ok,
                 ReduDs);
         false ->
-            {error, none} % FIXME: error locations
+            Blocks = constr_error_locs:simp_constrs_to_blocks(Ds),
+            ?LOG_DEBUG("Constraints are not satisfiable, now locating source of errors. Blocks:~n~s",
+                pretty:render_list(fun pretty:constr_block/1, Blocks)),
+            locate_tyerror(Tab, FixedTyvars, Blocks, sets:new())
+    end.
+
+
+-spec locate_tyerror(symtab:t(), sets:set(ast:ty_varname()), constr_error_locs:constr_blocks(),
+    constr:subty_constrs()) -> ok | {error, error() | none}.
+locate_tyerror(_Tab, _FreeSet, [], _DsAcc) -> {error, none};
+locate_tyerror(Tab, FreeSet, [{Kind, Loc, _What, Ds} | Blocks], DsAcc) ->
+    FullDs = sets:union(Ds, DsAcc),
+    case is_satisfiable(Tab, FullDs, FreeSet, "error location") of
+        false -> {error, {Kind, Loc, ""}};
+        true -> locate_tyerror(Tab, FreeSet, Blocks, FullDs)
     end.
 
 -spec format_tally_error([string()]) -> string().
@@ -94,7 +114,7 @@ is_satisfiable(Tab, Constrs, Fixed, What) ->
 -spec solve_simp_constrs(symtab:t(), constr:subty_constrs(), string()) -> error | nonempty_list(subst:t()).
 solve_simp_constrs(Tab, Ds, What) ->
     % FIXME: we should include the redundancy checks here?!
-    SubtyConstrs = collect_constrs_ignoring_unmatched(Ds),
+    SubtyConstrs = constr_collect:collect_constrs_no_matching_cond(Ds),
     {Res, Delta} = utils:timing(fun() -> tally:tally(Tab, SubtyConstrs) end),
     case Res of
         {error, ErrList} ->
@@ -106,57 +126,3 @@ solve_simp_constrs(Tab, Ds, What) ->
             ?LOG_TRACE("Substitutions:~n~s", [pretty:render_substs(Substs)]),
             Substs
     end.
-
--spec collect_constrs_ignoring_unmatched(constr:simp_constrs()) -> constr:subty_constrs().
-collect_constrs_ignoring_unmatched(Ds) -> collect_constrs_ignoring_unmatched(Ds, sets:new()).
-
--spec collect_constrs_ignoring_unmatched(constr:simp_constrs(), constr:subty_constrs())
-    -> constr:subty_constrs().
-collect_constrs_ignoring_unmatched(Ds, OuterAcc) ->
-    lists:foldl(
-        fun (D, InnerAcc1) ->
-            case D of
-                {scsubty, _, _, _} -> sets:add_element(D, InnerAcc1);
-                {sccase, {_, DsScrut}, {_, DsExhaust}, Branches} ->
-                    lists:foldl(
-                        fun ({sccase_branch, {_, Guards}, _Cond, {_, Body}}, InnerAcc2) ->
-                            collect_constrs_ignoring_unmatched(Body,
-                                collect_constrs_ignoring_unmatched(Guards, InnerAcc2))
-                        end,
-                        collect_constrs_ignoring_unmatched(DsScrut,
-                            collect_constrs_ignoring_unmatched(DsExhaust, InnerAcc1)),
-                        Branches)
-            end
-        end,
-        OuterAcc,
-        sets:to_list(Ds)).
-
--spec collect_unmatched_constrs(constr:simp_constrs()) -> list({ast:loc(), constr:subty_constrs()}).
-collect_unmatched_constrs(Ds) -> collect_unmatched_constrs(Ds, []).
-
--spec collect_unmatched_constrs(constr:simp_constrs(), list({ast:loc(), constr:subty_constrs()}))
-    -> list({ast:loc(), constr:subty_constrs()}).
-collect_unmatched_constrs(Ds, OuterAcc) ->
-    lists:reverse(lists:foldl(
-        fun (D, InnerAcc1) ->
-            case D of
-                {scsubty, _, _, _} -> InnerAcc1;
-                {sccase, {_, DsScrut}, {_, DsExhaust}, Branches} ->
-                    lists:foldl(
-                        fun ({sccase_branch, {_, Guards}, Cond, {_, Body}}, InnerAcc2) ->
-                            L = collect_unmatched_constrs(Body,
-                                    collect_unmatched_constrs(Guards, InnerAcc2)),
-                            case Cond of
-                                none -> L;
-                                {Loc, Ds2} ->
-                                    [{Loc, collect_constrs_ignoring_unmatched(Ds2)} | L]
-                            end
-                        end,
-                        collect_unmatched_constrs(DsScrut,
-                            collect_unmatched_constrs(DsExhaust, InnerAcc1)),
-                        Branches)
-            end
-        end,
-        OuterAcc,
-        sets:to_list(Ds))).
-

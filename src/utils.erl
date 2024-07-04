@@ -13,11 +13,12 @@
     file_get_lines/1, set_add_many/2, assert_no_error/1,
     replicate/2, unconsult/2,
     string_ends_with/2, shorten/2,
-    flatmap_flip/2, map_flip/2, foreach/2, with_index/1, with_index/2,
+    flatmap_flip/2, map_flip/2, foreach/2, concat_map/2, with_index/1, with_index/2,
     mkdirs/1, hash_sha1/1, hash_file/1,
     list_uniq/1, lists_enumerate/1, lists_enumerate/2,
     with_default/2, compare/2,
-    mingle/5, timing/1, timing_log/3
+    mingle/5, timing/1, timing_log/3,
+    single/1
 ]).
 
 mingle(LeftDefault, RightDefault, AllLeft, AllRight, Op) ->
@@ -223,6 +224,9 @@ flatmap_flip(L, F) -> lists:flatmap(F, L).
 -spec map_flip([A], fun((A) -> B)) -> [B].
 map_flip(L, F) -> lists:map(F, L).
 
+-spec concat_map([A], fun((A) -> [B])) -> [B].
+concat_map(L, F) -> lists:concat(lists:map(F, L)).
+
 -spec foreach([T], fun((T) -> any())) -> ok.
 foreach(L, F) -> lists:foreach(F, L).
 
@@ -323,3 +327,6 @@ timing_log(F, Time, What) ->
         true -> ok
     end,
     X.
+
+-spec single(T) -> sets:set(T).
+single(X) -> sets:from_list([X]).

@@ -36,7 +36,7 @@ simp_constrs(Ctx, Cs) ->
 simp_constr(Ctx, C) ->
     ?LOG_TRACE("simp_constr, C=~w", C),
     case C of
-        {csubty, Locs, T1, T2} -> single({scsubty, loc(Locs), T1, T2});
+        {csubty, Locs, T1, T2} -> utils:single({scsubty, loc(Locs), T1, T2});
         {cvar, Locs, X, T} ->
             PolyTy =
                 case maps:find(X, Ctx#ctx.env) of
@@ -50,10 +50,10 @@ simp_constr(Ctx, C) ->
                                 symtab:lookup_fun(GlobalX, loc(Locs), Ctx#ctx.symtab)
                         end
                 end,
-            single({scsubty, loc(Locs), fresh_ty_scheme(Ctx, PolyTy), T});
+            utils:single({scsubty, loc(Locs), fresh_ty_scheme(Ctx, PolyTy), T});
         {cop, Locs, OpName, OpArity, T} ->
             PolyTy = symtab:lookup_op(OpName, OpArity, loc(Locs), Ctx#ctx.symtab),
-            single({scsubty, loc(Locs), fresh_ty_scheme(Ctx, PolyTy), T});
+            utils:single({scsubty, loc(Locs), fresh_ty_scheme(Ctx, PolyTy), T});
         {cdef, _Locs, Env, Cs} ->
             NewCtx = extend_env(Ctx, Env),
             simp_constrs(NewCtx, Cs);
@@ -67,7 +67,7 @@ simp_constr(Ctx, C) ->
             LocsScrut = loc(CsScrut),
             DsExhaust = simp_constrs(Ctx, CsExhaust),
             L = lists:map(fun (Body) -> simp_case_branch(Ctx, Body) end, Bodies),
-            single({sccase, {LocsScrut, DsScrut}, {loc(Locs), DsExhaust}, L});
+            utils:single({sccase, {LocsScrut, DsScrut}, {loc(Locs), DsExhaust}, L});
         X -> errors:uncovered_case(?FILE, ?LINE, X)
     end.
 
@@ -76,22 +76,21 @@ simp_case_branch(Ctx, {ccase_branch, BranchLocs, Payload}) ->
     {GuardsGammaI, GuardCsI} = constr:case_branch_guard(Payload),
     {BodyGammaI, BodyCsI} = constr:case_branch_body(Payload),
     ReduCsOrNone = constr:case_branch_bodyCond(Payload),
+    LocBranch = loc(BranchLocs),
     ReduDs =
         case ReduCsOrNone of
             none -> none;
-            ReduCs -> {loc(BranchLocs), simp_constrs(Ctx, ReduCs)}
+            ReduCs -> {LocBranch, simp_constrs(Ctx, ReduCs)}
         end,
     NewGuardsCtx = inter_env(Ctx, GuardsGammaI),
     GuardsDs = simp_constrs(NewGuardsCtx, GuardCsI),
     GuardsLoc = loc(GuardCsI, ast:loc_auto()), % GuardCsI can be empty
     NewBodyCtx = inter_env(Ctx, BodyGammaI),
     ResultCs = constr:case_branch_result(Payload),
-    BodyDs = simp_constrs(NewBodyCtx, sets:union(ResultCs, BodyCsI)),
+    BodyDs = simp_constrs(NewBodyCtx, BodyCsI),
     BodyLoc = loc(BodyCsI),
-    {sccase_branch, {GuardsLoc, GuardsDs}, ReduDs, {BodyLoc, BodyDs}}.
-
--spec single(T) -> sets:set(T).
-single(X) -> sets:from_list([X]).
+    ResultDs = simp_constrs(NewBodyCtx, ResultCs),
+    {sccase_branch, {GuardsLoc, GuardsDs}, ReduDs, {BodyLoc, BodyDs}, {LocBranch, ResultDs}}.
 
 -spec inter_env(ctx(), constr:constr_env()) -> ctx().
 inter_env(Ctx, Env) ->
