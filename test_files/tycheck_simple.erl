@@ -440,7 +440,23 @@ fun_local_02() ->
 fun_local_03() ->
     F = fun
             Add(0) -> 0;
-            Add(X) -> X + Add(X + 1)
+            Add(X) -> X + Add(X - 1)
+        end,
+    F(3).
+
+-spec fun_local_03_fail() -> integer().
+fun_local_03_fail() ->
+    F = fun
+            Add(0) -> blub;
+            Add(X) -> X + Add(X - 1)
+        end,
+    F(3).
+
+-spec fun_local_03b_fail() -> integer().
+fun_local_03b_fail() ->
+    F = fun
+            Add(0) -> 0;
+            Add(X) -> X ++ Add(X - 1)
         end,
     F(3).
 
@@ -463,6 +479,26 @@ fun_local_06() ->
         case X of
             spam -> foobar;
             _ -> foobar
+        end
+      end,
+  F(spam).
+
+-spec fun_local_06_fail() -> foobar.
+fun_local_06_fail() ->
+  F = fun(X) ->
+        case X of
+            spam -> foobarx;
+            _ -> foobar
+        end
+      end,
+  F(spam).
+
+-spec fun_local_06b_fail() -> foobar.
+fun_local_06b_fail() ->
+  F = fun(X) ->
+        case X of
+            spam -> foobar;
+            _ -> foobarx
         end
       end,
   F(spam).
@@ -547,8 +583,7 @@ tuple_05_fail(X) ->
 -spec use_atom(atom()) -> atom().
 use_atom(X) -> X.
 
--spec inter_01(integer()) -> integer()
-; (atom()) -> atom().
+-spec inter_01(integer()) -> integer(); (atom()) -> atom().
 inter_01(X) ->
     case X of
         _ when is_integer(X) -> X + 1;
@@ -556,16 +591,14 @@ inter_01(X) ->
     end.
 
 % just swap the types of the intersection
--spec inter_02(atom()) -> atom()
-; (integer()) -> integer().
+-spec inter_02(atom()) -> atom(); (integer()) -> integer().
 inter_02(X) ->
     case X of
         _ when is_integer(X) -> X + 1;
         _ -> use_atom(X)
     end.
 
--spec inter_03_fail(integer()) -> integer()
-; (atom()) -> atom().
+-spec inter_03_fail(integer()) -> integer(); (atom()) -> atom().
 inter_03_fail(X) ->
     case X of
         _ when is_integer(X) -> X + 1;
@@ -583,7 +616,7 @@ inter_04_ok(L) ->
 inter_04_fail(L) ->
     case L of
         [] -> [];
-        [_X | XS] -> XS + 1 % ERROR ignored if branch ignored when type-checking
+        [_X | XS] -> XS + 1
     end.
 
 -spec foo([T]) -> [T].
@@ -663,6 +696,60 @@ inter_with_guard_constraints_fail(X) ->
         Y when abs(Y) > 2 andalso is_integer(Y) -> Y;
         _ -> 42
     end.
+
+-spec scrutiny_with_redundant_branch(1) -> 100; (2) -> 200.
+scrutiny_with_redundant_branch(X) ->
+    case
+        case X of
+            1 -> 10;
+            2 -> 20
+        end
+    of
+        10 -> 100;
+        20 -> 200
+    end.
+
+-spec scrutiny_with_redundant_branch_fail(1) -> 100; (2) -> 200.
+scrutiny_with_redundant_branch_fail(X) ->
+    case
+        case X of
+            1 -> 11;
+            2 -> 20
+        end
+    of
+        10 -> 100;
+        20 -> 200
+    end.
+
+-spec scrutiny_with_redundant_branch_local_fun(1) -> 100; (2) -> 200.
+scrutiny_with_redundant_branch_local_fun(Z) ->
+    F = fun(X) ->
+            case
+                case X of
+                    1 -> 10;
+                    2 -> 20
+                end
+            of
+                10 -> 100;
+                20 -> 200
+            end
+        end,
+    F(Z).
+
+-spec scrutiny_with_redundant_branch_local_fun_fail(1) -> 100; (2) -> 200.
+scrutiny_with_redundant_branch_local_fun_fail(Z) ->
+    F = fun(X) ->
+            case
+                case X of
+                    1 -> 10;
+                    2 -> 21
+                end
+            of
+                10 -> 100;
+                20 -> 200
+            end
+        end,
+    F(Z).
 
 %%%%%%%%%%%%%%%%%%%%%%%% MISC %%%%%%%%%%%%%%%%%%%%%%%%
 
