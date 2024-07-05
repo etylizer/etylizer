@@ -4,12 +4,17 @@
 
 -export([
     collect_constrs_no_matching_cond/1,
-    collect_matching_cond_constrs/1
+    collect_matching_cond_constrs/1,
+    cross_union/1,
+    cross_union/2,
+    collect_constrs_all_combinations/1
 ]).
 
 -export_type([
 ]).
 
+% Collect all constraints but ignore all branch matching condition constraints.
+% Always return the body constraints for the branches.
 -spec collect_constrs_no_matching_cond(constr:simp_constrs()) -> constr:subty_constrs().
 collect_constrs_no_matching_cond(Ds) -> collect_constrs_no_matching_cond(Ds, sets:new()).
 
@@ -38,6 +43,7 @@ collect_constrs_no_matching_cond(Ds, OuterAcc) ->
 -spec collect_matching_cond_constrs(constr:simp_constrs()) -> list({ast:loc(), constr:subty_constrs()}).
 collect_matching_cond_constrs(Ds) -> collect_matching_cond_constrs(Ds, []).
 
+% Collect only the matching condition constraints.
 -spec collect_matching_cond_constrs(constr:simp_constrs(), list({ast:loc(), constr:subty_constrs()}))
     -> list({ast:loc(), constr:subty_constrs()}).
 collect_matching_cond_constrs(Ds, OuterAcc) ->
@@ -65,3 +71,57 @@ collect_matching_cond_constrs(Ds, OuterAcc) ->
         OuterAcc,
         sets:to_list(Ds))).
 
+-spec collect_constrs_all_combinations(constr:simp_constrs()) -> [constr:subty_constrs()].
+collect_constrs_all_combinations(Ds) ->
+    cross_union(lists:map(fun collect_constr_all_combinations/1, sets:to_list(Ds))).
+
+-spec collect_constr_all_combinations(constr:simp_constrs()) -> [constr:subty_constrs()].
+collect_constr_all_combinations(D) ->
+    case D of
+        {scsubty, _, _, _} -> [utils:single(D)];
+        {sccase, {_, DsScrut}, {_, DsExhaust}, Branches} ->
+            ScrutCombs = collect_constrs_all_combinations(DsScrut),
+            ExhaustCombs = collect_constrs_all_combinations(DsExhaust),
+            BranchesCombs = lists:map(fun collect_branch_all_combinations/1, Branches),
+            cross_union([ScrutCombs, ExhaustCombs] ++ BranchesCombs)
+    end.
+
+-spec collect_branch_all_combinations(constr:simp_constr_case_branch()) -> [constr:subty_constrs()].
+collect_branch_all_combinations(B) ->
+    case B of
+        {sccase_branch, {_, Guards}, Cond, {_, Body}, {_, Result}} ->
+            GuardsCombs = collect_constrs_all_combinations(Guards),
+            BodyCombs = collect_constrs_all_combinations(Body),
+            ResultCombs = collect_constrs_all_combinations(Result),
+            CondCombs =
+                case Cond of
+                    none -> [sets:new()];
+                    {_, X} -> collect_constrs_all_combinations(X)
+                end,
+            cross_union([GuardsCombs, CondCombs]) ++
+                cross_union([GuardsCombs, BodyCombs, ResultCombs])
+    end.
+
+% cross_union([S1, ..., Sn], [T1, ..., Tm]) computes the cross-product of
+% the two lists, where union is used to combine Si and Tj.
+% cross_union([S1, ..., Sn], [T1, ..., Tm]) =
+% [S1 union T1, ..., S1 union Tm, S2 union T1, ..., S2 union Tm, ..., Sn union T1, ..., Sn union Tm]
+-spec cross_union([sets:set(T)], [sets:set(T)]) -> [sets:set(T)].
+cross_union(Combs1, Combs2) ->
+    lists:flatmap(
+        fun(S1) ->
+                lists:map(fun(S2) -> sets:union(S1, S2) end, Combs2)
+        end,
+        Combs1).
+
+% cross_union([L1, ..., Ln]) computes the cross-union of all list of sets in L1, ..., Ln.
+% cross_union([L1, ..., Ln]) =
+% cross_union(..., cross_union(cross_union(L1, L2), L3) ..., Ln)
+% We have cross_union([L1]) = L1 and cross_union([]) = []
+-spec cross_union([[sets:set(T)]]) -> [sets:set(T)].
+cross_union([]) -> [];
+cross_union([X | Rest]) ->
+    lists:foldl(
+        fun cross_union/2,
+        X,
+        Rest).

@@ -23,6 +23,7 @@
          render_any_ref/1,
          render_list/2,
          render_list/3,
+         pretty_list/2,
          ref/1
         ]).
 
@@ -423,6 +424,10 @@ constr_block({Kind, Loc, What, Ds}) ->
                         text(What),
                         constr(Ds)])).
 
+-spec pretty_list(fun((T) -> doc()), list(T)) -> doc().
+pretty_list(Fun, L) ->
+    comma_sep(lists:map(Fun, L)).
+
 -spec render_list(fun((T) -> doc()), list(T)) -> string().
 render_list(Fun, L) ->
-    render(comma_sep(lists:map(Fun, L))).
+    render(pretty_list(Fun, L)).
