@@ -133,10 +133,6 @@ should_run(Name, {exclude,Set}) -> not sets:is_element(Name, Set).
 simple_test_() ->
   % The following functions are currently excluded from being tested.
   WhatNot = [
-    % buggy, see #36
-    "fun_local_03",
-    "fun_local_07",
-    "fun_local_07_fail",
     % Redundancy check for lists is not powerful enough
     "list_pattern_08_fail"
   ],

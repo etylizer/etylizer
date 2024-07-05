@@ -664,8 +664,6 @@ inter_with_guard_constraints_fail(X) ->
         _ -> 42
     end.
 
-% FIXME: test where a redundant branch is in the scrutiny
-
 %%%%%%%%%%%%%%%%%%%%%%%% MISC %%%%%%%%%%%%%%%%%%%%%%%%
 
 % same as fun_local_02 but transformed

@@ -46,7 +46,7 @@ check(Ctx, Decl = {function, Loc, Name, Arity, _}, PolyTy) ->
         end,
     BranchMode =
         case AltTys of
-            [_] -> unmatched_branch_report;
+            [_] -> unmatched_branch_fail;
             [] ->
                 errors:ty_error(Loc, "Invalid spec for ~w/~w: ~w", [Name, Arity, PolyTy]);
             _ -> unmatched_branch_ignore
@@ -63,14 +63,16 @@ check(Ctx, Decl = {function, Loc, Name, Arity, _}, PolyTy) ->
     ?LOG_INFO("Type ok for ~w/~w at ~s", Name, Arity, ast:format_loc(Loc)),
     ok.
 
+-type unmatched_branch_mode() ::
+    unmatched_branch_fail       % throw a type error if a branch never matches
+    | unmatched_branch_ignore.  % ignore if a branch never matches (for intersection types)
+
 % Checks a function against an alternative of an intersection type.
--spec check_alt(ctx(), ast:fun_decl(), ast:ty_full_fun(), constr_simp:unmatched_branch_mode()) -> ok.
-check_alt(Ctx, Decl = {function, Loc, Name, Arity, _}, FunTy, _BranchMode) ->
-    ?LOG_INFO("Checking function ~w/~w at ~s against type ~s",
-               Name,
-               Arity,
-               ast:format_loc(Loc),
-               pretty:render_ty(FunTy)),
+-spec check_alt(ctx(), ast:fun_decl(), ast:ty_full_fun(), unmatched_branch_mode()) -> ok.
+check_alt(Ctx, Decl = {function, Loc, Name, Arity, _}, FunTy, BranchMode) ->
+    FunStr = utils:sformat("~w/~w at ~s", Name, Arity, ast:format_loc(Loc)),
+    ?LOG_INFO("Checking function ~s against type ~s",
+               FunStr, pretty:render_ty(FunTy)),
     Cs = constr_gen:gen_constrs_annotated_fun(Ctx#ctx.symtab, FunTy, Decl),
     case Ctx#ctx.sanity of
         {ok, TyMap} -> constr_gen:sanity_check(Cs, TyMap);
@@ -85,12 +87,18 @@ check_alt(Ctx, Decl = {function, Loc, Name, Arity, _}, FunTy, _BranchMode) ->
         {ok, TyMap2} -> constr_simp:sanity_check(SimpConstrs, TyMap2);
         error -> ok
     end,
-    ?LOG_DEBUG("Simplified constraint set for ~w/~w at ~s, now " ++
+    ?LOG_TRACE("Simplified constraint set for ~s, now " ++
                 "checking constraints for satisfiability.~nFixed tyvars: ~w~nConstraints:~n~s",
-                Name, Arity, ast:format_loc(Loc),
+                FunStr,
                 sets:to_list(FreeSet),
                 pretty:render_constr(SimpConstrs)),
-    Res = constr_solve:check_simp_constrs(Tab, FreeSet, SimpConstrs),
+    Res =
+        case BranchMode of
+            unmatched_branch_fail ->
+                constr_solve:check_simp_constrs(Tab, FreeSet, SimpConstrs, FunStr);
+            unmatched_branch_ignore ->
+                constr_solve:check_simp_constrs_return_unmatched(Tab, FreeSet, SimpConstrs, FunStr)
+        end,
     case Res of
         ok ->
             ?LOG_INFO("Success: function ~w/~w at ~s has type ~s.",

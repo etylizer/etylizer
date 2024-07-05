@@ -45,7 +45,7 @@
 -type simp_constrs() :: sets:set(simp_constr()).
 -type simp_constrs_loc() :: {ast:loc(), simp_constrs()}.
 -type simp_constr() :: simp_constr_subty() | simp_constr_case().
--type subty_constrs() :: set:set(constr:simp_constr_subty()).
+-type subty_constrs() :: sets:set(constr:simp_constr_subty()).
 
 -type simp_constr_subty() :: {scsubty, ast:loc(), ast:ty(), ast:ty()}.
 -type simp_constr_case() ::

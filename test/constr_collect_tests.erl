@@ -44,7 +44,7 @@ assert_list_of_sets(Expected, L) ->
 
 cross_union_empty_test() ->
     L = constr_collect:cross_union([]),
-    ?assertEqual([], L).
+    ?assertEqual([sets:new()], L).
 
 cross_union_empty2_test() ->
     L = constr_collect:cross_union([[]]),
@@ -95,6 +95,25 @@ mk_set(L) when is_list(L) -> sets:from_list(L).
 -spec mk_set(T, T) -> sets:set(T).
 mk_set(X, Y) -> sets:from_list([X, Y]).
 
+-spec collect_constrs_all_combinations_mini_test() -> ok.
+collect_constrs_all_combinations_mini_test() ->
+    C =
+        {sccase,
+            {mk_loc(1), mk_set([mk_stc(1, 2)])},   % scrutiny
+            {mk_loc(2), mk_set([mk_stc(3, 4)])}, % exhaustiveness
+            [{sccase_branch,
+                {mk_loc(3), sets:new()}, % guards
+                {mk_loc(4), mk_set([mk_stc(5, 6)])}, % cond
+                {mk_loc(5), mk_set([mk_stc(7, 8)])}, % body
+                {mk_loc(6), sets:new()}}  % result
+            ]},
+    L = constr_collect:collect_constrs_all_combinations(sets:from_list([C])),
+    ?assertEqual(2, length(L)),
+    assert_list_of_sets([
+        sets:from_list([mk_stc(1, 2), mk_stc(3, 4), mk_stc(5, 6)]),
+        sets:from_list([mk_stc(1, 2), mk_stc(3, 4), mk_stc(7, 8)])
+    ], L).
+
 -spec mk_sccase(integer()) -> constr:simp_constr_case().
 mk_sccase(I) ->
     Base = 100 * I,
@@ -138,6 +157,7 @@ mk_sccase_combs(I, Add) ->
 collect_constrs_all_combinations_simple_test() ->
     C = mk_sccase(0),
     L = constr_collect:collect_constrs_all_combinations(sets:from_list([C])),
+    ?assertEqual(4, length(L)),
     Expected = mk_sccase_combs(0, none),
     assert_list_of_sets(Expected, L).
 

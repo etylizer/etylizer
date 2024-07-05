@@ -3,8 +3,8 @@
 -include_lib("log.hrl").
 
 -export([
-    check_simp_constrs/3,
-    check_simp_constrs_return_unmatched/3,
+    check_simp_constrs/4,
+    check_simp_constrs_return_unmatched/4,
     solve_simp_constrs/3
 ]).
 
@@ -17,31 +17,40 @@
 -type error() :: {error_kind(), ast:loc(), string()}.
 
 % Ignores unmatched branches, just returns their locations.
--spec check_simp_constrs_return_unmatched(symtab:t(), sets:set(ast:ty_varname()), constr:simp_constrs()) ->
-    ok | {error, error() | none, Unmachted::constr:locs()}.
-check_simp_constrs_return_unmatched(Tab, FixedTyvars, Ds) ->
-    % FIXME: this implementation is wrong
-    SubtyConstrs = constr_collect:collect_constrs_no_matching_cond(Ds),
-    case is_satisfiable(Tab, SubtyConstrs, FixedTyvars, "satisfiability check") of
+-spec check_simp_constrs_return_unmatched(
+    symtab:t(),
+    sets:set(ast:ty_varname()),
+    constr:simp_constrs(),
+    string()) ->
+    ok | {error, error() | none}.
+% {ok, Unmachted::constr:locs()} | {error, error() | none}.
+check_simp_constrs_return_unmatched(Tab, FixedTyvars, Ds, What) ->
+    % ?LOG_DEBUG("Constraints:~n~s", pretty:render_constr(Ds)),
+    SubtyConstrsDisj = constr_collect:collect_constrs_all_combinations(Ds),
+    N = length(SubtyConstrsDisj),
+    ?LOG_DEBUG("Found ~w conjunctions of constraints while type checking ~s", N, What),
+    case lists:any(
+        fun ({I, SubtyConstrs}) ->
+            ?LOG_DEBUG("Checking conjunction ~w/~w for satisfiability:~n~s",
+                I, N, pretty:render_constr(SubtyConstrs)),
+            is_satisfiable(Tab, SubtyConstrs, FixedTyvars, "satisfiability check")
+        end,
+        utils:with_index(1, SubtyConstrsDisj))
+    of
         true -> ok;
-        false -> {error, none, []} % FIXME: error locations
+        false -> {error, none} % FIXME: error locations
     end.
 
-
 % Treats unmatched branches as errors.
--spec check_simp_constrs(symtab:t(), sets:set(ast:ty_varname()), constr:simp_constrs()) ->
+-spec check_simp_constrs(symtab:t(), sets:set(ast:ty_varname()), constr:simp_constrs(), string()) ->
     ok | {error, error() | none}.
-check_simp_constrs(Tab, FixedTyvars, Ds) ->
+check_simp_constrs(Tab, FixedTyvars, Ds, What) ->
     SubtyConstrs = constr_collect:collect_constrs_no_matching_cond(Ds),
-    ?LOG_DEBUG("Checking constraints for satisfiability:~n~s", pretty:render_constr(SubtyConstrs)),
+    ?LOG_DEBUG("Checking constraints for satisfiability to type check ~s:~n~s",
+        What, pretty:render_constr(SubtyConstrs)),
     case is_satisfiable(Tab, SubtyConstrs, FixedTyvars, "satisfiability check") of
         true ->
             % check for redundant branches
-            % FIXME: can we make this more efficient by including some constraints already
-            % in SubtyConstrs? Then we would check whether the extended constraint set is
-            % satisfiable. If not, the function has a type error and we can use the regular
-            % error location mechanism for pointing at the location of the error (which could
-            % be a redundant branch)
             ReduDs = constr_collect:collect_matching_cond_constrs(Ds),
             ?LOG_DEBUG("Constraints are satisfiable, now checking ~w branches for redundancy",
                 length(ReduDs)),
@@ -113,7 +122,6 @@ is_satisfiable(Tab, Constrs, Fixed, What) ->
 
 -spec solve_simp_constrs(symtab:t(), constr:subty_constrs(), string()) -> error | nonempty_list(subst:t()).
 solve_simp_constrs(Tab, Ds, What) ->
-    % FIXME: we should include the redundancy checks here?!
     SubtyConstrs = constr_collect:collect_constrs_no_matching_cond(Ds),
     {Res, Delta} = utils:timing(fun() -> tally:tally(Tab, SubtyConstrs) end),
     case Res of

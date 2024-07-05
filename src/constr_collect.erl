@@ -71,6 +71,10 @@ collect_matching_cond_constrs(Ds, OuterAcc) ->
         OuterAcc,
         sets:to_list(Ds))).
 
+% empty disjunction: False
+% empty conjunction: True
+% collect_constrs_all_combinations({}) = [{}]
+% cross_union([])
 -spec collect_constrs_all_combinations(constr:simp_constrs()) -> [constr:subty_constrs()].
 collect_constrs_all_combinations(Ds) ->
     cross_union(lists:map(fun collect_constr_all_combinations/1, sets:to_list(Ds))).
@@ -93,13 +97,13 @@ collect_branch_all_combinations(B) ->
             GuardsCombs = collect_constrs_all_combinations(Guards),
             BodyCombs = collect_constrs_all_combinations(Body),
             ResultCombs = collect_constrs_all_combinations(Result),
-            CondCombs =
-                case Cond of
-                    none -> [sets:new()];
-                    {_, X} -> collect_constrs_all_combinations(X)
-                end,
-            cross_union([GuardsCombs, CondCombs]) ++
-                cross_union([GuardsCombs, BodyCombs, ResultCombs])
+            case Cond of
+                none -> cross_union([GuardsCombs, BodyCombs, ResultCombs]);
+                {_, X} ->
+                    CondCombs = collect_constrs_all_combinations(X),
+                    cross_union([GuardsCombs, CondCombs]) ++
+                        cross_union([GuardsCombs, BodyCombs, ResultCombs])
+            end
     end.
 
 % cross_union([S1, ..., Sn], [T1, ..., Tm]) computes the cross-product of
@@ -117,11 +121,10 @@ cross_union(Combs1, Combs2) ->
 % cross_union([L1, ..., Ln]) computes the cross-union of all list of sets in L1, ..., Ln.
 % cross_union([L1, ..., Ln]) =
 % cross_union(..., cross_union(cross_union(L1, L2), L3) ..., Ln)
-% We have cross_union([L1]) = L1 and cross_union([]) = []
+% We have cross_union([L1]) = L1 and cross_union([]) = [{}]
 -spec cross_union([[sets:set(T)]]) -> [sets:set(T)].
-cross_union([]) -> [];
-cross_union([X | Rest]) ->
+cross_union(L) ->
     lists:foldl(
         fun cross_union/2,
-        X,
-        Rest).
+        [sets:new()],
+        L).
