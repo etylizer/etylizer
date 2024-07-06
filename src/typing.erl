@@ -8,12 +8,7 @@
 -export_type([ctx/0]).
 
 -include_lib("log.hrl").
-
--record(ctx,
-        { symtab :: symtab:t(),
-          sanity :: t:opt(ast_check:ty_map())
-        }).
--opaque ctx() :: #ctx{}.
+-include_lib("typing.hrl").
 
 -spec new_ctx(symtab:t(), t:opt(ast_check:ty_map())) -> ctx().
 new_ctx(Tab, Sanity) ->

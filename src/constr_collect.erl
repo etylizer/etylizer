@@ -79,7 +79,7 @@ collect_matching_cond_constrs(Ds, OuterAcc) ->
 collect_constrs_all_combinations(Ds) ->
     cross_union(lists:map(fun collect_constr_all_combinations/1, sets:to_list(Ds))).
 
--spec collect_constr_all_combinations(constr:simp_constrs()) -> [constr:subty_constrs()].
+-spec collect_constr_all_combinations(constr:simp_constr()) -> [constr:subty_constrs()].
 collect_constr_all_combinations(D) ->
     case D of
         {scsubty, _, _, _} -> [utils:single(D)];

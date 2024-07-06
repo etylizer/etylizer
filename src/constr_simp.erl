@@ -131,7 +131,7 @@ fresh_ty_scheme(Ctx, {ty_scheme, Tyvars, T}) ->
     Subst = subst:from_list(L),
     subst:apply(Subst, T).
 
--spec loc(constr:locs()) -> ast:loc().
+-spec loc(constr:locs() | sets:set(ast:loc()) | constr:constrs()) -> ast:loc().
 loc(Locs) ->
     case loc(Locs, error) of
         error -> errors:bug("empty set of locations");

@@ -97,12 +97,15 @@ inst_ty(Vars, Args, Ty) ->
             utils:everywhere(Replace, Ty)
     end.
 
--spec check_against_type(ty_map(), module_name(), atom(), term()) -> boolean().
-check_against_type(Spec, Module, Ty, Term) ->
+-spec check_against_type(ty_map(), module_name(), ast_erl:ty() | atom(), term()) -> boolean().
+check_against_type(Spec, Module, TyOrTyName, Term) ->
     ResolvedTy =
-        case lookup_ty(Spec, Module, Ty, []) of
-            error -> Ty;
-            {ok, X} -> X
+        if is_atom(TyOrTyName) ->
+                case lookup_ty(Spec, Module, TyOrTyName, []) of
+                    error -> ?ABORT("Cannot resolve type ~w", TyOrTyName);
+                    {ok, X} -> X
+                end;
+            true -> TyOrTyName
         end,
     Res = check_ty_with_result(Spec, Module, ResolvedTy, Term, 0),
     case Res of
@@ -111,9 +114,12 @@ check_against_type(Spec, Module, Ty, Term) ->
             true;
         {SubTy, SubTerm, Depth} ->
             ?LOG_WARN("Invalid term wrt type ~w:~w:~n~200p~n~nSubterm does not have type ~200p at depth ~p~n~200p",
-                Module, Ty, Term, SubTy, Depth, SubTerm),
+                Module, TyOrTyName, Term, SubTy, Depth, SubTerm),
             false
     end.
+
+-spec raise(ast_erl:ty(), term(), integer()) -> no_return().
+raise(Ty, Term, Depth) -> throw({ast_check_error, {Ty, Term, Depth}}).
 
 -spec raise_unless(boolean(), ast_erl:ty(), term(), integer()) -> ok.
 raise_unless(false, Ty, Term, Depth) ->
@@ -160,9 +166,9 @@ check_ty(Spec, CurModule, Ty, Form, Depth) ->
                     catch {badmap, _} -> false
                     end
                 of
-                    false -> false;
+                    false -> raise(Ty, Form, Depth);
                     List ->
-                        % don't care about required files
+                        % don't care about required fields
                         KeyTy = {type, Anno, union,
                                  lists:map(fun({type, _, _, [K, _]}) -> K end, TyAssocs)},
                         ValTy = {type, Anno, union,
@@ -177,8 +183,8 @@ check_ty(Spec, CurModule, Ty, Form, Depth) ->
             utils:error("Checking of types with unary operators not implemented: ~p", Ty);
         {type, _, any, []} -> ok;
         {type, _, term, []} -> ok;
-        {type, _, none, []} -> raise_unless(false, Ty, Form, Depth);
-        {type, _, no_return, []} -> raise_unless(false, Ty, Form, Depth);
+        {type, _, none, []} -> raise(Ty, Form, Depth);
+        {type, _, no_return, []} -> raise(Ty, Form, Depth);
         {type, _, pid, []} -> raise_unless(is_pid(Form), Ty, Form, Depth);
         {type, _, port, []} -> raise_unless(is_port(Form), Ty, Form, Depth);
         {type, _, reference, []} -> raise_unless(is_reference(Form), Ty, Form, Depth);

@@ -284,7 +284,7 @@ constr_bodies(L) ->
           end,
           L))).
 
--spec sconstr_bodies([constr:sconstr_case_branch()]) -> doc().
+-spec sconstr_bodies([constr:simp_constr_case_branch()]) -> doc().
 sconstr_bodies(L) ->
     braces(
       comma_sep(

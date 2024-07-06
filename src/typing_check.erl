@@ -117,7 +117,7 @@ check_alt(Ctx, Decl = {function, Loc, Name, Arity, _}, FunTy, BranchMode) ->
             end
     end.
 
--spec tyerror_msg(constr_simp:simp_constrs_error_kind()) -> string().
+-spec tyerror_msg(constr_error_locs:constr_error_kind()) -> string().
 tyerror_msg(Kind) ->
     case Kind of
         tyerror -> "expression failed to type check";
@@ -125,7 +125,7 @@ tyerror_msg(Kind) ->
         non_exhaustive_case -> "not all cases are covered"
     end.
 
--spec report_tyerror(constr_simp:simp_constrs_error_kind(), ast:loc(), string()) -> no_return().
+-spec report_tyerror(constr_error_locs:constr_error_kind(), ast:loc(), string()) -> no_return().
 report_tyerror(Kind, Loc, Hint) ->
     SrcCtx = typing_common:format_src_loc(Loc),
     case Hint of
