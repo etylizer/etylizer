@@ -51,24 +51,33 @@ check(Ctx, Decl = {function, Loc, Name, Arity, _}, PolyTy) ->
                 errors:ty_error(Loc, "Invalid spec for ~w/~w: ~w", [Name, Arity, PolyTy]);
             _ -> unmatched_branch_ignore
         end,
-    lists:foreach(
+    UnmatchedList = lists:map(
       fun(Ty) ->
-              case Ty of
-                  {fun_full, _, _} -> check_alt(Ctx, Decl, Ty, BranchMode);
-                  _ ->
+            case Ty of
+                {fun_full, _, _} ->
+                    {ok, Unmatched} = check_alt(Ctx, Decl, Ty, BranchMode),
+                    Unmatched;
+                _ ->
                     errors:ty_error(Loc, "Invalid spec for ~w/~w: ~w", [Name, Arity, PolyTy])
-              end
+            end
       end,
       AltTys),
-    ?LOG_INFO("Type ok for ~w/~w at ~s", Name, Arity, ast:format_loc(Loc)),
-    ok.
+    UnmatchedEverywhere = sets:intersection(UnmatchedList),
+    case sets:to_list(UnmatchedEverywhere) of
+        [] ->
+            ?LOG_INFO("Type ok for ~w/~w at ~s", Name, Arity, ast:format_loc(Loc)),
+            ok;
+        [First | _Rest] ->
+            report_tyerror(redundant_branch, First, "")
+    end.
 
 -type unmatched_branch_mode() ::
     unmatched_branch_fail       % throw a type error if a branch never matches
     | unmatched_branch_ignore.  % ignore if a branch never matches (for intersection types)
 
 % Checks a function against an alternative of an intersection type.
--spec check_alt(ctx(), ast:fun_decl(), ast:ty_full_fun(), unmatched_branch_mode()) -> ok.
+-spec check_alt(ctx(), ast:fun_decl(), ast:ty_full_fun(), unmatched_branch_mode()) ->
+     {ok, Unmachted::constr:locs()}.
 check_alt(Ctx, Decl = {function, Loc, Name, Arity, _}, FunTy, BranchMode) ->
     FunStr = utils:sformat("~w/~w at ~s", Name, Arity, ast:format_loc(Loc)),
     ?LOG_INFO("Checking function ~s against type ~s",
@@ -105,7 +114,16 @@ check_alt(Ctx, Decl = {function, Loc, Name, Arity, _}, FunTy, BranchMode) ->
                        Name,
                        Arity,
                        ast:format_loc(Loc),
-                       pretty:render_ty(FunTy));
+                       pretty:render_ty(FunTy)),
+            {ok, sets:new()};
+        {ok, Unmatched} ->
+            ?LOG_INFO("Success: function ~w/~w at ~s has type ~s. Unmatched branches: ~s",
+                       Name,
+                       Arity,
+                       ast:format_loc(Loc),
+                       pretty:render_ty(FunTy),
+                       pretty:render_set(fun pretty:loc/1, Unmatched)),
+            {ok, Unmatched};
         {error, Err} ->
             case Err of
                 none ->

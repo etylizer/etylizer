@@ -22,22 +22,34 @@
     sets:set(ast:ty_varname()),
     constr:simp_constrs(),
     string()) ->
-    ok | {error, error() | none}.
-% {ok, Unmachted::constr:locs()} | {error, error() | none}.
+    {ok, Unmachted::constr:locs()} | {error, error() | none}.
 check_simp_constrs_return_unmatched(Tab, FixedTyvars, Ds, What) ->
     % ?LOG_DEBUG("Constraints:~n~s", pretty:render_constr(Ds)),
     SubtyConstrsDisj = constr_collect:collect_constrs_all_combinations(Ds),
     N = length(SubtyConstrsDisj),
     ?LOG_DEBUG("Found ~w conjunctions of constraints while type checking ~s", N, What),
-    case lists:any(
-        fun ({I, SubtyConstrs}) ->
-            ?LOG_DEBUG("Checking conjunction ~w/~w for satisfiability:~n~s",
-                I, N, pretty:render_constr(SubtyConstrs)),
-            is_satisfiable(Tab, SubtyConstrs, FixedTyvars, "satisfiability check")
+    % SubtyConstrsDisj contains, for each conjunction, a set of
+    % locations of branches that are switched off (do not match). If a conjunction
+    % is satisifiable, we must return the set of locations. If a location is contained
+    % in all sets for all intersection types, the branch at this location never matches,
+    % so it's an error.
+    case lists:foldl(
+        fun ({I, {SwitchedOffBranches, SubtyConstrs}}, Acc) ->
+            case Acc of
+                false ->
+                    ?LOG_DEBUG("Checking conjunction ~w/~w for satisfiability:~n~s",
+                        I, N, pretty:render_constr(SubtyConstrs)),
+                    case is_satisfiable(Tab, SubtyConstrs, FixedTyvars, "satisfiability check") of
+                        false -> false;
+                        true -> {true, SwitchedOffBranches}
+                    end;
+                {true, X} -> {true, X}
+            end
         end,
+        false,
         utils:with_index(1, SubtyConstrsDisj))
     of
-        true -> ok;
+        {true, SwitchedOffBranches} -> {ok, SwitchedOffBranches};
         false -> {error, none} % FIXME: error locations
     end.
 

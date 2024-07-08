@@ -751,6 +751,14 @@ scrutiny_with_redundant_branch_local_fun_fail(Z) ->
         end,
     F(Z).
 
+-spec branch_unmatched_in_all_intersections_fail(1) -> 10; (2) -> 20.
+branch_unmatched_in_all_intersections_fail(X) ->
+    case X of
+        1 -> 10;
+        2 -> 20;
+        3 -> 30
+    end.
+
 %%%%%%%%%%%%%%%%%%%%%%%% MISC %%%%%%%%%%%%%%%%%%%%%%%%
 
 % same as fun_local_02 but transformed

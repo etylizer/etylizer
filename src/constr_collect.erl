@@ -5,12 +5,14 @@
 -export([
     collect_constrs_no_matching_cond/1,
     collect_matching_cond_constrs/1,
-    cross_union/1,
-    cross_union/2,
+    cross_product/3,
+    cross_product_binary/3,
+    cross_union_with_locs/1,
     collect_constrs_all_combinations/1
 ]).
 
 -export_type([
+    all_combinations/0
 ]).
 
 % Collect all constraints but ignore all branch matching condition constraints.
@@ -71,26 +73,27 @@ collect_matching_cond_constrs(Ds, OuterAcc) ->
         OuterAcc,
         sets:to_list(Ds))).
 
-% empty disjunction: False
-% empty conjunction: True
-% collect_constrs_all_combinations({}) = [{}]
-% cross_union([])
--spec collect_constrs_all_combinations(constr:simp_constrs()) -> [constr:subty_constrs()].
-collect_constrs_all_combinations(Ds) ->
-    cross_union(lists:map(fun collect_constr_all_combinations/1, sets:to_list(Ds))).
+-type all_combinations() :: [{constr:locs(), constr:subty_constrs()}].
 
--spec collect_constr_all_combinations(constr:simp_constr()) -> [constr:subty_constrs()].
+% Collects all possible combinations of constraints "branch taken" / "branch not taken".
+% Each combination has attached the set of locations of branches not taken.
+-spec collect_constrs_all_combinations(constr:simp_constrs()) -> all_combinations().
+collect_constrs_all_combinations(Ds) ->
+    cross_union_with_locs(lists:map(fun collect_constr_all_combinations/1, sets:to_list(Ds))).
+
+-spec collect_constr_all_combinations(constr:simp_constr()) -> all_combinations().
 collect_constr_all_combinations(D) ->
     case D of
-        {scsubty, _, _, _} -> [utils:single(D)];
+        {scsubty, _, _, _} ->
+            [{sets:new(), utils:single(D)}];
         {sccase, {_, DsScrut}, {_, DsExhaust}, Branches} ->
             ScrutCombs = collect_constrs_all_combinations(DsScrut),
             ExhaustCombs = collect_constrs_all_combinations(DsExhaust),
             BranchesCombs = lists:map(fun collect_branch_all_combinations/1, Branches),
-            cross_union([ScrutCombs, ExhaustCombs] ++ BranchesCombs)
+            cross_union_with_locs([ScrutCombs, ExhaustCombs] ++ BranchesCombs)
     end.
 
--spec collect_branch_all_combinations(constr:simp_constr_case_branch()) -> [constr:subty_constrs()].
+-spec collect_branch_all_combinations(constr:simp_constr_case_branch()) -> all_combinations().
 collect_branch_all_combinations(B) ->
     case B of
         {sccase_branch, {_, Guards}, Cond, {_, Body}, {_, Result}} ->
@@ -98,33 +101,49 @@ collect_branch_all_combinations(B) ->
             BodyCombs = collect_constrs_all_combinations(Body),
             ResultCombs = collect_constrs_all_combinations(Result),
             case Cond of
-                none -> cross_union([GuardsCombs, BodyCombs, ResultCombs]);
-                {_, X} ->
+                none -> cross_union_with_locs([GuardsCombs, BodyCombs, ResultCombs]);
+                {LocCond, X} ->
                     CondCombs = collect_constrs_all_combinations(X),
-                    cross_union([GuardsCombs, CondCombs]) ++
-                        cross_union([GuardsCombs, BodyCombs, ResultCombs])
+                    add_loc(LocCond, cross_union_with_locs([GuardsCombs, CondCombs])) ++
+                        cross_union_with_locs([GuardsCombs, BodyCombs, ResultCombs])
             end
     end.
 
-% cross_union([S1, ..., Sn], [T1, ..., Tm]) computes the cross-product of
-% the two lists, where union is used to combine Si and Tj.
-% cross_union([S1, ..., Sn], [T1, ..., Tm]) =
-% [S1 union T1, ..., S1 union Tm, S2 union T1, ..., S2 union Tm, ..., Sn union T1, ..., Sn union Tm]
--spec cross_union([sets:set(T)], [sets:set(T)]) -> [sets:set(T)].
-cross_union(Combs1, Combs2) ->
+-spec add_loc(ast:loc(), all_combinations()) -> all_combinations().
+add_loc(Loc, List) ->
+    lists:map(fun ({Locs, Set}) -> {sets:add_element(Loc, Locs), Set} end, List).
+
+-spec cross_union_with_locs([all_combinations()]) -> [all_combinations()].
+cross_union_with_locs(LL) ->
+    cross_product(LL,
+        fun({Locs1, Cs1}, {Locs2, Cs2}) -> {sets:union(Locs1, Locs2), sets:union(Cs1, Cs2)} end,
+        [{sets:new(), sets:new()}]).
+
+% cross_product([S1, ..., Sn], [T1, ..., Tm], F) computes the cross-product of
+% the two lists, where F is used to combine Si and Tj.
+% cross_product([S1, ..., Sn], [T1, ..., Tm]) =
+% [F(S1, T1), ..., F(S1, Tm), F(S2, T1), ..., F(S2, Tm), ..., F(Sn, T1), ..., F(Sn, Tm)]
+% Logically, we have (assuming F is conjunction)
+% (S1 \/ S2 \/ ... \/ Sn) /\ (T1 \/ T2 \/ ... \/ Tm) =
+% (S1 /\ T1) \/ (S1 /\ T2) \/ ... \/ (Sn /\ Tm)
+-spec cross_product_binary([T], [T], fun((T, T) -> T)) -> [T].
+cross_product_binary(Combs1, Combs2, F) ->
     lists:flatmap(
-        fun(S1) ->
-                lists:map(fun(S2) -> sets:union(S1, S2) end, Combs2)
+        fun(X1) ->
+                lists:map(fun(X2) -> F(X1, X2) end, Combs2)
         end,
         Combs1).
 
-% cross_union([L1, ..., Ln]) computes the cross-union of all list of sets in L1, ..., Ln.
-% cross_union([L1, ..., Ln]) =
-% cross_union(..., cross_union(cross_union(L1, L2), L3) ..., Ln)
-% We have cross_union([L1]) = L1 and cross_union([]) = [{}]
--spec cross_union([[sets:set(T)]]) -> [sets:set(T)].
-cross_union(L) ->
+% cross_product([L1, ..., Ln], F) computes the cross-product of all list of sets in L1, ..., Ln.
+% cross_product([L1, ..., Ln], F) =
+% cross_product(..., cross_product(cross_product(L1, L2, F), L3, F) ..., Ln, F)
+% We have cross_product([L1]) = L1 and cross_product([]) = [{}]
+% Logically, each Li is a disjunction and the list [L1, ..., Ln] is the conjunction
+% L1 /\ L2 /\ ... /\ Ln
+% and cross_product moves the disjunction outwards.
+-spec cross_product([[T]], fun((T, T) -> T), [T]) -> [T].
+cross_product(LL, F, Empty) ->
     lists:foldl(
-        fun cross_union/2,
-        [sets:new()],
-        L).
+        fun (L1, L2) -> cross_product_binary(L1, L2, F) end,
+        Empty,
+        LL).

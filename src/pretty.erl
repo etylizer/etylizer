@@ -10,6 +10,8 @@
          substs/1,
          subst/1,
          constr_block/1,
+         loc/1,
+         locs/1,
          render/1,
          render_ty/1,
          render_tys/1,
@@ -21,6 +23,7 @@
          render_poly_env/1,
          render_fun_env/1,
          render_any_ref/1,
+         render_set/2,
          render_list/2,
          render_list/3,
          pretty_list/2,
@@ -431,3 +434,7 @@ pretty_list(Fun, L) ->
 -spec render_list(fun((T) -> doc()), list(T)) -> string().
 render_list(Fun, L) ->
     render(pretty_list(Fun, L)).
+
+-spec render_set(fun((T) -> doc()), sets:set(T)) -> string().
+render_set(Fun, S) ->
+    render_list(Fun, sets:to_list(S)).
