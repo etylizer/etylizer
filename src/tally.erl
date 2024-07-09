@@ -16,7 +16,7 @@
 tally(SymTab, Constraints) -> tally(SymTab, Constraints, sets:new()) .
 
 -spec is_satisfiable(symtab:t(), constr:subty_constrs(), sets:set(ast:ty_varname())) ->
-  {false, [{error, string()}]} | {true, subst:t()}. % Thensubstitution is just returned for debugging purpose.
+  {false, [{error, string()}]} | {true, subst:t()}. % The substitution is just returned for debugging purpose.
 is_satisfiable(SymTab, Cs, Fixed) ->
   case tally(SymTab, Cs, Fixed) of % FIXME: optimize
     {error, ErrList} -> {false, ErrList};
@@ -50,7 +50,7 @@ tally(_SymTab, Constraints, FixedVars, Order) ->
   InternalResult = etally:tally(InternalConstraints, sets:from_list(FixedTallyTyvars)),
 %%  io:format(user, "Got Constraints ~n~p~n~p~n", [InternalConstraints, InternalResult]),
 
-  Free = tyutils:free_in_simp_constrs(Constraints),
+  Free = tyutils:free_in_subty_constrs(Constraints),
 
   case InternalResult of
         {error, []} ->

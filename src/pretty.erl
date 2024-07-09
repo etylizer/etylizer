@@ -447,6 +447,3 @@ render_set(Fun, S) ->
 render_list_with_braces(Fun, L) ->
     render(braces(comma_sep(lists:map(Fun, L)))).
 
--spec render_list(string(), [T], fun((T) -> doc())) -> string().
-render_list(Sep, L, F) ->
-    render(sep_by(text(Sep), lists:map(F, L))).

@@ -30,10 +30,8 @@ format_src_loc({loc, File, LineNo, ColumnNo}) ->
 
 % Creates the monomorphic version of the given type scheme, does not
 % replace the universally quantified type variables with fresh ones.
--spec mono_ty(ast:ty_scheme()) -> ast:ty().
-mono_ty(TyScm) ->
-    {U, _, _} = mono_ty(TyScm, no_fresh),
-    U.
+-spec mono_ty(ast:ty_scheme()) -> {ast:ty(), sets:set(ast:ty_varname()), integer() | no_fresh}.
+mono_ty(TyScm) -> mono_ty(TyScm, no_fresh).
 
 -spec fresh_tyvar(ast:ty_varname(), integer() | no_fresh) ->
           {ast:ty_varname(), integer() | no_fresh}.
@@ -63,8 +61,8 @@ mono_ty(TyScm = {ty_scheme, Tyvars, T}, FreshStart) ->
          ),
     Subst = subst:from_list(Kvs),
     Res = subst:apply(Subst, T),
-    ?LOG_DEBUG("Result of monomorphizing type scheme ~s:~n~s~nFresh: ~200p",
-               pretty:render_tyscheme(TyScm), pretty:render_ty(Res), Freshs),
+    ?LOG_DEBUG("Result of monomorphizing type scheme ~s:~n~s~nRaw: ~w~nFresh: ~200p",
+               pretty:render_tyscheme(TyScm), pretty:render_ty(Res), Res, Freshs),
     {Res, sets:from_list(Freshs), I}.
 
 

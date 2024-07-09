@@ -44,10 +44,12 @@ check(Ctx, Decl = {function, Loc, Name, Arity, _}, PolyTy) ->
             {intersection, L} -> L;
             _ -> [MonoTy]
         end,
+    ?LOG_DEBUG("AltTys=~200p, MonoTy=~200p", AltTys, MonoTy),
     BranchMode =
         case AltTys of
             [_] -> unmatched_branch_fail;
             [] ->
+                ?LOG_DEBUG("Invalid spec for ~w/~w: ~w", Name, Arity, PolyTy),
                 errors:ty_error(Loc, "Invalid spec for ~w/~w: ~w", [Name, Arity, PolyTy]);
             _ -> unmatched_branch_ignore
         end,
@@ -58,6 +60,7 @@ check(Ctx, Decl = {function, Loc, Name, Arity, _}, PolyTy) ->
                     {ok, Unmatched} = check_alt(Ctx, Decl, Ty, BranchMode, Fixed),
                     Unmatched;
                 _ ->
+                    ?LOG_DEBUG("Invalid spec for ~w/~w: ~w. Ty=~w", Name, Arity, PolyTy, Ty),
                     errors:ty_error(Loc, "Invalid spec for ~w/~w: ~w", [Name, Arity, PolyTy])
             end
       end,
