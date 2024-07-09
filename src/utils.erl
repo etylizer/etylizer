@@ -17,7 +17,7 @@
     mkdirs/1, hash_sha1/1, hash_file/1,
     list_uniq/1, lists_enumerate/1, lists_enumerate/2,
     with_default/2, compare/2,
-    mingle/5, timing/1, timing_log/3
+    mingle/5, timing/1, from_to/2, timing_log/3
 ]).
 
 mingle(LeftDefault, RightDefault, AllLeft, AllRight, Op) ->
@@ -314,6 +314,13 @@ timing(F) ->
     End = erlang:timestamp(),
     Delta = round(timer:now_diff(End, Start) / 1000),
     {Res, Delta}.
+
+-spec from_to(number(), number()) -> list(number()).
+from_to(Start, End) ->
+    if
+        Start > End -> [];
+        true -> [Start | from_to(Start + 1, End)]
+    end.
 
 % Display a debug message if executing the given function takes more than N milliseconds
 -spec timing_log(fun(() -> T), integer(), string()) -> T.

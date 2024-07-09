@@ -2,7 +2,12 @@
 
 -include_lib("log.hrl").
 
--export([free_in_ty/1, free_in_ty_scheme/1, free_in_poly_env/1]).
+-export([
+    free_in_ty/1,
+    free_in_ty_scheme/1,
+    free_in_poly_env/1,
+    free_in_simp_constrs/1
+]).
 
 -spec free_in_ty(ast:ty()) -> sets:set(ast:ty_varname()).
 free_in_ty(T) ->
@@ -24,3 +29,17 @@ free_in_ty_scheme({ty_scheme, Bounds, T}) ->
 free_in_poly_env(Env) ->
     SetList = lists:map(fun ({_K, TyScm}) -> free_in_ty_scheme(TyScm) end, maps:to_list(Env)),
     sets:union(SetList).
+
+-spec free_in_simp_constr(constr:simp_constr()) -> sets:set(ast:ty_varname()).
+free_in_simp_constr(C) ->
+    case C of
+        {csubty, _Locs, T1, T2} -> sets:union(free_in_ty(T1), free_in_ty(T2));
+        {cunsatisfiable, _, _} -> sets:new()
+    end.
+
+-spec free_in_simp_constrs(constr:simp_constrs()) -> sets:set(ast:ty_varname()).
+free_in_simp_constrs(Cs) ->
+    sets:fold(
+        fun (C, Acc) -> sets:union(Acc, free_in_simp_constr(C)) end,
+        sets:new(),
+        Cs).
