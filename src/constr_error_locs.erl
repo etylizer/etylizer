@@ -45,7 +45,7 @@ simp_constrs_to_blocks(Ds) ->
 simp_constr_to_blocks(D) ->
     case D of
         {scsubty, L, _, _} -> [{tyerror, L, "subty", utils:single(D)}];
-        {sccase, {LocScrut, DsScrut}, {LocExhaus, DsExhaust}, Branches} ->
+        {sccase, {_LocScrut, DsScrut}, {LocExhaus, DsExhaust}, Branches} ->
             BranchBlocks =
                 utils:concat_map(Branches,
                     fun ({sccase_branch, {LocGuard, Guards}, _Cond,
@@ -68,8 +68,8 @@ simp_constr_to_blocks(D) ->
                                 constr_collect:collect_constrs_no_matching_cond(Result)}],
                         GuardBlocks ++ ResultBlocks ++ BodyBlocks
                     end),
-            [{tyerror, LocScrut, "case scrutiny",
-                    constr_collect:collect_constrs_no_matching_cond(DsScrut)},
-                {non_exhaustive_case, LocExhaus, "case exhaust",
-                    constr_collect:collect_constrs_no_matching_cond(DsExhaust)}] ++ BranchBlocks
+            simp_constrs_to_blocks(DsScrut) ++
+                [{non_exhaustive_case, LocExhaus, "case exhaust",
+                    constr_collect:collect_constrs_no_matching_cond(DsExhaust)}] ++
+                BranchBlocks
     end.

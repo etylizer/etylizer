@@ -1,7 +1,7 @@
 % ERROR
-% test_files/tycheck/type_error_msgs/invalid_scrutiny.erl:16:10: Type error: expression failed to type check
+% test_files/tycheck/type_error_msgs/invalid_scrutiny.erl:16:14: Type error: expression failed to type check
 % %   16|     case bar(X) of
-% %     |          ^
+% %     |              ^
 -module(invalid_scrutiny).
 % SKIP (Timeout under rebar, see bug #54)
 
