@@ -77,7 +77,7 @@ check(Ctx, Decl = {function, Loc, Name, Arity, _}, PolyTy) ->
 
 % Checks a function against an alternative of an intersection type.
 -spec check_alt(ctx(), ast:fun_decl(), ast:ty_full_fun(), unmatched_branch_mode()) ->
-     {ok, Unmachted::constr:locs()}.
+     {ok, Unmachted::sets:set(ast:loc())}.
 check_alt(Ctx, Decl = {function, Loc, Name, Arity, _}, FunTy, BranchMode) ->
     FunStr = utils:sformat("~w/~w at ~s", Name, Arity, ast:format_loc(Loc)),
     ?LOG_INFO("Checking function ~s against type ~s",

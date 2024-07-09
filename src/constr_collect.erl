@@ -73,7 +73,7 @@ collect_matching_cond_constrs(Ds, OuterAcc) ->
         OuterAcc,
         sets:to_list(Ds))).
 
--type all_combinations() :: [{constr:locs(), constr:subty_constrs()}].
+-type all_combinations() :: [{sets:set(ast:loc()), constr:subty_constrs()}].
 
 % Collects all possible combinations of constraints "branch taken" / "branch not taken".
 % Each combination has attached the set of locations of branches not taken.
@@ -113,7 +113,7 @@ collect_branch_all_combinations(B) ->
 add_loc(Loc, List) ->
     lists:map(fun ({Locs, Set}) -> {sets:add_element(Loc, Locs), Set} end, List).
 
--spec cross_union_with_locs([all_combinations()]) -> [all_combinations()].
+-spec cross_union_with_locs([all_combinations()]) -> all_combinations().
 cross_union_with_locs(LL) ->
     cross_product(LL,
         fun({Locs1, Cs1}, {Locs2, Cs2}) -> {sets:union(Locs1, Locs2), sets:union(Cs1, Cs2)} end,
