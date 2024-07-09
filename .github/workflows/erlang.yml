@@ -8,9 +8,9 @@ jobs:
 
   build:
     runs-on: ubuntu-latest
-    strategy: 
+    strategy:
       matrix:
-        erlang: [ 24,25,26 ]
+        erlang: [ 25,26 ]
 
     container:
       image: erlang:${{ matrix.erlang }}
@@ -21,9 +21,9 @@ jobs:
 
   test:
     runs-on: ubuntu-latest
-    strategy: 
+    strategy:
       matrix:
-        erlang: [ 24,25,26 ]
+        erlang: [ 25,26 ]
 
     container:
       image: erlang:${{ matrix.erlang }}
@@ -44,9 +44,9 @@ jobs:
         #
   advtest:
     runs-on: ubuntu-latest
-    strategy: 
+    strategy:
       matrix:
-        erlang: [ 24,25,26 ]
+        erlang: [ 25,26 ]
 
     container:
       image: erlang:${{ matrix.erlang }}
@@ -59,9 +59,9 @@ jobs:
 
   verify:
     runs-on: ubuntu-latest
-    strategy: 
+    strategy:
       matrix:
-        erlang: [ 24,25,26 ]
+        erlang: [ 25,26 ]
 
     container:
       image: erlang:${{ matrix.erlang }}
