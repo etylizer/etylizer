@@ -5,7 +5,8 @@
 -export([
     check_simp_constrs/4,
     check_simp_constrs_return_unmatched/4,
-    solve_simp_constrs/3
+    solve_simp_constrs/3,
+    search_failing_prefix/3
 ]).
 
 -export_type([
@@ -92,18 +93,61 @@ check_simp_constrs(Tab, FixedTyvars, Ds, What) ->
             Blocks = constr_error_locs:simp_constrs_to_blocks(Ds),
             ?LOG_DEBUG("Constraints are not satisfiable, now locating source of errors. Blocks:~n~s",
                 pretty:render_list(fun pretty:constr_block/1, Blocks)),
-            locate_tyerror(Tab, FixedTyvars, Blocks, sets:new())
+            locate_tyerror(Tab, FixedTyvars, Blocks)
     end.
 
+% search_failing_prefix(L, F, Pred, Acc).
+% Returns the list element Xi of L with the smallest index i such that
+% Pred(F(X1) union ... union F(Xi)) yields false.
+% That is, for all j < i: Pred(Acc union F(X1) union ... union F(Xj)) yields true.
+% Precondition: Pred(F(X1) union ... union F(Xn)), where n is the length of L, must be false.
+-spec search_failing_prefix(
+    list(T), fun((T) -> sets:set(U)), fun((sets:set(U)) -> boolean())) -> {ok, T} | error.
+search_failing_prefix(L, F, Pred) ->
+    N = length(L),
+    ?LOG_DEBUG("Search for a minimal unsatisfiable prefix in ~w blocks", N),
+    Res = search_failing_prefix(L, F, Pred, 1, N),
+    case Res of
+        {ok, I} -> {ok, lists:nth(I, L)};
+        error -> error
+    end.
 
--spec locate_tyerror(symtab:t(), sets:set(ast:ty_varname()), constr_error_locs:constr_blocks(),
-    constr:subty_constrs()) -> ok | {error, error() | none}.
-locate_tyerror(_Tab, _FreeSet, [], _DsAcc) -> {error, none};
-locate_tyerror(Tab, FreeSet, [{Kind, Loc, _What, Ds} | Blocks], DsAcc) ->
-    FullDs = sets:union(Ds, DsAcc),
-    case is_satisfiable(Tab, FullDs, FreeSet, "error location") of
-        false -> {error, {Kind, Loc, ""}};
-        true -> locate_tyerror(Tab, FreeSet, Blocks, FullDs)
+% Helper function for search_failing_prefix.
+% We some sort of binary search here to minimize the calls of Pred. (In reality, Pred is tally,
+% which is expensive.)
+% Left and Right are the (inclusive) boundaries of the search, starting at 1.
+% Invariants: Left <= Right and Pred(F(X1) union ... union F(X_Right)) yields false
+-spec search_failing_prefix(
+    list(T), fun((T) -> sets:set(U)), fun((sets:set(U)) -> boolean()), integer(), integer())
+    -> {ok, integer()} | error.
+search_failing_prefix(L, F, Pred, Left, Right) ->
+    Mid = (Left + Right) div 2,
+    Prefix = lists:sublist(L, Mid), % take all elements until Mid (inclusive)
+    ?LOG_DEBUG("Checking if the first ~w blocks are satisifiable", Mid),
+    Set = sets:union(lists:map(F, Prefix)),
+    Res = Pred(Set),
+    % io:format("  Left=~w, Right=~w, Mid=~w, Res=~w, Prefix=~w~n", [Left, Right, Mid, Res, Prefix]),
+    case Res of
+        false ->
+            case Left >= Right of
+                true -> {ok, Mid};
+                false -> search_failing_prefix(L, F, Pred, Left, Mid)
+            end;
+        true ->
+            case Left >= Right of
+                true -> {ok, Right};
+                false -> search_failing_prefix(L, F, Pred, Mid + 1, Right)
+            end
+    end.
+
+-spec locate_tyerror(symtab:t(), sets:set(ast:ty_varname()), constr_error_locs:constr_blocks())
+    -> ok | {error, error() | none}.
+locate_tyerror(Tab, FreeSet, Blocks) ->
+    Extract = fun({_Kind, _Span, _What, Ds}) -> Ds end,
+    Pred = fun(Ds) -> is_satisfiable(Tab, Ds, FreeSet, "error location") end,
+    case search_failing_prefix(Blocks, Extract, Pred) of
+        error -> {error, none};
+        {ok, {Kind, Span, _What, _Ds}} -> {error, {Kind, Span, ""}}
     end.
 
 -spec format_tally_error([string()]) -> string().

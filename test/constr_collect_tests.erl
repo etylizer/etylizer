@@ -1,6 +1,6 @@
 -module(constr_collect_tests).
 
--include_lib("test.hrl").
+-include_lib("eunit/include/eunit.hrl").
 
 -import(prettypr, [text/1]).
 
