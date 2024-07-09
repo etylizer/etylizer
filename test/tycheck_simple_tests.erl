@@ -42,7 +42,7 @@ check_infer_ok_fun(Filename, Tab, Decl = {function, L, Name, Arity, _}, Ty) ->
         end,
         Envs),
     ?LOG_NOTE("Inferred the following types for ~w/~w: ~s", Name, Arity,
-      pretty:render_list(", ", InferredTys, fun pretty:tyscheme/1)),
+      pretty:render_list(InferredTys, fun pretty:tyscheme/1)),
     case lists:any(
             fun(InferredTy) -> typing_infer:more_general(InferredTy, Ty, Tab) end,
             InferredTys)
@@ -52,7 +52,7 @@ check_infer_ok_fun(Filename, Tab, Decl = {function, L, Name, Arity, _}, Ty) ->
               io:format(
                 "~s: None of the inferred types ~s for function ~w/~w in ~s is more general than type ~s from spec",
                 [ast:format_loc(L),
-                pretty:render_list(", ", InferredTys, fun pretty:tyscheme/1),
+                pretty:render_list(InferredTys, fun pretty:tyscheme/1),
                 Name, Arity, Filename,
                 pretty:render_tyscheme(Ty)]),
               ?assert(false)

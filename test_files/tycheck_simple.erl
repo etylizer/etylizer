@@ -663,11 +663,18 @@ impossible_branch_f6(X) ->
       _ -> 2
     end.
 
+-spec foo2_case(a) -> 1; (b) -> 2.
+foo2_case(X) ->
+    case X of
+        a -> 1;
+        b -> 2
+    end.
+
 -spec foo3(a|b) -> 1|true.
 foo3(a) -> 1;
 foo3(b) -> true.
 
-% See #56 and #36. In #36, the example is called f5
+% See #56
 -spec foo4
     (integer()) -> integer();
     (1) -> 2.
@@ -676,8 +683,6 @@ foo4(X) ->
         1 -> 2;
         _ -> X
     end.
-
-% See #56
 -spec foo4_b
     (integer()) -> integer();
     (1) -> 2.
@@ -775,6 +780,17 @@ fun_local_02_plus() ->
 
 -spec my_plus({integer(), integer()}) -> integer(); ({float(), integer()}) -> float(); ({integer(), float()}) -> float(); ({float(), float()}) -> float().
 my_plus({A, B}) -> A + B.
+
+%%%%%%%%%%%%%%%%%%%%%%%% POLYMORPHIC %%%%%%%%%%%%%%%%%%%%%%%%
+
+-spec poly_01(T) -> T.
+poly_01(X) -> X.
+
+-spec poly_02(T) -> T.
+poly_02(X) ->
+  case X of
+    Y -> Y
+  end.
 
 % The first branch of the case is not redundant
 -spec poly(T) -> T.

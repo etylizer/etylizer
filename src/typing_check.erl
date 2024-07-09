@@ -38,7 +38,7 @@ check_all(Ctx, FileName, Env, Decls) ->
 check(Ctx, Decl = {function, Loc, Name, Arity, _}, PolyTy) ->
     ?LOG_INFO("Type checking ~w/~w at ~s against type ~s",
               Name, Arity, ast:format_loc(Loc), pretty:render_tyscheme(PolyTy)),
-    MonoTy = typing_common:mono_ty(PolyTy),
+    {MonoTy, Fixed, _} = typing_common:mono_ty(PolyTy),
     AltTys =
         case MonoTy of
             {intersection, L} -> L;
@@ -55,7 +55,7 @@ check(Ctx, Decl = {function, Loc, Name, Arity, _}, PolyTy) ->
       fun(Ty) ->
             case Ty of
                 {fun_full, _, _} ->
-                    {ok, Unmatched} = check_alt(Ctx, Decl, Ty, BranchMode),
+                    {ok, Unmatched} = check_alt(Ctx, Decl, Ty, BranchMode, Fixed),
                     Unmatched;
                 _ ->
                     errors:ty_error(Loc, "Invalid spec for ~w/~w: ~w", [Name, Arity, PolyTy])
@@ -76,9 +76,9 @@ check(Ctx, Decl = {function, Loc, Name, Arity, _}, PolyTy) ->
     | unmatched_branch_ignore.  % ignore if a branch never matches (for intersection types)
 
 % Checks a function against an alternative of an intersection type.
--spec check_alt(ctx(), ast:fun_decl(), ast:ty_full_fun(), unmatched_branch_mode()) ->
-     {ok, Unmachted::sets:set(ast:loc())}.
-check_alt(Ctx, Decl = {function, Loc, Name, Arity, _}, FunTy, BranchMode) ->
+-spec check_alt(ctx(), ast:fun_decl(), ast:ty_full_fun(), unmatched_branch_mode(),
+    sets:set(ast:ty_varname())) -> {ok, Unmachted::sets:set(ast:loc())}.
+check_alt(Ctx, Decl = {function, Loc, Name, Arity, _}, FunTy, BranchMode, Fixed) ->
     FunStr = utils:sformat("~w/~w at ~s", Name, Arity, ast:format_loc(Loc)),
     ?LOG_INFO("Checking function ~s against type ~s",
                FunStr, pretty:render_ty(FunTy)),
@@ -89,7 +89,6 @@ check_alt(Ctx, Decl = {function, Loc, Name, Arity, _}, FunTy, BranchMode) ->
     end,
     ?LOG_DEBUG("Constraints:~n~s", pretty:render_constr(Cs)),
     Tab = Ctx#ctx.symtab,
-    FreeSet = tyutils:free_in_ty(FunTy),
     SimpCtx = constr_simp:new_ctx(Tab, #{}, Ctx#ctx.sanity),
     SimpConstrs = constr_simp:simp_constrs(SimpCtx, Cs),
     case Ctx#ctx.sanity of
@@ -99,14 +98,14 @@ check_alt(Ctx, Decl = {function, Loc, Name, Arity, _}, FunTy, BranchMode) ->
     ?LOG_TRACE("Simplified constraint set for ~s, now " ++
                 "checking constraints for satisfiability.~nFixed tyvars: ~w~nConstraints:~n~s",
                 FunStr,
-                sets:to_list(FreeSet),
+                sets:to_list(Fixed),
                 pretty:render_constr(SimpConstrs)),
     Res =
         case BranchMode of
             unmatched_branch_fail ->
-                constr_solve:check_simp_constrs(Tab, FreeSet, SimpConstrs, FunStr);
+                constr_solve:check_simp_constrs(Tab, Fixed, SimpConstrs, FunStr);
             unmatched_branch_ignore ->
-                constr_solve:check_simp_constrs_return_unmatched(Tab, FreeSet, SimpConstrs, FunStr)
+                constr_solve:check_simp_constrs_return_unmatched(Tab, Fixed, SimpConstrs, FunStr)
         end,
     case Res of
         ok ->
