@@ -3,7 +3,10 @@
 % @doc This module is responsible for orchestrating the execution of the type checks and
 % updating the index.
 
--export([perform_type_checks/3]).
+-export([
+    perform_type_checks/3,
+    perform_sanity_check/3
+]).
 
 -include_lib("log.hrl").
 -include_lib("ety_main.hrl").
@@ -81,7 +84,7 @@ traverse_and_check([CurrentFile | RemainingFiles], Symtab, SearchPath, Opts, Ind
     ExpandedSymtab = symtab:extend_symtab_with_module_list(Symtab, SearchPath, ast_utils:referenced_modules(Forms)),
 
     Only = sets:from_list(Opts#opts.type_check_only),
-    Sanity = perform_sanity_check(CurrentFile, Forms, Opts),
+    Sanity = perform_sanity_check(CurrentFile, Forms, Opts#opts.sanity),
     Ctx = typing:new_ctx(ExpandedSymtab, Sanity),
     case Opts#opts.no_type_checking of
         true ->
@@ -92,9 +95,9 @@ traverse_and_check([CurrentFile | RemainingFiles], Symtab, SearchPath, Opts, Ind
     NewIndex = cm_index:insert(CurrentFile, Forms, Index),
     traverse_and_check(RemainingFiles, Symtab, SearchPath, Opts, NewIndex).
 
--spec perform_sanity_check(file:filename(), ast:forms(), cmd_opts()) -> {ok, ast_check:ty_map()} | error.
-perform_sanity_check(CurrentFile, Forms, Opts) ->
-    if Opts#opts.sanity ->
+-spec perform_sanity_check(file:filename(), ast:forms(), boolean()) -> {ok, ast_check:ty_map()} | error.
+perform_sanity_check(CurrentFile, Forms, DoCheck) ->
+    if DoCheck ->
             ?LOG_INFO("Checking whether transformation result for ~p conforms to AST in "
                       "ast.erl ...", CurrentFile),
             {AstSpec, _} = ast_check:parse_spec("src/ast.erl"),

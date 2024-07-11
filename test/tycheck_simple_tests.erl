@@ -7,7 +7,8 @@
 
 -spec check_ok_fun(string(), symtab:t(), ast:fun_decl(), ast:ty_scheme()) -> ok.
 check_ok_fun(Filename, Tab, Decl = {function, L, Name, Arity, _}, Ty) ->
-    Ctx = typing:new_ctx(Tab, error), % FIXME: perform sanity check!
+    SanityCheck = cm_check:perform_sanity_check(Filename, [Decl], true),
+    Ctx = typing:new_ctx(Tab, SanityCheck), % FIXME: perform sanity check!
     try
         typing_check:check(Ctx, Decl, Ty)
     catch
@@ -133,7 +134,7 @@ should_run(Name, {exclude,Set}) -> not sets:is_element(Name, Set).
 simple_test_() ->
   % The following functions are currently excluded from being tested.
   WhatNot = [
-    % Redundancy check for lists is not powerful enough
+    % Redundancy check for lists is not powerful enough, see #108
     "list_pattern_08_fail"
   ],
 

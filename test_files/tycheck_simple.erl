@@ -396,6 +396,7 @@ list_pattern_07(L) ->
     end.
 
 % The redundant branch is not detected atm because our types for lists are too simplistic.
+% See #108
 -spec list_pattern_08_fail(list(integer())) -> integer().
 list_pattern_08_fail(L) ->
     case L of
