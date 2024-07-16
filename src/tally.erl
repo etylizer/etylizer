@@ -12,23 +12,22 @@
 
 -type tally_res() :: {error, [{error, string()}]} | nonempty_list(subst:t()).
 
--spec tally(symtab:t(), constr:simp_constrs()) -> tally_res().
+-spec tally(symtab:t(), constr:subty_constrs()) -> tally_res().
 tally(SymTab, Constraints) -> tally(SymTab, Constraints, sets:new()) .
 
-
--spec is_satisfiable(symtab:t(), constr:simp_constrs(), sets:set(ast:ty_varname())) ->
-  {false, [{error, string()}]} | {true, subst:t()}. % Then substitution is just returned for debugging purpose.
+-spec is_satisfiable(symtab:t(), constr:subty_constrs(), sets:set(ast:ty_varname())) ->
+  {false, [{error, string()}]} | {true, subst:t()}. % The substitution is just returned for debugging purpose.
 is_satisfiable(SymTab, Cs, Fixed) ->
   case tally(SymTab, Cs, Fixed) of % FIXME: optimize
     {error, ErrList} -> {false, ErrList};
     [S | _] -> {true, S}
   end.
 
--spec tally(symtab:t(), constr:simp_constrs(), sets:set(ast:ty_varname())) -> tally_res().
+-spec tally(symtab:t(), constr:subty_constrs(), sets:set(ast:ty_varname())) -> tally_res().
 tally(SymTab, Constraints, FixedVars) ->
   tally(SymTab, Constraints, FixedVars, fun() -> noop end).
 
--spec tally(symtab:t(), constr:simp_constrs(), sets:set(ast:ty_varname()), fun(() -> any())) -> [subst:t()] | {error, [{error, string()}]}.
+-spec tally(symtab:t(), constr:subty_constrs(), sets:set(ast:ty_varname()), fun(() -> any())) -> [subst:t()] | {error, [{error, string()}]}.
 tally(_SymTab, Constraints, FixedVars, Order) ->
   % reset the global cache, will be fixed in the future
   ty_ref:reset(),
@@ -42,8 +41,8 @@ tally(_SymTab, Constraints, FixedVars, Order) ->
   % io:format(user, "~s~n", [test_utils:format_tally_config(sets:to_list(Constraints), FixedVars)]),
 
   InternalConstraints = lists:map(
-    fun({csubty, _, S, T}) -> {ast_lib:ast_to_erlang_ty(S), ast_lib:ast_to_erlang_ty(T)} end,
-    lists:sort(fun({csubty, _, S, T}, {csubty, _, X, Y}) -> ({S, T}) < ({X, Y}) end,
+    fun({scsubty, _, S, T}) -> {ast_lib:ast_to_erlang_ty(S), ast_lib:ast_to_erlang_ty(T)} end,
+    lists:sort(fun({scsubty, _, S, T}, {scsubty, _, X, Y}) -> ({S, T}) < ({X, Y}) end,
       sets:to_list(Constraints))
   ),
   FixedTallyTyvars =
@@ -51,7 +50,7 @@ tally(_SymTab, Constraints, FixedVars, Order) ->
   InternalResult = etally:tally(InternalConstraints, sets:from_list(FixedTallyTyvars)),
 %%  io:format(user, "Got Constraints ~n~p~n~p~n", [InternalConstraints, InternalResult]),
 
-  Free = tyutils:free_in_simp_constrs(Constraints),
+  Free = tyutils:free_in_subty_constrs(Constraints),
 
   case InternalResult of
         {error, []} ->

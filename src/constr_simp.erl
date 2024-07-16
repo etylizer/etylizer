@@ -4,149 +4,39 @@
 
 -export([
     simp_constrs/2,
-    new_ctx/5,
-    sanity_check/2,
-    simp_constrs_of_blocks/1
+    new_ctx/3,
+    sanity_check/2
 ]).
 
 -export_type([
-    unmatched_branch_mode/0,
-    simp_constrs_result/0,
-    simp_constr_block/0,
-    simp_constrs_error_kind/0,
-    simp_constr_block_kind/0,
-    simp_constr_blocks/0
+    ctx/0
 ]).
 
 -record(ctx,
         { symtab :: symtab:t(),
           env :: constr:constr_poly_env(),
           tyvar_counter :: counters:counters_ref(),
-          sanity :: t:opt(ast_check:ty_map()),
-          unmatched_branch :: unmatched_branch_mode(),
-          fixed_tyvars :: sets:set(ast:ty_varname())
+          sanity :: t:opt(ast_check:ty_map())
         }).
 -type ctx() :: #ctx{}.
 
-% unmatched_branch_mode specifies how we deal with branches of a case that cannot be
-% matched. There are three possible alternatives:
-%
-% - unmatched_branch_ignore: specifies that branches of a case that cannot be matched
-%   are excluded while type-checking.
-% - unmatched_branch_report: report an error in case a branch cannot be match.
-% - unmatched_branch_dont_check: do not check for unmatched branches at all.
-%
-% When type-checking a function against an intersection type, we use mode
-% unmatched_branch_ignore.
-%
-% When type-checking a function against an non-intersection type, we use mode
-% unmatched_branch_report.
-%
-% When inferring the type of a top-level function, we use mode unmatched_branch_dont_check.
-%
-% Currently, it is not possible to check for unmatched branches when type-checking
-% against an intersection type. Here, we could report an error if the same branch
-% is excluded for every element of the intersection. But this is not implemented.
--type unmatched_branch_mode() ::
-    unmatched_branch_ignore | unmatched_branch_dont_check | unmatched_branch_report.
-
 -spec new_ctx(symtab:t(),
              constr:constr_poly_env(),
-             t:opt(ast_check:ty_map()),
-             unmatched_branch_mode(),
-             sets:set(ast:ty_varname())) -> ctx().
-new_ctx(Tab, Env, Sanity, BranchMode, Fixed) ->
+             t:opt(ast_check:ty_map())) -> ctx().
+new_ctx(Tab, Env, Sanity) ->
     Counter = counters:new(1, []),
-    case BranchMode of
-        unmatched_branch_ignore -> ok;
-        unmatched_branch_dont_check -> ok;
-        unmatched_branch_report -> ok;
-        _ -> ?ABORT("Invalid value for unmatched_branch_mode: ~p", BranchMode)
-    end,
-    Ctx = #ctx{ tyvar_counter = Counter, env = Env, symtab = Tab, sanity = Sanity,
-                unmatched_branch = BranchMode, fixed_tyvars = Fixed },
+    Ctx = #ctx{ tyvar_counter = Counter, env = Env, symtab = Tab, sanity = Sanity },
     Ctx.
 
-% The result of constraint simplication is either a single error or a list of
-% simp_constr_block() values. Each simp_constr_block() value carries a constraint set.
-% A solution to the union of these constraint sets is a solution to the original constraint problem.
-% The division into blocks enables better error reporting. Assume the C1,...,Cn are the constraint
-% sets for all blocks. If the union of C1,...,Cn is not satisifiable, we first check whether
-% C1 is not satisifiable. If not, then the first block gives the location of the error. Next,
-% we check whether C1 \/ C2 is satisfiable. If not, then the second block gives the location of
-% the error. And so on...
--type simp_constrs_result() ::
-    {simp_constrs_ok, simp_constr_blocks()} |
-    {simp_constrs_error, {simp_constrs_error_kind(), ast:loc()}}.
-
--type simp_constrs_error_kind() :: tyerror | redundant_branch | non_exhaustive_case.
-
--type simp_constr_blocks() :: list(simp_constr_block()).
-
--type simp_constr_block() :: {simp_constr_block_kind(), ast:loc(), constr:simp_constrs()}.
-
--spec loc_of_block(simp_constr_block()) -> ast:loc().
-loc_of_block({_, L, _}) -> L.
-
--type simp_constr_block_kind() :: simp_constr_block_exp | simp_constr_block_exhaustiveness.
-
--spec simp_constrs_of_blocks(simp_constr_blocks()) -> constr:simp_constrs().
-simp_constrs_of_blocks(Blocks) ->
-    sets:union(lists:map(fun ({_, _, Set}) -> Set end, Blocks)).
-
--spec flatten_blocks(simp_constr_blocks()) -> simp_constr_block().
-flatten_blocks([]) -> ?ABORT("unexpected empty list");
-flatten_blocks([{Kind, Loc, Ds} | Blocks]) ->
-    {Kind, Loc, sets:union(Ds, simp_constrs_of_blocks(Blocks))}.
-
-
--spec simp_constrs(ctx(), constr:constrs()) -> simp_constrs_result().
+-spec simp_constrs(ctx(), constr:constrs()) -> constr:simp_constrs().
 simp_constrs(Ctx, Cs) ->
-    try
-        Res = simp_constrs_intern(Ctx, Cs),
-        {simp_constrs_ok, Res}
-    catch
-        throw:{simp_constrs_error, X} ->
-            {simp_constrs_error, X}
-    end.
+    sets:union(lists:map(fun (C) -> simp_constr(Ctx, C) end, sets:to_list(Cs))).
 
--spec simp_constrs_intern(ctx(), constr:constrs()) -> simp_constr_blocks().
-simp_constrs_intern(Ctx, Cs) ->
-    ?LOG_TRACE("simp_constrs, Cs=~s", pretty:render_constr(Cs)),
-    % ListOfBlocks is a list of list of simp_constr_block().
-    % The inner list has a meaningful ordering (namely by the structure of the program).
-    % The outer list is randomly sorted (given by the order of sets:to_list(Cs)).
-    ListOfBlocks = lists:map(
-        fun(C) ->
-            ThisBlocks = simp_constr(Ctx, C),
-            %case Ctx#ctx.sanity of
-            %    {ok, TyMap} ->
-            %        ThisDs = simp_constrs_of_blocks(ThisBlocks),
-            %        sanity_check(ThisDs, TyMap);
-            %    error -> ok
-            %end,
-            ThisBlocks
-        end,
-        sets:to_list(Cs)),
-    % We sort the outer list of blocks by the location of the first block
-    SortedListOfBlocks =
-        lists:sort(
-            fun (Blocks1, Blocks2) ->
-                case {Blocks1, Blocks2} of
-                    {[], _} -> true;
-                    {_, []} -> false;
-                    {[B1 | _], [B2 | _]} ->
-                        ast:leq_loc(loc_of_block(B1), loc_of_block(B2))
-                end
-            end,
-            ListOfBlocks),
-    lists:append(SortedListOfBlocks).
-
--spec simp_constr(ctx(), constr:constr()) -> simp_constr_blocks().
+-spec simp_constr(ctx(), constr:constr()) -> constr:simp_constrs().
 simp_constr(Ctx, C) ->
     ?LOG_TRACE("simp_constr, C=~w", C),
     case C of
-        {csubty, Locs, _, _} -> [{simp_constr_block_exp, loc(Locs), single(C)}];
+        {csubty, Locs, T1, T2} -> utils:single({scsubty, loc(Locs), T1, T2});
         {cvar, Locs, X, T} ->
             PolyTy =
                 case maps:find(X, Ctx#ctx.env) of
@@ -160,91 +50,47 @@ simp_constr(Ctx, C) ->
                                 symtab:lookup_fun(GlobalX, loc(Locs), Ctx#ctx.symtab)
                         end
                 end,
-            [{simp_constr_block_exp, loc(Locs),
-                single({csubty, Locs, fresh_ty_scheme(Ctx, PolyTy), T})}];
+            utils:single({scsubty, loc(Locs), fresh_ty_scheme(Ctx, PolyTy), T});
         {cop, Locs, OpName, OpArity, T} ->
             PolyTy = symtab:lookup_op(OpName, OpArity, loc(Locs), Ctx#ctx.symtab),
-            [{simp_constr_block_exp, loc(Locs),
-                single({csubty, Locs, fresh_ty_scheme(Ctx, PolyTy), T})}];
+            utils:single({scsubty, loc(Locs), fresh_ty_scheme(Ctx, PolyTy), T});
         {cdef, _Locs, Env, Cs} ->
             NewCtx = extend_env(Ctx, Env),
-            case sets:size(Cs) of
-                1 ->
-                    [X] = sets:to_list(Cs),
-                    simp_constr(NewCtx, X);
-                0 ->
-                    [];
-                _ ->
-                    [flatten_blocks(simp_constrs_intern(NewCtx, Cs))]
-            end;
+            simp_constrs(NewCtx, Cs);
         {ccase, Locs, CsScrut, CsExhaust, Bodies} ->
             case Ctx#ctx.sanity of
                 {ok, TyMap0} ->
                     constr_gen:sanity_check(CsScrut, TyMap0);
                 error -> ok
             end,
-            CaseBlock = flatten_blocks(simp_constrs_intern(Ctx, CsScrut)),
-            DsExhaust = simp_constrs_of_blocks(simp_constrs_intern(Ctx, CsExhaust)),
-            ExhaustBlock = {simp_constr_block_exhaustiveness, loc(Locs), DsExhaust},
-            L = lists:flatmap(fun (Body) -> simp_case_branch(Ctx, Body) end, Bodies),
-            [CaseBlock, ExhaustBlock | L];
-        {cunsatisfiable, Locs, Msg} ->
-            [{simp_constr_block_exp, loc(Locs), single({cunsatisfiable, Locs, Msg})}];
+            DsScrut = simp_constrs(Ctx, CsScrut),
+            LocsScrut = loc(CsScrut),
+            DsExhaust = simp_constrs(Ctx, CsExhaust),
+            L = lists:map(fun (Body) -> simp_case_branch(Ctx, Body) end, Bodies),
+            utils:single({sccase, {LocsScrut, DsScrut}, {loc(Locs), DsExhaust}, L});
         X -> errors:uncovered_case(?FILE, ?LINE, X)
     end.
 
--spec single(T) -> sets:set(T).
-single(X) -> sets:from_list([X]).
-
--spec simp_case_branch(ctx(), constr:constr_case_branch()) -> simp_constr_blocks().
+-spec simp_case_branch(ctx(), constr:constr_case_branch()) -> constr:simp_constr_case_branch().
 simp_case_branch(Ctx, {ccase_branch, BranchLocs, Payload}) ->
     {GuardsGammaI, GuardCsI} = constr:case_branch_guard(Payload),
     {BodyGammaI, BodyCsI} = constr:case_branch_body(Payload),
     ReduCsOrNone = constr:case_branch_bodyCond(Payload),
-    FormattedBranchLocs = ast:format_loc(loc(BranchLocs)),
-    BranchIsRedundant =
-        case {ReduCsOrNone, Ctx#ctx.unmatched_branch} of
-            {none, _} -> false;
-            {_, unmatched_branch_dont_check} -> false;
-            {ReduCs, _} ->
-                ReduDs = simp_constrs_of_blocks(simp_constrs_intern(Ctx, ReduCs)),
-                case utils:timing_log(
-                    fun () -> tally:is_satisfiable(Ctx#ctx.symtab, ReduDs, Ctx#ctx.fixed_tyvars) end,
-                    10,
-                    utils:sformat("tally time for redundancy checking of branch ~s", FormattedBranchLocs))
-                of
-                    {false, _} ->
-                        % ReduDs is not satisfiable => Branch could match
-                        false;
-                    {true, Subst} ->
-                        ?LOG_DEBUG(
-                            "Branch at ~s can never match, redundancy constraints satisfiable ~s. First substitution: ~s",
-                            FormattedBranchLocs,
-                            pretty:render_constr(ReduDs),
-                            pretty:render_subst(Subst)
-                            ),
-                        true
-                end
+    LocBranch = loc(BranchLocs),
+    ReduDs =
+        case ReduCsOrNone of
+            none -> none;
+            ReduCs -> {LocBranch, simp_constrs(Ctx, ReduCs)}
         end,
     NewGuardsCtx = inter_env(Ctx, GuardsGammaI),
-    GuardsBlocks = simp_constrs_intern(NewGuardsCtx, GuardCsI),
-    case {BranchIsRedundant, Ctx#ctx.unmatched_branch} of
-        {true, unmatched_branch_ignore} ->
-            ?LOG_DEBUG("Ignoring branch at ~s", FormattedBranchLocs),
-            GuardsBlocks;
-        {true, unmatched_branch_report} ->
-            ?LOG_DEBUG("Branch at ~s is redundant, reporting this as an error", FormattedBranchLocs),
-           throw({simp_constrs_error, {redundant_branch, loc(BranchLocs)}});
-        _ ->
-            case Ctx#ctx.unmatched_branch of
-                unmatched_branch_ignore -> ?LOG_DEBUG("Not ignoring branch at ~s", FormattedBranchLocs);
-                _ -> ok
-            end,
-            NewBodyCtx = inter_env(Ctx, BodyGammaI),
-            ResultCs = constr:case_branch_result(Payload),
-            BodyBlocks = simp_constrs_intern(NewBodyCtx, sets:union(ResultCs, BodyCsI)),
-            GuardsBlocks ++ BodyBlocks
-    end.
+    GuardsDs = simp_constrs(NewGuardsCtx, GuardCsI),
+    GuardsLoc = loc(GuardCsI, ast:loc_auto()), % GuardCsI can be empty
+    NewBodyCtx = inter_env(Ctx, BodyGammaI),
+    ResultCs = constr:case_branch_result(Payload),
+    BodyDs = simp_constrs(NewBodyCtx, BodyCsI),
+    BodyLoc = loc(BodyCsI),
+    ResultDs = simp_constrs(NewBodyCtx, ResultCs),
+    {sccase_branch, {GuardsLoc, GuardsDs}, ReduDs, {BodyLoc, BodyDs}, {LocBranch, ResultDs}}.
 
 -spec inter_env(ctx(), constr:constr_env()) -> ctx().
 inter_env(Ctx, Env) ->
@@ -285,19 +131,26 @@ fresh_ty_scheme(Ctx, {ty_scheme, Tyvars, T}) ->
     Subst = subst:from_list(L),
     subst:apply(Subst, T).
 
--spec loc(constr:locs()) -> ast:loc().
+-spec loc(constr:locs() | sets:set(ast:loc()) | constr:constrs()) -> ast:loc().
 loc(Locs) ->
     case loc(Locs, error) of
         error -> errors:bug("empty set of locations");
         X -> X
     end.
 
--spec loc(constr:locs() | sets:set(ast:loc()), T) -> T | ast:loc().
+-spec loc(constr:locs() | sets:set(ast:loc()) | constr:constrs(), T) -> T | ast:loc().
 loc({_, Locs}, Def) -> loc(Locs, Def);
-loc(Locs, Def) ->
-    case sets:to_list(Locs) of
+loc(Set, Def) ->
+    GetLoc = fun(X) ->
+        % X is either a constr:constr() or a ast:loc()
+        case X of
+            {loc, _, _, _} -> X;
+            _ -> loc(constr:locs_of_constr(X))
+        end
+    end,
+    case sets:to_list(Set) of
         [First | Rest] ->
-            lists:foldl(fun ast:min_loc/2, First, Rest);
+            lists:foldl(fun(X, L) -> ast:min_loc(L, GetLoc(X)) end, GetLoc(First), Rest);
         [] -> Def
     end.
 
@@ -322,7 +175,7 @@ sanity_check(Ds, Spec) ->
             fun(D) ->
                     case ast_check:check_against_type(Spec, constr, simp_constr, D) of
                         true ->
-                            ok;
+                            ?LOG_DEBUG("Sanity check OK");
                         false ->
                             ?ABORT("Invalid simple constraint generated: ~w", D)
                     end

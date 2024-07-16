@@ -1,5 +1,5 @@
 % ERROR
-% test_files/tycheck/type_error_msgs/invalid_arg.erl:13:17: Type error: expression failed to type check
+% test_files/tycheck/type_error_msgs/invalid_arg.erl:13:26: Type error: expression failed to type check
 -module(invalid_arg).
 
 -compile(export_all).

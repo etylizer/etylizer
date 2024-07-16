@@ -1,5 +1,5 @@
 % ERROR
-% test_files/tycheck/type_error_msgs/unmatched_branch.erl:11:9: Type error: this branch never matches
+% test_files/tycheck/type_error_msgs/unmatched_branch.erl:10:5: Type error: not all cases are covered
 -module(unmatched_branch).
 
 -compile(export_all).

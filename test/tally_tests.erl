@@ -19,7 +19,7 @@ test_tally(_Order, _ConstrList, [], _FixedVars) -> ok;
 test_tally(Order, ConstrList, AllTests, FixedVars) ->
     Constrs = sets:from_list(
                 lists:map(
-                  fun ({T, U}) -> {csubty, sets:from_list([ast:loc_auto()]), T, U} end,
+                  fun ({T, U}) -> {scsubty, sets:from_list([ast:loc_auto()]), T, U} end,
                   ConstrList
                  )),
 

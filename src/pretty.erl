@@ -9,8 +9,10 @@
          constr/1,
          substs/1,
          subst/1,
+         constr_block/1,
+         loc/1,
+         locs/1,
          atom/1,
-         simp_constr_block/1,
          render/1,
          render_ty/1,
          render_tys/1,
@@ -22,8 +24,9 @@
          render_poly_env/1,
          render_fun_env/1,
          render_any_ref/1,
+         render_set/2,
          render_list/2,
-         render_list/3,
+         pretty_list/2,
          render_list_with_braces/2,
          ref/1
         ]).
@@ -284,6 +287,28 @@ constr_bodies(L) ->
           end,
           L))).
 
+-spec sconstr_bodies([constr:simp_constr_case_branch()]) -> doc().
+sconstr_bodies(L) ->
+    braces(
+      comma_sep(
+        lists:map(
+          fun({sccase_branch, {GuardsLoc, Guards}, Cond, {BodyLoc, Body}, {ResultLoc, Result}}) ->
+                PrettyCond =
+                    case Cond of
+                        none -> [text("none")];
+                        {L2, X} -> [kv("condLoc", loc(L2)), kv("cond", constr(X))]
+                    end,
+                brackets(comma_sep([
+                    kv("guardLoc", loc(GuardsLoc)),
+                    kv("guard", constr(Guards))] ++ PrettyCond ++ [
+                    kv("bodyLoc", loc(BodyLoc)),
+                    kv("body", constr(Body)),
+                    kv("resultLoc", loc(ResultLoc)),
+                    kv("result", constr(Result))
+                    ]))
+          end,
+          L))).
+
 -spec kv(string(), doc()) -> doc().
 kv(K, V) -> beside(text(K), text(":"), V).
 
@@ -302,6 +327,11 @@ constr(X) ->
                {csubty, Locs, T1, T2} ->
                    brackets(comma_sep([text("csubty"),
                                        locs(Locs),
+                                       ty(T1),
+                                       ty(T2)]));
+               {scsubty, Loc, T1, T2} ->
+                   brackets(comma_sep([text("scsubty"),
+                                       loc(Loc),
                                        ty(T1),
                                        ty(T2)]));
                {cvar, Locs, Ref, T} ->
@@ -323,12 +353,15 @@ constr(X) ->
                    brackets(comma_sep([text("ccase"),
                                        locs(Locs),
                                        kv("scrutiny", constr(CsScrut)),
-                                       kv("exhaus", constr(CsExhaust)),
+                                       kv("exhaust", constr(CsExhaust)),
                                        constr_bodies(Bodies)]));
-               {cunsatisfiable, Locs, Msg} ->
-                   brackets(comma_sep([text("cunsatisfiable"),
-                                       locs(Locs),
-                                       text(Msg)]))
+               {sccase, {LocScrut, CsScrut}, {LocExhaust, CsExhaust}, Bodies} ->
+                   brackets(comma_sep([text("sccase"),
+                                       kv("scrutinyLoc", loc(LocScrut)),
+                                       kv("scrutiny", constr(CsScrut)),
+                                       kv("exhaustLoc", loc(LocExhaust)),
+                                       kv("exhaust", constr(CsExhaust)),
+                                       sconstr_bodies(Bodies)]))
            end
    end.
 
@@ -391,20 +424,26 @@ mono_env(Env) ->
           maps:to_list(Env)),
     brackets(comma_sep(Elems)).
 
--spec simp_constr_block(constr_simp:simp_constr_block()) -> doc().
-simp_constr_block({Kind, Loc, Ds}) ->
+-spec constr_block(constr_error_locs:constr_block()) -> doc().
+constr_block({Kind, Loc, What, Ds}) ->
     brackets(comma_sep([text(atom_to_list(Kind)),
                         loc(Loc),
+                        text(What),
                         constr(Ds)])).
+
+-spec pretty_list(fun((T) -> doc()), list(T)) -> doc().
+pretty_list(Fun, L) ->
+    comma_sep(lists:map(Fun, L)).
 
 -spec render_list(fun((T) -> doc()), list(T)) -> string().
 render_list(Fun, L) ->
-    render(comma_sep(lists:map(Fun, L))).
+    render(pretty_list(Fun, L)).
+
+-spec render_set(fun((T) -> doc()), sets:set(T)) -> string().
+render_set(Fun, S) ->
+    render_list(Fun, sets:to_list(S)).
 
 -spec render_list_with_braces(fun((T) -> doc()), list(T)) -> string().
 render_list_with_braces(Fun, L) ->
     render(braces(comma_sep(lists:map(Fun, L)))).
 
--spec render_list(string(), [T], fun((T) -> doc())) -> string().
-render_list(Sep, L, F) ->
-    render(sep_by(text(Sep), lists:map(F, L))).
