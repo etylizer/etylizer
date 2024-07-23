@@ -1,7 +1,7 @@
 -module(subty_tests).
 -include_lib("eunit/include/eunit.hrl").
 
--import(stdtypes, [tvar/1, ttuple_any/0, tnegate/1, tatom/0, tatom/1, tfun_full/2, trange/2, tunion/1, tintersect/1, trange_any/0, ttuple/1, tany/0, tnone/0]).
+-import(stdtypes, [tvar/1, ttuple_any/0, tnegate/1, tatom/0, tatom/1, tfun_full/2, trange/2, tint/1, tunion/1, tintersect/1, trange_any/0, tint/0, ttuple/1, tany/0, tnone/0, tmap/1, tmap_any/0, tmap_field_man/2, tmap_field_opt/2]).
 -import(test_utils, [is_subtype/2, is_equiv/2]).
 
 foo2_branch1_test() ->
@@ -702,5 +702,101 @@ simplification_10_test() ->
       tnegate(tvar(mu6))
     ]),
   true = is_equiv(S, T),
+
+  ok.
+
+% =====
+% Map Tests
+% =====
+
+maps_any_empty_test() ->
+  % #{}
+  Empty = tmap([]),
+  % map()
+  Any1 = tmap_any(),
+  % #{any() => any()}
+  Any2 = tmap([tmap_field_opt(tany(), tany())]),
+  % #{atom() => any(), integer() => any(), tuple() => any()}
+  Any3 = tmap([
+    tmap_field_opt(tatom(), tany()),
+    tmap_field_opt(tint(), tany()),
+    tmap_field_opt(ttuple_any(), tany())
+  ]),
+  Any4 = tintersect([Any1, Any2, Any3]),
+
+  true = is_subtype(Empty, Any1),
+  true = is_equiv(Any1, Any2),
+  true = is_equiv(Any2, Any3),
+  true = is_equiv(Any3, Any4),
+  false = is_subtype(Any4, Empty),
+  true = is_equiv(tintersect([Any4, Empty]), Empty),
+
+  ok.
+
+maps_steps_test() ->
+  Empty = tmap([]),
+  AStep = tmap_field_opt(tatom(), tany()),
+  IStep = tmap_field_opt(tint(), tany()),
+  M1 = tmap([AStep]),
+  M2 = tmap([IStep]),
+  M3 = tmap([AStep, IStep]),
+  M4 = tmap([AStep, IStep, tmap_field_opt(ttuple_any(), tnone())]),
+
+  true = is_equiv(tintersect([M1, M2]), Empty),
+  true = is_equiv(tintersect([M2, M3]), M2),
+  true = is_equiv(M3, M4),
+
+  ok.
+
+maps_labels1_test() ->
+  % {1 := a, 2 => b, 10 => c}  !≤ ≥!  {1 => a, 2 := b, 3 => c}
+  L = tmap([
+    tmap_field_man(tint(1), tatom(a)),
+    tmap_field_opt(tint(2), tatom(b)),
+    tmap_field_opt(tint(10), tatom(c))
+  ]),
+  R = tmap([
+    tmap_field_opt(tint(1), tatom(a)),
+    tmap_field_man(tint(2), tatom(b)),
+    tmap_field_opt(tint(3), tatom(c))
+  ]),
+  false = is_subtype(L, R),
+  false = is_subtype(L, R),
+
+  ok.
+
+maps_labels2_test() ->
+  % {1 => a, _ => none}  ≤ ≥!  {1 => a, 3 => a, _ => none}
+  L = tmap([
+    tmap_field_opt(tint(1), tatom(a)),
+    tmap_field_opt(tany(), tnone())
+  ]),
+  R = tmap([
+    tmap_field_opt(tint(1), tatom(a)),
+    tmap_field_opt(tint(3), tatom(a)),
+    tmap_field_opt(tany(), tnone())
+  ]),
+  R2 = tmap([
+    tmap_field_opt(tunion([tint(1), tint(3)]), tatom(a)),
+    tmap_field_opt(tany(), tnone())
+  ]),
+  true = is_subtype(L, R),
+  false = is_subtype(R, L),
+  true = is_equiv(R, R2),
+
+  ok.
+
+maps_labels3_test() ->
+  % {1 := a, 2 => b}  !≤ ≥!  {1 => a, 2 := b}
+  L = tmap([
+    tmap_field_man(tint(1), tatom(a)),
+    tmap_field_opt(tint(2), tatom(b))
+  ]),
+  R = tmap([
+    tmap_field_opt(tint(1), tatom(a)),
+    tmap_field_man(tint(2), tatom(b))
+  ]),
+  false = is_subtype(L, R),
+  false = is_subtype(R, L),
 
   ok.
