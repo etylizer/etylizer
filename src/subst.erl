@@ -152,6 +152,7 @@ collect_vars({singleton, _}, _CPos, Pos, _) -> Pos;
 collect_vars({range, _, _}, _CPos, Pos, _) -> Pos;
 collect_vars({_, any}, _CPos, Pos, _) -> Pos;
 collect_vars({empty_list}, _CPos, Pos, _) -> Pos;
+collect_vars({map_any}, _CPos, Pos, _) -> Pos;
 collect_vars({tuple_any}, _CPos, Pos, _) -> Pos;
 collect_vars({fun_simple}, _CPos, Pos, _) -> Pos;
 collect_vars({list, A}, CPos, Pos, Fix) ->
