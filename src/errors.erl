@@ -47,7 +47,7 @@ ty_error(Loc, Msg, Args) ->
     generic_error(ty_error, Loc, "Type error", Msg, Args).
 
 -spec ty_error(ast:loc(), string()) -> no_return().
-ty_error(Loc, Msg) -> ty_error(Loc, Msg, []).
+ty_error(X, Msg) -> ty_error(X, Msg, []).
 
 -spec ty_error(string()) -> no_return().
 ty_error(Msg) -> generic_error(ty_error, Msg).

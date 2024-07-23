@@ -20,7 +20,7 @@ test_tally(_Order, _ConstrList, [], _FixedVars) -> ok;
 test_tally(Order, ConstrList, AllTests, FixedVars) ->
     Constrs = sets:from_list(
                 lists:map(
-                  fun ({T, U}) -> {csubty, sets:from_list([ast:loc_auto()]), T, U} end,
+                  fun ({T, U}) -> {scsubty, sets:from_list([ast:loc_auto()]), T, U} end,
                   ConstrList
                  )),
 
@@ -37,7 +37,8 @@ find_subst([{Low, High} | _], [], Sols) ->
   ),
   error("test failed because tally returned no substitution that matches low and high bounds");
 find_subst([], [_X | _Xs], _) -> error({"Too many substitutions"});
-find_subst(X = [{Low, High} | OtherTests], [Subst | Others], AllTally) ->
+find_subst(X = [{Low, High} | OtherTests], [TallySubst | Others], AllTally) ->
+  Subst = subst:base_subst(TallySubst),
   Valid = lists:any(
     fun({{_Var, LowerBound}, {Var, UpperBound}}) ->
       begin
@@ -48,7 +49,7 @@ find_subst(X = [{Low, High} | OtherTests], [Subst | Others], AllTally) ->
     end, lists:zip(lists:sort(maps:to_list(Low)), lists:sort(maps:to_list(High)))),
   case Valid of
     true -> find_subst(X, Others, AllTally);
-    false -> find_subst(OtherTests, AllTally -- [Subst], AllTally -- [Subst])
+    false -> find_subst(OtherTests, AllTally -- [TallySubst], AllTally -- [TallySubst])
   end.
 
 solutions(Number) ->

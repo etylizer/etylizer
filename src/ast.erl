@@ -136,8 +136,8 @@
 ]).
 
 -export([
-    format_loc/1, to_loc/2, loc_auto/0, min_loc/2, is_predef_name/1, is_predef_alias_name/1,
-    local_varname_from_any_ref/1, get_fun_name/1
+    format_loc/1, to_loc/2, loc_auto/0, min_loc/2, leq_loc/2, is_predef_name/1, is_predef_alias_name/1,
+    local_varname_from_any_ref/1, get_fun_name/1, loc_exp/1
 ]).
 
 % General
@@ -164,17 +164,25 @@ to_loc(Path, Anno) ->
 -spec loc_auto() -> loc().
 loc_auto() -> {loc, "AUTO", -1, -1}.
 
--spec min_loc(loc(), loc()) -> loc().
-min_loc(L1 = {loc, _, Line1, Col1}, L2 = {loc, _, Line2, Col2}) ->
+% leq(L1, L2) yields true of L1 <= L2.
+-spec leq_loc(loc(), loc()) -> boolean().
+leq_loc({loc, _, Line1, Col1}, {loc, _, Line2, Col2}) ->
     case utils:compare(Line1, Line2) of
-        less -> L1;
-        greater -> L2;
+        less -> true;
+        greater -> false;
         equal ->
             case utils:compare(Col1, Col2) of
-                less -> L1;
-                greater -> L2;
-                equal -> L1
+                less -> true;
+                greater -> false;
+                equal -> true
             end
+    end.
+
+-spec min_loc(loc(), loc()) -> loc().
+min_loc(L1, L2) ->
+    case leq_loc(L1, L2) of
+        true -> L1;
+        false -> L2
     end.
 
 -spec local_varname_from_any_ref(any_ref()) -> {true, local_varname()} | false.
@@ -305,6 +313,9 @@ get_fun_name({function, _Loc, Name, Arity, _}) -> utils:sformat("~w/~w", Name, A
 
 -type exps() :: [exp()].
 
+-spec loc_exp(exp()) -> loc().
+loc_exp(X) -> element(2, X).
+
 -type qual_gen() ::  {generate, loc(), pat(), exp()}.
 -type qual_bitstring_gen() ::  {b_generate, loc(), pat(), exp()}.
 -type qualifier() :: exp() | qual_gen() | qual_bitstring_gen().
@@ -326,7 +337,7 @@ get_fun_name({function, _Loc, Name, Arity, _}) -> utils:sformat("~w/~w", Name, A
 -type exc_type_pat() :: pat_wildcard() | pat_var() | rep_atom().
 -type stacktrace_pat() :: pat_wildcard() | pat_var().
 
--type case_clause() :: {case_clause, loc(), Pat::pat(),   Guards::[guard()], Body::exps()}.
+-type case_clause() :: {case_clause, loc(), Pat::pat(), Guards::[guard()], Body::exps()}.
 -type fun_clause()  :: {fun_clause, loc(), Pats::[pat()], Guards::[guard()], Body::exps()}.
 -type if_clause()   :: {if_clause, loc(), Guards::[guard()], Body::exps()}.
 

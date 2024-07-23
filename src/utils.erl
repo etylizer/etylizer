@@ -2,6 +2,8 @@
 
 % @doc This module defines general purpose utility functions.
 
+-include_lib("log.hrl").
+
 -export([
     map_opt/3, map_opt/2,
     quit/3, quit/2, undefined/0, everywhere/2, everything/2, error/1, error/2,
@@ -11,11 +13,12 @@
     file_get_lines/1, set_add_many/2, assert_no_error/1,
     replicate/2, unconsult/2,
     string_ends_with/2, shorten/2,
-    flatmap_flip/2, map_flip/2, foreach/2, with_index/1, with_index/2,
+    flatmap_flip/2, map_flip/2, foreach/2, concat_map/2, with_index/1, with_index/2,
     mkdirs/1, hash_sha1/1, hash_file/1,
     list_uniq/1, lists_enumerate/1, lists_enumerate/2,
     with_default/2, compare/2,
-    mingle/5, timing/1
+    mingle/5, timing/1, timing_log/3,
+    single/1, from_to/2
 ]).
 
 mingle(LeftDefault, RightDefault, AllLeft, AllRight, Op) ->
@@ -221,6 +224,9 @@ flatmap_flip(L, F) -> lists:flatmap(F, L).
 -spec map_flip([A], fun((A) -> B)) -> [B].
 map_flip(L, F) -> lists:map(F, L).
 
+-spec concat_map([A], fun((A) -> [B])) -> [B].
+concat_map(L, F) -> lists:concat(lists:map(F, L)).
+
 -spec foreach([T], fun((T) -> any())) -> ok.
 foreach(L, F) -> lists:foreach(F, L).
 
@@ -304,10 +310,30 @@ lists_enumerate_1(_Index, []) ->
 with_default(undefined, Def) -> Def;
 with_default(X, _) -> X.
 
--spec timing(fun(() -> {T, integer()})) -> {T, integer()}.
+% Returns the time it takes to execute the given function in milliseconds
+-spec timing(fun(() -> T)) -> {T, integer()}.
 timing(F) ->
     Start = erlang:timestamp(),
     Res = F(),
     End = erlang:timestamp(),
     Delta = round(timer:now_diff(End, Start) / 1000),
     {Res, Delta}.
+
+-spec from_to(number(), number()) -> list(number()).
+from_to(Start, End) ->
+    if
+        Start > End -> [];
+        true -> [Start | from_to(Start + 1, End)]
+    end.
+
+% Display a debug message if executing the given function takes more than N milliseconds
+-spec timing_log(fun(() -> T), integer(), string()) -> T.
+timing_log(F, Time, What) ->
+    {X, Delta} = timing(F),
+    if Delta > Time -> ?LOG_DEBUG("~s: ~pms", What, Delta);
+        true -> ok
+    end,
+    X.
+
+-spec single(T) -> sets:set(T).
+single(X) -> sets:from_list([X]).

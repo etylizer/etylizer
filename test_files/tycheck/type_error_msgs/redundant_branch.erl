@@ -1,4 +1,5 @@
-% SKIP (see bug #55)
+% ERROR
+% test_files/tycheck/type_error_msgs/redundant_branch.erl:13:9: Type error: this branch never matches
 -module(redundant_branch).
 
 -compile(export_all).

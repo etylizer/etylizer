@@ -7,9 +7,10 @@
 
 -spec check_ok_fun(string(), symtab:t(), ast:fun_decl(), ast:ty_scheme()) -> ok.
 check_ok_fun(Filename, Tab, Decl = {function, L, Name, Arity, _}, Ty) ->
-    Ctx = typing:new_ctx(Tab, error),
+    SanityCheck = cm_check:perform_sanity_check(Filename, [Decl], true),
+    Ctx = typing:new_ctx(Tab, SanityCheck), % FIXME: perform sanity check!
     try
-        typing:check(Ctx, Decl, Ty)
+        typing_check:check(Ctx, Decl, Ty)
     catch
         throw:{ety, ty_error, Msg} ->
             io:format("~s: Type checking ~w/~w in ~s failed but should succeed: ~s",
@@ -24,10 +25,10 @@ check_infer_ok_fun(Filename, Tab, Decl = {function, L, Name, Arity, _}, Ty) ->
     Ctx = typing:new_ctx(Tab, error),
     Envs =
        try
-           typing:infer(Ctx, [Decl])
+           typing_infer:infer(Ctx, [Decl])
        catch
            throw:{ety, ty_error, Msg2} ->
-               io:format("~s: Type checking ~w/~w in ~s failed but should succeed: ~s",
+               io:format("~s: Infering type for ~w/~w in ~s failed but should succeed: ~s",
                      [ast:format_loc(L), Name, Arity, Filename, Msg2]),
                ?assert(false)
        end,
@@ -42,9 +43,9 @@ check_infer_ok_fun(Filename, Tab, Decl = {function, L, Name, Arity, _}, Ty) ->
         end,
         Envs),
     ?LOG_NOTE("Inferred the following types for ~w/~w: ~s", Name, Arity,
-      pretty:render_list(", ", InferredTys, fun pretty:tyscheme/1)),
+      pretty:render_list(InferredTys, fun pretty:tyscheme/1)),
     case lists:any(
-            fun(InferredTy) -> typing:more_general(InferredTy, Ty, Tab) end,
+            fun(InferredTy) -> typing_infer:more_general(InferredTy, Ty, Tab) end,
             InferredTys)
       of
           true -> ok;
@@ -52,7 +53,7 @@ check_infer_ok_fun(Filename, Tab, Decl = {function, L, Name, Arity, _}, Ty) ->
               io:format(
                 "~s: None of the inferred types ~s for function ~w/~w in ~s is more general than type ~s from spec",
                 [ast:format_loc(L),
-                pretty:render_list(", ", InferredTys, fun pretty:tyscheme/1),
+                pretty:render_list(InferredTys, fun pretty:tyscheme/1),
                 Name, Arity, Filename,
                 pretty:render_tyscheme(Ty)]),
               ?assert(false)
@@ -63,7 +64,7 @@ check_infer_ok_fun(Filename, Tab, Decl = {function, L, Name, Arity, _}, Ty) ->
 check_fail_fun(Filename, Tab, Decl = {function, L, Name, Arity, _}, Ty) ->
     Ctx = typing:new_ctx(Tab, error),
     try
-        typing:check(Ctx, Decl, Ty),
+        typing_check:check(Ctx, Decl, Ty),
         io:format("~s: Type checking ~w/~w in ~s succeeded but should fail",
                   [ast:format_loc(L), Name, Arity, Filename]),
         ?assert(false)
@@ -73,6 +74,10 @@ check_fail_fun(Filename, Tab, Decl = {function, L, Name, Arity, _}, Ty) ->
     end.
 
 -type what() :: all | {include, sets:set(string())} | {exclude, sets:set(string())}.
+
+-spec has_intersection(ast:ty_scheme()) -> boolean().
+has_intersection({ty_scheme, _, {intersection, _}}) -> true;
+has_intersection({ty_scheme, _, _}) -> false.
 
 -spec check_decls_in_file(string(), what(), sets:set(string())) -> ok.
 check_decls_in_file(F, What, NoInfer) ->
@@ -107,7 +112,8 @@ check_decls_in_file(F, What, NoInfer) ->
               end}
           },
         ShouldRun = should_run(NameStr, What),
-        ShouldInfer = not ShouldFail andalso not sets:is_element(NameStr, NoInfer),
+        ShouldInfer = not ShouldFail andalso not sets:is_element(NameStr, NoInfer)
+          andalso not has_intersection(Ty),
         ExtraTestCases =
           case {ShouldRun, ShouldInfer} of
             {false, _} -> [];
@@ -128,27 +134,19 @@ should_run(Name, {exclude,Set}) -> not sets:is_element(Name, Set).
 simple_test_() ->
   % The following functions are currently excluded from being tested.
   WhatNot = [
-    % FIXME #36 impossible branches
-    "foo2",
-    "inter_03_fail",
-    % FIXME #61 bad recursive types in tally
-    "tuple_04",
-    % slow, see #57
-    "list_pattern_02",
-    "list_pattern_07",
-    "some_fun",
-    "fun_local_03",
-    "fun_local_04",
-    "fun_local_02_plus",
-    "my_plus"
+    % Redundancy check for lists is not powerful enough, see #108
+    "list_pattern_08_fail"
   ],
 
   NoInfer = [
-    % The following functions are excluded from the type inference test because
-    % we do not support inference of intersection types.
-    "inter_01", "inter_02",
     % slow, see #62
-    "foo3"],
+    "foo3",
+    % buggy, see #101
+    "poly"
+  ],
+
+  %What = ["atom_03_fail"],
+
   check_decls_in_file("test_files/tycheck_simple.erl",
                       {exclude, sets:from_list(WhatNot)},
                       %{include, sets:from_list(What)},
