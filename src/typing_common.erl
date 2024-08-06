@@ -47,7 +47,7 @@ fresh_tyvar(Alpha, I) ->
 -spec mono_ty(ast:ty_scheme(), integer() | no_fresh) ->
           {ast:ty(), sets:set(ast:ty_varname()), integer() | no_fresh}.
 mono_ty(TyScm = {ty_scheme, Tyvars, T}, FreshStart) ->
-    ?LOG_DEBUG("Monomorphizing type scheme ~s", pretty:render_tyscheme(TyScm)),
+    ?LOG_TRACE("Monomorphizing type scheme ~s", pretty:render_tyscheme(TyScm)),
     {Kvs, Freshs, I} =
         lists:foldl(
           fun({Alpha, Bound}, {Kvs, Freshs, I}) ->
@@ -61,7 +61,7 @@ mono_ty(TyScm = {ty_scheme, Tyvars, T}, FreshStart) ->
          ),
     Subst = subst:from_list(Kvs),
     Res = subst:apply(Subst, T),
-    ?LOG_DEBUG("Result of monomorphizing type scheme ~s:~n~s~nRaw: ~w~nFresh: ~200p",
+    ?LOG_TRACE("Result of monomorphizing type scheme ~s:~n~s~nRaw: ~w~nFresh: ~200p",
                pretty:render_tyscheme(TyScm), pretty:render_ty(Res), Res, Freshs),
     {Res, sets:from_list(Freshs), I}.
 

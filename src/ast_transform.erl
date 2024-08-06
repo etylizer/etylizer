@@ -304,9 +304,9 @@ trans_tys(Ctx, Env, Tys) -> lists:map(fun(T) -> trans_ty(Ctx, Env, T) end, Tys).
 trans_ty_map_assoc(Ctx, Env, Assoc) ->
     case Assoc of
         {type, _, map_field_assoc, [KeyTy, ValTy]} ->
-            {map_field_assoc, trans_ty(Ctx, Env, KeyTy), trans_ty(Ctx, Env, ValTy)};
+            {map_field_opt, trans_ty(Ctx, Env, KeyTy), trans_ty(Ctx, Env, ValTy)};
         {type, _, map_field_exact, [KeyTy, ValTy]} ->
-            {map_field_exact, trans_ty(Ctx, Env, KeyTy), trans_ty(Ctx, Env, ValTy)};
+            {map_field_req, trans_ty(Ctx, Env, KeyTy), trans_ty(Ctx, Env, ValTy)};
         X -> errors:uncovered_case(?FILE, ?LINE, X)
     end.
 
@@ -622,7 +622,7 @@ trans_pat(Ctx, Env, Pat, BindMode) ->
                         % the lhs of an assoc pattern P1 := P2 must not bind new vars
                         {Q1, E1} = trans_pat(Ctx, E0, P1, no_bind),
                         {Q2, E2} = trans_pat(Ctx, E1, P2, BindMode),
-                        {{map_field_exact, to_loc(Ctx, Anno), Q1, Q2}, E2}
+                        {{map_field_req, to_loc(Ctx, Anno), Q1, Q2}, E2}
                     end),
             {{map, to_loc(Ctx, Anno), NewAssocs}, ResultEnv};
         {op, Anno, Op, P1, P2} ->
@@ -796,7 +796,12 @@ trans_map_assoc(Ctx, Env, Assoc) ->
         {K, Anno, ExpKey, ExpVal} when (K == map_field_assoc orelse K == map_field_exact) ->
             {NewExpKey, Env1} = trans_exp(Ctx, Env, ExpKey),
             {NewExpVal, Env2} = trans_exp(Ctx, Env1, ExpVal),
-            {{K, to_loc(Ctx, Anno), NewExpKey, NewExpVal}, Env2};
+            NewK =
+                case K of
+                    map_field_assoc -> map_field_opt;
+                    map_field_exact -> map_field_req
+                end,
+            {{NewK, to_loc(Ctx, Anno), NewExpKey, NewExpVal}, Env2};
         X -> errors:uncovered_case(?FILE, ?LINE, X)
     end.
 

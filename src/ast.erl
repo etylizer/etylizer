@@ -239,7 +239,7 @@ get_fun_name({function, _Loc, Name, Arity, _}) -> utils:sformat("~w/~w", Name, A
 -type pat_cons() :: {cons, loc(), pat(), pat()}.
 -type pat_op() :: {op, loc(), atom(), [pat()]}.
 -type pat_map() :: {map, loc(), [pat_map_assoc()]}. %  #{A_1, ..., A_k} with Ai: P_i_1 := P_i_2
--type pat_map_assoc() :: {map_field_exact, loc(), pat(), pat()}.
+-type pat_map_assoc() :: {map_field_req, loc(), pat(), pat()}.
 -type pat_record() :: {record, loc(), RecordName::atom(),
                        [{record_field, loc(), FieldName::atom(), pat()}]}.
 -type pat_record_fld_idx() ::  {record_index, loc(), RecordName::atom(), FieldName::atom()}.
@@ -275,7 +275,7 @@ get_fun_name({function, _Loc, Name, Arity, _}) -> utils:sformat("~w/~w", Name, A
 -type exp_funcall() :: gen_funcall(exp()).
 -type exp_if() :: {'if', loc(), [if_clause()]}.
 -type exp_list_compr() :: {lc, loc(), exp(), [qualifier()]}.
--type gen_map_create() :: {map_create, loc(), [map_assoc()]}.
+-type gen_map_create() :: {map_create, loc(), [map_assoc_opt()]}.
 -type exp_map_create() :: gen_map_create().
 -type gen_map_update(T) :: {map_update, loc(), T, [map_assoc()]}.
 -type exp_map_update() :: gen_map_update(exp()).
@@ -323,8 +323,8 @@ loc_exp(X) -> element(2, X).
 -type bitstring_tyspec() :: atom() | {atom(), Value::integer()}.
 -type bitstring_tyspec_list() :: [bitstring_tyspec()].
 
--type map_assoc_opt() :: {map_field_assoc, loc(), exp(), exp()}.
--type map_assoc_req() :: {map_field_exact, loc(), exp(), exp()}.
+-type map_assoc_opt() :: {map_field_opt, loc(), exp(), exp()}.
+-type map_assoc_req() :: {map_field_req, loc(), exp(), exp()}.
 -type map_assoc() :: map_assoc_opt() | map_assoc_req().
 
 -type binop() :: atom().
@@ -394,8 +394,8 @@ loc_exp(X) -> element(2, X).
 -type ty_integer_range() :: {range, integer() | '*', integer() | '*'}.
 -type ty_map_any() :: {map_any}.
 -type ty_map() :: {map, [ty_map_assoc()]}.
--type ty_map_assoc_opt() :: {map_field_assoc, ty(), ty()}.
--type ty_map_assoc_req() :: {map_field_exact, ty(), ty()}.
+-type ty_map_assoc_opt() :: {map_field_opt, ty(), ty()}.
+-type ty_map_assoc_req() :: {map_field_req, ty(), ty()}.
 -type ty_map_assoc() :: ty_map_assoc_opt() | ty_map_assoc_req().
 
 % Predefined types, including any() and none(). It's guaranteed that the predefined type

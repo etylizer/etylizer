@@ -316,10 +316,10 @@ convert_associations(AssocList) ->
     lists:foldr(
         fun({Association, Key, Val}, {X, Y}) ->
             case Association of
-                map_field_assoc ->
+                map_field_opt ->
                     Convert = optional_converter(Val),
                     Convert(Key, {X, Y});
-                map_field_exact ->
+                map_field_req ->
                     Convert = mandatory_converter(Val),
                     Convert(Key, {X, Y})
             end

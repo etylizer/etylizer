@@ -87,10 +87,10 @@ tlist(Arg) -> {list, Arg}.
 tmap(AssocList) -> {map, AssocList}.
 
 -spec tmap_field_opt(ast:ty(), ast:ty()) -> ast:ty_map_assoc_opt().
-tmap_field_opt(K, V) -> {map_field_assoc, K, V}.
+tmap_field_opt(K, V) -> {map_field_opt, K, V}.
 
 -spec tmap_field_man(ast:ty(), ast:ty()) -> ast:ty_map_assoc_req().
-tmap_field_man(K, V) -> {map_field_exact, K, V}.
+tmap_field_man(K, V) -> {map_field_req, K, V}.
 
 -spec ttuple_n(pos_integer()) -> ast:ty().
 ttuple_n(Size) ->
@@ -205,7 +205,7 @@ expand_predef_alias(nonempty_string) -> {nonempty_list, expand_predef_alias(char
 %% subtype relation into a recursive type
 expand_predef_alias(iodata) -> throw(rec_type_not_supported_outside_esubrel);
 expand_predef_alias(iolist) -> throw(rec_type_not_supported_outside_esubrel);
-expand_predef_alias(map) -> {map, [{map_field_assoc, {predef, any}, {predef, any}}]};
+expand_predef_alias(map) -> {map, [{map_field_opt, {predef, any}, {predef, any}}]};
 expand_predef_alias(function) -> {fun_simple};
 expand_predef_alias(module) -> tatom();
 expand_predef_alias(mfa) -> {tuple, [tatom(), tatom(), {predef, integer}]};
