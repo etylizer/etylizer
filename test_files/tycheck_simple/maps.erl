@@ -9,6 +9,12 @@
 
 %%%%%%%%%%%%%%%%%%%%%%%% CONSTRUCTION %%%%%%%%%%%%%%%%%%%%%%%
 
+-spec const_map_00() -> map().
+const_map_00() -> #{ a => 1, b => 2 }.
+
+-spec const_map_00_fail() -> map().
+const_map_00_fail() -> 1.
+
 -spec empty_map() -> #{}.
 empty_map() -> #{}.
 
@@ -83,6 +89,12 @@ const_map_23() -> #{a => 20, b => "21"}.
 
 -spec const_map_24_fail() -> #{ a := integer(), atom() => any() }.
 const_map_24_fail() -> #{a => "20", b => "21"}. % a of wrong type, fails
+
+-spec const_map_25() -> any().
+const_map_25() -> #{ a => 1, b => 2 }.
+
+-spec const_map_26_fail() -> atom().
+const_map_26_fail() -> #{ a => 1, b => 2 }.
 
 %%%%%%%%%%%%%%%%%%%%%%%% INSERT/UPDATE %%%%%%%%%%%%%%%%%%%%%%%
 
