@@ -199,8 +199,22 @@ exp_constrs(Ctx, E, T) ->
             exp_constrs(Ctx, if_exp_to_case_exp(IfExp), T);
         {lc, L, _E, _Qs} ->
             errors:unsupported(L, "unsupported list comprehension: ~200p", [E]);
-        {map_create, L, _Assocs} ->
-            errors:unsupported(L, "unsupported map_create: ~200p", [E]);
+        {map_create, L, Assocs} ->
+            {AssocsCs, RevAssocs} =
+                lists:foldl(
+                  fun({map_field_opt, _FieldL, KeyE, ValE}, {AccCs, AccAssocs}) ->
+                          KeyAlpha = fresh_tyvar(Ctx),
+                          KeyCs = exp_constrs(Ctx, KeyE, KeyAlpha),
+                          ValAlpha = fresh_tyvar(Ctx),
+                          ValCs = exp_constrs(Ctx, ValE, ValAlpha),
+                          ThisAssoc = {map_field_req, KeyAlpha, ValAlpha},
+                          {sets:union([AccCs, KeyCs, ValCs]), [ThisAssoc | AccAssocs]}
+                  end,
+                  {sets:new(), []},
+                  Assocs),
+            ResultC = {csubty, mk_locs("map_create", L), {map, lists:reverse(RevAssocs)}, T},
+            %ResultC = {csubty, mk_locs("map_create", L), {map, RevAssocs}, T},
+            sets:add_element(ResultC, AssocsCs);
         {map_update, L, _MapExp, _Assocs} ->
             errors:unsupported(L, "unsupported map_update: ~200p", [E]);
         {nil, L} ->

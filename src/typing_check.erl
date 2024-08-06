@@ -44,7 +44,7 @@ check(Ctx, Decl = {function, Loc, Name, Arity, _}, PolyTy) ->
             {intersection, L} -> L;
             _ -> [MonoTy]
         end,
-    ?LOG_DEBUG("AltTys=~200p, MonoTy=~200p", AltTys, MonoTy),
+    ?LOG_DEBUG("AltTys=~200p,~nMonoTy=~200p", AltTys, MonoTy),
     BranchMode =
         case AltTys of
             [_] -> unmatched_branch_fail;

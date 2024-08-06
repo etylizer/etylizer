@@ -275,7 +275,7 @@ get_fun_name({function, _Loc, Name, Arity, _}) -> utils:sformat("~w/~w", Name, A
 -type exp_funcall() :: gen_funcall(exp()).
 -type exp_if() :: {'if', loc(), [if_clause()]}.
 -type exp_list_compr() :: {lc, loc(), exp(), [qualifier()]}.
--type gen_map_create() :: {map_create, loc(), [map_assoc()]}.
+-type gen_map_create() :: {map_create, loc(), [map_assoc_opt()]}.
 -type exp_map_create() :: gen_map_create().
 -type gen_map_update(T) :: {map_update, loc(), T, [map_assoc()]}.
 -type exp_map_update() :: gen_map_update(exp()).
