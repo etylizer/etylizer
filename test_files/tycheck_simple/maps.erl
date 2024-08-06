@@ -25,7 +25,7 @@ const_map_03() -> #{ a => 1, b => 2 }.
 const_map_04() -> #{ a => 1 }.
 
 -spec const_map_05_fail() -> #{ a := integer(), b := 2}.
-const_map_05_fail() -> #{ a => 1 }.
+const_map_05_fail() -> #{ a => 1 }. % b is mandatory
 
 -spec const_map_06_fail() -> #{ a := integer(), b := 2}.
 const_map_06_fail() -> #{ a => 1, b => 3 }. % b with wrong type
@@ -221,4 +221,11 @@ match_15_fail(M) ->
     case M of
         _ when is_map(M) -> use_map(M); % map has wrong type
         _ -> M
+    end.
+
+-spec match_16_fail(#{ atom() => integer() } | integer()) -> integer().
+match_16_fail(M) ->
+    case M of
+        _ when is_map(M) -> M; % wrong type
+        _ -> 1
     end.
