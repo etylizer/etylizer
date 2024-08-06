@@ -764,3 +764,48 @@ maps_complex8c_test() ->
     [
       %{#{beta_1 => tnone(), beta_3 => tnone()}, #{beta_1 => tatom(b), beta_3 => tint(21)}}
     ]).
+
+maps_complex9a_test() ->
+  % {β_0 => β_1} ≤ {atom() => integer()}
+  L = tmap([
+    tmap_field_opt(tvar(beta_0), tvar(beta_1))
+  ]),
+  R = tmap([
+    tmap_field_opt(tatom(), tint())
+  ]),
+  test_tally(
+    [beta_0, beta_1],
+    [{L, R}],
+    [
+      %{#{beta_1 => tnone(), beta_3 => tnone()}, #{beta_1 => tatom(b), beta_3 => tint(21)}}
+    ]).
+
+maps_complex9b_test() ->
+  % {β_0 := β_1} ≤ {atom() => integer()}
+  L = tmap([
+    tmap_field_man(tvar(beta_0), tvar(beta_1))
+  ]),
+  R = tmap([
+    tmap_field_opt(tatom(), tint())
+  ]),
+  test_tally(
+    [beta_0, beta_1],
+    [{L, R}],
+    [
+      %{#{beta_1 => tnone(), beta_3 => tnone()}, #{beta_1 => tatom(b), beta_3 => tint(21)}}
+    ]).
+
+maps_complex9c_test() ->
+  % {β_0 := β_1} ≤ {atom() => integer()}, a ≤ β_0, 1 ≤ β_1
+  L = tmap([
+    tmap_field_man(tvar(beta_0), tvar(beta_1))
+  ]),
+  R = tmap([
+    tmap_field_opt(tatom(), tint())
+  ]),
+  test_tally(
+    [beta_0, beta_1],
+    [{L, R}, {tatom(a), tvar(beta_0)}, {tint(1), tvar(beta_1)}],
+    [
+      %{#{beta_1 => tnone(), beta_3 => tnone()}, #{beta_1 => tatom(b), beta_3 => tint(21)}}
+    ]).
