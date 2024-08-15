@@ -1,41 +1,41 @@
 -module(ty_map).
 
-%% Implements quasi k-omega step function interpretation of maps
+% Implements the (~K)-Comprehension of maps
 
--define(OPT, optional).
 -define(MAN, mandatory).
--define(F(Z), fun() -> Z end).
--define(ASSOC_DIFF, fun(_, ?OPT) -> ?MAN; (A, _) -> A end).
--define(ASSOC_INT, fun(A, ?OPT) -> A; (_, ?MAN) -> ?MAN end).
+-define(OPT, optional).
+-define(VAR, variable).
 
 -export([compare/2, equal/2, has_ref/2, substitute/3, transform/2, all_variables/1]).
--export([map/2, big_intersect/1, intersect/2, diff_labels/2, diff_steps/2, diff_w1/2, key_variable_suite/1, step_names/0, key_domain/0]).
--import(maps, [to_list/1, keys/1, values/1]).
--export_type([l/0]).
+-export([anymap/1, emptymap/0, map/2, big_intersect/1, intersect/2, pi/2, step_names/0]).
+-export([comprehend_diff/2, field_diff/2, field_empty/1, field_normalize/3]).
+-export_type([label/0]).
 
--record(ty_map, { labels :: labels(),
-                  steps  :: steps(),
-                  omegas :: {
-                    O1 :: ty_ref(),
-                    O2 :: ty_ref(),
-                    W1 :: use_step | ty_ref()
-                  },
-                  key_variables :: {
-                    ManKeyVarUnion :: ty_ref(),
-                    OptKeyVarUnion :: ty_ref()
-                  }
-                }).
+-record(extension, {
+  labels :: label_map(),
+  steps  :: indexed_step_map(),
+  pre :: UnionOfSteps :: ty_ref(), % present steps = steps that are not mapped to empty
+  alpha_beta :: {A :: ty_ref(), B :: ty_ref()},
+  t_alpha_beta :: {TA :: ty_ref(), TB :: ty_ref()}
+}).
 
--type ty_map() :: #ty_map{}.
+-type ty_map() :: #extension{}.
 -type ty_ref() :: {ty_ref, integer()}.
 
--type labels() :: #{ al() => ty_ref() }.
--type steps()  :: #{ key_tag() := ty_ref() }.
--type al() :: {assoc(), l()}.
--type l()  :: {key_tag(), ty_ref()}.
+-type label_map() :: #{label() => field()}.
+-type indexed_step_map()  :: #{{index(), step()} := field()}.
 
--type key_tag() :: atom_key | integer_key | tuple_key.
--type assoc()   :: optional | mandatory.
+-type label_var_map() :: #{label() | label_var() => field()}.
+-type step_map() :: #{step() => field()}.
+
+-type label() :: {step(), ty_ref()}.
+-type label_var() :: {variable, ty_ref()}.
+-type field() :: {assoc(), ty_ref()}.
+
+-type step() :: integers | atoms | tuples.
+-type assoc() :: mandatory | optional.
+-type index() :: 'L' | 'LHat'.
+
 
 compare(A, B) when A < B -> -1;
 compare(A, B) when A > B -> 1;
@@ -43,202 +43,189 @@ compare(_, _) -> 0.
 equal(P1, P2) -> compare(P1, P2) =:= 0.
 
 
--spec map(X, steps()) -> ty_map() when
-  X :: #{al() | Y => ty_ref()},
-  Y :: {assoc(), {var_key, ty_ref()}}.
+-spec anymap(label_map()) -> ty_map().
+anymap(Ls) ->
+  % Shorthand for <<ty_map:map(Ls, #{any => any})>>
+  St = maps:from_keys(lists:flatten([[{'L', S}, {'LHat', S}] || S <- step_names()]), {?OPT, ty_rec:any()}),
+  Pre = union_all([step_ty(S) || S <- step_names()]),
+  E = ty_rec:empty(),
+  #extension{ labels = Ls, steps = St, pre = Pre, alpha_beta = {E, E}, t_alpha_beta = {E, E} }.
 
-map(LabelsVar, Steps) ->
-  {Labels, W1, W2, KeyVars} = maps:fold(fun(ALVar, Ref2, {Ls, W1, W2, K = {ManVarUnion, OptVarUnion}}) ->
-    case ALVar of
-      {?MAN, {var_key, Ref1}} -> {Ls, union([W1, Ref2]), W2, {union([Ref1, ManVarUnion]), OptVarUnion}};
-      {?OPT, {var_key, Ref1}} -> {Ls, W1, union([W2, Ref2]), {ManVarUnion, union([Ref1, OptVarUnion])}};
-      _ -> {Ls#{ALVar => Ref2}, W1, W2, K}
-    end
-                                        end, {#{}, ty_rec:empty(), ty_rec:empty(), {ty_rec:empty(), ty_rec:empty()}}, LabelsVar),
+-spec emptymap() -> ty_map().
+emptymap() ->
+  % Shorthand for <<ty_map:map(#{}, #{any => empty})>>
+  E = ty_rec:empty(),
+  St = maps:from_keys(lists:flatten([[{'L', S}, {'LHat', S}] || S <- step_names()]), {?OPT, E}),
+  #extension{ labels = #{}, steps = St, pre = E, alpha_beta = {E, E}, t_alpha_beta = {E, E} }.
 
-  EmptySteps = [S || {S, Ref} <- to_list(Steps), ty_rec:is_empty(Ref)],
-  StepsWithOmega = maps:merge(Steps, maps:from_keys(EmptySteps, W2)), % w2 embedded in steps
 
-  O1 = o1(Labels),
-  O2 = o2(O1, Steps),
-  W11 = case ty_rec:is_empty(W1) of
-          true -> use_step; % no mandatory key type vars
-          false -> W1
-        end,
+-spec map(label_var_map(), step_map()) -> ty_map().
+map(Labels, Steps) ->
+  LFolder =
+    fun(L, Fld, {Ls, MVars, OVars}) ->
+      case {L, Fld} of
+        {{?VAR, VarRef}, {?MAN, FRef}} -> {Ls, MVars#{VarRef => FRef}, OVars};
+        {{?VAR, VarRef}, {?OPT, FRef}} -> {Ls, MVars, OVars#{VarRef => FRef}};
+        {_, _} -> {Ls#{L => Fld}, MVars, OVars}
+      end
+    end,
 
-  #ty_map{ labels = Labels, steps = StepsWithOmega, omegas = {O1, O2, W11}, key_variables = KeyVars }.
+  {LabelMap, ManKVars, OptKVars} = maps:fold(LFolder, {#{}, #{}, #{}}, Labels),
+
+  Alpha = union_all(maps:keys(ManKVars)), TAlpha = union_all(maps:values(ManKVars)),
+  Beta = union_all(maps:keys(OptKVars)), TBeta = union_all(maps:values(OptKVars)),
+
+  StepsLHat = maps:merge(
+    maps:from_keys([{'LHat', S} || S <- step_names()], {?OPT, TBeta}),
+    maps:from_list([{{'LHat', S}, {?OPT, Ref}} || {S, Ref} <- maps:to_list(Steps)])
+  ),
+  StepsL =
+    case ty_rec:is_empty(Alpha) of
+      true -> maps:from_list([{{'L', S}, V} || {{_, S}, V} <- maps:to_list(StepsLHat)]);
+      false -> maps:from_keys([{'L', S} || S <- step_names()], {?MAN, TAlpha})
+    end,
+
+  #extension{ labels = LabelMap, steps = maps:merge(StepsL, StepsLHat),
+    pre = union_all([step_ty(S) || {S, Ref} <- maps:to_list(Steps), not ty_rec:is_empty(Ref)]),
+    alpha_beta = {Alpha, Beta},
+    t_alpha_beta = {TAlpha, TBeta}
+  }.
 
 
 -spec big_intersect([ty_map()]) -> ty_map().
-big_intersect([]) -> ty_map:map(#{}, maps:from_keys(step_names(), ty_rec:any()));
+big_intersect([]) -> ty_map:anymap(#{});
 big_intersect([Map | Maps]) -> lists:foldr(fun intersect/2, Map, Maps).
 
 
 -spec intersect(ty_map(), ty_map()) -> ty_map().
 intersect(Map1, Map2) ->
-  #ty_map{ steps = Steps1, omegas = {_O1, _O2, W1},  key_variables = {ManU1, OptU1} } = Map1,
-  #ty_map{ steps = Steps2, omegas = {_O11, _O22, W11},  key_variables = {ManU2, OptU2} } = Map2,
-  LsInt = intersect_labels(Map1, Map2),
-  StInt = maps:merge_with(fun(_, Ref1, Ref2) -> ty_rec:intersect(Ref1, Ref2) end, Steps1, Steps2),
+  #extension{ labels = Ls1, steps = St1, pre = Pre1, alpha_beta = {Alpha1, Beta1}, t_alpha_beta = {TA1, TB1} } = Map1,
+  #extension{ labels = Ls2, steps = St2, pre = Pre2, alpha_beta = {Alpha2, Beta2}, t_alpha_beta = {TA2, TB2} } = Map2,
 
-  O1Int = o1(LsInt), % = O1 U O11
-  O2Int = o2(O1Int, StInt), % = O2 U O22
-  W1Int = case {W1, W11} of
-            {use_step, use_step} -> use_step;
-            {_, use_step} -> ty_rec:intersect(W1, union(values(Steps2)));
-            {use_step, _} -> ty_rec:intersect(W11, union(values(Steps1)));
-            {_, _} -> ty_rec:intersect(W1, W11)
-          end,
-  KeyVars = {union([ManU1, ManU2]), union([OptU1, OptU2])},
+  AllLabels = maps:keys(Ls1) ++ maps:keys(Ls2),
+  Ls3 = maps:from_list([{L, field_intersect(pi(L, Map1), pi(L, Map2))} || L <- AllLabels]),
+  St3 = maps:intersect_with(fun(_IndexedStep, Fld1, Fld2) -> field_intersect(Fld1, Fld2) end, St1, St2),
 
-  #ty_map{ labels = LsInt, steps = StInt, omegas = {O1Int, O2Int, W1Int}, key_variables = KeyVars }.
+  #extension{ labels = Ls3, steps = St3,
+    pre = ty_rec:intersect(Pre1, Pre2),
+    alpha_beta = {ty_rec:intersect(Alpha1, Alpha2), ty_rec:intersect(Beta1, Beta2)},
+    t_alpha_beta = {ty_rec:intersect(TA1, TA2), ty_rec:intersect(TB1, TB2)}
+  }.
 
 
--spec diff_labels(ty_map(), ty_map()) -> labels().
-diff_labels(Map1, Map2) -> labels_apply({fun ty_rec:diff/2, ?ASSOC_DIFF}, Map1, Map2).
+-spec comprehend_diff(ty_map(), ty_map()) -> {label_map(), indexed_step_map(), Y1 :: ty_ref(), Y2 :: ty_ref()}.
+comprehend_diff(Map1, Map2) ->
+  % Y1 = -(A v La), Y2 = A v La v Lb v B v steps
+  #extension{ labels = Ls1, steps = St1, pre = Pre1, alpha_beta = {Alpha1, Beta1} } = Map1,
+  #extension{ labels = Ls2, steps = St2, pre = Pre2, alpha_beta = {Alpha2, Beta2} } = Map2,
 
--spec intersect_labels(ty_map(), ty_map()) -> labels().
-intersect_labels(Map1, Map2) -> labels_apply({fun ty_rec:intersect/2, ?ASSOC_INT}, Map1, Map2).
+  AllLabels = maps:keys(Ls1) ++ maps:keys(Ls2),
+  Ls3 = maps:from_list([{L, field_diff(pi(L, Map1), pi(L, Map2))} || L <- AllLabels]),
+  St3 = maps:intersect_with(fun(_IndexedStep, Fld1, Fld2) -> field_diff(Fld1, Fld2) end, St1, St2),
 
+  {ManLs1, OptLs1} = partition_labels(Ls1),
+  {ManLs2, OptLs2} = partition_labels(Ls2),
+  Param1Y1 = ty_rec:negate(union_all([Alpha1] ++ [LRef || {{_, LRef}, _} <- ManLs1])),
+  Param1Y2 = union_all([ty_rec:negate(Param1Y1), Beta1] ++ [LRef || {{_, LRef}, _} <- OptLs1]),
 
-labels_apply({Combiner, Associate}, Map1, Map2) ->
-  #ty_map{ labels = Labels1 } = Map1,
-  #ty_map{ labels = Labels2 } = Map2,
+  Param2Y1 = ty_rec:negate(union_all([Alpha2] ++ [LRef || {{_, LRef}, _} <- ManLs2])),
+  Param2Y2 = union_all([ty_rec:negate(Param2Y1), Beta2] ++ [LRef || {{_, LRef}, _} <- OptLs2]),
 
-  LsDiff1 =
-    maps:fold(
-      fun({A1, L}, Ref1, Ls) ->
-        {A2, Ref2} = pi(L, Map2),
-        AL = {Associate(A1, A2), L},
-        Ls#{AL => Combiner(Ref1, Ref2)}
-      end,
-      #{}, Labels1),
-
-  LsDiff2 =
-    maps:fold(
-      fun({A2, L}, Ref2, Ls) ->
-        {A1, Ref1} = pi(L, Map1),
-        AL = {Associate(A1, A2), L},
-        Ls#{AL => Combiner(Ref1, Ref2)}
-      end,
-      #{}, Labels2),
-
-  maps:merge(LsDiff1, LsDiff2).
+  {Ls3, St3, ty_rec:diff(Param1Y1, Param2Y1), ty_rec:diff(ty_rec:union(Param1Y2, ty_rec:diff(Pre1, Pre2)), ty_rec:union(Param2Y2, ty_rec:diff(Pre2, Pre1)))}.
 
 
--spec diff_steps(ty_map(), ty_map()) -> steps().
-diff_steps(Map1, Map2) ->
-  #ty_map{ steps = Steps1 } = Map1,
-  #ty_map{ steps = Steps2 } = Map2,
-  maps:merge_with(fun(_, Ref1, Ref2) -> ty_rec:diff(Ref1, Ref2) end, Steps1, Steps2).
-
-
--spec diff_w1(ty_map(), ty_map()) -> ty_ref().
-diff_w1(Map1, Map2) ->
-  % TODO imp detail: explain why labels diff instead of steps diff
-  #ty_map{ labels = Labels1, omegas = {_, _, W1} } = Map1,
-  #ty_map{ labels = Labels2, omegas = {_, _, W11} } = Map2,
-  case {W1, W11} of
-    {use_step, use_step} -> ty_rec:empty();
-    {_, use_step} -> ty_rec:diff(W1, union(values(Labels2)));
-    {use_step, _} -> ty_rec:diff(union(values(Labels1)), W11);
-    {_, _} -> ty_rec:diff(W1, W11)
-  end.
-
-
--spec key_variable_suite(ty_map()) -> {ty_ref(), ty_ref(), ty_ref(), ty_ref()}.
-key_variable_suite(#ty_map{ omegas = {O1, O2, _}, key_variables = {ManU, OptU} }) -> {O1, O2, ManU, OptU}.
-
-
--spec pi(l(), ty_map()) -> {assoc(), ty_ref()}.
-pi(L = {Tag, _}, Map) ->
-  #ty_map{ labels = Labels, steps = Steps, omegas = {_, _, W1} } = Map,
-  case Labels of
-    #{{?OPT, L} := Ref} -> {?OPT, Ref};
-    #{{?MAN, L} := Ref} -> {?MAN, Ref};
-    #{} ->
-      #{Tag := Ref} = Steps,
-      case W1 of use_step -> {?OPT, Ref}; _ -> {?MAN, W1} end
+-spec pi(label(), ty_map()) -> field().
+pi(L = {Step, _}, Map) ->
+  #extension{ labels = Ls, steps = St } = Map,
+  case Ls of
+    #{L := Fld} -> Fld;
+    #{} -> #{{'L', Step} := Fld} = St, Fld
   end.
 
 
 has_ref(Map, Ref) ->
-  #ty_map{ labels = Labels, steps = Steps, omegas = {_, _, W1} } = Map,
-  HasRef = fun({_, {_, Ref1}}, Ref2) -> Ref == Ref1 orelse Ref == Ref2;
-              (_, Ref1) -> Ref == Ref1
-           end,
-  LS = maps:filter(HasRef, maps:merge(Labels, Steps)),
-
-  Ref == W1 orelse maps:size(LS) > 0.
+  #extension{ labels = Ls, steps = St, alpha_beta = {Alpha, Beta} } = Map,
+  F1 = [X || X = {{_, LRef}, {_, FRef}} <- maps:to_list(Ls), Ref == LRef orelse Ref == FRef],
+  F2 = [X || X = {_, {_, FRef}} <- maps:to_list(St), Ref == FRef],
+  F1 ++ F2 /= [] orelse Alpha == Ref orelse Beta == Ref.
 
 
 substitute(Map, SubstituteMap, Memo) ->
-  #ty_map{ labels = Labels, steps = Steps, omegas = {_, _, W1}, key_variables = {ManU, OptU} } = Map,
-  SLabels = maps:map(fun(_, Ref) -> ty_rec:substitute(Ref, SubstituteMap, Memo) end, Labels),
-  SSteps  = maps:map(fun(_, Ref) -> ty_rec:substitute(Ref, SubstituteMap, Memo) end, Steps),
-  SW1     = case W1 of
-              use_step -> use_step;
-              _ -> ty_rec:substitute(W1, SubstituteMap, Memo)
-            end,
+  #extension{ labels = Ls, steps = St, pre = Pre, alpha_beta = {Alpha, Beta}, t_alpha_beta = {TA, TB} } = Map,
+  LsSub = maps:map(fun(_, {Assoc, FRef}) -> {Assoc, ty_rec:substitute(FRef, SubstituteMap, Memo)} end, Ls),
+  StSub = maps:map(fun(_, {Assoc, FRef}) -> {Assoc, ty_rec:substitute(FRef, SubstituteMap, Memo)} end, St),
+  ManLs = ty_rec:take_labels(AlphaSub = ty_rec:substitute(Alpha, SubstituteMap, Memo)),
+  OptLs = ty_rec:take_labels(BetaSub = ty_rec:substitute(Beta, SubstituteMap, Memo)),
 
-  % either all variables substituted or none of them
-  SManKeyVars = ty_rec:substitute(ManU, SubstituteMap, Memo),
-  % invariant: ManLabels = []  IFF  (W1 = use_step OR ManU does not substitute)
-  ManLabels = [{?MAN, L} || L <- ty_rec:to_labels(SManKeyVars)],
-  % update happens if W1 =/= use_step
-  LabelsUpd = maps:merge(SLabels, maps:from_keys(ManLabels, SW1)),
+  %% Labels %%
+  NewManLs = [{L, maps:get({'L', Step}, StSub)} || {Step, _} = L <- ManLs],
+  NewOptLs = [{L, maps:get({'LHat', Step}, StSub)} || {Step, _} = L <- OptLs],
+  NewLs = maps:merge(LsSub, maps:from_list(NewManLs ++ NewOptLs)),
 
-  SOptKeyVars = ty_rec:substitute(OptU, SubstituteMap, Memo),
-  NotAvailable = [S || S <- step_names(), ty_rec:is_empty(ty_rec:intersect(step_ty(S), SOptKeyVars))],
-  StepsUpd = maps:merge(SSteps, maps:from_keys(NotAvailable, ty_rec:empty())), % not type checkable unless n-element list types present
+  %% Steps, Key Variables %%
+  % Which steps are out in optional key var substitution
+  NotSubtypeSteps = [S || S <- step_names(), not ty_rec:is_subtype(step_ty(S), ty_rec:union(BetaSub, Pre))],
+  MkEmpty = fun(I) -> [{{I, S}, {?OPT, ty_rec:empty()}} || S <- NotSubtypeSteps] end,
+  {NewSt, NewAlpha, NewBeta} =
+    case ty_rec:is_subtype(AlphaSub,
+      union_all([LRef || {_, LRef} <- ManLs])) of
+      true ->
+        % Alpha has label upper bound (A = MuAlpha n (l1|...|ln) )
+        % Assume MuAlpha = any
+        Empty = maps:from_list(MkEmpty('L') ++ MkEmpty('LHat')),
+        {maps:merge(mk_equal_steps(StSub), Empty), ty_rec:empty(), BetaSub};
+      false ->
+        % A = MuAlpha n (A1|...|AM | l1|...|lN)
+        Empty = maps:from_list(MkEmpty('LHat')),
+        {maps:merge(StSub, Empty), AlphaSub, BetaSub}
+    end,
 
-  O11 = o1(LabelsUpd),
-  O22 = o2(O11, StepsUpd),
-  W11 = case ManLabels of [] -> SW1; _ -> use_step end,
-  KeyVars = {ty_rec:intersect(ManU, SManKeyVars), ty_rec:intersect(OptU, SOptKeyVars)},
-
-  #ty_map{ labels = LabelsUpd, steps = StepsUpd, omegas = {O11, O22, W11}, key_variables = KeyVars }.
+  #extension{labels = NewLs, steps = NewSt,
+    pre = union_all([Pre] ++ [step_ty(S) || S <- step_names() -- NotSubtypeSteps]),
+    alpha_beta = {NewAlpha, NewBeta},
+    t_alpha_beta = {ty_rec:substitute(TA, SubstituteMap, Memo), ty_rec:substitute(TB, SubstituteMap, Memo)}
+  }.
 
 
 transform(Map, #{to_map := ToMap}) ->
-  #ty_map{ labels = Labels, steps = Steps, omegas = {_, _, W1}, key_variables = {ManU, _} } = Map,
+  #extension{ labels = Ls, steps = St, pre = Pre, alpha_beta = {Alpha, Beta}, t_alpha_beta = {TA, TB} } = Map,
+  {ManLs, OptLs} = partition_labels(Ls),
+  PreSt = [S || S <- step_names(), ty_rec:is_subtype(step_ty(S), Pre)],
 
-  {ManLs, OptLs} = lists:partition(
-    fun ({{?MAN, _}, _}) -> true;
-        ({{?OPT, _}, _}) -> false
-    end,
-    to_list(Labels)),
+  ManMappings = [{LRef, FRef} || {{_Kind, LRef}, {_Assoc, FRef}} <- ManLs]
+    ++ case ty_rec:is_empty(Alpha) of true -> []; false -> [{Alpha, TA}] end,
 
-  ManKeyVars = case ty_rec:is_empty(ManU) of
-                 true -> [];
-                 false -> [{ManU, W1}]
-               end,
+  OptMappings = [{LRef, FRef} || {{_Kind, LRef}, {_Assoc, FRef}} <- OptLs]
+    ++ case ty_rec:is_empty(Beta) of true -> []; false -> [{Beta, TB}] end
+    ++ [{step_ty(S), begin {_, FRef} = maps:get({'LHat', S}, St), FRef end} || S <- PreSt],
 
-  ManAssoc = [{Ref1, Ref2} || {{_, {_, Ref1}}, Ref2} <- ManLs] ++ ManKeyVars,
-  OptAssoc = [{Ref1, Ref2} || {{_, {_, Ref1}}, Ref2} <- OptLs] ++ [{step_ty(S), Ref} || {S, Ref} <- to_list(Steps)],
-
-  ToMap(ManAssoc, OptAssoc).
+  ToMap(ManMappings, OptMappings).
 
 
 all_variables(Map) ->
-  #ty_map{ labels = Labels, steps = Steps, omegas = {_, _, W1}, key_variables = {ManU, OptU} } = Map,
-  LabelVars = lists:map(fun ty_rec:all_variables/1, values(Labels)),
-  StepVars = lists:map(fun ty_rec:all_variables/1, values(Steps)),
-  ty_rec:all_variables(W1)
-  ++ ty_rec:all_variables(ManU)
-    ++ ty_rec:all_variables(OptU)
-    ++ lists:flatten(LabelVars ++ StepVars).
+  #extension{ labels = Ls, steps = St, alpha_beta = {Alpha, Beta} } = Map,
+  ty_rec:all_variables(Alpha)
+  ++ ty_rec:all_variables(Beta)
+    ++ lists:flatten([ty_rec:all_variables(Ref) || {_, Ref} <- maps:values(Ls) ++ maps:values(St)]).
 
 
-union(Tys) -> lists:foldr(fun ty_rec:union/2, ty_rec:empty(), Tys).
-step_ty(atom_key) -> ty_rec:atom();
-step_ty(integer_key) -> ty_rec:interval();
-step_ty(tuple_key) -> ty_rec:tuple().
-step_names() -> [atom_key, integer_key, tuple_key].
-key_domain() -> union([ty_rec:interval(), ty_rec:atom(), ty_rec:tuple()]).
-negate_to_key_domain(Ref) -> ty_rec:diff(key_domain(), Ref).
-o1(Labels) ->
-  negate_to_key_domain(union([Ref || {_, {_, Ref}} <- keys(Labels)])).
-o2(O1, Steps) ->
-  ty_rec:intersect(O1,
-    union([step_ty(S) || {S, Ref} <- to_list(Steps), ty_rec:is_empty(Ref)])).
+union_all(Tys) -> lists:foldr(fun ty_rec:union/2, ty_rec:empty(), Tys).
+step_ty(atoms) -> ty_rec:atom();
+step_ty(integers) -> ty_rec:interval();
+step_ty(tuples) -> ty_rec:tuple().
+step_names() -> [atoms, integers, tuples]. % sequence matters
+%%key_domain() -> union_all([ty_rec:atom(), ty_rec:interval(), ty_rec:tuple()]).
+mk_equal_steps(St) -> maps:map(fun({_I, S}, _) -> maps:get({'LHat', S}, St) end, St).
+partition_labels(Ls) -> lists:partition(fun({_, {?MAN, _}}) -> true; ({_, {?OPT, _}}) -> false end, maps:to_list(Ls)).
+
+field_intersect({?OPT, Ref1}, {Assoc, Ref2}) -> {Assoc, ty_rec:intersect(Ref1, Ref2)};
+field_intersect({?MAN, _}, {?OPT, _}) -> {?MAN, ty_rec:empty()};
+field_intersect({?MAN, Ref1}, {_, Ref2}) -> {?MAN, ty_rec:intersect(Ref1, Ref2)}.
+field_diff({?MAN, Ref1}, {_, Ref2}) -> {?MAN, ty_rec:diff(Ref1, Ref2)};
+field_diff({?OPT, Ref1}, {?MAN, Ref2}) -> {?OPT, ty_rec:diff(Ref1, Ref2)};
+field_diff({?OPT, Ref1}, {?OPT, Ref2}) -> {?MAN, ty_rec:diff(Ref1, Ref2)}.
+
+field_empty({?OPT, _}) -> false;
+field_empty({?MAN, Ref}) -> ty_rec:is_empty(Ref).
+field_normalize({?OPT, _}, _, _) -> [[]];
+field_normalize({?MAN, Ref}, Fixed, M) -> ty_rec:normalize(Ref, Fixed, M).

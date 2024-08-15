@@ -2,11 +2,7 @@
 
 -define(ELEMENT, ty_map).
 -define(TERMINAL, bdd_bool).
-
--define(OPT, optional).
--define(MAN, mandatory).
 -define(F(Z), fun() -> Z end).
--define(NORM, fun ty_rec:normalize/3).
 
 -export([is_empty/1, normalize/5, substitute/4, apply_to_node/3]).
 -export([map/1, all_variables/1, transform/2]).
@@ -23,21 +19,18 @@ is_empty_coclause(Pos, Neg, T) ->
   case bdd_bool:empty() of
     T -> true;
     _ -> phi(ty_map:big_intersect(Pos), Neg)
-end.
+  end.
 
 phi(_, []) -> false;
 phi(P, [N | Ns]) ->
-  StepsDiff = ty_map:diff_steps(P, N),
-  W1Diff = ty_map:diff_w1(P, N),
-
-  case lists:all(fun ty_rec:is_empty/1, [W1Diff | maps:values(StepsDiff)]) of
+  {Ls, St, Y1, Y2} = ty_map:comprehend_diff(P, N),
+  case ty_rec:is_empty(Y1) andalso ty_rec:is_empty(Y2) andalso lists:all(fun ty_map:field_empty/1, maps:values(St)) of
     true ->
-      Rest = filter_empty_labels(ty_map:diff_labels(P, N)),
-      lists:all(
-        fun({AL, TyRef}) -> phi(ty_map:intersect(P, anymap(AL, TyRef)), Ns) end,
-        maps:to_list(Rest)
-      );
-    false -> phi(P, Ns)
+      FilteredLs = [X || {_, Fld} = X <- maps:to_list(Ls), not ty_map:field_empty(Fld)],
+      ToCheck = [ty_map:anymap(#{L => Fld}) || {L, Fld} <- FilteredLs],
+      lists:all(fun(M) -> phi(ty_map:intersect(P, M), Ns) end, ToCheck);
+    false ->
+      phi(P, Ns)
   end.
 
 
@@ -58,62 +51,21 @@ normalize_coclause(Fixed, M) -> fun(Pos, Neg, T) ->
 
 phi_norm(_, [], _, _) -> [];
 phi_norm(P, [N | Ns], Fixed, M) ->
-  StepsDiff = ty_map:diff_steps(P, N),
-  W1Diff = ty_map:diff_w1(P, N),
-  LabelsDiff = ty_map:diff_labels(P, N),
-
-  NormedKeyVars = ?F(norm_key_variables(
-    ty_map:key_variable_suite(P), ty_map:key_variable_suite(N),
-    Fixed,
-    M
-  )),
-  NormedSteps = [?F(?NORM(TyRef, Fixed, M)) || TyRef <- [W1Diff | maps:values(StepsDiff)]],
-  NormedLabels = [begin
-                    X = ?F(elim_assoc_conflict(?NORM(TyRef, Fixed, M), A)),
-                    Y = ?F(phi_norm(ty_map:intersect(P, anymap(AL, TyRef)), Ns, Fixed, M)),
-                    ?F(constraint_set:join(X, Y))
-                  end || {AL = {A, _}, TyRef} <- maps:to_list(LabelsDiff)],
+  {Ls, St, Y1, Y2} = ty_map:comprehend_diff(P, N),
+  NormY  = [?F(ty_rec:normalize(Y1, Fixed, M)), ?F(ty_rec:normalize(Y2, Fixed, M))],
+  NormSt = [?F(ty_map:field_normalize(Fld, Fixed, M)) || {{_, _}, Fld} <- maps:to_list(St)],
+  NormLs = [?F(
+    constraint_set:join(
+      ?F(ty_map:field_normalize(Fld, Fixed, M)),
+      ?F(phi_norm(ty_map:intersect(P, ty_map:anymap(#{L => Fld})), Ns, Fixed, M)))) || {L, Fld} <- maps:to_list(Ls)],
 
   constraint_set:join(
-    ?F(meet_all([NormedKeyVars | NormedSteps ++ NormedLabels])),
+    ?F(meet_all(NormY ++ NormSt ++ NormLs)),
     ?F(phi_norm(P, Ns, Fixed, M))
   ).
 
-
-norm_key_variables({O1, O2, PosManU, PosOptU}, {O11, O22, NegManU, NegOptU}, Fixed, M) ->
-  Bound = fun(VarUnion, Lower, Upper) ->
-    case ty_rec:is_empty(VarUnion) of
-      true -> [[]];
-      false ->
-        constraint_set:meet(
-          ?F(?NORM(ty_rec:diff(Lower, VarUnion), Fixed, M)),
-          ?F(?NORM(ty_rec:diff(VarUnion, Upper), Fixed, M)))
-    end
-          end,
-  {PosO1, PosO2} = {ty_rec:diff(O1, O11), ty_rec:diff(O2, O22)},
-  {NegO1, NegO2} = {ty_rec:diff(O11, O1), ty_rec:diff(O22, O2)},
-
-  meet_all([
-    ?F(Bound(PosManU, PosO1, PosO1)),
-    ?F(Bound(PosOptU, PosO2, PosO2)),
-    ?F(Bound(NegManU, NegO1, NegO1)),
-    ?F(Bound(NegOptU, NegO2, NegO2))
-  ]).
-
+meet_all(Cs) ->
+  lists:foldr(fun(C, Rest) -> constraint_set:meet(C, ?F(Rest)) end, [[]], Cs).
 
 apply_to_node(Node, SubstituteMap, Memo) ->
   substitute(Node, SubstituteMap, Memo, fun(N, S, M) -> ty_map:substitute(N, S, M) end).
-
-
-anymap(AL, TyRef) -> ty_map:map(#{AL => TyRef}, maps:from_keys(ty_map:step_names(), ty_rec:any())).
-filter_empty_labels(Labels) -> maps:filter(
-  fun({?OPT, _}, _) -> true;
-     ({?MAN, _}, TyRef) -> not ty_rec:is_empty(TyRef)
-  end, Labels).
-elim_assoc_conflict(_Constraints = C, _Association = A) ->
-  case {C, A} of
-    {[[]], ?OPT} -> []; % [[]] must only occur with mandatory
-    {[], ?OPT} -> [[]]; % ⊥ exists as solution
-    _ -> C
-  end.
-meet_all(Cs) -> lists:foldr(fun(C, Rest) -> constraint_set:meet(C, ?F(Rest)) end, [[]], Cs).

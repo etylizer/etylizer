@@ -233,7 +233,7 @@ ast_to_erlang_ty({fun_full, Comps, Result}) ->
 ast_to_erlang_ty({map_any}) ->
     ty_rec:map();
 ast_to_erlang_ty({map, []}) ->
-    EmptyMap = ty_map:map(#{}, maps:from_keys(ty_map:step_names(), ty_rec:empty())),
+    EmptyMap = ty_map:emptymap(),
     T = dnf_var_ty_map:map(dnf_ty_map:map(EmptyMap)),
     ty_rec:map(T);
 ast_to_erlang_ty({map, AssocList}) ->
@@ -310,8 +310,6 @@ maybe_new_variable(Name) ->
     end.
 
 convert_associations(AssocList) ->
-    EmptySteps = maps:from_keys(ty_map:step_names(), ty_rec:empty()),
-    EmptyLabels = #{},
     lists:foldr(
         fun({Association, Key, Val}, {X, Y}) ->
             case Association of
@@ -319,74 +317,99 @@ convert_associations(AssocList) ->
                     Convert = optional_converter(Val),
                     Convert(Key, {X, Y});
                 map_field_exact ->
-                    Convert = mandatory_converter(Val),
-                    Convert(Key, {X, Y})
+                    case Val of
+                        {predef, none} -> {X, Y};
+                        _ -> Convert = mandatory_converter(Val), Convert(Key, {X, Y})
+                    end
             end
-        end, {EmptyLabels, EmptySteps}, AssocList).
+        end, {_EmptyLabels = #{}, _EmptySteps = #{}}, AssocList).
 
 optional_converter(ValTy) ->
-    O = optional, [ATOM, INT, TUP | _] = ty_map:step_names(), VAR = var_key,
+    O = optional, [ATOM, INT, TUP | _] = ty_map:step_names(), VAR = variable,
     Ty2 = ast_to_erlang_ty(ValTy),
 
     fun Converter(Type, {X, Y}) ->
         Ty1 = ast_to_erlang_ty(Type),
+        Union = fun(T) -> ty_rec:union(T, Ty2) end,
         case Type of
             {singleton, T} when is_atom(T) ->
-                Label = {O, {ATOM, Ty1}},
-                {X#{Label => Ty2}, Y};
+                Label = {ATOM, Ty1},
+                {X#{Label => {O, Ty2}}, Y};
             {singleton, T} when is_integer(T) ->
-                Label = {O, {INT, Ty1}},
-                {X#{Label => Ty2}, Y};
+                Label = {INT, Ty1},
+                {X#{Label => {O, Ty2}}, Y};
             {predef_alias, Alias} ->
                 Converter(stdtypes:expand_predef_alias(Alias), {X, Y});
             {var, _} ->
-                Label = {O, {VAR, Ty1}},
-                {X#{Label => Ty2}, Y};
+                Label = {VAR, Ty1},
+                {X#{Label => {O, Ty2}}, Y};
             {tuple_any} ->
-                #{TUP := T} = Y,
-                {X, Y#{TUP := ty_rec:union(T, Ty2)}};
+                YY = maps:update_with(TUP, Union, Ty2, Y),
+                {X, YY};
             {tuple, _} ->
-                #{TUP := T} = Y,
-                {X, Y#{TUP := ty_rec:union(T, Ty2)}};
+                YY = maps:update_with(TUP, Union, Ty2, Y),
+                {X, YY};
             {predef, any} ->
-                YY = maps:map(fun(_, T) -> ty_rec:union(T, Ty2) end, Y),
+                YY = maps:merge(#{ATOM => Ty2, INT => Ty2, TUP => Ty2}, Y),
                 {X, YY};
             {predef, none} ->
                 {X, Y};
             {predef, atom} ->
-                #{ATOM := T} = Y,
-                {X, Y#{ATOM := ty_rec:union(T, Ty2)}};
+                YY = maps:update_with(ATOM, Union, Ty2, Y),
+                {X, YY};
             {predef, integer} ->
-                #{INT := T} = Y,
-                {X, Y#{INT := ty_rec:union(T, Ty2)}};
+                YY = maps:update_with(INT, Union, Ty2, Y),
+                {X, YY};
             {union, Tys} ->
                 lists:foldr(Converter, {X, Y}, Tys);
+            {intersection, Tys} ->
+                % Allowed form: Var1 n ... n VarN
+                case lists:all(fun({var, _}) -> true; (_) -> false end, Tys) of
+                    true ->
+                        Label = {VAR, Ty1},
+                        {X#{Label => {O, Ty2}}, Y};
+                    false ->
+                        io:format("Optional:~n~s~n", [pretty:render_ty(Type)]),
+                        erlang:error({"Map key not supported", Type})
+                end;
             _ ->
-                erlang:error({"Not supported optional key type", Type})
+                io:format("Optional:~n~s~n", [pretty:render_ty(Type)]),
+                erlang:error({"Map key not supported", Type})
         end
     end.
 
 mandatory_converter(ValTy) ->
-    M = mandatory, [ATOM, INT | _] = ty_map:step_names(), VAR = var_key,
+    M = mandatory, [ATOM, INT | _] = ty_map:step_names(), VAR = variable,
     Ty2 = ast_to_erlang_ty(ValTy),
 
     fun Converter(Type, {X, Y}) ->
         Ty1 = ast_to_erlang_ty(Type),
         case Type of
             {singleton, T} when is_atom(T) ->
-                Label = {M, {ATOM, Ty1}},
-                {X#{Label => Ty2}, Y};
+                Label = {ATOM, Ty1},
+                {X#{Label => {M, Ty2}}, Y};
             {singleton, T} when is_integer(T) ->
-                Label = {M, {INT, Ty1}},
-                {X#{Label => Ty2}, Y};
+                Label = {INT, Ty1},
+                {X#{Label => {M, Ty2}}, Y};
             {predef_alias, Alias} ->
                 Converter(stdtypes:expand_predef_alias(Alias), {X, Y});
             {var, _} ->
-                Label = {M, {VAR, Ty1}},
-                {X#{Label => Ty2}, Y};
+                Label = {VAR, Ty1},
+                {X#{Label => {M, Ty2}}, Y};
             {union, Tys} ->
                 lists:foldr(Converter, {X, Y}, Tys);
+            {intersection, Tys} ->
+                % Allowed form: Var1 n ... n VarN
+                case lists:all(fun({var, _}) -> true; (_) -> false end, Tys) of
+                    true ->
+                        Label = {VAR, Ty1},
+                        {X#{Label => {M, Ty2}}, Y};
+                    false ->
+                        io:format("Mandatory:~n~s~n", [pretty:render_ty(Type)]),
+                        erlang:error({"Map key not supported", Type})
+                end;
             _ ->
-                erlang:error({"Not supported mandatory key type", Type})
+                io:format("Mandatory:~n~s~n", [pretty:render_ty(Type)]),
+                erlang:error({"Map key not supported", Type})
         end
     end.

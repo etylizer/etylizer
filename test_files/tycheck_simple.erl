@@ -6,6 +6,17 @@
 % Each top-level definition of this module is typechecked in isolation
 % against its spec, inference is also tested.
 % If the name ends with _fail, the test must fail.
+-spec f(A::any()) -> integer().
+f(X) -> incr(X).
+
+-spec incr(integer()) -> integer().
+incr(X) -> X + 1.
+
+-spec list_map(fun((A::any()) -> B::any())) -> C::any().
+list_map(F) ->
+    fun G([]) -> []; % [A] -> [B]
+        G([H|T]) -> [F(H) | G(T)]
+    end.
 
 % Atoms
 -spec atom_01() -> foobar.

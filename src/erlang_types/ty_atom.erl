@@ -13,8 +13,8 @@ has_ref(_, _) -> false.
 all_variables(_) -> [].
 substitute(_, Ty, _, _) -> Ty.
 
-to_singletons({Atoms, finite}) -> [ty_rec:atom(dnf_var_ty_atom:ty_atom(finite([A]))) || A <- gb_sets:to_list(Atoms)];
-to_singletons({_, cofinite}) -> error(illegal_state).
+to_singletons({Atoms, finite}) -> {_Except = [], [ty_rec:atom(dnf_var_ty_atom:ty_atom(finite([A]))) || A <- gb_sets:to_list(Atoms)]};
+to_singletons({Atoms, cofinite}) -> {_Except = [ty_rec:atom(dnf_var_ty_atom:ty_atom(finite([A]))) || A <- gb_sets:to_list(Atoms)], []}.
 
 transform({Atoms, finite}, #{to_atom := ToAtom, union := Union}) ->
   Union(lists:map(fun(A) -> ToAtom(A) end, gb_sets:to_list(Atoms)));

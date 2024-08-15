@@ -25,8 +25,14 @@ apply_to_node(Node, _StdMap, _Memo) ->
   Node.
 
 to_singletons(TyBDD) -> dnf(TyBDD, {
-  fun([], [], T) -> ty_interval:to_singletons(T); (_, _, _) -> [] end,
-  fun erlang:'++'/2
+  fun(_, _, T) -> ty_interval:to_singletons(T) end,
+  fun(L, R) ->
+    {ExceptL, SinglesL} = L(),
+    {ExceptR, SinglesR} = R(),
+    Singles = ty_interval:diff(SinglesL ++ SinglesR, ty_interval:intersect(ExceptL, ExceptR)),
+    Sequences = lists:flatten([lists:seq(A, B) || {range, A, B} <- Singles]),
+    {[], [ty_rec:interval(dnf_var_int:int(ty_interval:interval(X, X))) || X <- Sequences]}
+  end
 }).
 
 

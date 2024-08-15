@@ -35,6 +35,7 @@ find_subst([{Low, High} | _], [], Sols) ->
             pretty:render_subst(Low),
             pretty:render_subst(High)
   ),
+  io:format(user, "SOLS: ~p~n", [Sols]),
   error("test failed because tally returned no substitution that matches low and high bounds");
 find_subst([], [_X | _Xs], _) -> error({"Too many substitutions"});
 find_subst(X = [{Low, High} | OtherTests], [Subst | Others], AllTally) ->
@@ -492,15 +493,17 @@ fun_local_own_test_() ->
 % =====
 % Map Normalization
 % =====
+
 maps_norm_simple1_test() ->
   % #{int() => int()}  ≤  #{a => β}
   L = tmap([tmap_field_opt(tint(), tint())]),
   R = tmap([tmap_field_opt(tvar(alpha), tvar(beta))]),
-
   test_tally([alpha, beta], [{L, R}],
-    [{#{alpha => tint(), beta => tint()},
-      #{alpha => tint(), beta => tany()}}
-    ]).
+    [{
+      _Lower = #{alpha => tint(), beta => tint()},
+      _Upper = #{alpha => tany(), beta => tany()}
+    }]).
+
 
 maps_norm_simple2_test() ->
   % #{int() => int(), atom() => atom()}  ≤  #{a => β}
@@ -509,11 +512,12 @@ maps_norm_simple2_test() ->
     tmap_field_opt(tatom(), tatom())
   ]),
   R = tmap([tmap_field_opt(tvar(alpha), tvar(beta))]),
-
   test_tally([alpha, beta], [{L, R}],
-    [{#{alpha => tunion(tint(), tatom()), beta => tunion(tint(), tatom())},
-      #{alpha => tunion(tint(), tatom()), beta => tany()}}
-    ]).
+    [{
+      _Lower = #{alpha => tunion(tint(), tatom()), beta => tunion(tint(), tatom())},
+      _Upper = #{alpha => tany(), beta => tany()}
+    }]).
+
 
 maps_norm_simple3_test() ->
   % #{int() => int(), _ => foo}  ≤  #{a => β}
@@ -521,13 +525,15 @@ maps_norm_simple3_test() ->
     tmap_field_opt(tint(), tint()),
     tmap_field_opt(tany(), tatom(foo))
   ]),
-  R = tmap([tmap_field_opt(tvar(alpha), tvar(beta))]),
-  KeyDom = tunion([tatom(), tint(), ttuple_any()]),
-
+  R = tmap(
+    [tmap_field_opt(tvar(alpha), tvar(beta))]
+  ),
   test_tally([alpha, beta], [{L, R}],
-    [{#{alpha => KeyDom, beta => tunion(tint(), tatom(foo))},
-      #{alpha => KeyDom, beta => tany()}}
-    ]).
+    [{
+      _Lower = #{alpha => tunion([tatom(), tint(), ttuple_any()]), beta => tunion(tint(), tatom(foo))},
+      _Upper = #{alpha => tany(), beta => tany()}
+    }]).
+
 
 maps_norm_simple4_test() ->
   % #{a => int()}  !≤  #{int() => β}
@@ -538,54 +544,56 @@ maps_norm_simple4_test() ->
   % #{int() => β}  ≤  #{a => int()}
   L2 = tmap([tmap_field_opt(tint(), tvar(beta))]),
   R2 = tmap([tmap_field_opt(tvar(alpha), tint())]),
-
   test_tally([alpha, beta], [{L2, R2}],
-    [{#{alpha => tint(), beta => tnone()},
-      #{alpha => tint(), beta => tint()}}
-    ]).
+    [{
+      _Lower = #{alpha => tint(), beta => tnone()},
+      _Upper = #{alpha => tany(), beta => tint()}
+    }]).
+
 
 maps_norm_simple5_test() ->
-  % #{a => int(), _ => atom()}  ≤  #{β => atom() | int()}
+  % #{a => int(), atom() => atom()}  ≤  #{β => atom() | int()}
   L = tmap([
     tmap_field_opt(tvar(alpha), tint()),
-    tmap_field_opt(tany(), tatom())
+    tmap_field_opt(tatom(), tatom())
   ]),
   R = tmap([
     tmap_field_opt(tvar(beta), tunion(tatom(), tint()))
   ]),
-  KeyDom = tunion([tatom(), tint(), ttuple_any()]),
   test_tally([alpha, beta], [{L, R}], [
-    {#{alpha => tnone(), beta => KeyDom},
-      #{alpha => tnone(), beta => KeyDom}}
-  ]),
-  % #{β => atom() | int()}  !≤  #{a => int(), _ => atom()}
-  catch test_tally([alpha, beta], [{R, L}], [{#{}, #{}}]).
+    {
+      _Lower = #{alpha => tnone(), beta => tunion([tatom(), tvar(alpha)])},
+      _Upper = #{alpha => tany(), beta => tany()}
+    }]).
+
+  % #{β => atom() | int()}  !≤  #{a => int(), _ => atom()} = #{_ => atom()}
+%%  catch test_tally([alpha, beta], [{R, L}], [{#{}, #{}}]).
+
 
 maps_norm_simple_additional_test() ->
   % #{a => atom()}  ≤  #{β => any()}
-  L = tmap([
-    tmap_field_opt(tvar(alpha), tatom())
-  ]),
-  R = tmap([
-    tmap_field_opt(tvar(beta), tany())
-  ]),
-  KeyDom = tunion([tatom(), tint(), ttuple_any()]),
-  test_tally([alpha, beta], [{L, R}], [
-    {#{alpha => tnone(), beta => tnone()},
-      #{alpha => KeyDom, beta => KeyDom}}
-  ]).
+  L = tmap([tmap_field_opt(tvar(alpha), tatom())]),
+  R = tmap([tmap_field_opt(tvar(beta), tany())]),
+  test_tally([alpha, beta], [{L, R}],
+    [{
+      _Lower = #{alpha => tnone()},
+      _Upper = #{alpha => tvar(beta)}
+    }]).
+
 
 maps_norm_complex1_test() ->
   % #{}  ≤  #{a := β}
   L = tmap([]),
   R1 = tmap([tmap_field_man(tvar(alpha), tvar(beta))]),
-  test_tally([alpha, beta], [{L, R1}], [
-    {#{alpha => tnone()},
-      #{alpha => tnone()}}
-  ]),
-  % #{}  ≤  #{a := β} /\ #{}
+  test_tally([alpha, beta], [{L, R1}],
+    [{
+      _Lower = #{alpha => tnone()},
+      _Upper = #{alpha => tnone()}
+    }]),
+  % #{}  !≤  #{a := β} /\ #{}
   R2 = tintersect([R1, L]),
   test_tally([alpha, beta], [{L, R2}], [{#{}, #{}}]).
+
 
 maps_norm_complex2_test() ->
   % #{foo := int(), _ => any()}  !≤  #{foo := 1, a => β}
@@ -599,6 +607,7 @@ maps_norm_complex2_test() ->
   ]),
   catch test_tally([alpha, beta], [{L, R}], [{#{}, #{}}]). % should normalize to []
 
+
 maps_norm_complex3_test() ->
   % #{foo := 1, bar := 2}  ≤  #{a := 1, β := γ} = #{a|β := 1|γ}
   L = tmap([
@@ -609,11 +618,12 @@ maps_norm_complex3_test() ->
     tmap_field_man(tvar(alpha), tint(1)),
     tmap_field_man(tvar(beta), tvar(gamma))
     ]),
-  U = tunion(tatom(foo), tatom(bar)),
-
   test_tally([alpha, beta, gamma], [{L, R}],
-    [{#{alpha => tnone(), beta => tnone(), gamma => tint(2)},
-      #{alpha => U, beta => U, gamma => tany()}}]).
+    [{
+      _Lower = #{alpha => tnone(),                        beta => tnone(),                        gamma => tint(2)},
+      _Upper = #{alpha => tunion(tatom(foo), tatom(bar)), beta => tunion(tatom(foo), tatom(bar)), gamma => tany()}
+    }]).
+
 
 maps_norm_complex4_test() ->
   % #{a := β, _ => any()}  ≤  #{γ := δ, _ => any()}
@@ -626,8 +636,16 @@ maps_norm_complex4_test() ->
     tmap_field_opt(tany(), tany())
   ]),
   test_tally([alpha, beta, gamma, delta], [{L, R}],
-    [{#{alpha => tnone(), beta => tnone(), gamma => tnone()},
-      #{alpha => tnone(), beta => tvar(delta), gamma => tnone()}}]).
+    [{
+      _Lower1 = #{alpha => tvar(gamma), beta => tnone()},
+      _Upper1 = #{alpha => tany(), beta => tvar(delta)}
+    }]),
+  test_tally([gamma, delta, alpha, beta], [{L, R}],
+    [{
+      _Lower2 = #{gamma => tnone(), delta => tvar(beta)},
+      _Upper2 = #{gamma => tvar(alpha), delta => tany()}
+    }]).
+
 
 maps_norm_complex5_test() ->
   % #{int() => atom(), atom() => int()}  ≤  #{int() => a, atom() => β, γ => δ}
@@ -640,23 +658,19 @@ maps_norm_complex5_test() ->
     tmap_field_opt(tatom(), tvar(beta)),
     tmap_field_opt(tvar(gamma), tvar(delta))
   ]),
-  KeyDom = tunion([tatom(), tint(), ttuple_any()]),
-  AtomMinusDelta = tintersect([tatom(), tnegate(tvar(delta))]),
-  IntMinusDelta = tintersect([tint(), tnegate(tvar(delta))]),
-
   test_tally([alpha, beta, gamma, delta], [{L, R}],
-    [{#{alpha => AtomMinusDelta, beta => IntMinusDelta, gamma => tnone(), delta => tnone()},
-      #{alpha => tany(),         beta => tany(),        gamma => KeyDom,  delta => tany()}}]).
+    [{
+      _Lower = #{alpha => tatom(), beta => tint()},
+      _Upper = #{alpha => tany(),  beta => tany()}}
+    ]).
+
 
 maps_norm_complex6_test() ->
   % #{foo := int(), _ => atom()}  ≤  #{a := β, _ => any()} | #{γ := δ, _ => any()}
+  % (B1 n -steps1) v A1 v La1 v Lb1  <  (B2 n -steps2) v A2 v La2 v Lb2
   L = tmap([
     tmap_field_man(tatom(foo), tint()),
     tmap_field_opt(tany(), tatom())
-  ]),
-  _RR = tmap([
-    tmap_field_man(tvar(alpha), tvar(beta)),
-    tmap_field_opt(tany(), tany())
   ]),
   R = tunion(
     tmap([
@@ -668,16 +682,15 @@ maps_norm_complex6_test() ->
       tmap_field_opt(tany(), tany())
     ])
   ),
-  Foo = tatom(foo),
-
-  % One redundant "sub constraint" is discarded
   test_tally([alpha, beta, gamma, delta], [{L, R}],
-    [{#{alpha => Foo, beta => tint()},
-      #{alpha => Foo, beta => tany()}},
+    [
+      {_Lower1 = #{alpha => tnone(), beta => tint()}, _Upper1 = #{alpha => tatom(foo), beta => tany()}},
+      {_Lower2 = #{gamma => tnone(), delta => tint()}, _Upper2 = #{gamma => tatom(foo), delta => tany()}},
+      {
+        _Lower3 = #{alpha => tnone(),    beta => tinter([tint(), tnegate(tvar(delta))]), gamma => tnone()},
+        _Upper3 = #{alpha => tatom(foo), beta => tany(),                                 gamma => tatom(foo)}
+      }]).
 
-      {#{gamma => Foo, delta => tint()},
-        #{gamma => Foo, delta => tany()}}
-    ]).
 
 maps_norm_example1_test() ->
   % #{foo := 1, bar => 2}  ≤  #{β => 1|2}
@@ -689,12 +702,14 @@ maps_norm_example1_test() ->
     tmap_field_opt(tvar(beta), tunion(tint(1), tint(2)))
   ]),
   test_tally([beta], [{L, R}], [
-    {#{beta => tunion(tatom(foo), tatom(bar))},
-      #{beta => tunion(tatom(foo), tatom(bar))}}
-  ]).
+    {
+      _Lower = #{beta => tunion(tatom(foo), tatom(bar))},
+      _Upper = #{beta => tany()}
+    }]).
+
 
 maps_norm_example2_test() ->
-  % #{foo := 1, bar => 2}  !≤  #{a := 1, β => 2}
+  % #{foo := 1, bar => 2}  ≤  #{a := 1, β => 2}
   L = tmap([
     tmap_field_man(tatom(foo), tint(1)),
     tmap_field_opt(tatom(bar), tint(2))
@@ -703,7 +718,54 @@ maps_norm_example2_test() ->
     tmap_field_man(tvar(alpha), tint(1)),
     tmap_field_opt(tvar(beta), tint(2))
   ]),
-  catch test_tally([alpha, beta], [{L, R}], [
-    {#{beta => tunion(tatom(foo), tatom(bar))},
-      #{beta => tunion(tatom(foo), tatom(bar))}}
-  ]).
+  test_tally([alpha, beta], [{L, R}], [
+    {
+      _Lower = #{alpha => tnone(), beta => tatom(bar)},
+      _Upper = #{alpha => tatom(foo), beta => tany()}
+    }]).
+
+
+maps_mail1_test() ->
+  % {beta_0 := beta_1} < {atom() => integer()}
+  L = tmap([
+    tmap_field_man(tvar(beta0), tvar(beta1))
+  ]),
+  R = tmap([
+    tmap_field_opt(tatom(), tint())
+  ]),
+  test_tally([beta0, beta1], [{L, R}, {tatom(a), tvar(beta0)}, {tint(1), tvar(beta1)}], [
+    {
+      _Lower = #{beta0 => tatom(a), beta1 => tint(1)},
+      _Upper = #{beta0 => tany(), beta1 => tany()}
+    }]).
+
+maps_mail2_test() ->
+  % {beta_0 := beta_1} < {atom() => integer()}
+  L = tmap([
+    tmap_field_man(tvar(beta0), tvar(beta1))
+  ]),
+  R = tmap([
+    tmap_field_opt(tatom(), tint())
+  ]),
+  test_tally([beta0, beta1], [{L, R}], [
+    {
+      _Lower = #{beta0 => tnone(), beta1 => tnone()},
+      _Upper = #{beta0 => tatom(), beta1 => tint()}
+    }]).
+
+maps_mail3_test() ->
+  % {beta_0 := beta_1, beta2 := beta3} < {a := b, 20 := 21}
+  L = tmap([
+    tmap_field_man(tvar(beta0), tvar(beta1)),
+    tmap_field_man(tvar(beta2), tvar(beta3))
+  ]),
+  R = tmap([
+    tmap_field_man(tatom(a), tatom(b)),
+    tmap_field_man(tint(20), tint(21))
+  ]),
+  test_tally([beta0, beta1, beta2, beta3], [{L, R}], [
+    {
+      _Lower = #{beta0 => tnone(), beta1 => tnone(), beta2 => tnone(), beta3 => tnone()},
+      _Upper = #{beta0 => tunion([tint(20), tatom(a)]), beta1 => tnone(), beta2 => tunion([tint(20), tatom(a)]), beta3 => tnone()}
+    }]).
+

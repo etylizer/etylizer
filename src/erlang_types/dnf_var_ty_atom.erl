@@ -29,6 +29,11 @@ apply_to_node(Node, _StdMap, _Memo) ->
   Node.
 
 to_singletons(TyBDD) -> dnf(TyBDD, {
-  fun([], [], T) -> ty_atom:to_singletons(T); (_, _, _) -> [] end,
-  fun erlang:'++'/2
+  fun(_, _, T) -> ty_atom:to_singletons(T) end,
+  fun(L, R) ->
+    {ExceptL, SinglesL} = L(),
+    {ExceptR, SinglesR} = R(),
+    Except = ExceptL -- (ExceptL -- ExceptR),
+    {[], (SinglesL ++ SinglesR) -- Except}
+  end
   }).

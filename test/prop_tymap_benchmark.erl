@@ -21,6 +21,7 @@
 -define(B3, begin tvar('B3') end).
 -define(Def, begin tvar('Def') end).
 -define(Init, begin tvar('Init') end).
+-define(F(Z), fun() -> Z end).
 
 -define(ETY, fun(T) -> ast_lib:ast_to_erlang_ty(T) end).
 -define(FUN1, fun(Dom, Codom) -> mk_fun(mk_h(Dom, Codom)) end).
@@ -55,7 +56,7 @@ mk_fun(Fs) ->
 -spec mk_h([ast:ty()], ast:ty()) -> f_helper().
 mk_h(Dom, Codom) -> [[{Dom, Codom}]].
 
--spec mk_condition(ety(), ety(), ety()) -> condition().
+-spec mk_condition(ety(), ety(), fun(() -> ety())) -> condition().
 mk_condition(S, T, R) -> {{S, T}, R}.
 
 -spec domain(f_helper()) -> ety().
@@ -74,7 +75,7 @@ apply_to(Fs, Args, Substitution) ->
         {intersect, [mk_condition(
           ty_rec:substitute(Args, Substitution),
           ty_rec:substitute(?ETY(ttuple(Dom)), Substitution),
-          ty_rec:substitute(?ETY(Codom), Substitution)
+          ?F(ty_rec:substitute(?ETY(Codom), Substitution))
         ) || {Dom, Codom} <- Fs]
         }
       end,
@@ -93,7 +94,7 @@ eval_intcond({intersect, C}) ->
 
 eval_cond(C) ->
   Result = fun({error, _}) -> false; (_) -> true end,
-  [Ety3 || {{Ety1, Ety2}, Ety3} <- C, Result(etally:tally([{Ety1, Ety2}]))].
+  [Ety3() || {{Ety1, Ety2}, Ety3} <- C, Result(etally:tally([{Ety1, Ety2}]))].
 
 
 -spec application(f(), Args::ety()) -> {ok, Result::ety()} | error.

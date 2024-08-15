@@ -35,11 +35,18 @@ transform_single({right, R}, M = #{diff := D}) when R > 1 ->
 transform_single({right, R}, M = #{union := U}) when R < 1 ->
     U([{predef_alias, pos_integer}, transform_single({range, R, 1}, M)]).
 
-to_singletons([]) -> [];
-to_singletons([{range, A, B} | Ints]) ->
-    [ty_rec:interval(dnf_var_int:int(interval(X, X))) || X <- lists:seq(A, B)] ++ to_singletons(Ints);
-to_singletons(_) ->
-    error(illegal_state).
+
+to_singletons([any_int]) -> {_Except = [], []};
+to_singletons([]) -> {_Except = [], []};
+to_singletons([{range, L, R} | Ints]) ->
+    {Except, Singles} = to_singletons(Ints),
+    {Except,  [ty_rec:interval(dnf_var_int:int(ty_interval:interval(L, R))) | Singles]};
+to_singletons([{left, L} | Ints]) ->
+    {Except, Singles} = to_singletons(Ints),
+    {[ty_rec:interval(dnf_var_int:int(ty_interval:interval(L + 1, '*'))) | Except], Singles};
+to_singletons([{right, R} | Ints]) ->
+    {Except, Singles} = to_singletons(Ints),
+    {[ty_rec:interval(dnf_var_int:int(ty_interval:interval('*', R - 1))) | Except], Singles}.
 
 %% representation
 %% left? range* right?
