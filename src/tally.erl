@@ -28,7 +28,7 @@ tally(SymTab, Constraints, FixedVars) ->
   tally(SymTab, Constraints, FixedVars, fun() -> noop end).
 
 -spec tally(symtab:t(), constr:subty_constrs(), sets:set(ast:ty_varname()), fun(() -> any())) -> [subst:t()] | {error, [{error, string()}]}.
-tally(_SymTab, Constraints, FixedVars, Order) ->
+tally(SymTab, Constraints, FixedVars, Order) ->
   % reset the global cache, will be fixed in the future
   ty_ref:reset(),
   ty_variable:reset(),
@@ -41,14 +41,14 @@ tally(_SymTab, Constraints, FixedVars, Order) ->
   % io:format(user, "~s~n", [test_utils:format_tally_config(sets:to_list(Constraints), FixedVars)]),
 
   InternalConstraints = lists:map(
-    fun({scsubty, _, S, T}) -> {ast_lib:ast_to_erlang_ty(S), ast_lib:ast_to_erlang_ty(T)} end,
+    fun({scsubty, _, S, T}) -> {ast_lib:ast_to_erlang_ty(S, SymTab), ast_lib:ast_to_erlang_ty(T, SymTab)} end,
     lists:sort(fun({scsubty, _, S, T}, {scsubty, _, X, Y}) -> ({S, T}) < ({X, Y}) end,
       sets:to_list(Constraints))
   ),
   FixedTallyTyvars =
     [ast_lib:ast_to_erlang_ty_var({var, Var}) || Var <- lists:sort(sets:to_list(FixedVars))],
   InternalResult = etally:tally(InternalConstraints, sets:from_list(FixedTallyTyvars)),
-%%  io:format(user, "Got Constraints ~n~p~n~p~n", [InternalConstraints, InternalResult]),
+%  io:format(user, "Got Constraints ~n~p~n~p~n", [InternalConstraints, InternalResult]),
 
   Free = tyutils:free_in_subty_constrs(Constraints),
 
