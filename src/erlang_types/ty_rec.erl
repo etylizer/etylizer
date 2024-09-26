@@ -321,8 +321,8 @@ extract_variables(Ty = #ty{ predef = P, atom = A, interval = I, list = L, tuple 
       dnf_var_ty_atom:all_variables(A),
       dnf_var_int:all_variables(I),
       dnf_var_ty_list:all_variables(L),
-      dnf_var_ty_tuple:mall_variables(T),
-      dnf_var_ty_function:mall_variables(F),
+      dnf_var_ty_tuple:mall_variables(T, #{}),
+      dnf_var_ty_function:mall_variables(F, #{}),
       dnf_var_ty_map:all_variables(M)
     ]),
 
