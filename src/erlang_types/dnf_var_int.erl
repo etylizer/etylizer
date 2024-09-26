@@ -4,7 +4,7 @@
 -define(TERMINAL, ty_interval).
 
 -export([is_empty/1, normalize/3, substitute/4]).
--export([var/1, int/1, all_variables/1, transform/2, apply_to_node/3, to_singletons/1]).
+-export([var/1, int/1, all_variables/2, transform/2, apply_to_node/3, to_singletons/1]).
 
 -include("bdd_var.hrl").
 

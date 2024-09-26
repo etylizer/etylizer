@@ -7,10 +7,10 @@
 -export([is_empty/1]).
 -export([transform/2]).
 -export([finite/1, cofinite/1]).
--export([has_ref/2, to_singletons/1, normalize/5, substitute/4, all_variables/1]).
+-export([has_ref/2, to_singletons/1, normalize/5, substitute/4, all_variables/2]).
 
 has_ref(_, _) -> false.
-all_variables(_) -> [].
+all_variables(_, _) -> [].
 substitute(_, Ty, _, _) -> Ty.
 
 to_singletons({Atoms, finite}) -> [ty_rec:atom(dnf_var_ty_atom:ty_atom(finite([A]))) || A <- gb_sets:to_list(Atoms)];

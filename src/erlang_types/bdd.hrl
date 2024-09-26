@@ -13,7 +13,7 @@
 % hide built-in Erlang node function
 -compile({no_auto_import, [node/1]}).
 
--export([has_ref/2, get_dnf/1, any/0, empty/0, equal/2, node/1, terminal/1, compare/2, union/2, intersect/2, negate/1, diff/2]).
+-export([all_variables/1, has_ref/2, get_dnf/1, any/0, empty/0, equal/2, node/1, terminal/1, compare/2, union/2, intersect/2, negate/1, diff/2]).
 
 % these are defined here so the IDE does not complain
 -ifndef(ELEMENT).
@@ -186,13 +186,14 @@ has_ref(Ty, Ref) ->
     fun(F1, F2) -> F1() orelse F2() end
   }).
 
-all_variables(Ty) ->
+all_variables(Ty) -> all_variables(Ty, #{}).
+all_variables(Ty, M) ->
   dnf(Ty, {
     fun
       (P,N,T) ->
-        ?TERMINAL:all_variables(T) ++
-          lists:foldl(fun(L, Acc) -> Acc ++ ?ELEMENT:all_variables(L) end, [], P) ++
-          lists:foldl(fun(L, Acc) -> Acc ++ ?ELEMENT:all_variables(L) end, [], N)
+        ?TERMINAL:all_variables(T, M) ++
+          lists:foldl(fun(L, Acc) -> Acc ++ ?ELEMENT:all_variables(L, M) end, [], P) ++
+          lists:foldl(fun(L, Acc) -> Acc ++ ?ELEMENT:all_variables(L, M) end, [], N)
     end,
     fun(F1, F2) -> lists:usort(F1() ++ F2()) end
   }).

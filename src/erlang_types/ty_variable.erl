@@ -4,7 +4,7 @@
 -export([setup_all/0, reset/0]).
 -define(VAR_ETS, variable_counter_ets_table).
 
--export([equal/2, compare/2, substitute/4, has_ref/2, all_variables/1, name/1]).
+-export([equal/2, compare/2, substitute/4, has_ref/2, all_variables/2, name/1]).
 
 
 -export([new/1, smallest/3, normalize/6, transform/2, get_new_id/0]).
@@ -92,7 +92,7 @@ substitute(MkTy, Var, Map, _Memo) ->
   X = maps:get(Var, Map, ty_rec:variable(Var)),
   MkTy(X).
 
-all_variables(Var) -> [Var].
+all_variables(Var, _) -> [Var].
 transform(Ty, #{var := ToVar}) -> ToVar(Ty).
 
 -ifdef(TEST).

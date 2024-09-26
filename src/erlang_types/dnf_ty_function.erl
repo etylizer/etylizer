@@ -12,7 +12,7 @@
 -export([apply_to_node/3]).
 -export([normalize/6, substitute/4, is_empty/1]).
 
--export([function/1, all_variables/1, transform/2]).
+-export([function/1, all_variables/2, transform/2]).
 
 -type ty_ref() :: {ty_ref, integer()}.
 -type dnf_function() :: term().

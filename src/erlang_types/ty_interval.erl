@@ -8,7 +8,7 @@
 
 -export([empty/0, any/0]).
 -export([union/2, intersect/2, diff/2, negate/1, is_any/1]).
--export([is_empty/1, eval/1, normalize/5, substitute/4, all_variables/1, to_singletons/1]).
+-export([is_empty/1, eval/1, normalize/5, substitute/4, all_variables/2, to_singletons/1]).
 
 
 -export([interval/2, cointerval/2]).
@@ -163,7 +163,7 @@ normalize(TyInterval, PVar, NVar, Fixed, M) ->
 substitute(_, Ty, _, _) -> Ty.
 % there is nothing to substitute in a ty_interval
 map_pi(_) -> #{}.
-all_variables(_) -> [].
+all_variables(_, _) -> [].
 
 -ifdef(TEST).
 -include_lib("eunit/include/eunit.hrl").

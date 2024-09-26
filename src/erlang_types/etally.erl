@@ -17,9 +17,8 @@ tally(Constraints, FixedVars) ->
   Normalized = ?TIME(tally_normalize, tally_normalize(Constraints, FixedVars)),
   io:format(user,"NORM~n", []),
   Saturated = ?TIME(tally_saturate, tally_saturate(Normalized, FixedVars)),
-  io:format(user,"SAT~n", []),
+  io:format(user,"SAT~n~p~n", [Saturated]),
   Solved = ?TIME(tally_solve, tally_solve(Saturated, FixedVars)),
-  io:format(user,"SOLV~n", []),
   % sanity: every substitution satisfies all given constraints, if no error
   ?SANITY(substitutions_solve_input_constraints, case Solved of {error, _} -> ok; _ -> [ true = is_valid_substitution(Constraints, Subst) || Subst <- Solved] end),
   Solved.
@@ -46,6 +45,7 @@ tally_saturate(Normalized, FixedVars) ->
 
 tally_solve([], _FixedVars) -> {error, []};
 tally_solve(Saturated, FixedVars) ->
+  io:format(user, "Solve...", []),
   Solved = solve(Saturated, FixedVars),
   [ maps:from_list(Subst) || Subst <- Solved].
 
@@ -55,6 +55,7 @@ solve(SaturatedSetOfConstraintSets, FixedVariables) ->
 
 solve_single([], Equations, _) -> Equations;
 solve_single([{SmallestVar, Left, Right} | Cons], Equations, Fix) ->
+  io:format(user, "Solve...", []),
   % constraints are already sorted by variable ordering
   % smallest variable first
   % also TODO: why are variable names atoms?
@@ -70,7 +71,10 @@ unify(EquationList) ->
   % sort to smallest variable
   % select in E the equation α = tα for smallest α
   [Eq = {eq, Var, TA} | _Tail] = lists:usort(fun({_, Var, _}, {_, Var2, _}) -> ty_variable:compare(Var, Var2) =< 0 end, EquationList),
+  
+  io:format(user, "Check all vars...", []),
   Vars = ty_rec:all_variables(TA),
+  io:format(user, "Done...", []),
   NewTA = case length([Z || Z <- Vars, Z == Var]) of
             0 ->
               TA;

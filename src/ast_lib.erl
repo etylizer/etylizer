@@ -246,14 +246,14 @@ ast_to_erlang_ty({fun_full, Comps, Result}, Sym, M) ->
     ty_rec:function(length(Comps), T);
 
 % maps
-ast_to_erlang_ty({map_any}) ->
+ast_to_erlang_ty({map_any}, _Sym, _M) ->
     ty_rec:map();
-ast_to_erlang_ty({map, []}) ->
+ast_to_erlang_ty({map, []}, _Sym, _M) ->
     EmptyMap = ty_map:map(#{}, maps:from_keys(ty_map:step_names(), ty_rec:empty())),
     T = dnf_var_ty_map:map(dnf_ty_map:map(EmptyMap)),
     ty_rec:map(T);
-ast_to_erlang_ty({map, AssocList}) ->
-    {LabelMappings, StepMappings} = convert_associations(AssocList),
+ast_to_erlang_ty({map, AssocList}, Sym, M) ->
+    {LabelMappings, StepMappings} = convert_associations(AssocList, Sym, M),
     Map = ty_map:map(LabelMappings, StepMappings),
     T = dnf_var_ty_map:map(dnf_ty_map:map(Map)),
     ty_rec:map(T);
@@ -276,13 +276,13 @@ ast_to_erlang_ty({predef, T}, _Sym, _) when T == pid; T == port; T == reference;
     ty_rec:predef(dnf_var_predef:predef(ty_predef:predef(T)));
 
 % named
-ast_to_erlang_ty(T = {named, Loc, Ref, Args}, Sym, M) ->
+ast_to_erlang_ty({named, Loc, Ref, Args}, Sym, M) ->
     % io:format(user,"ENTER ~p~ncontext: ~p~n", [T, M]),
     case M of
         #{{Ref, Args} := NewRef} -> 
             NewRef;
         _ ->
-            (Scheme = {ty_scheme, Vars, Ty}) = symtab:lookup_ty(Ref, Loc, Sym),
+            (_Scheme = {ty_scheme, Vars, Ty}) = symtab:lookup_ty(Ref, Loc, Sym),
             % io:format(user,"NEWID for ~p~n", [T]),
             % io:format(user,"Scheme: ~p~n", [Scheme]),
             
@@ -349,27 +349,27 @@ maybe_new_variable(Name) ->
             Variable
     end.
 
-convert_associations(AssocList) ->
+convert_associations(AssocList, Sym, M) ->
     EmptySteps = maps:from_keys(ty_map:step_names(), ty_rec:empty()),
     EmptyLabels = #{},
     lists:foldr(
         fun({Association, Key, Val}, {X, Y}) ->
             case Association of
                 map_field_opt ->
-                    Convert = optional_converter(Val),
+                    Convert = optional_converter(Val, Sym, M),
                     Convert(Key, {X, Y});
                 map_field_req ->
-                    Convert = mandatory_converter(Val),
+                    Convert = mandatory_converter(Val, Sym, M),
                     Convert(Key, {X, Y})
             end
         end, {EmptyLabels, EmptySteps}, AssocList).
 
-optional_converter(ValTy) ->
+optional_converter(ValTy, Sym, M) ->
     O = optional, [ATOM, INT, TUP | _] = ty_map:step_names(), VAR = var_key,
-    Ty2 = ast_to_erlang_ty(ValTy),
+    Ty2 = ast_to_erlang_ty(ValTy, Sym, M),
 
     fun Converter(Type, {X, Y}) ->
-        Ty1 = ast_to_erlang_ty(Type),
+        Ty1 = ast_to_erlang_ty(Type, Sym, M),
         case Type of
             {singleton, T} when is_atom(T) ->
                 Label = {O, {ATOM, Ty1}},
@@ -406,12 +406,12 @@ optional_converter(ValTy) ->
         end
     end.
 
-mandatory_converter(ValTy) ->
+mandatory_converter(ValTy, Sym, M) ->
     M = mandatory, [ATOM, INT | _] = ty_map:step_names(), VAR = var_key,
-    Ty2 = ast_to_erlang_ty(ValTy),
+    Ty2 = ast_to_erlang_ty(ValTy, Sym, M),
 
     fun Converter(Type, {X, Y}) ->
-        Ty1 = ast_to_erlang_ty(Type),
+        Ty1 = ast_to_erlang_ty(Type, Sym, M),
         case Type of
             {singleton, T} when is_atom(T) ->
                 Label = {M, {ATOM, Ty1}},

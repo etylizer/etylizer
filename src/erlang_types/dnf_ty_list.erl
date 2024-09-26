@@ -6,7 +6,7 @@
 
 -export([apply_to_node/3]).
 -export([is_empty/1, normalize/5, substitute/4]).
--export([list/1, all_variables/1, transform/2]).
+-export([list/1, all_variables/2, transform/2]).
 
 -include("bdd_node.hrl").
 

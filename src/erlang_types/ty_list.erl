@@ -1,7 +1,7 @@
 -module(ty_list).
 
 -export([compare/2, equal/2]).
--export([list/2, pi1/1, pi2/1, has_ref/2, transform/2, big_intersect/1, all_variables/1, substitute/3]).
+-export([list/2, pi1/1, pi2/1, has_ref/2, transform/2, big_intersect/1, all_variables/2, substitute/3]).
 
 compare(A, B) when A < B -> -1;
 compare(A, B) when A > B -> 1;
@@ -32,6 +32,6 @@ substitute({ty_list, A, B}, Map, Memo) ->
     ty_rec:substitute(B, Map, Memo)
   }.
 
-all_variables({ty_list, A, B}) ->
-  ty_rec:all_variables(A) ++
-  ty_rec:all_variables(B).
+all_variables({ty_list, A, B}, M) ->
+  ty_rec:all_variables(A, M) ++
+  ty_rec:all_variables(B, M).

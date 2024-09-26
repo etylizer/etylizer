@@ -7,19 +7,19 @@
 
 -export([is_empty/1]).
 -export([normalize/4, substitute/4]).
--export([var/1, function/1, all_variables/1, mall_variables/1, transform/2]).
+-export([var/1, function/1, all_variables/2, mall_variables/2, transform/2]).
 
 -include("bdd_var.hrl").
 
 function(Tuple) -> terminal(Tuple).
 var(Var) -> node(Var).
 
-mall_variables({Default, Others}) when is_map(Others) ->
+mall_variables({Default, Others}, M) when is_map(Others) ->
   lists:usort(lists:flatten(
-    all_variables(Default) ++
-    lists:map(fun({_K,V}) -> all_variables(V) end, maps:to_list(Others))
+    all_variables(Default, M) ++
+    lists:map(fun({_K,V}) -> all_variables(V, M) end, maps:to_list(Others))
   ));
-mall_variables(Ty) -> all_variables(Ty).
+mall_variables(Ty, M) -> all_variables(Ty, M).
 
 is_empty(TyBDD) -> dnf(TyBDD, {fun is_empty_coclause/3, fun is_empty_union/2}).
 is_empty_coclause(_Pos, _Neg, T) -> dnf_ty_function:is_empty(T).
