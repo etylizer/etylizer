@@ -175,8 +175,7 @@ erlang_ty_to_ast(X, M) ->
     Vars = ast_utils:referenced_variables(NewTy),
     case lists:member(Var, Vars) of
         true -> 
-            {mu, Var, NewTy},
-            error(todo);
+            {mu, Var, NewTy};
         false -> 
             NewTy
     end
@@ -290,7 +289,7 @@ ast_to_erlang_ty({map, AssocList}, Sym, M) ->
 ast_to_erlang_ty(V = {var, A}, _Sym, M) ->
     % FIXME overloading of mu variables and normal variables
     case M of
-        #{V := Ref} -> error(todo_mu); % TODO
+        #{V := Ref} -> Ref;
         _ -> ty_rec:variable(maybe_new_variable(A))
     end;
 
