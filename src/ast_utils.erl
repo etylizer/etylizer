@@ -1,6 +1,6 @@
 -module(ast_utils).
 
--export([remove_locs/1, referenced_modules/1]).
+-export([remove_locs/1, referenced_modules/1, referenced_variables/1]).
 
 -export_type([ty_module_name/0]).
 
@@ -27,6 +27,17 @@ referenced_modules(Forms) ->
                         case T of
                             {attribute, _, import, {ModuleName, _}} -> {ok, ModuleName};
                             {qref, ModuleName, _, _} -> {ok, ModuleName};
+                            _ -> error
+                        end
+                end, Forms),
+    utils:list_uniq(Modules).
+
+-spec referenced_variables(ast:ty()) -> [ast:ty_var()].
+referenced_variables(Forms) ->
+    Modules = utils:everything(
+                fun(T) ->
+                        case T of
+                            {var, Name} -> {ok, {var, Name}};
                             _ -> error
                         end
                 end, Forms),

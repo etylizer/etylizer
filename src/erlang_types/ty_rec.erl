@@ -75,6 +75,7 @@ transform(TyRef, Ops) ->
       end
   end.
 
+% ty_rec:ty() -> ast_erl:ty()
 transform_p(TyRef, Ops =
   #{
     any_list := Lists,
@@ -90,6 +91,7 @@ transform_p(TyRef, Ops =
     var := Var
   }) ->
 %%  io:format(user,"<~p> Transforming: ~p~n~p~n", [Ref = make_ref(), TyRef, ty_ref:load(TyRef)]),
+%% OK
   DnfMap = prepare(TyRef),
 %%  io:format(user, "<~p> Prepared: ~n~p~n", [Ref, DnfMap]),
 

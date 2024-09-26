@@ -471,6 +471,9 @@ is_predef_alias_name(N) ->
 % later on.
 -type ty_named() :: {named, loc(), Name::global_ref(), Args::[ty()]}.
 
+% recursive type
+-type ty_mu() :: {mu, RecursiveVariable::ty_var(), MaybeRecursiveType::ty()}.
+
 -type ty_tuple_any() :: {tuple_any}.
 -type ty_tuple() :: {tuple, [ty()]}.
 
@@ -482,7 +485,7 @@ is_predef_alias_name(N) ->
 % We do not have an explicit type for records. We encode them as tuples instead.
 -type ty() :: ty_singleton() | ty_bitstring() | ty_some_list()
     | ty_fun() | ty_integer_range() | ty_map_any() | ty_map() | ty_predef() | ty_predef_alias()
-    | ty_named() | ty_tuple_any() | ty_tuple() | ty_var()
+    | ty_named() | ty_tuple_any() | ty_tuple() | ty_var() | ty_mu()
     | ty_union() | ty_intersection() | ty_negation().
 
 -type ty_constraint() :: {subty_constraint, loc(), ty_varname(), ty()}.

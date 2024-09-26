@@ -206,6 +206,8 @@ ty(Prec, T) ->
                   end,
                   Fields),
             beside(text("#" ++ atom_to_list(Name)), brackets(comma_sep(FieldsP)));
+        {mu, Var, Ty} ->
+            beside(text("mu "), ty(Var), text("."), ty(Ty));
         {named, _Loc, Ref, Args} ->
             RefP =
                 case Ref of
