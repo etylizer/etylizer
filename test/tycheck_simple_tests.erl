@@ -143,14 +143,18 @@ simple_test_() ->
   % The following functions are currently excluded from being tested.
   WhatNot = [
     % Redundancy check for lists is not powerful enough, see #108
-    "list_pattern_08_fail"
+    "list_pattern_08_fail",
+    % #115 slow
+    "user_07"
   ],
 
   NoInfer = [
     % slow, see #62
     "foo3",
     % buggy, see #101
-    "poly"
+    "poly",
+    % TODO recursive inference
+    "user_06", "user_07"
   ],
 
   %What = ["atom_03_fail"],

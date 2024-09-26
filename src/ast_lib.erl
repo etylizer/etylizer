@@ -4,7 +4,7 @@
 % heavily derived from the erlang ast (defined in ast_erl.erl). See the README for
 % a description of the properties of the internal AST.
 
--export([simplify/2, reset/0, ast_to_erlang_ty/1, ast_to_erlang_ty/2, erlang_ty_to_ast/2, ast_to_erlang_ty_var/1, erlang_ty_var_to_var/1]).
+-export([simplify/2, reset/0, ast_to_erlang_ty/1, ast_to_erlang_ty/2, erlang_ty_to_ast/1, erlang_ty_to_ast/2, ast_to_erlang_ty_var/1, erlang_ty_var_to_var/1]).
 -define(VAR_ETS, ast_norm_var_memo). % remember variable name -> variable ID to convert variables properly
 
 -export([
@@ -120,6 +120,9 @@ erlang_ty_var_to_var({var, Id, Name}) ->
         [] -> {var, list_to_atom("mu" ++ integer_to_list(Id))};
         [{_, _}] -> {var, Name}
     end.
+
+erlang_ty_to_ast(X) ->
+    erlang_ty_to_ast(X, #{}).
 
 erlang_ty_to_ast(X, M) ->
     case M of
