@@ -27,8 +27,7 @@ normalize_coclause(PVar, NVar, List, Fixed, M) ->
     _ ->
       case ty_ref:is_normalized_memoized({PVar, NVar, List}, Fixed, M) of
         true ->
-          % TODO test case
-          error({todo, extract_test_case, memoize_function}); %[[]];
+          [[]];
         miss ->
           dnf_ty_list:normalize(List, PVar, NVar, Fixed, sets:union(M, sets:from_list([{PVar, NVar, List}])))
       end

@@ -4,7 +4,7 @@
 % heavily derived from the erlang ast (defined in ast_erl.erl). See the README for
 % a description of the properties of the internal AST.
 
--export([simplify/2, reset/0, ast_to_erlang_ty/2, erlang_ty_to_ast/2, ast_to_erlang_ty_var/1, erlang_ty_var_to_var/1]).
+-export([simplify/2, reset/0, ast_to_erlang_ty/1, ast_to_erlang_ty/2, erlang_ty_to_ast/2, ast_to_erlang_ty_var/1, erlang_ty_var_to_var/1]).
 -define(VAR_ETS, ast_norm_var_memo). % remember variable name -> variable ID to convert variables properly
 
 -export([
@@ -238,6 +238,9 @@ extract_variables(ETy, [Var | OtherVars], ExtractedVars) ->
             extract_variables(ETy, OtherVars, ExtractedVars)
     end.
 
+ast_to_erlang_ty(Ty) ->
+    ast_to_erlang_ty(Ty, symtab:empty(), #{}).
+
 ast_to_erlang_ty(Ty, Sym) ->
     ast_to_erlang_ty(Ty, Sym, #{}).
 
@@ -377,27 +380,27 @@ maybe_new_variable(Name) ->
             Variable
     end.
 
-convert_associations(AssocList, Sym, M) ->
+convert_associations(AssocList, Sym, Memo) ->
     EmptySteps = maps:from_keys(ty_map:step_names(), ty_rec:empty()),
     EmptyLabels = #{},
     lists:foldr(
         fun({Association, Key, Val}, {X, Y}) ->
             case Association of
                 map_field_opt ->
-                    Convert = optional_converter(Val, Sym, M),
+                    Convert = optional_converter(Val, Sym, Memo),
                     Convert(Key, {X, Y});
                 map_field_req ->
-                    Convert = mandatory_converter(Val, Sym, M),
+                    Convert = mandatory_converter(Val, Sym, Memo),
                     Convert(Key, {X, Y})
             end
         end, {EmptyLabels, EmptySteps}, AssocList).
 
-optional_converter(ValTy, Sym, M) ->
+optional_converter(ValTy, Sym, Memo) ->
     O = optional, [ATOM, INT, TUP | _] = ty_map:step_names(), VAR = var_key,
-    Ty2 = ast_to_erlang_ty(ValTy, Sym, M),
+    Ty2 = ast_to_erlang_ty(ValTy, Sym, Memo),
 
     fun Converter(Type, {X, Y}) ->
-        Ty1 = ast_to_erlang_ty(Type, Sym, M),
+        Ty1 = ast_to_erlang_ty(Type, Sym, Memo),
         case Type of
             {singleton, T} when is_atom(T) ->
                 Label = {O, {ATOM, Ty1}},
@@ -434,12 +437,12 @@ optional_converter(ValTy, Sym, M) ->
         end
     end.
 
-mandatory_converter(ValTy, Sym, M) ->
+mandatory_converter(ValTy, Sym, Memo) ->
     M = mandatory, [ATOM, INT | _] = ty_map:step_names(), VAR = var_key,
-    Ty2 = ast_to_erlang_ty(ValTy, Sym, M),
+    Ty2 = ast_to_erlang_ty(ValTy, Sym, Memo),
 
     fun Converter(Type, {X, Y}) ->
-        Ty1 = ast_to_erlang_ty(Type, Sym, M),
+        Ty1 = ast_to_erlang_ty(Type, Sym, Memo),
         case Type of
             {singleton, T} when is_atom(T) ->
                 Label = {M, {ATOM, Ty1}},
