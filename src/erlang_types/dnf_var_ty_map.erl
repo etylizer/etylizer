@@ -24,12 +24,11 @@ normalize_coclause(PVar, NVar, Map, Fixed, M) ->
   case dnf_ty_map:empty() of
     Map -> [[]];
     _ ->
-      case ty_ref:is_normalized_memoized(Map, Fixed, M) of
+      case ty_ref:is_normalized_memoized({PVar, NVar, Map}, Fixed, M) of
         true ->
           error({todo, extract_test_case, memoize_function}); %[[]];
         miss ->
-          % memoize only non-variable component t0
-          dnf_ty_map:normalize(Map, PVar, NVar, Fixed, sets:union(M, sets:from_list([Map])))
+          dnf_ty_map:normalize(Map, PVar, NVar, Fixed, sets:union(M, sets:from_list([{PVar, NVar, Map}])))
       end
   end.
 
