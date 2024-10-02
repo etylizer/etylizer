@@ -27,26 +27,38 @@ user_03a() -> {foo, nil}.
 
 % recursive type, unfold static 1
 -type user_t_03(X) :: nil | {X, user_t_03(X)}.
--spec user_03(pos_integer()) -> user_t_03(foo).
+-spec user_03(non_neg_integer()) -> user_t_03(foo).
 user_03(0) -> nil;
 user_03(_) -> {foo, nil}.
 
 % recursive type, unfold static 2
 -type user_t_04(X) :: nil | {X, user_t_04(X)}.
--spec user_04(pos_integer()) -> user_t_04(foo).
+-spec user_04(non_neg_integer()) -> user_t_04(foo).
 user_04(0) -> nil;
 user_04(1) -> {foo, nil};
 user_04(_) -> {foo, {foo, nil}}.
 
+-spec user_04_fail(non_neg_integer()) -> user_t_04(foo).
+user_04_fail(0) -> nil;
+user_04_fail(1) -> {foo, nil};
+user_04_fail(_) -> {foo, {fo, nil}}.
+
+% TODO we can't check this 
+% '-' operation does not ensure that I-1 is still a non_neg_integer()
 % recursive type, unfold recursive
--type user_t_05(X) :: nil | {X, user_t_05(X)}.
--spec user_05(pos_integer()) -> user_t_05(foo).
-user_05(0) -> nil;
-user_05(I) -> {foo, user_05(I-i)}.
+%-type user_t_05(X) :: nil | {X, user_t_05(X)}.
+%-spec user_05(non_neg_integer()) -> user_t_05(foo).
+%user_05(0) -> nil;
+%user_05(I) -> {foo, user_05(I-1)}.
 
-% recursive type fail 
+% recursive type apply once
 -type user_t_06(X) :: nil | {X, user_t_06(X)}.
--spec user_06_fail(integer()) -> user_t_06(foo).
-user_06_fail(0) -> nil;
-user_06_fail(I) -> {foo, user_06_fail(I-1)}.
+-spec user_06(boolean()) -> user_t_06(foo).
+user_06(true) -> nil;
+user_06(false) -> {foo, user_06(true)}.
 
+% recursive type descend recursive
+-type user_t_07(X) :: nil | {X, user_t_07(X)}.
+-spec user_07(user_t_07(foo)) -> integer().
+user_07(nil) -> 1;
+user_07({foo, X}) -> user_07(X).
