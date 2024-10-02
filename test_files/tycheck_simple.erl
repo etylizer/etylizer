@@ -694,6 +694,9 @@ foo4_b(X) ->
         _ -> X
     end.
 
+-spec foo5(Foo) -> Foo.
+foo5({_}) -> ok.
+
 -spec inter_with_guard_constraints_fail(any()) -> integer(); (any()) -> integer().
 inter_with_guard_constraints_fail(X) ->
     case X of
