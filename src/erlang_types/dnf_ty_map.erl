@@ -49,7 +49,11 @@ normalize(DnfTyMap, PVar, NVar, Fixed, M) ->
   % ntlv rule
   ty_variable:normalize(Ty, PVar, NVar, Fixed, fun(Var) -> ty_rec:map(dnf_var_ty_map:var(Var)) end, M).
 
-normalize_coclause(Fixed, M) -> fun(Pos, Neg, T) ->
+normalize_coclause(Fixed, M) -> 
+  fun
+    ([], [], T) -> 
+  case bdd_bool:empty() of T -> [[]]; _ -> [] end;
+    (Pos, Neg, T) ->
   case bdd_bool:empty() of
     T -> [[]];
     _ -> phi_norm(ty_map:big_intersect(Pos), Neg, Fixed, M)
