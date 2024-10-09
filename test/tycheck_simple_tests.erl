@@ -79,7 +79,7 @@ check_fail_fun(Filename, Tab, Decl = {function, L, Name, Arity, _}, Ty) ->
 has_intersection({ty_scheme, _, {intersection, _}}) -> true;
 has_intersection({ty_scheme, _, _}) -> false.
 
--spec check_decls_in_file(string(), what(), sets:set(string())) -> ok.
+-spec check_decls_in_file(string(), what(), sets:set(string())) -> list().
 check_decls_in_file(F, What, NoInfer) ->
   RawForms = parse:parse_file_or_die(F),
   Forms = ast_transform:trans(F, RawForms),
@@ -90,11 +90,12 @@ check_decls_in_file(F, What, NoInfer) ->
     case Decl of
       {function, Loc, Name, Arity, _} ->
         NameStr = atom_to_list(Name),
+        FullNameStr = F ++ "/" ++ atom_to_list(Name),
         Ty = symtab:lookup_fun({ref, Name, Arity}, Loc, Tab),
         ShouldFail = utils:string_ends_with(NameStr, "_fail"),
         RunTest =
           % FIXME #54 reduce timeout after issue has been fixed
-          {timeout, 45, {NameStr, fun() ->
+          {timeout, 45, {FullNameStr, fun() ->
                 ?LOG_NOTE("Type checking ~s from ~s", NameStr, F),
                 test_utils:reset_ets(),
                 case ShouldFail of
@@ -105,7 +106,7 @@ check_decls_in_file(F, What, NoInfer) ->
               end}
             },
         InferTest =
-          {timeout, 45, {NameStr ++ " (infer)", fun() ->
+          {timeout, 45, {FullNameStr ++ " (infer)", fun() ->
                 ?LOG_NOTE("Infering type for ~s from ~s", NameStr, F),
                 test_utils:reset_ets(),
                 check_infer_ok_fun(F, Tab, Decl, Ty)
@@ -117,7 +118,7 @@ check_decls_in_file(F, What, NoInfer) ->
         ExtraTestCases =
           case {ShouldRun, ShouldInfer} of
             {false, _} -> [];
-            {true, true} -> [InferTest];
+            {true, true} -> [RunTest, InferTest];
             {true, false} -> [RunTest]
           end,
         TestCases ++ ExtraTestCases;
@@ -130,6 +131,13 @@ check_decls_in_file(F, What, NoInfer) ->
 should_run(_Name, all) -> true;
 should_run(Name, {include,Set}) -> sets:is_element(Name, Set);
 should_run(Name, {exclude,Set}) -> not sets:is_element(Name, Set).
+
+-spec check_decls_in_files(list(string()), what(), sets:set(string())) -> list().
+check_decls_in_files(Files, What, NoInfer) ->
+  CollectDecls = fun(File, TestCases) ->
+    TestCases ++ check_decls_in_file(File, What, NoInfer)
+  end,
+  lists:foldl(CollectDecls, [], Files).
 
 simple_test_() ->
   % The following functions are currently excluded from being tested.
@@ -146,8 +154,32 @@ simple_test_() ->
   ],
 
   %What = ["atom_03_fail"],
+  TopDir = "test_files/tycheck_simple",
 
-  check_decls_in_file("test_files/tycheck_simple.erl",
-                      {exclude, sets:from_list(WhatNot)},
-                      %{include, sets:from_list(What)},
-                      sets:from_list(NoInfer)).
+  % If OnlyFiles is empty, all files not in IgnoreFiles are checked
+  % If OnlyFiles is not empty, only the files in OnlyFiles but not in IgnoreFiels are checked
+  OnlyFiles = [],
+  IgnoreFiles = ["maps.erl"],
+
+  case file:list_dir(TopDir) of
+    {ok, Entries} ->
+        ErlFiles =
+          lists:filtermap(fun(Entry) ->
+            case filename:extension(Entry) =:= ".erl" andalso
+              (OnlyFiles =:= [] orelse lists:member(Entry, OnlyFiles)) andalso
+              (not lists:member(Entry, IgnoreFiles))
+            of
+              true -> {true, TopDir ++ "/" ++ Entry};
+              false -> false
+            end
+          end, Entries),
+        case ErlFiles of
+          [] -> erlang:error("No test files found in " ++ TopDir);
+          _ -> ok
+        end,
+        check_decls_in_files(ErlFiles,
+                       {exclude, sets:from_list(WhatNot)},
+                       %{include, sets:from_list(What)},
+                       sets:from_list(NoInfer));
+    _ -> erlang:error("Failed to list test directory " ++ TopDir)
+  end.
