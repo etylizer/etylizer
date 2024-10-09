@@ -117,7 +117,7 @@ check_decls_in_file(F, What, NoInfer) ->
         ExtraTestCases =
           case {ShouldRun, ShouldInfer} of
             {false, _} -> [];
-            {true, true} -> [InferTest];
+            {true, true} -> [RunTest, InferTest];
             {true, false} -> [RunTest]
           end,
         TestCases ++ ExtraTestCases;
