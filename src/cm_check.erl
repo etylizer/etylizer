@@ -9,7 +9,7 @@
 ]).
 
 -include_lib("log.hrl").
--include_lib("ety_main.hrl").
+-include_lib("etylizer_main.hrl").
 
 
 -spec perform_type_checks(paths:search_path(), cm_depgraph:dep_graph(), cmd_opts()) -> [file:filename()].

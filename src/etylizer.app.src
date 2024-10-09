@@ -1,8 +1,8 @@
-{application, ety,
- [{description, "Erlang Types"},
+{application, etylizer,
+ [{description, "A typechecker for Erlang"},
   {vsn, "0.1.0"},
   {registered, []},
-  {mod, { ety_app, []}},
+  {mod, { etylizer_app, []}},
   {env,[
     {providers, [etc_rebar_plug_prv]}
   ]},
@@ -14,5 +14,5 @@
   {modules, []},
   {maintainers, []},
   {licenses, ["BSD-3"]},
-  {links, []}
+  {links, [{"GitHub", "https://github.com/etylizer/etylizer"}]}
  ]}.

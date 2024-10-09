@@ -17,7 +17,7 @@
 -export_type([index/0]).
 
 -include_lib("log.hrl").
--include_lib("ety_main.hrl").
+-include_lib("etylizer_main.hrl").
 
 -type index() :: {
     % OTP version and hash of rebar.lock

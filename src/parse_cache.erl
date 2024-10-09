@@ -2,7 +2,7 @@
 
 -include_lib("log.hrl").
 -include_lib("parse.hrl").
--include_lib("ety_main.hrl").
+-include_lib("etylizer_main.hrl").
 
 -export([init/1, cleanup/0, parse/2]).
 -export_type([file_kind/0]).

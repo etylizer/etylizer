@@ -1,9 +1,9 @@
 -module(test_utils).
 
 % @doc Extracts tests from files. A test file is an .erl file containing lines of the
-% form %-ety({test, good}) or %-ety({test, bad, "..."). A single test starts with the line
+% form %-etylizer({test, good}) or %-etylizer({test, bad, "..."). A single test starts with the line
 % after such a declaration and extends until the next test declaration or eof.
-% A file without any test declarations implicitly carries the declaration %-ety({test, good})
+% A file without any test declarations implicitly carries the declaration %-etylizer({test, good})
 % before the first line.
 
 -include_lib("eunit/include/eunit.hrl").
@@ -14,7 +14,7 @@
     is_equiv/2,
     is_subtype/2,
     reset_ets/0,
-    ety_to_cduce_tally/2,
+    etylizer_to_cduce_tally/2,
     format_tally_config/2
 ]).
 
@@ -51,12 +51,12 @@ extract_tests(LinenoAndResults, Forms) ->
 -spec extract_tests(file:filename()) -> [test_spec()].
 extract_tests(Path) ->
     RawForms = parse:parse_file_or_die(Path),
-    case attr:ety_attrs_from_file(Path) of
+    case attr:etylizer_attrs_from_file(Path) of
         {error, Msg} -> throw({invalid_testfile, Msg});
         {ok, AllAttrs} ->
             LinenoAndResults = lists:filtermap(fun (A) ->
                 case A of
-                    {ety, {loc, _, N, _}, Test} ->
+                    {etylizer, {loc, _, N, _}, Test} ->
                         case Test of
                             {test, good} -> {true, {N, good}};
                             {test, bad, Msg} -> {true, {N, {bad, Msg}}};
@@ -108,11 +108,11 @@ reset_ets() ->
 format_tally_config(Constraints, _FixedVars) ->
     "[" ++ lists:join(",", [io_lib:format("{~p, ~p}", [S, T]) || {_, _, S, T} <- Constraints]) ++ "].".
 
-% translates the ety tally input constraints to a cduce tally call
+% translates the etylizer tally input constraints to a cduce tally call
 % not all constructs are supported
 % TODO free variables #73
--spec ety_to_cduce_tally(list(constr:simp_constr()) | list({ast:ty(), ast:ty()}), list(ast:ty_varname())) -> string().
-ety_to_cduce_tally(Constraints, Order) ->
+-spec etylizer_to_cduce_tally(list(constr:simp_constr()) | list({ast:ty(), ast:ty()}), list(ast:ty_varname())) -> string().
+etylizer_to_cduce_tally(Constraints, Order) ->
     VariableOrder = io_lib:format("~s", [lists:join(" ", [to_var({var, V}) || V <- Order])]),
     PairsOfConstraints = lists:map(
         fun
@@ -154,7 +154,7 @@ cduce_translation_test() ->
     test_utils:reset_ets(),
     {ok, [Cons]} = file:consult("test_files/tally/fun_local_02_plus.config"),
     % should not crash
-    _Str = ety_to_cduce_tally(Cons, []),
+    _Str = etylizer_to_cduce_tally(Cons, []),
     % io:format(user, "~s~n", [_Str]),
     ok.
 

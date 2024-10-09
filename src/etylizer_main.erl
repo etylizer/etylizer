@@ -1,12 +1,12 @@
--module(ety_main).
+-module(etylizer_main).
 -export([main/1, doWork/1]).
 
-% @doc This is the main module of ety. It parses commandline arguments and orchestrates
+% @doc This is the main module of etylizer. It parses commandline arguments and orchestrates
 % everything.
 
 -include_lib("log.hrl").
 -include_lib("parse.hrl").
--include_lib("ety_main.hrl").
+-include_lib("etylizer_main.hrl").
 
 -spec parse_define(string()) -> {atom(), string()}.
 parse_define(S) ->
@@ -84,7 +84,7 @@ parse_args(Args) ->
     end,
     if
         Opts#opts.help ->
-            getopt:usage(OptSpecList, "ety"),
+            getopt:usage(OptSpecList, "etylizer"),
             utils:quit(1, "Aborting~n");
         true -> ok
     end,
@@ -142,7 +142,7 @@ main(Args) ->
     log:init(Opts#opts.log_level),
     ?LOG_INFO("Parsed commandline options as ~200p", Opts),
     try doWork(Opts)
-    catch throw:{ety, K, Msg}:S ->
+    catch throw:{etylizer, K, Msg}:S ->
             Raw = erl_error:format_exception(throw, K, S),
             IsExpected =
                 case K of

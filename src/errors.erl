@@ -8,7 +8,7 @@
 ]).
 
 -spec generic_error(atom(), string()) -> no_return().
-generic_error(Kind, Msg) -> throw({ety, Kind, Msg}).
+generic_error(Kind, Msg) -> throw({etylizer, Kind, Msg}).
 
 -spec generic_error(atom(), ast:loc(), string(), string(), any()) -> no_return().
 generic_error(Kind, Loc, Prefix, Msg, Args) ->
@@ -32,11 +32,11 @@ name_error(Loc, Msg) -> name_error(Loc, Msg, []).
 
 -spec bug(string()) -> no_return().
 bug(Msg) ->
-    throw({ety, bug, "BUG: " ++ Msg}).
+    throw({etylizer, bug, "BUG: " ++ Msg}).
 
 -spec bug(string(), any()) -> no_return().
 bug(Msg, Args) ->
-    throw({ety, bug, utils:sformat("BUG: " ++ Msg, Args)}).
+    throw({etylizer, bug, utils:sformat("BUG: " ++ Msg, Args)}).
 
 -spec uncovered_case(file:filename(), t:lineno(), any()) -> no_return().
 uncovered_case(File, Line, X) ->
@@ -53,7 +53,7 @@ ty_error(X, Msg) -> ty_error(X, Msg, []).
 ty_error(Msg) -> generic_error(ty_error, Msg).
 
 -spec not_implemented(string()) -> no_return().
-not_implemented(Msg) -> throw({ety, not_implemented, Msg}).
+not_implemented(Msg) -> throw({etylizer, not_implemented, Msg}).
 
 -spec parse_error(string()) -> no_return().
 parse_error(Msg) -> generic_error(parse_error, Msg).

@@ -74,7 +74,7 @@ shutdown() ->
 
 -spec file_logger() -> ok.
 file_logger() ->
-    {ok, F} = file:open("ety.log", [write]),
+    {ok, F} = file:open("etylizer.log", [write]),
     Loop =
         fun Loop() ->
                 receive

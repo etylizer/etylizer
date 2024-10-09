@@ -177,18 +177,18 @@ trans_constraint(Ctx, Env, C) ->
         X -> errors:uncovered_case(?FILE, ?LINE, X)
     end.
 
-% support for ety:negation, ety:intersection, and ety:without
--spec resolve_ety_ty(ast:loc(), atom(), [ast:ty()]) -> ast:ty().
-resolve_ety_ty(_, negation, [Ty]) -> {negation, Ty};
-resolve_ety_ty(_, intersection, Tys) ->
+% support for etylizer:negation, etylizer:intersection, and etylizer:without
+-spec resolve_etylizer_ty(ast:loc(), atom(), [ast:ty()]) -> ast:ty().
+resolve_etylizer_ty(_, negation, [Ty]) -> {negation, Ty};
+resolve_etylizer_ty(_, intersection, Tys) ->
     case Tys of
         [] -> {predef, any};
         [Ty] -> Ty;
         _ -> {intersection, Tys}
     end;
-resolve_ety_ty(_, without, [T, U]) -> {intersection, [T, {negation, U}]};
-resolve_ety_ty(L, Name, _) ->
-    errors:ty_error(L, "Invalid use of builtin type ety:~w", Name).
+resolve_etylizer_ty(_, without, [T, U]) -> {intersection, [T, {negation, U}]};
+resolve_etylizer_ty(L, Name, _) ->
+    errors:ty_error(L, "Invalid use of builtin type etylizer:~w", Name).
 
 -spec eval_const_ty(erl_parse:abstract_expr(), ast:loc()) -> {singleton, integer()}.
 eval_const_ty(Ty, Loc) ->
@@ -253,8 +253,8 @@ trans_ty(Ctx, Env, Ty) ->
             % FIXME: should we check whether the reference is valid?
             Loc = to_loc(Ctx, Anno),
             {named, Loc, {ref, Name, arity(Loc, ArgTys)}, trans_tys(Ctx, Env, ArgTys)};
-        {remote_type, Anno, [{'atom', _, ety}, {'atom', _, Name}, ArgTys]} ->
-            resolve_ety_ty(to_loc(Ctx, Anno), Name, trans_tys(Ctx, Env, ArgTys));
+        {remote_type, Anno, [{'atom', _, etylizer}, {'atom', _, Name}, ArgTys]} ->
+            resolve_etylizer_ty(to_loc(Ctx, Anno), Name, trans_tys(Ctx, Env, ArgTys));
         {remote_type, Anno, [{'atom', _, Mod}, {'atom', _, Name}, ArgTys]} ->
             Loc = to_loc(Ctx, Anno),
             {named, Loc, {qref, Mod, Name, arity(Loc, ArgTys)}, trans_tys(Ctx, Env, ArgTys)};

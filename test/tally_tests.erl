@@ -478,7 +478,7 @@ fun_local_own_test_() ->
     VarOrder = lists:map(fun(V) -> {var, Name} = ast_lib:erlang_ty_var_to_var(V), Name end,lists:sort(lists:flatten(Vars))),
 
     % to print out cduce command
-    % io:format(user, "~s~n", [test_utils:ety_to_cduce_tally(Cons, VarOrder)]),
+    % io:format(user, "~s~n", [test_utils:etylizer_to_cduce_tally(Cons, VarOrder)]),
 
     test_tally(
       VarOrder,

@@ -12,7 +12,7 @@ check_ok_fun(Filename, Tab, Decl = {function, L, Name, Arity, _}, Ty) ->
     try
         typing_check:check(Ctx, Decl, Ty)
     catch
-        throw:{ety, ty_error, Msg} ->
+        throw:{etylizer, ty_error, Msg} ->
             io:format("~s: Type checking ~w/~w in ~s failed but should succeed: ~s",
                       [ast:format_loc(L), Name, Arity, Filename, Msg]),
             ?assert(false)
@@ -27,7 +27,7 @@ check_infer_ok_fun(Filename, Tab, Decl = {function, L, Name, Arity, _}, Ty) ->
        try
            typing_infer:infer(Ctx, [Decl])
        catch
-           throw:{ety, ty_error, Msg2} ->
+           throw:{etylizer, ty_error, Msg2} ->
                io:format("~s: Infering type for ~w/~w in ~s failed but should succeed: ~s",
                      [ast:format_loc(L), Name, Arity, Filename, Msg2]),
                ?assert(false)
@@ -69,7 +69,7 @@ check_fail_fun(Filename, Tab, Decl = {function, L, Name, Arity, _}, Ty) ->
                   [ast:format_loc(L), Name, Arity, Filename]),
         ?assert(false)
     catch
-        throw:{ety, ty_error, _Msg} ->
+        throw:{etylizer, ty_error, _Msg} ->
             ok
     end.
 
