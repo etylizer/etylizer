@@ -474,15 +474,15 @@ fun_local_05_fail(X) ->
     F = fun(Y) -> X + Y end,
     F("foo").
 
--spec fun_local_06() -> foobar.
-fun_local_06() ->
+-spec fun_local_06(atom()) -> foobar.
+fun_local_06(A) ->
   F = fun(X) ->
         case X of
             spam -> foobar;
             _ -> foobar
         end
       end,
-  F(spam).
+  F(A).
 
 -spec fun_local_06_fail() -> foobar.
 fun_local_06_fail() ->
@@ -500,6 +500,16 @@ fun_local_06b_fail() ->
         case X of
             spam -> foobar;
             _ -> foobarx
+        end
+      end,
+  F(spam).
+
+-spec fun_local_06c_fail() -> foobar.
+fun_local_06c_fail() ->
+  F = fun(X) ->
+        case X of
+            spam -> foobar;
+            _ -> foobar % redundant case
         end
       end,
   F(spam).
