@@ -245,7 +245,7 @@ builtin_ops() ->
     ])),
     NumOp1Ty = tyscm(tinter([
         tfun([tint()], tint()),
-        tfun([tint()], tfloat())
+        tfun([tfloat()], tfloat())
     ])),
     IntOpTy = tyscm(tfun([tint(), tint()], tint())),
     BoolOpTy = tyscm(tfun([tbool(), tbool()], tbool())),
