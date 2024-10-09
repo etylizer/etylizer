@@ -18,7 +18,7 @@
     list_uniq/1, lists_enumerate/1, lists_enumerate/2,
     with_default/2, compare/2,
     mingle/5, timing/1, timing_log/3,
-    single/1, from_to/2
+    single/1, from_to/2, assocs_find/2, assocs_find_index/2
 ]).
 
 mingle(LeftDefault, RightDefault, AllLeft, AllRight, Op) ->
@@ -337,3 +337,19 @@ timing_log(F, Time, What) ->
 
 -spec single(T) -> sets:set(T).
 single(X) -> sets:from_list([X]).
+
+-spec assocs_find(K, [{K, V}]) -> {ok, V} | error.
+assocs_find(K, L) ->
+    case lists:keyfind(K, 1, L) of
+        false -> error;
+        {_Key, X} -> {ok, X}
+    end.
+
+-spec assocs_find_index(K, [{K, V}]) -> {ok, V, integer()} | error.
+assocs_find_index(_, []) -> error;
+assocs_find_index(K, [{K2, V} | _]) when K =:= K2 -> {ok, V, 0};
+assocs_find_index(K, [_ | Rest]) ->
+    case assocs_find_index(K, Rest) of
+        {ok, V, I} -> {ok, V, I + 1};
+        _ -> error
+    end.

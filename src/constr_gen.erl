@@ -197,9 +197,44 @@ exp_constrs(Ctx, E, T) ->
             errors:unsupported(L, "function calls with dynamically computed modules");
         ({'if', _, _} = IfExp) ->
             exp_constrs(Ctx, if_exp_to_case_exp(IfExp), T);
-        {lc, _L, _E, _Qs} -> sets:new(); % FIXME
-        {map_create, _L, _Assocs} -> sets:new(); % FIXME
-        {map_update, _L, _MapExp, _Assocs} -> sets:new(); % FIXME
+        {lc, L, _E, _Qs} ->
+            errors:unsupported(L, "list comprehension: ~200p", [E]);
+        {map_create, L, Assocs} ->
+            KeyAlpha = fresh_tyvar(Ctx),
+            ValAlpha = fresh_tyvar(Ctx),
+            MapTy = {map, [{map_field_opt, KeyAlpha, ValAlpha}]},
+            AssocsCs =
+                lists:foldl(
+                  fun({map_field_opt, _FieldL, KeyE, ValE}, AccCs) ->
+                          KeyCs = exp_constrs(Ctx, KeyE, KeyAlpha),
+                          ValCs = exp_constrs(Ctx, ValE, ValAlpha),
+                          sets:union([AccCs, KeyCs, ValCs])
+                  end,
+                  sets:new(),
+                  Assocs),
+            ResultC = {csubty, mk_locs("map_create", L), MapTy, T},
+            sets:add_element(ResultC, AssocsCs);
+        {map_update, L, MapExp, Assocs} ->
+            KeyAlpha = fresh_tyvar(Ctx),
+            ValAlpha = fresh_tyvar(Ctx),
+            MapTy = {map, [{map_field_opt, KeyAlpha, ValAlpha}]},
+            Cs1 = exp_constrs(Ctx, MapExp, MapTy),
+            Cs2 =
+                lists:foldl(
+                fun(Assoc, AccCs) ->
+                    {KeyE, ValE} =
+                        case Assoc of
+                            {map_field_opt, _FieldL, K, V} -> {K, V};
+                            {map_field_req, _FieldL, K, V} -> {K, V}
+                        end,
+                    KeyCs = exp_constrs(Ctx, KeyE, KeyAlpha),
+                    ValCs = exp_constrs(Ctx, ValE, ValAlpha),
+                    sets:union([AccCs, KeyCs, ValCs])
+                end,
+                Cs1,
+                Assocs),
+            ResultC = {csubty, mk_locs("map_update", L), MapTy, T},
+            sets:add_element(ResultC, Cs2);
         {nil, L} ->
             utils:single({csubty, mk_locs("result of nil", L), {empty_list}, T});
         {op, L, Op, Lhs, Rhs} ->
@@ -224,12 +259,59 @@ exp_constrs(Ctx, E, T) ->
                      [{cop, mk_locs(MsgTy, L), Op, 1, {fun_full, [Alpha], Beta}},
                       {csubty, mk_locs(MsgRes, L), Beta, T}]),
             sets:union(ArgCs, OpCs);
-        {'receive', _L, _CaseClauses} -> sets:new(); % FIXME
-        {receive_after, _L, _CauseClauses, _TimeoutExp, _Body} -> sets:new(); % FIXME
-        {record_create, _L, _Name, _Fields} -> sets:new(); % FIXME
-        {record_field, _L, _Exp, _Name, _Field} -> sets:new(); % FIXME
-        {record_index, _L, _Name, _Field} -> sets:new(); % FIXME
-        {record_update, _L, _Exp, _Name, _Fields} -> sets:new(); % FIXME
+        {'receive', L, _CaseClauses} ->
+            errors:unsupported(L, "receive: ~200p", [E]);
+        {receive_after, L, _CauseClauses, _TimeoutExp, _Body} ->
+            errors:unsupported(L, "receive_after: ~200p", [E]);
+        {record_create, L, Name, GivenFields} ->
+            RecTy = {_, DefFields} = symtab:lookup_record(Name, L, Ctx#ctx.symtab),
+            DefFieldNames = sets:from_list(lists:map(fun ({N, _}) -> N end, DefFields)),
+            GivenFieldNames =
+                sets:from_list(lists:map(fun ({record_field, _L, N, _Exp}) -> N end, GivenFields)),
+            case sets:is_subset(GivenFieldNames, DefFieldNames) of
+                false -> errors:ty_error(L, "too many record fields given", []);
+                true ->
+                    case sets:is_subset(DefFieldNames, GivenFieldNames) of
+                        true -> ok;
+                        false -> errors:ty_error(L, "not all record fields given", [])
+                    end
+            end,
+            Cs =
+                lists:foldr(
+                    fun({record_field, _L, N, Exp}, Cs) ->
+                        {ok, Ty} = utils:assocs_find(N, DefFields), % we checked before that all fields are present
+                        ThisCs = exp_constrs(Ctx, Exp, Ty),
+                        sets:union(Cs, ThisCs)
+                    end,
+                    sets:new(),
+                    GivenFields),
+            RecTupleTy = records:encode_record_ty(RecTy),
+            RecConstr = {csubty, mk_locs("record value constructor", L), RecTupleTy, T},
+            sets:add_element(RecConstr, Cs);
+        {record_field, L, Exp, RecName, FieldName} ->
+            RecTy = symtab:lookup_record(RecName, L, Ctx#ctx.symtab),
+            RecTupleTy = records:encode_record_ty(RecTy),
+            Cs = exp_constrs(Ctx, Exp, RecTupleTy),
+            FieldTy = records:lookup_field_ty(RecTy, FieldName, L),
+            FieldConstr = {csubty, mk_locs("record field access", L), FieldTy, T},
+            sets:add_element(FieldConstr, Cs);
+        {record_index, L, RecName, FieldName} ->
+            RecTy = symtab:lookup_record(RecName, L, Ctx#ctx.symtab),
+            {_FieldTy, Idx} = records:lookup_field_index(RecTy, FieldName, L),
+            Constr = {csubty, mk_locs("record field index", L), stdtypes:tint(Idx + 1), T},
+            utils:single(Constr);
+        {record_update, L, Exp, RecName, FieldUpdates} ->
+            RecTy = symtab:lookup_record(RecName, L, Ctx#ctx.symtab),
+            RecTupleTy = records:encode_record_ty(RecTy),
+            ExpCs = exp_constrs(Ctx, Exp, RecTupleTy),
+            lists:foldr(
+                fun({record_field, FieldUpdateLoc, FieldName, FieldExp}, Cs) ->
+                    FieldTy = records:lookup_field_ty(RecTy, FieldName, FieldUpdateLoc),
+                    ThisCs = exp_constrs(Ctx, FieldExp, FieldTy),
+                    sets:union(Cs, ThisCs)
+                end,
+                ExpCs,
+                FieldUpdates);
         {tuple, L, Args} ->
             {Tys, Cs} =
                 lists:foldr(
@@ -242,7 +324,8 @@ exp_constrs(Ctx, E, T) ->
                   Args),
             TupleC = {csubty, mk_locs("tuple constructor", L), {tuple, Tys}, T},
             sets:add_element(TupleC, Cs);
-        {'try', _L, _Exps, _CaseClauses, _CatchClauses, _AfterBody} -> sets:new(); % FIXME
+        {'try', L, _Exps, _CaseClauses, _CatchClauses, _AfterBody} ->
+            errors:unsupported(L, "try: ~200p", [E]);
         {var, L, AnyRef} ->
             Msg = utils:sformat("var ~s", pretty:render(pretty:ref(AnyRef))),
             utils:single({cvar, mk_locs(Msg, L), AnyRef, T});
@@ -374,6 +457,7 @@ pat_guard_lower_upper(Symtab, P, Gs, E) ->
                Status),
     {Lower, Upper}.
 
+% The variables bound by a pattern
 -spec bound_vars_pat(ast:pat()) -> sets:set(ast:local_varname()).
 bound_vars_pat(P) ->
     case P of
@@ -394,9 +478,20 @@ bound_vars_pat(P) ->
               sets:new(),
               Ps
              );
-        {map, L, _Assocs} -> errors:unsupported(L, "map patterns");
-        {record, L, _Name, _Fields} -> errors:unsupported(L, "record patterns");
-        {record_index, L, _Name, _Field} -> errors:unsupported(L, "record index patterns");
+        {map, _L, Assocs} ->
+            lists:foldl(
+              % NOTE: the key part of a map pattern does not bound variables
+              fun({map_field_req, _L, _P1, P2}, Acc) -> sets:union(Acc, bound_vars_pat(P2)) end,
+              sets:new(),
+              Assocs
+             );
+        {record, _L, _RecName, FieldPatterns} ->
+            lists:foldl(
+              fun({record_field, _L, _FieldName, P}, Acc) -> sets:union(Acc, bound_vars_pat(P)) end,
+              sets:new(),
+              FieldPatterns
+             );
+        {record_index, _L, _Name, _Field} -> sets:new();
         {tuple, _L, Ps} ->
             lists:foldl(
               fun(P, Acc) -> sets:union(Acc, bound_vars_pat(P)) end,
@@ -484,9 +579,61 @@ ty_of_pat(Symtab, Env, P, Mode) ->
         {op, _, '-', [SubP]} ->
             ast_lib:mk_intersection([ty_of_pat(Symtab, Env, SubP, Mode), {predef_alias, number}]);
         {op, L, Op, _} -> errors:unsupported(L, "operator ~w in patterns", Op);
-        {map, L, _Assocs} -> errors:unsupported(L, "map patterns");
-        {record, L, _Name, _Fields} -> errors:unsupported(L, "record patterns");
-        {record_index, L, _Name, _Field} -> errors:unsupported(L, "record index patterns");
+        {map, _L, Assocs} ->
+            {KeyTs, ValTs} =
+                lists:foldl(
+                    fun({map_field_req, _, KeyP, ValP}, {KeyTs, ValTs}) ->
+                        K = ty_of_pat(Symtab, Env, KeyP, Mode),
+                        V = ty_of_pat(Symtab, Env, ValP, Mode),
+                        {[K | KeyTs], [V | ValTs]}
+                    end,
+                    {[], []},
+                    Assocs),
+            F =
+                case Mode of
+                    upper -> fun ast_lib:mk_union/1;
+                    lower -> fun ast_lib:mk_intersection/1
+                end,
+            stdtypes:tmap(F(KeyTs), F(ValTs));
+        {record, L, RecName, FieldPats} ->
+            RecTy = {_, RecFields} = symtab:lookup_record(RecName, L, Symtab),
+            F =
+                case Mode of
+                    upper -> fun ast_lib:mk_union/2;
+                    lower -> fun ast_lib:mk_intersection/2
+                end,
+            FieldMap =
+                lists:foldl(
+                    fun({record_field, FieldLoc, FieldName, FieldPat}, FieldMap) ->
+                        case maps:find(FieldName, FieldMap) of
+                            {ok, _} ->
+                                errors:ty_error(FieldLoc,
+                                    "Duplicated label ~w in record pattern",
+                                    [FieldName]);
+                            _ -> ok
+                        end,
+                        PatTy = ty_of_pat(Symtab, Env, FieldPat, Mode),
+                        FieldTy = records:lookup_field_ty(RecTy, FieldName, FieldLoc),
+                        Ty = F(PatTy, FieldTy),
+                        maps:put(FieldName, Ty, FieldMap)
+                    end,
+                    #{},
+                    FieldPats),
+            MatchedRecFields =
+                lists:map(
+                    fun({FieldName, DefFieldTy}) ->
+                        case maps:find(FieldName, FieldMap) of
+                            {ok, Ty} -> {FieldName, Ty};
+                            _ -> {FieldName,DefFieldTy}
+                        end
+                    end,
+                    RecFields),
+            TupleTy = records:encode_record_ty({RecName, MatchedRecFields}),
+            TupleTy;
+        {record_index, L, RecName, FieldName} ->
+            RecTy = symtab:lookup_record(RecName, L, Symtab),
+            {_, Idx} = records:lookup_field_index(RecTy, FieldName, L),
+            stdtypes:tint(Idx + 1);
         {tuple, _L, Ps} -> {tuple, lists:map(fun(P) -> ty_of_pat(Symtab, Env, P, Mode) end, Ps)};
         {wildcard, _L} -> {predef, any};
         {var, _L, {local_bind, V}} -> maps:get({local_ref, V}, Env, {predef, any});
@@ -535,9 +682,35 @@ pat_env(Ctx, OuterL, T, P) ->
             pat_env(Ctx, OuterL, T, SubP);
         {op, L, Op, _Ps} ->
             errors:unsupported(L, "operator ~w in patterns", Op);
-        {map, L, _Assocs} -> errors:unsupported(L, "map patterns");
-        {record, L, _Name, _Fields} -> errors:unsupported(L, "record patterns");
-        {record_index, L, _Name, _Field} -> errors:unsupported(L, "record index patterns");
+        {map, _L, Assocs} ->
+            AlphaK = fresh_tyvar(Ctx),
+            AlphaV = fresh_tyvar(Ctx),
+            {AssocCs, AssocEnv} =
+                lists:foldl(
+                    fun({map_field_req, _L, PK, PV}, {Cs, Env}) ->
+                        {CK, _} = pat_env(Ctx, OuterL, AlphaK, PK),
+                        {CV, EnvV} = pat_env(Ctx, OuterL, AlphaV, PV),
+                        {sets:union([Cs, CK, CV]), intersect_envs(Env, EnvV)}
+                    end,
+                    {sets:new(), #{}},
+                    Assocs),
+            C = {csubty, mk_locs("t // #{_}", OuterL), T, stdtypes:tmap(AlphaK, AlphaV)},
+            {sets:add_element(C, AssocCs), AssocEnv};
+        {record, L, RecName, FieldPats} ->
+            RecTy = symtab:lookup_record(RecName, L, Ctx#ctx.symtab),
+            {Cs, Env} =
+                lists:foldl(
+                    fun ({record_field, FieldLoc, FieldName, FieldPat}, {AccCs, AccEnv}) ->
+                        FieldTy = records:lookup_field_ty(RecTy, FieldName, FieldLoc),
+                        {ThisCs, ThisEnv} = pat_env(Ctx, OuterL, FieldTy, FieldPat),
+                        {sets:union(AccCs, ThisCs), intersect_envs(AccEnv, ThisEnv)}
+                    end,
+                    {sets:new(), #{}},
+                    FieldPats),
+            RecTupleTy = records:encode_record_ty(RecTy),
+            C = {csubty, mk_locs("t // #Record{...}", OuterL), T, RecTupleTy},
+            {sets:add_element(C, Cs), Env};
+        {record_index, _L, _Name, _Field} -> Empty;
         {tuple, _L, Ps} ->
             {Alphas, Cs, Env} =
                 lists:foldl(

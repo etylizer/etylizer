@@ -30,6 +30,23 @@ check_all(Ctx, FileName, Env, Decls) ->
             {error, Msg}
     end.
 
+% Ensures that a mono type used as a spec is supported. Throws a ty_error if not.
+-spec ensure_type_supported(ast:loc(), ast:ty()) -> ok.
+ensure_type_supported(Loc, T) ->
+    utils:everywhere(
+        fun(InnerT) ->
+            % The return value error means: check recursively, no error here
+            case InnerT of
+                {map, []} -> error;
+                {map, [{map_field_opt, _, _}]} -> error;
+                {map, [{map_field_req, _, _}]} ->
+                    errors:ty_error(Loc, "map types with mandatory associations are not supported");
+                {map, _} ->
+                    errors:ty_error(Loc, "map types with more than one association are not supported");
+                _ -> error
+            end
+        end,
+        T).
 
 % Checks a function against its spec. Throws a ty_error.
 % The type scheme comes from a type annotation, that it has the form
@@ -39,12 +56,13 @@ check(Ctx, Decl = {function, Loc, Name, Arity, _}, PolyTy) ->
     ?LOG_INFO("Type checking ~w/~w at ~s against type ~s",
               Name, Arity, ast:format_loc(Loc), pretty:render_tyscheme(PolyTy)),
     {MonoTy, Fixed, _} = typing_common:mono_ty(PolyTy),
+    ensure_type_supported(Loc, MonoTy),
     AltTys =
         case MonoTy of
             {intersection, L} -> L;
             _ -> [MonoTy]
         end,
-    ?LOG_DEBUG("AltTys=~200p, MonoTy=~200p", AltTys, MonoTy),
+    ?LOG_DEBUG("AltTys=~200p,~nMonoTy=~200p", AltTys, MonoTy),
     BranchMode =
         case AltTys of
             [_] -> unmatched_branch_fail;

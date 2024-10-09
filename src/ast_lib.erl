@@ -7,7 +7,14 @@
 -export([simplify/1, reset/0, ast_to_erlang_ty/1, erlang_ty_to_ast/1, ast_to_erlang_ty_var/1, erlang_ty_var_to_var/1]).
 -define(VAR_ETS, ast_norm_var_memo). % remember variable name -> variable ID to convert variables properly
 
--export([mk_intersection/1, mk_union/1, mk_negation/1, mk_diff/2]).
+-export([
+    mk_intersection/1,
+    mk_intersection/2,
+    mk_union/1,
+    mk_union/2,
+    mk_negation/1,
+    mk_diff/2
+]).
 
 reset() ->
     catch ets:delete(?VAR_ETS),
@@ -26,6 +33,9 @@ unfold_union([X | Rest], All) ->
     unfold_union(Rest, All ++ [X]) .
 
 % smart constructors for intersection, union and negation
+-spec mk_intersection(ast:ty(), ast:ty()) -> ast:ty().
+mk_intersection(T1, T2) -> mk_intersection([T1, T2]).
+
 -spec mk_intersection([ast:ty()]) -> ast:ty().
 mk_intersection(Tys) ->
     HasEmpty =
@@ -61,6 +71,9 @@ mk_intersection(Tys) ->
 
 mk_diff(T1, T2) ->
    mk_intersection([T1, mk_negation(T2)]).
+
+-spec mk_union(ast:ty(), ast:ty()) -> ast:ty().
+mk_union(T1, T2) -> mk_union([T1, T2]).
 
 -spec mk_union([ast:ty()]) -> ast:ty().
 mk_union(Tys) ->
@@ -316,10 +329,10 @@ convert_associations(AssocList) ->
     lists:foldr(
         fun({Association, Key, Val}, {X, Y}) ->
             case Association of
-                map_field_assoc ->
+                map_field_opt ->
                     Convert = optional_converter(Val),
                     Convert(Key, {X, Y});
-                map_field_exact ->
+                map_field_req ->
                     Convert = mandatory_converter(Val),
                     Convert(Key, {X, Y})
             end
