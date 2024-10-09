@@ -72,13 +72,16 @@ phi(BigS, [Ty | N]) ->
 
 normalize(Size, Ty, [], [], Fixed, M) ->
   dnf(Ty, {
-    fun(Pos, Neg, T) ->
-      case bdd_bool:empty() of
-        T -> [[]];
-        _ ->
-          BigS = ty_tuple:big_intersect(Pos),
-          phi_norm(Size, ty_tuple:components(BigS), Neg, Fixed, M)
-      end
+    fun
+      ([], [], T) ->
+        case bdd_bool:empty() of T -> [[]]; _ -> [] end;
+      (Pos, Neg, T) ->
+        case bdd_bool:empty() of
+          T -> [[]];
+          _ ->
+            BigS = ty_tuple:big_intersect(Pos),
+            phi_norm(Size, ty_tuple:components(BigS), Neg, Fixed, M)
+        end
     end,
     fun constraint_set:meet/2
   });

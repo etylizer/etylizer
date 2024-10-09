@@ -32,13 +32,12 @@ normalize_coclause(Size, PVar, NVar, Tuple, Fixed, M) ->
   case dnf_ty_tuple:empty() of
     Tuple -> [[]];
     _ ->
-      case ty_ref:is_normalized_memoized(Tuple, Fixed, M) of
+      case ty_ref:is_normalized_memoized({PVar, NVar, Tuple}, Fixed, M) of
         true ->
           % TODO test case
           error({todo, extract_test_case, memoize_tuple}); %[[]];
         miss ->
-          % memoize only non-variable component t0
-          dnf_ty_tuple:normalize(Size, Tuple, PVar, NVar, Fixed, sets:union(M, sets:from_list([Tuple])))
+          dnf_ty_tuple:normalize(Size, Tuple, PVar, NVar, Fixed, sets:union(M, sets:from_list([{PVar, NVar, Tuple}])))
       end
   end.
 

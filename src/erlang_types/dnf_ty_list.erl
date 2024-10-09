@@ -58,6 +58,8 @@ normalize(DnfTyList, PVar, NVar, Fixed, M) ->
   ty_variable:normalize(Ty, PVar, NVar, Fixed, fun(Var) -> ty_rec:list(dnf_var_ty_list:var(Var)) end, M).
 
 
+normalize_coclause([], [], T, _Fixed, _M) ->
+  case bdd_bool:empty() of T -> [[]]; _ -> [] end;
 normalize_coclause(Pos, Neg, T, Fixed, M) ->
   case bdd_bool:empty() of
     T -> [[]];
