@@ -48,7 +48,7 @@ parse_args(Args) ->
          {only, $o, "only", string,
             "Only typecheck these functions (given as name/arity or just the name)"},
          {log_level,  $l,   "level",    string,
-            "Minimal log level (trace,debug,info,note,warn)"}
+            "Minimal log level (trace2,trace,debug,info,note,warn)"}
         ],
     Opts = case getopt:parse(OptSpecList, Args) of
         {error, {Reason, Data}} ->

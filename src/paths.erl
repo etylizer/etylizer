@@ -60,9 +60,9 @@ compute_search_path(Opts) ->
             {[], sets:new()},
             SrcDirs),
     LocalPaths = lists:reverse(LocalPathEntries),
-    ?LOG_TRACE("OTP search path: ~p", OtpPaths),
-    ?LOG_TRACE("rebar search path: ~p", DepPaths),
-    ?LOG_TRACE("Local search path: ~p", LocalPaths),
+    ?LOG_TRACE2("OTP search path: ~p", OtpPaths),
+    ?LOG_TRACE2("rebar search path: ~p", DepPaths),
+    ?LOG_TRACE2("Local search path: ~p", LocalPaths),
     LocalPaths ++ DepPaths ++ OtpPaths.
 
 -spec has_erl_files(file:filename()) -> boolean().
@@ -111,7 +111,7 @@ standard_path_entries(Kind, D1, D2, ExtraIncludes) ->
             fun(SrcDir) ->
                 {Kind, SrcDir, [SrcDir, filename:join(D, "include")] ++ ExtraIncludes}
             end, SrcDirs),
-    ?LOG_TRACE("Standard path entries for ~p: ~p", D2, Res),
+    ?LOG_TRACE2("Standard path entries for ~p: ~p", D2, Res),
     Res.
 
 -spec find_include_dirs(file:filename(), [file:filename()]) -> [file:filename()].
