@@ -118,21 +118,7 @@ transform_p(TyRef, Ops =
     end
            end, DnfMap),
 
-  Ety = Union(maps:values(Mapped)),
-%%  io:format(user,"<~p> Result: ~p~n", [Ref, Ety]),
-% TODO is it always the case that once we are in the semantic world, when we go back we dont need the symtab?
-  % Sanity = ast_lib:ast_to_erlang_ty(Ety, symtab:empty()), 
-%%  io:format(user,"<~p> Sanity: ~p~n", [Ref, Sanity]),
-  % leave this sanity check for a while
- % case is_equivalent(TyRef, Sanity) of
- %   true -> ok;
- %   false ->
- %     io:format(user, "--------~n", []),
- %     io:format(user, "~p~n", [ty_ref:load(TyRef)]),
- %     io:format(user, "~p~n", [Ety]),
- %     error(todo)
- % end,
-  Ety.
+  Union(maps:values(Mapped)).
 
 % TODO refactor this properly it's ugly
 prepare(TyRef) ->

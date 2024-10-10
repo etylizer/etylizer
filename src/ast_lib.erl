@@ -125,63 +125,77 @@ erlang_ty_to_ast(X) ->
     erlang_ty_to_ast(X, #{}).
 
 erlang_ty_to_ast(X, M) ->
-    case M of
-        #{X := Var} -> Var;
-        _ ->
-    % Given a X = ... equation, create a new 
-    % TODO discuss how to ensure uniqueness
-    RecVarID = erlang:unique_integer(),
-    Var = {var, erlang:list_to_atom("mu" ++ integer_to_list(RecVarID))},
+        case M of
+            #{X := Var} -> Var;
+            _ ->
+        % Given a X = ... equation, create a new 
+        % TODO discuss how to ensure uniqueness
+        RecVarID = erlang:unique_integer(),
+        Var = {var, erlang:list_to_atom("mu" ++ integer_to_list(RecVarID))},
 
-    NewM = M#{X => Var},
+        NewM = M#{X => Var},
 
-    {Pol, Full} = ty_rec:transform(
-        X,
-        #{
-            to_fun => fun(S, T) -> stdtypes:tfun_full(lists:map(fun(F) ->
-                (erlang_ty_to_ast(F, NewM)) end,S),
-                (erlang_ty_to_ast(T, NewM))
-            ) end,
-            to_tuple => fun(Ts) -> stdtypes:ttuple(lists:map(fun(T) -> (erlang_ty_to_ast(T, NewM)) end,Ts)) end,
-            to_atom => fun(A) -> stdtypes:tatom(A) end,
-            to_list => fun(A, B) -> stdtypes:tlist_improper((erlang_ty_to_ast(A, NewM)), (erlang_ty_to_ast(B, NewM))) end,
-            to_int => fun(S, T) -> stdtypes:trange(S, T) end,
-            to_predef => fun('[]') -> stdtypes:tempty_list(); (Predef) -> {predef, Predef} end,
-            to_map => fun(Mans, Opts) -> stdtypes:tmap([stdtypes:tmap_field_man(erlang_ty_to_ast(T1, NewM), erlang_ty_to_ast(T2, NewM)) || {T1, T2} <- Mans] ++ [stdtypes:tmap_field_opt(erlang_ty_to_ast(T1, NewM), erlang_ty_to_ast(T2, NewM)) || {T1, T2} <- Opts]) end,
-            any_tuple => fun stdtypes:ttuple_any/0,
-            any_tuple_i => fun(Size) -> stdtypes:ttuple([stdtypes:tany() || _ <- lists:seq(1, Size)]) end,
-            any_function => fun stdtypes:tfun_any/0,
-            any_function_i => fun(Size) -> stdtypes:tfun([stdtypes:tnone() || _ <- lists:seq(1, Size)], stdtypes:tany()) end,
-            any_int => fun stdtypes:tint/0,
-            any_list => fun stdtypes:tlist_any/0,
-            any_atom => fun stdtypes:tatom/0,
-            any_predef => fun stdtypes:tspecial_any/0,
-            any_map => fun stdtypes:tmap_any/0,
-            empty => fun stdtypes:tnone/0,
-            any => fun stdtypes:tany/0,
-            var => fun erlang_ty_var_to_var/1,
-            diff => fun ast_lib:mk_diff/2,
-            union => fun ast_lib:mk_union/1,
-            intersect => fun ast_lib:mk_intersection/1,
-            negate => fun ast_lib:mk_negation/1
-        }),
+        {Pol, Full} = ty_rec:transform(
+            X,
+            #{
+                to_fun => fun(S, T) -> stdtypes:tfun_full(lists:map(fun(F) ->
+                    (erlang_ty_to_ast(F, NewM)) end,S),
+                    (erlang_ty_to_ast(T, NewM))
+                ) end,
+                to_tuple => fun(Ts) -> stdtypes:ttuple(lists:map(fun(T) -> (erlang_ty_to_ast(T, NewM)) end,Ts)) end,
+                to_atom => fun(A) -> stdtypes:tatom(A) end,
+                to_list => fun(A, B) -> stdtypes:tlist_improper((erlang_ty_to_ast(A, NewM)), (erlang_ty_to_ast(B, NewM))) end,
+                to_int => fun(S, T) -> stdtypes:trange(S, T) end,
+                to_predef => fun('[]') -> stdtypes:tempty_list(); (Predef) -> {predef, Predef} end,
+                to_map => fun(Mans, Opts) -> stdtypes:tmap([stdtypes:tmap_field_man(erlang_ty_to_ast(T1, NewM), erlang_ty_to_ast(T2, NewM)) || {T1, T2} <- Mans] ++ [stdtypes:tmap_field_opt(erlang_ty_to_ast(T1, NewM), erlang_ty_to_ast(T2, NewM)) || {T1, T2} <- Opts]) end,
+                any_tuple => fun stdtypes:ttuple_any/0,
+                any_tuple_i => fun(Size) -> stdtypes:ttuple([stdtypes:tany() || _ <- lists:seq(1, Size)]) end,
+                any_function => fun stdtypes:tfun_any/0,
+                any_function_i => fun(Size) -> stdtypes:tfun([stdtypes:tnone() || _ <- lists:seq(1, Size)], stdtypes:tany()) end,
+                any_int => fun stdtypes:tint/0,
+                any_list => fun stdtypes:tlist_any/0,
+                any_atom => fun stdtypes:tatom/0,
+                any_predef => fun stdtypes:tspecial_any/0,
+                any_map => fun stdtypes:tmap_any/0,
+                empty => fun stdtypes:tnone/0,
+                any => fun stdtypes:tany/0,
+                var => fun erlang_ty_var_to_var/1,
+                diff => fun ast_lib:mk_diff/2,
+                union => fun ast_lib:mk_union/1,
+                intersect => fun ast_lib:mk_intersection/1,
+                negate => fun ast_lib:mk_negation/1
+            }),
 
-    % TODO check where to put the negation
-    NewTy = case Pol of
-        pos -> Full;
-        neg -> stdtypes:tnegate(Full)
-    end,
-    
-    % Return always recursive type
-    % TODO check if Var in NewTy
-    % if not, return just NewTy
-    Vars = ast_utils:referenced_variables(NewTy),
-    case lists:member(Var, Vars) of
-        true -> 
-            {mu, Var, NewTy};
-        false -> 
-            NewTy
-    end
+        % TODO check where to put the negation
+        NewTy = case Pol of
+            pos -> Full;
+            neg -> stdtypes:tnegate(Full)
+        end,
+        
+        % Return always recursive type
+        % TODO check if Var in NewTy
+        % if not, return just NewTy
+        Vars = ast_utils:referenced_variables(NewTy),
+        FinalTy = case lists:member(Var, Vars) of
+            true -> 
+                {mu, Var, NewTy};
+            false -> 
+                NewTy
+        end,
+
+        % SANITY CHECK    
+        % TODO is it always the case that once we are in the semantic world, when we go back we dont need the symtab?
+        Sanity = ast_lib:ast_to_erlang_ty(FinalTy, symtab:empty()), 
+          % leave this sanity check for a while
+          case ty_rec:is_equivalent(X, Sanity) of
+            true -> ok;
+            false ->
+              io:format(user, "--------~n", []),
+              io:format(user, "~p => ~p~n", [X, ty_ref:load(X)]),
+              io:format(user, "~p~n", [FinalTy]),
+              error(todo)
+          end,
+        FinalTy
     end.
 
 simplify(Full, Sym) ->
