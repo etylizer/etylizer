@@ -293,15 +293,25 @@ ast_to_erlang_ty({fun_full, Comps, Result}, Sym, M) ->
 % maps
 ast_to_erlang_ty({map_any}, _Sym, _M) ->
     ty_rec:map();
-ast_to_erlang_ty({map, []}, _Sym, _M) ->
-    EmptyMap = ty_map:map(#{}, maps:from_keys(ty_map:step_names(), ty_rec:empty())),
-    T = dnf_var_ty_map:map(dnf_ty_map:map(EmptyMap)),
-    ty_rec:map(T);
-ast_to_erlang_ty({map, AssocList}, Sym, M) ->
-    {LabelMappings, StepMappings} = convert_associations(AssocList, Sym, M),
-    Map = ty_map:map(LabelMappings, StepMappings),
-    T = dnf_var_ty_map:map(dnf_ty_map:map(Map)),
-    ty_rec:map(T);
+ast_to_erlang_ty({map, AssocList}, _Sym, _M) ->
+    {TupPartTy, FunPartTy} = lists:foldr(
+        fun({Association, Key, Val}, {Tuples, Functions}) ->
+            case Association of
+                map_field_opt ->
+                    % tuples only
+                    Tup = ast_to_erlang_ty({tuple, [Key, Val]}),
+                    {ty_rec:union(Tuples, Tup), Functions};
+                map_field_req ->
+                    % tuples & functions
+                    Tup = ast_to_erlang_ty({tuple, [Key, Val]}),
+                    Fun = ast_to_erlang_ty({fun_full, [Key], Val}),
+                    {ty_rec:union(Tuples, Tup), ty_rec:intersect(Functions, Fun)}
+            end
+        end, {ty_rec:empty(), ty_rec:function()}, AssocList),
+    MapTuple = ty_tuple:tuple([TupPartTy, FunPartTy]),
+    DnfMap = dnf_ty_map:map(MapTuple),
+    VarDnfMap = dnf_var_ty_map:map(DnfMap),
+    ty_rec:map(VarDnfMap);
 
 % TODO records
 
@@ -395,86 +405,4 @@ maybe_new_variable(Name) ->
             Var;
         [{_, Variable}] ->
             Variable
-    end.
-
-convert_associations(AssocList, Sym, Memo) ->
-    EmptySteps = maps:from_keys(ty_map:step_names(), ty_rec:empty()),
-    EmptyLabels = #{},
-    lists:foldr(
-        fun({Association, Key, Val}, {X, Y}) ->
-            case Association of
-                map_field_opt ->
-                    Convert = optional_converter(Val, Sym, Memo),
-                    Convert(Key, {X, Y});
-                map_field_req ->
-                    Convert = mandatory_converter(Val, Sym, Memo),
-                    Convert(Key, {X, Y})
-            end
-        end, {EmptyLabels, EmptySteps}, AssocList).
-
-optional_converter(ValTy, Sym, Memo) ->
-    O = optional, [ATOM, INT, TUP | _] = ty_map:step_names(), VAR = var_key,
-    Ty2 = ast_to_erlang_ty(ValTy, Sym, Memo),
-
-    fun Converter(Type, {X, Y}) ->
-        Ty1 = ast_to_erlang_ty(Type, Sym, Memo),
-        case Type of
-            {singleton, T} when is_atom(T) ->
-                Label = {O, {ATOM, Ty1}},
-                {X#{Label => Ty2}, Y};
-            {singleton, T} when is_integer(T) ->
-                Label = {O, {INT, Ty1}},
-                {X#{Label => Ty2}, Y};
-            {predef_alias, Alias} ->
-                Converter(stdtypes:expand_predef_alias(Alias), {X, Y});
-            {var, _} ->
-                Label = {O, {VAR, Ty1}},
-                {X#{Label => Ty2}, Y};
-            {tuple_any} ->
-                #{TUP := T} = Y,
-                {X, Y#{TUP := ty_rec:union(T, Ty2)}};
-            {tuple, _} ->
-                #{TUP := T} = Y,
-                {X, Y#{TUP := ty_rec:union(T, Ty2)}};
-            {predef, any} ->
-                YY = maps:map(fun(_, T) -> ty_rec:union(T, Ty2) end, Y),
-                {X, YY};
-            {predef, none} ->
-                {X, Y};
-            {predef, atom} ->
-                #{ATOM := T} = Y,
-                {X, Y#{ATOM := ty_rec:union(T, Ty2)}};
-            {predef, integer} ->
-                #{INT := T} = Y,
-                {X, Y#{INT := ty_rec:union(T, Ty2)}};
-            {union, Tys} ->
-                lists:foldr(Converter, {X, Y}, Tys);
-            _ ->
-                erlang:error({"Not supported optional key type", Type})
-        end
-    end.
-
-mandatory_converter(ValTy, Sym, Memo) ->
-    M = mandatory, [ATOM, INT | _] = ty_map:step_names(), VAR = var_key,
-    Ty2 = ast_to_erlang_ty(ValTy, Sym, Memo),
-
-    fun Converter(Type, {X, Y}) ->
-        Ty1 = ast_to_erlang_ty(Type, Sym, Memo),
-        case Type of
-            {singleton, T} when is_atom(T) ->
-                Label = {M, {ATOM, Ty1}},
-                {X#{Label => Ty2}, Y};
-            {singleton, T} when is_integer(T) ->
-                Label = {M, {INT, Ty1}},
-                {X#{Label => Ty2}, Y};
-            {predef_alias, Alias} ->
-                Converter(stdtypes:expand_predef_alias(Alias), {X, Y});
-            {var, _} ->
-                Label = {M, {VAR, Ty1}},
-                {X#{Label => Ty2}, Y};
-            {union, Tys} ->
-                lists:foldr(Converter, {X, Y}, Tys);
-            _ ->
-                erlang:error({"Not supported mandatory key type", Type})
-        end
     end.
