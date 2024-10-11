@@ -75,12 +75,15 @@ normalize(Size, Ty, [], [], Fixed, M) ->
     fun
       ([], [], T) ->
         case bdd_bool:empty() of T -> [[]]; _ -> [] end;
-      ([], Neg = [_TNeg | _], _) ->
-        P1 = ty_rec:tuple(2, dnf_var_ty_tuple:any()),
-        P2 = ty_rec:function(2, dnf_var_ty_function:any()),
-        PPos = ty_tuple:tuple([P1, P2]),
-        BigS = ty_tuple:big_intersect([PPos]),
-        phi_norm(2, ty_tuple:components(BigS), Neg, Fixed, M);
+      ([], Neg = [TNeg | _], T) ->
+        case bdd_bool:empty() of
+          T -> [[]];
+          _ ->
+            Dim = length(ty_tuple:components(TNeg)),
+            PosAny = ty_tuple:any(Dim),
+            BigS = ty_tuple:big_intersect([PosAny]),
+            phi_norm(Size, ty_tuple:components(BigS), Neg, Fixed, M)
+        end;
       (Pos, Neg, T) ->
         case bdd_bool:empty() of
           T -> [[]];

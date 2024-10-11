@@ -22,7 +22,7 @@
 
 -export([substitute/2, substitute/3, pi/2, all_variables/1, all_variables/2]).
 
--export([transform/2, print/1, to_labels/1]).
+-export([transform/2, print/1]).
 
 -record(ty, {predef, atom, interval, list, tuple, function, map}).
 
@@ -786,27 +786,6 @@ pi(map, TyRef) ->
   Ty#ty.map.
 
 
--spec to_labels(UnionOfTyVars :: ty_ref() | UnionOfSingletons :: ty_ref()) -> [Label :: ty_map:l()].
-to_labels(TyRef) ->
-  % labels are singleton types together with a type marking
-  #ty{
-    atom = Atoms,
-    interval = Ints,
-    tuple = {DefaultTuple, _},
-    predef = Predefs,
-    list = Lists,
-    function = Functions,
-    map = Maps
-  } = ty_ref:load(TyRef),
-
-  case {dnf_var_predef:empty(), dnf_var_ty_list:empty(), {dnf_var_ty_function:empty(), #{}}, dnf_var_ty_map:empty()} of
-    {Predefs, Lists, Functions, Maps} ->
-      [{atom_key, Ref} || Ref <- dnf_var_ty_atom:to_singletons(Atoms)]
-      ++ [{integer_key, Ref} || Ref <- dnf_var_int:to_singletons(Ints)]
-        ++ [{tuple_key, Ref} || Ref <- dnf_var_ty_tuple:to_singletons(DefaultTuple)];
-    _ ->
-      []
-  end.
 
 
 all_variables(TyRef) -> all_variables(TyRef, #{}).
@@ -885,22 +864,6 @@ nonempty_function_test() ->
   Function2 = ty_rec:function(1, dnf_var_ty_function:any()),
   true = ty_rec:is_subtype(Function, Function2),
   true = ty_rec:is_subtype(Function2, Function),
-  ok.
-
-singleton_test() ->
-  test_utils:reset_ets(),
-  Atom1 = ty_rec:atom(dnf_var_ty_atom:ty_atom(ty_atom:finite([a]))),
-  Atom2 = ty_rec:atom(dnf_var_ty_atom:ty_atom(ty_atom:finite([b]))),
-  Atoms = ty_rec:union(Atom1, Atom2),
-
-  Int1 = ty_rec:interval(dnf_var_int:int(ty_interval:interval(1, 1))),
-  Int2 = ty_rec:interval(dnf_var_int:int(ty_interval:interval(2, 2))),
-  Ints = ty_rec:interval(dnf_var_int:int(ty_interval:interval(1, 2))),
-
-  Tuple = ty_rec:tuple({default, []}, dnf_var_ty_tuple:tuple(dnf_ty_tuple:tuple(ty_tuple:tuple([Atom1, Int1])))),
-  Labels = [{atom_key, Atom1}, {atom_key, Atom2}, {integer_key, Int1}, {integer_key, Int2}, {tuple_key, Tuple}],
-
-  [] = Labels -- ty_rec:to_labels(ty_rec:union(Atoms, ty_rec:union(Ints, Tuple))),
   ok.
 
 -endif.
