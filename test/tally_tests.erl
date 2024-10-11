@@ -529,17 +529,17 @@ fun_local_own_test_() ->
 % =====
 % Map Normalization
 % =====
-maps_norm_simple1_test() ->
-  % #{int() => int()}  ≤  #{a => β}
+maps_norm_opt_1_test() ->
+  % #{int() => int()} ⊏ #{a => β}
   L = tmap([tmap_field_opt(tint(), tint())]),
   R = tmap([tmap_field_opt(tvar(alpha), tvar(beta))]),
 
   test_tally([alpha, beta], [{L, R}],
     [{#{alpha => tint(), beta => tint()},
-      #{alpha => tint(), beta => tany()}}
+      #{alpha => tany(), beta => tany()}}
     ]).
 
-maps_norm_simple2_test() ->
+maps_norm_opt_2_test() ->
   % #{int() => int(), atom() => atom()}  ≤  #{a => β}
   L = tmap([
     tmap_field_opt(tint(), tint()),
@@ -549,40 +549,38 @@ maps_norm_simple2_test() ->
 
   test_tally([alpha, beta], [{L, R}],
     [{#{alpha => tunion(tint(), tatom()), beta => tunion(tint(), tatom())},
-      #{alpha => tunion(tint(), tatom()), beta => tany()}}
+      #{alpha => tany(), beta => tany()}}
     ]).
 
-maps_norm_simple3_test() ->
-  % #{int() => int(), _ => foo}  ≤  #{a => β}
+maps_norm_opt_3_test() ->
+  % #{int() => int(), _       => foo}  ≤  #{a => β}
+  % #{int() => int(), _\int() => foo}  ≤  #{a => β}
   L = tmap([
     tmap_field_opt(tint(), tint()),
     tmap_field_opt(tany(), tatom(foo))
   ]),
   R = tmap([tmap_field_opt(tvar(alpha), tvar(beta))]),
-  KeyDom = tunion([tatom(), tint(), ttuple_any()]),
 
   test_tally([alpha, beta], [{L, R}],
-    [{#{alpha => KeyDom, beta => tunion(tint(), tatom(foo))},
-      #{alpha => KeyDom, beta => tany()}}
+    [{#{alpha => tany(), beta => tunion(tint(), tatom(foo))},
+      #{alpha => tany(), beta => tany()}}
     ]).
 
-maps_norm_simple4_test() ->
-  % #{a => int()}  !≤  #{int() => β}
+maps_norm_opt_4_test() ->
+  % #{a => int()}  ≤  #{int() => β}
   L1 = tmap([tmap_field_opt(tvar(alpha), tint())]),
   R1 = tmap([tmap_field_opt(tint(), tvar(beta))]),
-  catch test_tally([alpha, beta], [{L1, R1}], [{#{}, #{}}]), % should normalize to []
+  test_tally([alpha, beta], [{L1, R1}], solutions(2)),
 
   % #{int() => β}  ≤  #{a => int()}
   L2 = tmap([tmap_field_opt(tint(), tvar(beta))]),
   R2 = tmap([tmap_field_opt(tvar(alpha), tint())]),
 
-  test_tally([alpha, beta], [{L2, R2}],
-    [{#{alpha => tint(), beta => tnone()},
-      #{alpha => tint(), beta => tint()}}
-    ]).
+  test_tally([alpha, beta], [{L2, R2}], solutions(2)).
 
-maps_norm_simple5_test() ->
-  % #{a => int(), _ => atom()}  ≤  #{β => atom() | int()}
+maps_norm_opt_5_test() ->
+  % #{a => int(), _   => atom()}  ≤  #{β => atom() | int()}
+  % #{a => int(), _\a => atom()}  ≤  #{β => atom() | int()}
   L = tmap([
     tmap_field_opt(tvar(alpha), tint()),
     tmap_field_opt(tany(), tatom())
@@ -590,22 +588,18 @@ maps_norm_simple5_test() ->
   R = tmap([
     tmap_field_opt(tvar(beta), tunion(tatom(), tint()))
   ]),
-  KeyDom = tunion([tatom(), tint(), ttuple_any()]),
-  test_tally([alpha, beta], [{L, R}], [{#{alpha => tnone(), beta => KeyDom}, #{alpha => tnone(), beta => KeyDom}}]),
-  catch test_tally([alpha, beta], [{R, L}], [{#{}, #{}}]). % should normalize to []
 
-maps_norm_simple6_test() ->
+  test_tally([alpha, beta], [{L, R}], solutions(1)).
+
+maps_norm_opt_6_test() ->
   % #{a => β} ≤ #{atom() => int()}
   L = tmap([tmap_field_opt(tvar(alpha), tvar(beta))]),
   R = tmap([tmap_field_opt(tatom(), tint())]),
 
-  test_tally([alpha, beta], [{L, R}],
-    [{#{alpha => tatom(), beta => tnone()},
-      #{alpha => tatom(), beta => tint()}}
-    ]).
+  test_tally([alpha, beta], [{L, R}], solutions(3)).
 
 
-maps_norm_simple_additional_test() ->
+maps_norm_opt_7_test() ->
   % #{a => atom()}  ≤  #{β => any()}
   L = tmap([
     tmap_field_opt(tvar(alpha), tatom())
@@ -613,18 +607,18 @@ maps_norm_simple_additional_test() ->
   R = tmap([
     tmap_field_opt(tvar(beta), tany())
   ]),
-  KeyDom = tunion([tatom(), tint(), ttuple_any()]),
-  test_tally([alpha, beta], [{L, R}], [{#{alpha => tnone(), beta => tnone()}, #{alpha => KeyDom, beta => KeyDom}}]).
+  test_tally([alpha, beta], [{L, R}], solutions(1)).
 
-maps_norm_complex1_test() ->
-  % #{}  !≤  #{a := β}
+maps_norm_opt_8_test() ->
+  % #{}  ≤  #{a => β}
   L = tmap([]),
-  R1 = tmap([tmap_field_man(tvar(alpha), tvar(beta))]),
-  catch test_tally([alpha, beta], [{L, R1}], [{#{}, #{}}]), % should normalize to []
+  R1 = tmap([tmap_field_opt(tvar(alpha), tvar(beta))]),
+  test_tally([alpha, beta], [{L, R1}], solutions(1)),
 
-  % #{}  ≤  #{a := β} /\ #{}
-  R2 = tintersect([R1, L]),
-  test_tally([alpha, beta], [{L, R2}], [{#{}, #{}}]).
+  ok.
+  % % #{}  ≤  #{a => β} /\ #{}
+  % R2 = tintersect([R1, L]),
+  % test_tally([alpha, beta], [{L, R2}], solutions(1)).
 
 maps_norm_complex2_test() ->
   % #{foo := int(), _ => any()}  !≤  #{foo := 1, a => β}

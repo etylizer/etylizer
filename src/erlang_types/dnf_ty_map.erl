@@ -40,6 +40,12 @@ normalize(TyMap, [], [], Fixed, M) ->
     fun
       ([], [], T) ->
         case bdd_bool:empty() of T -> [[]]; _ -> [] end;
+      ([], Neg = [_TNeg | _], _) ->
+        P1 = ty_rec:tuple(2, dnf_var_ty_tuple:any()),
+        P2 = ty_rec:function(2, dnf_var_ty_function:any()),
+        PPos = ty_tuple:tuple([P1, P2]),
+        BigS = ty_tuple:big_intersect([PPos]),
+        dnf_ty_tuple:phi_norm(2, ty_tuple:components(BigS), Neg, Fixed, M);
       (Pos, Neg, T) ->
         case bdd_bool:empty() of
           T -> [[]];

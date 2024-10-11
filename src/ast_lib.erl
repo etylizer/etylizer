@@ -294,20 +294,20 @@ ast_to_erlang_ty({fun_full, Comps, Result}, Sym, M) ->
 ast_to_erlang_ty({map_any}, _Sym, _M) ->
     ty_rec:map();
 ast_to_erlang_ty({map, AssocList}, _Sym, _M) ->
-    {TupPartTy, FunPartTy} = lists:foldr(
-        fun({Association, Key, Val}, {Tuples, Functions}) ->
+    {_, TupPartTy, FunPartTy} = lists:foldl(
+        fun({Association, Key, Val}, {PrecedenceDomain, Tuples, Functions}) ->
             case Association of
                 map_field_opt ->
                     % tuples only
-                    Tup = ast_to_erlang_ty({tuple, [Key, Val]}),
-                    {ty_rec:union(Tuples, Tup), Functions};
+                    Tup = ast_to_erlang_ty({tuple, [mk_diff(Key, PrecedenceDomain), Val]}),
+                    {mk_union(PrecedenceDomain, Key), ty_rec:union(Tuples, Tup), Functions};
                 map_field_req ->
                     % tuples & functions
-                    Tup = ast_to_erlang_ty({tuple, [Key, Val]}),
-                    Fun = ast_to_erlang_ty({fun_full, [Key], Val}),
-                    {ty_rec:union(Tuples, Tup), ty_rec:intersect(Functions, Fun)}
+                    Tup = ast_to_erlang_ty({tuple, [mk_diff(Key, PrecedenceDomain), Val]}),
+                    Fun = ast_to_erlang_ty({fun_full, [mk_diff(Key, PrecedenceDomain)], Val}),
+                    {mk_union(PrecedenceDomain, Key), ty_rec:union(Tuples, Tup), ty_rec:intersect(Functions, Fun)}
             end
-        end, {ty_rec:empty(), ty_rec:function()}, AssocList),
+        end, {stdtypes:tnone(), ty_rec:empty(), ty_rec:function()}, AssocList),
     MapTuple = ty_tuple:tuple([TupPartTy, FunPartTy]),
     DnfMap = dnf_ty_map:map(MapTuple),
     VarDnfMap = dnf_var_ty_map:map(DnfMap),

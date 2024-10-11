@@ -810,3 +810,20 @@ maps_singletons_mixed_2_test() ->
   false = is_subtype(R, L),
 
   ok.
+
+maps_precedence_1_test() ->
+  % left-most match takes precedence
+  % #{int() => int(), Any => foo} =:= {int() => int(), Any\int() => foo}
+  L = tmap([
+    tmap_field_opt(tint(), tint()),
+    tmap_field_opt(tany(), tatom(foo))
+  ]),
+  R = tmap([
+    tmap_field_opt(tint(), tint()),
+    tmap_field_opt(tintersect([tany(), tnegate(tint())]), tatom(foo))
+  ]),
+
+  true = is_subtype(L, R),
+  true = is_subtype(R, L),
+
+  ok.
