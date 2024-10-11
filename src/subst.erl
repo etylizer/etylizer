@@ -137,7 +137,7 @@ clean_type(Ty, Fix) ->
 combine_vars(_K, V1, V2) ->
     V1 ++ V2.
 
-collect_vars({K, Components}, CPos, Pos, Fix) when K == union; K == intersection; K == tuple ->
+collect_vars({K, Components}, CPos, Pos, Fix) when K == union; K == intersection; K == tuple; K == map ->
     VPos = lists:map(fun(Ty) -> collect_vars(Ty, CPos, Pos, Fix) end, Components),
     lists:foldl(fun(FPos, Current) -> maps:merge_with(fun combine_vars/3, FPos, Current) end, #{}, VPos);
 collect_vars({fun_full, Components, Target}, CPos, Pos, Fix) ->
@@ -157,6 +157,10 @@ collect_vars({tuple_any}, _CPos, Pos, _) -> Pos;
 collect_vars({fun_simple}, _CPos, Pos, _) -> Pos;
 collect_vars({list, A}, CPos, Pos, Fix) ->
     collect_vars(A, CPos, Pos, Fix);
+collect_vars({Map, A, B}, CPos, Pos, Fix) when Map == map_field_opt; Map == map_field_req ->
+    M1 = collect_vars(A, CPos, Pos, Fix),
+    M2 = collect_vars(B, CPos, Pos, Fix),
+    maps:merge_with(fun combine_vars/3, M1, M2);
 collect_vars({improper_list, A, B}, CPos, Pos, Fix) ->
     M1 = collect_vars(A, CPos, Pos, Fix),
     M2 = collect_vars(B, CPos, Pos, Fix),

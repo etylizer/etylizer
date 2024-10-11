@@ -162,8 +162,8 @@ simple_test_() ->
 
   % If OnlyFiles is empty, all files not in IgnoreFiles are checked
   % If OnlyFiles is not empty, only the files in OnlyFiles but not in IgnoreFiels are checked
-  OnlyFiles = [],
-  IgnoreFiles = ["maps.erl"],
+  OnlyFiles = ["maps.erl"],
+  IgnoreFiles = [],
 
   case file:list_dir(TopDir) of
     {ok, Entries} ->
