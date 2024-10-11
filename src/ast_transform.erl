@@ -261,12 +261,6 @@ trans_ty(Ctx, Env, Ty) ->
                             {FieldName, trans_ty(Ctx, Env, FieldTy)}
                     end,
                     Fields),
-            case Overrides of
-                [] -> ok;
-                _ ->
-                    errors:unsupported(to_loc(Ctx, Anno), "~s: records with overridden field types",
-                        [ast:format_loc(Loc)])
-            end,
             case maps:find(Name, Ctx#ctx.records) of
                 error ->
                     errors:name_error("~s: record ~w not defined", [ast:format_loc(Loc), Name]);

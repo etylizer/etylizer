@@ -264,7 +264,14 @@ exp_constrs(Ctx, E, T) ->
         {receive_after, L, _CauseClauses, _TimeoutExp, _Body} ->
             errors:unsupported(L, "receive_after: ~200p", [E]);
         {record_create, L, Name, GivenFields} ->
-            RecTy = {_, DefFields} = symtab:lookup_record(Name, L, Ctx#ctx.symtab),
+            {_, DefFields} = symtab:lookup_record(Name, L, Ctx#ctx.symtab),
+            VarFields =
+                lists:map(
+                    fun ({N, _}) ->
+                        Alpha = fresh_tyvar(Ctx),
+                        {N, Alpha}
+                    end,
+                    DefFields),
             DefFieldNames = sets:from_list(lists:map(fun ({N, _}) -> N end, DefFields)),
             GivenFieldNames =
                 sets:from_list(lists:map(fun ({record_field, _L, N, _Exp}) -> N end, GivenFields)),
@@ -279,21 +286,32 @@ exp_constrs(Ctx, E, T) ->
             Cs =
                 lists:foldr(
                     fun({record_field, _L, N, Exp}, Cs) ->
-                        {ok, Ty} = utils:assocs_find(N, DefFields), % we checked before that all fields are present
+                        {ok, Ty} = utils:assocs_find(N, VarFields), % we checked before that all fields are present
                         ThisCs = exp_constrs(Ctx, Exp, Ty),
                         sets:union(Cs, ThisCs)
                     end,
                     sets:new(),
                     GivenFields),
-            RecTupleTy = records:encode_record_ty(RecTy),
+            RecTupleTy = records:encode_record_ty({Name, VarFields}),
             RecConstr = {csubty, mk_locs("record value constructor", L), RecTupleTy, T},
             sets:add_element(RecConstr, Cs);
         {record_field, L, Exp, RecName, FieldName} ->
-            RecTy = symtab:lookup_record(RecName, L, Ctx#ctx.symtab),
-            RecTupleTy = records:encode_record_ty(RecTy),
+            {_, DefFields} = symtab:lookup_record(RecName, L, Ctx#ctx.symtab),
+            Alpha = fresh_tyvar(Ctx),
+            VarFields =
+                lists:map(
+                    fun ({N, _}) ->
+                        Ty =
+                            case N =:= FieldName of
+                                true -> Alpha;
+                                false -> stdtypes:tany()
+                            end,
+                        {N, Ty}
+                    end,
+                    DefFields),
+            RecTupleTy = records:encode_record_ty({RecName, VarFields}),
             Cs = exp_constrs(Ctx, Exp, RecTupleTy),
-            FieldTy = records:lookup_field_ty(RecTy, FieldName, L),
-            FieldConstr = {csubty, mk_locs("record field access", L), FieldTy, T},
+            FieldConstr = {csubty, mk_locs("record field access", L), Alpha, T},
             sets:add_element(FieldConstr, Cs);
         {record_index, L, RecName, FieldName} ->
             RecTy = symtab:lookup_record(RecName, L, Ctx#ctx.symtab),
@@ -301,16 +319,43 @@ exp_constrs(Ctx, E, T) ->
             Constr = {csubty, mk_locs("record field index", L), stdtypes:tint(Idx + 1), T},
             utils:single(Constr);
         {record_update, L, Exp, RecName, FieldUpdates} ->
-            RecTy = symtab:lookup_record(RecName, L, Ctx#ctx.symtab),
-            RecTupleTy = records:encode_record_ty(RecTy),
-            ExpCs = exp_constrs(Ctx, Exp, RecTupleTy),
+            {_, DefFields} = symtab:lookup_record(RecName, L, Ctx#ctx.symtab),
+            UpdatedFieldNames =
+                sets:from_list(
+                    lists:map(fun({record_field, _, FieldName, _}) -> FieldName end, FieldUpdates)
+                ),
+            % For typechecking the expression Exp, the updated fields can have type any().
+            % But all fields F not updated must be of type Alpha_F (a type variable)
+            % The values for all updated fields G must have type Alpha_G
+            % The resulting record type then combines the Alpha_F and Alpha_G
+            % A list of tuples {name of field, expected type in exp, type in result}
+            FieldTypes =
+                lists:map(
+                    fun ({N, _}) ->
+                        {TyExp, TyRes} =
+                            case sets:is_element(N, UpdatedFieldNames) of
+                                true -> {stdtypes:tany(), fresh_tyvar(Ctx)};
+                                false ->
+                                    Alpha = fresh_tyvar(Ctx),
+                                    {Alpha, Alpha}
+                            end,
+                        {N, TyExp, TyRes}
+                    end,
+                    DefFields),
+            FieldsForExp = lists:map(fun ({N, Ty, _}) -> {N, Ty} end, FieldTypes),
+            RecTupleTyExp = records:encode_record_ty({RecName, FieldsForExp}),
+            ExpCs = exp_constrs(Ctx, Exp, RecTupleTyExp),
+            FieldsForRes = lists:map(fun ({N, _, Ty}) -> {N, Ty} end, FieldTypes),
+            RecTyRes = {RecName, FieldsForRes},
+            RecTupleTyRes = records:encode_record_ty(RecTyRes),
+            ResConstr = {csubty, mk_locs("record result", L), RecTupleTyRes, T},
             lists:foldr(
                 fun({record_field, FieldUpdateLoc, FieldName, FieldExp}, Cs) ->
-                    FieldTy = records:lookup_field_ty(RecTy, FieldName, FieldUpdateLoc),
+                    FieldTy = records:lookup_field_ty(RecTyRes, FieldName, FieldUpdateLoc),
                     ThisCs = exp_constrs(Ctx, FieldExp, FieldTy),
                     sets:union(Cs, ThisCs)
                 end,
-                ExpCs,
+                sets:add_element(ResConstr, ExpCs),
                 FieldUpdates);
         {tuple, L, Args} ->
             {Tys, Cs} =
@@ -596,12 +641,7 @@ ty_of_pat(Symtab, Env, P, Mode) ->
                 end,
             stdtypes:tmap(F(KeyTs), F(ValTs));
         {record, L, RecName, FieldPats} ->
-            RecTy = {_, RecFields} = symtab:lookup_record(RecName, L, Symtab),
-            F =
-                case Mode of
-                    upper -> fun ast_lib:mk_union/2;
-                    lower -> fun ast_lib:mk_intersection/2
-                end,
+            {_, RecFields} = symtab:lookup_record(RecName, L, Symtab),
             FieldMap =
                 lists:foldl(
                     fun({record_field, FieldLoc, FieldName, FieldPat}, FieldMap) ->
@@ -612,19 +652,17 @@ ty_of_pat(Symtab, Env, P, Mode) ->
                                     [FieldName]);
                             _ -> ok
                         end,
-                        PatTy = ty_of_pat(Symtab, Env, FieldPat, Mode),
-                        FieldTy = records:lookup_field_ty(RecTy, FieldName, FieldLoc),
-                        Ty = F(PatTy, FieldTy),
+                        Ty = ty_of_pat(Symtab, Env, FieldPat, Mode),
                         maps:put(FieldName, Ty, FieldMap)
                     end,
                     #{},
                     FieldPats),
             MatchedRecFields =
                 lists:map(
-                    fun({FieldName, DefFieldTy}) ->
+                    fun({FieldName, _}) ->
                         case maps:find(FieldName, FieldMap) of
                             {ok, Ty} -> {FieldName, Ty};
-                            _ -> {FieldName,DefFieldTy}
+                            _ -> {FieldName, stdtypes:tany()}
                         end
                     end,
                     RecFields),
@@ -697,17 +735,28 @@ pat_env(Ctx, OuterL, T, P) ->
             C = {csubty, mk_locs("t // #{_}", OuterL), T, stdtypes:tmap(AlphaK, AlphaV)},
             {sets:add_element(C, AssocCs), AssocEnv};
         {record, L, RecName, FieldPats} ->
-            RecTy = symtab:lookup_record(RecName, L, Ctx#ctx.symtab),
-            {Cs, Env} =
+            {_, DefFields} = symtab:lookup_record(RecName, L, Ctx#ctx.symtab),
+            {Cs, Env, MatchedFieldTypes} =
                 lists:foldl(
-                    fun ({record_field, FieldLoc, FieldName, FieldPat}, {AccCs, AccEnv}) ->
-                        FieldTy = records:lookup_field_ty(RecTy, FieldName, FieldLoc),
-                        {ThisCs, ThisEnv} = pat_env(Ctx, OuterL, FieldTy, FieldPat),
-                        {sets:union(AccCs, ThisCs), intersect_envs(AccEnv, ThisEnv)}
+                    fun ({record_field, _FieldLoc, FieldName, FieldPat}, {AccCs, AccEnv, AccFieldTypes}) ->
+                        Alpha = fresh_tyvar(Ctx),
+                        {ThisCs, ThisEnv} = pat_env(Ctx, OuterL, Alpha, FieldPat),
+                        {sets:union(AccCs, ThisCs),
+                            intersect_envs(AccEnv, ThisEnv),
+                            maps:put(FieldName, Alpha, AccFieldTypes)}
                     end,
-                    {sets:new(), #{}},
+                    {sets:new(), #{}, #{}},
                     FieldPats),
-            RecTupleTy = records:encode_record_ty(RecTy),
+            FieldTypes =
+                lists:map(
+                    fun({FieldName, _DefFieldType}) ->
+                        case maps:find(FieldName, MatchedFieldTypes) of
+                            {ok, Ty} -> {FieldName, Ty};
+                            error -> {FieldName, stdtypes:tany()}
+                        end
+                    end,
+                    DefFields),
+            RecTupleTy = records:encode_record_ty({RecName, FieldTypes}),
             C = {csubty, mk_locs("t // #Record{...}", OuterL), T, RecTupleTy},
             {sets:add_element(C, Cs), Env};
         {record_index, _L, _Name, _Field} -> Empty;

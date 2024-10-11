@@ -17,6 +17,11 @@ record_create_01() -> #person{age=13, address="blub", name="max"}.
 -spec record_create_02_fail() -> #person{}.
 record_create_02_fail() -> #person{name="max", age="13", address="blub"}.
 
+-spec record_create_03() -> #person{ address :: integer() }.
+record_create_03() -> #person{age=13, address=1, name="max"}.
+
+-spec record_create_03_fail() -> #person{ address :: integer() }.
+record_create_03_fail() -> #person{name="max", age=13, address="blub"}.
 
 %%%%%%%%%%%%%%%%%%%%%%%% FIELD ACCESS %%%%%%%%%%%%%%%%%%%%%%%
 
@@ -28,6 +33,12 @@ get_age(P) -> P#person.age.
 
 -spec get_age_fail(#person{}) -> string().
 get_age_fail(P) -> P#person.age.
+
+-spec get_age_02(#person{ age :: string() }) -> string().
+get_age_02(P) -> P#person.age.
+
+-spec get_age_02_fail(#person{ age :: string() }) -> integer().
+get_age_02_fail(P) -> P#person.age.
 
 %%%%%%%%%%%%%%%%%%%%%%%% FIELD INDEX %%%%%%%%%%%%%%%%%%%%%%%
 
@@ -48,6 +59,15 @@ set_age(I) -> (record_create_01())#person{age = I}.
 -spec set_age_fail(#person{}, string()) -> #person{}.
 set_age_fail(P, S) -> P#person{age = S}.
 
+-spec set_age_02(string()) -> #person{ age :: string() }.
+set_age_02(I) -> (record_create_01())#person{age = I}.
+
+-spec set_age_02_fail(#person{ age :: string() }, integer()) -> #person{ age :: string() }.
+set_age_02_fail(P, I) -> P#person{age = I}.
+
+-spec set_age_03_fail(#person{ age :: string() }, string()) -> #person{ age :: atom() }.
+set_age_03_fail(P, I) -> P#person{age = I}.
+
 %%%%%%%%%%%%%%%%%%%%%%%% PATTERNS %%%%%%%%%%%%%%%%%%%%%%%
 
 -spec get_name_pattern(#person{}) -> string().
@@ -58,6 +78,18 @@ get_name_pattern(P) ->
 
 -spec get_age_pattern(#person{}) -> integer().
 get_age_pattern(P) ->
+    case P of
+        #person{name=_, age=I} -> I
+    end.
+
+-spec get_age_02_pattern(#person{ age :: string() }) -> string().
+get_age_02_pattern(P) ->
+    case P of
+        #person{name=_, age=I} -> I
+    end.
+
+-spec get_age_02_pattern_fail(#person{ age :: string() }) -> integer().
+get_age_02_pattern_fail(P) ->
     case P of
         #person{name=_, age=I} -> I
     end.
@@ -98,3 +130,8 @@ get_age_from_invoice(X) ->
 -spec get_name_from_invoice(#invoice{}) -> string().
 get_name_from_invoice(X) -> X#invoice.person#person.name.
 
+-spec get_name_from_invoice_02(#invoice{ person :: #person { name :: integer() }}) -> integer().
+get_name_from_invoice_02(X) -> X#invoice.person#person.name.
+
+-spec get_name_from_invoice_02_fail(#invoice{ person :: #person { name :: integer() }}) -> string().
+get_name_from_invoice_02_fail(X) -> X#invoice.person#person.name.
