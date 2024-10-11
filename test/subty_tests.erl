@@ -716,20 +716,13 @@ maps_any_empty_test() ->
   Any1 = tmap_any(),
   % #{any() => any()}
   Any2 = tmap([tmap_field_opt(tany(), tany())]),
-  % #{atom() => any(), integer() => any(), tuple() => any()}
-  Any3 = tmap([
-    tmap_field_opt(tatom(), tany()),
-    tmap_field_opt(tint(), tany()),
-    tmap_field_opt(ttuple_any(), tany())
-  ]),
-  Any4 = tintersect([Any1, Any2, Any3]),
+  Any3 = tintersect([Any1, Any2]),
 
   true = is_subtype(Empty, Any1),
   true = is_equiv(Any1, Any2),
   true = is_equiv(Any2, Any3),
-  true = is_equiv(Any3, Any4),
-  false = is_subtype(Any4, Empty),
-  true = is_equiv(tintersect([Any4, Empty]), Empty),
+  false = is_subtype(Any3, Empty),
+  true = is_equiv(tintersect([Any3, Empty]), Empty),
 
   ok.
 
@@ -748,7 +741,24 @@ maps_steps_test() ->
 
   ok.
 
-maps_labels1_test() ->
+maps_singletons_opt_test() ->
+  % {1 := a, 2 => b, 10 => c}  !≤ ≥!  {1 => a, 2 := b, 3 => c}
+  L = tmap([
+    tmap_field_opt(tint(1), tatom(a)),
+    tmap_field_opt(tint(2), tatom(b)),
+    tmap_field_opt(tint(10), tatom(c))
+  ]),
+  R = tmap([
+    tmap_field_opt(tint(1), tatom(a)),
+    tmap_field_opt(tint(2), tatom(b)),
+    tmap_field_opt(tint(3), tatom(c))
+  ]),
+  false = is_subtype(L, R),
+  false = is_subtype(R, L),
+
+  ok.
+
+maps_singletons_mixed_test() ->
   % {1 := a, 2 => b, 10 => c}  !≤ ≥!  {1 => a, 2 := b, 3 => c}
   L = tmap([
     tmap_field_man(tint(1), tatom(a)),
@@ -761,12 +771,12 @@ maps_labels1_test() ->
     tmap_field_opt(tint(3), tatom(c))
   ]),
   false = is_subtype(L, R),
-  false = is_subtype(L, R),
+  false = is_subtype(R, L),
 
   ok.
 
-maps_labels2_test() ->
-  % {1 => a, _ => none}  ≤ ≥!  {1 => a, 3 => a, _ => none}
+maps_singletons_opt_2_test() ->
+  % {1 => a, _ => none}  ≤ ≥!  {1 => a, 3 => a, _ => none} =:= {1|3 => a, _ => none}
   L = tmap([
     tmap_field_opt(tint(1), tatom(a)),
     tmap_field_opt(tany(), tnone())
@@ -786,7 +796,7 @@ maps_labels2_test() ->
 
   ok.
 
-maps_labels3_test() ->
+maps_singletons_mixed_2_test() ->
   % {1 := a, 2 => b}  !≤ ≥!  {1 => a, 2 := b}
   L = tmap([
     tmap_field_man(tint(1), tatom(a)),

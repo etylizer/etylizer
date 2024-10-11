@@ -35,9 +35,11 @@ split_into_associations({fun_simple}, OnlyOptional) ->
             [];
         {tuple, [X, Y]} -> 
             [{map_field_opt, X, Y}];
+        {union, Tuples} -> 
+            [{map_field_opt, X, Y} || {tuple, [X, Y]} <- Tuples];
         Got -> 
             io:format(user,"Got:~p~n", [Got]),
-            error(arity_not_implemented)
+            error(sanity_not_implemented)
     end;
 split_into_associations(_Mandatory, _MandatoryAndOptional) ->
     % mandatory are intersection of functions
