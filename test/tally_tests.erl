@@ -11,12 +11,16 @@
                   ]).
 
 
--spec test_tally(any(), list({ast:ty(), ast:ty()}), #{ atom() => ast:ty()}) -> ok.
+-type expected_subst() :: {
+  #{ atom() => ast:ty() },  % lower bounds
+  #{ atom() => ast:ty() } % upper bounds
+}.
+
+-spec test_tally(any(), list({ast:ty(), ast:ty()}), list(expected_subst())) -> ok.
 test_tally(Order, ConstrList, ExpectedSubst) ->
     test_tally(Order, ConstrList, ExpectedSubst, []).
 
--spec test_tally(any(), list({ast:ty(), ast:ty()}), #{ atom() => ast:ty()}, [ast:ty_varname()]) -> ok.
-test_tally(_Order, _ConstrList, [], _FixedVars) -> ok;
+-spec test_tally(any(), list({ast:ty(), ast:ty()}), list(expected_subst()), [ast:ty_varname()]) -> ok.
 test_tally(Order, ConstrList, AllTests, FixedVars) ->
     Constrs = sets:from_list(
                 lists:map(
@@ -26,21 +30,33 @@ test_tally(Order, ConstrList, AllTests, FixedVars) ->
 
   OrderFun = fun() -> [ast_lib:ast_to_erlang_ty({var, X}) || X <- Order] end,
   Res = tally:tally(symtab:empty(), Constrs, sets:from_list(FixedVars), OrderFun),
+  case Res of
+    [_ | _] -> ok;
+    _ -> error(utils:sformat("Unexpected result from tally: ~w", Res))
+  end,
+  ?LOG_WARN("Tally result:~n~s",
+    pretty:render_substs(lists:map(fun (S) -> subst:base_subst(S) end, Res))),
   find_subst(AllTests, Res, Res).
 
+-spec find_subst(list(expected_subst()), [subst:t()], [subst:t()]) -> ok.
 find_subst([], [], _) -> ok;
 find_subst([{Low, High} | _], [], Sols) ->
-  ?LOG_WARN("~nCould not find substitutions among remaining ~p tally solutions for~nExpected lower bound:~n~s~n~nExpected upper bound:~n~s",
+  ?LOG_WARN("~nCould not find substitutions among remaining ~p tally solutions for~n" ++
+    "expected lower bound:~n~s~n~nexpected upper bound:~n~s~n~nRemaining:~s",
             length(Sols),
             pretty:render_subst(Low),
-            pretty:render_subst(High)
+            pretty:render_subst(High),
+            pretty:render_substs(lists:map(fun (S) -> subst:base_subst(S) end, Sols))
   ),
   error("test failed because tally returned no substitution that matches low and high bounds");
-find_subst([], [_X | _Xs], _) -> error({"Too many substitutions"});
+find_subst([], [_X | _Xs], Remaining) ->
+  Substs = lists:map(fun (S) -> subst:base_subst(S) end, Remaining),
+  ?LOG_WARN("~nToo many substitutions return from tally. Unconsumed: ~200p", Substs),
+  error("Too many substitutions returned from tally");
 find_subst(X = [{Low, High} | OtherTests], [TallySubst | Others], AllTally) ->
   Subst = subst:base_subst(TallySubst),
   Valid = lists:any(
-    fun({{_Var, LowerBound}, {Var, UpperBound}}) ->
+    fun({{Var, LowerBound}, {Var, UpperBound}}) ->
       begin
         TyOther = maps:get(Var, Subst, {var, Var}),
         not (subty:is_subty(none, LowerBound, TyOther) andalso
@@ -558,6 +574,17 @@ maps_norm_simple5_test() ->
   test_tally([alpha, beta], [{L, R}], [{#{alpha => tnone(), beta => KeyDom}, #{alpha => tnone(), beta => KeyDom}}]),
   catch test_tally([alpha, beta], [{R, L}], [{#{}, #{}}]). % should normalize to []
 
+maps_norm_simple6_test() ->
+  % #{a => β} ≤ #{atom() => int()}
+  L = tmap([tmap_field_opt(tvar(alpha), tvar(beta))]),
+  R = tmap([tmap_field_opt(tatom(), tint())]),
+
+  test_tally([alpha, beta], [{L, R}],
+    [{#{alpha => tatom(), beta => tnone()},
+      #{alpha => tatom(), beta => tint()}}
+    ]).
+
+
 maps_norm_simple_additional_test() ->
   % #{a => atom()}  ≤  #{β => any()}
   L = tmap([
@@ -670,3 +697,132 @@ maps_norm_complex6_test() ->
       {#{gamma => Foo, delta => tint()},
         #{gamma => Foo, delta => tany()}}
     ]).
+
+maps_complex7a_test() ->
+  % #{β_0 := β_1} ≤ {a := b}
+  L = tmap([
+    tmap_field_man(tvar(beta_0), tvar(beta_1))
+  ]),
+  R = tmap([
+    tmap_field_man(tatom(a), tatom(b))
+  ]),
+  test_tally(
+    [beta_0, beta_1],
+    [{L, R}],
+    [
+      {#{beta_0 => tatom(a), beta_1 => tnone()}, #{beta_0 => tatom(a), beta_1 => tatom(b)}}
+    ]).
+
+maps_complex7b_test() ->
+  % #{β_0 := β_1} ≤ {a := b}, a ≤ β_0, b ≤ β_1
+  L = tmap([
+    tmap_field_man(tvar(beta_0), tvar(beta_1))
+  ]),
+  R = tmap([
+    tmap_field_man(tatom(a), tatom(b))
+  ]),
+  Subst = #{beta_0 => tatom(a), beta_1 => tatom(b)},
+  test_tally(
+    [beta_0, beta_1],
+    [{L, R}, {tatom(a), tvar(beta_0)}, {tatom(b), tvar(beta_1)}],
+    [
+      {Subst, Subst}
+    ]).
+
+maps_complex8a_test() ->
+  % #{a := β_1, 20 := β_3} ≤ {a := b, 20 := 21}
+  L = tmap([
+    tmap_field_man(tatom(a), tvar(beta_1)),
+    tmap_field_man(tint(20), tvar(beta_3))
+  ]),
+  R = tmap([
+    tmap_field_man(tatom(a), tatom(b)),
+    tmap_field_man(tint(20), tint(21))
+  ]),
+  test_tally([beta_1, beta_3], [{L, R}], [
+    {#{beta_1 => tnone(), beta_3 => tnone()}, #{beta_1 => tatom(b), beta_3 => tint(21)}}
+    ]).
+
+%% The following tests are currently working: maps_complex8b_test, maps_complex8c_test,
+%% maps_complex9a_test, maps_complex9b_test, maps_complex9c_test.
+%% Currently (2024-09-16), we only support maps as dictionaries. So these tests are not
+%% strictly required to work, so we do not fix them at the moment.
+
+%% maps_complex8b_test() ->
+%%   % #{β_0 := β_1, β_2 := β_3} ≤ {a := b, 20 := 21}
+%%   L = tmap([
+%%     tmap_field_man(tvar(beta_0), tvar(beta_1)),
+%%     tmap_field_man(tvar(beta_2), tvar(beta_3))
+%%   ]),
+%%   R = tmap([
+%%     tmap_field_man(tatom(a), tatom(b)),
+%%     tmap_field_man(tint(20), tint(21))
+%%   ]),
+%%   test_tally(
+%%     [beta_0, beta_1, beta_2, beta_3],
+%%     [{L, R}],
+%%     [
+%%       %{#{beta_1 => tnone(), beta_3 => tnone()}, #{beta_1 => tatom(b), beta_3 => tint(21)}}
+%%     ]).
+%%
+%% maps_complex8c_test() ->
+%%   % #{β_0 := β_1, β_2 := β_3} ≤ {a := b, 20 := 21}, a ≤ β_0, b ≤ β_1, 20 ≤ β_2, 21 ≤ β_3
+%%   L = tmap([
+%%     tmap_field_man(tvar(beta_0), tvar(beta_1)),
+%%     tmap_field_man(tvar(beta_2), tvar(beta_3))
+%%   ]),
+%%   R = tmap([
+%%     tmap_field_man(tatom(a), tatom(b)),
+%%     tmap_field_man(tint(20), tint(21))
+%%   ]),
+%%   test_tally(
+%%     [beta_0, beta_1, beta_2, beta_3],
+%%     [{L, R}, {tatom(a), tvar(beta_0)}, {tatom(b), tvar(beta_1)}, {tint(20), tvar(beta_2)}, {tint(21), tvar(beta_3)}],
+%%     [
+%%       %{#{beta_1 => tnone(), beta_3 => tnone()}, #{beta_1 => tatom(b), beta_3 => tint(21)}}
+%%     ]).
+%%
+%% maps_complex9a_test() ->
+%%   % {β_0 => β_1} ≤ {atom() => integer()}
+%%   L = tmap([
+%%     tmap_field_opt(tvar(beta_0), tvar(beta_1))
+%%   ]),
+%%   R = tmap([
+%%     tmap_field_opt(tatom(), tint())
+%%   ]),
+%%   test_tally(
+%%     [beta_0, beta_1],
+%%     [{L, R}],
+%%     [
+%%       %{#{beta_1 => tnone(), beta_3 => tnone()}, #{beta_1 => tatom(b), beta_3 => tint(21)}}
+%%     ]).
+%%
+%% maps_complex9b_test() ->
+%%   % {β_0 := β_1} ≤ {atom() => integer()}
+%%   L = tmap([
+%%     tmap_field_man(tvar(beta_0), tvar(beta_1))
+%%   ]),
+%%   R = tmap([
+%%     tmap_field_opt(tatom(), tint())
+%%   ]),
+%%   test_tally(
+%%     [beta_0, beta_1],
+%%     [{L, R}],
+%%     [
+%%       %{#{beta_1 => tnone(), beta_3 => tnone()}, #{beta_1 => tatom(b), beta_3 => tint(21)}}
+%%     ]).
+%%
+%% maps_complex9c_test() ->
+%%   % {β_0 := β_1} ≤ {atom() => integer()}, a ≤ β_0, 1 ≤ β_1
+%%   L = tmap([
+%%     tmap_field_man(tvar(beta_0), tvar(beta_1))
+%%   ]),
+%%   R = tmap([
+%%     tmap_field_opt(tatom(), tint())
+%%   ]),
+%%   test_tally(
+%%     [beta_0, beta_1],
+%%     [{L, R}, {tatom(a), tvar(beta_0)}, {tint(1), tvar(beta_1)}],
+%%     [
+%%       %{#{beta_1 => tnone(), beta_3 => tnone()}, #{beta_1 => tatom(b), beta_3 => tint(21)}}
+%%     ]).

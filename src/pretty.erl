@@ -185,9 +185,9 @@ ty(Prec, T) ->
                 lists:map(
                   fun(A) ->
                           case A of
-                              {map_field_assoc, U, V} ->
+                              {map_field_opt, U, V} ->
                                   beside(ty(U), text(" => "), ty(V));
-                              {map_field_exact, U, V} ->
+                              {map_field_req, U, V} ->
                                   beside(ty(U), text(" := "), ty(V))
                           end
                   end,

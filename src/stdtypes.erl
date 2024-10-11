@@ -27,7 +27,7 @@
     tarrow_n/1,
     tfun_full/2,
     tfun/2, tfun1/2, tfun2/3, tfun_any/0,
-    tmap/1, tmap_field_opt/2, tmap_field_man/2, tmap_any/0,
+    tmap/1, tmap/2, tmap_field_opt/2, tmap_field_man/2, tmap_any/0,
     tvar/1,
     trange_any/0, trange/2,
     expand_predef_alias/1,
@@ -86,11 +86,14 @@ tlist(Arg) -> {list, Arg}.
 -spec tmap([ast:ty_map_assoc()]) -> ast:ty().
 tmap(AssocList) -> {map, AssocList}.
 
+-spec tmap(ast:ty(), ast:ty()) -> ast:ty().
+tmap(T1, T2) -> {map, [tmap_field_opt(T1, T2)]}.
+
 -spec tmap_field_opt(ast:ty(), ast:ty()) -> ast:ty_map_assoc_opt().
-tmap_field_opt(K, V) -> {map_field_assoc, K, V}.
+tmap_field_opt(K, V) -> {map_field_opt, K, V}.
 
 -spec tmap_field_man(ast:ty(), ast:ty()) -> ast:ty_map_assoc_req().
-tmap_field_man(K, V) -> {map_field_exact, K, V}.
+tmap_field_man(K, V) -> {map_field_req, K, V}.
 
 -spec ttuple_n(pos_integer()) -> ast:ty().
 ttuple_n(Size) ->
@@ -205,7 +208,7 @@ expand_predef_alias(nonempty_string) -> {nonempty_list, expand_predef_alias(char
 %% subtype relation into a recursive type
 expand_predef_alias(iodata) -> throw(rec_type_not_supported_outside_esubrel);
 expand_predef_alias(iolist) -> throw(rec_type_not_supported_outside_esubrel);
-expand_predef_alias(map) -> {map, [{map_field_assoc, {predef, any}, {predef, any}}]};
+expand_predef_alias(map) -> {map, [{map_field_opt, {predef, any}, {predef, any}}]};
 expand_predef_alias(function) -> {fun_simple};
 expand_predef_alias(module) -> tatom();
 expand_predef_alias(mfa) -> {tuple, [tatom(), tatom(), {predef, integer}]};
@@ -362,5 +365,5 @@ mk_builtin_funs(Path) ->
                       _ -> false
                   end
           end, AllSpecs) ++ extra_funs(),
-    ?LOG_TRACE("Builtin functions: ~200p", Result),
+    ?LOG_TRACE2("Builtin functions: ~200p", Result),
     Result.

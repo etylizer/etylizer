@@ -6,7 +6,7 @@
 -export([num_level/1, init/1, allow/1, macro_log/5, parse_level/1, shutdown/0]).
 -export_type([log_level/0]).
 
--type log_level() :: trace | debug | info | note | warn | error | abort.
+-type log_level() :: trace2 | trace | debug | info | note | warn | error | abort.
 
 -spec num_level(log_level()) -> integer().
 num_level(L) ->
@@ -17,7 +17,8 @@ num_level(L) ->
         note -> 3;
         info -> 4;
         debug -> 5;
-        trace -> 6
+        trace -> 6;
+        trace2 -> 7
     end.
 
 -spec init(log_level() | default) -> ok.
@@ -112,6 +113,7 @@ format_level(L) ->
         info -> "INFO";
         debug -> "DEBUG";
         trace -> "TRACE";
+        trace2 -> "TRACE2";
         default -> "default"
     end.
 
@@ -125,6 +127,7 @@ parse_level(S) ->
         "info" -> info;
         "debug" -> debug;
         "trace" -> trace;
+        "trace2" -> trace2;
         _ -> bad_log_level
     end.
 

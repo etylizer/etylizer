@@ -18,6 +18,8 @@
     find_op/3,
     lookup_ty/3,
     find_ty/2,
+    lookup_record/3,
+    find_record/2,
     std_symtab/0,
     extend_symtab/2,
     extend_symtab_with_fun_env/2,
@@ -35,7 +37,8 @@
 -record(tab, {
               funs :: fun_env(),
               ops :: #{ {atom(), arity()} => ast:ty_scheme() },
-              types :: #{ ast:global_ref() => ast:ty_scheme() }
+              types :: #{ ast:global_ref() => ast:ty_scheme() },
+              records :: #{ atom() => records:record_ty() }
 }).
 
 -opaque t() :: #tab{}.
@@ -75,6 +78,16 @@ lookup_ty(Ref, Loc, Tab) ->
 -spec find_ty(ast:global_ref(), t()) -> t:opt(ast:ty_scheme()).
 find_ty(Ref, Tab) -> maps:find(Ref, Tab#tab.types).
 
+-spec lookup_record(atom(), ast:loc(), t()) -> records:record_ty().
+lookup_record(Name, Loc, Tab) ->
+    case find_record(Name, Tab) of
+        {ok, X} -> X;
+        error -> errors:name_error(Loc, "record ~w undefined", Name)
+    end.
+
+-spec find_record(atom(), t()) -> t:opt(records:record_ty()).
+find_record(Name, Tab) -> maps:find(Name, Tab#tab.records).
+
 -spec symbols_for_module(atom(), t()) -> [{ref, atom(), arity()}].
 symbols_for_module(Mod, Tab) ->
     lists:filtermap(
@@ -88,7 +101,7 @@ symbols_for_module(Mod, Tab) ->
         ).
 
 -spec empty() -> t().
-empty() -> #tab { funs = #{}, ops = #{}, types = #{} }.
+empty() -> #tab { funs = #{}, ops = #{}, types = #{}, records = #{} }.
 
 -spec std_symtab() -> t().
 std_symtab() ->
@@ -100,37 +113,43 @@ std_symtab() ->
         lists:foldl(fun({Name, Arity, T}, Map) -> maps:put({Name, Arity}, T, Map) end,
                     #{},
                     stdtypes:builtin_ops()),
-    #tab { funs = Funs, ops = Ops, types = #{} }.
+    #tab { funs = Funs, ops = Ops, types = #{}, records = #{} }.
+
+-type ref() :: ref | {qref, ModuleName::atom()}.
 
 -spec extend_symtab([ast:form()], t()) -> t().
 extend_symtab(Forms, Tab) ->
-    extend_symtab_internal(Forms, {ref}, Tab).
+    extend_symtab_internal(Forms, ref, Tab).
 
 -spec extend_symtab([ast:form()], atom(), t()) -> t().
 extend_symtab(Forms, Module, Tab) ->
     extend_symtab_internal(Forms, {qref, Module}, Tab).
 
+-spec extend_symtab_internal([ast:form()], ref(), t()) -> t().
 extend_symtab_internal(Forms, RefType, Tab) ->
     lists:foldl(
-      fun(Form, Tab) ->
-              case Form of
-                  {attribute, _, spec, Name, Arity, T, _} ->
-                      Tab#tab { funs = maps:put(create_ref_tuple(RefType, Name, Arity), T, Tab#tab.funs) };
-                  {attribute, _, type, _, {Name, TyScm = {ty_scheme, TyVars, _}}} ->
-                      Arity = length(TyVars),
-                      Tab#tab { types = maps:put(create_ref_tuple(RefType, Name, Arity), TyScm, Tab#tab.types) };
-                  _ ->
-                      Tab
-              end
-      end,
-      Tab,
-      Forms).
+        fun(Form, Tab) ->
+            case Form of
+                {attribute, _, spec, Name, Arity, T, _} ->
+                    Tab#tab { funs = maps:put(create_ref_tuple(RefType, Name, Arity), T, Tab#tab.funs) };
+                {attribute, _, type, _, {Name, TyScm = {ty_scheme, TyVars, _}}} ->
+                    Arity = length(TyVars),
+                    Tab#tab { types = maps:put(create_ref_tuple(RefType, Name, Arity), TyScm, Tab#tab.types) };
+                {attribute, _, record, {RecordName, Fields}} ->
+                    RecordTy = records:record_ty_from_decl(RecordName, Fields),
+                    Tab#tab { records = maps:put(RecordName, RecordTy, Tab#tab.records) };
+                _ ->
+                    Tab
+            end
+        end,
+        Tab,
+        Forms).
 
 -spec extend_symtab_with_fun_env(fun_env(), t()) -> t().
 extend_symtab_with_fun_env(Env, Tab) -> Tab#tab { funs = maps:merge(Tab#tab.funs, Env) }.
 
--spec create_ref_tuple(tuple(), string(), arity()) -> tuple().
-create_ref_tuple({ref}, Name, Arity) ->
+-spec create_ref_tuple(ref(), string(), arity()) -> tuple().
+create_ref_tuple(ref, Name, Arity) ->
     {ref, Name, Arity};
 create_ref_tuple({qref, Module}, Name, Arity) ->
     {qref, Module, Name, Arity}.

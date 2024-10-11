@@ -12,7 +12,10 @@
 
 -record(ctx,
         { path :: file:filename(),
-          funenv :: funenv()
+          funenv :: funenv(),
+          % The records seen so far. We need the record definitions to rewrite record types
+          % into tuple types.
+          records :: #{ atom() => records:record_ty() }
         }).
 -type ctx() :: #ctx{}.
 
@@ -37,8 +40,19 @@ trans(Path, Forms, Mode) ->
 
 -spec trans(string(), [ast_erl:form()], trans_mode(), funenv()) -> [ast:form()].
 trans(Path, Forms, Mode, FunEnv) ->
-    Ctx = #ctx{ path = Path, funenv = FunEnv},
-    utils:map_opt(fun(F) -> trans_form(Ctx, F, Mode) end, Forms).
+    {RevNewForms, _} =
+        lists:foldl(
+            fun(F, {NewForms, Ctx}) ->
+                case trans_form(Ctx, F, Mode) of
+                    error -> {NewForms, Ctx};
+                    {NewForm, NewCtx} -> {[NewForm | NewForms], NewCtx};
+                    NewForm -> {[NewForm | NewForms], Ctx}
+                end
+            end,
+            {[], #ctx{ path = Path, funenv = FunEnv, records = #{} }},
+            Forms
+            ),
+    lists:reverse(RevNewForms).
 
 -spec build_funenv(file:filename(), [ast_erl:form()]) -> funenv().
 build_funenv(Path, Forms) ->
@@ -63,7 +77,7 @@ build_funenv(Path, Forms) ->
             varenv:insert_if_absent({Name, Arity}, {extern, erlang}, E)
         end, Env1, stdtypes:builtin_funs()).
 
--spec trans_form(ctx(), ast_erl:form(), trans_mode()) -> ast:form() | error.
+-spec trans_form(ctx(), ast_erl:form(), trans_mode()) -> {ast:form(), ctx()} | ast:form() | error.
 trans_form(Ctx, Form, Mode) ->
     R =
         case Form of
@@ -92,8 +106,12 @@ trans_form(Ctx, Form, Mode) ->
                 {attribute, Loc, callback, Name, Arity, trans_spec_ty(Ctx, Loc, FunTys),
                  without_mod};
             {attribute, Anno, record, {Name, Fields}} ->
-                {attribute, to_loc(Ctx, Anno), record,
-                 {Name, trans_record_fields(Ctx, varenv:empty("type variable"), Fields)}};
+                NewFields = trans_record_fields(Ctx, varenv:empty("type variable"), Fields),
+                NewForm = {attribute, to_loc(Ctx, Anno), record, {Name, NewFields}},
+                RecordTy = records:record_ty_from_decl(Name, NewFields),
+                NewCtx = Ctx#ctx { records = maps:put(Name, RecordTy, Ctx#ctx.records) },
+                ?LOG_TRACE("Registered new record type: ~200p", RecordTy),
+                {NewForm, NewCtx};
             {attribute, Anno, type, Def} ->
                 {attribute, to_loc(Ctx, Anno), type, transparent, trans_tydef(Ctx, Def)};
             {attribute, Anno, opaque, Def} ->
@@ -227,7 +245,7 @@ trans_ty(Ctx, Env, Ty) ->
                 {{singleton, I1}, {singleton, I2}} when is_integer(I1) andalso is_integer(I2) ->
                     {range, I1, I2};
                 _ ->
-                    errors:ty_error("~s: Invalid range type type: ~w", [ast:format_loc(Loc), Ty])
+                    errors:ty_error("~s: Invalid range type: ~w", [ast:format_loc(Loc), Ty])
             end;
         {type, _, map, any} -> {map_any};
         {type, _, map, Assocs} ->
@@ -236,11 +254,20 @@ trans_ty(Ctx, Env, Ty) ->
             eval_const_ty(Ty, to_loc(Ctx, Anno));
         {op, Anno, _, _} ->
             eval_const_ty(Ty, to_loc(Ctx, Anno));
-        {type, _, record, [{'atom', _, Name} | Fields]} ->
-            {record, Name,
-             lists:map(fun ({type, _, field_type, [{'atom', _, FieldName}, FieldTy]}) ->
-                               {FieldName, trans_ty(Ctx, Env, FieldTy)}
-                       end, Fields)};
+        {type, Anno, record, [{'atom', _, Name} | Fields]} ->
+            Loc = to_loc(Ctx, Anno),
+            Overrides =
+                lists:map(
+                    fun ({type, _, field_type, [{'atom', _, FieldName}, FieldTy]}) ->
+                            {FieldName, trans_ty(Ctx, Env, FieldTy)}
+                    end,
+                    Fields),
+            case maps:find(Name, Ctx#ctx.records) of
+                error ->
+                    errors:name_error("~s: record ~w not defined", [ast:format_loc(Loc), Name]);
+                {ok, RecTy} ->
+                    records:encode_record_ty(RecTy, Overrides)
+            end;
         {type, _, tuple, any} -> {tuple_any};
         {type, _, tuple, ArgTys} -> {tuple, trans_tys(Ctx, Env, ArgTys)};
         {type, _, union, Tys} -> {union, trans_tys(Ctx, Env, Tys)};
@@ -305,9 +332,9 @@ trans_tys(Ctx, Env, Tys) -> lists:map(fun(T) -> trans_ty(Ctx, Env, T) end, Tys).
 trans_ty_map_assoc(Ctx, Env, Assoc) ->
     case Assoc of
         {type, _, map_field_assoc, [KeyTy, ValTy]} ->
-            {map_field_assoc, trans_ty(Ctx, Env, KeyTy), trans_ty(Ctx, Env, ValTy)};
+            {map_field_opt, trans_ty(Ctx, Env, KeyTy), trans_ty(Ctx, Env, ValTy)};
         {type, _, map_field_exact, [KeyTy, ValTy]} ->
-            {map_field_exact, trans_ty(Ctx, Env, KeyTy), trans_ty(Ctx, Env, ValTy)};
+            {map_field_req, trans_ty(Ctx, Env, KeyTy), trans_ty(Ctx, Env, ValTy)};
         X -> errors:uncovered_case(?FILE, ?LINE, X)
     end.
 
@@ -511,8 +538,7 @@ trans_exp(Ctx, Env, Exp) ->
                   Fields,
                   fun(Env, {record_field, Anno, {'atom', _, FieldName}, FieldExp}) ->
                           {NewFieldExp, NewEnv} = trans_exp(Ctx, Env, FieldExp),
-                          {{record_field, to_loc(Ctx, Anno), FieldName, NewFieldExp},
-                           NewEnv}
+                          {{record_field, to_loc(Ctx, Anno), FieldName, NewFieldExp}, NewEnv}
                   end
                  ),
             {{record_create, to_loc(Ctx, Anno), Name, NewFields}, NewEnv};
@@ -623,7 +649,7 @@ trans_pat(Ctx, Env, Pat, BindMode) ->
                         % the lhs of an assoc pattern P1 := P2 must not bind new vars
                         {Q1, E1} = trans_pat(Ctx, E0, P1, no_bind),
                         {Q2, E2} = trans_pat(Ctx, E1, P2, BindMode),
-                        {{map_field_exact, to_loc(Ctx, Anno), Q1, Q2}, E2}
+                        {{map_field_req, to_loc(Ctx, Anno), Q1, Q2}, E2}
                     end),
             {{map, to_loc(Ctx, Anno), NewAssocs}, ResultEnv};
         {op, Anno, Op, P1, P2} ->
@@ -797,7 +823,12 @@ trans_map_assoc(Ctx, Env, Assoc) ->
         {K, Anno, ExpKey, ExpVal} when (K == map_field_assoc orelse K == map_field_exact) ->
             {NewExpKey, Env1} = trans_exp(Ctx, Env, ExpKey),
             {NewExpVal, Env2} = trans_exp(Ctx, Env1, ExpVal),
-            {{K, to_loc(Ctx, Anno), NewExpKey, NewExpVal}, Env2};
+            NewK =
+                case K of
+                    map_field_assoc -> map_field_opt;
+                    map_field_exact -> map_field_req
+                end,
+            {{NewK, to_loc(Ctx, Anno), NewExpKey, NewExpVal}, Env2};
         X -> errors:uncovered_case(?FILE, ?LINE, X)
     end.
 

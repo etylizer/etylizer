@@ -6,7 +6,7 @@
 pretty_ty_test() ->
     T = {tuple, [{predef, integer},
                  {singleton, 4},
-                 {union, [{map, [{map_field_assoc, {singleton, key}, {predef_alias, term}}]},
+                 {union, [{map, [{map_field_opt, {singleton, key}, {predef_alias, term}}]},
                           {fun_full,
                            [{predef_alias, string}, {list, {var, 'T'}}],
                            {named, {loc, "file.erl", 13, 9}, {ref, doc, 0}, []}}]}]},
