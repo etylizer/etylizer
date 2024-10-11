@@ -13,8 +13,11 @@
 tally(Constraints) -> tally(Constraints, sets:new()).
 
 tally(Constraints, FixedVars) ->
+  % io:format(user,"TALLY~n", []),
   Normalized = ?TIME(tally_normalize, tally_normalize(Constraints, FixedVars)),
+  % io:format(user,"NORM~n", []),
   Saturated = ?TIME(tally_saturate, tally_saturate(Normalized, FixedVars)),
+  % io:format(user,"SAT~n~p~n", [Saturated]),
   Solved = ?TIME(tally_solve, tally_solve(Saturated, FixedVars)),
   % sanity: every substitution satisfies all given constraints, if no error
   ?SANITY(substitutions_solve_input_constraints, case Solved of {error, _} -> ok; _ -> [ true = is_valid_substitution(Constraints, Subst) || Subst <- Solved] end),
@@ -66,6 +69,7 @@ unify(EquationList) ->
   % sort to smallest variable
   % select in E the equation α = tα for smallest α
   [Eq = {eq, Var, TA} | _Tail] = lists:usort(fun({_, Var, _}, {_, Var2, _}) -> ty_variable:compare(Var, Var2) =< 0 end, EquationList),
+  
   Vars = ty_rec:all_variables(TA),
   NewTA = case length([Z || Z <- Vars, Z == Var]) of
             0 ->

@@ -4,7 +4,7 @@
 -define(TERMINAL, dnf_ty_list).
 
 -export([is_empty/1,normalize/3, substitute/4]).
--export([var/1, list/1, all_variables/1, transform/2, apply_to_node/3]).
+-export([var/1, list/1, all_variables/2, transform/2, apply_to_node/3]).
 
 -include("bdd_var.hrl").
 
@@ -27,8 +27,7 @@ normalize_coclause(PVar, NVar, List, Fixed, M) ->
     _ ->
       case ty_ref:is_normalized_memoized({PVar, NVar, List}, Fixed, M) of
         true ->
-          % TODO test case
-          error({todo, extract_test_case, memoize_function}); %[[]];
+          [[]];
         miss ->
           dnf_ty_list:normalize(List, PVar, NVar, Fixed, sets:union(M, sets:from_list([{PVar, NVar, List}])))
       end

@@ -6,7 +6,7 @@
 
 -export([apply_to_node/3]).
 -export([is_empty/1, normalize/3, substitute/4]).
--export([var/1, ty_atom/1, all_variables/1]).
+-export([var/1, ty_atom/1, all_variables/2]).
 -export([to_singletons/1, transform/2]).
 
 -include("bdd_var.hrl").

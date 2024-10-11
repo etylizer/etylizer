@@ -1,7 +1,7 @@
 -module(ty_tuple).
 
 %% n-tuple representation
--export([compare/2, equal/2, substitute/3, all_variables/1]).
+-export([compare/2, equal/2, substitute/3, all_variables/2]).
 
 -export([tuple/1, pi/2, has_ref/2, components/1, transform/2, any/1, empty/1, big_intersect/1, is_empty/1]).
 
@@ -37,8 +37,8 @@ big_intersect([X | Y]) ->
 substitute({ty_tuple, Dim, Refs}, Map, Memo) ->
     {ty_tuple, Dim, [ ty_rec:substitute(B, Map, Memo) || B <- Refs ] }.
 
-all_variables({ty_tuple, _, Refs}) ->
-    lists:flatten([ty_rec:all_variables(E) || E <- Refs]).
+all_variables({ty_tuple, _, Refs}, M) ->
+    lists:flatten([ty_rec:all_variables(E, M) || E <- Refs]).
 
 -ifdef(TEST).
 -include_lib("eunit/include/eunit.hrl").

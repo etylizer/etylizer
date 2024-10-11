@@ -20,7 +20,7 @@
 
 -export([is_equivalent/2, is_subtype/2, normalize/3]).
 
--export([substitute/2, substitute/3, pi/2, all_variables/1]).
+-export([substitute/2, substitute/3, pi/2, all_variables/1, all_variables/2]).
 
 -export([transform/2, print/1, to_labels/1]).
 
@@ -75,6 +75,7 @@ transform(TyRef, Ops) ->
       end
   end.
 
+% ty_rec:ty() -> ast_erl:ty()
 transform_p(TyRef, Ops =
   #{
     any_list := Lists,
@@ -90,6 +91,7 @@ transform_p(TyRef, Ops =
     var := Var
   }) ->
 %%  io:format(user,"<~p> Transforming: ~p~n~p~n", [Ref = make_ref(), TyRef, ty_ref:load(TyRef)]),
+%% OK
   DnfMap = prepare(TyRef),
 %%  io:format(user, "<~p> Prepared: ~n~p~n", [Ref, DnfMap]),
 
@@ -116,20 +118,7 @@ transform_p(TyRef, Ops =
     end
            end, DnfMap),
 
-  Ety = Union(maps:values(Mapped)),
-%%  io:format(user,"<~p> Result: ~p~n", [Ref, Ety]),
-  Sanity = ast_lib:ast_to_erlang_ty(Ety),
-%%  io:format(user,"<~p> Sanity: ~p~n", [Ref, Sanity]),
-  % leave this sanity check for a while
-  case is_equivalent(TyRef, Sanity) of
-    true -> ok;
-    false ->
-      io:format(user, "--------~n", []),
-      io:format(user, "~p~n", [ty_ref:load(TyRef)]),
-      io:format(user, "~p~n", [Ety]),
-      error(todo)
-  end,
-  Ety.
+  Union(maps:values(Mapped)).
 
 % TODO refactor this properly it's ugly
 prepare(TyRef) ->
@@ -318,8 +307,8 @@ extract_variables(Ty = #ty{ predef = P, atom = A, interval = I, list = L, tuple 
       dnf_var_ty_atom:all_variables(A),
       dnf_var_int:all_variables(I),
       dnf_var_ty_list:all_variables(L),
-      dnf_var_ty_tuple:mall_variables(T),
-      dnf_var_ty_function:mall_variables(F),
+      dnf_var_ty_tuple:mall_variables(T, #{}),
+      dnf_var_ty_function:mall_variables(F, #{}),
       dnf_var_ty_map:all_variables(M)
     ]),
 
@@ -820,27 +809,33 @@ to_labels(TyRef) ->
   end.
 
 
-all_variables(TyRef) ->
-  #ty{
-    predef = Predefs,
-    atom = Atoms,
-    interval = Ints,
-    list = Lists,
-    tuple = Tuples,
-    function = Functions,
-    map = Maps
-  } = ty_ref:load(TyRef),
+all_variables(TyRef) -> all_variables(TyRef, #{}).
+all_variables(TyRef, M) ->
+  case M of
+    #{TyRef := _} -> [];
+    _ ->
+      #ty{
+        predef = Predefs,
+        atom = Atoms,
+        interval = Ints,
+        list = Lists,
+        tuple = Tuples,
+        function = Functions,
+        map = Maps
+      } = ty_ref:load(TyRef),
 
 
-  lists:usort(
-    dnf_var_predef:all_variables(Predefs)
-  ++  dnf_var_ty_atom:all_variables(Atoms)
-  ++ dnf_var_int:all_variables(Ints)
-  ++ dnf_var_ty_list:all_variables(Lists)
-  ++ dnf_var_ty_tuple:mall_variables(Tuples)
-  ++ dnf_var_ty_function:mall_variables(Functions)
-  ++ dnf_var_ty_map:all_variables(Maps)
-  ).
+      Mp = M#{TyRef => ok},
+      lists:usort(
+        dnf_var_predef:all_variables(Predefs, M)
+      ++  dnf_var_ty_atom:all_variables(Atoms, M)
+      ++ dnf_var_int:all_variables(Ints, M)
+      ++ dnf_var_ty_list:all_variables(Lists, Mp)
+      ++ dnf_var_ty_tuple:mall_variables(Tuples, Mp)
+      ++ dnf_var_ty_function:mall_variables(Functions, Mp)
+      ++ dnf_var_ty_map:all_variables(Maps, Mp)
+      )
+  end.
 
 -ifdef(TEST).
 -include_lib("eunit/include/eunit.hrl").

@@ -8,7 +8,7 @@
 -define(ASSOC_DIFF, fun(_, ?OPT) -> ?MAN; (A, _) -> A end).
 -define(ASSOC_INT, fun(A, ?OPT) -> A; (_, ?MAN) -> ?MAN end).
 
--export([compare/2, equal/2, has_ref/2, substitute/3, transform/2, all_variables/1]).
+-export([compare/2, equal/2, has_ref/2, substitute/3, transform/2, all_variables/2]).
 -export([map/2, big_intersect/1, intersect/2, diff_labels/2, diff_steps/2, diff_w1/2, key_variable_suite/1, step_names/0, key_domain/0]).
 -import(maps, [to_list/1, keys/1, values/1]).
 -export_type([l/0]).
@@ -202,13 +202,13 @@ transform(Map, #{to_map := ToMap}) ->
   ToMap(ManAssoc, OptAssoc).
 
 
-all_variables(Map) ->
+all_variables(Map, M) ->
   #ty_map{ labels = Labels, steps = Steps, omegas = {_, _, W1}, key_variables = {ManU, OptU} } = Map,
-  LabelVars = lists:map(fun ty_rec:all_variables/1, values(Labels)),
-  StepVars = lists:map(fun ty_rec:all_variables/1, values(Steps)),
-  ty_rec:all_variables(W1)
-  ++ ty_rec:all_variables(ManU)
-    ++ ty_rec:all_variables(OptU)
+  LabelVars = lists:map(fun(E) -> ty_rec:all_variables(E, M) end, values(Labels)),
+  StepVars = lists:map(fun(E) -> ty_rec:all_variables(E, M) end, values(Steps)),
+  ty_rec:all_variables(W1, M)
+  ++ ty_rec:all_variables(ManU, M)
+    ++ ty_rec:all_variables(OptU, M)
     ++ lists:flatten(LabelVars ++ StepVars).
 
 

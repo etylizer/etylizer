@@ -85,7 +85,11 @@ next_ty_id() ->
 	ets:update_counter(?TY_UTIL, ty_number, {2, 1}).
 
 new_ty_ref() ->
-  {ty_ref, next_ty_id()}.
+  NewEmptyRef = {ty_ref, (Id = next_ty_id())},
+
+  % Insert empty only in memory, not in unique table
+  ets:insert(?TY_MEMORY, {Id, ty_ref:load(ty_rec:empty())}),
+  NewEmptyRef.
 
 define_ty_ref({ty_ref, Id}, Ty) ->
   % when defining new (recursive) types manually,
@@ -105,13 +109,13 @@ define_ty_ref({ty_ref, Id}, Ty) ->
       ok;
     [{_, OldId}] ->
       % last ty ref inserted is the recursive type, delete from memory and decrease ty number by one
-      ets:delete(?TY_MEMORY, OldId),
-      [] = ets:lookup(?TY_MEMORY, OldId),
-      ets:update_counter(?TY_UTIL, ty_number, {2, -1}),
+      % ets:delete(?TY_MEMORY, OldId),
+      % [] = ets:lookup(?TY_MEMORY, OldId),
+      % ets:update_counter(?TY_UTIL, ty_number, {2, -1}),
       ok
   end,
 
-%%  io:format(user, "Store (manual): ~p :=~n~p~n", [Id, Ty]),
+  % io:format(user, "Store (manual): ~p :=~n~p~n", [Id, Ty]),
   ets:insert(?TY_UNIQUE_TABLE, {Ty, Id}),
   ets:insert(?TY_MEMORY, {Id, Ty}),
   {ty_ref, Id}.
@@ -130,7 +134,7 @@ store(Ty) ->
       Id = ets:update_counter(?TY_UTIL, ty_number, {2, 1}),
       ets:insert(?TY_UNIQUE_TABLE, {Ty, Id}),
       ets:insert(?TY_MEMORY, {Id, Ty}),
-%%      io:format(user, "Store: ~p :=~n~p~n", [Id, Ty]),
+      % io:format(user, "Store: ~p :=~n~p~n", [Id, Ty]),
       {ty_ref, Id};
     [{_, Id}] ->
       {ty_ref, Id}

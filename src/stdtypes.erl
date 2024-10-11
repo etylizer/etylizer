@@ -199,15 +199,16 @@ expand_predef_alias(nil) -> {empty_list};
 expand_predef_alias(number) -> {union, [{predef, float}, {predef, integer}]};
 expand_predef_alias(list) -> {list, {predef, any}};
 expand_predef_alias(nonempty_list) -> {nonempty_list, {predef, any}};
-expand_predef_alias(maybe_improper_list) -> errors:not_implemented("expand maybe_improper_list");
-expand_predef_alias(nonempty_improper_list) -> {nonempty_improper_list, {predef, any}, {predef, any}};
-expand_predef_alias(nonempty_maybe_improper_list) -> throw(error_todo); %% TODO what is a maybe improper list vs improper list?
+expand_predef_alias(maybe_improper_list) -> {improper_list, {predef, any}, {predef, any}};
 expand_predef_alias(string) -> {list, expand_predef_alias(char)};
 expand_predef_alias(nonempty_string) -> {nonempty_list, expand_predef_alias(char)};
-%% iodata and iolist are recursively defined and are expanded in the
-%% subtype relation into a recursive type
-expand_predef_alias(iodata) -> throw(rec_type_not_supported_outside_esubrel);
-expand_predef_alias(iolist) -> throw(rec_type_not_supported_outside_esubrel);
+expand_predef_alias(iodata) -> {union, [expand_predef_alias(iolist), expand_predef_alias(binary)]};
+expand_predef_alias(iolist) -> 
+    % TODO fix variable IDs
+    RecVarID = erlang:unique_integer(),
+    Var = {var, erlang:list_to_atom("mu" ++ integer_to_list(RecVarID))},
+    RecType = {improper_list, {union, [expand_predef_alias(byte), expand_predef_alias(binary), Var]}, {union, [expand_predef_alias(binary), tempty_list()]}},
+    {mu, Var, RecType};
 expand_predef_alias(map) -> {map, [{map_field_opt, {predef, any}, {predef, any}}]};
 expand_predef_alias(function) -> {fun_simple};
 expand_predef_alias(module) -> tatom();
@@ -223,7 +224,7 @@ expand_predef_alias(neg_integer) -> {range, '*', -1};
 
 expand_predef_alias(Name) ->
     logger:error("Not expanding: ~p", [Name]),
-     errors:not_implemented("expand_predef_alias").
+    errors:not_implemented("expand_predef_alias").
 
 %% Other types
 

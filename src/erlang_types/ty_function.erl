@@ -1,7 +1,7 @@
 -module(ty_function).
 
 %% domain -> co-domain function representation
--export([compare/2, equal/2, all_variables/1, substitute/3]).
+-export([compare/2, equal/2, all_variables/2, substitute/3]).
 -export([function/2, domains/1, codomain/1, codomains_intersect/1, has_ref/2, transform/2]).
 
 compare(A, B) when A < B -> -1;
@@ -39,9 +39,9 @@ substitute({ty_function, Refs, B}, Map, Memo) ->
         ty_rec:substitute(B, Map, Memo)
     }.
 
-all_variables({ty_function, Domain, Codomain}) ->
-  ty_rec:all_variables(domains_to_tuple(Domain))
-    ++ ty_rec:all_variables(Codomain).
+all_variables({ty_function, Domain, Codomain}, M) ->
+  ty_rec:all_variables(domains_to_tuple(Domain), M)
+    ++ ty_rec:all_variables(Codomain, M).
 
 domains_to_tuple(Domains) ->
     ty_rec:tuple(length(Domains), dnf_var_ty_tuple:tuple(dnf_ty_tuple:tuple(ty_tuple:tuple(Domains)))).

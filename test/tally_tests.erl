@@ -487,7 +487,7 @@ pretty_printing_bug_test() ->
     [{#{}, #{}}]).
 
 fun_local_own_test_() ->
-  {timeout, 15000, {"fun_local_02_plus", fun() ->
+  {timeout, 15, {"fun_local_02_plus", fun() ->
     ecache:reset_all(),
     {ok, [Cons]} = file:consult("test_files/tally/fun_local_02_plus.config"),
     Vars = lists:foldl(fun({S, T}, Acc) -> (ty_rec:all_variables(ast_lib:ast_to_erlang_ty(S)) ++ ty_rec:all_variables(ast_lib:ast_to_erlang_ty(T)) ++ Acc) end, [], Cons),
@@ -505,6 +505,26 @@ fun_local_own_test_() ->
     ok
                                          end}}
 .
+
+% TODO timeout
+%recursive_test_() ->
+%  {timeout, 15, {"user_07", fun() ->
+%    ecache:reset_all(),
+%    {ok, [Cons]} = file:consult("test_files/tally/user_07.config"),
+%    Vars = lists:foldl(fun({S, T}, Acc) -> (ty_rec:all_variables(ast_lib:ast_to_erlang_ty(S)) ++ ty_rec:all_variables(ast_lib:ast_to_erlang_ty(T)) ++ Acc) end, [], Cons),
+%    VarOrder = lists:map(fun(V) -> {var, Name} = ast_lib:erlang_ty_var_to_var(V), Name end,lists:sort(lists:flatten(Vars))),
+%
+%    % to print out cduce command
+%    % io:format(user, "~s~n", [test_utils:ety_to_cduce_tally(Cons, VarOrder)]),
+%
+%    test_tally(
+%      VarOrder,
+%      Cons,
+%      % TODO CDuce has 50 solutions, order is not used properly, see #72
+%      solutions(58)
+%    ),
+%    ok
+%                                         end}}.
 
 % =====
 % Map Normalization

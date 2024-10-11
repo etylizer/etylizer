@@ -5,7 +5,7 @@
 -define(F(Z), fun() -> Z end).
 
 -export([normalize/4, substitute/4]).
--export([var/1, tuple/1, all_variables/1, mall_variables/1, transform/2, is_empty/1, apply_to_node/3, to_singletons/1]).
+-export([var/1, tuple/1, all_variables/2, mall_variables/2, transform/2, is_empty/1, apply_to_node/3, to_singletons/1]).
 
 % implementations provided by bdd_var.hrl
 -include("bdd_var.hrl").
@@ -16,12 +16,12 @@ var(Var) -> node(Var).
 is_empty(TyBDD) -> dnf(TyBDD, {fun is_empty_coclause/3, fun is_empty_union/2}).
 is_empty_coclause(_Pos, _Neg, T) -> dnf_ty_tuple:is_empty(T).
 
-mall_variables({Default, Others}) when is_map(Others) ->
+mall_variables({Default, Others}, M) when is_map(Others) ->
   lists:usort(lists:flatten(
-    all_variables(Default) ++
-    lists:map(fun({_K,V}) -> all_variables(V) end, maps:to_list(Others))
+    all_variables(Default, M) ++
+    lists:map(fun({_K,V}) -> all_variables(V, M) end, maps:to_list(Others))
   ));
-mall_variables(Ty) -> all_variables(Ty).
+mall_variables(Ty, M) -> all_variables(Ty, M).
 
 normalize(Size, Ty, Fixed, M) -> dnf(Ty, {
   fun(Pos, Neg, DnfTy) -> normalize_coclause(Size, Pos, Neg, DnfTy, Fixed, M) end,
@@ -34,8 +34,7 @@ normalize_coclause(Size, PVar, NVar, Tuple, Fixed, M) ->
     _ ->
       case ty_ref:is_normalized_memoized({PVar, NVar, Tuple}, Fixed, M) of
         true ->
-          % TODO test case
-          error({todo, extract_test_case, memoize_tuple}); %[[]];
+          [[]];
         miss ->
           dnf_ty_tuple:normalize(Size, Tuple, PVar, NVar, Fixed, sets:union(M, sets:from_list([{PVar, NVar, Tuple}])))
       end

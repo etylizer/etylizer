@@ -10,10 +10,9 @@
 is_equivalent(SymTab, S, T) -> is_subty(SymTab, S,T) andalso is_subty(SymTab, T,S).
 
 -spec is_subty(symtab:t(), ast:ty(), ast:ty()) -> boolean().
-is_subty(_Symtab, T1, T2) ->
-  % TODO use symtab
-  H1 = ast_lib:ast_to_erlang_ty(T1),
-  H2 = ast_lib:ast_to_erlang_ty(T2),
+is_subty(Symtab, T1, T2) ->
+  H1 = ast_lib:ast_to_erlang_ty(T1, Symtab),
+  H2 = ast_lib:ast_to_erlang_ty(T2, Symtab),
 
   ty_rec:is_subtype(H1, H2).
 
