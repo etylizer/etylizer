@@ -119,6 +119,7 @@ trans_form(Ctx, Form, Mode) ->
             {attribute, Anno, Other, _} ->
                 ?LOG_DEBUG("Ignoring attribute ~w at ~s", Other, ast:format_loc(to_loc(Ctx, Anno))),
                 error;
+            {warning, _} -> error;
             {eof, _} -> error;
             X -> errors:uncovered_case(?FILE, ?LINE, X)
         end,
