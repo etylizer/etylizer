@@ -147,7 +147,8 @@ erlang_ty_to_ast(X, M) ->
                 to_list => fun(A, B) -> stdtypes:tlist_improper((erlang_ty_to_ast(A, NewM)), (erlang_ty_to_ast(B, NewM))) end,
                 to_int => fun(S, T) -> stdtypes:trange(S, T) end,
                 to_predef => fun('[]') -> stdtypes:tempty_list(); (Predef) -> {predef, Predef} end,
-                to_map => fun(Mans, Opts) -> stdtypes:tmap([stdtypes:tmap_field_man(erlang_ty_to_ast(T1, NewM), erlang_ty_to_ast(T2, NewM)) || {T1, T2} <- Mans] ++ [stdtypes:tmap_field_opt(erlang_ty_to_ast(T1, NewM), erlang_ty_to_ast(T2, NewM)) || {T1, T2} <- Opts]) end,
+                % FIXME use to_map to convert a map
+                % to_map => fun(Mans, Opts) -> stdtypes:tmap([stdtypes:tmap_field_man(erlang_ty_to_ast(T1, NewM), erlang_ty_to_ast(T2, NewM)) || {T1, T2} <- Mans] ++ [stdtypes:tmap_field_opt(erlang_ty_to_ast(T1, NewM), erlang_ty_to_ast(T2, NewM)) || {T1, T2} <- Opts]) end,
                 any_tuple => fun stdtypes:ttuple_any/0,
                 any_tuple_i => fun(Size) -> stdtypes:ttuple([stdtypes:tany() || _ <- lists:seq(1, Size)]) end,
                 any_function => fun stdtypes:tfun_any/0,

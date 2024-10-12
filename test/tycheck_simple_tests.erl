@@ -151,8 +151,6 @@ simple_test_() ->
   NoInfer = [
     % slow, see #62
     "foo3",
-    % buggy, see #101
-    "poly",
     % TODO recursive inference
     "user_06", "user_07"
   ],
