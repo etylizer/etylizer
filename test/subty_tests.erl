@@ -1,7 +1,7 @@
 -module(subty_tests).
 -include_lib("eunit/include/eunit.hrl").
 
--import(stdtypes, [tvar/1, ttuple_any/0, tnegate/1, tatom/0, tatom/1, tfun_full/2, trange/2, tint/1, tunion/1, tintersect/1, trange_any/0, tint/0, ttuple/1, tany/0, tnone/0, tmap/1, tmap_any/0, tmap_field_man/2, tmap_field_opt/2]).
+-import(stdtypes, [tvar/1, ttuple_any/0, tnegate/1, tatom/0, tatom/1, tfun_full/2, trange/2, tint/1, tunion/1, tintersect/1, trange_any/0, tint/0, ttuple/1, tany/0, tnone/0, tmap/1, tmap_any/0, tmap_field_req/2, tmap_field_opt/2]).
 -import(test_utils, [is_subtype/2, is_equiv/2]).
 
 foo2_branch1_test() ->
@@ -761,13 +761,13 @@ maps_singletons_opt_test() ->
 maps_singletons_mixed_test() ->
   % {1 := a, 2 => b, 10 => c}  !≤ ≥!  {1 => a, 2 := b, 3 => c}
   L = tmap([
-    tmap_field_man(tint(1), tatom(a)),
+    tmap_field_req(tint(1), tatom(a)),
     tmap_field_opt(tint(2), tatom(b)),
     tmap_field_opt(tint(10), tatom(c))
   ]),
   R = tmap([
     tmap_field_opt(tint(1), tatom(a)),
-    tmap_field_man(tint(2), tatom(b)),
+    tmap_field_req(tint(2), tatom(b)),
     tmap_field_opt(tint(3), tatom(c))
   ]),
   false = is_subtype(L, R),
@@ -799,12 +799,12 @@ maps_singletons_opt_2_test() ->
 maps_singletons_mixed_2_test() ->
   % {1 := a, 2 => b}  !≤ ≥!  {1 => a, 2 := b}
   L = tmap([
-    tmap_field_man(tint(1), tatom(a)),
+    tmap_field_req(tint(1), tatom(a)),
     tmap_field_opt(tint(2), tatom(b))
   ]),
   R = tmap([
     tmap_field_opt(tint(1), tatom(a)),
-    tmap_field_man(tint(2), tatom(b))
+    tmap_field_req(tint(2), tatom(b))
   ]),
   false = is_subtype(L, R),
   false = is_subtype(R, L),

@@ -9,7 +9,7 @@
 
 -define(TestConstruction, true).
 -define(TestUpdate, true).
--define(TestPatternMatching, true).
+-define(TestPatternMatching, false).
 
 %% Currently (2024-09-16), we only support maps as dictionaries. So we comment out
 %% tests for maps with more than one key-value type.

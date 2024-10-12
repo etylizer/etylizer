@@ -1,14 +1,13 @@
 -module(set_of_constraint_sets).
 
 %% API
--export([is_valid_substitution/2, is_smaller/2, is_equivalent/3]).
+-export([print/1, is_valid_substitution/2, is_smaller/2, is_equivalent/3]).
 
 %
 is_smaller([], _S2) -> true;
 is_smaller([C | Cs], S2) ->
   constraint_set:has_smaller_constraint(C, S2)
   andalso is_smaller(Cs, S2).
-
 
 is_equivalent(_, _, []) -> true;
 is_equivalent(S1, S2, [O | Os]) ->
@@ -35,3 +34,7 @@ is_valid_substitution([{Var, Left, Right} | Cs], Substitution) ->
   ty_rec:is_subtype(SubstitutedLeft, SubstitutedTyVar) andalso
     ty_rec:is_subtype(SubstitutedTyVar, SubstitutedRight) andalso
     is_valid_substitution(Cs, Substitution).
+
+print([]) -> "";
+print([{Left, Right} | Rest]) -> 
+  io_lib:format("~s <: ~s~n~s", [ty_rec:print(Left), ty_rec:print(Right), print(Rest)]).

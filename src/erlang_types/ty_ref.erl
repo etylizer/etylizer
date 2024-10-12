@@ -107,7 +107,7 @@ define_ty_ref({ty_ref, Id}, Ty) ->
   case Object of
     [] ->
       ok;
-    [{_, OldId}] ->
+    [{_, _OldId}] ->
       % last ty ref inserted is the recursive type, delete from memory and decrease ty number by one
       % ets:delete(?TY_MEMORY, OldId),
       % [] = ets:lookup(?TY_MEMORY, OldId),

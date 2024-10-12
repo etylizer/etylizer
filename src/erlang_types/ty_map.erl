@@ -41,9 +41,19 @@ split_into_associations({fun_simple}, OnlyOptional) ->
             io:format(user,"Got:~p~n", [Got]),
             error(sanity_not_implemented)
     end;
-split_into_associations(_Mandatory, _MandatoryAndOptional) ->
-    % mandatory are intersection of functions
-    error(mandatory_not_implemented).
+split_into_associations({intersection, Funs}, {union, Tups}) ->
+    RawFun = [{A, B} || {fun_full, [A], B} <- Funs],
+    RawTuple = [{A, B} || {tuple, [A, B]} <- Tups, not lists:member({A, B}, RawFun)],
+    true = (length(Tups) - length(Funs) =:= length(RawTuple)),
+    [{map_field_req, A, B} || {A, B} <- RawFun] 
+        ++ 
+    [{map_field_opt, A, B} || {A, B} <- RawTuple];
+split_into_associations(F = {fun_full, [_], _}, T = {tuple, [_, _]}) ->
+    split_into_associations({intersection, [F]}, {union, [T]});
+split_into_associations(Mandatory, MandatoryAndOptional) ->
+    io:format(user,"Mandatory: ~p~n", [Mandatory]),
+    io:format(user,"Mandatory and opt: ~p~n", [MandatoryAndOptional]),
+    error(illegal_internal_map_representation).
 
 substitute({ty_tuple, Dim, Refs}, Map, Memo) ->
     {ty_tuple, Dim, [ ty_rec:substitute(B, Map, Memo) || B <- Refs ] }.
