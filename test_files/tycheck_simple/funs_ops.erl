@@ -71,3 +71,15 @@ op_09() -> [] ++ [].
 
 -spec op_10_fail() -> 0.
 op_10_fail() -> -1.
+
+-spec op_11() -> false.
+op_11() -> false andalso no.
+
+-spec op_12() -> true.
+op_12() -> true orelse no.
+
+-spec op_13_fail() -> boolean().
+op_13_fail() -> true andalso no.
+
+-spec op_14_fail() -> boolean().
+op_14_fail() -> false orelse no.
