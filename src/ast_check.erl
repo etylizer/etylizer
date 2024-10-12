@@ -146,7 +146,7 @@ check_ty(Spec, CurModule, Ty, Form, Depth) ->
         {integer, _, Int} -> raise_unless(Int =:= Form, Ty, Form, Depth);
         {char, _, Char} -> raise_unless(Char =:= Form, Ty, Form, Depth);
         {type, _, binary, [{integer, _, _I1}, {integer, _, _I2}]} ->
-            utils:error("Checking of types for bitstrings not implemented: ~p", Ty);
+            errors:not_implemented({"Checking of types for bitstrings not implemented", Ty});
         {type, _, nil, []} -> raise_unless(Form =:= [], Ty, Form, Depth);
         {type, _, list, [Ty2]} ->
             raise_unless(is_list(Form), Ty, Form, Depth),
@@ -157,7 +157,7 @@ check_ty(Spec, CurModule, Ty, Form, Depth) ->
         {type, _, bounded_fun, [_, _]} ->
             utils:error("Cannot check term against function type ~p", Ty);
         {type, _, range, [{integer, _, _I1}, {integer, _, _I2}]} ->
-            utils:error("Checking of types for integer ranges not implemented: ~p", Ty);
+            errors:not_implemented("Checking of types for integer ranges not implemented: ~p", Ty);
         {type, _, map, any} ->
             raise_unless({} =:= Form, Ty, Form, Depth);
         {type, Anno, map, TyAssocs} ->
@@ -178,9 +178,9 @@ check_ty(Spec, CurModule, Ty, Form, Depth) ->
                         check_ty(Spec, CurModule, TotalTy, List, Depth)
                 end;
         {op, _, _, _, _} ->
-            utils:error("Checking of types with binary operators not implemented: ~p", Ty);
+            errors:not_implemented({"Checking of types with binary operators not implemented", Ty});
         {op, _, _, _} ->
-            utils:error("Checking of types with unary operators not implemented: ~p", Ty);
+            errors:not_implemented({"Checking of types with unary operators not implemented", Ty});
         {type, _, any, []} -> ok;
         {type, _, term, []} -> ok;
         {type, _, none, []} -> raise(Ty, Form, Depth);
@@ -197,7 +197,7 @@ check_ty(Spec, CurModule, Ty, Form, Depth) ->
         {type, _, boolean, []} -> raise_unless(is_boolean(Form), Ty, Form, Depth);
         {type, _, string, []} -> raise_unless(utils:is_string(Form), Ty, Form, Depth);
         {type, _, record, _} ->
-            utils:error("Checking of types with records not implemented: ~p", Ty);
+            errors:not_implemented({"Checking of types with records not implemented", Ty});
         {remote_type, _, [{atom, _, RemoteMod}, {atom, _, Name}, Args]} ->
                 case {RemoteMod, Name, Args} of
                     {sets, set, [Ty2]} ->

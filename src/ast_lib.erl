@@ -270,7 +270,7 @@ ast_to_erlang_ty({singleton, IntOrChar}, _Sym, _) ->
     ty_rec:interval(Int);
 % TODO
 ast_to_erlang_ty({binary, _, _}, _Sym, _) ->
-    erlang:error("Bitstrings not implemented yet");
+    errors:not_implemented("Bitstrings not implemented yet");
 
 ast_to_erlang_ty({tuple_any}, _Sym, _) ->
     ty_rec:tuple();
@@ -386,11 +386,10 @@ ast_to_erlang_ty({mu, RecVar, Ty}, Sym, M) ->
     NewRef = ty_ref:new_ty_ref(),
     Mp = M#{RecVar => NewRef},
     InternalTy = ast_to_erlang_ty(Ty, Sym, Mp),
-    _NewRes = ty_ref:define_ty_ref(NewRef, ty_ref:load(InternalTy))
-    ;
+    _NewRes = ty_ref:define_ty_ref(NewRef, ty_ref:load(InternalTy));
 
 ast_to_erlang_ty(T, _Sym, _M) ->
-    erlang:error({"Norm not implemented or malformed type", T}).
+    errors:not_implemented({"Type not supported", T}).
 
 -spec ast_to_erlang_ty_var(ast:ty_var()) -> ty_variable:var().
 ast_to_erlang_ty_var({var, Name}) when is_atom(Name) ->

@@ -53,7 +53,7 @@ ty_error(X, Msg) -> ty_error(X, Msg, []).
 ty_error(Msg) -> generic_error(ty_error, Msg).
 
 -spec not_implemented(string()) -> no_return().
-not_implemented(Msg) -> throw({ety, not_implemented, Msg}).
+not_implemented(Msg) -> halt(5, [{flush, true}]).
 
 -spec parse_error(string()) -> no_return().
 parse_error(Msg) -> generic_error(parse_error, Msg).
