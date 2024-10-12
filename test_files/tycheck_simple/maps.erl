@@ -184,7 +184,7 @@ match_06(X, M) ->
 match_07(X, M) ->
     case M of
         #{{X, 1} := {_, I} } -> I;
-        _ when is_map(M) -> 0
+        #{} -> 0
     end.
 
 -spec match_08_fail(atom(), #{ {atom(), integer()} => {string(), integer()} }) -> integer().

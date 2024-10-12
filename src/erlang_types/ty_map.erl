@@ -19,15 +19,12 @@ map(TupPart,FunPart) -> {ty_tuple, 2, [TupPart, FunPart]}.
 has_ref(Tup, Ref) -> ty_tuple:has_ref(Tup, Ref).
 
 
-transform({ty_tuple, 2, [Tup, Funs]}, _O = #{to_tuple := _ToTuple}) ->
+% FIXME #135
+transform({ty_tuple, 2, [Tup, Funs]}, _O = #{to_map := ToMap}) ->
     Mandatory = ast_lib:erlang_ty_to_ast(Funs),
     MandatoryAndOptional = ast_lib:erlang_ty_to_ast(Tup),
-    {map, split_into_associations(Mandatory, MandatoryAndOptional)}.
-    %io:format(user,"~s~n", [ty_rec:print(Tup)]),
-    %io:format(user,"~s~n", [ty_rec:print(Fus)]),
-    %error(todo_map_transform).
+    ToMap(split_into_associations(Mandatory, MandatoryAndOptional)).
      
-% FIXME use O map converting functions
 split_into_associations({fun_simple}, OnlyOptional) ->
     % only optional associations
     case OnlyOptional of
