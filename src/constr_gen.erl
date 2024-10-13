@@ -111,6 +111,7 @@ exp_constrs(Ctx, E, T) ->
         {'string', L, ""} -> utils:single({csubty, mk_locs("empty string literal", L), {empty_list}, T});
         {'string', L, _S} -> utils:single({csubty, mk_locs("string literal", L), {predef_alias, string}, T});
         {bc, L, _E, _Qs} -> errors:unsupported(L, "bitstrings");
+        {bin, L, _} -> errors:unsupported(L, "binaries");
         {block, L, Es} -> exps_constrs(Ctx, L, Es, T);
         {'case', L, ScrutE, Clauses} ->
             Alpha = fresh_tyvar(Ctx),
