@@ -5,7 +5,7 @@
 -define(F(Z), fun() -> Z end).
 
 -export([is_empty/1, normalize/6, substitute/4, apply_to_node/3]).
--export([tuple/1, all_variables/2, transform/2, to_singletons/1]).
+-export([tuple/1, all_variables/2, transform/2, to_singletons/1, phi/2, phi_norm/5]).
 
 -include("bdd_node.hrl").
 
@@ -75,6 +75,15 @@ normalize(Size, Ty, [], [], Fixed, M) ->
     fun
       ([], [], T) ->
         case bdd_bool:empty() of T -> [[]]; _ -> [] end;
+      ([], Neg = [TNeg | _], T) ->
+        case bdd_bool:empty() of
+          T -> [[]];
+          _ ->
+            Dim = length(ty_tuple:components(TNeg)),
+            PosAny = ty_tuple:any(Dim),
+            BigS = ty_tuple:big_intersect([PosAny]),
+            phi_norm(Size, ty_tuple:components(BigS), Neg, Fixed, M)
+        end;
       (Pos, Neg, T) ->
         case bdd_bool:empty() of
           T -> [[]];

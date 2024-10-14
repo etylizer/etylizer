@@ -151,8 +151,6 @@ simple_test_() ->
   NoInfer = [
     % slow, see #62
     "foo3",
-    % buggy, see #101
-    "poly",
     % TODO recursive inference
     "user_06", "user_07"
   ],
@@ -163,7 +161,7 @@ simple_test_() ->
   % If OnlyFiles is empty, all files not in IgnoreFiles are checked
   % If OnlyFiles is not empty, only the files in OnlyFiles but not in IgnoreFiels are checked
   OnlyFiles = [],
-  IgnoreFiles = ["maps.erl"],
+  IgnoreFiles = [],
 
   case file:list_dir(TopDir) of
     {ok, Entries} ->

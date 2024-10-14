@@ -132,7 +132,6 @@ to_cduce({predef_alias, non_neg_integer}) -> "(0--*)";
 to_cduce({singleton, float}) -> "`float";
 to_cduce({mu, _, _}) -> "RECTYPE";
 to_cduce({range, X, Y}) -> io_lib:format("(~s--~s)",[erlang:integer_to_list(X), erlang:integer_to_list(Y)]);
-to_cduce({range, X, Y}) -> io_lib:format("(~s--~s)",[erlang:integer_to_list(X), erlang:integer_to_list(Y)]);
 to_cduce({singleton, I}) when is_integer(I) -> erlang:integer_to_list(I);
 to_cduce({singleton, A}) when is_atom(A) -> io_lib:format("`~s", [erlang:atom_to_list(A)]);
 to_cduce({negation, X}) -> io_lib:format("(Any \\ ~s)", [to_cduce(X)]);

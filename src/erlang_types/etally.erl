@@ -13,7 +13,7 @@
 tally(Constraints) -> tally(Constraints, sets:new()).
 
 tally(Constraints, FixedVars) ->
-  % io:format(user,"TALLY~n", []),
+  % io:format(user,"TALLY~n~s~n", [set_of_constraint_sets:print(Constraints)]),
   Normalized = ?TIME(tally_normalize, tally_normalize(Constraints, FixedVars)),
   % io:format(user,"NORM~n", []),
   Saturated = ?TIME(tally_saturate, tally_saturate(Normalized, FixedVars)),
