@@ -624,6 +624,9 @@ ty_of_pat(Symtab, Env, P, Mode) ->
         {op, _, '-', [SubP]} ->
             ast_lib:mk_intersection([ty_of_pat(Symtab, Env, SubP, Mode), {predef_alias, number}]);
         {op, L, Op, _} -> errors:unsupported(L, "operator ~w in patterns", Op);
+        {map, _L, []} ->
+            Any = stdtypes:tany(),
+            stdtypes:tmap(Any, Any);
         {map, _L, Assocs} ->
             {KeyTs, ValTs} =
                 lists:foldl(
