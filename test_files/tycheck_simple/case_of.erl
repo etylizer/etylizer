@@ -101,3 +101,12 @@ case_13_fail(X, A) ->
     X -> 2
   end.
 
+% See #141
+-spec pin([number()]) -> boolean() | falsee.
+pin(L) ->
+    X = 1,
+    case L of
+        X -> true;
+        [X | _] -> falsee;
+        _ -> false
+    end.
