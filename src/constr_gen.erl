@@ -800,9 +800,11 @@ pat_env(Ctx, OuterL, T, P) ->
         {wildcard, _L} ->
             Empty;
         {var, _L, {local_bind, V}} ->
+            % V binds a fresh variable
             {sets:new(), #{ {local_ref, V} => T }};
-        {var, _L, {local_ref, V}} ->
-            {sets:new(), #{ {local_ref, V} => T }}
+        {var, _L, LocalRef} ->
+            % V refers to an existing variable
+            {sets:new(), #{ LocalRef => T }}
     end.
 
 % (| e |)
