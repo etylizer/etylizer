@@ -18,6 +18,7 @@
 
 reset() ->
     catch ets:delete(?VAR_ETS),
+    erlang:put(ty_ast_cache, #{}),
     ets:new(?VAR_ETS, [public, named_table]).
 
 unfold_intersection([], All) -> All;
@@ -122,7 +123,17 @@ erlang_ty_var_to_var({var, Id, Name}) ->
     end.
 
 erlang_ty_to_ast(X) ->
-    erlang_ty_to_ast(X, #{}).
+    Cache = erlang:get(ty_ast_cache),
+    Cached = maps:get(X, Cache, undefined),
+    maybe_transform(Cached, X, Cache).
+
+maybe_transform(undefined, X, Cache) ->
+    V = erlang_ty_to_ast(X, #{}),
+    CacheNew = maps:put(X, V, Cache),
+    put(ty_ast_cache, CacheNew),
+    V;
+maybe_transform(V, _, _) ->
+    V.
 
 erlang_ty_to_ast(X, M) ->
         case M of
