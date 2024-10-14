@@ -92,3 +92,12 @@ case_12_fail(X) ->
     case X of
         1 -> 0 % branch is not exhaustive
     end.
+
+% The type checker fails with "not all cases are covered" because it is too stupid
+% when matching against bound variables in patterns (such as X).
+-spec case_13_fail(1, 1) -> 2.
+case_13_fail(X, A) ->
+  case A of
+    X -> 2
+  end.
+

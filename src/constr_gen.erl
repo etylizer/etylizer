@@ -674,8 +674,28 @@ ty_of_pat(Symtab, Env, P, Mode) ->
             stdtypes:tint(Idx + 1);
         {tuple, _L, Ps} -> {tuple, lists:map(fun(P) -> ty_of_pat(Symtab, Env, P, Mode) end, Ps)};
         {wildcard, _L} -> {predef, any};
-        {var, _L, {local_bind, V}} -> maps:get({local_ref, V}, Env, {predef, any});
-        {var, _L, {local_ref, _V}} -> {predef, any} % we could probably do better here
+        {var, _L, {local_bind, V}} ->
+            % V binds a fresh variable
+            maps:get({local_ref, V}, Env, stdtypes:tany());
+        {var, _L, _Ref} ->
+            % V refers to an existing variable
+            % We are conservative (and pragmatic) here and return any() for the upper and none()
+            % for the lower bound. Here is an artifical example where we could do better:
+            % -spec case_13_fail(1, 1) -> 2.
+            % case_13_fail(X, A) ->
+            %   case A of
+            %     X -> 2
+            %   end.
+            % The type checker fails with "not all cases are covered" By using 1 as the type of
+            % the upper bound, it would recognize that all cases are covered. In the given
+            % function, it seems easy to use 1 as the upper bound type. But what happens if
+            % X is not a parameter with an annotated type, but a local variables with an
+            % inferred type?
+            % SW (2024-10-14) believes that such situations are rare.
+            case Mode of
+                upper -> stdtypes:tany();
+                lower -> stdtypes:tnone()
+            end
     end.
 
 % t // pg
