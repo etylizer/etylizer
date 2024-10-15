@@ -5,10 +5,16 @@
   tally/2
 ]).
 
--define(debug, true).
+% Exports to silence debug warnings
+-export([
+  sanity_substitution/3,
+  is_valid_substitution/2
+]).
 
 -include_lib("../log.hrl").
 -include_lib("sanity.hrl").
+
+%-define(debug, true).
 
 tally(Constraints) -> tally(Constraints, sets:new()).
 
@@ -107,7 +113,7 @@ apply_substitution(Ty, Substitutions) ->
   SubstFun = fun({Var, To}, Tyy) ->
     Mapping = #{Var => To},
     Result = ty_rec:substitute(Tyy, Mapping),
-    sanity_substitution({Var, To}, Tyy, Result),
+    ?SANITY(substitution_sanity_check, sanity_substitution({Var, To}, Tyy, Result)),
     Result
              end,
   lists:foldl(SubstFun, Ty, Substitutions).

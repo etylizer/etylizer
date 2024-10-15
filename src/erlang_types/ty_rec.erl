@@ -1,8 +1,8 @@
 -module(ty_rec).
 
--define(debug, true).
-
 -include_lib("sanity.hrl").
+
+%-define(debug, true).
 
 -define(F(Z), fun() -> Z end).
 
