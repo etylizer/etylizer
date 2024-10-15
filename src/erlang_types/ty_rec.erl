@@ -1,11 +1,6 @@
 -module(ty_rec).
 
--define(debug, true).
-
--include_lib("sanity.hrl").
-
 -define(F(Z), fun() -> Z end).
-
 
 -export([empty/0, any/0]).
 -export([union/2, negate/1, intersect/2, diff/2, is_any/1]).
@@ -23,6 +18,8 @@
 -export([substitute/2, substitute/3, pi/2, all_variables/1, all_variables/2]).
 
 -export([transform/2, print/1]).
+
+-include_lib("sanity.hrl").
 
 -record(ty, {predef, atom, interval, list, tuple, function, map}).
 

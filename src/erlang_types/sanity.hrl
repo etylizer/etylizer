@@ -14,5 +14,38 @@
 -define(TIME(Name, X), X).
 -endif.
 
+-ifdef(debug). % etally sanity checks
+
+-compile({nowarn_unused_function, sanity_substitution/3}).
+sanity_substitution({Var, _To}, Ty, TyAfter) ->
+  case lists:member(Var, ty_rec:all_variables(Ty)) of
+    false ->  ok;
+    true ->
+      case lists:member(Var, ty_rec:all_variables(TyAfter)) of
+        false -> ok;
+        _ ->
+          error({failed_sanity, Var, variable_is_still_in_ty_after_substitution, {before, ty_rec:print(Ty)}, {'after', ty_rec:print(TyAfter)}})
+      end
+  end.
+
+
+%substitution_check sanity check
+-compile({nowarn_unused_function, is_valid_substitution/2}).
+is_valid_substitution([], _) -> true;
+is_valid_substitution([{Left, Right} | Cs], Substitution) ->
+  SubstitutedLeft = ty_rec:substitute(Left, Substitution),
+  SubstitutedRight = ty_rec:substitute(Right, Substitution),
+  Res = ty_rec:is_subtype(SubstitutedLeft, SubstitutedRight) ,
+  case Res of
+    false ->
+      io:format(user, "Left: ~s -> ~s~n", [ty_rec:print(Left), ty_rec:print(SubstitutedLeft)]),
+      io:format(user, "Right: ~s -> ~s~n", [ty_rec:print(Right), ty_rec:print(SubstitutedRight)]);
+    _ -> ok
+  end,
+  Res andalso
+    is_valid_substitution(Cs, Substitution).
+
+-endif.
+
 
 -endif.
