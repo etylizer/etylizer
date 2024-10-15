@@ -6,6 +6,8 @@ Static typechecker for Erlang based on set-theoretic types.
 
 ## User-level documentation
 
+### Building from source
+
 * `make` or `rebar3 escripize` will generate a standalone portable escript called `ety` inside the directory
   `_build/default/bin`
 * `ety -h` for help
@@ -22,6 +24,10 @@ Useful for debugging:
 * type checks only the function `foo/1` (`-o`) with additional debug information
   (`-l`)
 * disables caching of results, i.e. force type checking (`--force`)
+
+### rebar3 plugin
+
+For rebar3 projects the [etylizer plugin](https://github.com/etylizer/rebar3_etylizer) can be used.
 
 ## Developer documentation
 
