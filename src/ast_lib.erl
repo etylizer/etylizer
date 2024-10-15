@@ -18,6 +18,7 @@
 
 reset() ->
     catch ets:delete(?VAR_ETS),
+    erlang:put(ty_ast_cache, #{}),
     ets:new(?VAR_ETS, [public, named_table]).
 
 unfold_intersection([], All) -> All;
@@ -122,7 +123,17 @@ erlang_ty_var_to_var({var, Id, Name}) ->
     end.
 
 erlang_ty_to_ast(X) ->
-    erlang_ty_to_ast(X, #{}).
+    Cache = erlang:get(ty_ast_cache),
+    Cached = maps:get(X, Cache, undefined),
+    maybe_transform(Cached, X, Cache).
+
+maybe_transform(undefined, X, Cache) ->
+    V = erlang_ty_to_ast(X, #{}),
+    CacheNew = maps:put(X, V, Cache),
+    put(ty_ast_cache, CacheNew),
+    V;
+maybe_transform(V, _, _) ->
+    V.
 
 erlang_ty_to_ast(X, M) ->
         case M of
@@ -270,7 +281,7 @@ ast_to_erlang_ty({singleton, IntOrChar}, _Sym, _) ->
     ty_rec:interval(Int);
 % TODO
 ast_to_erlang_ty({binary, _, _}, _Sym, _) ->
-    errors:not_implemented("Bitstrings not implemented yet");
+    erlang:error("Bitstrings not implemented yet");
 
 ast_to_erlang_ty({tuple_any}, _Sym, _) ->
     ty_rec:tuple();
@@ -386,10 +397,11 @@ ast_to_erlang_ty({mu, RecVar, Ty}, Sym, M) ->
     NewRef = ty_ref:new_ty_ref(),
     Mp = M#{RecVar => NewRef},
     InternalTy = ast_to_erlang_ty(Ty, Sym, Mp),
-    _NewRes = ty_ref:define_ty_ref(NewRef, ty_ref:load(InternalTy));
+    _NewRes = ty_ref:define_ty_ref(NewRef, ty_ref:load(InternalTy))
+    ;
 
 ast_to_erlang_ty(T, _Sym, _M) ->
-    errors:not_implemented({"Type not supported", T}).
+    erlang:error({"Norm not implemented or malformed type", T}).
 
 -spec ast_to_erlang_ty_var(ast:ty_var()) -> ty_variable:var().
 ast_to_erlang_ty_var({var, Name}) when is_atom(Name) ->

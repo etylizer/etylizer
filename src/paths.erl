@@ -143,14 +143,10 @@ find_dependency_roots(ProjectDir, OtpIncDirs) ->
     RebarConfig = filename:join([ProjectDir, "rebar.config"]),
     case filelib:is_dir(ProjectBuildDir) of
         true ->
-          case file:list_dir(ProjectLibDir) of 
-            {error, enoent} ->
-              {[], []};
-            {ok, PathList} ->
-              IncDirs = find_include_dirs(ProjectLibDir, PathList) ++ OtpIncDirs,
-              Sp = lists:flatmap(fun(Path) -> standard_path_entries(dep, ProjectLibDir, Path, IncDirs) end, PathList),
-              {Sp, IncDirs}
-          end;
+            {ok, PathList} = file:list_dir(ProjectLibDir),
+            IncDirs = find_include_dirs(ProjectLibDir, PathList) ++ OtpIncDirs,
+            Sp = lists:flatmap(fun(Path) -> standard_path_entries(dep, ProjectLibDir, Path, IncDirs) end, PathList),
+            {Sp, IncDirs};
         false ->
             case filelib:is_file(RebarConfig) of
                 true ->

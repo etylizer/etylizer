@@ -8,10 +8,7 @@
 ]).
 
 -spec generic_error(atom(), string()) -> no_return().
-generic_error(Kind, Msg) -> 
-    io:format(user,"~p ~p~n", [Kind, Msg]),
-    halt(2, [{flush, true}]).
-  %throw({ety, Kind, Msg}).
+generic_error(Kind, Msg) -> throw({ety, Kind, Msg}).
 
 -spec generic_error(atom(), ast:loc(), string(), string(), any()) -> no_return().
 generic_error(Kind, Loc, Prefix, Msg, Args) ->
@@ -21,9 +18,7 @@ generic_error(Kind, Loc, Prefix, Msg, Args) ->
 
 -spec unsupported(ast:loc(), string(), any()) -> no_return().
 unsupported(Loc, Msg, Args) ->
-    io:format(user, "Not implemented: " ++ Msg, Args),
-    halt(5, [{flush, true}]).
-    %generic_error(unsupported, Loc, "Unsupported language feature", Msg, Args).
+    generic_error(unsupported, Loc, "Unsupported language feature", Msg, Args).
 
 -spec unsupported(ast:loc(), string()) -> no_return().
 unsupported(Loc, Msg) -> unsupported(Loc, Msg, []).
@@ -37,15 +32,11 @@ name_error(Loc, Msg) -> name_error(Loc, Msg, []).
 
 -spec bug(string()) -> no_return().
 bug(Msg) ->
-    io:format(user, "BUG: " ++ Msg, []),
-    halt(2, [{flush, true}]).
-    %throw({ety, bug, "BUG: " ++ Msg}).
+    throw({ety, bug, "BUG: " ++ Msg}).
 
 -spec bug(string(), any()) -> no_return().
 bug(Msg, Args) ->
-    io:format(user, "BUG: " ++ Msg, Args),
-    halt(2, [{flush, true}]).
-   %throw({ety, bug, utils:sformat("BUG: " ++ Msg, Args)}).
+    throw({ety, bug, utils:sformat("BUG: " ++ Msg, Args)}).
 
 -spec uncovered_case(file:filename(), t:lineno(), any()) -> no_return().
 uncovered_case(File, Line, X) ->
@@ -53,22 +44,16 @@ uncovered_case(File, Line, X) ->
 
 -spec ty_error(ast:loc(), string(), any()) -> no_return().
 ty_error(Loc, Msg, Args) ->
-  io:format(user, Msg, Args),
-  halt(1, [{flush, true}]).
-    %generic_error(ty_error, Loc, "Type error", Msg, Args).
+    generic_error(ty_error, Loc, "Type error", Msg, Args).
 
 -spec ty_error(ast:loc(), string()) -> no_return().
 ty_error(X, Msg) -> ty_error(X, Msg, []).
 
 -spec ty_error(string()) -> no_return().
-ty_error(Msg) -> 
-  io:format(user, Msg, []),
-  halt(1, [{flush, true}]).
-  %generic_error(ty_error, Msg).
+ty_error(Msg) -> generic_error(ty_error, Msg).
 
 -spec not_implemented(string()) -> no_return().
-not_implemented(Msg) -> halt(5, [{flush, true}]).
+not_implemented(Msg) -> throw({ety, not_implemented, Msg}).
 
 -spec parse_error(string()) -> no_return().
-parse_error(Msg) -> 
-  generic_error(parse_error, Msg).
+parse_error(Msg) -> generic_error(parse_error, Msg).

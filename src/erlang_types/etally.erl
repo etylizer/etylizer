@@ -5,16 +5,7 @@
   tally/2
 ]).
 
-% Exports to silence debug warnings
--export([
-  sanity_substitution/3,
-  is_valid_substitution/2
-]).
-
--include_lib("../log.hrl").
 -include_lib("sanity.hrl").
-
-%-define(debug, true).
 
 tally(Constraints) -> tally(Constraints, sets:new()).
 
@@ -113,34 +104,8 @@ apply_substitution(Ty, Substitutions) ->
   SubstFun = fun({Var, To}, Tyy) ->
     Mapping = #{Var => To},
     Result = ty_rec:substitute(Tyy, Mapping),
-    ?SANITY(substitution_sanity_check, sanity_substitution({Var, To}, Tyy, Result)),
+    ?SANITY(etally_apply_substition, sanity_substitution({Var, To}, Tyy, Result)),
     Result
              end,
   lists:foldl(SubstFun, Ty, Substitutions).
 
-sanity_substitution({Var, _To}, Ty, TyAfter) ->
-  case lists:member(Var, ty_rec:all_variables(Ty)) of
-    false ->  ok;
-    true ->
-      case lists:member(Var, ty_rec:all_variables(TyAfter)) of
-        false -> ok;
-        _ ->
-          error({failed_sanity, Var, variable_is_still_in_ty_after_substitution, {before, ty_rec:print(Ty)}, {'after', ty_rec:print(TyAfter)}})
-      end
-  end.
-
-
-% sanity check
-is_valid_substitution([], _) -> true;
-is_valid_substitution([{Left, Right} | Cs], Substitution) ->
-  SubstitutedLeft = ty_rec:substitute(Left, Substitution),
-  SubstitutedRight = ty_rec:substitute(Right, Substitution),
-  Res = ty_rec:is_subtype(SubstitutedLeft, SubstitutedRight) ,
-  case Res of
-    false ->
-      io:format(user, "Left: ~s -> ~s~n", [ty_rec:print(Left), ty_rec:print(SubstitutedLeft)]),
-      io:format(user, "Right: ~s -> ~s~n", [ty_rec:print(Right), ty_rec:print(SubstitutedRight)]);
-    _ -> ok
-  end,
-  Res andalso
-    is_valid_substitution(Cs, Substitution).
