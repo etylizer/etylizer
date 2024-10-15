@@ -1,9 +1,5 @@
 -module(ast_lib).
 
-% @doc This header file defines type specifications for our internal AST. It is
-% heavily derived from the erlang ast (defined in ast_erl.erl). See the README for
-% a description of the properties of the internal AST.
-
 -export([simplify/2, reset/0, ast_to_erlang_ty/1, ast_to_erlang_ty/2, erlang_ty_to_ast/1, erlang_ty_to_ast/2, ast_to_erlang_ty_var/1, erlang_ty_var_to_var/1]).
 -define(VAR_ETS, ast_norm_var_memo). % remember variable name -> variable ID to convert variables properly
 
@@ -139,7 +135,7 @@ erlang_ty_to_ast(X, M) ->
         case M of
             #{X := Var} -> Var;
             _ ->
-        % Given a X = ... equation, create a new 
+        % Given a X = ... equation, create a new
         % TODO discuss how to ensure uniqueness
         RecVarID = erlang:unique_integer(),
         Var = {var, erlang:list_to_atom("mu" ++ integer_to_list(RecVarID))},
@@ -182,21 +178,21 @@ erlang_ty_to_ast(X, M) ->
             pos -> Full;
             neg -> stdtypes:tnegate(Full)
         end,
-        
+
         % Return always recursive type
         % TODO check if Var in NewTy
         % if not, return just NewTy
         Vars = ast_utils:referenced_variables(NewTy),
         FinalTy = case lists:member(Var, Vars) of
-            true -> 
+            true ->
                 {mu, Var, NewTy};
-            false -> 
+            false ->
                 NewTy
         end,
 
-        % SANITY CHECK    
+        % SANITY CHECK
         % TODO is it always the case that once we are in the semantic world, when we go back we dont need the symtab?
-        Sanity = ast_lib:ast_to_erlang_ty(FinalTy, symtab:empty()), 
+        Sanity = ast_lib:ast_to_erlang_ty(FinalTy, symtab:empty()),
           % leave this sanity check for a while
           case ty_rec:is_equivalent(X, Sanity) of
             true -> ok;
@@ -348,13 +344,13 @@ ast_to_erlang_ty({predef, T}, _Sym, _) when T == pid; T == port; T == reference;
 % named
 ast_to_erlang_ty({named, Loc, Ref, Args}, Sym, M) ->
     case M of
-        #{{Ref, Args} := NewRef} -> 
+        #{{Ref, Args} := NewRef} ->
             NewRef;
         _ ->
             ({ty_scheme, Vars, Ty}) = symtab:lookup_ty(Ref, Loc, Sym),
-            
+
             % apply args to ty scheme
-            Map = subst:from_list(lists:zip([V || {V, _Bound} <- Vars], Args)), 
+            Map = subst:from_list(lists:zip([V || {V, _Bound} <- Vars], Args)),
             NewTy = subst:apply(Map, Ty, no_clean),
 
             NewRef = ty_ref:new_ty_ref(),
@@ -393,7 +389,7 @@ ast_to_erlang_ty({intersection, [A|T]}, Sym, M) -> ty_rec:intersect(ast_to_erlan
 
 ast_to_erlang_ty({negation, Ty}, Sym, M) -> ty_rec:negate(ast_to_erlang_ty(Ty, Sym, M));
 
-ast_to_erlang_ty({mu, RecVar, Ty}, Sym, M) -> 
+ast_to_erlang_ty({mu, RecVar, Ty}, Sym, M) ->
     NewRef = ty_ref:new_ty_ref(),
     Mp = M#{RecVar => NewRef},
     InternalTy = ast_to_erlang_ty(Ty, Sym, Mp),

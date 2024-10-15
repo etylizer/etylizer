@@ -7,16 +7,10 @@
 % against its spec, inference is also tested.
 % If the name ends with _fail, the test must fail.
 
--define(TestConstruction, true).
--define(TestUpdate, true).
--define(TestPatternMatching, false).
-
 %% Currently (2024-09-16), we only support maps as dictionaries. So we comment out
 %% tests for maps with more than one key-value type.
 
 %%%%%%%%%%%%%%%%%%%%%%%% CONSTRUCTION %%%%%%%%%%%%%%%%%%%%%%%
-
--if(?TestConstruction).
 
 -spec const_map_00() -> map().
 const_map_00() -> #{ a => 1, b => 2 }.
@@ -108,11 +102,7 @@ const_map_25() -> #{ a => 1, b => 2 }.
 -spec const_map_26_fail() -> atom().
 const_map_26_fail() -> #{ a => 1, b => 2 }.
 
--endif.
-
 %%%%%%%%%%%%%%%%%%%%%%%% INSERT/UPDATE %%%%%%%%%%%%%%%%%%%%%%%
-
--if(?TestUpdate).
 
 -spec insert_01(#{ atom() => integer() }) -> #{ atom() => integer() }.
 insert_01(M) -> M # { a => 42}.
@@ -132,11 +122,7 @@ insert_05_fail(M) -> M # { "foo" => 42}. % key has wrong type
 -spec insert_06_fail(#{ atom() => integer() }) -> #{ atom() => integer() }.
 insert_06_fail(M) -> M # { a => "42"}. % value has wrong type
 
--endif.
-
 %%%%%%%%%%%%%%%%%%%%%%%% PATTERN MATCHING %%%%%%%%%%%%%%%%%%%%%%%
-
--if(?TestPatternMatching).
 
 -spec match_01(#{ atom() => integer() }) -> integer().
 match_01(M) ->
@@ -150,6 +136,19 @@ match_01(M) ->
 match_02_fail(M) ->
     case M of
         #{a := I} -> I % incomplete pattern
+    end.
+
+-spec match_empty(#{ atom() => integer() }) -> 1.
+match_empty(M) ->
+    case M of
+        #{} -> 1
+    end.
+
+-spec match_empty_fail(#{ atom() => integer() }) -> integer().
+match_empty_fail(M) ->
+    case M of
+        #{} -> 1;
+        _ -> 2  % redundant
     end.
 
 % map types with mandatory associations are not supported
@@ -180,12 +179,13 @@ match_06(X, M) ->
         _ -> 0
     end.
 
--spec match_07(atom(), #{ {atom(), integer()} => {string(), integer()} }) -> integer().
-match_07(X, M) ->
-    case M of
-        #{{X, 1} := {_, I} } -> I;
-        #{} -> 0
-    end.
+%% slow, see #144
+%% -spec match_07(atom(), #{ {atom(), integer()} => {string(), integer()} }) -> integer().
+%% match_07(X, M) ->
+%%     case M of
+%%         #{{X, 1} := {_, I} } -> I;
+%%         #{} -> 0
+%%     end.
 
 -spec match_08_fail(atom(), #{ {atom(), integer()} => {string(), integer()} }) -> integer().
 match_08_fail(X, M) ->
@@ -193,12 +193,13 @@ match_08_fail(X, M) ->
         #{{X, 1} := {_, I} } -> I % incomplete
     end.
 
--spec match_09_fail(integer(), #{ atom() => integer() }) -> integer().
-match_09_fail(X, M) ->
-    case M of
-        #{X := I } -> I; % X has wrong type
-        _ -> 0
-    end.
+%% fails, see #143
+%% -spec match_09_fail(integer(), #{ atom() => integer() }) -> integer().
+%% match_09_fail(X, M) ->
+%%     case M of
+%%         #{X := I } -> I; % X has wrong type
+%%         _ -> 0
+%%     end.
 
 -spec match_10_fail(atom(), #{ atom() => integer() }) -> string().
 match_10_fail(X, M) ->
@@ -234,17 +235,18 @@ match_13(M) ->
         _ -> M
     end.
 
--spec match_14(#{ atom() => integer() } | #{ integer() => string() } | integer()) -> integer().
-match_14(M) ->
-    case M of
-        _ when is_map(M) ->
-            case M of
-                #{a := I} -> I;
-                #{1 := S} -> length(S);
-                #{} -> 1
-            end;
-        _ -> M
-    end.
+%% slow, see #144
+%% -spec match_14(#{ atom() => integer() } | #{ integer() => string() } | integer()) -> integer().
+%% match_14(M) ->
+%%     case M of
+%%         _ when is_map(M) ->
+%%             case M of
+%%                 #{a := I} -> I;
+%%                 #{1 := S} -> length(S);
+%%                 #{} -> 1
+%%             end;
+%%         _ -> M
+%%     end.
 
 -spec use_map(#{ atom() => integer() }) -> integer().
 use_map(_M) -> 1.
@@ -262,5 +264,3 @@ match_16_fail(M) ->
         _ when is_map(M) -> M; % wrong type
         _ -> 1
    end.
-
--endif.
