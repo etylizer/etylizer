@@ -27,7 +27,7 @@
     tarrow_n/1,
     tfun_full/2,
     tfun/2, tfun1/2, tfun2/3, tfun_any/0,
-    tmap/1, tmap/2, tmap_field_opt/2, tmap_field_req/2, tmap_any/0,
+    tmap/1, tmap/2, tmap_req/2, tmap_field_opt/2, tmap_field_req/2, tmap_any/0,
     tvar/1,
     trange_any/0, trange/2,
     expand_predef_alias/1,
@@ -88,6 +88,9 @@ tmap(AssocList) -> {map, AssocList}.
 
 -spec tmap(ast:ty(), ast:ty()) -> ast:ty().
 tmap(T1, T2) -> {map, [tmap_field_opt(T1, T2)]}.
+
+-spec tmap_req(ast:ty(), ast:ty()) -> ast:ty().
+tmap_req(T1, T2) -> {map, [tmap_field_req(T1, T2)]}.
 
 -spec tmap_field_opt(ast:ty(), ast:ty()) -> ast:ty_map_assoc_opt().
 tmap_field_opt(K, V) -> {map_field_opt, K, V}.
@@ -203,7 +206,7 @@ expand_predef_alias(maybe_improper_list) -> {improper_list, {predef, any}, {pred
 expand_predef_alias(string) -> {list, expand_predef_alias(char)};
 expand_predef_alias(nonempty_string) -> {nonempty_list, expand_predef_alias(char)};
 expand_predef_alias(iodata) -> {union, [expand_predef_alias(iolist), expand_predef_alias(binary)]};
-expand_predef_alias(iolist) -> 
+expand_predef_alias(iolist) ->
     % TODO fix variable IDs
     RecVarID = erlang:unique_integer(),
     Var = {var, erlang:list_to_atom("mu" ++ integer_to_list(RecVarID))},
