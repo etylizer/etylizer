@@ -264,3 +264,8 @@ match_16_fail(M) ->
         _ when is_map(M) -> M; % wrong type
         _ -> 1
    end.
+
+%% slow, see #144
+%% -spec match_17_fail(#{a => integer()} | ok) -> ok.
+%% match_17_fail(#{a := _I}) -> ok;
+%% match_17_fail(V) -> V.

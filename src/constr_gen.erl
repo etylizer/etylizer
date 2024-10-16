@@ -642,7 +642,10 @@ ty_of_pat(Symtab, Env, P, Mode) ->
                     upper -> fun ast_lib:mk_union/1;
                     lower -> fun ast_lib:mk_intersection/1
                 end,
-            stdtypes:tmap(F(KeyTs), F(ValTs));
+            case Mode of
+                upper -> stdtypes:tmap(F(KeyTs), F(ValTs));
+                lower -> stdtypes:tmap_req(F(KeyTs), F(ValTs))
+            end;
         {record, L, RecName, FieldPats} ->
             {_, RecFields} = symtab:lookup_record(RecName, L, Symtab),
             FieldMap =
