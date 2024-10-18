@@ -42,6 +42,11 @@ constraint_set(Cs) when is_list(Cs) -> Cs.
 constraint(Var, Ty1, Ty2) -> {Var, Ty1, Ty2}.
 constraint({Var, Ty1, Ty2}) -> {Var, Ty1, Ty2}.
 
+meet(Res, S2) when not is_function(Res) ->
+  case Res of
+    [] -> [];
+    _ -> merge_and_meet(Res, S2())
+  end;
 meet(S1, S2) ->
   Res = S1(),
   case Res of
