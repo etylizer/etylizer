@@ -1,4 +1,6 @@
 % bdd for variables
+ 
+-export([get_full_dnf/1]).
 
 -include("bdd.hrl").
 
@@ -22,3 +24,9 @@ substitute({node, Var, Left, Right}, StdMap, Memo, MkTy) ->
       )
   end
 .
+
+get_full_dnf(Ty) ->
+  Dnf = get_dnf(Ty),
+  % TODO technical dept, matching on literal '1' of type bdd_bool even though we can't know it's of type bdd_bool
+  % as of yet, every second-level BDD uses bdd_bool as its terminal, so its OK
+  lists:flatten([[{PosVar, NegVar, Pos, Neg} || {Pos, Neg, 1} <- ?TERMINAL:get_dnf(Dnfs)] || {PosVar, NegVar, Dnfs} <- Dnf]).
