@@ -161,11 +161,19 @@ generate_input_file_list(Opts) ->
     case Opts#opts.src_paths of
         [] ->
             case Opts#opts.files of
-                [] -> utils:quit(1, "No input files given, aborting. Use -h to print help.~n");
+                [] -> utils:quit(1, "No input files given, aborting. Use --help to print help.~n");
                 Files -> Files
             end;
         Paths ->
-            lists:foldl(fun(Path, FileList) -> FileList ++ add_dir_to_list(Path) end, [], Paths)
+            case Opts#opts.no_deps of
+                true ->
+                    utils:quit(1, "Both options --no-deps and --source-path specified.~n");
+                false ->
+                    lists:foldl(
+                        fun(Path, FileList) -> FileList ++ add_dir_to_list(Path) end,
+                        Opts#opts.files,
+                        Paths)
+            end
     end.
 
 -spec add_dir_to_list(file:filename()) -> [file:filename()].

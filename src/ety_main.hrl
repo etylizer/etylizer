@@ -7,6 +7,7 @@
                sanity = false :: boolean(),
                force = false :: boolean(),
                no_type_checking = false :: boolean(),
+               no_deps = false :: boolean(),
                type_check_only = [] :: [string()],
                ast_file = empty :: empty | string(),
                project_root = empty :: empty | string(),

@@ -22,7 +22,7 @@ parse_args(Args) ->
          {project_root, $P,    "project-root",  string,
              "Path to the root of the project"},
          {src_path,    $S,    "src-path",       string,
-             "Path to a directory containing source files to be checked"},
+             "Path to a directory containing source files (ending with .erl) to be checked"},
          {include,    $I,   "include",   string,
              "Where to search for include files"  },
          {define,     $D,   "define",    string,
@@ -47,6 +47,9 @@ parse_args(Args) ->
             "Do not perform type cecking"},
          {only, $o, "only", string,
             "Only typecheck these functions (given as name/arity or just the name)"},
+         {no_deps, undefined, "no-deps", undefined,
+            "Only typecheck files explicitly specified on the commandline (incompatible with " ++
+            "-S/--source-path)"},
          {log_level,  $l,   "level",    string,
             "Minimal log level (trace2,trace,debug,info,note,warn)"}
         ],
@@ -78,13 +81,14 @@ parse_args(Args) ->
                         sanity -> Opts#opts{ sanity = true };
                         force -> Opts#opts{ force = true };
                         no_type_checking -> Opts#opts{ no_type_checking = true };
+                        no_deps -> Opts#opts{ no_deps = true };
                         help -> Opts#opts{ help = true }
                     end
                 end, #opts{ files = RestArgs}, OptList)
     end,
     if
         Opts#opts.help ->
-            getopt:usage(OptSpecList, "ety"),
+            getopt:usage(OptSpecList, "ety", "[FILES ...]"),
             utils:quit(1, "Aborting~n");
         true -> ok
     end,
@@ -124,13 +128,22 @@ doWork(Opts) ->
         end,
         SourceList = paths:generate_input_file_list(Opts),
         SearchPath = paths:compute_search_path(Opts),
-        ?LOG_NOTE("Entry points: ~p, now building dependency graph", SourceList),
-        DepGraph = cm_depgraph:build_dep_graph(SourceList, SearchPath,
-            fun(P) -> parse_cache:parse(intern, P) end),
-        ?LOG_DEBUG("Dependency graph: ~p", cm_depgraph:pretty_depgraph(DepGraph)),
+        {SourcesToCheck, DepGraph} =
+            case Opts#opts.no_deps of
+                true ->
+                    % only typecheck the files given
+                    {SourceList, cm_depgraph:new()};
+                false ->
+                    ?LOG_NOTE("Entry points: ~p, now building dependency graph", SourceList),
+                    G = cm_depgraph:build_dep_graph(
+                        SourceList,
+                        SearchPath,
+                        fun(P) -> parse_cache:parse(intern, P) end),
+                    ?LOG_DEBUG("Dependency graph: ~p", cm_depgraph:pretty_depgraph(G)),
+                    {cm_depgraph:all_sources(G), G}
+            end,
         ?LOG_NOTE("Performing type checking"),
-        Res = cm_check:perform_type_checks(SearchPath, DepGraph, Opts),
-        Res
+        cm_check:perform_type_checks(SearchPath, SourcesToCheck, DepGraph, Opts)
     after
         parse_cache:cleanup(),
         stdtypes:cleanup()
