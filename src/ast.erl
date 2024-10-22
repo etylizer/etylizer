@@ -8,6 +8,7 @@
 % grep -o '^-type [a-zA-Z_0-9]*' src/ast.erl | sed 's/-type //g' | grep -v '^gen_' | grep -v '^list[0-9]' | sed 's/^/    /g; s|$|/0,|g'
 -export_type([
     global_ref/0,
+    global_ref_dyn/0,
     ty_varname/0,
     local_ref/0,
     any_ref/0,
@@ -140,6 +141,7 @@
 
 % General
 -type global_ref() :: {ref, atom(), arity()} | {qref, atom(), atom(), arity()}.
+-type global_ref_dyn() :: {qref_dyn, exp(), exp(), exp()}.
 -type ty_varname() :: atom().
 -type unique_tok() :: integer().
 -type local_varname() :: {atom(), unique_tok()}.
@@ -266,6 +268,7 @@ get_fun_name({function, _Loc, Name, Arity, _}) -> utils:sformat("~w/~w", Name, A
 -type gen_cons(T) :: {cons, loc(), Head::T, Tail::T}.
 -type exp_cons() :: gen_cons(exp()).
 -type exp_fun_ref() :: {fun_ref, loc(), global_ref()}.
+-type exp_fun_ref_dyn() :: {fun_ref_dyn, loc(), global_ref_dyn()}.
 -type rec_fun_name() :: no_name | local_bind().
 -type exp_fun() :: {'fun', loc(), Name::rec_fun_name(), [fun_clause()]}.
 -type gen_funcall(T) :: {call, loc(), Fun::T, Args::[T]}
@@ -303,8 +306,8 @@ get_fun_name({function, _Loc, Name, Arity, _}) -> utils:sformat("~w/~w", Name, A
 
 % There is no match expression, because match expressions are represented as case expressions.
 -type exp() :: atomic_lit() | exp_bitstring_compr() | exp_bitstring_constr() | exp_block()
-    | exp_case() | exp_catch() | exp_cons() | exp_fun_ref() | exp_fun() | exp_funcall()
-    | exp_if() | exp_list_compr() | exp_map_create() | exp_map_update()
+    | exp_case() | exp_catch() | exp_cons() | exp_fun_ref() | exp_fun_ref_dyn() | exp_fun()
+    | exp_funcall() | exp_if() | exp_list_compr() | exp_map_create() | exp_map_update()
     | exp_nil() | exp_binop() | exp_unop() | exp_recv() | exp_recv_after() | exp_record_create()
     | exp_record_access() | exp_record_index() | exp_record_update() | exp_tuple() | exp_try()
     | exp_var().

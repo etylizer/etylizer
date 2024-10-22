@@ -3,7 +3,7 @@
 -export([
     unsupported/3, unsupported/2,
     name_error/3, name_error/2,
-    uncovered_case/3, bug/2, bug/1,
+    uncovered_case/3, uncovered_case/4, bug/2, bug/1,
     ty_error/2, ty_error/3, ty_error/1, not_implemented/1, parse_error/1
 ]).
 
@@ -41,6 +41,10 @@ bug(Msg, Args) ->
 -spec uncovered_case(file:filename(), t:lineno(), any()) -> no_return().
 uncovered_case(File, Line, X) ->
     bug("uncovered case in ~s:~w, unmatched value: ~w", [File, Line, X]).
+
+-spec uncovered_case(file:filename(), t:lineno(), string(), any()) -> no_return().
+uncovered_case(File, Line, InputFile, X) ->
+    bug("uncovered case in ~s:~w, input file ~s, unmatched value: ~w", [File, Line, InputFile, X]).
 
 -spec ty_error(ast:loc(), string(), any()) -> no_return().
 ty_error(Loc, Msg, Args) ->

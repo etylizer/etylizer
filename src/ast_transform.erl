@@ -117,7 +117,7 @@ trans_form(Ctx, Form, Mode) ->
             {attribute, Anno, opaque, Def} ->
                 {attribute, to_loc(Ctx, Anno), type, opaque, trans_tydef(Ctx, Def)};
             {attribute, Anno, Other, _} ->
-                ?LOG_DEBUG("Ignoring attribute ~w at ~s", Other, ast:format_loc(to_loc(Ctx, Anno))),
+                ?LOG_TRACE("Ignoring attribute ~w at ~s", Other, ast:format_loc(to_loc(Ctx, Anno))),
                 error;
             {warning, _} -> error;
             {eof, _} -> error;
@@ -442,6 +442,9 @@ trans_exp(Ctx, Env, Exp) ->
             {{fun_ref, to_loc(Ctx, Anno), {ref, Name, Arity}}, Env};
         {'fun', Anno, {function, {'atom', _, Mod}, {'atom', _, Name}, {'integer', _, Arity}}} ->
             {{fun_ref, to_loc(Ctx, Anno), {qref, Mod, Name, Arity}}, Env};
+        {'fun', Anno, {function, ModE, NameE, ArityE}} ->
+            {[NewModE, NewNameE, NewArityE], NewEnv} = trans_exps(Ctx, Env, [ModE, NameE, ArityE]),
+            {{fun_ref_dyn, to_loc(Ctx, Anno), {qref_dyn, NewModE, NewNameE, NewArityE}}, NewEnv};
         {'fun', Anno, {clauses, FunClauses}} ->
             {{'fun', to_loc(Ctx, Anno), no_name, trans_fun_clauses(Ctx, Env, FunClauses)}, Env};
         {named_fun, Anno, Name, FunClauses} ->
@@ -576,7 +579,7 @@ trans_exp(Ctx, Env, Exp) ->
         {var, Anno, Name} ->
             Loc = to_loc(Ctx, Anno),
             {{var, Loc, {local_ref, varenv_local:lookup(Loc, Name, Env)}}, Env};
-        X -> errors:uncovered_case(?FILE, ?LINE, X)
+        X -> errors:uncovered_case(?FILE, ?LINE, Ctx#ctx.path, X)
     end.
 
 -spec trans_exp_bin_elem(ctx(), varenv_local:t(), ast_erl:exp_bitstring_elem()) ->
