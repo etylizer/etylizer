@@ -488,6 +488,12 @@ trans_exp(Ctx, Env, Exp) ->
             {NewQ, NewEnv} = trans_qualifiers(Ctx, Env, Qualifiers),
             % keep the old Env, comprehension opens a new scope
             {{bc, to_loc(Ctx, Anno), trans_exp_noenv(Ctx, NewEnv, E), NewQ}, Env};
+        {mc, Anno, {map_field_assoc, Anno, K, V}, Qualifiers} ->
+            {NewQ, NewEnv} = trans_qualifiers(Ctx, Env, Qualifiers),
+            % keep the old Env, map comprehension opens a new scope
+            NewK = trans_exp_noenv(Ctx, NewEnv, K),
+            NewV = trans_exp_noenv(Ctx, NewEnv, V),
+            {{mc, to_loc(Ctx, Anno), NewK, NewV, NewQ}, Env};
         {bin, Anno, Elems} ->
             {NewElems, NewEnv} =
                 thread_through_env(Env, Elems, fun(Env, S) -> trans_exp_bin_elem(Ctx, Env, S) end),
@@ -810,6 +816,11 @@ trans_qualifier(Ctx, Env, Q) ->
             NewExp = trans_exp_noenv(Ctx, Env, Exp),
             {NewPat, NewEnv} = trans_pat(Ctx, Env, Pat, shadow),
             {{K, to_loc(Ctx, Anno), NewPat, NewExp}, NewEnv};
+        {m_generate, Anno, {map_field_exact, _Anno2, K, V}, Exp} ->
+            NewExp = trans_exp_noenv(Ctx, Env, Exp),
+            {NewK, NewEnv1} = trans_pat(Ctx, Env, K, shadow),
+            {NewV, NewEnv2} = trans_pat(Ctx, NewEnv1, V, shadow),
+            {{m_generate, to_loc(Ctx, Anno), NewK, NewV, NewExp}, NewEnv2};
         Exp -> % filter
             {trans_exp_noenv(Ctx, Env, Exp), Env}
     end.

@@ -62,6 +62,7 @@
     exp_list_compr/0,
     exp_map_create/0,
     exp_map_update/0,
+    exp_map_compr/0,
     exp_match/0,
     exp_nil/0,
     exp_binop/0,
@@ -77,7 +78,8 @@
     exp_var/0,
     exp/0,
     exps/0,
-    qual_gen/0,
+    qual_list_gen/0,
+    qual_map_gen/0,
     qual_bitstring_gen/0,
     qualifier/0,
     bitstring_tyspec/0,
@@ -263,6 +265,7 @@
 -type exp_map_create() :: gen_map_create().
 -type gen_map_update(T) :: {map, anno(), T, [map_assoc()]}.
 -type exp_map_update() :: gen_map_update(exp()).
+-type exp_map_compr() :: {mc, anno(), map_assoc_opt(), [qualifier()]}.
 -type exp_match() :: {match, anno(), pat(), exp()}.
 -type gen_nil() ::  {nil, anno()}.
 -type exp_nil() :: gen_nil().
@@ -291,15 +294,17 @@
 -type exp() :: atomic_lit() | exp_bitstring_compr() | exp_bitstring_constr() | exp_block()
     | exp_case() | exp_catch() | exp_cons() | exp_fun_ref() | exp_fun_qref() | exp_fun()
     | exp_named_fun() | exp_funcall() | exp_funcall_q() | exp_if() | exp_list_compr()
-    | exp_map_create() | exp_map_update() | exp_match() | exp_nil() | exp_binop() | exp_unop()
+    | exp_map_create() | exp_map_update() | exp_map_compr()
+    | exp_match() | exp_nil() | exp_binop() | exp_unop()
     | exp_recv() | exp_recv_after() | exp_record_create() | exp_record_access()
     | exp_record_index() | exp_record_update() | exp_tuple() | exp_try() | exp_var().
 
 -type exps() :: [exp()].
 
--type qual_gen() ::  {generate, anno(), pat(), exp()}.
+-type qual_list_gen() ::  {generate, anno(), pat(), exp()}.
 -type qual_bitstring_gen() ::  {b_generate, anno(), pat(), exp()}.
--type qualifier() :: exp() | qual_gen() | qual_bitstring_gen().
+-type qual_map_gen() ::  {m_generate, anno(), {map_field_exact, anno(), pat(), pat()}, exp()}.
+-type qualifier() :: exp() | qual_list_gen() | qual_bitstring_gen() | qual_map_gen().
 
 -type bitstring_tyspec() :: atom() | {atom(), Value::integer()}.
 -type bitstring_tyspec_list() :: [bitstring_tyspec()].
