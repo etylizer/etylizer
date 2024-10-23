@@ -6,7 +6,7 @@ Static typechecker for Erlang based on set-theoretic types.
 
 ## User-level documentation
 
-* `make` or `rebar3 escripize` will generate a standalone portable escript called `ety` inside the directory
+* `make` or `rebar3 escriptize` will generate a standalone portable escript called `ety` inside the directory
   `_build/default/bin`
 * `ety -h` for help
   * if ety is not on the current path, then prepend the folder where ety is located: `$PATH_TO_ETY/ety -h`
