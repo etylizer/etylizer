@@ -167,18 +167,13 @@ generate_input_file_list(Opts) ->
                     Files
             end;
         Paths ->
-            case Opts#opts.no_deps of
-                true ->
-                    utils:quit(1, "Both options --no-deps and --source-path specified.~n");
-                false ->
-                    ?LOG_INFO(
-                        "Searching for input files in ~200p and using explicitly specified files as input files: ~200p",
-                        Paths, Opts#opts.files),
-                    lists:foldl(
-                        fun(Path, FileList) -> FileList ++ add_dir_to_list(Path) end,
-                        Opts#opts.files,
-                        Paths)
-            end
+            ?LOG_INFO(
+                "Searching for input files in ~200p and using explicitly specified files as input files: ~200p",
+                Paths, Opts#opts.files),
+            lists:foldl(
+                fun(Path, FileList) -> FileList ++ add_dir_to_list(Path) end,
+                Opts#opts.files,
+                Paths)
     end.
 
 -spec add_dir_to_list(file:filename()) -> [file:filename()].

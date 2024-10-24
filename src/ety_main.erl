@@ -20,11 +20,15 @@ parse_args(Args) ->
     OptSpecList =
         [
          {project_root, $P,    "project-root",  string,
-             "Path to the root of the project"},
+             "Path to the root of the project. Etylizer stores persistent information in " ++
+             "$PROJECT_DIR/_etylizer."},
          {src_path,    $S,    "src-path",       string,
-             "Path to a directory containing source files (ending with .erl) to be checked"},
+             "Path to a directory containing source files. All .erl files within this " ++
+             "directory are type checked, but the directory is not search recursively for " ++
+             ".erl files. May be given multiple times. Source files explicitly given " ++
+             "on the commandline are added to files found via --source-path."},
          {include,    $I,   "include",   string,
-             "Where to search for include files"  },
+             "Where to search for include files (.hrl). May be given multiple times."  },
          {define,     $D,   "define",    string,
              "Define macro (either '-D NAME' or '-D NAME=VALUE')"},
          {load_start, $a,   "pa",        string,
@@ -48,8 +52,9 @@ parse_args(Args) ->
          {only, $o, "only", string,
             "Only typecheck these functions (given as name/arity or just the name)"},
          {no_deps, undefined, "no-deps", undefined,
-            "Only typecheck files explicitly specified on the commandline (incompatible with " ++
-            "-S/--source-path)"},
+            "Only typecheck files specified on the commandline (either via --source-path or " ++
+            "FILES arguments). The default behavior is to also check the dependencies of these " ++
+            "files."},
          {log_level,  $l,   "level",    string,
             "Minimal log level (trace2,trace,debug,info,note,warn)"}
         ],
