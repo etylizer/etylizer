@@ -52,45 +52,101 @@ simplify(DnfFun) ->
   % otherwise, we can extract the arity from any clause
   Arity = length(ty_function:domains(F)),
 
-  % Check if any summand is 0
+
+  % Remove 0 summands
+  DnfFun0 = lists:filter(fun
+    ({Pvar, Nvar, Pos, Neg}) -> 
+      Ty = ty_rec:of_function_dnf(Arity, Pvar, Nvar, Pos, Neg),
+      not ty_rec:is_empty(Ty)
+  end, DnfFun),
+
+  % Remove useless summands
+  % TODO: Find new test case
+  % The above optimization already removes all cases
+  DnfFunSum = lists:filter(fun({Pvar, Nvar, Pos, Neg}) ->
+    % Dnf without
+    D1 = DnfFun0 -- [{Pvar, Nvar, Pos, Neg}],
+
+    TyWithout = ty_rec:of_function_dnfs(Arity, D1),
+    TyWith = ty_rec:of_function_dnfs(Arity, DnfFun0),
+
+    case ty_rec:is_subtype(TyWith, TyWithout) of true -> 
+      io:format(user, "Summand is useless!~n~s~nis contained in bigger type~n~s~n", [ty_rec:print(TyWith), ty_rec:print(TyWithout)]),
+      false;
+      _ -> true
+    end
+  end, DnfFun0),
+
+  % Remove useless literals
+  % TODO Negative literals
+  DnfFunLit = lists:map(fun({Pvar, Nvar, Pos, Neg}) ->
+    NewPos = lists:filter(fun(P) ->
+      % Positive literals without P
+      Pos1 = Pos -- [P],
+      % DNF with new summand
+      D1 = (DnfFunSum -- [{Pvar, Nvar, Pos, Neg}]) ++ [{Pvar, Nvar, Pos1, Neg}],
+
+      TyWithout = ty_rec:of_function_dnfs(Arity, D1),
+      TyWith = ty_rec:of_function_dnfs(Arity, DnfFunSum),
+
+      case ty_rec:is_subtype(TyWithout, TyWith) of
+        true -> 
+          io:format(user, "Literal is useless!~n~s~nis contained in bigger type~n~s~n", [ty_rec:print(TyWith), ty_rec:print(TyWithout)]),
+          false;
+        false -> true
+      end
+    end, Pos),
+    {Pvar, Nvar, NewPos, Neg}
+  end, DnfFunSum),
+
+  % TODO Remove
   begin
-    lists:foreach(fun
-      ({Pvar, Nvar, Pos, Neg}) -> 
-        Ty = ty_rec:of_function_dnf(Arity, Pvar, Nvar, Pos, Neg),
-        case ty_rec:is_empty(Ty) of true -> error(todo); _ -> ok end,
-        ok
-    end, DnfFun)
+    PosBefore = lists:foldl(fun({Pvar, NVvar, Pos, Neg}, Sum) -> length(Pos) + Sum end, 0, DnfFunSum),
+    PosAfter = lists:foldl(fun({Pvar, NVvar, Pos, Neg}, Sum) -> length(Pos) + Sum end, 0, DnfFunLit),
+    case PosBefore > PosAfter of
+      true -> io:format(user, "Removed ~p useless literals~n", [PosBefore - PosAfter]);
+      _ -> ok
+    end
   end,
 
-  % check useless summands
-  begin
-    lists:foreach(fun
-      ({Pvar, Nvar, Pos, Neg}) -> 
-        % Dnf without
-        D1 = DnfFun -- [{Pvar, Nvar, Pos, Neg}],
+  % TODO Merge domains and codomains
+  %DnfFun1 = lists:map(fun({Pvar, Nvar, Pos, Neg}) -> {Pvar, Nvar, merge_pos_domains(Pos), Neg} end, DnfFun),
 
-        TyWithout = ty_rec:of_function_dnfs(Arity, D1),
-        TyWith = ty_rec:of_function_dnfs(Arity, DnfFun),
-
-        case ty_rec:is_subtype(TyWith, TyWithout) of true -> 
-          io:format(user, "Summand is useless!~n~s~nis contained in bigger type~n~s~n", [ty_rec:print(TyWith), ty_rec:print(TyWithout)]),
-          error(todo); 
-          _ -> ok 
-        end,
-        ok
-    end, DnfFun)
-  end,
-
-  % TODO check useless literals
-  
-  % TODO merge comain, codomain
-  
   % TODO apply recursively? (not needed for now)
 
-
-  back_to_bdd(DnfFun)
+  % TODO Why does back_to_bdd not accept empty lists?
+  % This passes all tests
+  case DnfFunLit of
+    [] -> [];
+    D  -> back_to_bdd(D)
+  end
   end.
 
+% TODO This is not correct yet, just for testing
+merge_pos_domains([P1 | [P2 | Pos]]) ->
+  DomainP1 = ty_function:domains_to_tuple(ty_function:domains(P1)),
+  DomainP2 = ty_function:domains_to_tuple(ty_function:domains(P2)),
+  CoDomainP1 = ty_function:codomain(P1),
+  CoDomainP2 = ty_function:codomain(P2),
+  NewPos = case ty_rec:is_equivalent(DomainP1, DomainP2) of
+    true -> 
+      io:format(user, "Function domains are equivalent!~n", []),
+      io:format(user, "Domain tuples: ~w~n", [ty_ref:load(DomainP1)]),
+      %merge_pos_domains([ty_function:function([DomainP1], ty_rec:intersect(CoDomainP1, CoDomainP2)) | Pos]);
+      [ty_function:function([DomainP1], ty_rec:intersect(CoDomainP1, CoDomainP2)) | Pos];
+    false -> %PosMerge = merge_pos_domains([P1 | Pos]),
+             %merge_pos_domains([P2 | PosMerge])
+             [P1 | [P2 | Pos]]
+  end,
+  case ty_rec:is_equivalent(CoDomainP1, CoDomainP2) of
+    true ->
+      io:format(user, "Function codomains are equivalent!", []),
+      ok;
+    false -> ok
+  end,
+  %[P1 | [P2 | Pos]];
+  NewPos;
+merge_pos_domains(Pos) -> Pos.
 
 % TODO can be polymorphic, put into bdd_var.hrl
 -spec back_to_bdd([
