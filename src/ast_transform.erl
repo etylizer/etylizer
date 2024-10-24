@@ -264,7 +264,7 @@ trans_ty(Ctx, Env, Ty) ->
                     Fields),
             case maps:find(Name, Ctx#ctx.records) of
                 error ->
-                    errors:name_error("~s: record ~w not defined", [ast:format_loc(Loc), Name]);
+                    errors:name_error(Loc, "record ~w not defined", [Name]);
                 {ok, RecTy} ->
                     records:encode_record_ty(RecTy, Overrides)
             end;
@@ -862,7 +862,8 @@ trans_record_field(Ctx, TyEnv, Field) ->
             {record_field, to_loc(Ctx, Anno), Name, untyped, no_default};
         {record_field, Anno, {'atom', _, Name}, DefaultExp} ->
             {record_field, to_loc(Ctx, Anno), Name, untyped,
-             trans_exp_noenv(Ctx, varenv_local:empty(), DefaultExp)}
+             trans_exp_noenv(Ctx, varenv_local:empty(), DefaultExp)};
+        X -> errors:uncovered_case(?FILE, ?LINE, X)
     end.
 
 -spec arity(ast:loc(), [any()]) -> arity().
