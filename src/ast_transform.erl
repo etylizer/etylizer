@@ -822,7 +822,7 @@ trans_qualifier(Ctx, Env, Q) ->
             {NewV, NewEnv2} = trans_pat(Ctx, NewEnv1, V, shadow),
             {{m_generate, to_loc(Ctx, Anno), NewK, NewV, NewExp}, NewEnv2};
         Exp -> % filter
-            {trans_exp_noenv(Ctx, Env, Exp), Env}
+            trans_exp(Ctx, Env, Exp)
     end.
 
 -spec trans_map_assocs(ctx(), varenv_local:t(), [ast_erl:map_assoc()])
