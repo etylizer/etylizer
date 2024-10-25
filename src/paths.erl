@@ -246,5 +246,7 @@ really_find_module_path(SearchPath, Module) ->
             {Kind, File, Includes};
         false ->
             Dirs = lists:map(fun({_, P, _}) -> P end, SearchPath),
-            ?ABORT("Module ~p not found, search path: ~p", Module, Dirs)
+            ?LOG_WARN("Module ~p not found, search path: ~s",
+                Module, string:join(Dirs, ":")),
+            errors:name_error_no_loc("Module ~p not found", [Module])
     end.

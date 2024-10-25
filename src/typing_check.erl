@@ -23,10 +23,10 @@ check_all(Ctx, FileName, Env, Decls) ->
           fun({Decl, Ty}) -> check(ExtCtx, Decl, Ty) end,
           Decls
          ),
-        ?LOG_INFO("Successfully checked functions in ~s against their specs", FileName),
+        ?LOG_NOTE("Successfully checked functions in ~s against their specs", FileName),
         ok
     catch throw:{ety, ty_error, Msg} ->
-            ?LOG_INFO("Checking failed: ~s", Msg),
+            ?LOG_NOTE("Checking failed: ~s", Msg),
             {error, Msg}
     end.
 
