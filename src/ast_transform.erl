@@ -671,9 +671,10 @@ trans_pat(Ctx, Env, Pat, BindMode) ->
             {NewFields, NewEnv} =
                 thread_through_env(
                   Env, Fields,
-                  fun(E0, {record_field, Anno, {'atom', _, FieldName}, FieldPat}) ->
-                          {NewPat, E1} = trans_pat(Ctx, E0, FieldPat, BindMode),
-                          {{record_field, to_loc(Ctx, Anno), FieldName, NewPat}, E1}
+                  fun(E0, {record_field, Anno,  {'atom', _, FieldName}, FieldPat}) ->
+                        {NewPat, E1} =
+                            trans_pat(Ctx, E0, FieldPat, BindMode),
+                                {{record_field, to_loc(Ctx, Anno), FieldName, NewPat}, E1}
                   end),
             {{record, to_loc(Ctx, Anno), Name, NewFields}, NewEnv};
         {record_index, Anno, RecName, {'atom', _, FieldName}} ->
