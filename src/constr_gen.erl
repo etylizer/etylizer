@@ -276,6 +276,8 @@ exp_constrs(Ctx, E, T) ->
                     DefFields),
             DefFieldNames = sets:from_list(lists:map(fun ({N, _}) -> N end, DefFields)),
             GivenFieldNames =
+                % FIXME: deal with record_field_other, which assigns a value to all fields
+                % not mentioned explicitly
                 sets:from_list(lists:map(fun ({record_field, _L, N, _Exp}) -> N end, GivenFields)),
             case sets:is_subset(GivenFieldNames, DefFieldNames) of
                 false -> errors:ty_error(L, "too many record fields given", []);

@@ -292,7 +292,8 @@ get_fun_name({function, _Loc, Name, Arity, _}) -> utils:sformat("~w/~w", Name, A
 -type exp_recv() :: {'receive', loc(), [case_clause()]}.
 -type exp_recv_after() :: {receive_after, loc(), [case_clause()], exp(), [exp()]}.
 -type gen_record_create(T) :: {record_create, loc(), Name::atom(),
-                               [{record_field, loc(), Field::atom(), T}]}.
+                               [{record_field, loc(), Field::atom(), T} |
+                                {record_field_other, loc(), T}]}.
 -type exp_record_create() :: gen_record_create(exp()).
 -type gen_record_access(T) :: {record_field, loc(), T, Name::atom(), Field::atom()}.
 -type exp_record_access() :: gen_record_access(exp()).

@@ -545,9 +545,14 @@ trans_exp(Ctx, Env, Exp) ->
                 thread_through_env(
                   Env,
                   Fields,
-                  fun(Env, {record_field, Anno, {'atom', _, FieldName}, FieldExp}) ->
-                          {NewFieldExp, NewEnv} = trans_exp(Ctx, Env, FieldExp),
-                          {{record_field, to_loc(Ctx, Anno), FieldName, NewFieldExp}, NewEnv}
+                  fun(Env, {record_field, Anno, F, FieldExp}) ->
+                    {NewFieldExp, NewEnv} = trans_exp(Ctx, Env, FieldExp),
+                    case F of
+                        {'atom', _, FieldName} ->
+                            {{record_field, to_loc(Ctx, Anno), FieldName, NewFieldExp}, NewEnv};
+                        {'var', _, '_'} ->
+                            {{record_field_other, to_loc(Ctx, Anno), NewFieldExp}, NewEnv}
+                    end
                   end
                  ),
             {{record_create, to_loc(Ctx, Anno), Name, NewFields}, NewEnv};
