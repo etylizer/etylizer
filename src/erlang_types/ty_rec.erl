@@ -460,6 +460,9 @@ tuple(ComponentSize, Tuple) ->
 %   {terminal, _} = Tuple, % should be var dnf tuple
 %   Empty = ty_ref:load(empty()),
 %   ty_ref:store(Empty#ty{ tuple = {dnf_var_ty_tuple:empty(), #{ComponentSize => Tuple}} }).
+% 
+set_tuple(ComponentSize, Tuple) ->
+  {dnf_var_ty_tuple:empty(), dnf_var_ty_bool:empty(), dnf_var_ty_ref:ref(empty()), #{ComponentSize => Tuple}}.
 
 -spec tuple() -> ty_ref().
 tuple() ->
@@ -885,36 +888,27 @@ all_variables(TyRef) ->
 -include_lib("eunit/include/eunit.hrl").
 
 % TODO tuples use diff on a not yet finished recursively defined type reference
-% recursive_definition_test() ->
-%   test_utils:reset_ets(),
-%   Lists = ty_ref:new_ty_ref(),
-%   ListsBasic = ty_ref:new_ty_ref(),
+recursive_definition_test() ->
+  test_utils:reset_ets(),
+  Lists = ty_ref:new_ty_ref(),
+  ListsBasic = ty_ref:new_ty_ref(),
 
-%   % nil
-%   Nil = ty_rec:atom(dnf_var_ty_atom:ty_atom(ty_atom:finite([nil]))),
+  Alpha = ty_variable:new("alpha"),
+  AlphaTy = ty_rec:variable(Alpha),
 
-%   % (alpha, Lists)
-%   Alpha = ty_variable:new("alpha"),
-%   AlphaTy = ty_rec:variable(Alpha),
-%   Tuple = ty_rec:tuple(2, dnf_var_ty_tuple:tuple(dnf_ty_product:tuple(ty_tuple:tuple([AlphaTy, Lists])))),
-%   io:format(user,"Union of  ~p with ~p~n", [Nil, Tuple]),
-%   Recursive = ty_rec:union(Nil, Tuple),
+  %    nil
+  % U (alpha, Lists)
+  EmptyRec = ty_ref:load(empty()),
+  NewTyRec = (ty_ref:load(empty()))#ty{
+    tuple = set_tuple(2, dnf_var_ty_tuple:tuple(dnf_ty_product:tuple(ty_tuple:tuple([AlphaTy, Lists])))),
+    atom = dnf_var_ty_atom:ty_atom(ty_atom:finite([nil]))
+  },
+  ty_ref:define_ty_ref(Lists, NewTyRec),
 
-%   ty_ref:define_ty_ref(Lists, ty_ref:load(Recursive)),
+  io:format(user, "Defined recursive list type: ~s~n", [ty_rec:print(Lists)]),
+  error(todo),
 
-%   SomeBasic = ty_rec:atom(dnf_var_ty_atom:ty_atom(ty_atom:finite([somebasic]))),
-%   SubstMap = #{Alpha => SomeBasic},
-%   Res = ty_rec:substitute(Lists, SubstMap),
-
-%   io:format(user,"O ~n", []),
-%   Tuple2 = ty_rec:tuple(2, dnf_var_ty_tuple:tuple(dnf_ty_product:tuple(ty_tuple:tuple([SomeBasic, ListsBasic])))),
-%   Expected = ty_rec:union(Nil, Tuple2),
-%   % Expected is invalid after define_ty_ref!
-%   NewTy = ty_ref:define_ty_ref(ListsBasic, ty_ref:load(Expected)),
-
-%   io:format(user,"O ~n", []),
-%   true = ty_rec:is_equivalent(Res, NewTy),
-%   ok.
+  ok.
 
 any_0tuple_test() ->
   test_utils:reset_ets(),
