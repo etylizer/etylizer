@@ -4,8 +4,8 @@
 -define(TERMINAL, bdd_bool).
 -define(F(Z), fun() -> Z end).
 
--export([is_empty/1, normalize/6, substitute/4, apply_to_node/3]).
--export([tuple/1, all_variables/2, transform/2, to_singletons/1, phi/2, phi_norm/5]).
+-export([is_empty_corec/2, normalize/6, substitute/4, apply_to_node/3]).
+-export([tuple/1, all_variables/2, transform/2, to_singletons/1, phi_corec/3, phi_norm/5]).
 
 -include("bdd_node.hrl").
 
@@ -29,10 +29,10 @@ to_singletons_coclause(Pos, Neg, T) ->
   end.
 
 
-is_empty(TyBDD) ->
-  dnf(TyBDD, {fun is_empty_coclause/3, fun is_empty_union/2}).
+is_empty_corec(TyBDD, M) ->
+  dnf(TyBDD, {fun(P, N, T) -> is_empty_coclause_corec(P, N, T, M) end, fun is_empty_union/2}).
 
-is_empty_coclause(Pos, Neg, T) ->
+is_empty_coclause_corec(Pos, Neg, T, M) ->
   case {Pos, Neg, bdd_bool:empty()} of
     {_, _, T} -> true;
     {[], [], _} -> false;
@@ -40,15 +40,15 @@ is_empty_coclause(Pos, Neg, T) ->
       Dim = length(ty_tuple:components(TNeg)),
       PosAny = ty_tuple:any(Dim),
       BigS = ty_tuple:big_intersect([PosAny]),
-      phi(ty_tuple:components(BigS), Neg);
+      phi_corec(ty_tuple:components(BigS), Neg, M);
     {Pos, Neg, _} ->
       BigS = ty_tuple:big_intersect(Pos),
-      phi(ty_tuple:components(BigS), Neg)
+      phi_corec(ty_tuple:components(BigS), Neg, M)
   end.
 
-phi(BigS, []) ->
-  lists:foldl(fun(S, Res) -> Res orelse ty_rec:is_empty(S) end, false, BigS);
-phi(BigS, [Ty | N]) ->
+phi_corec(BigS, [], M) ->
+  lists:foldl(fun(S, Res) -> Res orelse ty_rec:is_empty_corec(S, M) end, false, BigS);
+phi_corec(BigS, [Ty | N], M) ->
   Solve = fun({Index, {_PComponent, NComponent}}, Result) ->
     Result
       andalso
@@ -61,12 +61,12 @@ phi(BigS, [Ty | N]) ->
           end
                  end,
         NewBigS = lists:map(DoDiff, lists:zip(lists:seq(1, length(BigS)), BigS)),
-        phi(NewBigS, N)
+        phi_corec(NewBigS, N, M)
       end
           end,
 
 
-  lists:foldl(fun(S, Res) -> Res orelse ty_rec:is_empty(S) end, false, BigS)
+  lists:foldl(fun(S, Res) -> Res orelse ty_rec:is_empty_corec(S, M) end, false, BigS)
     orelse
       lists:foldl(Solve, true, lists:zip(lists:seq(1, length(ty_tuple:components(Ty))), lists:zip(BigS, ty_tuple:components(Ty)))).
 
@@ -134,7 +134,7 @@ apply_to_node(Node, Map, Memo) ->
 
 empty_0tuple_test() ->
   Tuple = {node,{ty_tuple,0,[]},{terminal,0},{terminal,1}},
-  true = is_empty(Tuple),
+  true = is_empty_corec(Tuple, #{}),
   ok.
 
 -endif.

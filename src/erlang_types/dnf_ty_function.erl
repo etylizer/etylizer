@@ -10,11 +10,11 @@
 -define(F(Z), fun() -> Z end).
 
 -export([apply_to_node/3]).
--export([normalize/6, substitute/4, is_empty/1]).
+-export([normalize/6, substitute/4, is_empty_corec/2]).
 
 -export([function/1, all_variables/2, transform/2]).
 
--type ty_ref() :: {ty_ref, integer()}.
+%-type ty_ref() :: {ty_ref, integer()}.
 -type dnf_function() :: term().
 -type ty_function() :: dnf_function().
 -type dnf_ty_function() :: term().
@@ -24,10 +24,10 @@
 -spec function(ty_function()) -> dnf_ty_function().
 function(TyFunction) -> node(TyFunction).
 
-is_empty(TyBDD) ->
-  dnf(TyBDD, {fun is_empty_coclause/3, fun is_empty_union/2}).
+is_empty_corec(TyBDD, M) ->
+  dnf(TyBDD, {fun(P, N, T) -> is_empty_coclause_corec(P, N, T, M) end, fun is_empty_union/2}).
 
-is_empty_coclause(AllPos, Neg, T) ->
+is_empty_coclause_corec(AllPos, Neg, T, M) ->
   case {AllPos, Neg, bdd_bool:empty()} of
     {_, _, T} -> true;
     {[], [], _} -> false;
@@ -37,7 +37,7 @@ is_empty_coclause(AllPos, Neg, T) ->
       BigSTuple = lists:foldl(fun(FunTy, Acc) ->
         ty_rec:union(Acc, domains_to_tuple(ty_function:domains(FunTy)))
                               end, domains_to_tuple(ty_function:domains(P)), []),
-      is_empty_cont(BigSTuple, AllPos, Neg);
+      is_empty_cont_corec(BigSTuple, AllPos, Neg, M);
     {[P | Pos], Neg, _} ->
       % TODO here do these simplifications
       % A -> B && C -> B == A|C -> B
@@ -45,42 +45,42 @@ is_empty_coclause(AllPos, Neg, T) ->
       BigSTuple = lists:foldl(fun(FunTy, Acc) ->
         ty_rec:union(Acc, domains_to_tuple(ty_function:domains(FunTy)))
                               end, domains_to_tuple(ty_function:domains(P)), Pos),
-      is_empty_cont(BigSTuple, AllPos, Neg)
+      is_empty_cont_corec(BigSTuple, AllPos, Neg, M)
   end.
 
-is_empty_cont(_, _, []) -> false;
-is_empty_cont(BigSTuple, P, [Function | N]) ->
+is_empty_cont_corec(_, _, [], _M) -> false;
+is_empty_cont_corec(BigSTuple, P, [Function | N], M) ->
   Ts = ty_function:domains(Function),
   T2 = ty_function:codomain(Function),
   (
       %% ∃ Ts-->T2 ∈ N s.t.
       %%    Ts is in the domains of the function
       %%    BigS is the union of all domains of the positive function intersections
-      ty_rec:is_subtype(domains_to_tuple(Ts), BigSTuple)
+      ty_rec:is_empty_corec(ty_rec:intersect(domains_to_tuple(Ts), ty_rec:negate(BigSTuple)), M)
         andalso
-        explore_function(domains_to_tuple(Ts), ty_rec:negate(T2), P)
+        explore_function_corec(domains_to_tuple(Ts), ty_rec:negate(T2), P, M)
   )
   %% Continue searching for another arrow ∈ N
     orelse
-    is_empty_cont(BigSTuple, P, N).
+    is_empty_cont_corec(BigSTuple, P, N, M).
 
 domains_to_tuple(Domains) ->
   ty_rec:tuple(length(Domains), dnf_var_ty_tuple:tuple(dnf_ty_tuple:tuple(ty_tuple:tuple(Domains)))).
 
 % optimized phi' (4.10) from paper covariance and contravariance
 % justification for this version of phi can be found in `prop_phi_function.erl`
--spec explore_function(ty_ref(), ty_ref(), [term()]) -> boolean().
-explore_function(Ts, T2, []) ->
-  ty_rec:is_empty(T2) orelse ty_rec:is_empty(Ts);
-explore_function(Ts, T2, [Function | P]) ->
-  ty_rec:is_empty(Ts) orelse ty_rec:is_empty(T2)
+%-spec explore_function(ty_ref(), ty_ref(), [term()]) -> boolean().
+explore_function_corec(Ts, T2, [], M) ->
+  ty_rec:is_empty_corec(T2, M) orelse ty_rec:is_empty_corec(Ts, M);
+explore_function_corec(Ts, T2, [Function | P], M) ->
+  ty_rec:is_empty_corec(Ts, M) orelse ty_rec:is_empty_corec(T2, M)
   orelse
     begin
       BigS1 = domains_to_tuple(ty_function:domains(Function)),
       S2 = ty_function:codomain(Function),
-      explore_function(Ts, ty_rec:intersect(T2, S2), P)
+      explore_function_corec(Ts, ty_rec:intersect(T2, S2), P, M)
         andalso
-        explore_function(ty_rec:diff(Ts, BigS1), T2, P)
+        explore_function_corec(ty_rec:diff(Ts, BigS1), T2, P, M)
     end.
 
 normalize(_Size, DnfTyFunction, [], [], Fixed, M) ->

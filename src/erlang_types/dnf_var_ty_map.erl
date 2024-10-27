@@ -3,7 +3,7 @@
 -define(ELEMENT, ty_variable).
 -define(TERMINAL, dnf_ty_map).
 
--export([is_empty/1,normalize/3, substitute/4]).
+-export([is_empty_corec/2,normalize/3, substitute/4]).
 -export([var/1, map/1, all_variables/2, transform/2, apply_to_node/3]).
 
 % implementations provided by bdd_var.hrl
@@ -12,8 +12,8 @@
 map(Map) -> terminal(Map).
 var(Var) -> node(Var).
 
-is_empty(TyBDD) -> dnf(TyBDD, {fun is_empty_coclause/3, fun is_empty_union/2}).
-is_empty_coclause(_Pos, _Neg, T) -> dnf_ty_map:is_empty(T).
+is_empty_corec(TyBDD, M) -> dnf(TyBDD, {fun(P, N, T) -> is_empty_coclause_corec(P, N, T,M) end, fun is_empty_union/2}).
+is_empty_coclause_corec(_Pos, _Neg, T, M) -> dnf_ty_map:is_empty_corec(T, M).
 
 normalize(Ty, Fixed, M) -> dnf(Ty, {
   fun(Pos, Neg, DnfTyMap) -> normalize_coclause(Pos, Neg, DnfTyMap, Fixed, M) end,

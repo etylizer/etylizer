@@ -153,7 +153,6 @@ get_dnf(Bdd) ->
     dnf(Bdd, {fun(P, N, T) -> [{P, N, T}] end, fun(C1, C2) -> C1() ++ C2() end})
   ).
 
-
 dnf(Bdd, {ProcessCoclause, CombineResults}) ->
   do_dnf(Bdd, {ProcessCoclause, CombineResults}, _Pos = [], _Neg = []).
 

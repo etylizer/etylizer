@@ -4,7 +4,7 @@
 
 -export([empty/0, any/0]).
 -export([union/2, negate/1, intersect/2, diff/2, is_any/1]).
--export([is_empty/1, extract_variables/1]).
+-export([is_empty/1, is_empty_start/1, is_empty_corec/2, extract_variables/1]).
 
 % additional type constructors
 -export([predef/0, predef/1, variable/1, atom/1, interval/1, tuple/2, map/1]).
@@ -41,7 +41,7 @@ ty_of(Predef, Atom, Int, List, Tuple, Function, Map) ->
 
 is_subtype(TyRef1, TyRef2) ->
   NewTy = intersect(TyRef1, ty_rec:negate(TyRef2)),
-  is_empty(NewTy).
+  is_empty_start(NewTy).
 
 is_equivalent(TyRef1, TyRef2) ->
   is_subtype(TyRef1, TyRef2) andalso is_subtype(TyRef2, TyRef1).
@@ -277,7 +277,7 @@ multi_transform(DefaultT, T, Ops = #{any_tuple_i := Tuple, any_tuple := Tuples, 
   X1 = dnf_var_ty_tuple:transform(DefaultT, Ops),
   Xs = lists:map(fun({_Size, Tup}) ->
     % if a tuple is semantically equivalent to empty, return empty instead of the empty tuple
-    case dnf_var_ty_tuple:is_empty(Tup) of
+    case dnf_var_ty_tuple:is_empty_corec(Tup, #{}) of
       true -> dnf_var_ty_tuple:transform(dnf_var_ty_tuple:empty(), Ops);
       _ -> dnf_var_ty_tuple:transform(Tup, Ops)
     end
@@ -491,45 +491,43 @@ multi_intersect_fun({DefaultF1, F1}, {DefaultF2, F2}) ->
                  end,
   {dnf_var_ty_function:intersect(DefaultF1, DefaultF2), maps:from_list([{Key, IntersectKey(Key)} || Key <- AllKeys])}.
 
+is_empty(TyRef) -> is_empty_start(TyRef).
 
-is_empty(TyRef) ->
+% only cache full-chained is_empty, never cache in-between emptiness which depends on the memoization set M
+% we could do that if we knew the tyref at hand is not corecursive
+is_empty_start(TyRef) ->
   % first try op-cache
   case ty_ref:is_empty_cached(TyRef) of
     R when R == true; R == false -> R;
     miss ->
-      ty_ref:store_is_empty_cached(TyRef, is_empty_miss(TyRef))
+      ty_ref:store_is_empty_cached(TyRef, is_empty_corec(TyRef, #{}))
   end.
 
-is_empty_miss(TyRef) ->
-  Ty = ty_ref:load(TyRef),
-  dnf_var_predef:is_empty(Ty#ty.predef)
-  andalso dnf_var_ty_atom:is_empty(Ty#ty.atom)
-    andalso dnf_var_int:is_empty(Ty#ty.interval)
-    andalso (
-      begin
-        case ty_ref:is_empty_memoized(TyRef) of
-          true ->
-            true;
-          miss ->
-            % memoize
-            ok = ty_ref:memoize(TyRef),
-            dnf_var_ty_list:is_empty(Ty#ty.list)
-            andalso multi_empty_tuples(Ty#ty.tuple)
-              andalso multi_empty_functions(Ty#ty.function)
-              andalso dnf_var_ty_map:is_empty(Ty#ty.map)
-        end
-      end
-  ).
+is_empty_corec(TyRef, M) ->
+  case M of
+    #{TyRef := true} -> true; % co-definition
+    _ -> 
+      Ty = ty_ref:load(TyRef),
+      MNew = M#{TyRef => true},
+      dnf_var_predef:is_empty(Ty#ty.predef)
+        andalso dnf_var_ty_atom:is_empty(Ty#ty.atom)
+        andalso dnf_var_int:is_empty(Ty#ty.interval)
+        andalso dnf_var_ty_list:is_empty_corec(Ty#ty.list, MNew)
+        andalso multi_empty_tuples_corec(Ty#ty.tuple, MNew)
+        andalso multi_empty_functions_corec(Ty#ty.function, MNew)
+        andalso dnf_var_ty_map:is_empty_corec(Ty#ty.map, MNew)
+  end.
 
-multi_empty_tuples({Default, AllTuples}) ->
-  dnf_var_ty_tuple:is_empty(Default)
-    andalso
-  maps:fold(fun(_Size, V, Acc) -> Acc andalso dnf_var_ty_tuple:is_empty(V) end, true, AllTuples).
 
-multi_empty_functions({Default, AllFunctions}) ->
-  dnf_var_ty_function:is_empty(Default)
+multi_empty_tuples_corec({Default, AllTuples}, M) ->
+  dnf_var_ty_tuple:is_empty_corec(Default, M)
     andalso
-    maps:fold(fun(_Size, V, Acc) -> Acc andalso dnf_var_ty_function:is_empty(V) end, true, AllFunctions).
+  maps:fold(fun(_Size, V, Acc) -> Acc andalso dnf_var_ty_tuple:is_empty_corec(V, M) end, true, AllTuples).
+
+multi_empty_functions_corec({Default, AllFunctions}, M) ->
+  dnf_var_ty_function:is_empty_corec(Default, M)
+    andalso
+    maps:fold(fun(_Size, V, Acc) -> Acc andalso dnf_var_ty_function:is_empty_corec(V, M) end, true, AllFunctions).
 
 is_any(_Arg0) ->
   erlang:error(any_not_implemented). % TODO needed?
@@ -804,7 +802,7 @@ all_variables(TyRef, M) ->
       Mp = M#{TyRef => ok},
       lists:usort(
         dnf_var_predef:all_variables(Predefs, M)
-      ++  dnf_var_ty_atom:all_variables(Atoms, M)
+      ++ dnf_var_ty_atom:all_variables(Atoms, M)
       ++ dnf_var_int:all_variables(Ints, M)
       ++ dnf_var_ty_list:all_variables(Lists, Mp)
       ++ dnf_var_ty_tuple:mall_variables(Tuples, Mp)
