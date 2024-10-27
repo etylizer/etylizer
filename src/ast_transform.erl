@@ -117,7 +117,7 @@ trans_form(Ctx, Form, Mode) ->
             {attribute, Anno, opaque, Def} ->
                 {attribute, to_loc(Ctx, Anno), type, opaque, trans_tydef(Ctx, Def)};
             {attribute, Anno, Other, _} ->
-                ?LOG_DEBUG("Ignoring attribute ~w at ~s", Other, ast:format_loc(to_loc(Ctx, Anno))),
+                ?LOG_TRACE("Ignoring attribute ~w at ~s", Other, ast:format_loc(to_loc(Ctx, Anno))),
                 error;
             {warning, _} -> error;
             {eof, _} -> error;
@@ -264,7 +264,7 @@ trans_ty(Ctx, Env, Ty) ->
                     Fields),
             case maps:find(Name, Ctx#ctx.records) of
                 error ->
-                    errors:name_error("~s: record ~w not defined", [ast:format_loc(Loc), Name]);
+                    errors:name_error(Loc, "record ~w not defined", [Name]);
                 {ok, RecTy} ->
                     records:encode_record_ty(RecTy, Overrides)
             end;
@@ -442,6 +442,9 @@ trans_exp(Ctx, Env, Exp) ->
             {{fun_ref, to_loc(Ctx, Anno), {ref, Name, Arity}}, Env};
         {'fun', Anno, {function, {'atom', _, Mod}, {'atom', _, Name}, {'integer', _, Arity}}} ->
             {{fun_ref, to_loc(Ctx, Anno), {qref, Mod, Name, Arity}}, Env};
+        {'fun', Anno, {function, ModE, NameE, ArityE}} ->
+            {[NewModE, NewNameE, NewArityE], NewEnv} = trans_exps(Ctx, Env, [ModE, NameE, ArityE]),
+            {{fun_ref_dyn, to_loc(Ctx, Anno), {qref_dyn, NewModE, NewNameE, NewArityE}}, NewEnv};
         {'fun', Anno, {clauses, FunClauses}} ->
             {{'fun', to_loc(Ctx, Anno), no_name, trans_fun_clauses(Ctx, Env, FunClauses)}, Env};
         {named_fun, Anno, Name, FunClauses} ->
@@ -485,6 +488,12 @@ trans_exp(Ctx, Env, Exp) ->
             {NewQ, NewEnv} = trans_qualifiers(Ctx, Env, Qualifiers),
             % keep the old Env, comprehension opens a new scope
             {{bc, to_loc(Ctx, Anno), trans_exp_noenv(Ctx, NewEnv, E), NewQ}, Env};
+        {mc, Anno, {map_field_assoc, Anno, K, V}, Qualifiers} ->
+            {NewQ, NewEnv} = trans_qualifiers(Ctx, Env, Qualifiers),
+            % keep the old Env, map comprehension opens a new scope
+            NewK = trans_exp_noenv(Ctx, NewEnv, K),
+            NewV = trans_exp_noenv(Ctx, NewEnv, V),
+            {{mc, to_loc(Ctx, Anno), NewK, NewV, NewQ}, Env};
         {bin, Anno, Elems} ->
             {NewElems, NewEnv} =
                 thread_through_env(Env, Elems, fun(Env, S) -> trans_exp_bin_elem(Ctx, Env, S) end),
@@ -536,9 +545,14 @@ trans_exp(Ctx, Env, Exp) ->
                 thread_through_env(
                   Env,
                   Fields,
-                  fun(Env, {record_field, Anno, {'atom', _, FieldName}, FieldExp}) ->
-                          {NewFieldExp, NewEnv} = trans_exp(Ctx, Env, FieldExp),
-                          {{record_field, to_loc(Ctx, Anno), FieldName, NewFieldExp}, NewEnv}
+                  fun(Env, {record_field, Anno, F, FieldExp}) ->
+                    {NewFieldExp, NewEnv} = trans_exp(Ctx, Env, FieldExp),
+                    case F of
+                        {'atom', _, FieldName} ->
+                            {{record_field, to_loc(Ctx, Anno), FieldName, NewFieldExp}, NewEnv};
+                        {'var', _, '_'} ->
+                            {{record_field_other, to_loc(Ctx, Anno), NewFieldExp}, NewEnv}
+                    end
                   end
                  ),
             {{record_create, to_loc(Ctx, Anno), Name, NewFields}, NewEnv};
@@ -576,7 +590,7 @@ trans_exp(Ctx, Env, Exp) ->
         {var, Anno, Name} ->
             Loc = to_loc(Ctx, Anno),
             {{var, Loc, {local_ref, varenv_local:lookup(Loc, Name, Env)}}, Env};
-        X -> errors:uncovered_case(?FILE, ?LINE, X)
+        X -> errors:uncovered_case(?FILE, ?LINE, Ctx#ctx.path, X)
     end.
 
 -spec trans_exp_bin_elem(ctx(), varenv_local:t(), ast_erl:exp_bitstring_elem()) ->
@@ -662,9 +676,10 @@ trans_pat(Ctx, Env, Pat, BindMode) ->
             {NewFields, NewEnv} =
                 thread_through_env(
                   Env, Fields,
-                  fun(E0, {record_field, Anno, {'atom', _, FieldName}, FieldPat}) ->
-                          {NewPat, E1} = trans_pat(Ctx, E0, FieldPat, BindMode),
-                          {{record_field, to_loc(Ctx, Anno), FieldName, NewPat}, E1}
+                  fun(E0, {record_field, Anno,  {'atom', _, FieldName}, FieldPat}) ->
+                        {NewPat, E1} =
+                            trans_pat(Ctx, E0, FieldPat, BindMode),
+                                {{record_field, to_loc(Ctx, Anno), FieldName, NewPat}, E1}
                   end),
             {{record, to_loc(Ctx, Anno), Name, NewFields}, NewEnv};
         {record_index, Anno, RecName, {'atom', _, FieldName}} ->
@@ -807,8 +822,13 @@ trans_qualifier(Ctx, Env, Q) ->
             NewExp = trans_exp_noenv(Ctx, Env, Exp),
             {NewPat, NewEnv} = trans_pat(Ctx, Env, Pat, shadow),
             {{K, to_loc(Ctx, Anno), NewPat, NewExp}, NewEnv};
+        {m_generate, Anno, {map_field_exact, _Anno2, K, V}, Exp} ->
+            NewExp = trans_exp_noenv(Ctx, Env, Exp),
+            {NewK, NewEnv1} = trans_pat(Ctx, Env, K, shadow),
+            {NewV, NewEnv2} = trans_pat(Ctx, NewEnv1, V, shadow),
+            {{m_generate, to_loc(Ctx, Anno), NewK, NewV, NewExp}, NewEnv2};
         Exp -> % filter
-            {trans_exp_noenv(Ctx, Env, Exp), Env}
+            trans_exp(Ctx, Env, Exp)
     end.
 
 -spec trans_map_assocs(ctx(), varenv_local:t(), [ast_erl:map_assoc()])
@@ -848,7 +868,8 @@ trans_record_field(Ctx, TyEnv, Field) ->
             {record_field, to_loc(Ctx, Anno), Name, untyped, no_default};
         {record_field, Anno, {'atom', _, Name}, DefaultExp} ->
             {record_field, to_loc(Ctx, Anno), Name, untyped,
-             trans_exp_noenv(Ctx, varenv_local:empty(), DefaultExp)}
+             trans_exp_noenv(Ctx, varenv_local:empty(), DefaultExp)};
+        X -> errors:uncovered_case(?FILE, ?LINE, X)
     end.
 
 -spec arity(ast:loc(), [any()]) -> arity().

@@ -199,6 +199,8 @@ exp_constrs(Ctx, E, T) ->
             exp_constrs(Ctx, if_exp_to_case_exp(IfExp), T);
         {lc, L, _E, _Qs} ->
             errors:unsupported(L, "list comprehension: ~200p", [E]);
+        {mc, L, _E, _Qs} ->
+            errors:unsupported(L, "map comprehension: ~200p", [E]);
         {map_create, L, Assocs} ->
             KeyAlpha = fresh_tyvar(Ctx),
             ValAlpha = fresh_tyvar(Ctx),
@@ -274,6 +276,8 @@ exp_constrs(Ctx, E, T) ->
                     DefFields),
             DefFieldNames = sets:from_list(lists:map(fun ({N, _}) -> N end, DefFields)),
             GivenFieldNames =
+                % FIXME: deal with record_field_other, which assigns a value to all fields
+                % not mentioned explicitly
                 sets:from_list(lists:map(fun ({record_field, _L, N, _Exp}) -> N end, GivenFields)),
             case sets:is_subset(GivenFieldNames, DefFieldNames) of
                 false -> errors:ty_error(L, "too many record fields given", []);

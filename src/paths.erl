@@ -161,11 +161,19 @@ generate_input_file_list(Opts) ->
     case Opts#opts.src_paths of
         [] ->
             case Opts#opts.files of
-                [] -> utils:quit(1, "No input files given, aborting. Use -h to print help.~n");
-                Files -> Files
+                [] -> utils:quit(1, "No input files given, aborting. Use --help to print help.~n");
+                Files ->
+                    ?LOG_INFO("Only using explicitly specified input files: ~200p", Files),
+                    Files
             end;
         Paths ->
-            lists:foldl(fun(Path, FileList) -> FileList ++ add_dir_to_list(Path) end, [], Paths)
+            ?LOG_INFO(
+                "Searching for input files in ~200p and using explicitly specified files as input files: ~200p",
+                Paths, Opts#opts.files),
+            lists:foldl(
+                fun(Path, FileList) -> FileList ++ add_dir_to_list(Path) end,
+                Opts#opts.files,
+                Paths)
     end.
 
 -spec add_dir_to_list(file:filename()) -> [file:filename()].
@@ -176,12 +184,7 @@ add_dir_to_list(Path) ->
         {ok, DirContent} ->
             {Dirs, Files} = lists:splitwith(fun(F) -> filelib:is_dir(F) end, DirContent),
             Sources = lists:filter(
-                        fun(F) ->
-                                case string:find(F, ".erl") of
-                                    nomatch -> false;
-                                    _ -> true
-                                end
-                        end, Files),
+                        fun(F) -> utils:string_ends_with(F, ".erl") end, Files),
             SourcesFull = lists:map(fun(F) -> filename:join(Path, F) end, Sources),
             ChildSources = lists:append(lists:map(fun(F) -> add_dir_to_list(filename:join(Path, F)) end, Dirs)),
             lists:append(SourcesFull, ChildSources);
@@ -243,5 +246,7 @@ really_find_module_path(SearchPath, Module) ->
             {Kind, File, Includes};
         false ->
             Dirs = lists:map(fun({_, P, _}) -> P end, SearchPath),
-            ?ABORT("Module ~p not found, search path: ~p", Module, Dirs)
+            ?LOG_WARN("Module ~p not found, search path: ~s",
+                Module, string:join(Dirs, ":")),
+            errors:name_error_no_loc("Module ~p not found", [Module])
     end.

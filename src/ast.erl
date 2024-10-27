@@ -8,6 +8,7 @@
 % grep -o '^-type [a-zA-Z_0-9]*' src/ast.erl | sed 's/-type //g' | grep -v '^gen_' | grep -v '^list[0-9]' | sed 's/^/    /g; s|$|/0,|g'
 -export_type([
     global_ref/0,
+    global_ref_dyn/0,
     ty_varname/0,
     local_ref/0,
     any_ref/0,
@@ -59,6 +60,7 @@
     exp_list_compr/0,
     exp_map_create/0,
     exp_map_update/0,
+    exp_map_compr/0,
     exp_nil/0,
     exp_binop/0,
     exp_unop/0,
@@ -73,7 +75,8 @@
     exp_var/0,
     exp/0,
     exps/0,
-    qual_gen/0,
+    qual_list_gen/0,
+    qual_map_gen/0,
     qual_bitstring_gen/0,
     qualifier/0,
     bitstring_tyspec/0,
@@ -140,6 +143,7 @@
 
 % General
 -type global_ref() :: {ref, atom(), arity()} | {qref, atom(), atom(), arity()}.
+-type global_ref_dyn() :: {qref_dyn, exp(), exp(), exp()}.
 -type ty_varname() :: atom().
 -type unique_tok() :: integer().
 -type local_varname() :: {atom(), unique_tok()}.
@@ -266,6 +270,7 @@ get_fun_name({function, _Loc, Name, Arity, _}) -> utils:sformat("~w/~w", Name, A
 -type gen_cons(T) :: {cons, loc(), Head::T, Tail::T}.
 -type exp_cons() :: gen_cons(exp()).
 -type exp_fun_ref() :: {fun_ref, loc(), global_ref()}.
+-type exp_fun_ref_dyn() :: {fun_ref_dyn, loc(), global_ref_dyn()}.
 -type rec_fun_name() :: no_name | local_bind().
 -type exp_fun() :: {'fun', loc(), Name::rec_fun_name(), [fun_clause()]}.
 -type gen_funcall(T) :: {call, loc(), Fun::T, Args::[T]}
@@ -277,6 +282,7 @@ get_fun_name({function, _Loc, Name, Arity, _}) -> utils:sformat("~w/~w", Name, A
 -type exp_map_create() :: gen_map_create().
 -type gen_map_update(T) :: {map_update, loc(), T, [map_assoc()]}.
 -type exp_map_update() :: gen_map_update(exp()).
+-type exp_map_compr() :: {mc, loc(), Key::exp(), Val::exp(), [qualifier()]}.
 -type gen_nil() ::  {nil, loc()}.
 -type exp_nil() :: gen_nil().
 -type gen_binop(T) :: {op, loc(), Op::binop(), T, T}.
@@ -286,7 +292,8 @@ get_fun_name({function, _Loc, Name, Arity, _}) -> utils:sformat("~w/~w", Name, A
 -type exp_recv() :: {'receive', loc(), [case_clause()]}.
 -type exp_recv_after() :: {receive_after, loc(), [case_clause()], exp(), [exp()]}.
 -type gen_record_create(T) :: {record_create, loc(), Name::atom(),
-                               [{record_field, loc(), Field::atom(), T}]}.
+                               [{record_field, loc(), Field::atom(), T} |
+                                {record_field_other, loc(), T}]}.
 -type exp_record_create() :: gen_record_create(exp()).
 -type gen_record_access(T) :: {record_field, loc(), T, Name::atom(), Field::atom()}.
 -type exp_record_access() :: gen_record_access(exp()).
@@ -303,8 +310,9 @@ get_fun_name({function, _Loc, Name, Arity, _}) -> utils:sformat("~w/~w", Name, A
 
 % There is no match expression, because match expressions are represented as case expressions.
 -type exp() :: atomic_lit() | exp_bitstring_compr() | exp_bitstring_constr() | exp_block()
-    | exp_case() | exp_catch() | exp_cons() | exp_fun_ref() | exp_fun() | exp_funcall()
-    | exp_if() | exp_list_compr() | exp_map_create() | exp_map_update()
+    | exp_case() | exp_catch() | exp_cons() | exp_fun_ref() | exp_fun_ref_dyn() | exp_fun()
+    | exp_funcall() | exp_if() | exp_list_compr()
+    | exp_map_create() | exp_map_update() | exp_map_compr()
     | exp_nil() | exp_binop() | exp_unop() | exp_recv() | exp_recv_after() | exp_record_create()
     | exp_record_access() | exp_record_index() | exp_record_update() | exp_tuple() | exp_try()
     | exp_var().
@@ -314,9 +322,10 @@ get_fun_name({function, _Loc, Name, Arity, _}) -> utils:sformat("~w/~w", Name, A
 -spec loc_exp(exp()) -> loc().
 loc_exp(X) -> element(2, X).
 
--type qual_gen() ::  {generate, loc(), pat(), exp()}.
+-type qual_list_gen() ::  {generate, loc(), pat(), exp()}.
 -type qual_bitstring_gen() ::  {b_generate, loc(), pat(), exp()}.
--type qualifier() :: exp() | qual_gen() | qual_bitstring_gen().
+-type qual_map_gen() ::  {m_generate, loc(), KeyPat::pat(), ValPath::pat(), exp()}.
+-type qualifier() :: exp() | qual_list_gen() | qual_bitstring_gen() | qual_map_gen().
 
 -type bitstring_tyspec() :: atom() | {atom(), Value::integer()}.
 -type bitstring_tyspec_list() :: [bitstring_tyspec()].

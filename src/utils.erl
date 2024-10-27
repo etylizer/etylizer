@@ -18,7 +18,8 @@
     list_uniq/1, lists_enumerate/1, lists_enumerate/2,
     with_default/2, compare/2,
     mingle/5, timing/1, timing_log/3,
-    single/1, from_to/2, assocs_find/2, assocs_find_index/2
+    single/1, from_to/2, assocs_find/2, assocs_find_index/2,
+    timeout/2
 ]).
 
 mingle(LeftDefault, RightDefault, AllLeft, AllRight, Op) ->
@@ -353,3 +354,27 @@ assocs_find_index(K, [_ | Rest]) ->
         {ok, V, I} -> {ok, V, I + 1};
         _ -> error
     end.
+
+-spec timeout(integer(), fun(() -> T)) -> {ok, T} | timeout.
+timeout(Millis, Fun) ->
+  Self = self(),
+  Pid = spawn(
+    fun()->
+        try
+            X = Fun(),
+            Self ! {ok, X}
+        catch
+            error:Reason -> Self ! {error, Reason};
+            exit:_Reason -> ok;
+            throw:Reason -> Self ! {throw, Reason}
+        end
+    end),
+  receive
+    {ok, Res} -> {ok, Res};
+    {error, Reason} -> erlang:error(Reason);
+    {throw, Reason} -> erlang:throw(Reason)
+  after
+     Millis ->
+        exit(Pid, kill),
+        timeout
+  end.

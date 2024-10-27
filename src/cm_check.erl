@@ -4,20 +4,22 @@
 % updating the index.
 
 -export([
-    perform_type_checks/3,
+    perform_type_checks/4,
     perform_sanity_check/3
 ]).
 
 -include_lib("log.hrl").
 -include_lib("ety_main.hrl").
 
-
--spec perform_type_checks(paths:search_path(), cm_depgraph:dep_graph(), cmd_opts()) -> [file:filename()].
-perform_type_checks(SearchPath, DepGraph, Opts) ->
+-spec perform_type_checks(
+    paths:search_path(),
+    [file:filename()],
+    cm_depgraph:dep_graph(),
+    cmd_opts()) -> [file:filename()].
+perform_type_checks(SearchPath, SourceList, DepGraph, Opts) ->
     IndexFile = paths:index_file_name(Opts),
     RebarLockFile = paths:rebar_lock_file(Opts),
     Index = cm_index:load_index(RebarLockFile, IndexFile, Opts#opts.mode),
-    SourceList = cm_depgraph:all_sources(DepGraph),
     ?LOG_INFO("All sources: ~p", SourceList),
     {DepsChanged, NewIndex1} =
         cm_index:has_external_dep_changed(RebarLockFile, Index),

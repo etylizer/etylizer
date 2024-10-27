@@ -135,3 +135,14 @@ get_name_from_invoice_02(X) -> X#invoice.person#person.name.
 
 -spec get_name_from_invoice_02_fail(#invoice{ person :: #person { name :: integer() }}) -> string().
 get_name_from_invoice_02_fail(X) -> X#invoice.person#person.name.
+
+%% recursive
+
+% Deactived because of #152
+%-record(rr, {name :: string(), recursive :: [#rr{}] }).
+%
+%-spec add1(string(), #rr{}) -> #rr{}.
+%add1(Name, R) -> #rr{name=Name, recursive=[R]}.
+%
+%-spec add2(string(), #rr{}) -> #rr{}.
+%add2(Name, R) -> R#rr{ recursive = [#rr{name=Name, recursive=[]} | R#rr.recursive]}.
