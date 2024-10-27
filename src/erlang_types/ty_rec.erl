@@ -870,4 +870,31 @@ nonempty_function_test() ->
   true = ty_rec:is_subtype(Function2, Function),
   ok.
 
+% (X, (X, [])) where X = (X, []) | ([], [])
+% test from Tchou/stt
+% we need to construct this type manually
+% mu type is not enough, X is chosen fresh on second encounter
+sound_memoization_test() ->
+  test_utils:reset_ets(),
+  EmptyList = ast_lib:ast_to_erlang_ty(stdtypes:tempty_list()),
+
+  X = ty_ref:new_ty_ref(),
+  BasicTuple = dnf_ty_tuple:tuple(ty_tuple:tuple([EmptyList, EmptyList])),
+  XTuple = dnf_ty_tuple:tuple(ty_tuple:tuple([X, EmptyList])),
+
+  Union = ty_rec:tuple(2, dnf_var_ty_tuple:tuple(dnf_ty_tuple:union(BasicTuple, XTuple))),
+
+  % X = (X, []) | ([], [])
+  ty_ref:define_ty_ref(X, ty_ref:load(Union)),
+
+  % Z = (X, [])
+  Z = ty_rec:tuple(2, dnf_var_ty_tuple:tuple(dnf_ty_tuple:tuple(ty_tuple:tuple([X, EmptyList])))),
+
+  % (X, Z)
+  Ty = ty_rec:tuple(2, dnf_var_ty_tuple:tuple(dnf_ty_tuple:tuple(ty_tuple:tuple([X, Z])))),
+
+  false = ty_rec:is_empty(Ty),
+
+  ok.
+
 -endif.
