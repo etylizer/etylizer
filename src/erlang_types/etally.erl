@@ -27,7 +27,7 @@ tally_normalize(Constraints, FixedVars) ->
       fun() -> A end,
       fun() ->
         SnT = ty_rec:diff(S, T),
-        ty_rec:normalize(SnT, FixedVars, sets:new())
+        ty_rec:normalize_start(SnT, FixedVars)
       end
     )
               end, [[]], Constraints).

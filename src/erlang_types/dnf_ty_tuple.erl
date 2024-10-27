@@ -4,8 +4,8 @@
 -define(TERMINAL, bdd_bool).
 -define(F(Z), fun() -> Z end).
 
--export([is_empty_corec/2, normalize/6, substitute/4, apply_to_node/3]).
--export([tuple/1, all_variables/2, transform/2, to_singletons/1, phi_corec/3, phi_norm/5]).
+-export([is_empty_corec/2, normalize_corec/6, substitute/4, apply_to_node/3]).
+-export([tuple/1, all_variables/2, transform/2, to_singletons/1, phi_corec/3, phi_norm_corec/5]).
 
 -include("bdd_node.hrl").
 
@@ -70,7 +70,7 @@ phi_corec(BigS, [Ty | N], M) ->
     orelse
       lists:foldl(Solve, true, lists:zip(lists:seq(1, length(ty_tuple:components(Ty))), lists:zip(BigS, ty_tuple:components(Ty)))).
 
-normalize(Size, Ty, [], [], Fixed, M) ->
+normalize_corec(Size, Ty, [], [], Fixed, M) ->
   dnf(Ty, {
     fun
       ([], [], T) ->
@@ -82,26 +82,26 @@ normalize(Size, Ty, [], [], Fixed, M) ->
             Dim = length(ty_tuple:components(TNeg)),
             PosAny = ty_tuple:any(Dim),
             BigS = ty_tuple:big_intersect([PosAny]),
-            phi_norm(Size, ty_tuple:components(BigS), Neg, Fixed, M)
+            phi_norm_corec(Size, ty_tuple:components(BigS), Neg, Fixed, M)
         end;
       (Pos, Neg, T) ->
         case bdd_bool:empty() of
           T -> [[]];
           _ ->
             BigS = ty_tuple:big_intersect(Pos),
-            phi_norm(Size, ty_tuple:components(BigS), Neg, Fixed, M)
+            phi_norm_corec(Size, ty_tuple:components(BigS), Neg, Fixed, M)
         end
     end,
     fun constraint_set:meet/2
   });
-normalize(Size, DnfTy, PVar, NVar, Fixed, M) ->
+normalize_corec(Size, DnfTy, PVar, NVar, Fixed, M) ->
   Ty = ty_rec:tuple(Size, dnf_var_ty_tuple:tuple(DnfTy)),
   % ntlv rule
-  ty_variable:normalize(Ty, PVar, NVar, Fixed, fun(Var) -> ty_rec:tuple(Size, dnf_var_ty_tuple:var(Var)) end, M).
+  ty_variable:normalize_corec(Ty, PVar, NVar, Fixed, fun(Var) -> ty_rec:tuple(Size, dnf_var_ty_tuple:var(Var)) end, M).
 
-phi_norm(_Size, BigS, [], Fixed, M) ->
-  lists:foldl(fun(S, Res) -> constraint_set:join(?F(Res), ?F(ty_rec:normalize(S, Fixed, M))) end, [], BigS);
-phi_norm(Size, BigS, [Ty | N], Fixed, M) ->
+phi_norm_corec(_Size, BigS, [], Fixed, M) ->
+  lists:foldl(fun(S, Res) -> constraint_set:join(?F(Res), ?F(ty_rec:normalize_corec(S, Fixed, M))) end, [], BigS);
+phi_norm_corec(Size, BigS, [Ty | N], Fixed, M) ->
   Solve = fun({Index, {_PComponent, NComponent}}, Result) ->
     constraint_set:meet(
       ?F(Result),
@@ -115,13 +115,13 @@ phi_norm(Size, BigS, [Ty | N], Fixed, M) ->
           end
                  end,
         NewBigS = lists:map(DoDiff, lists:zip(lists:seq(1, length(BigS)), BigS)),
-        phi_norm(Size, NewBigS, N, Fixed, M)
+        phi_norm_corec(Size, NewBigS, N, Fixed, M)
       end)
     )
           end,
 
   constraint_set:join(
-    ?F(lists:foldl(fun(S, Res) -> constraint_set:join(?F(Res), ?F(ty_rec:normalize(S, Fixed, M))) end, [], BigS)),
+    ?F(lists:foldl(fun(S, Res) -> constraint_set:join(?F(Res), ?F(ty_rec:normalize_corec(S, Fixed, M))) end, [], BigS)),
     ?F(lists:foldl(Solve, [[]], lists:zip(lists:seq(1, length(ty_tuple:components(Ty))), lists:zip(BigS, ty_tuple:components(Ty)))))
   ).
 

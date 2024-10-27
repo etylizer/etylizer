@@ -5,7 +5,7 @@
 -define(TERMINAL, ty_atom).
 
 -export([apply_to_node/3]).
--export([is_empty/1, normalize/3, substitute/4]).
+-export([is_empty/1, normalize_corec/3, substitute/4]).
 -export([var/1, ty_atom/1, all_variables/2]).
 -export([to_singletons/1, transform/2]).
 
@@ -19,8 +19,8 @@ is_empty(TyBDD) -> dnf(TyBDD, {fun is_empty_coclause/3, fun is_empty_union/2}).
 
 is_empty_coclause(_Pos, _Neg, T) -> ty_atom:is_empty(T).
 
-normalize(Ty, Fixed, M) -> dnf(Ty, {
-  fun(Pos, Neg, Atom) -> ty_atom:normalize(Atom, Pos, Neg, Fixed, M) end,
+normalize_corec(Ty, Fixed, M) -> dnf(Ty, {
+  fun(Pos, Neg, Atom) -> ty_atom:normalize_corec(Atom, Pos, Neg, Fixed, M) end,
   fun constraint_set:meet/2
 }).
 

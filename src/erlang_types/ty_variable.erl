@@ -7,7 +7,7 @@
 -export([equal/2, compare/2, substitute/4, has_ref/2, all_variables/2, name/1]).
 
 
--export([new/1, smallest/3, normalize/6, transform/2, get_new_id/0]).
+-export([new/1, smallest/3, normalize_corec/6, transform/2, get_new_id/0]).
 
 -export_type([var/0]).
 
@@ -74,7 +74,7 @@ single(Pol, VPos, VNeg, Ty, VarToTy) ->
 
 
 % (NTLV rule)
-normalize(Ty, PVar, NVar, Fixed, VarToTy, Mx) ->
+normalize_corec(Ty, PVar, NVar, Fixed, VarToTy, Mx) ->
   SmallestVar = ty_variable:smallest(PVar, NVar, Fixed),
   case SmallestVar of
     {{pos, Var}, _Others} ->
@@ -85,7 +85,7 @@ normalize(Ty, PVar, NVar, Fixed, VarToTy, Mx) ->
       [[{Var, Singled, ty_rec:any()}]];
     {{{delta, _}, _}, _} ->
       % part 1 paper Lemma C.3 and C.11 all fixed variables can be eliminated
-      ty_rec:normalize(Ty, Fixed, Mx)
+      ty_rec:normalize_corec(Ty, Fixed, Mx)
   end.
 
 substitute(MkTy, Var, Map, _Memo) ->

@@ -5,7 +5,7 @@
 -define(F(Z), fun() -> Z end).
 
 -export([apply_to_node/3]).
--export([is_empty_corec/2, normalize/5, substitute/4]).
+-export([is_empty_corec/2, normalize_corec/5, substitute/4]).
 -export([list/1, all_variables/2, transform/2]).
 
 -include("bdd_node.hrl").
@@ -45,45 +45,45 @@ phi_corec(S1, S2, [Ty | N], M) ->
       end
   ).
 
-normalize(TyList, [], [], Fixed, M) ->
+normalize_corec(TyList, [], [], Fixed, M) ->
   dnf(TyList, {
     fun(Pos, Neg, DnfTyList) ->
-      normalize_coclause(Pos, Neg, DnfTyList, Fixed, M)
+      normalize_coclause_corec(Pos, Neg, DnfTyList, Fixed, M)
                                  end,
     fun constraint_set:meet/2
   });
-normalize(DnfTyList, PVar, NVar, Fixed, M) ->
+normalize_corec(DnfTyList, PVar, NVar, Fixed, M) ->
   Ty = ty_rec:list(dnf_var_ty_list:list(DnfTyList)),
   % ntlv rule
-  ty_variable:normalize(Ty, PVar, NVar, Fixed, fun(Var) -> ty_rec:list(dnf_var_ty_list:var(Var)) end, M).
+  ty_variable:normalize_corec(Ty, PVar, NVar, Fixed, fun(Var) -> ty_rec:list(dnf_var_ty_list:var(Var)) end, M).
 
 
-normalize_coclause([], [], T, _Fixed, _M) ->
+normalize_coclause_corec([], [], T, _Fixed, _M) ->
   case bdd_bool:empty() of T -> [[]]; _ -> [] end;
-normalize_coclause(Pos, Neg, T, Fixed, M) ->
+normalize_coclause_corec(Pos, Neg, T, Fixed, M) ->
   case bdd_bool:empty() of
     T -> [[]];
     _ ->
       Big = ty_list:big_intersect(Pos),
       S1 = ty_list:pi1(Big),
       S2 = ty_list:pi2(Big),
-      phi_norm(S1, S2, Neg, Fixed, M)
+      phi_norm_corec(S1, S2, Neg, Fixed, M)
   end.
 
-phi_norm(S1, S2, [], Fixed, M) ->
-  T1 = ?F(ty_rec:normalize(S1, Fixed, M)),
-  T2 = ?F(ty_rec:normalize(S2, Fixed, M)),
+phi_norm_corec(S1, S2, [], Fixed, M) ->
+  T1 = ?F(ty_rec:normalize_corec(S1, Fixed, M)),
+  T2 = ?F(ty_rec:normalize_corec(S2, Fixed, M)),
   constraint_set:join(T1, T2);
-phi_norm(S1, S2, [Ty | N], Fixed, M) ->
-  T1 = ?F(ty_rec:normalize(S1, Fixed, M)),
-  T2 = ?F(ty_rec:normalize(S2, Fixed, M)),
+phi_norm_corec(S1, S2, [Ty | N], Fixed, M) ->
+  T1 = ?F(ty_rec:normalize_corec(S1, Fixed, M)),
+  T2 = ?F(ty_rec:normalize_corec(S2, Fixed, M)),
 
   T3 =
     ?F(begin
       TT1 = ty_list:pi1(Ty),
       TT2 = ty_list:pi2(Ty),
-      X1 = ?F(phi_norm(ty_rec:diff(S1, TT1), S2, N, Fixed, M)),
-      X2 = ?F(phi_norm(S1, ty_rec:diff(S2, TT2), N, Fixed, M)),
+      X1 = ?F(phi_norm_corec(ty_rec:diff(S1, TT1), S2, N, Fixed, M)),
+      X2 = ?F(phi_norm_corec(S1, ty_rec:diff(S2, TT2), N, Fixed, M)),
       constraint_set:meet(X1, X2)
     end),
 

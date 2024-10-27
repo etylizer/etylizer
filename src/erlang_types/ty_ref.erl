@@ -1,6 +1,11 @@
 -module(ty_ref).
 
--export([setup_ets/0, any/0, store/1, load/1, new_ty_ref/0, define_ty_ref/2, is_empty_cached/1, store_is_empty_cached/2, store_recursive_variable/2, check_recursive_variable/1]).
+-export([
+  setup_ets/0, any/0, store/1, load/1, new_ty_ref/0, define_ty_ref/2, 
+  is_empty_cached/1, store_is_empty_cached/2, 
+  normalize_cached/1, store_normalize_cached/2, 
+  store_recursive_variable/2, 
+  check_recursive_variable/1]).
 -export([reset/0, is_normalized_memoized/3]).
 -export([op_cache/3, memoize_norm/2, normalized_memoized/1, setup_all/0]).
 
@@ -168,6 +173,19 @@ is_empty_cached({ty_ref, Id}) ->
 
 store_is_empty_cached({ty_ref, Id}, Result) ->
   ets:insert(?EMPTY_CACHE, {Id, Result}),
+  Result.
+
+normalize_cached(Id) ->
+  Object = ets:lookup(?NORMALIZE_CACHE, Id),
+  case Object of
+    [] -> miss;
+    [{_, Result}] ->
+%%      io:format(user, "x", []),
+      Result
+  end.
+
+store_normalize_cached(Id, Result) ->
+  ets:insert(?NORMALIZE_CACHE, {Id, Result}),
   Result.
 
 store_recursive_variable(Variable, Ty) ->

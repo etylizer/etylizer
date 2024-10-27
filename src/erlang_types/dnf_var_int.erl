@@ -3,7 +3,7 @@
 -define(ELEMENT, ty_variable).
 -define(TERMINAL, ty_interval).
 
--export([is_empty/1, normalize/3, substitute/4]).
+-export([is_empty/1, normalize_corec/3, substitute/4]).
 -export([var/1, int/1, all_variables/2, transform/2, apply_to_node/3, to_singletons/1]).
 
 -include("bdd_var.hrl").
@@ -15,8 +15,8 @@ var(Var) -> node(Var).
 is_empty(TyBDD) -> dnf( TyBDD, {fun is_empty_coclause/3, fun is_empty_union/2}).
 is_empty_coclause(_Pos, _Neg, T) -> ty_interval:is_empty(T).
 
-normalize(Ty, Fixed, M) -> dnf(Ty, {
-  fun(Pos, Neg, Atom) -> ty_interval:normalize(Atom, Pos, Neg, Fixed, M) end,
+normalize_corec(Ty, Fixed, M) -> dnf(Ty, {
+  fun(Pos, Neg, Atom) -> ty_interval:normalize_corec(Atom, Pos, Neg, Fixed, M) end,
   fun constraint_set:meet/2
 }).
 

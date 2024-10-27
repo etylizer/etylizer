@@ -8,7 +8,7 @@
 
 -export([empty/0, any/0]).
 -export([union/2, intersect/2, diff/2, negate/1, is_any/1]).
--export([is_empty/1, eval/1, normalize/5, substitute/4]).
+-export([is_empty/1, eval/1, normalize_corec/5, substitute/4]).
 
 -export([has_ref/2, predef/1, transform/2, all_variables/2]).
 
@@ -60,13 +60,13 @@ intersect(P1, P2) ->
 diff(I1, I2) ->
     intersect(I1, negate(I2)).
 
-normalize(TyPredef, [], [], _Fixed, _) ->
+normalize_corec(TyPredef, [], [], _Fixed, _) ->
     % Fig. 3 Line 3
     case is_empty(TyPredef) of
         true -> [[]];
         false -> []
     end;
-normalize(TyPredef, PVar, NVar, Fixed, M) ->
+normalize_corec(TyPredef, PVar, NVar, Fixed, M) ->
     Ty = ty_rec:predef(dnf_var_predef:predef(TyPredef)),
     % ntlv rule
-    ty_variable:normalize(Ty, PVar, NVar, Fixed, fun(Var) -> ty_rec:predef(dnf_var_predef:var(Var)) end, M).
+    ty_variable:normalize_corec(Ty, PVar, NVar, Fixed, fun(Var) -> ty_rec:predef(dnf_var_predef:var(Var)) end, M).

@@ -2,9 +2,14 @@
 
 -define(F(Z), fun() -> Z end).
 
+
+% co-recursive functions on types
+-export([is_empty/1, is_empty_start/1, normalize_start/2]).
+-export([is_empty_corec/2, normalize_corec/3]).
+
 -export([empty/0, any/0]).
 -export([union/2, negate/1, intersect/2, diff/2, is_any/1]).
--export([is_empty/1, is_empty_start/1, is_empty_corec/2, extract_variables/1]).
+-export([extract_variables/1]).
 
 % additional type constructors
 -export([predef/0, predef/1, variable/1, atom/1, interval/1, tuple/2, map/1]).
@@ -13,7 +18,7 @@
 % top type constructors
 -export([list/0, function/0, atom/0, interval/0, tuple/0, map/0, ty_of/7]).
 
--export([is_equivalent/2, is_subtype/2, normalize/3]).
+-export([is_equivalent/2, is_subtype/2]).
 
 -export([substitute/2, substitute/3, pi/2, all_variables/1, all_variables/2]).
 
@@ -532,78 +537,82 @@ multi_empty_functions_corec({Default, AllFunctions}, M) ->
 is_any(_Arg0) ->
   erlang:error(any_not_implemented). % TODO needed?
 
-normalize(TyRef, Fixed, M) ->
-  case ty_ref:normalized_memoized({TyRef, Fixed}) of
+normalize_start(TyRef, Fixed) ->
+  % first try op-cache
+  case ty_ref:normalize_cached({TyRef, Fixed}) of
     miss ->
-      ty_ref:memoize_norm({TyRef, Fixed}, Sol = normalize_miss(TyRef, Fixed, M)),
-      Sol;
-    R -> R
+      ty_ref:store_normalize_cached({TyRef, Fixed}, normalize_corec(TyRef, Fixed, #{}));
+    Cached -> Cached
   end.
 
-normalize_miss(TyRef, Fixed, M) ->
-
-  Ty = ty_ref:load(TyRef),
-  PredefNormalize = dnf_var_predef:normalize(Ty#ty.predef, Fixed, M),
-  AtomNormalize = dnf_var_ty_atom:normalize(Ty#ty.atom, Fixed, M),
-  Both = constraint_set:merge_and_meet(PredefNormalize, AtomNormalize),
-  case Both of
-    [] -> [];
-    _ ->
-
-      IntervalNormalize = dnf_var_int:normalize(Ty#ty.interval, Fixed, M),
-      Res1 = constraint_set:merge_and_meet(Both, IntervalNormalize),
-      case Res1 of
+normalize_corec(TyRef, Fixed, M) ->
+  case M of
+    #{TyRef := true} -> [[]]; % co-definition
+    _ -> 
+      Ty = ty_ref:load(TyRef),
+      MNew = M#{TyRef => true},
+      PredefNormalize = dnf_var_predef:normalize_corec(Ty#ty.predef, Fixed, MNew),
+      AtomNormalize = dnf_var_ty_atom:normalize_corec(Ty#ty.atom, Fixed, MNew),
+      Both = constraint_set:merge_and_meet(PredefNormalize, AtomNormalize),
+      case Both of
         [] -> [];
         _ ->
-          begin
-                Res2 = multi_normalize_tuples(Ty#ty.tuple, Fixed, M),
-                ResX = fun() -> constraint_set:merge_and_meet(Res1, Res2) end,
-                ResLists = fun() -> dnf_var_ty_list:normalize(Ty#ty.list, Fixed, M) end,
-                Res3 = constraint_set:meet(ResX, ResLists),
-                case Res3 of
-                  [] -> [];
-                  _ ->
-                    Res4 = multi_normalize_functions(Ty#ty.function, Fixed, M),
-                    Res5 = constraint_set:merge_and_meet(Res3, Res4),
-                    case Res5 of
+
+          IntervalNormalize = dnf_var_int:normalize_corec(Ty#ty.interval, Fixed, MNew),
+          Res1 = constraint_set:merge_and_meet(Both, IntervalNormalize),
+          case Res1 of
+            [] -> [];
+            _ ->
+              begin
+                    Res2 = multi_normalize_tuples_corec(Ty#ty.tuple, Fixed, MNew),
+                    ResX = fun() -> constraint_set:merge_and_meet(Res1, Res2) end,
+                    ResLists = fun() -> dnf_var_ty_list:normalize_corec(Ty#ty.list, Fixed, MNew) end,
+                    Res3 = constraint_set:meet(ResX, ResLists),
+                    case Res3 of
                       [] -> [];
                       _ ->
-                        MapNormalize = dnf_var_ty_map:normalize(Ty#ty.map, Fixed, M),
-                        constraint_set:merge_and_meet(Res5, MapNormalize)
+                        Res4 = multi_normalize_functions_corec(Ty#ty.function, Fixed, MNew),
+                        Res5 = constraint_set:merge_and_meet(Res3, Res4),
+                        case Res5 of
+                          [] -> [];
+                          _ ->
+                            MapNormalize = dnf_var_ty_map:normalize_corec(Ty#ty.map, Fixed, MNew),
+                            constraint_set:merge_and_meet(Res5, MapNormalize)
+                        end
                     end
-                end
+              end
           end
       end
-  end.
+    end.
 
-multi_normalize_tuples({Default, AllTuples}, Fixed, M) ->
+multi_normalize_tuples_corec({Default, AllTuples}, Fixed, M) ->
   Others = ?F(
     maps:fold(fun(Size, V, Acc) ->
       constraint_set:meet(
         ?F(Acc),
-        ?F(dnf_var_ty_tuple:normalize(Size, V, Fixed, M))
+        ?F(dnf_var_ty_tuple:normalize_corec(Size, V, Fixed, M))
       )
               end, [[]], AllTuples)
   ),
 
-  DF = ?F(dnf_var_ty_tuple:normalize({default, maps:keys(AllTuples)}, Default, Fixed, M)),
+  DF = ?F(dnf_var_ty_tuple:normalize_corec({default, maps:keys(AllTuples)}, Default, Fixed, M)),
 
   constraint_set:meet(
     DF,
     Others
   ).
 
-multi_normalize_functions({Default, AllFunctions}, Fixed, M) ->
+multi_normalize_functions_corec({Default, AllFunctions}, Fixed, M) ->
   Others = ?F(
     maps:fold(fun(Size, V, Acc) ->
       constraint_set:meet(
         ?F(Acc),
-        ?F(dnf_var_ty_function:normalize(Size, V, Fixed, M))
+        ?F(dnf_var_ty_function:normalize_corec(Size, V, Fixed, M))
       )
               end, [[]], AllFunctions)
   ),
 
-  DF = ?F(dnf_var_ty_function:normalize({default, maps:keys(AllFunctions)}, Default, Fixed, M)),
+  DF = ?F(dnf_var_ty_function:normalize_corec({default, maps:keys(AllFunctions)}, Default, Fixed, M)),
 
   constraint_set:meet(
     DF,
