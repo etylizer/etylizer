@@ -133,11 +133,11 @@ doWork(Opts) ->
         end,
         SourceList = paths:generate_input_file_list(Opts),
         SearchPath = paths:compute_search_path(Opts),
-        {SourcesToCheck, DepGraph} =
+        DepGraph =
             case Opts#opts.no_deps of
                 true ->
                     % only typecheck the files given
-                    {SourceList, cm_depgraph:new()};
+                    cm_depgraph:new(SourceList);
                 false ->
                     ?LOG_NOTE("Entry points: ~p, now building dependency graph", SourceList),
                     G = cm_depgraph:build_dep_graph(
@@ -145,10 +145,10 @@ doWork(Opts) ->
                         SearchPath,
                         fun(P) -> parse_cache:parse(intern, P) end),
                     ?LOG_DEBUG("Dependency graph: ~p", cm_depgraph:pretty_depgraph(G)),
-                    {cm_depgraph:all_sources(G), G}
+                    G
             end,
         ?LOG_NOTE("Performing type checking"),
-        cm_check:perform_type_checks(SearchPath, SourcesToCheck, DepGraph, Opts)
+        cm_check:perform_type_checks(SearchPath, cm_depgraph:all_sources(DepGraph), DepGraph, Opts)
     after
         parse_cache:cleanup(),
         stdtypes:cleanup()
