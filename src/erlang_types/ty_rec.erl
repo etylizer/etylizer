@@ -2,9 +2,14 @@
 
 -define(F(Z), fun() -> Z end).
 
+
+% co-recursive functions on types
+-export([is_empty/1, is_empty_start/1, normalize_start/2]).
+-export([is_empty_corec/2, normalize_corec/3]).
+
 -export([empty/0, any/0]).
 -export([union/2, negate/1, intersect/2, diff/2, is_any/1]).
--export([is_empty/1, extract_variables/1]).
+-export([extract_variables/1]).
 
 % additional type constructors
 -export([predef/0, predef/1, variable/1, atom/1, interval/1, tuple/2, map/1]).
@@ -13,7 +18,7 @@
 % top type constructors
 -export([list/0, function/0, atom/0, interval/0, tuple/0, map/0, ty_of/7]).
 
--export([is_equivalent/2, is_subtype/2, normalize/3]).
+-export([is_equivalent/2, is_subtype/2]).
 
 -export([substitute/2, substitute/3, pi/2, all_variables/1, all_variables/2]).
 
@@ -41,7 +46,7 @@ ty_of(Predef, Atom, Int, List, Tuple, Function, Map) ->
 
 is_subtype(TyRef1, TyRef2) ->
   NewTy = intersect(TyRef1, ty_rec:negate(TyRef2)),
-  is_empty(NewTy).
+  is_empty_start(NewTy).
 
 is_equivalent(TyRef1, TyRef2) ->
   is_subtype(TyRef1, TyRef2) andalso is_subtype(TyRef2, TyRef1).
@@ -277,7 +282,7 @@ multi_transform(DefaultT, T, Ops = #{any_tuple_i := Tuple, any_tuple := Tuples, 
   X1 = dnf_var_ty_tuple:transform(DefaultT, Ops),
   Xs = lists:map(fun({_Size, Tup}) ->
     % if a tuple is semantically equivalent to empty, return empty instead of the empty tuple
-    case dnf_var_ty_tuple:is_empty(Tup) of
+    case dnf_var_ty_tuple:is_empty_corec(Tup, #{}) of
       true -> dnf_var_ty_tuple:transform(dnf_var_ty_tuple:empty(), Ops);
       _ -> dnf_var_ty_tuple:transform(Tup, Ops)
     end
@@ -491,121 +496,123 @@ multi_intersect_fun({DefaultF1, F1}, {DefaultF2, F2}) ->
                  end,
   {dnf_var_ty_function:intersect(DefaultF1, DefaultF2), maps:from_list([{Key, IntersectKey(Key)} || Key <- AllKeys])}.
 
+is_empty(TyRef) -> is_empty_start(TyRef).
 
-is_empty(TyRef) ->
+% only cache full-chained is_empty, never cache in-between emptiness which depends on the memoization set M
+% we could do that if we knew the tyref at hand is not corecursive
+is_empty_start(TyRef) ->
   % first try op-cache
   case ty_ref:is_empty_cached(TyRef) of
     R when R == true; R == false -> R;
     miss ->
-      ty_ref:store_is_empty_cached(TyRef, is_empty_miss(TyRef))
+      ty_ref:store_is_empty_cached(TyRef, is_empty_corec(TyRef, #{}))
   end.
 
-is_empty_miss(TyRef) ->
-  Ty = ty_ref:load(TyRef),
-  dnf_var_predef:is_empty(Ty#ty.predef)
-  andalso dnf_var_ty_atom:is_empty(Ty#ty.atom)
-    andalso dnf_var_int:is_empty(Ty#ty.interval)
-    andalso (
-      begin
-        case ty_ref:is_empty_memoized(TyRef) of
-          true ->
-            true;
-          miss ->
-            % memoize
-            ok = ty_ref:memoize(TyRef),
-            dnf_var_ty_list:is_empty(Ty#ty.list)
-            andalso multi_empty_tuples(Ty#ty.tuple)
-              andalso multi_empty_functions(Ty#ty.function)
-              andalso dnf_var_ty_map:is_empty(Ty#ty.map)
-        end
-      end
-  ).
+is_empty_corec(TyRef, M) ->
+  case M of
+    #{TyRef := true} -> true; % co-definition
+    _ -> 
+      Ty = ty_ref:load(TyRef),
+      MNew = M#{TyRef => true},
+      dnf_var_predef:is_empty(Ty#ty.predef)
+        andalso dnf_var_ty_atom:is_empty(Ty#ty.atom)
+        andalso dnf_var_int:is_empty(Ty#ty.interval)
+        andalso dnf_var_ty_list:is_empty_corec(Ty#ty.list, MNew)
+        andalso multi_empty_tuples_corec(Ty#ty.tuple, MNew)
+        andalso multi_empty_functions_corec(Ty#ty.function, MNew)
+        andalso dnf_var_ty_map:is_empty_corec(Ty#ty.map, MNew)
+  end.
 
-multi_empty_tuples({Default, AllTuples}) ->
-  dnf_var_ty_tuple:is_empty(Default)
-    andalso
-  maps:fold(fun(_Size, V, Acc) -> Acc andalso dnf_var_ty_tuple:is_empty(V) end, true, AllTuples).
 
-multi_empty_functions({Default, AllFunctions}) ->
-  dnf_var_ty_function:is_empty(Default)
+multi_empty_tuples_corec({Default, AllTuples}, M) ->
+  dnf_var_ty_tuple:is_empty_corec(Default, M)
     andalso
-    maps:fold(fun(_Size, V, Acc) -> Acc andalso dnf_var_ty_function:is_empty(V) end, true, AllFunctions).
+  maps:fold(fun(_Size, V, Acc) -> Acc andalso dnf_var_ty_tuple:is_empty_corec(V, M) end, true, AllTuples).
+
+multi_empty_functions_corec({Default, AllFunctions}, M) ->
+  dnf_var_ty_function:is_empty_corec(Default, M)
+    andalso
+    maps:fold(fun(_Size, V, Acc) -> Acc andalso dnf_var_ty_function:is_empty_corec(V, M) end, true, AllFunctions).
 
 is_any(_Arg0) ->
   erlang:error(any_not_implemented). % TODO needed?
 
-normalize(TyRef, Fixed, M) ->
-  case ty_ref:normalized_memoized({TyRef, Fixed}) of
+normalize_start(TyRef, Fixed) ->
+  % first try op-cache
+  case ty_ref:normalize_cached({TyRef, Fixed}) of
     miss ->
-      ty_ref:memoize_norm({TyRef, Fixed}, Sol = normalize_miss(TyRef, Fixed, M)),
-      Sol;
-    R -> R
+      ty_ref:store_normalize_cached({TyRef, Fixed}, normalize_corec(TyRef, Fixed, #{}));
+    Cached -> Cached
   end.
 
-normalize_miss(TyRef, Fixed, M) ->
-
-  Ty = ty_ref:load(TyRef),
-  PredefNormalize = dnf_var_predef:normalize(Ty#ty.predef, Fixed, M),
-  AtomNormalize = dnf_var_ty_atom:normalize(Ty#ty.atom, Fixed, M),
-  Both = constraint_set:merge_and_meet(PredefNormalize, AtomNormalize),
-  case Both of
-    [] -> [];
-    _ ->
-
-      IntervalNormalize = dnf_var_int:normalize(Ty#ty.interval, Fixed, M),
-      Res1 = constraint_set:merge_and_meet(Both, IntervalNormalize),
-      case Res1 of
+normalize_corec(TyRef, Fixed, M) ->
+  case M of
+    #{TyRef := true} -> [[]]; % co-definition
+    _ -> 
+      Ty = ty_ref:load(TyRef),
+      MNew = M#{TyRef => true},
+      PredefNormalize = dnf_var_predef:normalize_corec(Ty#ty.predef, Fixed, MNew),
+      AtomNormalize = dnf_var_ty_atom:normalize_corec(Ty#ty.atom, Fixed, MNew),
+      Both = constraint_set:merge_and_meet(PredefNormalize, AtomNormalize),
+      case Both of
         [] -> [];
         _ ->
-          begin
-                Res2 = multi_normalize_tuples(Ty#ty.tuple, Fixed, M),
-                ResX = fun() -> constraint_set:merge_and_meet(Res1, Res2) end,
-                ResLists = fun() -> dnf_var_ty_list:normalize(Ty#ty.list, Fixed, M) end,
-                Res3 = constraint_set:meet(ResX, ResLists),
-                case Res3 of
-                  [] -> [];
-                  _ ->
-                    Res4 = multi_normalize_functions(Ty#ty.function, Fixed, M),
-                    Res5 = constraint_set:merge_and_meet(Res3, Res4),
-                    case Res5 of
+
+          IntervalNormalize = dnf_var_int:normalize_corec(Ty#ty.interval, Fixed, MNew),
+          Res1 = constraint_set:merge_and_meet(Both, IntervalNormalize),
+          case Res1 of
+            [] -> [];
+            _ ->
+              begin
+                    Res2 = multi_normalize_tuples_corec(Ty#ty.tuple, Fixed, MNew),
+                    ResX = fun() -> constraint_set:merge_and_meet(Res1, Res2) end,
+                    ResLists = fun() -> dnf_var_ty_list:normalize_corec(Ty#ty.list, Fixed, MNew) end,
+                    Res3 = constraint_set:meet(ResX, ResLists),
+                    case Res3 of
                       [] -> [];
                       _ ->
-                        MapNormalize = dnf_var_ty_map:normalize(Ty#ty.map, Fixed, M),
-                        constraint_set:merge_and_meet(Res5, MapNormalize)
+                        Res4 = multi_normalize_functions_corec(Ty#ty.function, Fixed, MNew),
+                        Res5 = constraint_set:merge_and_meet(Res3, Res4),
+                        case Res5 of
+                          [] -> [];
+                          _ ->
+                            MapNormalize = dnf_var_ty_map:normalize_corec(Ty#ty.map, Fixed, MNew),
+                            constraint_set:merge_and_meet(Res5, MapNormalize)
+                        end
                     end
-                end
+              end
           end
       end
-  end.
+    end.
 
-multi_normalize_tuples({Default, AllTuples}, Fixed, M) ->
+multi_normalize_tuples_corec({Default, AllTuples}, Fixed, M) ->
   Others = ?F(
     maps:fold(fun(Size, V, Acc) ->
       constraint_set:meet(
         ?F(Acc),
-        ?F(dnf_var_ty_tuple:normalize(Size, V, Fixed, M))
+        ?F(dnf_var_ty_tuple:normalize_corec(Size, V, Fixed, M))
       )
               end, [[]], AllTuples)
   ),
 
-  DF = ?F(dnf_var_ty_tuple:normalize({default, maps:keys(AllTuples)}, Default, Fixed, M)),
+  DF = ?F(dnf_var_ty_tuple:normalize_corec({default, maps:keys(AllTuples)}, Default, Fixed, M)),
 
   constraint_set:meet(
     DF,
     Others
   ).
 
-multi_normalize_functions({Default, AllFunctions}, Fixed, M) ->
+multi_normalize_functions_corec({Default, AllFunctions}, Fixed, M) ->
   Others = ?F(
     maps:fold(fun(Size, V, Acc) ->
       constraint_set:meet(
         ?F(Acc),
-        ?F(dnf_var_ty_function:normalize(Size, V, Fixed, M))
+        ?F(dnf_var_ty_function:normalize_corec(Size, V, Fixed, M))
       )
               end, [[]], AllFunctions)
   ),
 
-  DF = ?F(dnf_var_ty_function:normalize({default, maps:keys(AllFunctions)}, Default, Fixed, M)),
+  DF = ?F(dnf_var_ty_function:normalize_corec({default, maps:keys(AllFunctions)}, Default, Fixed, M)),
 
   constraint_set:meet(
     DF,
@@ -804,7 +811,7 @@ all_variables(TyRef, M) ->
       Mp = M#{TyRef => ok},
       lists:usort(
         dnf_var_predef:all_variables(Predefs, M)
-      ++  dnf_var_ty_atom:all_variables(Atoms, M)
+      ++ dnf_var_ty_atom:all_variables(Atoms, M)
       ++ dnf_var_int:all_variables(Ints, M)
       ++ dnf_var_ty_list:all_variables(Lists, Mp)
       ++ dnf_var_ty_tuple:mall_variables(Tuples, Mp)
@@ -861,6 +868,33 @@ nonempty_function_test() ->
   Function2 = ty_rec:function(1, dnf_var_ty_function:any()),
   true = ty_rec:is_subtype(Function, Function2),
   true = ty_rec:is_subtype(Function2, Function),
+  ok.
+
+% (X, (X, [])) where X = (X, []) | ([], [])
+% test from Tchou/stt
+% we need to construct this type manually
+% mu type is not enough, X is chosen fresh on second encounter
+sound_memoization_test() ->
+  test_utils:reset_ets(),
+  EmptyList = ast_lib:ast_to_erlang_ty(stdtypes:tempty_list()),
+
+  X = ty_ref:new_ty_ref(),
+  BasicTuple = dnf_ty_tuple:tuple(ty_tuple:tuple([EmptyList, EmptyList])),
+  XTuple = dnf_ty_tuple:tuple(ty_tuple:tuple([X, EmptyList])),
+
+  Union = ty_rec:tuple(2, dnf_var_ty_tuple:tuple(dnf_ty_tuple:union(BasicTuple, XTuple))),
+
+  % X = (X, []) | ([], [])
+  ty_ref:define_ty_ref(X, ty_ref:load(Union)),
+
+  % Z = (X, [])
+  Z = ty_rec:tuple(2, dnf_var_ty_tuple:tuple(dnf_ty_tuple:tuple(ty_tuple:tuple([X, EmptyList])))),
+
+  % (X, Z)
+  Ty = ty_rec:tuple(2, dnf_var_ty_tuple:tuple(dnf_ty_tuple:tuple(ty_tuple:tuple([X, Z])))),
+
+  false = ty_rec:is_empty(Ty),
+
   ok.
 
 -endif.

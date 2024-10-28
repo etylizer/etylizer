@@ -12,7 +12,7 @@ saturate(C, FixedVariables, Memo) ->
   case pick_bounds_in_c(C, Memo) of
     {_Var, S, T} ->
       SnT = ty_rec:intersect(S, ty_rec:negate(T)),
-      Normed = fun() -> ty_rec:normalize(SnT, FixedVariables, sets:new()) end,
+      Normed = fun() -> ty_rec:normalize_start(SnT, FixedVariables) end,
       NewS = meet(fun() -> [C] end, Normed),
       lists:foldl(fun(NewC, AllS) ->
         NewMerged = fun() -> saturate(NewC, FixedVariables, sets:union(Memo, sets:from_list([SnT]))) end,

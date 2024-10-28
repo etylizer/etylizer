@@ -3,7 +3,7 @@
 %% n-tuple representation
 -export([compare/2, equal/2, substitute/3, all_variables/2]).
 
--export([tuple/1, pi/2, has_ref/2, components/1, transform/2, any/1, empty/1, big_intersect/1, is_empty/1]).
+-export([tuple/1, pi/2, has_ref/2, components/1, transform/2, any/1, empty/1, big_intersect/1]).
 
 empty(Size) -> {ty_tuple, Size, [ty_rec:empty() || _ <- lists:seq(1, Size)]}.
 any(Size) -> {ty_tuple, Size, [ty_rec:any() || _ <- lists:seq(1, Size)]}.
@@ -19,9 +19,6 @@ tuple(Refs) -> {ty_tuple, length(Refs), Refs}.
 components({ty_tuple, _, Refs}) -> Refs.
 pi(I, {ty_tuple, _, Refs}) -> lists:nth(I, Refs).
 has_ref({ty_tuple, _, Refs}, Ref) -> length([X || X <- Refs, X == Ref]) > 0.
-
-is_empty({ty_tuple, _, Refs}) ->
-    lists:any(fun(T) -> ty_rec:is_empty(T) end, Refs).
 
 transform({ty_tuple, _, Refs}, #{to_tuple := ToTuple}) ->
     ToTuple(Refs).

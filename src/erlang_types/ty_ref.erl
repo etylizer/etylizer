@@ -1,14 +1,18 @@
 -module(ty_ref).
 
--export([setup_ets/0, any/0, store/1, load/1, new_ty_ref/0, define_ty_ref/2, is_empty_cached/1, store_is_empty_cached/2, store_recursive_variable/2, check_recursive_variable/1]).
--export([memoize/1, is_empty_memoized/1, reset/0, is_normalized_memoized/3]).
+-export([
+  setup_ets/0, any/0, store/1, load/1, new_ty_ref/0, define_ty_ref/2, 
+  is_empty_cached/1, store_is_empty_cached/2, 
+  normalize_cached/1, store_normalize_cached/2, 
+  store_recursive_variable/2, 
+  check_recursive_variable/1]).
+-export([reset/0, is_normalized_memoized/3]).
 -export([op_cache/3, memoize_norm/2, normalized_memoized/1, setup_all/0]).
 
 -define(TY_UTIL, ty_counter).        % counter store
 -define(TY_MEMORY, ty_mem).          % id -> ty
 -define(TY_UNIQUE_TABLE, ty_unique). % ty -> id
 
--define(EMPTY_MEMO, memoize_ty_ets).                            % ty_ref -> true
 
 -define(EMPTY_CACHE, is_empty_memoize_ets). % ty_rec -> true/false
 -define(NORMALIZE_CACHE, normalize_cache_ets). % ty_ref -> SoCS
@@ -29,7 +33,7 @@ op_cache(Op, K, Fun) ->
   end.
 
 all_tables() ->
-  [?TY_UNIQUE_TABLE, ?TY_MEMORY, ?TY_UTIL, ?EMPTY_MEMO, ?EMPTY_CACHE, ?RECURSIVE_TABLE, ?NORMALIZE_CACHE].
+  [?TY_UNIQUE_TABLE, ?TY_MEMORY, ?TY_UTIL, ?EMPTY_CACHE, ?RECURSIVE_TABLE, ?NORMALIZE_CACHE].
 
 reset() ->
   erase(),
@@ -140,18 +144,6 @@ store(Ty) ->
       {ty_ref, Id}
   end.
 
-memoize({ty_ref, Id}) ->
-  ets:insert(?EMPTY_MEMO, {Id, true}),
-  ok.
-
-
-is_empty_memoized({ty_ref, Id}) ->
-  Object = ets:lookup(?EMPTY_MEMO, Id),
-  case Object of
-    [] -> miss;
-    [{_, true}] -> true
-  end.
-
 memoize_norm({{ty_ref, Id}, Fixed}, Sol) ->
   ets:insert(?NORMALIZE_CACHE, {{Id, Fixed}, Sol}),
   ok.
@@ -181,6 +173,19 @@ is_empty_cached({ty_ref, Id}) ->
 
 store_is_empty_cached({ty_ref, Id}, Result) ->
   ets:insert(?EMPTY_CACHE, {Id, Result}),
+  Result.
+
+normalize_cached(Id) ->
+  Object = ets:lookup(?NORMALIZE_CACHE, Id),
+  case Object of
+    [] -> miss;
+    [{_, Result}] ->
+%%      io:format(user, "x", []),
+      Result
+  end.
+
+store_normalize_cached(Id, Result) ->
+  ets:insert(?NORMALIZE_CACHE, {Id, Result}),
   Result.
 
 store_recursive_variable(Variable, Ty) ->

@@ -7,7 +7,7 @@
 -export([is_empty/1]).
 -export([transform/2]).
 -export([finite/1, cofinite/1]).
--export([has_ref/2, to_singletons/1, normalize/5, substitute/4, all_variables/2]).
+-export([has_ref/2, to_singletons/1, normalize_corec/5, substitute/4, all_variables/2]).
 
 has_ref(_, _) -> false.
 all_variables(_, _) -> [].
@@ -68,15 +68,15 @@ is_any(Rep) ->
 % using erlang total ordering for now
 compare(R1, R2) -> case R1 < R2 of true -> -1; _ -> case R1 > R2 of true -> 1; _ -> 0 end end.
 
-normalize(TyAtom, [], [], _Fixed, _) ->
+normalize_corec(TyAtom, [], [], _Fixed, _) ->
   % Fig. 3 Line 3
   case is_empty(TyAtom) of
     true -> [[]];
     false -> []
   end;
-normalize(TyAtom, PVar, NVar, Fixed, M) ->
+normalize_corec(TyAtom, PVar, NVar, Fixed, M) ->
   Ty = ty_rec:atom(dnf_var_ty_atom:ty_atom(TyAtom)),
   % ntlv rule
-  ty_variable:normalize(Ty, PVar, NVar, Fixed, fun(Var) -> ty_rec:atom(dnf_var_ty_atom:var(Var)) end, M).
+  ty_variable:normalize_corec(Ty, PVar, NVar, Fixed, fun(Var) -> ty_rec:atom(dnf_var_ty_atom:var(Var)) end, M).
 
 
