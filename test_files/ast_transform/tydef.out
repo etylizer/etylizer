@@ -1,0 +1,4 @@
+[{attribute,{loc,[],0,0},module,tydef},
+ {attribute,{loc,[],0,0},export_type,[{t1,2},{t2,2}]},
+ {attribute,{loc,[],0,0},type,transparent,{t1,{ty_scheme,[{'A',{predef,any}},{'B',{predef,any}}],{tuple,[{var,'A'},{var,'B'}]}}}},
+ {attribute,{loc,[],0,0},type,transparent,{t2,{ty_scheme,[{'B',{predef,any}},{'A',{predef,any}}],{tuple,[{var,'A'},{var,'B'}]}}}}].

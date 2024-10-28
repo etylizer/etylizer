@@ -184,7 +184,7 @@ trans_tydef(Ctx, {Name, Ty, Tyvars}) ->
     % FIXME: check contractiveness and regularity
     Env = make_tyenv(Ctx, Tyvars, fail_dups),
     TyNew = trans_ty(Ctx, Env, Ty),
-    TyVars = lists:map(fun(Alpha) -> {Alpha, {predef, any}} end, varenv:range(Env)),
+    TyVars = lists:map(fun({var, _, Alpha}) -> {Alpha, {predef, any}} end, Tyvars),
     {Name, {ty_scheme, TyVars, TyNew}}.
 
 -spec trans_constraint(ctx(), tyenv(), ast_erl:ty_constraint()) -> ast:ty_constraint().
