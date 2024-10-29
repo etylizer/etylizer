@@ -5,7 +5,7 @@
 
 reset_all() ->
   ty_ref:reset(),
-  ty_variable:reset(),
   ast_lib:reset(),
+  ty_variable:reset(),
   ok.
 

@@ -6,10 +6,6 @@
   is_satisfiable/3
 ]).
 
--ifdef(TEST).
--export([tally/4]). % extra tally function used to specify variable order to ensure a deterministic number of solutions
--endif.
-
 -type tally_res() :: {error, [{error, string()}]} | nonempty_list(subst:t()).
 
 -spec tally(symtab:t(), constr:subty_constrs()) -> tally_res().
@@ -25,20 +21,13 @@ is_satisfiable(SymTab, Cs, Fixed) ->
 
 -spec tally(symtab:t(), constr:subty_constrs(), sets:set(ast:ty_varname())) -> tally_res().
 tally(SymTab, Constraints, FixedVars) ->
-  tally(SymTab, Constraints, FixedVars, fun() -> noop end).
-
--spec tally(symtab:t(), constr:subty_constrs(), sets:set(ast:ty_varname()), fun(() -> any())) -> [subst:t()] | {error, [{error, string()}]}.
-tally(SymTab, Constraints, FixedVars, Order) ->
   % reset the global cache, will be fixed in the future
   ty_ref:reset(),
   ty_variable:reset(),
   ast_lib:reset(),
-  % the order is a function which is executed here
-  % it essentially should instantiate the type variable by name via ast_lib:ast_to_erlang_ty once to fix the order
-  Order(),
 
   % uncomment to extract a tally test case config file
-  % io:format(user, "~s~n", [test_utils:format_tally_config(sets:to_list(Constraints), FixedVars)]),
+  % io:format(user, "~s~n", [test_utils:format_tally_config(sets:to_list(Constraints), FixedVars, SymTab)]),
 
   InternalConstraints = lists:map(
     fun({scsubty, _, S, T}) -> {ast_lib:ast_to_erlang_ty(S, SymTab), ast_lib:ast_to_erlang_ty(T, SymTab)} end,

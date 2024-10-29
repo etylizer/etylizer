@@ -1,7 +1,7 @@
 -module(ty_list).
 
 -export([compare/2, equal/2]).
--export([list/2, pi1/1, pi2/1, has_ref/2, transform/2, big_intersect/1, all_variables/2, substitute/3]).
+-export([list/2, pi1/1, pi2/1, has_ref/2, raw_transform/2, transform/2, big_intersect/1, all_variables/2, substitute/3]).
 
 compare(A, B) when A < B -> -1;
 compare(A, B) when A > B -> 1;
@@ -17,6 +17,8 @@ pi2({ty_list, _, Ref}) -> Ref.
 has_ref({ty_list, Ref, _}, Ref) -> true;
 has_ref({ty_list, _, Ref}, Ref) -> true;
 has_ref({ty_list, _, _}, _Ref) -> false.
+
+raw_transform(T, Op) -> transform(T, Op).
 
 transform({ty_list, A, B}, #{to_list := ToList}) ->
   ToList(A, B).

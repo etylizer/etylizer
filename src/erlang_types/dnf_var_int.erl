@@ -42,9 +42,9 @@ usage_test() ->
   Ib = ty_interval:interval(1, 10),
   Ic = ty_interval:interval(5, 8),
 
-  VarA = ty_variable:new("a1"),
-  VarB = ty_variable:new("a2"),
-  VarC = ty_variable:new("a3"),
+  VarA = ty_variable:new(a1),
+  VarB = ty_variable:new(a2),
+  VarC = ty_variable:new(a3),
 
   BIntA = dnf_var_int:int(Ia),
   BVar1 = dnf_var_int:var(VarA),
