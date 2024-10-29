@@ -3,6 +3,7 @@
 -export([
     mono_ty/1,
     mono_ty/2,
+    mono_ty/3,
     format_src_loc/1
 ]).
 
@@ -46,12 +47,17 @@ fresh_tyvar(Alpha, I) ->
 % generator.
 -spec mono_ty(ast:ty_scheme(), integer() | no_fresh) ->
           {ast:ty(), sets:set(ast:ty_varname()), integer() | no_fresh}.
-mono_ty(TyScm = {ty_scheme, Tyvars, T}, FreshStart) ->
+mono_ty(TyScm, FreshStart) ->
+    mono_ty(TyScm, FreshStart, fun fresh_tyvar/2).
+
+-spec mono_ty(ast:ty_scheme(), State, fun((ast:ty_varname(), State) -> {ast:ty_varname(), State})) ->
+          {ast:ty(), sets:set(ast:ty_varname()), State}.
+mono_ty(TyScm = {ty_scheme, Tyvars, T}, FreshStart, FreshFun) ->
     ?LOG_TRACE("Monomorphizing type scheme ~s", pretty:render_tyscheme(TyScm)),
     {Kvs, Freshs, I} =
         lists:foldl(
           fun({Alpha, Bound}, {Kvs, Freshs, I}) ->
-                  {AlphaFresh, NextI} = fresh_tyvar(Alpha, I),
+                  {AlphaFresh, NextI} = FreshFun(Alpha, I),
                   {[ {Alpha, ast_lib:mk_intersection([{var, AlphaFresh}, Bound])} | Kvs],
                    [ AlphaFresh | Freshs ],
                    NextI}
@@ -64,5 +70,3 @@ mono_ty(TyScm = {ty_scheme, Tyvars, T}, FreshStart) ->
     ?LOG_TRACE("Result of monomorphizing type scheme ~s:~n~s~nRaw: ~w~nFresh: ~200p",
                pretty:render_tyscheme(TyScm), pretty:render_ty(Res), Res, Freshs),
     {Res, sets:from_list(Freshs), I}.
-
-
