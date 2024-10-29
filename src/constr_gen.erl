@@ -28,7 +28,7 @@ new_ctx(Symtab) ->
     Ctx = #ctx{ var_counter = Counter, symtab = Symtab },
     Ctx.
 
--spec fresh_ty_varname(ctx()) -> ast:ty_var().
+-spec fresh_ty_varname(ctx()) -> ast:ty_varname().
 fresh_ty_varname(Ctx) ->
     I = counters:get(Ctx#ctx.var_counter, 1),
     counters:add(Ctx#ctx.var_counter, 1, 1),
