@@ -409,7 +409,11 @@ funcall_constrs_with_tyscm(Ctx, L, Var, TyScm, Args, T) ->
     {Mono, _, _} = typing_common:mono_ty(TyScm, none, fun(_, none) -> {fresh_ty_varname(Ctx), none} end),
     case Mono of
         {fun_full, ArgTys, ResTy} when length(Args) =:= length(ArgTys) ->
-            ResConstr = {csubty, mk_locs("funcall result", L), ResTy, T},
+            FunName = pretty:render_var(Var),
+            ResConstr = {csubty,
+                mk_locs(utils:sformat("result of calling ~s", FunName), L),
+                ResTy,
+                T},
             Res = lists:foldr(
                 fun({Arg, Ty}, Cs) ->
                     ThisCs = exp_constrs(Ctx, Arg, Ty),
@@ -417,7 +421,7 @@ funcall_constrs_with_tyscm(Ctx, L, Var, TyScm, Args, T) ->
                 end,
                 utils:single(ResConstr),
                 lists:zip(Args, ArgTys)),
-            ?LOG_DEBUG("Generating specialized constraints for call of fun ~w: ~200p", Var, Res),
+            ?LOG_DEBUG("Generating specialized constraints for call of fun ~s", FunName),
             Res;
         _ ->
             gen_funcall_constrs(Ctx, L, Var, Args, T)
