@@ -26,7 +26,6 @@
 
 -include_lib("sanity.hrl").
 
--record(ty, {predef, atom, interval, list, tuple, function, map}).
 
 -type ty_ref() :: {ty_ref, integer()}.
 -type interval() :: term().
@@ -34,6 +33,42 @@
 %%-type ty_function() :: term().
 -type ty_variable() :: term().
 -type ty_atom() :: term().
+
+
+% data & hash-consed node
+-record(ty, {predef, atom, interval, list, tuple, function, map}).
+ -type type() :: #ty{}.
+ -type node() :: {node, integer(), type()}.
+
+
+% hash-consing functions: equal, compare, hash for type() and node()
+% equality of types delegates to its components
+% equality of nodes is their IDs
+equal({node, _, _} = T1, {node, _, _} = T2) -> error(todo);
+equal(#ty{} = T1, #ty{} = T2) -> 
+  erts_debug:same(T1, T2) orelse (% check if this does anything
+    dnf_var_ty_atom:equal(T1#ty.atom, T2#ty.atom)
+    andalso dnf_var_int:equal(T1#ty.interval, T2#ty.interval)
+    andalso dnf_var_predef:equal(T1#ty.predef, T2#ty.predef)
+    andalso dnf_var_int:equal(T1#ty.interval, T2#ty.interval)
+    andalso dnf_var_ty_list:equal(T1#ty.list, T2#ty.list)
+    andalso dnf_var_ty_map:equal(T1#ty.map, T2#ty.map)
+    andalso equal_tuples(T1#ty.tuple, T2#ty.tuple)
+    andalso equal_functions(T1#ty.function, T2#ty.function)
+  ).
+
+equal_tuples({DefaultT1, T1}, {DefaultT2, T2}) -> 
+  % TODO test case: 
+  %      we could filter here equivalent representations with left-over
+  %      empty and any tuples, e.q. {0, #{1 => Empty}} =:= {0, #{}}
+  dnf_var_ty_tuple:equal(DefaultT1, DefaultT2) andalso maps:size(T1) =:= maps:size(T2) andalso
+  % minor improvement: don't iterate over all sizes after false is encountered
+  maps:map(fun(Size, T, Res) -> Res andalso dnf_var_ty_tuple:equal(T, maps:get(Size, T2)) end, true, T1).
+
+equal_functions({DefaultT1, T1}, {DefaultT2, T2}) ->
+  % see comments in equal_tuples
+  dnf_var_ty_function:equal(DefaultT1, DefaultT2) andalso maps:size(T1) =:= maps:size(T2) andalso
+  maps:map(fun(Size, T, Res) -> Res andalso dnf_var_ty_function:equal(T, maps:get(Size, T2)) end, true, T1).
 
 
 % ======
