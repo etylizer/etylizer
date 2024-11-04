@@ -2,6 +2,11 @@
 
 -define(F(Z), fun() -> Z end).
 
+% hash-consing related
+-export([equal/2, compare/2, hash/1]).
+
+
+
 
 % co-recursive functions on types
 -export([is_empty/1, is_empty_start/1, normalize_start/2]).
@@ -37,38 +42,88 @@
 
 % data & hash-consed node
 -record(ty, {predef, atom, interval, list, tuple, function, map}).
- -type type() :: #ty{}.
- -type node() :: {node, integer(), type()}.
-
+-type type() :: #ty{}.
+-record(node, {id, type}).
+-type node() :: #node{}.
 
 % hash-consing functions: equal, compare, hash for type() and node()
 % equality of types delegates to its components
 % equality of nodes is their IDs
-equal({node, _, _} = T1, {node, _, _} = T2) -> error(todo);
+-spec equal(node(), node()) -> boolean(); (type(), type()) -> boolean().
+equal(#node{id = A}, #node{id = B}) -> A =:= B;
 equal(#ty{} = T1, #ty{} = T2) -> 
-  erts_debug:same(T1, T2) orelse (% check if this does anything
-    dnf_var_ty_atom:equal(T1#ty.atom, T2#ty.atom)
-    andalso dnf_var_int:equal(T1#ty.interval, T2#ty.interval)
-    andalso dnf_var_predef:equal(T1#ty.predef, T2#ty.predef)
+  erts_debug:same(T1, T2) orelse ( % TODO check if this does anything
+    dnf_var_predef:equal(T1#ty.predef, T2#ty.predef)
+    andalso dnf_var_ty_atom:equal(T1#ty.atom, T2#ty.atom)
     andalso dnf_var_int:equal(T1#ty.interval, T2#ty.interval)
     andalso dnf_var_ty_list:equal(T1#ty.list, T2#ty.list)
+    andalso ty_tuples:equal(T1#ty.tuple, T2#ty.tuple)
+    andalso ty_functions:equal(T1#ty.function, T2#ty.function)
     andalso dnf_var_ty_map:equal(T1#ty.map, T2#ty.map)
-    andalso equal_tuples(T1#ty.tuple, T2#ty.tuple)
-    andalso equal_functions(T1#ty.function, T2#ty.function)
   ).
 
-equal_tuples({DefaultT1, T1}, {DefaultT2, T2}) -> 
-  % TODO test case: 
-  %      we could filter here equivalent representations with left-over
-  %      empty and any tuples, e.q. {0, #{1 => Empty}} =:= {0, #{}}
-  dnf_var_ty_tuple:equal(DefaultT1, DefaultT2) andalso maps:size(T1) =:= maps:size(T2) andalso
-  % minor improvement: don't iterate over all sizes after false is encountered
-  maps:map(fun(Size, T, Res) -> Res andalso dnf_var_ty_tuple:equal(T, maps:get(Size, T2)) end, true, T1).
+-spec hash(node() | type()) -> integer().
+hash(#node{id = Id}) when Id < 0 -> -Id;
+hash(#node{id = Id}) -> Id;
+hash(#ty{} = _T1) -> 17. % TODO
 
-equal_functions({DefaultT1, T1}, {DefaultT2, T2}) ->
-  % see comments in equal_tuples
-  dnf_var_ty_function:equal(DefaultT1, DefaultT2) andalso maps:size(T1) =:= maps:size(T2) andalso
-  maps:map(fun(Size, T, Res) -> Res andalso dnf_var_ty_function:equal(T, maps:get(Size, T2)) end, true, T1).
+comp(0, [Cont]) -> Cont(); 
+comp(0, [Cont | T]) -> comp(Cont(), T); 
+comp(C, _) -> C.
+
+
+
+-spec compare(node(), node()) -> 1|-1|0; (type(), type()) -> 1|-1|0.
+compare(#node{id = A}, #node{id = B}) -> if A < B -> -1; A > B -> +1; true -> 0 end;
+compare(#ty{} = T1, #ty{} = T2) ->
+  % chain comparisons lazily 
+  % TODO check if local functions slow things down instead of writing it in a nested fashion
+  comp(0,
+  [
+    fun() -> dnf_var_predef:compare(T1#ty.predef, T2#ty.predef) end,
+    fun() -> dnf_var_ty_atom:compare(T1#ty.atom, T2#ty.atom) end,
+    fun() -> dnf_var_int:compare(T1#ty.interval, T2#ty.interval) end,
+    fun() -> dnf_var_ty_list:compare(T1#ty.list, T2#ty.list) end,
+    fun() -> ty_tuples:compare(T1#ty.tuple, T2#ty.tuple) end,
+    fun() -> ty_functions:compare(T1#ty.function, T2#ty.function) end,
+    fun() -> dnf_var_ty_map:compare(T1#ty.map, T2#ty.map) end
+  ]).
+  
+% node <-> type funs
+% TODO spec
+get_hashtbl() -> Memo = get(node_memo), case Memo of undefined -> put(node_memo, #{}), #{}; _ -> Memo end.
+    
+ 
+make_node(Type) -> 
+  Id = increment_then_get_id(),
+  #node{id = Id, type = Type}.
+
+find(_, _) -> error(todo).
+add(_, _, _) -> error(todo).
+
+node(Type) ->
+  Memo = get_hashtbl(),
+  case find(Memo, Type) of
+    not_found -> 
+      N = make_node(Type),
+      add(Memo, Type, N),
+      N
+    X -> X
+  end.
+
+get_type(#node{id = Id}) when Id >= 0->
+  error(fetch_type_todo).
+
+mutate_type_id(Id, NewId) -> error(todo).
+
+unassigned_empty_ref() ->
+  #node{id = Id} = make_node(empty()),
+  mutate_type_id(Id, -Id).
+
+define(Node, Type) ->
+  true = Node#node.id < 0.
+
+  
 
 
 % ======

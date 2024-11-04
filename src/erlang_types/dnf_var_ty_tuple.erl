@@ -4,11 +4,21 @@
 -define(TERMINAL, dnf_ty_tuple).
 -define(F(Z), fun() -> Z end).
 
+-export([equal_all/2]).
+
 -export([normalize_corec/4, substitute/4]).
 -export([var/1, tuple/1, all_variables/2, mall_variables/2, transform/2, is_empty_corec/2, apply_to_node/3]).
 
 % implementations provided by bdd_var.hrl
 -include("bdd_var.hrl").
+
+equal_all({DefaultT1, T1}, {DefaultT2, T2}) -> 
+  % TODO test case: 
+  %      we could filter here equivalent representations with left-over
+  %      empty and any tuples, e.q. {0, #{1 => Empty}} =:= {0, #{}}
+  dnf_var_ty_tuple:equal(DefaultT1, DefaultT2) andalso maps:size(T1) =:= maps:size(T2) andalso
+  % minor improvement: don't iterate over all sizes after false is encountered
+  maps:map(fun(Size, T, Res) -> Res andalso dnf_var_ty_tuple:equal(T, maps:get(Size, T2)) end, true, T1).
 
 tuple(Tuple) -> terminal(Tuple).
 var(Var) -> node(Var).
