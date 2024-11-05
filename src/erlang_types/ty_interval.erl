@@ -12,9 +12,11 @@
 
 
 -export([interval/2, cointerval/2]).
--export([transform/2, map_pi/1, has_ref/2]).
+-export([raw_transform/2, transform/2, map_pi/1, has_ref/2]).
 
 has_ref(_, _) -> false.
+
+raw_transform(T, Op) -> transform(T, Op).
 
 transform([], #{empty := E}) -> E();
 transform([any_int], #{any := E}) -> E();

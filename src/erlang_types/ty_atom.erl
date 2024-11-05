@@ -5,7 +5,7 @@
 -export([empty/0, any/0]).
 -export([union/2, intersect/2, diff/2, negate/1, is_any/1]).
 -export([is_empty/1]).
--export([transform/2]).
+-export([transform/2, raw_transform/2]).
 -export([finite/1, cofinite/1]).
 -export([has_ref/2, to_singletons/1, normalize_corec/5, substitute/4, all_variables/2]).
 
@@ -20,6 +20,8 @@ transform({Atoms, finite}, #{to_atom := ToAtom, union := Union}) ->
   Union(lists:map(fun(A) -> ToAtom(A) end, gb_sets:to_list(Atoms)));
 transform({Atoms, cofinite}, #{to_atom := ToAtom, union := Union, negate := Negate}) ->
   Negate(Union(lists:map(fun(A) -> ToAtom(A) end, gb_sets:to_list(Atoms)))).
+
+raw_transform(T, Op) -> transform(T, Op).
 
 empty() -> {{0, nil}, finite}.
 any() -> {{0, nil}, cofinite}.

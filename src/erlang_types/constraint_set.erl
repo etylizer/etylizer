@@ -139,8 +139,8 @@ is_smaller(C1, [{_V2, _, _} | C2]) ->
 smaller_test() ->
   test_utils:reset_ets(),
   % {(β≤0)} <: {(β≤0) (β≤α)}
-  Alpha = ty_variable:new("alpha"),
-  Beta = ty_variable:new("beta"),
+  Alpha = ty_variable:new(alpha),
+  Beta = ty_variable:new(beta),
   C1 = [{Beta, ty_rec:empty(), ty_rec:empty()}],
   C2 = [{Alpha, Beta, ty_rec:any()}, {Beta, ty_rec:empty(), ty_rec:empty()}],
 
@@ -152,7 +152,7 @@ smaller2_test() ->
   test_utils:reset_ets(),
   % C1 :: {(atom≤β≤1)}
   % C2 :: {(   1≤β≤1)}
-  Beta = ty_variable:new("beta"),
+  Beta = ty_variable:new(beta),
   Atom = ty_rec:atom(dnf_var_ty_atom:any()), % replacement for bool
   C1 = [{Beta, Atom,         ty_rec:any()}],
   C2 = [{Beta, ty_rec:any(), ty_rec:any()}],
@@ -169,8 +169,8 @@ paper_example_test() ->
   % C2 :: {(β≤α≤1) (atom≤β≤1)} :: {(atom≤β) (β≤α)}
   % C3 :: {           (0≤β≤0)} :: {(0≤β)         }
   % C4 :: {(β≤α≤1)    (1≤β≤1)} :: {(1≤β)    (β≤α)}
-  Alpha = ty_variable:new("alpha"),
-  Beta = ty_variable:new("beta"),
+  Alpha = ty_variable:new(alpha),
+  Beta = ty_variable:new(beta),
   BetaTy = ty_rec:variable(Beta),
   Atom = ty_rec:atom(dnf_var_ty_atom:any()),
   C1 = [{Alpha, BetaTy, ty_rec:any()}, {Beta, ty_rec:empty(), ty_rec:empty()}],

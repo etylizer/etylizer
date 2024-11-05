@@ -15,7 +15,7 @@
     is_subtype/2,
     reset_ets/0,
     ety_to_cduce_tally/2,
-    format_tally_config/2
+    format_tally_config/3
 ]).
 
 -export_type([
@@ -105,8 +105,10 @@ reset_ets() ->
 
 % transforms a tally:tally constraints to a config file which can be loaded in the tally_tests.erl tests
 % TODO free variables #74
-format_tally_config(Constraints, _FixedVars) ->
-    "[" ++ lists:join(",", [io_lib:format("{~p, ~p}", [S, T]) || {_, _, S, T} <- Constraints]) ++ "].".
+format_tally_config(Constraints, _FixedVars, Symtab) ->
+    "[" ++ lists:join(",", [io_lib:format("{~p, ~p}", [S, T]) || {_, _, S, T} <- Constraints]) ++ "]." 
+    ++ "\n" 
+    ++ io_lib:format("~p.", [Symtab]).
 
 % translates the ety tally input constraints to a cduce tally call
 % not all constructs are supported
@@ -139,6 +141,7 @@ to_cduce({tuple, [A, B]}) -> io_lib:format("(~s, ~s)", [to_cduce(A), to_cduce(B)
 to_cduce({intersection, X}) -> "(" ++ lists:join(" & ", [to_cduce(Z) || Z <- X]) ++ ")";
 to_cduce({union, X}) -> "(" ++ lists:join(" | ", [to_cduce(Z) || Z <- X]) ++ ")";
 to_cduce({var, Name}) -> to_var({var, Name});
+to_cduce({named, _, _, _}) -> "NAMED";
 to_cduce({fun_full, [S], T}) -> io_lib:format("(~s -> ~s)", [to_cduce(S), to_cduce(T)]);
 to_cduce(Ast) ->
     error({construct_not_supported, Ast}).

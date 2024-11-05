@@ -152,7 +152,9 @@ simple_test_() ->
     % slow, see #62
     "foo3",
     % TODO recursive inference
-    "user_06", "user_07"
+    "user_06", "user_07",
+    % TODO see #164
+    "match_13"
   ],
 
   %What = ["atom_03_fail"],

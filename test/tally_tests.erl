@@ -16,20 +16,24 @@
   #{ atom() => ast:ty() } % upper bounds
 }.
 
--spec test_tally(any(), list({ast:ty(), ast:ty()}), list(expected_subst())) -> ok.
-test_tally(Order, ConstrList, ExpectedSubst) ->
-    test_tally(Order, ConstrList, ExpectedSubst, []).
+-spec test_tally(list({ast:ty(), ast:ty()}), list(expected_subst())) -> ok.
+test_tally(ConstrList, ExpectedSubst) ->
+    test_tally(ConstrList, ExpectedSubst, symtab:empty(), []).
 
--spec test_tally(any(), list({ast:ty(), ast:ty()}), list(expected_subst()), [ast:ty_varname()]) -> ok.
-test_tally(Order, ConstrList, AllTests, FixedVars) ->
-    Constrs = sets:from_list(
+
+-spec test_tally(list({ast:ty(), ast:ty()}), list(expected_subst()), [ast:ty_varname()]) -> ok.
+test_tally(ConstrList, ExpectedSubst, FixedVars) ->
+    test_tally(ConstrList, ExpectedSubst, symtab:empty(), FixedVars).
+
+-spec test_tally(list({ast:ty(), ast:ty()}), list(expected_subst()), symtab:t(), [ast:ty_varname()]) -> ok.
+test_tally(ConstrList, AllTests, Symtab, FixedVars) ->
+  Constrs = sets:from_list(
                 lists:map(
                   fun ({T, U}) -> {scsubty, sets:from_list([ast:loc_auto()]), T, U} end,
                   ConstrList
                  )),
 
-  OrderFun = fun() -> [ast_lib:ast_to_erlang_ty({var, X}) || X <- Order] end,
-  Res = tally:tally(symtab:empty(), Constrs, sets:from_list(FixedVars), OrderFun),
+  Res = tally:tally(Symtab, Constrs, sets:from_list(FixedVars)),
   case Res of
     [_ | _] -> 
       ?LOG_WARN("Tally result:~n~s",
@@ -77,7 +81,6 @@ solutions(Number) ->
 
 tally_01_test() ->
     test_tally(
-      [alpha],
       [{tvar(alpha), tint()}],
       [{
         #{ alpha => tnone()},
@@ -87,7 +90,6 @@ tally_01_test() ->
 
 tally_02_test() ->
     test_tally(
-      [alpha],
       [{tint(), tvar(alpha)}],
       [{
         #{ alpha => tint()},
@@ -97,7 +99,6 @@ tally_02_test() ->
 
 tally_03_test() ->
   test_tally(
-    [zero],
     [
     {ttuple([]), tvar(zero)},
     {tvar(zero), ttuple([])}
@@ -112,7 +113,6 @@ tally_04_test() ->
     Alpha = tvar(alpha),
     Beta = tvar(beta),
     test_tally(
-      [alpha, beta],
       [
       {Alpha, ttuple1(tany())},
       {ttuple1(Beta), Alpha},
@@ -128,7 +128,6 @@ tally_05_test() ->
     Alpha = tvar(alpha),
     Beta = tvar(beta),
     test_tally(
-      [beta, alpha],
       [
       {tlist(Beta), Alpha}
     ],
@@ -144,7 +143,6 @@ tally_06_test() ->
     Alpha = tvar(alpha),
     Beta = tvar(beta),
     test_tally(
-      [beta, alpha],
       [{Beta, Alpha}],
       [{
         #{ alpha => Beta },
@@ -158,7 +156,6 @@ tally_07_test() ->
   Alpha = tvar(alpha),
   Beta = tvar(beta),
   test_tally(
-    [beta, alpha],
     [
     {tlist(Beta), Alpha}
   ],
@@ -179,7 +176,6 @@ tally_08_test() ->
   OneOrTwo = tunion(tint(1), tint(2)),
   OneOrTwoRange = trange(1, 2),
   test_tally(
-    [alpha, beta],
     [
       {OneOrTwo, Alpha},
       {Beta, OneOrTwo},
@@ -210,7 +206,6 @@ tally_09_test() ->
     I = tint(),
     F = tfloat(),
     test_tally(
-      [delta, beta, alpha, gamma],
       [{tinter([tfun2(I, I, I), tfun2(I, F, F), tfun2(F, I, F), tfun2(F, F, F)]), tfun2(Alpha, Beta, Gamma)},
        {tinter(I, tnot(OneOrTwo)), Alpha},
        {One, Beta},
@@ -232,7 +227,6 @@ tally_09_test() ->
     ).
 
 tally_10_test() ->
-    Order = [v2, v0, v8, v7, v6, v5, v4, v3],
     V0 = tvar(v0),
     V2 = tvar(v2),
     V3 = tvar(v3),
@@ -246,7 +240,6 @@ tally_10_test() ->
     TupleAny = ttuple1(tany()),
     LargeInter = tinter([V0, tnot(tinter([ttuple1(A), TupleAny])), ttuple1(B), TupleAny]),
     test_tally(
-      Order,
       [{tinter([V0, ttuple1(A), TupleAny]), ttuple1(V3)},
        {tunion([tinter([ttuple1(A), TupleAny]), tinter([ttuple1(B), TupleAny])]), ttuple1(V8)},
        {ttuple1(V2), V0},
@@ -280,7 +273,6 @@ tally_10_test() ->
 tally_issue_8_test() ->
   A0 = tvar(alpha0), A1 = tvar(alpha1), A2 = tvar(alpha2), A3 = tvar(alpha3), A4 = tvar(alpha4), A5 = tvar(alpha5), A6 = tvar(alpha6),
   test_tally(
-    [alpha4,alpha6,alpha1,alpha2,alpha0,alpha3,alpha5],
     [
       {tfun_full([A1], A2), A0},
       {A4, A2},
@@ -304,7 +296,6 @@ tally_issue_8_test() ->
 
 
 tally_issue_14_test() ->
-  Order = [v2, v0, v8, v7, v6, v5, v4, v3],
   V0 = tvar(v0),
   V2 = tvar(v2),
   V3 = tvar(v3),
@@ -318,7 +309,6 @@ tally_issue_14_test() ->
   TupleAny = ttuple1(tany()),
   LargeInter = tinter([V0, tnot(tinter([ttuple1(A), TupleAny])), ttuple1(B), TupleAny]),
   test_tally(
-    Order,
     [{tinter([V0, ttuple1(A), TupleAny]), ttuple1(V3)},
       {tunion([tinter([ttuple1(A), TupleAny]), tinter([ttuple1(B), TupleAny])]), ttuple1(V8)},
       {ttuple1(V2), V0},
@@ -358,9 +348,6 @@ tally_issue_14_test() ->
 %   'a4:=`a | 'a4a4
 % }]
 tally_foo2_test() ->
-  % changing variable order might produce a different number of solutions
-  Order = ['$0', '$1', '$2', '$3', '$4', '$5', '$6'],
-
   % (('a2, 42), 'a0)
   C1 = {{tuple,[{var,'$2'}, {singleton, tag}]},{var,'$0'}},
   % (`a, 'a2)
@@ -403,7 +390,6 @@ tally_foo2_test() ->
   },
 
   test_tally(
-    Order,
     [
       C1, C2, C3, C4, C5, C6, C7
     ],
@@ -421,7 +407,6 @@ tally_fun_cons_test() ->
   A4 = tvar(a4),
 
   test_tally(
-    [a2, a1, a3, a4],
     [
       {tempty_list(), A1},
       {tempty_list(), A2},
@@ -436,7 +421,6 @@ tally_fun_cons_test() ->
 tally_fun_cons3_test() ->
 
   test_tally(
-    ['$2', '$0', '$3', '$4', '$1', 'a@0'],
     [
       {{empty_list},{var,'$3'}},
       {{var,'$0'},{intersection,[{tuple,[]},{tuple,[]}]}},
@@ -461,6 +445,8 @@ sol_number_test() ->
 
   % ('a2, 42) <=  ('a1, 42)
   C1 = { {tuple,[{var,'$2'}, {singleton, tag}]}, {tuple,[{var,'$1'}, {singleton, tag}]}},
+  % ('a1, 42) <=  ('a2, 42)
+  C2 = { {tuple,[{var,'$1'}, {singleton, tag}]}, {tuple,[{var,'$2'}, {singleton, tag}]}},
 
   % single solution variable order says
   % 'a2 is replaced by 'a1 & 'mu1
@@ -471,19 +457,15 @@ sol_number_test() ->
   % both tally results are equivalent
 
   % variable order determines if a variable is used as a lower or upper bound for another variable
-  Order1 = ['$2', '$1'],
-  Order2 = ['$1', '$2'],
-  test_tally( Order1, [ C1 ], [ { #{}, #{} } ]),
-  test_tally( Order2, [ C1 ], [ { #{}, #{} }, { #{}, #{} } ]).
+  test_tally( [ C2 ], solutions(1)),
+  test_tally( [ C1 ], solutions(2)).
 
 pretty_printing_bug_test() ->
-  Order = [v1, v2],
   V0 = tvar(v1),
   V6 = tvar(v2),
   A = tatom(a),
   B = tatom(b),
   test_tally(
-    Order,
     [{
       tinter([V0, tnot(ttuple1(A)), ttuple1(B)]),
       V6
@@ -494,38 +476,29 @@ fun_local_own_test_() ->
   {timeout, 15, {"fun_local_02_plus", fun() ->
     ecache:reset_all(),
     {ok, [Cons]} = file:consult("test_files/tally/fun_local_02_plus.config"),
-    Vars = lists:foldl(fun({S, T}, Acc) -> (ty_rec:all_variables(ast_lib:ast_to_erlang_ty(S)) ++ ty_rec:all_variables(ast_lib:ast_to_erlang_ty(T)) ++ Acc) end, [], Cons),
-    VarOrder = lists:map(fun(V) -> {var, Name} = ast_lib:erlang_ty_var_to_var(V), Name end,lists:sort(lists:flatten(Vars))),
 
     % to print out cduce command
-    % io:format(user, "~s~n", [test_utils:ety_to_cduce_tally(Cons, VarOrder)]),
+    % io:format(user, "~s~n", [test_utils:ety_to_cduce_tally(Cons)]),
 
     test_tally(
-      VarOrder,
       Cons,
-      % TODO CDuce has 50 solutions, order is not used properly, see #72
-      solutions(58)
+      solutions(50)
     ),
     ok
-                                         end}}
-.
+                                         end}}.
 
 % TODO timeout
 %recursive_test_() ->
 %  {timeout, 15, {"user_07", fun() ->
 %    ecache:reset_all(),
 %    {ok, [Cons]} = file:consult("test_files/tally/user_07.config"),
-%    Vars = lists:foldl(fun({S, T}, Acc) -> (ty_rec:all_variables(ast_lib:ast_to_erlang_ty(S)) ++ ty_rec:all_variables(ast_lib:ast_to_erlang_ty(T)) ++ Acc) end, [], Cons),
-%    VarOrder = lists:map(fun(V) -> {var, Name} = ast_lib:erlang_ty_var_to_var(V), Name end,lists:sort(lists:flatten(Vars))),
 %
 %    % to print out cduce command
-%    % io:format(user, "~s~n", [test_utils:ety_to_cduce_tally(Cons, VarOrder)]),
+%    % io:format(user, "~s~n", [test_utils:ety_to_cduce_tally(Cons)]),
 %
 %    test_tally(
-%      VarOrder,
 %      Cons,
-%      % TODO CDuce has 50 solutions, order is not used properly, see #72
-%      solutions(58)
+%      solutions(1)
 %    ),
 %    ok
 %                                         end}}.
@@ -538,7 +511,7 @@ maps_norm_opt_1_test() ->
   L = tmap([tmap_field_opt(tint(), tint())]),
   R = tmap([tmap_field_opt(tvar(alpha), tvar(beta))]),
 
-  test_tally([alpha, beta], [{L, R}],
+  test_tally([{L, R}],
     [{#{alpha => tint(), beta => tint()},
       #{alpha => tany(), beta => tany()}}
     ]).
@@ -551,7 +524,7 @@ maps_norm_opt_2_test() ->
   ]),
   R = tmap([tmap_field_opt(tvar(alpha), tvar(beta))]),
 
-  test_tally([alpha, beta], [{L, R}],
+  test_tally([{L, R}],
     [{#{alpha => tunion(tint(), tatom()), beta => tunion(tint(), tatom())},
       #{alpha => tany(), beta => tany()}}
     ]).
@@ -565,7 +538,7 @@ maps_norm_opt_3_test() ->
   ]),
   R = tmap([tmap_field_opt(tvar(alpha), tvar(beta))]),
 
-  test_tally([alpha, beta], [{L, R}],
+  test_tally([{L, R}],
     [{#{alpha => tany(), beta => tunion(tint(), tatom(foo))},
       #{alpha => tany(), beta => tany()}}
     ]).
@@ -574,13 +547,13 @@ maps_norm_opt_4_test() ->
   % #{a => int()}  ≤  #{int() => β}
   L1 = tmap([tmap_field_opt(tvar(alpha), tint())]),
   R1 = tmap([tmap_field_opt(tint(), tvar(beta))]),
-  test_tally([alpha, beta], [{L1, R1}], solutions(2)),
+  test_tally([{L1, R1}], solutions(2)),
 
   % #{int() => β}  ≤  #{a => int()}
   L2 = tmap([tmap_field_opt(tint(), tvar(beta))]),
   R2 = tmap([tmap_field_opt(tvar(alpha), tint())]),
 
-  test_tally([alpha, beta], [{L2, R2}], solutions(2)).
+  test_tally([{L2, R2}], solutions(2)).
 
 maps_norm_opt_5_test() ->
   % #{a => int(), _   => atom()}  ≤  #{β => atom() | int()}
@@ -593,14 +566,14 @@ maps_norm_opt_5_test() ->
     tmap_field_opt(tvar(beta), tunion(tatom(), tint()))
   ]),
 
-  test_tally([alpha, beta], [{L, R}], solutions(1)).
+  test_tally([{L, R}], solutions(1)).
 
 maps_norm_opt_6_test() ->
   % #{a => β} ≤ #{atom() => int()}
   L = tmap([tmap_field_opt(tvar(alpha), tvar(beta))]),
   R = tmap([tmap_field_opt(tatom(), tint())]),
 
-  test_tally([alpha, beta], [{L, R}], solutions(3)).
+  test_tally([{L, R}], solutions(3)).
 
 
 maps_norm_opt_7_test() ->
@@ -611,17 +584,17 @@ maps_norm_opt_7_test() ->
   R = tmap([
     tmap_field_opt(tvar(beta), tany())
   ]),
-  test_tally([alpha, beta], [{L, R}], solutions(1)).
+  test_tally([{L, R}], solutions(1)).
 
 maps_norm_opt_8_test() ->
   % #{}  ≤  #{a => β}
   L = tmap([]),
   R1 = tmap([tmap_field_opt(tvar(alpha), tvar(beta))]),
-  test_tally([alpha, beta], [{L, R1}], solutions(1)),
+  test_tally([{L, R1}], solutions(1)),
 
   % #{}  ≤  #{a => β} /\ #{}
   R2 = tintersect([R1, L]),
-  test_tally([alpha, beta], [{L, R2}], solutions(1)).
+  test_tally([{L, R2}], solutions(1)).
 
 maps_norm_opt_9_test() ->
   % #{foo => int(), _     => any()}  !≤  #{foo => 1, a     => β}
@@ -634,7 +607,7 @@ maps_norm_opt_9_test() ->
     tmap_field_opt(tatom(foo), tint(1)),
     tmap_field_opt(tvar(alpha), tvar(beta))
   ]),
-  test_tally([alpha, beta], [{L, R}], solutions(0)).
+  test_tally([{L, R}], solutions(0)).
 
 maps_norm_opt_10_test() ->
   % #{foo => 1, bar => 2}  ≤  #{a => 1, β => γ}
@@ -647,7 +620,7 @@ maps_norm_opt_10_test() ->
     tmap_field_opt(tvar(beta), tvar(gamma))
     ]),
 
-  test_tally([alpha, beta, gamma], [{L, R}],solutions(2)).
+  test_tally([{L, R}],solutions(2)).
 
 maps_norm_opt_11_test() ->
   % #{a => β, _   => any()}  ≤  #{γ => δ, _   => any()}
@@ -660,7 +633,7 @@ maps_norm_opt_11_test() ->
     tmap_field_opt(tvar(gamma), tvar(delta)),
     tmap_field_opt(tany(), tany())
   ]),
-  test_tally([alpha, beta, gamma, delta], [{L, R}], solutions(4)).
+  test_tally([{L, R}], solutions(4)).
 
 maps_norm_opt_12_test() ->
   % #{int() => atom(), atom() => int()}  ≤  #{int() => a, atom() => β, γ              => δ}
@@ -674,7 +647,7 @@ maps_norm_opt_12_test() ->
     tmap_field_opt(tatom(), tvar(beta)),
     tmap_field_opt(tvar(gamma), tvar(delta))
   ]),
-  test_tally([alpha, beta, gamma, delta], [{L, R}], solutions(1)).
+  test_tally([{L, R}], solutions(1)).
 
 maps_norm_opt_13_test() ->
   % #{foo => int(), _     => atom()}  ≤  #{a => β, _   => any()} | #{γ => δ, _   => any()}
@@ -694,7 +667,7 @@ maps_norm_opt_13_test() ->
     ])
   ),
 
-  test_tally([alpha, beta, gamma, delta], [{L, R}], solutions(16)).
+  test_tally([{L, R}], solutions(16)).
 
 maps_norm_opt_14_test() ->
   % #{β_0 => β_1} ≤ {a => b}, a ≤ β_0, b ≤ β_1
@@ -706,7 +679,6 @@ maps_norm_opt_14_test() ->
   ]),
   Subst = #{beta_0 => tatom(a), beta_1 => tatom(b)},
   test_tally(
-    [beta_0, beta_1],
     [{L, R}, {tatom(a), tvar(beta_0)}, {tatom(b), tvar(beta_1)}],
     [ {Subst, Subst} ]).
 
@@ -720,7 +692,7 @@ maps_norm_opt_15_test() ->
     tmap_field_opt(tatom(a), tatom(b)),
     tmap_field_opt(tint(20), tint(21))
   ]),
-  test_tally([beta_1, beta_3], [{L, R}], [ {#{beta_1 => tnone(), beta_3 => tnone()}, #{beta_1 => tatom(b), beta_3 => tint(21)}} ]).
+  test_tally([{L, R}], [ {#{beta_1 => tnone(), beta_3 => tnone()}, #{beta_1 => tatom(b), beta_3 => tint(21)}} ]).
 
 maps_norm_req_1_test() ->
   % #{β_0 := β_1} ≤ {atom() => int()}
@@ -730,7 +702,7 @@ maps_norm_req_1_test() ->
   R = tmap([
     tmap_field_opt(tatom(), tint())
   ]),
-  test_tally([], [{L, R}, {tatom(a), tvar(beta_0)}, {tint(1), tvar(beta_1)}], [ 
+  test_tally([{L, R}, {tatom(a), tvar(beta_0)}, {tint(1), tvar(beta_1)}], [ 
     {
       #{beta_0 => tatom(a), beta_1 => tint(1)}, 
       #{beta_0 => tatom(), beta_1 => tint()}  % cleaned solution is exact
@@ -747,7 +719,7 @@ maps_norm_req_2_test() ->
     tmap_field_req(tatom(a), tatom(b)),
     tmap_field_req(tint(20), tint(21))
   ]),
-  test_tally([], [{L, R}], solutions(10)).
+  test_tally([{L, R}], solutions(10)).
 
 
 maps_norm_req_3_test() ->
@@ -761,7 +733,6 @@ maps_norm_req_3_test() ->
     tmap_field_req(tint(20), tint(21))
   ]),
   test_tally(
-    [beta_0, beta_1, beta_2, beta_3],
     [{L, R}, {tatom(a), tvar(beta_0)}, {tatom(b), tvar(beta_1)}, {tint(20), tvar(beta_2)}, {tint(21), tvar(beta_3)}],
     [{
       #{beta_0 => tatom(a), beta_1 => tatom(b), beta_2 => tint(20), beta_3 => tint(21)}, 
@@ -779,7 +750,28 @@ maps_norm_req_4_test() ->
     tmap_field_req(tint(20), tint(21))
   ]),
   test_tally(
-    [beta_0, beta_1],
     [{L, R}, {tatom(a), tvar(beta_0)}, {tatom(b), tvar(beta_1)}],
     solutions(0)
   ).
+
+% symtab usage
+% eval_test_() ->
+%   {timeout, 150, {"eval_tally_1", fun() ->
+%     ecache:reset_all(),
+%     {ok, [Cons]} = file:consult("test_files/tally/eval_tally_1_cduce.config"),
+%     {ok, [Symtab]} = file:consult("test_files/tally/eval_tally_1.symtab"),
+%     Vars = lists:foldl(fun({S, T}, Acc) -> (ty_rec:all_variables(ast_lib:ast_to_erlang_ty(S, Symtab)) ++ ty_rec:all_variables(ast_lib:ast_to_erlang_ty(T, Symtab)) ++ Acc) end, [], Cons),
+%     VarOrder = lists:map(fun(V) -> {var, Name} = ast_lib:erlang_ty_var_to_var(V), Name end,lists:sort(lists:flatten(Vars))),
+
+%     % to print out cduce command
+%     % io:format(user, "~s~n", [test_utils:ety_to_cduce_tally(Cons, VarOrder)]),
+
+%     test_tally(
+%       VarOrder,
+%       Cons,
+%       Symtab,
+%       solutions(1)
+%     ),
+%     ok
+%                                          end}}
+% .

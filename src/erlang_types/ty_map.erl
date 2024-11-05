@@ -3,7 +3,7 @@
 %% {ty, ty}
 -export([compare/2, equal/2, substitute/3, all_variables/2]).
 
--export([map/2, has_ref/2, transform/2, any/0, empty/0]).
+-export([map/2, has_ref/2, raw_transform/2, transform/2, any/0, empty/0]).
 
 empty() -> {ty_tuple, 2, [ty_rec:empty(), ty_rec:empty()]}.
 any() -> {ty_tuple, 2, [ty_rec:any(), ty_rec:any()]}.
@@ -18,6 +18,7 @@ map(TupPart,FunPart) -> {ty_tuple, 2, [TupPart, FunPart]}.
 
 has_ref(Tup, Ref) -> ty_tuple:has_ref(Tup, Ref).
 
+raw_transform(T, Op) -> transform(T, Op).
 
 % FIXME #135
 transform({ty_tuple, 2, [Tup, Funs]}, _O = #{to_map := ToMap}) ->
