@@ -2,7 +2,7 @@
 
 %% domain -> co-domain function representation
 -export([compare/2, equal/2, all_variables/2, substitute/3]).
--export([function/2, domains/1, codomain/1, codomains_intersect/1, has_ref/2, transform/2]).
+-export([function/2, domains/1, codomain/1, codomains_intersect/1, has_ref/2, transform/2, raw_transform/2]).
 
 compare(A, B) when A < B -> -1;
 compare(A, B) when A > B -> 1;
@@ -32,6 +32,8 @@ has_ref({ty_function, Refs, _}, Ref) -> lists:member(Ref, Refs).
 
 transform({ty_function, Ref1, Ref2}, #{to_fun := Fun}) ->
     Fun(Ref1, Ref2).
+
+raw_transform(T, Op) -> transform(T, Op).
 
 substitute({ty_function, Refs, B}, Map, Memo) ->
     {ty_function,

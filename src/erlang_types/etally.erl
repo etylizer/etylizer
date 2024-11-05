@@ -54,9 +54,11 @@ solve_single([{SmallestVar, Left, Right} | Cons], Equations, Fix) ->
   % constraints are already sorted by variable ordering
   % smallest variable first
   % also TODO: why are variable names atoms?
-  FreshVar = ast_lib:ast_to_erlang_ty_var(stdtypes:tvar(list_to_atom("mu" ++ erlang:atom_to_list(ty_variable:name(SmallestVar)) ++ integer_to_list(ty_variable:get_new_id())))),
-  %ty_rec:variable(ty_variable:new("tally_fresh")),
+  FreshVar = ty_variable:fresh_from(SmallestVar), 
   FreshTyVar = ty_rec:variable(FreshVar),
+
+  % io:format(user,"[Fresh]~n~p => ~p~n", [SmallestVar, FreshVar]),
+  % io:format(user,"[EQ]~n~p = ~p~n", [SmallestVar, lists:usort(lists:flatten(ty_rec:all_variables(Left) ++ ty_rec:all_variables(Right)))]),
   NewEq = Equations ++ [{eq, SmallestVar, ty_rec:intersect(ty_rec:union(Left, FreshTyVar), Right)}],
 
   solve_single(Cons, NewEq, Fix).

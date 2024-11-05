@@ -13,7 +13,7 @@
 % hide built-in Erlang node function
 -compile({no_auto_import, [node/1]}).
 
--export([all_variables/1, has_ref/2, get_dnf/1, any/0, empty/0, equal/2, node/1, terminal/1, compare/2, union/2, intersect/2, negate/1, diff/2]).
+-export([raw_transform/2, all_variables/1, has_ref/2, get_dnf/1, any/0, empty/0, equal/2, node/1, terminal/1, compare/2, union/2, intersect/2, negate/1, diff/2]).
 
 % these are defined here so the IDE does not complain
 -ifndef(ELEMENT).
@@ -206,6 +206,18 @@ transform(Ty, Ops = #{negate := Negate, intersect := Intersect, union := Union})
         P1 = ?TERMINAL:transform(T, Ops),
         P2 = [?ELEMENT:transform(V, Ops) || V <- P],
         P3 = [Negate(?ELEMENT:transform(V, Ops)) || V <- N],
+        Intersect([P1] ++ P2 ++ P3)
+    end,
+    fun(F1, F2) -> Union([F1(), F2()]) end
+  }).
+
+raw_transform(Ty, Ops = #{negate := Negate, intersect := Intersect, union := Union}) ->
+  dnf(Ty, {
+    fun
+      (P,N,T) ->
+        P1 = ?TERMINAL:raw_transform(T, Ops),
+        P2 = [?ELEMENT:raw_transform(V, Ops) || V <- P],
+        P3 = [Negate(?ELEMENT:raw_transform(V, Ops)) || V <- N],
         Intersect([P1] ++ P2 ++ P3)
     end,
     fun(F1, F2) -> Union([F1(), F2()]) end

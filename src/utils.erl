@@ -123,6 +123,7 @@ everywhere(F, T) ->
             case T of
                 X when is_list(X) -> TransList(X);
                 X when is_tuple(X) -> list_to_tuple(TransList(tuple_to_list(X)));
+                X when is_map(X) -> maps:from_list(TransList(maps:to_list(X)));
                 X -> X
             end;
         {ok, X} -> X;
@@ -140,6 +141,7 @@ everything(F, T) ->
             case T of
                 X when is_list(X) -> TransList(X);
                 X when is_tuple(X) -> TransList(tuple_to_list(X));
+                X when is_map(X) -> TransList(maps:to_list(X));
                 _ -> []
             end;
         {ok, X} -> [X]

@@ -83,7 +83,7 @@ var_neg_dnf_test() ->
   B = ast_lib:ast_to_erlang_ty(A, symtab:empty()),
   Pretty = ast_lib:erlang_ty_to_ast(B, #{}),
   true = subty:is_equivalent(none, A, Pretty),
-  ?assertEqual("not(mu6) /\\ bool | not(mu5) /\\ bool", pretty:render_ty(Pretty)),
+  ?assertEqual("not(mu5) /\\ bool | not(mu6) /\\ bool", pretty:render_ty(Pretty)),
   ok.
 
 var_neg_inter_test() ->

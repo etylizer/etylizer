@@ -22,7 +22,7 @@
 
 -export([substitute/2, substitute/3, pi/2, all_variables/1, all_variables/2]).
 
--export([transform/2, print/1]).
+-export([raw_transform/2, transform/2, print/1]).
 
 -include_lib("sanity.hrl").
 
@@ -56,6 +56,31 @@ maybe_intersect(Z2, Other, Intersect) ->
     true -> Z2;
     false -> Intersect([Other, Z2])
   end.
+
+raw_transform(TyRef, Ops =
+  #{
+    any_list := Lists,
+    any_map := Maps,
+    any_tuple := Tuples,
+    any_function := Functions,
+    any_int := Intervals,
+    any_atom := Atoms,
+    any_predef := Predef,
+    union := Union,
+    intersect := Intersect
+  }) ->
+  #ty{predef = P, atom = A, interval = I, list = L, map = M, tuple = {DT, T}, function = {DF, F}} = ty_ref:load(TyRef),
+
+  NP = Intersect([Predef(), dnf_var_predef:raw_transform(P, Ops)]),
+  NA = Intersect([Atoms(), dnf_var_ty_atom:raw_transform(A, Ops)]),
+  NI = Intersect([Intervals(), dnf_var_int:raw_transform(I, Ops)]),
+  NL = Intersect([Lists(), dnf_var_ty_list:raw_transform(L, Ops)]),
+  NM = Intersect([Maps(), dnf_var_ty_map:raw_transform(M, Ops)]),
+  NT = Intersect([Tuples(), multi_raw_transform(DT, T, Ops)]),
+  NF = Intersect([Functions(), multi_raw_transform_fun(DF, F, Ops)]),
+
+
+  Union([NP, NA, NI, NL, NM, NT, NF]).
 
 transform(TyRef, Ops) ->
   % Do things twice, pos and neg
@@ -277,27 +302,58 @@ maybe_remove_redundant_negative_variables(CurrentMap, T1, T, Pv, Nv, Pv1, Nv1) -
       end
   end.
 
+multi_raw_transform(DefaultT, T, Ops = #{negate := Negate, union := Union, intersect := Intersect, any_tuple_i := AnyTupleI}) ->
+  X1 = dnf_var_ty_tuple:raw_transform(DefaultT, Ops),
+  Xs = lists:map(fun({Size, Tuple}) -> 
+    case dnf_var_ty_tuple:raw_transform(Tuple, Ops) of
+      {predef, any} -> AnyTupleI(Size);
+      X -> X
+    end
+  end, maps:to_list(T)),
 
-multi_transform(DefaultT, T, Ops = #{any_tuple_i := Tuple, any_tuple := Tuples, negate := Negate, union := Union, intersect := Intersect}) ->
+  Union([Intersect([X1, Negate(Union(Xs))]), Union(Xs)]).
+
+multi_raw_transform_fun(DefaultF, F, Ops = #{negate := Negate, union := Union, intersect := Intersect, any_function_i := AnyFunI}) ->
+  X1 = dnf_var_ty_function:raw_transform(DefaultF, Ops),
+  Xs = lists:map(fun({Size, Function}) -> 
+    case dnf_var_ty_function:raw_transform(Function, Ops) of
+      {predef, any} -> AnyFunI(Size);
+      X -> X
+    end
+  end, maps:to_list(F)),
+
+  Union([Intersect([X1, Negate(Union(Xs))]), Union(Xs)]).
+
+
+multi_transform(DefaultT, T, Ops = #{any_tuple_i := AnyTupleI, any_tuple := Tuples, negate := Negate, union := Union, intersect := Intersect}) ->
   X1 = dnf_var_ty_tuple:transform(DefaultT, Ops),
-  Xs = lists:map(fun({_Size, Tup}) ->
+  Xs = lists:map(fun({Size, Tup}) ->
     % if a tuple is semantically equivalent to empty, return empty instead of the empty tuple
     case dnf_var_ty_tuple:is_empty_corec(Tup, #{}) of
       true -> dnf_var_ty_tuple:transform(dnf_var_ty_tuple:empty(), Ops);
-      _ -> dnf_var_ty_tuple:transform(Tup, Ops)
+      _ -> 
+        case dnf_var_ty_tuple:transform(Tup, Ops) of
+          {predef, any} -> AnyTupleI(Size);
+          X -> X
+        end
     end
                  end, maps:to_list(T)),
   Sizes = maps:keys(T),
 
-  DefaultTuplesWithoutExplicitTuples = Intersect([X1, Tuples(), Negate(Union([Tuple(I) || I <- Sizes]))]),
+  DefaultTuplesWithoutExplicitTuples = Intersect([X1, Tuples(), Negate(Union([AnyTupleI(I) || I <- Sizes]))]),
   Union([DefaultTuplesWithoutExplicitTuples, Union(Xs)]).
 
-multi_transform_fun(DefaultF, F, Ops = #{any_function_i := Function, any_function := Functions, negate := Negate, union := Union, intersect := Intersect}) ->
+multi_transform_fun(DefaultF, F, Ops = #{any_function_i := AnyFunI, any_function := Functions, negate := Negate, union := Union, intersect := Intersect}) ->
   X1 = dnf_var_ty_function:transform(DefaultF, Ops),
-  Xs = lists:map(fun({_Size, Func}) -> dnf_var_ty_function:transform(Func, Ops) end, maps:to_list(F)),
+  Xs = lists:map(fun({Size, Func}) -> 
+    case dnf_var_ty_function:transform(Func, Ops) of
+      {predef, any} -> AnyFunI(Size);
+      X -> X
+    end
+  end, maps:to_list(F)),
   Sizes = maps:keys(F),
 
-  DefaultFunctionsWithoutExplicitFunctions = Intersect([X1, Functions(), Negate(Union([Function(I) || I <- Sizes]))]),
+  DefaultFunctionsWithoutExplicitFunctions = Intersect([X1, Functions(), Negate(Union([AnyFunI(I) || I <- Sizes]))]),
   Union([DefaultFunctionsWithoutExplicitFunctions, Union(Xs)]).
 
 
@@ -832,7 +888,7 @@ recursive_definition_test() ->
   Nil = ty_rec:atom(dnf_var_ty_atom:ty_atom(ty_atom:finite([nil]))),
 
   % (alpha, Lists)
-  Alpha = ty_variable:new("alpha"),
+  Alpha = ty_variable:new(alpha),
   AlphaTy = ty_rec:variable(Alpha),
   Tuple = ty_rec:tuple(2, dnf_var_ty_tuple:tuple(dnf_ty_tuple:tuple(ty_tuple:tuple([AlphaTy, Lists])))),
   Recursive = ty_rec:union(Nil, Tuple),
@@ -894,6 +950,32 @@ sound_memoization_test() ->
   Ty = ty_rec:tuple(2, dnf_var_ty_tuple:tuple(dnf_ty_tuple:tuple(ty_tuple:tuple([X, Z])))),
 
   false = ty_rec:is_empty(Ty),
+
+  ok.
+
+% Test for #160
+variable_translation_test() ->
+  test_utils:reset_ets(),
+
+  Tuple = ty_rec:tuple({default, []}, dnf_var_ty_tuple:any()),
+  Var = ty_rec:variable(ty_variable:new(alpha)),
+  Type = ty_rec:intersect(Tuple, Var),
+  EqType = ast_lib:ast_to_erlang_ty(ast_lib:erlang_ty_to_ast(Type)),
+  true = ty_rec:is_equivalent(Type, EqType),
+
+  ok.
+
+% Test for #160
+tuple_transformation_default_test() ->
+  test_utils:reset_ets(),
+
+  Tuple0 = ty_rec:tuple(0, dnf_var_ty_tuple:any()),
+  Tuple1 = ty_rec:tuple(1, dnf_var_ty_tuple:any()),
+  Tuple01 = ty_rec:union(Tuple0, Tuple1),
+  Tuple1Again = ty_rec:intersect(Tuple1, Tuple01),
+
+  EqType = ast_lib:ast_to_erlang_ty(ast_lib:erlang_ty_to_ast(Tuple1Again)),
+  true = ty_rec:is_equivalent(Tuple1Again, EqType),
 
   ok.
 

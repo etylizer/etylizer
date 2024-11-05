@@ -1,7 +1,6 @@
 -module(ast_lib).
 
--export([simplify/2, reset/0, ast_to_erlang_ty/1, ast_to_erlang_ty/2, erlang_ty_to_ast/1, erlang_ty_to_ast/2, ast_to_erlang_ty_var/1, erlang_ty_var_to_var/1]).
--define(VAR_ETS, ast_norm_var_memo). % remember variable name -> variable ID to convert variables properly
+-export([reset/0, simplify/2, ast_to_erlang_ty/1, ast_to_erlang_ty/2, raw_erlang_ty_to_ast/1, raw_erlang_ty_to_ast/2, erlang_ty_to_ast/1, erlang_ty_to_ast/2, ast_to_erlang_ty_var/1, erlang_ty_var_to_var/1]).
 
 -export([
     mk_intersection/1,
@@ -13,9 +12,8 @@
 ]).
 
 reset() ->
-    catch ets:delete(?VAR_ETS),
     erlang:put(ty_ast_cache, #{}),
-    ets:new(?VAR_ETS, [public, named_table]).
+    ok.
 
 unfold_intersection([], All) -> All;
 unfold_intersection([{intersection, Components} | Rest], All) ->
@@ -110,13 +108,10 @@ mk_negation({predef, none}) -> {predef, any};
 mk_negation(T) -> {negation, T}.
 
 
+% if the name is the ID, transfer back the same way
+erlang_ty_var_to_var({var, name, Name}) -> {var, Name};
 erlang_ty_var_to_var({var, Id, Name}) ->
-    Object = ets:lookup(?VAR_ETS, Name),
-    case Object of
-        % new variable not seen before!
-        [] -> {var, list_to_atom("mu" ++ integer_to_list(Id))};
-        [{_, _}] -> {var, Name}
-    end.
+    {var, list_to_atom("$mu_" ++ integer_to_list(Id) ++ "_" ++ atom_to_list(Name))}.
 
 erlang_ty_to_ast(X) ->
     Cache = erlang:get(ty_ast_cache),
@@ -138,7 +133,7 @@ erlang_ty_to_ast(X, M) ->
         % Given a X = ... equation, create a new
         % TODO discuss how to ensure uniqueness
         RecVarID = erlang:unique_integer(),
-        Var = {var, erlang:list_to_atom("mu" ++ integer_to_list(RecVarID))},
+        Var = {var, erlang:list_to_atom("$mu" ++ integer_to_list(RecVarID))},
 
         NewM = M#{X => Var},
 
@@ -197,10 +192,11 @@ erlang_ty_to_ast(X, M) ->
           case ty_rec:is_equivalent(X, Sanity) of
             true -> ok;
             false ->
-              io:format(user, "--------~n", []),
-              io:format(user, "~p => ~p~n", [X, ty_ref:load(X)]),
-              io:format(user, "~p~n", [FinalTy]),
-              error(todo)
+            %   io:format(user, "--------~n", []),
+            %   io:format(user, "~p => ~p~n", [X, ty_ref:load(X)]),
+            %   io:format(user, "~p~n", [FinalTy]),
+              raw_erlang_ty_to_ast(X), % check if this is really a pretty printing bug or a transformation bug
+              error(pretty_printing_bug)
           end,
         FinalTy
     end.
@@ -327,7 +323,16 @@ ast_to_erlang_ty(V = {var, A}, _Sym, M) ->
     % FIXME overloading of mu variables and normal variables
     case M of
         #{V := Ref} -> Ref;
-        _ -> ty_rec:variable(maybe_new_variable(A))
+        _ -> 
+            % if this is a special $mu_integer()_name() variable, convert to that representation
+            case string:prefix(atom_to_list(A), "$mu_") of 
+                nomatch -> 
+                    ty_rec:variable(ty_variable:new_with_name(A));
+                IdName -> 
+                    % assumption: erlang types generates variables only in this pattern: $mu_integer()_name()
+                    [Id, Name] = string:split(IdName, "_"),
+                    ty_rec:variable(ty_variable:new_with_name_and_id(list_to_integer(Id), list_to_atom(Name)))
+            end
     end;
 
 % ty_some_list
@@ -393,23 +398,87 @@ ast_to_erlang_ty({mu, RecVar, Ty}, Sym, M) ->
     NewRef = ty_ref:new_ty_ref(),
     Mp = M#{RecVar => NewRef},
     InternalTy = ast_to_erlang_ty(Ty, Sym, Mp),
-    _NewRes = ty_ref:define_ty_ref(NewRef, ty_ref:load(InternalTy))
-    ;
+    _NewRes = ty_ref:define_ty_ref(NewRef, ty_ref:load(InternalTy));
 
 ast_to_erlang_ty(T, _Sym, _M) ->
     erlang:error({"Norm not implemented or malformed type", T}).
 
 -spec ast_to_erlang_ty_var(ast:ty_var()) -> ty_variable:var().
 ast_to_erlang_ty_var({var, Name}) when is_atom(Name) ->
-    maybe_new_variable(Name).
+    ty_variable:new_with_name(Name).
 
-maybe_new_variable(Name) ->
-    Object = ets:lookup(?VAR_ETS, Name),
-    case Object of
-        [] ->
-            Var = ty_variable:new(Name),
-            ets:insert(?VAR_ETS, {Name, Var}),
-            Var;
-        [{_, Variable}] ->
-            Variable
+
+
+% === useful for debugging
+raw_erlang_ty_to_ast(X) ->
+    raw_erlang_ty_to_ast(X, #{}).
+
+raw_erlang_ty_to_ast(X, M) ->
+        case M of
+            #{X := Var} -> Var;
+            _ ->
+        % Given a X = ... equation, create a new
+        % TODO discuss how to ensure uniqueness
+        RecVarID = erlang:unique_integer(),
+        Var = {var, erlang:list_to_atom("$eq" ++ integer_to_list(RecVarID))},
+
+        NewM = M#{X => Var},
+
+        NewTy = 
+        ty_rec:raw_transform(
+            X,
+            #{
+                to_fun => fun(S, T) -> stdtypes:tfun_full(lists:map(fun(F) ->
+                    (raw_erlang_ty_to_ast(F, NewM)) end,S),
+                    (raw_erlang_ty_to_ast(T, NewM))
+                ) end,
+                to_tuple => fun(Ts) -> stdtypes:ttuple(lists:map(fun(T) -> (raw_erlang_ty_to_ast(T, NewM)) end,Ts)) end,
+                to_atom => fun(A) -> stdtypes:tatom(A) end,
+                to_list => fun(A, B) -> stdtypes:tlist_improper((raw_erlang_ty_to_ast(A, NewM)), (raw_erlang_ty_to_ast(B, NewM))) end,
+                to_int => fun(S, T) -> stdtypes:trange(S, T) end,
+                to_predef => fun('[]') -> stdtypes:tempty_list(); (Predef) -> {predef, Predef} end,
+                to_map => fun(Assoc) -> stdtypes:tmap(Assoc) end,
+                any_tuple => fun stdtypes:ttuple_any/0,
+                any_tuple_i => fun(Size) -> stdtypes:ttuple([stdtypes:tany() || _ <- lists:seq(1, Size)]) end,
+                any_function => fun stdtypes:tfun_any/0,
+                any_function_i => fun(Size) -> stdtypes:tfun([stdtypes:tnone() || _ <- lists:seq(1, Size)], stdtypes:tany()) end,
+                any_int => fun stdtypes:tint/0,
+                any_list => fun stdtypes:tlist_any/0,
+                any_atom => fun stdtypes:tatom/0,
+                any_predef => fun stdtypes:tspecial_any/0,
+                any_map => fun stdtypes:tmap_any/0,
+                empty => fun stdtypes:tnone/0,
+                any => fun stdtypes:tany/0,
+                var => fun erlang_ty_var_to_var/1,
+                diff => fun ast_lib:mk_diff/2,
+                union => fun ast_lib:mk_union/1,
+                intersect => fun ast_lib:mk_intersection/1,
+                negate => fun ast_lib:mk_negation/1
+            }),
+
+        % Return always recursive type
+        % if not, return just NewTy
+        Vars = ast_utils:referenced_variables(NewTy),
+        FinalTy = case lists:member(Var, Vars) of
+            true ->
+                {mu, Var, NewTy};
+            false ->
+                NewTy
+        end,
+
+        % SANITY CHECK
+        % TODO is it always the case that once we are in the semantic world, when we go back we dont need the symtab?
+        Sanity = ast_lib:ast_to_erlang_ty(FinalTy, symtab:empty()),
+          % leave this sanity check for a while
+          case ty_rec:is_equivalent(X, Sanity) of
+            true -> ok;
+            false ->
+                % Dump = ty_ref:write_dump_ty(X),
+                % io:format(user, "Dump~n~p~n", [Dump]),
+                % io:format(user, "--------~n", []),
+                % io:format(user, "~p => ~p~n", [X, ty_ref:load(X)]),
+                % io:format(user, "~p~n", [FinalTy]),
+                error(raw_printing_bug)
+          end,
+        FinalTy
     end.
