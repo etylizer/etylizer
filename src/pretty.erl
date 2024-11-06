@@ -24,6 +24,7 @@
          render_poly_env/1,
          render_fun_env/1,
          render_any_ref/1,
+         render_var/1,
          render_set/2,
          render_list/2,
          pretty_list/2,
@@ -114,6 +115,9 @@ render_fun_env(S) -> render(fun_env(S)).
 
 -spec render_any_ref(ast:any_ref()) -> string().
 render_any_ref(R) -> render(ref(R)).
+
+-spec render_var(ast:exp_var()) -> string().
+render_var(R) -> render(var(R)).
 
 -spec atom(atom()) -> doc().
 atom(A) -> text(atom_to_list(A)).
@@ -240,6 +244,9 @@ ty(Prec, T) ->
 -spec with_parens(boolean(), doc()) -> doc().
 with_parens(false, D) -> D;
 with_parens(true, D) -> parens(D).
+
+-spec var(ast:exp_var()) -> doc().
+var({var, _, AnyRef}) -> ref(AnyRef).
 
 -spec ref(ast:any_ref()) -> doc().
 ref(AnyRef) ->
