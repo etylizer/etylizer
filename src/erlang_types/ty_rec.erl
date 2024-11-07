@@ -1,4 +1,6 @@
 -module(ty_rec).
+-compile({no_auto_import, [node/1]}).
+
 
 -define(F(Z), fun() -> Z end).
 
@@ -8,12 +10,13 @@
 
 
 
+
 % co-recursive functions on types
 -export([is_empty/1, is_empty_start/1, normalize_start/2]).
 -export([is_empty_corec/2, normalize_corec/3]).
 
 -export([empty/0, any/0]).
--export([union/2, negate/1, intersect/2, diff/2, is_any/1]).
+-export([nunion/2, union/2, negate/1, intersect/2, diff/2, is_any/1]).
 -export([extract_variables/1]).
 
 % additional type constructors
@@ -43,7 +46,7 @@
 % data & hash-consed node
 -record(ty, {predef, atom, interval, list, tuple, function, map}).
 -type type() :: #ty{}.
--record(node, {id, type}).
+-record(node, {id}).
 -type node() :: #node{}.
 
 % hash-consing functions: equal, compare, hash for type() and node()
@@ -92,36 +95,99 @@ compare(#ty{} = T1, #ty{} = T2) ->
 % node <-> type funs
 % TODO spec
 get_hashtbl() -> Memo = get(node_memo), case Memo of undefined -> put(node_memo, #{}), #{}; _ -> Memo end.
+update_hashtbl(Tbl) -> put(node_memo, Tbl).
     
+increment_then_get_id() ->
+  C = get(id),
+  case C of
+    undefined -> put(id, 0), increment_then_get_id();
+    _ -> put(id, C+1), C+1
+  end.
  
 make_node(Type) -> 
   Id = increment_then_get_id(),
-  #node{id = Id, type = Type}.
+  N = #node{id = Id}.
 
-find(_, _) -> error(todo).
-add(_, _, _) -> error(todo).
+find(HashTbl, Type = #ty{}) -> 
+  Hash = hash(Type),
+  case HashTbl of
+    #{ Hash := Matches } -> % hashing the type
+      true = (length(Matches) > 0),
+      lists:foldl( % linear probing
+      fun({Key, Node}, not_found) ->
+        case equal(Type, Key) of
+          true ->
+            io:format(user, "hash consed match~n", []),
+            Node;
+          _ -> 
+            not_found
+          end;
+        (_, {_Key, Found}) -> Found 
+      end, not_found, Matches);
+    _ -> 
+      not_found
+   end.
+  
+add(HashTbl, Type, Node) -> 
+  case find(HashTbl, Type) of
+    not_found -> 
+      Hash = hash(Type),
+      Z = case HashTbl of
+        #{ Hash := Matches } -> [{Type, Node} | Matches];
+        _ -> HashTbl#{Hash => [{Type, Node}]}
+      end,
+      update_hashtbl(Z),
+      ok;
+    OtherNode -> error(found_other_node)
+  end.
 
 node(Type) ->
   Memo = get_hashtbl(),
+  io:format(user,"Finding: ~p in ~p~n", [Type, Memo]),
   case find(Memo, Type) of
     not_found -> 
+      io:format(user,"add..~n", []),
       N = make_node(Type),
       add(Memo, Type, N),
-      N
+      N;
     X -> X
   end.
 
 get_type(#node{id = Id}) when Id >= 0->
   error(fetch_type_todo).
 
-mutate_type_id(Id, NewId) -> error(todo).
-
 unassigned_empty_ref() ->
-  #node{id = Id} = make_node(empty()),
-  mutate_type_id(Id, -Id).
+  Id = increment_then_get_id(),
+  %#node{id = -Id}. % TODO assign negative index to hashtbl with emtpy type?
+  #node{id = Id}. % we can't use negative IDs because we can't mutate 
 
 define(Node, Type) ->
-  true = Node#node.id < 0.
+  % true = Node#node.id < 0,
+  % N = #node{id = -Node#node.id}, % we can't use negative IDs
+  add(get_hashtbl(), Type, Node).
+  
+
+nempty() -> 
+  #ty{
+    atom = dnf_var_ty_atom:empty(),
+    predef = dnf_var_predef:empty(),
+    interval = dnf_var_int:empty(),
+    list = dnf_var_ty_list:empty(),
+    map = dnf_var_ty_map:empty(),
+    tuple = ty_tuples:empty(),
+    function = ty_functions:empty()
+  }.
+
+nany() -> 
+  #ty{
+    atom = dnf_var_ty_atom:any(),
+    predef = dnf_var_predef:any(),
+    interval = dnf_var_int:any(),
+    list = dnf_var_ty_list:any(),
+    map = dnf_var_ty_map:any(),
+    tuple = ty_tuples:any(),
+    function = ty_functions:any()
+  }.
 
   
 
@@ -571,6 +637,20 @@ map() ->
 % ======
 % Boolean operations
 % ======
+ 
+nunion(
+  Typ1 = #ty{atom = A1, predef = P1, interval = I1, list = L1, tuple = T1, function = F1, map = M1}, 
+  Typ2 = #ty{atom = A2, predef = P2, interval = I2, list = L2, tuple = T2, function = F2, map = M2}
+) ->
+  #ty{
+    predef = dnf_var_predef:union(P1, P2),
+    atom = dnf_var_ty_atom:union(A1, A2),
+    interval = dnf_var_int:union(I1, I2),
+    list = dnf_var_ty_list:union(L1, L2),
+    tuple = ty_tuples:union(T1, T2),
+    function = ty_functions:union(F1, F2),
+    map = dnf_var_ty_map:union(M1, M2)
+  }.
 
 -spec intersect(ty_ref(), ty_ref()) -> ty_ref().
 intersect(TyRef1, TyRef2) ->
@@ -968,6 +1048,43 @@ all_variables(TyRef, M) ->
 
 -ifdef(TEST).
 -include_lib("eunit/include/eunit.hrl").
+
+
+
+r_test() ->
+  
+  % let nil = Typ.Singleton.enum "nil"
+  Nil = (nempty())#ty{atom = dnf_var_ty_atom:node(ty_atom:finite([hello]))},
+
+  io:format(user,"Nil: ~p~n", [Nil]),
+  % let x = Typ.make ()
+  X = unassigned_empty_ref(),
+  io:format(user,"X: ~p~n", [X]),
+  
+  % let p = Typ.(product (node any) x)
+  Any = node(nany()),
+  Any2 = node(nany()),
+  % io:format(user,"Any node: ~p (~p)~n", [Any, erts_debug:same(Any, Any2)]),
+  P = (nempty())#ty{tuple = {dnf_var_ty_tuple:empty(), #{2 => 
+    dnf_var_ty_tuple:node(dnf_var_ty_tuple:tuple(ty_tuple:tuple([Any, X])))
+   }}},
+
+  io:format(user,"P: ~p~n", [P]),
+  
+
+  % let any_list = Typ.cup p nil
+  AnyList = ty_rec:nunion(P, Nil),
+  io:format(user,"AnyList: ~p~n", [AnyList]),
+
+  % let () = Typ.def x any_list
+  % (* any_list is now the type [Any*] *)
+  define(X, AnyList),
+
+
+  io:format(user,"Hashtbl:~n~p~n", [get_hashtbl()]),
+  
+
+  ok.
 
 recursive_definition_test() ->
   test_utils:reset_ets(),
