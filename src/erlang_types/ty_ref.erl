@@ -37,13 +37,13 @@ all_tables() ->
 
 reset() ->
   erase(),
-  catch lists:foreach(fun(Tab) -> catch ets:delete(Tab) end, all_tables()),
+  catch lists:foreach(fun(Tab) -> catch put(Tab, #{}), ets:delete(Tab) end, all_tables()),
   setup_all()
 .
 
 setup_all() ->
   % spawns a new process that is the owner of the variable id ETS table
-  lists:foreach(fun(Tab) -> ets:new(Tab, [public, named_table]) end, all_tables()),
+  lists:foreach(fun(Tab) -> put(Tab, #{}), ets:new(Tab, [public, named_table]) end, all_tables()),
   ets:insert(?TY_UTIL, {ty_number, 0}),
 
   % define ANY node once
@@ -92,57 +92,75 @@ new_ty_ref() ->
   NewEmptyRef = {ty_ref, (Id = next_ty_id())},
 
   % Insert empty only in memory, not in unique table
-  ets:insert(?TY_MEMORY, {Id, ty_ref:load(ty_rec:empty())}),
+  %ets:insert(?TY_MEMORY, {Id, ty_ref:load(ty_rec:empty())}),
+  Map = get(?TY_MEMORY),
+  put(?TY_MEMORY, Map#{Id => ty_ref:load(ty_rec:empty())}),
+
   NewEmptyRef.
 
-define_ty_ref({ty_ref, Id}, Ty) ->
-  % when defining new (recursive) types manually,
-  % the type to be built is already stored in the unique table
-  % before finishing the manual definition
-  % example: define_any stores the proper any type at the last ty_rec:union operation
-  % after the union, that same type is stored again in the any reference
-  % while the unique table still has one unique type to reference mapping,
-  % the memory table gets polluted with duplicate types with different references
-  % this became apparent when, in the last phase of tally,
-  % one always defines the new recursive type without checking first if this is necessary
-  % this creates a lot of {ty, 0, 0, 0, 0} (empty) types with (newly defined) different type references!
-  % TODO think about this solution more thoroughly, edge cases?
-  Object = ets:lookup(?TY_UNIQUE_TABLE, Ty),
-  case Object of
-    [] ->
-      ok;
-    [{_, _OldId}] ->
-      % last ty ref inserted is the recursive type, delete from memory and decrease ty number by one
-      % ets:delete(?TY_MEMORY, OldId),
-      % [] = ets:lookup(?TY_MEMORY, OldId),
-      % ets:update_counter(?TY_UTIL, ty_number, {2, -1}),
-      ok
-  end,
+hash_ty(Ty) ->
+  erlang:phash2(Ty).
 
-  % io:format(user, "Store (manual): ~p :=~n~p~n", [Id, Ty]),
-  ets:insert(?TY_UNIQUE_TABLE, {Ty, Id}),
-  ets:insert(?TY_MEMORY, {Id, Ty}),
+define_ty_ref({ty_ref, Id}, Ty) ->
+  Hmap = get(?TY_UNIQUE_TABLE),
+ 
+  NewHmap = maps:update_with(hash_ty(Ty), fun(L) -> 
+    % we remove duplicates the early {Ty, Id1} by replacing it with the new {Ty, Id2} mapping
+    % this can happen when we define a recursive type, and the old mapping is the "old" intermediate ID
+    [{Ty, Id} | [{A, B} || {A, B} <- L, A /= Ty]] 
+  end, [], Hmap),
+  put(?TY_UNIQUE_TABLE, NewHmap),
+
+  Mem = get(?TY_MEMORY),
+  NewMem = Mem#{Id => Ty},
+  put(?TY_MEMORY, NewMem),
+
   {ty_ref, Id}.
 
-load({ty_ref, Id}) ->
-  [{Id, Ty}] = ets:lookup(?TY_MEMORY, Id),
-  Ty.
 
-%%store_rec(Ty, OldRef) ->
+load({ty_ref, Id}) ->
+  #{Id := Tyy} = get(?TY_MEMORY),
+  Tyy.
 
 
 store(Ty) ->
-  Object = ets:lookup(?TY_UNIQUE_TABLE, Ty),
-  case Object of
-    [] ->
+  Mem = get(?TY_MEMORY),
+  Hmap = get(?TY_UNIQUE_TABLE),
+  Hash = hash_ty(Ty),
+  Insert = fun(L) ->
       Id = ets:update_counter(?TY_UTIL, ty_number, {2, 1}),
-      ets:insert(?TY_UNIQUE_TABLE, {Ty, Id}),
-      ets:insert(?TY_MEMORY, {Id, Ty}),
+      NewHmap = Hmap#{Hash => [{Ty, Id}| L]},
+      case length(L) > 0 of
+        true -> 
+          io:format(user,".", []);
+          % io:format(user,"In~p~n", [L]),
+          % error(length(L));
+        _ -> ok
+      end,
+      NewMem = Mem#{Id => Ty},
+      put(?TY_MEMORY, NewMem),
+      put(?TY_UNIQUE_TABLE, NewHmap),
       % io:format(user, "Store: ~p :=~n~p~n", [Id, Ty]),
-      {ty_ref, Id};
-    [{_, Id}] ->
       {ty_ref, Id}
-  end.
+  end,
+
+  Rett = case Hmap of
+    % #{Hash := L} when length(L) > 1  -> 
+    %   io:format(user,"x", []);
+      % error(L), error(length(L));
+    #{Hash := L} when is_list(L) ->
+      case [{TTy, Idd} || {TTy, Idd} <- L, TTy =:= Ty] of
+        [{_T1, I1}] -> 
+          {ty_ref, I1};
+        [{_, _} | _] -> error(sanity);
+        [] -> 
+          Insert(L)
+      end;
+    _ -> 
+      Insert([])
+  end,
+    
+  Rett.
 
 memoize_norm({{ty_ref, Id}, Fixed}, Sol) ->
   ets:insert(?NORMALIZE_CACHE, {{Id, Fixed}, Sol}),
