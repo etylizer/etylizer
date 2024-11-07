@@ -518,7 +518,13 @@ map() ->
 % ======
 
 -spec intersect(ty_ref(), ty_ref()) -> ty_ref().
+intersect(TyRef1, TyRef2) when TyRef2 < TyRef1 -> intersect(TyRef2, TyRef1); % commutativity
+intersect(TyRef1, TyRef1) -> TyRef1;
 intersect(TyRef1, TyRef2) ->
+  case {any(), empty()} of
+    {TyRef1, _} -> TyRef2;
+    {_, TyRef1} -> empty();
+    _ ->
   ty_ref:op_cache(intersect, {TyRef1, TyRef2},
     fun() ->
       #ty{predef = P1, atom = A1, interval = I1, bitstring = B1, list = L1, tuple = T1, function = F1, map = M1} = ty_ref:load(TyRef1),
@@ -534,7 +540,23 @@ intersect(TyRef1, TyRef2) ->
         map = dnf_var_ty_map:intersect(M1, M2)
       })
     end
-    ).
+    )
+  end.
+
+-spec union(ty_ref(), ty_ref()) -> ty_ref().
+union(TyRef1, TyRef2) when TyRef2 < TyRef1 -> union(TyRef2, TyRef1); % commutativity
+union(TyRef1, TyRef1) -> TyRef1;
+union(TyRef1, TyRef2) ->
+  case {any(), empty()} of
+    {TyRef1, _} -> any();
+    {_, TyRef1} -> TyRef2;
+    _ ->
+      ty_ref:op_cache(union, {TyRef1, TyRef2},
+        fun() ->
+      negate(intersect(negate(TyRef1), negate(TyRef2)))
+         end)
+  end
+     .
 
 -spec negate(ty_ref()) -> ty_ref().
 negate(TyRef1) ->
@@ -559,13 +581,6 @@ diff(A, B) ->
     fun() ->
       intersect(A, negate(B))
     end).
-
--spec union(ty_ref(), ty_ref()) -> ty_ref().
-union(A, B) ->
-  ty_ref:op_cache(union, {A, B},
-    fun() ->
-  negate(intersect(negate(A), negate(B)))
-     end).
 
 s_union(A, B) ->
   s_negate(s_intersect(s_negate(A), s_negate(B))).
