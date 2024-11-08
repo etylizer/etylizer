@@ -4,6 +4,8 @@
 -export([hash/1, compare/2, equal/2, substitute/3, all_variables/2]).
 
 -export([tuple/1, pi/2, has_ref/2, components/1, raw_transform/2, transform/2, any/1, empty/1, big_intersect/1]).
+-export([unfold_bdds/1]).
+unfold_bdds(X) -> X.
 
 empty(Size) -> {ty_tuple, Size, [ty_rec:empty() || _ <- lists:seq(1, Size)]}.
 any(Size) -> {ty_tuple, Size, [ty_rec:any() || _ <- lists:seq(1, Size)]}.

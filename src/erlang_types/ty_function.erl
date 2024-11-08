@@ -3,6 +3,8 @@
 %% domain -> co-domain function representation
 -export([hash/1, compare/2, equal/2, all_variables/2, substitute/3]).
 -export([function/2, domains/1, codomain/1, codomains_intersect/1, has_ref/2, transform/2, raw_transform/2]).
+-export([unfold_bdds/1]).
+unfold_bdds(X) -> X.
 
 hash({ty_function, Refs, Ref}) -> erlang:phash2({[ty_rec:hash(Ty) || Ty <- Refs], Ref}).
 

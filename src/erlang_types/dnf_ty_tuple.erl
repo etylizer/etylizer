@@ -133,7 +133,7 @@ apply_to_node(Node, Map, Memo) ->
 -include_lib("eunit/include/eunit.hrl").
 
 empty_0tuple_test() ->
-  Tuple = {node,{ty_tuple,0,[]},{terminal,0},{terminal,1}},
+  Tuple = mk_node({ty_tuple,0,[]},mk_terminal(0),mk_terminal(1)),
   true = is_empty_corec(Tuple, #{}),
   ok.
 

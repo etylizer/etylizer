@@ -2,6 +2,8 @@
 
 -export([hash/1, compare/2, equal/2]).
 -export([list/2, pi1/1, pi2/1, has_ref/2, raw_transform/2, transform/2, big_intersect/1, all_variables/2, substitute/3]).
+-export([unfold_bdds/1]).
+unfold_bdds(X) -> X.
 
 
 hash({ty_list, A, B}) -> erlang:phash2({A, B}).

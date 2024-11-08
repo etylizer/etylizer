@@ -10,6 +10,8 @@
 -export([has_ref/2, to_singletons/1, normalize_corec/5, substitute/4, all_variables/2]).
 
 -export([hash/1, s_is_empty/1]).
+-export([unfold_bdds/1]).
+unfold_bdds(X) -> X.
 hash(Atom) -> erlang:phash2(Atom). %TODO custom hash function
 s_is_empty(Atom) -> is_empty(Atom).
 

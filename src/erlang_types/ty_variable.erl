@@ -4,12 +4,15 @@
 -export([setup_all/0, reset/0]).
 -define(VAR_ETS, variable_counter_ets_table).
 
+-export_type([var/0]).
+
 -export([hash/1, update_id/1, compare/2, equal/2, substitute/4, has_ref/2, all_variables/2, name/1]).
 
 
 -export([fresh_from/1, new/1, new_with_name/1, new_with_name_and_id/2, smallest/3, normalize_corec/6, raw_transform/2, transform/2, get_new_id/0]).
+-export([unfold_bdds/1]).
+unfold_bdds(X) -> X.
 
--export_type([var/0]).
 
 % variables have either their name as their ID (coming from a ast_lib conversion)
 %  or a unique ID (usually generated inside the erlang_types library)

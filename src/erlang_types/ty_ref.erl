@@ -1,6 +1,7 @@
 -module(ty_ref).
 
 -export([
+  write_dump_ty/1,
   setup_ets/0, any/0, store/1, load/1, new_ty_ref/0, define_ty_ref/2, 
   is_empty_cached/1, store_is_empty_cached/2, 
   normalize_cached/1, store_normalize_cached/2, 
@@ -130,13 +131,6 @@ store(Ty) ->
   Insert = fun(L) ->
       Id = ets:update_counter(?TY_UTIL, ty_number, {2, 1}),
       NewHmap = Hmap#{Hash => [{Ty, Id}| L]},
-      case length(L) > 0 of
-        true -> 
-          io:format(user,".", []);
-          % io:format(user,"In~p~n", [L]),
-          % error(length(L));
-        _ -> ok
-      end,
       NewMem = Mem#{Id => Ty},
       put(?TY_MEMORY, NewMem),
       put(?TY_UNIQUE_TABLE, NewHmap),
@@ -217,64 +211,65 @@ check_recursive_variable(Variable) ->
 
 
 % very unstable, should only be used to generate proper test cases while debugging
-% -type dump() :: {{ty_ref, integer()}, integer(), #{{ty_ref, integer()} => Ty :: term()}}.
-% % dump a type and all its dependencies for creating a test case via importing the state
-% -spec write_dump_ty({ty_ref, integer()}) -> dump().
-% write_dump_ty(Ty) ->
-%   State = lists:usort(write_dump_ty_h(Ty)),
+-type dump() :: {{ty_ref, integer()}, integer(), #{{ty_ref, integer()} => Ty :: term()}}.
+% dump a type and all its dependencies for creating a test case via importing the state
+-spec write_dump_ty({ty_ref, integer()}) -> dump().
+write_dump_ty(Ty) ->
+  State = lists:usort(write_dump_ty_h(Ty)),
 
-%   Ids = lists:usort(lists:flatten(utils:everything(
-%       fun F(InnerT) ->
-%           case InnerT of
-%               (Ref = {ty_ref, Id}) -> 
-%                 TyRec = load(Ref),
-%                 OtherIds = utils:everything(F, TyRec),
-%                 {ok, [Id] ++ OtherIds};
-%               _ -> 
-%                 error
-%           end
-%       end,
-%       Ty))),
-%   [MaxId | _] = lists:reverse(Ids),
+  Ids = lists:usort(lists:flatten(utils:everything(
+      fun F(InnerT) ->
+          case InnerT of
+              (Ref = {ty_ref, Id}) -> 
+                TyRec = load(Ref),
+                OtherIds = utils:everything(F, TyRec),
+                {ok, [Id] ++ OtherIds};
+              _ -> 
+                error
+          end
+      end,
+      Ty))),
+  [MaxId | _] = lists:reverse(Ids),
 
-%   VarIds = lists:usort(lists:flatten(utils:everything(
-%       fun F(InnerT) ->
-%           case InnerT of
-%               (Ref = {ty_ref, Id}) -> 
-%                 TyRec = load(Ref),
-%                 OtherIds = utils:everything(F, TyRec),
-%                 {ok, OtherIds};
-%               ({var, Id, Name}) when is_integer(Id) -> 
-%                 {ok, Id};
-%               _ -> 
-%                 error
-%           end
-%       end,
-%       Ty))),
-%   [MaxVarId | _] = lists:reverse(Ids),
-%   {Ty, MaxId, MaxVarId, maps:from_list(State)}.
-% write_dump_ty_h(Ty) ->
-%   State = utils:everything(
-%       fun(InnerT) ->
-%           % The return value error means: check recursively, no error here
-%           case InnerT of
-%               (Ref = {ty_ref, _Id}) -> 
-%                 TyRec = load(Ref),
-%                 More = write_dump_ty_h(TyRec),
-%                 {ok, [{Ref, TyRec}] ++ More};
-%               _ -> 
-%                 error
-%           end
-%       end,
-%       Ty),
-%   lists:flatten(State).
-% read_dump_ty(Id, VarId, Db) ->
-%   maps:foreach(fun({ty_ref, Idd}, Ty) ->
-%     ets:insert(?TY_UNIQUE_TABLE, {Ty, Idd}),
-%     ets:insert(?TY_MEMORY, {Idd, Ty})
-%   end, Db),
-%   ty_variable:update_id(VarId),
-% 	ets:update_counter(?TY_UTIL, ty_number, {2, Id}).
+  VarIds = lists:usort(lists:flatten(utils:everything(
+      fun F(InnerT) ->
+          case InnerT of
+              (Ref = {ty_ref, Id}) -> 
+                TyRec = load(Ref),
+                OtherIds = utils:everything(F, TyRec),
+                {ok, OtherIds};
+              ({var, Id, Name}) when is_integer(Id) -> 
+                {ok, Id};
+              _ -> 
+                error
+          end
+      end,
+      Ty))),
+  [MaxVarId | _] = lists:reverse(Ids),
+  {Ty, MaxId, MaxVarId, maps:from_list(State)}.
+write_dump_ty_h(Ty) ->
+  State = utils:everything(
+      fun(InnerT) ->
+          % The return value error means: check recursively, no error here
+          case InnerT of
+              (Ref = {ty_ref, _Id}) -> 
+                TyRec = load(Ref),
+                UnfoldedTyRef = ty_rec:unfold_bdds(TyRec),
+                More = write_dump_ty_h(UnfoldedTyRef),
+                {ok, [{Ref, UnfoldedTyRef}] ++ More};
+              _ -> 
+                error
+          end
+      end,
+      Ty),
+  lists:flatten(State).
+read_dump_ty(Id, VarId, Db) ->
+  maps:foreach(fun({ty_ref, Idd}, Ty) ->
+    ets:insert(?TY_UNIQUE_TABLE, {Ty, Idd}),
+    ets:insert(?TY_MEMORY, {Idd, Ty})
+  end, Db),
+  ty_variable:update_id(VarId),
+	ets:update_counter(?TY_UTIL, ty_number, {2, Id}).
 % -ifdef(TEST).
 % -include_lib("eunit/include/eunit.hrl").
 % dump_db_usage_test() ->

@@ -13,7 +13,7 @@
 % hide built-in Erlang node function
 -compile({no_auto_import, [node/1]}).
 
--export([raw_transform/2, terminal/1, reset/0, hash/1, s_is_empty/1, all_variables/1, has_ref/2, get_dnf/1, any/0, empty/0, equal/2, node/1, union/2, intersect/2, negate/1, diff/2]).
+-export([unfold_bdds/1, raw_transform/2, terminal/1, reset/0, hash/1, s_is_empty/1, all_variables/1, has_ref/2, get_dnf/1, any/0, empty/0, equal/2, node/1, union/2, intersect/2, negate/1, diff/2]).
 
 % these are defined here so the IDE does not complain
 -ifndef(ELEMENT).
@@ -23,12 +23,24 @@
 -define(TERMINAL, bdd_bool).
 -endif.
 
+-define(EMPTY, empty). %hack for pretty printing...
+
 reset() ->
   put({?MODULE, bdd_id}, 1),
-  put({?MODULE, bdd_hashcons}, #{empty_terminal => 0}),
-  put({?MODULE, bdd_memory}, #{0 => empty_terminal}),
+  put({?MODULE, bdd_hashcons}, #{?EMPTY => {bdd_ref, 0}}),
+  put({?MODULE, bdd_memory}, #{{bdd_ref, 0} => ?EMPTY}),
   
   ok.
+
+op_cache(Op, K, Fun) ->
+  case get({Op, ?MODULE, K}) of
+    undefined ->
+      Res = Fun(),
+      put({Op, ?MODULE, K}, Res),
+      Res;
+    Z ->
+      Z
+  end.
    
   
 -spec empty() -> bdd_ref().
@@ -52,12 +64,12 @@ inc_id() -> put({?MODULE, bdd_id}, get({?MODULE, bdd_id}) + 1), ok.
 % we want to use a custom hash function and not use ETS
 % ETS can't use custom hash & equals functions and copies data on access/write
 -spec get_hmap() -> hash_map(bdd(), bdd_ref()). 
-get_hmap() -> ?GET({?MODULE, bdd_hashcons}).
+get_hmap() -> ?GETD({?MODULE, bdd_hashcons}, #{hash_hash_map(?EMPTY) => [{?EMPTY, {bdd_ref, 0}}]}).
 -spec upd_hmap(hash_map(bdd(), bdd_ref())) -> ok. 
 upd_hmap(M) -> put({?MODULE, bdd_hashcons}, M), ok.
 
 -spec get_memory() -> #{integer() => bdd()}. % id inside the bdd_ref()
-get_memory() -> ?GET({?MODULE, bdd_memory}).
+get_memory() -> ?GETD({?MODULE, bdd_memory}, #{{bdd_ref, 0} => ?EMPTY}).
 -spec upd_memory(#{integer() => bdd()}) -> ok.
 upd_memory(M) -> put({?MODULE, bdd_memory}, M), ok.
 
@@ -65,7 +77,7 @@ upd_memory(M) -> put({?MODULE, bdd_memory}, M), ok.
 
 -type bdd() :: bdd_terminal() | bdd_node().
 -type bdd_node() :: {node, Atom :: any(), bdd_ref(), bdd_ref()}.
--type bdd_terminal() :: empty_terminal | {terminal, any()}.
+-type bdd_terminal() :: ?EMPTY | {terminal, any()}.
 
 -spec any() -> bdd_ref().
 any() -> 
@@ -86,11 +98,19 @@ s_is_any(Bdd) ->
   end.
 
 -spec mk_node(Element :: any(), bdd_ref(), bdd_ref()) -> bdd_ref().
-mk_node(_Atom, L, L) -> L;
+mk_node(_Atom, L, L) -> 
+  is_ref(L),
+  L;
 mk_node(Atom, Low, High) ->
   R = case find({node, Atom, Low, High}) of
-    not_found -> add({node, Atom, Low, High});
-    FoundRef -> FoundRef
+    not_found -> 
+      % case ?MODULE of
+      %   dnf_var_ty_tuple -> io:format(user,"not found: ~p~n", [{Atom, unfold_bdds(Low), unfold_bdds(High)}]);
+      %   _ -> ok
+      % end,
+      add({node, Atom, Low, High});
+    FoundRef -> 
+      FoundRef
   end,
   is_ref(R),
   R.
@@ -114,22 +134,34 @@ mk_terminal(Terminal) ->
   Res.
 
 -spec equal_hash_map(bdd(), bdd()) -> integer().
-equal_hash_map(empty_terminal, empty_terminal) -> true;
+equal_hash_map(?EMPTY, ?EMPTY) -> true;
 equal_hash_map({terminal, T}, {terminal, T2}) -> ?TERMINAL:equal(T, T2);
-equal_hash_map({node, Atom, Low, High}, {node, Atom2, Low2, High2}) -> 
+equal_hash_map({node, Atom, LowRef, HighRef}, {node, Atom2, LowRef2, HighRef2}) -> 
+  is_ref(LowRef), is_ref(HighRef), is_ref(LowRef2), is_ref(HighRef2),
+  % #{LowRef := Low, HighRef := High, LowRef2 := Low2, HighRef2 := High2} = get_memory(),
   % structural equality
-  ?ELEMENT:equal(Atom, Atom2) andalso equal_hash_map(Low, Low2) andalso equal_hash_map(High, High2);
+  % ?ELEMENT:equal(Atom, Atom2) andalso equal_hash_map(Low, Low2) andalso equal_hash_map(High, High2); % TODO why descend?
+  ?ELEMENT:equal(Atom, Atom2) andalso LowRef =:= LowRef2 andalso HighRef =:= HighRef2; % TODO why descend?
 equal_hash_map(_, _) -> false.
 
 -spec hash_hash_map(bdd()) -> integer().
-hash_hash_map(empty_terminal) -> 0;
+hash_hash_map(?EMPTY) -> 0;
 hash_hash_map({terminal, T}) -> ?TERMINAL:hash(T);
-hash_hash_map({node, Atom, Low, High}) -> erlang:phash2({?ELEMENT:hash(Atom), hash(Low), hash(High)}).
+hash_hash_map({node, Atom, Low, High}) -> 
+  is_ref(Low), is_ref(High),
+  erlang:phash2({?ELEMENT:hash(Atom), hash(Low), hash(High)}).
 
 -spec find(bdd_node() | bdd_terminal()) -> not_found | bdd_ref().
 find(Bdd) ->
   Hash = hash_hash_map(Bdd),
   Hmap = get_hmap(),
+
+  % case ?MODULE of
+  %   dnf_var_ty_atom -> 
+  %     io:format(user,"Finding ~p (Hash: ~p) in buckets ~n~p~n", [Bdd, Hash, maps:get(Hash, Hmap, [])]);
+  %   _ -> ok
+  % end,
+
 
   case Hmap of
     #{Hash := L} when is_list(L) ->
@@ -177,99 +209,128 @@ add(Bdd) ->
 
 -spec equal(bdd_ref(), bdd_ref()) -> boolean().
 equal({bdd_ref, A}, {bdd_ref, A}) -> true;
-equal(_, _) -> false.
+equal(A, B) -> 
+  is_ref(A), is_ref(B),
+  false.
 
 -spec hash(bdd_ref()) -> integer().
 hash({bdd_ref, Id}) when is_integer(Id) -> Id.
 
 -spec node(Element :: any()) -> bdd_ref().
-node(Atom) -> mk_node(Atom, any(), empty()).
+node(Atom) -> 
+  Z = mk_node(Atom, any(), empty()),
+  is_ref(Z),
+  Z.
+
 
 -spec terminal(Terminal :: any()) -> bdd_ref().
-terminal(Terminal) -> mk_terminal(Terminal).
+terminal(Terminal) -> 
+  Z = mk_terminal(Terminal),
+  is_ref(Z),
+  Z.
 
 -spec union(bdd_ref(), bdd_ref()) -> bdd_ref().
 union(A, B) when B < A -> union(B, A); % commutativity
-union(A, A) -> A;
-union({bdd_ref, 0}, A) -> A;
+union(A, A) -> 
+  is_ref(A),
+  A;
+union({bdd_ref, 0}, A) -> 
+  is_ref(A),
+  A;
 union(_A, {bdd_ref, 0}) -> error(sanity);
 union(ARef, BRef) ->
   is_ref(ARef), is_ref(BRef),
-  #{ARef := A, BRef := B} = get_memory(),
-  case s_is_any(A) orelse s_is_any(B) of
-    true -> any();
-    _ ->
-      case {A, B} of
-        {{terminal, X}, {terminal, Y}} -> mk_terminal(?TERMINAL:union(X, Y));
-        {{node, E, A1, B1}, {node, E2, A2, B2}} ->
-          case ?ELEMENT:compare(E, E2) of
-            -1 ->
-              mk_node(E, union(A1, BRef), union(B1, BRef));
-            +0 ->
-              mk_node(E, union(A1, A2), union(B1, B2));
-            +1 ->
-              mk_node(E2, union(A2, ARef), union(B2, ARef))
-          end;
-        {{terminal, _X}, {node, E2, A2, B2}} ->
-          mk_node(E2,  union(A2, ARef),  union(B2, ARef));
-        {{node, E1, A1, B1}, {terminal, _X}} ->
-          mk_node(E1,  union(A1, BRef),  union(B1, BRef))
-      end
-  end
-  .
-
--spec intersect(bdd_ref(), bdd_ref()) -> bdd_ref().
-intersect(A, B) when B < A -> intersect(B, A); % commutativity
-intersect(A, A) -> A;
-intersect({bdd_ref, 0}, _A) -> empty();
-intersect(_A, {bdd_ref, 0}) -> error(sanity);
-intersect(ARef, BRef) ->
-  is_ref(ARef), is_ref(BRef),
-  #{ARef := A, BRef := B} = get_memory(),
-  case s_is_any(A) of
-    true -> BRef;
-    _ ->
-      case s_is_any(B) of
-        true -> ARef;
+  op_cache(union, {ARef, BRef},
+    fun() ->
+      #{ARef := A, BRef := B} = get_memory(),
+      case s_is_any(A) orelse s_is_any(B) of
+        true -> any();
         _ ->
           case {A, B} of
-            {{terminal, X}, {terminal, Y}} -> mk_terminal(?TERMINAL:intersect(X, Y));
+            {{terminal, X}, {terminal, Y}} -> mk_terminal(?TERMINAL:union(X, Y));
             {{node, E, A1, B1}, {node, E2, A2, B2}} ->
               case ?ELEMENT:compare(E, E2) of
                 -1 ->
-                  mk_node(E, intersect(A1, BRef), intersect(B1, BRef));
+                  mk_node(E, union(A1, BRef), union(B1, BRef));
                 +0 ->
-                  mk_node(E, intersect(A1, A2), intersect(B1, B2));
+                  mk_node(E, union(A1, A2), union(B1, B2));
                 +1 ->
-                  mk_node(E2, intersect(A2, ARef), intersect(B2, ARef))
+                  mk_node(E2, union(A2, ARef), union(B2, ARef))
               end;
             {{terminal, _X}, {node, E2, A2, B2}} ->
-              mk_node(E2, intersect(A2, ARef), intersect(B2, ARef));
+              mk_node(E2,  union(A2, ARef),  union(B2, ARef));
             {{node, E1, A1, B1}, {terminal, _X}} ->
-              mk_node(E1, intersect(A1, BRef), intersect(B1, BRef))
+              mk_node(E1,  union(A1, BRef),  union(B1, BRef))
           end
       end
-  end.
+    end).
+
+
+-spec intersect(bdd_ref(), bdd_ref()) -> bdd_ref().
+intersect(A, B) when B < A -> intersect(B, A); % commutativity
+intersect(A, A) -> 
+  is_ref(A),
+  A;
+intersect({bdd_ref, 0}, A) -> 
+  is_ref(A),
+  empty();
+intersect(_A, {bdd_ref, 0}) -> error(sanity);
+intersect(ARef, BRef) ->
+  is_ref(ARef), is_ref(BRef),
+  op_cache(intersect, {ARef, BRef},
+    fun() ->
+      #{ARef := A, BRef := B} = get_memory(),
+      case s_is_any(A) of
+        true -> BRef;
+        _ ->
+          case s_is_any(B) of
+            true -> ARef;
+            _ ->
+              case {A, B} of
+                {{terminal, X}, {terminal, Y}} -> mk_terminal(?TERMINAL:intersect(X, Y));
+                {{node, E, A1, B1}, {node, E2, A2, B2}} ->
+                  case ?ELEMENT:compare(E, E2) of
+                    -1 ->
+                      mk_node(E, intersect(A1, BRef), intersect(B1, BRef));
+                    +0 ->
+                      mk_node(E, intersect(A1, A2), intersect(B1, B2));
+                    +1 ->
+                      mk_node(E2, intersect(A2, ARef), intersect(B2, ARef))
+                  end;
+                {{terminal, _X}, {node, E2, A2, B2}} ->
+                  mk_node(E2, intersect(A2, ARef), intersect(B2, ARef));
+                {{node, E1, A1, B1}, {terminal, _X}} ->
+                  mk_node(E1, intersect(A1, BRef), intersect(B1, BRef))
+              end
+          end
+      end
+    end).
 
 -spec negate(bdd_ref()) -> bdd_ref().
 negate({bdd_ref, 0}) -> any();
 negate(BddRef) ->
   is_ref(BddRef),
-  #{BddRef := Bdd} = get_memory(),
-  Res = case Bdd of
-    {terminal, T} ->
-      mk_terminal(?TERMINAL:negate(T));
-    {node, Atom, Low, High} -> 
-      mk_node(Atom, negate(Low), negate(High))
-  end,
-  is_ref(Res),
-  Res.
+  op_cache(negate, BddRef,
+    fun() ->
+      #{BddRef := Bdd} = get_memory(),
+      Res = case Bdd of
+        {terminal, T} ->
+          mk_terminal(?TERMINAL:negate(T));
+        {node, Atom, Low, High} -> 
+          mk_node(Atom, negate(Low), negate(High))
+      end,
+      is_ref(Res),
+      Res
+    end).
 
 
 -spec diff(bdd_ref(), bdd_ref()) -> bdd_ref().
 diff({bdd_ref, 0}, _B) -> empty();
-diff(B, {bdd_ref, 0}) -> B;
+diff(B, {bdd_ref, 0}) -> 
+  is_ref(B),
+  B;
 diff(A, B) -> 
+  is_ref(A), is_ref(B),
   intersect(A, negate(B)).
 
 -spec is_empty_union(fun(() -> boolean()), fun(() -> boolean())) -> boolean().
@@ -278,7 +339,9 @@ is_empty_union(F1, F2) -> F1() andalso F2().
 -spec get_dnf(bdd_ref()) -> [{[AtomPos :: any()], [AtomNeg :: any()], Terminal :: any()}].
 get_dnf(Bdd) ->
   lists:filter(
-    fun({_,_,[]}) -> false; ({_, _, T}) ->
+    fun
+    ({_,_,[]}) -> false; 
+    ({_, _, T}) ->
       case ?TERMINAL:empty() of
         T -> false;
         _ ->  true
@@ -293,6 +356,7 @@ get_dnf(Bdd) ->
   CombineResults :: fun((fun(() -> A), fun(() -> A)) -> A)
 }) -> A. 
 dnf(Bdd, {ProcessCoclause, CombineResults}) ->
+  is_ref(Bdd),
   do_dnf(Bdd, {ProcessCoclause, CombineResults}, _Pos = [], _Neg = []).
 
 -spec do_dnf(bdd_ref(), {
@@ -309,8 +373,10 @@ do_dnf(Ref = {bdd_ref, _}, F, Pos, Neg) ->
 do_dnf({node, Element, Left, Right}, F = {_Process, Combine}, Pos, Neg) ->
   % heuristic: if Left is positive & 1, skip adding the negated Element to the right path
   % TODO can use the see simplifications done in ty_rec:transform to simplify DNF before processing?
+  is_ref(Left), is_ref(Right),
+  #{Left := L} = get_memory(),
   case {terminal, ?TERMINAL:any()} of
-    Left ->
+    L ->
       F1 = fun() -> do_dnf(Left, F, [Element | Pos], Neg) end,
       F2 = fun() -> do_dnf(Right, F, Pos, Neg) end,
       Combine(F1, F2);
@@ -372,3 +438,15 @@ raw_transform(Ty, Ops = #{negate := Negate, intersect := Intersect, union := Uni
     end,
     fun(F1, F2) -> Union([F1(), F2()]) end
   }).
+
+unfold_bdds(BddOrRef) ->
+  utils:everywhere(fun
+    (_Ref = {bdd_ref, 0}) -> {ok, ?EMPTY};
+    ({terminal, X}) -> {ok, {terminal, ?TERMINAL:unfold_bdds(X)}};
+    ({node, Element, Left, Right}) -> 
+      {ok, {node, Element, unfold_bdds(Left), unfold_bdds(Right)}};
+    (Ref = {bdd_ref, Id}) -> 
+      #{Ref := Bdd} = get_memory(),
+      {ok, {integer_to_list(Id) ++ "@" ++ ?MODULE_STRING, unfold_bdds(Bdd)}};
+    (_) -> error
+  end, BddOrRef).

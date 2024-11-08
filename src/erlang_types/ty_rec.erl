@@ -4,7 +4,7 @@
 
 
 % co-recursive functions on types
--export([is_empty/1, is_empty_start/1, normalize_start/2]).
+-export([unfold_bdds/1, is_empty/1, is_empty_start/1, normalize_start/2]).
 -export([is_empty_corec/2, normalize_corec/3]).
 
 -export([hash/1, empty/0, any/0]).
@@ -891,6 +891,28 @@ all_variables(TyRef, M) ->
       ++ dnf_var_ty_map:all_variables(Maps, Mp)
       )
   end.
+
+%-record(ty, {predef, atom, interval, list, tuple, function, map}).
+unfold_bdds(Ty = #ty{tuple = {DefaultT, T}, function = {DefaultF, F}}) ->
+  {ty, 
+    dnf_var_predef:unfold_bdds(Ty#ty.predef),
+    dnf_var_ty_atom:unfold_bdds(Ty#ty.atom),
+    dnf_var_int:unfold_bdds(Ty#ty.interval),
+    dnf_var_ty_list:unfold_bdds(Ty#ty.list),
+    multi_unfold_tuple(DefaultT, T),
+    multi_unfold_function(DefaultF, F),
+    dnf_var_ty_map:unfold_bdds(Ty#ty.map)
+  }.
+
+multi_unfold_tuple(DefaultT, T) ->
+  X1 = dnf_var_ty_tuple:unfold_bdds(DefaultT),
+  Xs = maps:from_list(lists:map(fun({Size, Tuple}) -> {Size, dnf_var_ty_tuple:unfold_bdds(Tuple)} end, maps:to_list(T))),
+  {X1, Xs}.
+
+multi_unfold_function(DefaultT, T) ->
+  X1 = dnf_var_ty_function:unfold_bdds(DefaultT),
+  Xs = maps:from_list(lists:map(fun({Size, Function}) -> {Size, dnf_var_ty_function:unfold_bdds(Function)} end, maps:to_list(T))),
+  {X1, Xs}.
 
 -ifdef(TEST).
 -include_lib("eunit/include/eunit.hrl").

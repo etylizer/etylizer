@@ -4,6 +4,8 @@
 -export([hash/1, compare/2, equal/2, substitute/3, all_variables/2]).
 
 -export([map/2, has_ref/2, raw_transform/2, transform/2, any/0, empty/0]).
+-export([unfold_bdds/1]).
+unfold_bdds(X) -> X.
 
 hash(TupleRep) -> ty_tuple:hash(TupleRep).
 

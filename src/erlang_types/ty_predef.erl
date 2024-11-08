@@ -13,6 +13,8 @@
 -export([has_ref/2, predef/1, raw_transform/2, transform/2, all_variables/2]).
 
 -export([hash/1, s_is_empty/1]).
+-export([unfold_bdds/1]).
+unfold_bdds(X) -> X.
 hash(Predef) -> erlang:phash2(Predef). %TODO custom hash function
 s_is_empty(Predef) -> is_empty(Predef).
 
