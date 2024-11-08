@@ -4,7 +4,7 @@
 -export([setup_all/0, reset/0]).
 -define(VAR_ETS, variable_counter_ets_table).
 
--export([update_id/1, compare/2, equal/2, substitute/4, has_ref/2, all_variables/2, name/1]).
+-export([hash/1, update_id/1, compare/2, equal/2, substitute/4, has_ref/2, all_variables/2, name/1]).
 
 
 -export([fresh_from/1, new/1, new_with_name/1, new_with_name_and_id/2, smallest/3, normalize_corec/6, raw_transform/2, transform/2, get_new_id/0]).
@@ -16,6 +16,8 @@
 -record(var, {id, name}).
 -type var() :: 
   #var{id :: integer() | name, name :: atom()}.
+
+hash(Var) -> erlang:phash2(Var).
 
 reset() ->
   catch ets:delete(?VAR_ETS),

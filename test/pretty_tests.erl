@@ -137,6 +137,7 @@ variable_simple_union_test() ->
   ecache:reset_all(),
   A = tunion([tvar(a), tvar(b)]),
   B = ast_lib:ast_to_erlang_ty(A, symtab:empty()),
+  io:format(user,"~p :: ~p~n", [B]),
   Pretty = ast_lib:erlang_ty_to_ast(B, #{}),
   true = subty:is_equivalent(none, A, Pretty),
   ?assertEqual("a | b", pretty:render_ty(Pretty)),

@@ -1,7 +1,10 @@
 -module(ty_list).
 
--export([compare/2, equal/2]).
+-export([hash/1, compare/2, equal/2]).
 -export([list/2, pi1/1, pi2/1, has_ref/2, raw_transform/2, transform/2, big_intersect/1, all_variables/2, substitute/3]).
+
+
+hash({ty_list, A, B}) -> erlang:phash2({A, B}).
 
 compare(A, B) when A < B -> -1;
 compare(A, B) when A > B -> 1;

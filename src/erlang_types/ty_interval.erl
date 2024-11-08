@@ -14,6 +14,10 @@
 -export([interval/2, cointerval/2]).
 -export([raw_transform/2, transform/2, map_pi/1, has_ref/2]).
 
+-export([hash/1, s_is_empty/1]).
+hash(Interval) -> erlang:phash2(Interval). %TODO custom hash function
+s_is_empty(Int) -> is_empty(Int).
+
 has_ref(_, _) -> false.
 
 raw_transform(T, Op) -> transform(T, Op).

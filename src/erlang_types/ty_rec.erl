@@ -7,7 +7,7 @@
 -export([is_empty/1, is_empty_start/1, normalize_start/2]).
 -export([is_empty_corec/2, normalize_corec/3]).
 
--export([empty/0, any/0]).
+-export([hash/1, empty/0, any/0]).
 -export([union/2, negate/1, intersect/2, diff/2, is_any/1]).
 -export([extract_variables/1]).
 
@@ -35,6 +35,7 @@
 -type ty_variable() :: term().
 -type ty_atom() :: term().
 
+hash({ty_ref, Id}) -> Id.
 
 % ======
 % top-level API

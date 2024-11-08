@@ -8,6 +8,10 @@
 -export([union/2, intersect/2, diff/2, negate/1, is_any/1]).
 -export([is_empty/1, substitute/4, map_pi/1, has_ref/2, all_variables/2, transform/2, raw_transform/2]).
 
+-export([hash/1, s_is_empty/1]).
+hash(B) -> B.
+s_is_empty(B) -> is_empty(B).
+
 compare(0, 0) -> 0; compare(1, 1) -> 0; compare(1, 0) -> 1; compare(0, 1) -> -1.
 equal(X, Y) -> X =:= Y.
 empty() -> 0.

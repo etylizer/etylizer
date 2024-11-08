@@ -12,6 +12,10 @@
 
 -export([has_ref/2, predef/1, raw_transform/2, transform/2, all_variables/2]).
 
+-export([hash/1, s_is_empty/1]).
+hash(Predef) -> erlang:phash2(Predef). %TODO custom hash function
+s_is_empty(Predef) -> is_empty(Predef).
+
 has_ref(_, _) -> false.
 
 substitute(_, Ty, _, _) ->  Ty.

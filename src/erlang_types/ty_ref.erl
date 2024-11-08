@@ -144,10 +144,8 @@ store(Ty) ->
       {ty_ref, Id}
   end,
 
-  Rett = case Hmap of
-    % #{Hash := L} when length(L) > 1  -> 
-    %   io:format(user,"x", []);
-      % error(L), error(length(L));
+  Rett = 
+  case Hmap of
     #{Hash := L} when is_list(L) ->
       case [{TTy, Idd} || {TTy, Idd} <- L, TTy =:= Ty] of
         [{_T1, I1}] -> 

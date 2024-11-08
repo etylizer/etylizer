@@ -1,12 +1,14 @@
 -module(ty_tuple).
 
 %% n-tuple representation
--export([compare/2, equal/2, substitute/3, all_variables/2]).
+-export([hash/1, compare/2, equal/2, substitute/3, all_variables/2]).
 
 -export([tuple/1, pi/2, has_ref/2, components/1, raw_transform/2, transform/2, any/1, empty/1, big_intersect/1]).
 
 empty(Size) -> {ty_tuple, Size, [ty_rec:empty() || _ <- lists:seq(1, Size)]}.
 any(Size) -> {ty_tuple, Size, [ty_rec:any() || _ <- lists:seq(1, Size)]}.
+
+hash({ty_tuple, _, Refs}) -> erlang:phash2([ty_rec:hash(Ty) || Ty <- Refs]).
 
 compare(A, B) when A < B -> -1;
 compare(A, B) when A > B -> 1;

@@ -1,9 +1,11 @@
 -module(ty_map).
 
 %% {ty, ty}
--export([compare/2, equal/2, substitute/3, all_variables/2]).
+-export([hash/1, compare/2, equal/2, substitute/3, all_variables/2]).
 
 -export([map/2, has_ref/2, raw_transform/2, transform/2, any/0, empty/0]).
+
+hash(TupleRep) -> ty_tuple:hash(TupleRep).
 
 empty() -> {ty_tuple, 2, [ty_rec:empty(), ty_rec:empty()]}.
 any() -> {ty_tuple, 2, [ty_rec:any(), ty_rec:any()]}.
