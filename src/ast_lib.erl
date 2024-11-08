@@ -114,7 +114,6 @@ erlang_ty_var_to_var({var, Id, Name}) ->
     {var, list_to_atom("$mu_" ++ integer_to_list(Id) ++ "_" ++ atom_to_list(Name))}.
 
 erlang_ty_to_ast(X) ->
-    io:format(user,"X", []),
     Cache = erlang:get(ty_ast_cache),
     Cached = maps:get(X, Cache, undefined),
     maybe_transform(Cached, X, Cache).

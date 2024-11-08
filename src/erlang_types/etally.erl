@@ -10,14 +10,14 @@
 tally(Constraints) -> tally(Constraints, sets:new()).
 
 tally(Constraints, FixedVars) ->
-  io:format(user,"TALLY~n~s~n", [set_of_constraint_sets:print(Constraints)]),
+  % io:format(user,"TALLY~n~s~n", [set_of_constraint_sets:print(Constraints)]),
   Normalized = ?TIME(tally_normalize, tally_normalize(Constraints, FixedVars)),
-  io:format(user,"NORM~n", []),
+  % io:format(user,"NORM~n", []),
   Saturated = ?TIME(tally_saturate, tally_saturate(Normalized, FixedVars)),
-  io:format(user,"SAT~n~p~n", [Saturated]),
+  % io:format(user,"SAT~n~p~n", [Saturated]),
   Solved = ?TIME(tally_solve, tally_solve(Saturated, FixedVars)),
   % sanity: every substitution satisfies all given constraints, if no error
-  io:format(user,"FIN~n", []),
+  % io:format(user,"FIN~n", []),
   ?SANITY(substitutions_solve_input_constraints, case Solved of {error, _} -> ok; _ -> [ true = is_valid_substitution(Constraints, Subst) || Subst <- Solved] end),
   Solved.
 

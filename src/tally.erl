@@ -47,13 +47,13 @@ tally(SymTab, Constraints, FixedVars) ->
         _ ->
           % transform to subst:t()
           % TODO sanity variable Id == variable name
-          io:format(user,"Do transform ~n", []),
+          % io:format(user,"Do transform ~n", []),
           Res = [subst:mk_tally_subst(
             sets:union(FixedVars, Free),
             maps:from_list([{VarName, ast_lib:erlang_ty_to_ast(Ty)}
                           || {{var, _, VarName}, Ty} <- maps:to_list(Subst)]))
           || Subst <- InternalResult],
-          io:format(user,"FIN transform ~n", []),
+          % io:format(user,"FIN transform ~n", []),
           Res
 
   end.

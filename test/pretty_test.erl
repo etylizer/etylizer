@@ -3,6 +3,7 @@
 -include_lib("eunit/include/eunit.hrl").
 -include_lib("log.hrl").
 
+% FIXME enable again
 % pretty_ty_test() ->
 %     T = {tuple, [{predef, integer},
 %                  {singleton, 4},
