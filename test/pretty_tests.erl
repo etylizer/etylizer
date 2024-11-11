@@ -206,7 +206,7 @@ other_test() ->
   Pretty = ast_lib:erlang_ty_to_ast(B, #{}),
 
   true = subty:is_equivalent(none, V0, Pretty),
-  ?assertEqual("{a5 /\\ b, int} | {a, int}", pretty:render_ty(Pretty)),
+  ?assertEqual("{a, int} | {a5 /\\ b, int}", pretty:render_ty(Pretty)),
 
   ok.
 
@@ -240,5 +240,18 @@ recursive_test() ->
   % TODO how to test this with string output?
   {mu, Mu, {union, [{singleton, nil}, {tuple, [{var, alpha}, Mu]}]}} = Pretty,
   %?assertEqual("mu X . nil | {alpha, mu X}", pretty:render_ty(Pretty)),
+
+  ok.
+
+tuple2_intersect_test() ->
+  ecache:reset_all(),
+  A = tintersect([
+    ttuple([(tatom(a)), tatom(c)]),
+    ttuple([(tatom()), (tatom(c))])
+  ]),
+  B = ast_lib:ast_to_erlang_ty(A),
+  Pretty = ast_lib:erlang_ty_to_ast(B),
+  true = subty:is_equivalent(none, A, Pretty),
+  ?assertEqual("{a, c}", pretty:render_ty(Pretty)),
 
   ok.

@@ -4,7 +4,7 @@
 -define(TERMINAL, bdd_bool).
 -define(F(Z), fun() -> Z end).
 
--export([is_empty_corec/2, normalize_corec/6, substitute/4, apply_to_node/3]).
+-export([simplify_dnf/1, is_empty_corec/2, normalize_corec/6, substitute/4, apply_to_node/3]).
 -export([tuple/1, all_variables/2, transform/2, to_singletons/1, phi_corec/3, phi_norm_corec/5]).
 
 -include("bdd_node.hrl").
@@ -128,6 +128,21 @@ phi_norm_corec(Size, BigS, [Ty | N], Fixed, M) ->
 
 apply_to_node(Node, Map, Memo) ->
   substitute(Node, Map, Memo, fun(N, S, M) -> ty_tuple:substitute(N, S, M) end).
+
+simplify_dnf(Dnf) ->
+
+  % step 1: intersect positive 
+  A = [{big_intersect(P), N, T} || {P, N, T} <- Dnf],
+
+  A.
+
+big_intersect([]) -> [];
+big_intersect([X]) -> [X];
+big_intersect(X) -> 
+  % io:format(user,"x",[]),
+  [ty_tuple:big_intersect(X)].
+
+
 
 -ifdef(TEST).
 -include_lib("eunit/include/eunit.hrl").

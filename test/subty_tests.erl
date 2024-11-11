@@ -719,8 +719,6 @@ simplification_tuple_test() ->
     Sis = Si(Size),
     Tis = Ti(Size),
 
-    All = lists:zip3(lists:seq(1, length(Sis)), Sis, Tis),
-
     TuplesLeftSide = tdiff(
       ttuple(Sis), 
       ttuple(Tis) 
@@ -731,7 +729,7 @@ simplification_tuple_test() ->
           I -> tdiff(lists:nth(Index, Sis), lists:nth(Index, Tis)); 
           _ -> lists:nth(Index, Sis) 
         end || Index <- lists:seq(1, Size)])
-      || {I, Si, Ti} <- All]),
+      || I <- lists:seq(1, length(Sis))]),
 
     true = is_equiv(TuplesLeftSide, TuplesRightSide)
 
