@@ -1,7 +1,7 @@
 -module(subty_tests).
 -include_lib("eunit/include/eunit.hrl").
 
--import(stdtypes, [tvar/1, ttuple_any/0, tnegate/1, tatom/0, tatom/1, tfun_full/2, trange/2, tint/1, tunion/1, tintersect/1, trange_any/0, tint/0, ttuple/1, tany/0, tnone/0, tmap/1, tmap_any/0, tmap_field_req/2, tmap_field_opt/2]).
+-import(stdtypes, [tdiff/2, tvar/1, ttuple_any/0, tnegate/1, tatom/0, tatom/1, tfun_full/2, trange/2, tint/1, tunion/1, tintersect/1, trange_any/0, tint/0, ttuple/1, tany/0, tnone/0, tmap/1, tmap_any/0, tmap_field_req/2, tmap_field_opt/2]).
 -import(test_utils, [is_subtype/2, is_equiv/2]).
 
 foo2_branch1_test() ->
@@ -704,6 +704,38 @@ simplification_10_test() ->
   true = is_equiv(S, T),
 
   ok.
+
+% test cases for
+% {S}          \ {T}          == {S \ T}
+% {S1, S2}     \ {T1, T2}     == {S1 \ T1, S2}     U {S1, S2 \ T2}
+% {S1, S2, S3} \ {T1, T2, T3} == {S1 \ T1, S2, S3} U {S1, S2 \ T2, S3} U {S1, S2, S3 \ T3}
+% ... for any size
+simplification_tuple_test() ->
+  lists:foreach(fun(Size) ->
+    A = fun(Prefix, T) -> list_to_atom(Prefix ++ integer_to_list(T)) end,
+    Si = fun(I) -> [tvar(A("S",X)) || X <- lists:seq(1, I)] end,
+    Ti = fun(I) -> [tvar(A("T",X)) || X <- lists:seq(1, I)] end,
+
+    Sis = Si(Size),
+    Tis = Ti(Size),
+
+    All = lists:zip3(lists:seq(1, length(Sis)), Sis, Tis),
+
+    TuplesLeftSide = tdiff(
+      ttuple(Sis), 
+      ttuple(Tis) 
+    ),
+
+    TuplesRightSide = tunion([ 
+      ttuple([case Index of 
+          I -> tdiff(lists:nth(Index, Sis), lists:nth(Index, Tis)); 
+          _ -> lists:nth(Index, Sis) 
+        end || Index <- lists:seq(1, Size)])
+      || {I, Si, Ti} <- All]),
+
+    true = is_equiv(TuplesLeftSide, TuplesRightSide)
+
+  end, lists:seq(1, 5)).
 
 % =====
 % Map Tests

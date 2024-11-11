@@ -19,6 +19,7 @@
     builtin_ops/0, builtin_funs/0,
     tatom/0, tatom/1,
     tintersect/1, tunion/1, tunion/2, tnegate/1,
+    tdiff/2,
     tinter/1, tinter/2,
     tyscm/2,
     any/0,
@@ -117,6 +118,9 @@ ttuple1(T) ->
 
 ttuple2(T, U) ->
     {tuple, [T, U]}.
+
+tdiff(T1, T2) ->
+    tintersect([T1, tnegate(T2)]).
 
 tintersect(Components) ->
     {intersection, Components}.
