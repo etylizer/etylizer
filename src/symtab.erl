@@ -8,7 +8,11 @@
 -compile([nowarn_shadow_vars]).
 
 -export_type([
-    t/0
+    t/0,
+    fun_env/0,
+    ty_env/0,
+    record_env/0,
+    op_env/0
 ]).
 
 -export([
@@ -28,20 +32,29 @@
     extend_symtab_with_module_list/3
 ]).
 
--export_type([
-    fun_env/0
-]).
-
 -type fun_env() :: #{ ast:global_ref() => ast:ty_scheme() }.
+-type ty_env() :: #{ ast:global_ref() => ast:ty_scheme() }.
+-type record_env() :: #{ atom() => records:record_ty() }.
+-type op_env() :: #{ {atom(), arity()} => ast:ty_scheme() }.
 
 -record(tab, {
               funs :: fun_env(),
-              ops :: #{ {atom(), arity()} => ast:ty_scheme() },
-              types :: #{ ast:global_ref() => ast:ty_scheme() },
-              records :: #{ atom() => records:record_ty() }
+              ops :: op_env(),
+              types :: ty_env(),
+              records :: record_env()
 }).
 
 -opaque t() :: #tab{}.
+
+-spec dump_symtab(string(), string(), t()) -> ok.
+dump_symtab(Key, What, Tab) ->
+    ?LOG_DEBUG("Key ~s not defined as ~s in symtab, functions:~n~s~ntypes:~n~s~nOperators:~n~s~nRecords:~n~s",
+        Key,
+        What,
+        pretty:render_fun_env(Tab#tab.funs),
+        pretty:render_ty_env(Tab#tab.types),
+        pretty:render_op_env(Tab#tab.ops),
+        pretty:render_record_env(Tab#tab.records)).
 
 % Get the type declared for a function. The location is the use-site
 % If no such name exists, an error is thrown.
@@ -49,7 +62,10 @@
 lookup_fun(Ref, Loc, Tab) ->
     case find_fun(Ref, Tab) of
         {ok, X} -> X;
-        error -> errors:name_error(Loc, "function ~s undefined", pp:global_ref(Ref))
+        error ->
+            RefStr = pretty:render(pretty:ref(Ref)),
+            dump_symtab(RefStr, "function", Tab),
+            errors:name_error(Loc, "function ~s undefined", RefStr)
     end.
 
 -spec find_fun(ast:global_ref(), t()) -> t:opt(ast:ty_scheme()).
@@ -60,7 +76,10 @@ find_fun(Ref, Tab) -> maps:find(Ref, Tab#tab.funs).
 lookup_op(Name, Arity, Loc, Tab) ->
     case find_op(Name, Arity, Tab) of
         {ok, X} -> X;
-        error -> errors:name_error(Loc, "operator ~w undefined for ~w arguments", [Name, Arity])
+        error ->
+            S = pretty:render(pretty:arity(Name, Arity)),
+            dump_symtab(S, "operator", Tab),
+            errors:name_error(Loc, "operator ~s undefined", S)
     end.
 
 -spec find_op(atom(), arity(), t()) -> t:opt(ast:ty_scheme()).
@@ -72,7 +91,10 @@ find_op(Name, Arity, Tab) -> maps:find({Name, Arity}, Tab#tab.ops).
 lookup_ty(Ref, Loc, Tab) ->
     case find_ty(Ref, Tab) of
         {ok, X} -> X;
-        error -> errors:name_error(Loc, "type ~s undefined", pp:global_ref(Ref))
+        error ->
+            RefStr = pretty:render(pretty:ref(Ref)),
+            dump_symtab(RefStr, "type", Tab),
+            errors:name_error(Loc, "type ~s undefined", RefStr)
     end.
 
 -spec find_ty(ast:global_ref(), t()) -> t:opt(ast:ty_scheme()).
@@ -82,7 +104,9 @@ find_ty(Ref, Tab) -> maps:find(Ref, Tab#tab.types).
 lookup_record(Name, Loc, Tab) ->
     case find_record(Name, Tab) of
         {ok, X} -> X;
-        error -> errors:name_error(Loc, "record ~w undefined", Name)
+        error ->
+            dump_symtab(utils:sformat("~w", Name), "record", Tab),
+            errors:name_error(Loc, "record ~w undefined", Name)
     end.
 
 -spec find_record(atom(), t()) -> t:opt(records:record_ty()).
