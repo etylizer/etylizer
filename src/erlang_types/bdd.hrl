@@ -142,6 +142,17 @@ s_is_empty(_) -> false.
 is_empty_union(F1, F2) ->
   F1() andalso F2().
 
+get_dnf_raw(Bdd) ->
+  Raw = lists:filter(
+    fun({_,_,[]}) -> false; ({_, _, T}) ->
+      case ?TERMINAL:empty() of
+        T -> false;
+        _ ->  true
+      end
+    end,
+    do_dnf(Bdd, {fun(P, N, T) -> [{P, N, T}] end, fun(C1, C2) -> C1() ++ C2() end}, [], [])
+  ).
+
 get_dnf(Bdd) ->
   Raw = lists:filter(
     fun({_,_,[]}) -> false; ({_, _, T}) ->
@@ -157,6 +168,14 @@ get_dnf(Bdd) ->
     _ -> Raw
   end.
 
+dnf_raw(Bdd, {ProcessCoclause, CombineResults}) ->
+  Dnf = get_dnf_raw(Bdd),
+  Empty = ProcessCoclause([], [], ?TERMINAL:empty()),
+
+  lists:foldl(fun({P, N, T}, Acc) -> 
+    Line = ProcessCoclause(P, N, T),
+    CombineResults(fun() -> Line end, fun() -> Acc end) 
+  end, Empty, Dnf).
 
 dnf(Bdd, {ProcessCoclause, CombineResults}) ->
   Dnf = get_dnf(Bdd),

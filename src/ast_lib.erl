@@ -116,7 +116,23 @@ erlang_ty_var_to_var({var, Id, Name}) ->
 erlang_ty_to_ast(X) ->
     Cache = erlang:get(ty_ast_cache),
     Cached = maps:get(X, Cache, undefined),
-    maybe_transform(Cached, X, Cache).
+    FinalTy = maybe_transform(Cached, X, Cache),
+
+    % SANITY CHECK
+    % TODO is it always the case that once we are in the semantic world, when we go back we dont need the symtab?
+    Sanity = ast_lib:ast_to_erlang_ty(FinalTy, symtab:empty()),
+    % leave this sanity check for a while
+    case ty_rec:is_equivalent(X, Sanity) of
+    true -> ok;
+    false ->
+        io:format(user, "--------~n", []),
+        io:format(user, "~p => ~p~n", [X, ty_ref:load(X)]),
+        io:format(user, "~p~n", [FinalTy]),
+        raw_erlang_ty_to_ast(X), % check if this is really a pretty printing bug or a transformation bug
+        error(pretty_printing_bug)
+    end,
+
+    FinalTy.
 
 maybe_transform(undefined, X, Cache) ->
     V = erlang_ty_to_ast(X, #{}),
@@ -128,13 +144,17 @@ maybe_transform(V, _, _) ->
 
 erlang_ty_to_ast(X, M) ->
         case M of
-            #{X := Var} -> Var;
+            #{X := Var} -> 
+    % io:format(user,"Memoized ~p, replace with ~p~n", [X, Var]),
+                Var;
             _ ->
+    R = make_ref(),
         % Given a X = ... equation, create a new
         % TODO discuss how to ensure uniqueness
         RecVarID = erlang:unique_integer(),
         Var = {var, erlang:list_to_atom("$mu" ++ integer_to_list(RecVarID))},
 
+        % io:format(user,"~n[~p]~nConverting~n~p := ~p with ~p~n", [R, Var, X, M]),
         NewM = M#{X => Var},
 
         {Pol, Full} = ty_rec:transform(
@@ -168,15 +188,18 @@ erlang_ty_to_ast(X, M) ->
                 negate => fun ast_lib:mk_negation/1
             }),
 
+        % io:format(user,"~n[~p]~nGot ~p~n", [R, {Pol, Full}]),
         % TODO check where to put the negation
         NewTy = case Pol of
             pos -> Full;
             neg -> stdtypes:tnegate(Full)
         end,
+        % io:format(user,"~n[~p]~nNewTy ~p >> ~p~n", [R, X, NewTy]),
 
         % Return always recursive type
         % TODO check if Var in NewTy
         % if not, return just NewTy
+        % io:format(user,"~n[~p]~nVar inside? ~p~n", [R, Var]),
         Vars = ast_utils:referenced_variables(NewTy),
         FinalTy = case lists:member(Var, Vars) of
             true ->
@@ -185,19 +208,6 @@ erlang_ty_to_ast(X, M) ->
                 NewTy
         end,
 
-        % SANITY CHECK
-        % TODO is it always the case that once we are in the semantic world, when we go back we dont need the symtab?
-        Sanity = ast_lib:ast_to_erlang_ty(FinalTy, symtab:empty()),
-          % leave this sanity check for a while
-          case ty_rec:is_equivalent(X, Sanity) of
-            true -> ok;
-            false ->
-            %   io:format(user, "--------~n", []),
-            %   io:format(user, "~p => ~p~n", [X, ty_ref:load(X)]),
-            %   io:format(user, "~p~n", [FinalTy]),
-              raw_erlang_ty_to_ast(X), % check if this is really a pretty printing bug or a transformation bug
-              error(pretty_printing_bug)
-          end,
         FinalTy
     end.
 
