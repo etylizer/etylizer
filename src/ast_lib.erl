@@ -148,7 +148,6 @@ erlang_ty_to_ast(X, M) ->
     % io:format(user,"Memoized ~p, replace with ~p~n", [X, Var]),
                 Var;
             _ ->
-    R = make_ref(),
         % Given a X = ... equation, create a new
         % TODO discuss how to ensure uniqueness
         RecVarID = erlang:unique_integer(),

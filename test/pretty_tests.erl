@@ -334,11 +334,11 @@ tuple3_diff_1_test() ->
 
 tuple3_diff_2_test() ->
   ecache:reset_all(),
-  A = tdiff(ttuple([tatom(), trange(20, 50), tatom()]), ttuple([tatom(a), trange(25, 50), tatom(c)])),
+  A = tdiff(ttuple([tatom(), trange(20, 50), tatom()]), ttuple([tatom(a), trange(25, 50), tatom()])),
   B = ast_lib:ast_to_erlang_ty(A),
   Pretty = ast_lib:erlang_ty_to_ast(B),
   true = subty:is_equivalent(none, A, Pretty),
-  ?assertEqual("none()", pretty:render_ty(Pretty)),
+  ?assertEqual("{atom() /\\ not(a), 20..50, atom()} | {atom(), 20..24, atom()}", pretty:render_ty(Pretty)),
   ok.
 
 tuple3_intersect_test() ->
