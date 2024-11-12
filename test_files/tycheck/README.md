@@ -5,7 +5,7 @@ The driver for running the tests is test/tycheck_tests.erl
 Files in this directory should follow some conventions:
 
 * A test that should fail is either placed in a file ending with _failN.erl
-  (where N is empty or some natural number) or its first line is `% Error`.
+  (where N is empty or some natural number) or its first line is `% ERROR`.
   * If the first line of the file starts with `% ERROR`, then all following comment
     lines are treated as a string that must occur somewhere in the error message. The first
     space character after the `%` is ignored.
