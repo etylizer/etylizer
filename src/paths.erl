@@ -12,8 +12,8 @@
 ]).
 -export_type([search_path_entry/0, search_path/0]).
 
--include_lib("log.hrl").
--include_lib("ety_main.hrl").
+-include("log.hrl").
+-include("ety_main.hrl").
 
 % An entry in the search path is a kind (local, dep, or otp), a source directory and a list
 % of include directories.

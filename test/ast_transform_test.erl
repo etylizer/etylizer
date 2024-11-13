@@ -3,7 +3,7 @@
 -export([check/1]).
 
 -include_lib("eunit/include/eunit.hrl").
--include_lib("log.hrl").
+-include("log.hrl").
 
 -spec check_test_spec(file:filename(), test_utils:test_spec()) -> ok.
 check_test_spec(Path, {good, Lineno, RawForms}) ->

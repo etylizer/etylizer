@@ -7,8 +7,8 @@
 
 -export_type([ctx/0]).
 
--include_lib("log.hrl").
--include_lib("typing.hrl").
+-include("log.hrl").
+-include("typing.hrl").
 
 -spec new_ctx(symtab:t(), t:opt(ast_check:ty_map())) -> ctx().
 new_ctx(Tab, Sanity) ->

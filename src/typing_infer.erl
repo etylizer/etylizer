@@ -8,8 +8,8 @@
 
 -export_type([ctx/0]).
 
--include_lib("log.hrl").
--include_lib("typing.hrl").
+-include("log.hrl").
+-include("typing.hrl").
 
 % Infers the types of all the given functions.
 -spec infer_all(ctx(), string(), [ast:fun_decl()]) -> [symtab:fun_env()].

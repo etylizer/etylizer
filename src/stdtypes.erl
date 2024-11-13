@@ -1,7 +1,7 @@
 
 -module(stdtypes).
 
--include_lib("log.hrl").
+-include("log.hrl").
 
 % @doc Type1sfor funcions and operatortfun([Arg], Res).
 -export([
@@ -39,7 +39,7 @@
     init/0, cleanup/0
 ]).
 
--include_lib("parse.hrl").
+-include("parse.hrl").
 
 %% Builtin types
 

@@ -3,14 +3,14 @@
 % @doc This module provides functionality for parsing the erlang source code.
 % It returns an AST matching the types in the ast module.
 
--include_lib("log.hrl").
+-include("log.hrl").
+-include("parse.hrl").
 
 -export([parse_file/1, parse_file/2, parse_file_or_die/1, parse_file_or_die/2, parse_transform/2]).
 
 -define(TABLE, parse_result).
 -define(FORMS, forms).
 
--include_lib("parse.hrl").
 
 % Scanner: http://erlang.org/doc/man/erl_parse.html
 % Parser: http://erlang.org/doc/man/erl_parse.html
