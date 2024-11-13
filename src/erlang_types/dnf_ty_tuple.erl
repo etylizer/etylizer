@@ -133,7 +133,6 @@ apply_to_node(Node, Map, Memo) ->
 
 simplify_dnf([]) -> [];
 simplify_dnf(Dnf) ->
-
   case lists:member({[], [], ?TERMINAL:any()}, Dnf) of
     true -> [{[], [], ?TERMINAL:any()}];
     _ ->
@@ -146,11 +145,32 @@ simplify_dnf(Dnf) ->
         remove_negations(P, N, T, [])
         || {P, N, T} <- A
         ]),
+      case NoNeg of
+        [] -> [];
+        _ ->
+          Dimension = begin [X | _] = NoNeg, length(ty_tuple:components(X)) end,
 
-      Res = [{[T], [], ?TERMINAL:any()} || T <- NoNeg],
-      % io:format(user, "Remm: ~p~n", [Res]),
-      Res
+          % step 3: merge tuples with common elements
+          Common = merge_common(Dimension, NoNeg),
+
+          Res = [{[T], [], ?TERMINAL:any()} || T <- Common],
+          % io:format(user, "Remm: ~p~n", [Res]),
+          Res
+      end
   end.
+
+merge_common(1, Tuples) ->
+  % Tuples;
+  % Fixme obey architecture
+  Ty = lists:foldl(fun(E, Acc) -> ty_rec:union(E, Acc) end, ty_rec:empty(), [T || {ty_tuple, 1, [T]} <- Tuples]), 
+  TT = [{ty_tuple, 1, [Ty]}],
+  io:format(user,"A: ~p~n", [Tuples]),
+  io:format(user,"B: ~p~n", [TT]),
+  Tuples;
+merge_common(2, Tuples) -> %TODO implement n > 1
+  Tuples;
+merge_common(_Dim, Tuples) ->
+  Tuples. 
 
 % assumes P is a single tuple
 remove_negations(P, [], _T, Acc) ->
@@ -194,7 +214,6 @@ remove_negations(PP, [NegTuple | N], _T, Acc) ->
 big_intersect([]) -> [];
 big_intersect([X]) -> [X];
 big_intersect(X) -> 
-  % io:format(user,"x",[]),
   [ty_tuple:big_intersect(X)].
 
 

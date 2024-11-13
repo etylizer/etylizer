@@ -237,21 +237,10 @@ recursive_test() ->
   C = ty_rec:negate(B),
   BB = ty_rec:negate(C),
   true = ty_rec:is_equivalent(B, BB),
-  % io:format(user,"~p~n", [C]),
-  io:format(user,"B: ~s~n", [ty_rec:print(B)]),
-  io:format(user,"B: ~p~n", [ast_lib:erlang_ty_to_ast(B)]),
-  io:format(user,"!B: ~s~n", [ty_rec:print(C)]),
-  io:format(user,"!B: ~p~n", [ast_lib:erlang_ty_to_ast(C)]),
-  io:format(user,"!!B: ~s~n", [ty_rec:print(BB)]),
-  io:format(user,"!!B: ~p~n", [ast_lib:erlang_ty_to_ast(BB)]),
-  % Pretty = ast_lib:erlang_ty_to_ast(B),
-
-
-   
-   
+  Pretty = ast_lib:erlang_ty_to_ast(B),
   
   % % TODO how to test this with string output?
-  % {mu, Mu, {union, [{singleton, nil}, {tuple, [{var, alpha}, Mu]}]}} = Pretty,
+  {mu, Mu, {union, [{singleton, nil}, {tuple, [{var, alpha}, Mu]}]}} = Pretty,
   % %?assertEqual("mu X . nil | {alpha, mu X}", pretty:render_ty(Pretty)),
 
   ok.
@@ -269,9 +258,8 @@ recursive2_test() ->
   A = {mu, X, L},
 
   B = ast_lib:ast_to_erlang_ty(A, symtab:empty()),
-  io:format(user,"~p...~n", [B]),
   Pretty = ast_lib:erlang_ty_to_ast(B),
-  % true = subty:is_equivalent(none, A, Pretty),
+  true = subty:is_equivalent(none, A, Pretty),
   
   % % TODO how to test this with string output?
   % {mu, Mu, {union, [{singleton, nil}, {tuple, [{var, alpha}, Mu]}]}} = Pretty,
@@ -416,17 +404,17 @@ tuple_wrapped_test() ->
   
 
 % TODO
-% tuple1_union_test() ->
-%   ecache:reset_all(),
-%   A = tunion([
-%     ttuple([tatom(a)]),
-%     ttuple([tatom(e)])
-%   ]),
-%   B = ast_lib:ast_to_erlang_ty(A),
-%   Pretty = ast_lib:erlang_ty_to_ast(B),
-%   true = subty:is_equivalent(none, A, Pretty),
-%   ?assertEqual("{a | e}", pretty:render_ty(Pretty)),
-%   ok.
+tuple1_union_test() ->
+  ecache:reset_all(),
+  A = tunion([
+    ttuple([tatom(a)]),
+    ttuple([tatom(e)])
+  ]),
+  B = ast_lib:ast_to_erlang_ty(A),
+  Pretty = ast_lib:erlang_ty_to_ast(B),
+  true = subty:is_equivalent(none, A, Pretty),
+  ?assertEqual("{a | e}", pretty:render_ty(Pretty)),
+  ok.
 
 % tuple2_union_test() ->
 %   ecache:reset_all(),

@@ -125,9 +125,9 @@ erlang_ty_to_ast(X) ->
     case ty_rec:is_equivalent(X, Sanity) of
     true -> ok;
     false ->
-        io:format(user, "--------~n", []),
-        io:format(user, "~p => ~p~n", [X, ty_ref:load(X)]),
-        io:format(user, "~p~n", [FinalTy]),
+        % io:format(user, "--------~n", []),
+        % io:format(user, "~p => ~p~n", [X, ty_ref:load(X)]),
+        % io:format(user, "~p~n", [FinalTy]),
         raw_erlang_ty_to_ast(X), % check if this is really a pretty printing bug or a transformation bug
         error(pretty_printing_bug)
     end,
@@ -420,7 +420,26 @@ ast_to_erlang_ty_var({var, Name}) when is_atom(Name) ->
 
 % === useful for debugging
 raw_erlang_ty_to_ast(X) ->
-    raw_erlang_ty_to_ast(X, #{}).
+    FinalTy = raw_erlang_ty_to_ast(X, #{}),
+
+    % SANITY CHECK
+    % TODO is it always the case that once we are in the semantic world, when we go back we dont need the symtab?
+    Sanity = ast_lib:ast_to_erlang_ty(FinalTy, symtab:empty()),
+      % leave this sanity check for a while
+      case ty_rec:is_equivalent(X, Sanity) of
+        true -> ok;
+        false ->
+            % Dump = ty_ref:write_dump_ty(X),
+            % io:format(user, "Dump~n~p~n", [Dump]),
+            % io:format(user, "--------~n", []),
+            % io:format(user, "~p => ~p~n", [X, ty_ref:load(X)]),
+            % io:format(user, "~p~n", [FinalTy]),
+            error(raw_printing_bug)
+      end,
+    
+    FinalTy.
+
+
 
 raw_erlang_ty_to_ast(X, M) ->
         case M of
@@ -474,20 +493,5 @@ raw_erlang_ty_to_ast(X, M) ->
             false ->
                 NewTy
         end,
-
-        % SANITY CHECK
-        % TODO is it always the case that once we are in the semantic world, when we go back we dont need the symtab?
-        Sanity = ast_lib:ast_to_erlang_ty(FinalTy, symtab:empty()),
-          % leave this sanity check for a while
-          case ty_rec:is_equivalent(X, Sanity) of
-            true -> ok;
-            false ->
-                % Dump = ty_ref:write_dump_ty(X),
-                % io:format(user, "Dump~n~p~n", [Dump]),
-                % io:format(user, "--------~n", []),
-                % io:format(user, "~p => ~p~n", [X, ty_ref:load(X)]),
-                % io:format(user, "~p~n", [FinalTy]),
-                error(raw_printing_bug)
-          end,
         FinalTy
     end.

@@ -13,7 +13,7 @@
 % hide built-in Erlang node function
 -compile({no_auto_import, [node/1]}).
 
--export([raw_transform/2, all_variables/1, has_ref/2, get_dnf/1, any/0, empty/0, equal/2, node/1, terminal/1, compare/2, union/2, intersect/2, negate/1, diff/2]).
+-export([get_dnf_raw/1, dnf_raw/2, raw_transform/2, all_variables/1, has_ref/2, get_dnf/1, any/0, empty/0, equal/2, node/1, terminal/1, compare/2, union/2, intersect/2, negate/1, diff/2]).
 
 % these are defined here so the IDE does not complain
 -ifndef(ELEMENT).
@@ -143,7 +143,7 @@ is_empty_union(F1, F2) ->
   F1() andalso F2().
 
 get_dnf_raw(Bdd) ->
-  Raw = lists:filter(
+  lists:filter(
     fun({_,_,[]}) -> false; ({_, _, T}) ->
       case ?TERMINAL:empty() of
         T -> false;
