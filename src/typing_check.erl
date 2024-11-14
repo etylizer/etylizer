@@ -5,8 +5,6 @@
     check/3
 ]).
 
--export_type([ctx/0]).
-
 -include("log.hrl").
 -include("typing.hrl").
 

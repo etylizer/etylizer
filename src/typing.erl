@@ -5,8 +5,6 @@
     new_ctx/2
 ]).
 
--export_type([ctx/0]).
-
 -include("log.hrl").
 -include("typing.hrl").
 
