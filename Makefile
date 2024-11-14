@@ -18,7 +18,7 @@ test: build testtest
 	@echo "Running unit tests for type checker ..."
 	$(REBAR) eunit
 	@echo "Checking syntax transformation for source code of type checker ..."
-	./_build/default/bin/ety --sanity --no-type-checking -I ./src ./src/*.erl
+	./_build/default/bin/ety --sanity --no-type-checking -I ./src -I ./include ./src/*.erl
 
 # FIXME: we should run these tests with the machinery in tycheck_tests.erl (#69).
 # For now, SW disabled the tests because they are too slow. Re-enable if we have
