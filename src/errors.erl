@@ -4,7 +4,7 @@
     unsupported/3, unsupported/2,
     name_error/3, name_error/2, name_error_no_loc/2,
     uncovered_case/3, uncovered_case/4, bug/2, bug/1,
-    ty_error/2, ty_error/3, ty_error/1, not_implemented/1, parse_error/1
+    ty_error/2, ty_error/3, ty_error/1, not_implemented/1, parse_error/1, some_error/2
 ]).
 
 -spec generic_error(atom(), string()) -> no_return().
@@ -15,6 +15,10 @@ generic_error(Kind, Loc, Prefix, Msg, Args) ->
     generic_error(Kind,
                   utils:sformat("~s: ~s: ~s",
                                 ast:format_loc(Loc), Prefix, utils:sformat(Msg, Args))).
+
+-spec some_error(string(), any()) -> no_return().
+some_error(Msg, Args) ->
+    generic_error(error, utils:sformat(Msg, Args)).
 
 -spec unsupported(ast:loc(), string(), any()) -> no_return().
 unsupported(Loc, Msg, Args) ->

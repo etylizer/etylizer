@@ -200,7 +200,8 @@ local_varname_from_any_ref(Ref) ->
 -type export_form() :: {attribute, loc(), export, [fun_with_arity()]}.
 -type export_type_form() :: {attribute, loc(), export_type, [ty_with_arity()]}.
 -type import_form() :: {attribute, loc(), import, {Mod::atom(),[fun_with_arity()]}}.
--type mod_form() :: {attribute, loc(), module, Mod::atom()}.
+-type mod_name() :: atom().
+-type mod_form() :: {attribute, loc(), module, mod_name()}.
 -type fun_decl() :: {function, loc(), Name::atom(), Arity::arity(), [fun_clause()]}.
 
 -spec get_fun_name(fun_decl()) -> string().
@@ -478,7 +479,15 @@ is_predef_alias_name(N) ->
 % A reference to a user defined type. At point of construction, it's still unclear
 % whether the usage is valid, so we include the location for better error reporting
 % later on.
--type ty_named() :: {named, loc(), Name::global_ref(), Args::[ty()]}.
+% When referring types, we distinguish between references to a type in the same module and
+% in a different modules. But we always record the name of the module defining the type.
+% This simplifies symtab handling because we can then resolve type refernces independent from the
+% context the references are appearing (the symtab always stores the module and the type name).
+% Note that we do not allow the same module name to occur twice in a project. Hence, the context
+% is irrelevant.
+-type ty_ref() :: {ty_ref, Module::atom(), TypeName::atom(), arity()}
+                | {ty_qref, Module::atom(), TypeName::atom(), arity()}.
+-type ty_named() :: {named, loc(), Name::ty_ref(), Args::[ty()]}.
 
 % recursive type
 -type ty_mu() :: {mu, RecursiveVariable::ty_var(), MaybeRecursiveType::ty()}.

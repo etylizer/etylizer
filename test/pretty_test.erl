@@ -9,7 +9,7 @@ pretty_ty_test() ->
                  {union, [{map, [{map_field_opt, {singleton, key}, {predef_alias, term}}]},
                           {fun_full,
                            [{predef_alias, string}, {list, {var, 'T'}}],
-                           {named, {loc, "file.erl", 13, 9}, {ref, doc, 0}, []}}]}]},
+                           {named, {loc, "file.erl", 13, 9}, {ty_ref, file, doc, 0}, []}}]}]},
     Doc = pretty:ty(T),
     S = pretty:render(Doc),
     ?assertEqual("{integer(), 4, #{key => term()} | fun((string(), [T]) -> doc())}", S).

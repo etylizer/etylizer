@@ -3,6 +3,7 @@
 % @doc This module defines general purpose utility functions.
 
 -include_lib("log.hrl").
+-include_lib("kernel/include/file.hrl").
 
 -export([
     map_opt/3, map_opt/2,
@@ -19,7 +20,7 @@
     with_default/2, compare/2,
     mingle/5, timing/1, timing_log/3,
     single/1, from_to/2, assocs_find/2, assocs_find_index/2,
-    timeout/2
+    timeout/2, is_same_file/2, file_exists/1
 ]).
 
 mingle(LeftDefault, RightDefault, AllLeft, AllRight, Op) ->
@@ -380,3 +381,22 @@ timeout(Millis, Fun) ->
         exit(Pid, kill),
         timeout
   end.
+
+is_same_file(Path1, Path2) ->
+    case {file:read_file_info(Path1), file:read_file_info(Path2)} of
+        {{ok, Info1}, {ok, Info2}} ->
+            % Compare device and inode numbers
+            Info1#file_info.type == Info2#file_info.type andalso
+            Info1#file_info.major_device == Info2#file_info.major_device andalso
+            Info1#file_info.inode == Info2#file_info.inode;
+        _ ->
+            % If either file does not exist or cannot be read, return false
+            false
+    end.
+
+-spec file_exists(file:filename()) -> boolean().
+file_exists(FilePath) ->
+    case file:read_file_info(FilePath) of
+        {ok, _Info} -> true;
+        _ -> false
+    end.

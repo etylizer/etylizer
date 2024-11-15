@@ -1,10 +1,14 @@
 -module(ast_utils).
 
--export([remove_locs/1, referenced_modules/1, referenced_variables/1]).
+-export([
+    modname_from_path/1,
+    remove_locs/1,
+    referenced_modules/1,
+    referenced_variables/1
+]).
 
--export_type([ty_module_name/0]).
-
--type ty_module_name() :: atom().
+-spec modname_from_path(file:filename()) -> ast:mod_name().
+modname_from_path(Path) -> list_to_atom(filename:basename(Path, ".erl")).
 
 -spec remove_locs(T) -> T.
 remove_locs(X) ->
@@ -20,7 +24,7 @@ remove_locs(X) ->
     end,
     utils:everywhere(LocToError, X).
 
--spec referenced_modules(ast:forms()) -> [ty_module_name()].
+-spec referenced_modules(ast:forms()) -> [ast:mod_name()].
 referenced_modules(Forms) ->
     Modules = utils:everything(
                 fun(T) ->

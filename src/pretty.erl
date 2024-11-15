@@ -64,6 +64,9 @@ beside(D1, D2, D3) -> beside(D1, beside(D2, D3)).
 -spec beside(doc(), doc(), doc(), doc()) -> doc().
 beside(D1, D2, D3, D4) -> beside(D1, beside(D2, beside(D3, D4))).
 
+-spec beside(doc(), doc(), doc(), doc(), doc()) -> doc().
+beside(D1, D2, D3, D4, D5) -> beside(D1, beside(D2, beside(D3, beside(D4, D5)))).
+
 -spec comma_sep(list(doc())) -> doc().
 comma_sep(L) -> sep_by(text(","), L).
 
@@ -134,6 +137,9 @@ render_var(R) -> render(var(R)).
 -spec atom(atom()) -> doc().
 atom(A) -> text(atom_to_list(A)).
 
+-spec integer(integer()) -> doc().
+integer(I) -> text(integer_to_list(I)).
+
 -spec tyscheme(ast:ty_scheme()) -> doc().
 tyscheme({ty_scheme, [], Ty}) -> ty(Ty);
 tyscheme({ty_scheme, Vars, Ty}) ->
@@ -161,7 +167,7 @@ ty(Prec, T) ->
         {singleton, A} ->
             case A of
                 _ when is_atom(A) -> atom(A);
-                _ when is_integer(A) -> text(integer_to_list(A));
+                _ when is_integer(A) -> integer(A);
                 _ -> text([$$, A]) % must be a char
             end;
         {binary, I, J} ->
@@ -227,8 +233,8 @@ ty(Prec, T) ->
         {named, _Loc, Ref, Args} ->
             RefP =
                 case Ref of
-                    {ref, Name, _} -> atom(Name);
-                    {qref, Mod, Name, _} ->
+                    {ty_ref, _, Name, _} -> atom(Name);
+                    {ty_qref, Mod, Name, _} ->
                         beside(atom(Mod), text(":"), atom(Name))
                 end,
             beside(RefP, parens(comma_sep(lists:map(fun ty/1, Args))));
@@ -440,7 +446,12 @@ poly_env(Env) ->
 fun_env(Env) -> poly_env(Env).
 
 -spec ty_env(symtab:ty_env()) -> doc().
-ty_env(Env) -> poly_env(Env).
+ty_env(Env) ->
+    pretty_map(
+        fun ({ty_key, Mod, Name, Arity}) ->
+            beside(atom(Mod), text(":"), atom(Name), text("/"), integer(Arity)) end,
+            fun tyscheme/1,
+            Env).
 
 -spec op_env(symtab:op_env()) -> doc().
 op_env(Env) ->

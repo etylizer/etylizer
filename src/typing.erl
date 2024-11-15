@@ -18,7 +18,7 @@ new_ctx(Tab, Sanity) ->
 % Checks all forms of a module
 -spec check_forms(ctx(), string(), ast:forms(), sets:set(string())) -> ok.
 check_forms(Ctx, FileName, Forms, Only) ->
-    ExtTab = symtab:extend_symtab(Forms, Ctx#ctx.symtab),
+    ExtTab = symtab:extend_symtab(FileName, Forms, Ctx#ctx.symtab),
     ExtCtx = Ctx#ctx { symtab = ExtTab },
     % Split in functions with and without tyspec
     {FunsWithSpec, FunsWithoutSpec, KnownFuns} =
