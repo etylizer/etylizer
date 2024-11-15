@@ -3,6 +3,7 @@
 % @doc This module contains the functionality to retrieve the complete exported
 % interface of a module. This includes types that are not exported but referenced
 % by other exported types or functions.
+-include_lib("log.hrl").
 
 -export([extract_interface_declaration/1]).
 
@@ -27,10 +28,8 @@ extract_interface_declaration(Forms) ->
                          fun({attribute, _, type, _, {Name, {ty_scheme, VariableList, _}}}) ->
                                  not sets:is_element({Name, length(VariableList)}, ExportedTypes)
                          end, AllTypes),
-
     TypesFromExportedTypes = extract_types_from_exported_types(Forms, NotExportedTypes, ExportedTypes),
     TypesFromSignatures = extract_types_from_function_signatures(Forms, NotExportedTypes, ExportedFunctions),
-
     RelevantTypes = sets:union([ExportedTypes, TypesFromExportedTypes, TypesFromSignatures]),
     Result = utils:everything(
       fun(T) ->
@@ -187,10 +186,9 @@ handle_parameter_types(ParameterTypes) ->
 -spec handle_parameter_types_internal([ast:ty()], sets:set(ast:ty_named())) -> sets:set(ast:ty_named()).
 handle_parameter_types_internal([Head | Tail], References) ->
     case Head of
-        {named, _, _, _, _} -> handle_parameter_types_internal(Tail, sets:add_element(Head, References));
+        {named, _, _, _} -> handle_parameter_types_internal(Tail, sets:add_element(Head, References));
         _ -> handle_parameter_types_internal(Tail, References)
     end;
-
 handle_parameter_types_internal([], References) ->
     References.
 
