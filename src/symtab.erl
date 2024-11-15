@@ -33,7 +33,7 @@
 ]).
 
 -type fun_env() :: #{ ast:global_ref() => ast:ty_scheme() }.
--type ty_key() :: {ty_key, Module::atom(), Name::atom(), Arity::ast:arity()}.
+-type ty_key() :: {ty_key, Module::atom(), Name::atom(), Arity::arity()}.
 -type ty_env() :: #{ ty_key() => ast:ty_scheme() }.
 -type record_env() :: #{ atom() => records:record_ty() }.
 -type op_env() :: #{ {atom(), arity()} => ast:ty_scheme() }.

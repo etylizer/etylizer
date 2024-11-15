@@ -4,6 +4,7 @@
 -include_lib("log.hrl").
 
 -export([
+         arity/2,
          ty/1,
          tyscheme/1,
          constr/1,
@@ -266,15 +267,19 @@ with_parens(true, D) -> parens(D).
 -spec var(ast:exp_var()) -> doc().
 var({var, _, AnyRef}) -> ref(AnyRef).
 
--spec arity(atom(), ast:arity()) -> doc.
+-spec arity(atom(), arity()) -> doc().
 arity(Name, Arity) -> text(utils:sformat("~w/~w", Name, Arity)).
 
--spec ref(ast:any_ref()) -> doc().
+-spec qarity(atom(), atom(), arity()) -> doc().
+qarity(Mod, Name, Arity) -> text(utils:sformat("~w:~w/~w", Mod, Name, Arity)).
+
+-spec ref(ast:any_ref() | ast:ty_ref()) -> doc().
 ref(AnyRef) ->
     case AnyRef of
         {ref, Name, Arity} -> arity(Name, Arity);
-        {qref, Mod, Name, Arity} ->
-            text(utils:sformat("~w:~w/~w", Mod, Name, Arity));
+        {qref, Mod, Name, Arity} -> qarity(Mod, Name, Arity);
+        {ty_ref, Mod, Name, Arity} -> qarity(Mod, Name, Arity);
+        {ty_qref, Mod, Name, Arity} -> qarity(Mod, Name, Arity);
         {local_ref, {Name, Tok}} ->
             beside(atom(Name), text("@"), text(utils:sformat("~w", Tok)))
     end.
