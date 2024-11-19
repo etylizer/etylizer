@@ -17,10 +17,10 @@
 
 % these are defined here so the IDE does not complain
 -ifndef(ELEMENT).
--define(ELEMENT, bdd_bool).
+-define(ELEMENT, ty_bool).
 -endif.
 -ifndef(TERMINAL).
--define(TERMINAL, bdd_bool).
+-define(TERMINAL, ty_bool).
 -endif.
 
 any() -> {terminal, ?TERMINAL:any()}.

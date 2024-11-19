@@ -1,4 +1,4 @@
--module(ty_predef).
+-module(dnf_ty_predef).
 
 %% Predef representation
 
@@ -69,6 +69,6 @@ normalize_corec(TyPredef, [], [], _Fixed, _) ->
         false -> []
     end;
 normalize_corec(TyPredef, PVar, NVar, Fixed, M) ->
-    Ty = ty_rec:predef(dnf_var_predef:predef(TyPredef)),
+    Ty = ty_rec:predef(dnf_var_ty_predef:predef(TyPredef)),
     % ntlv rule
-    ty_variable:normalize_corec(Ty, PVar, NVar, Fixed, fun(Var) -> ty_rec:predef(dnf_var_predef:var(Var)) end, M).
+    ty_variable:normalize_corec(Ty, PVar, NVar, Fixed, fun(Var) -> ty_rec:predef(dnf_var_ty_predef:var(Var)) end, M).

@@ -1,4 +1,4 @@
--module(bdd_bool).
+-module(ty_bool).
 
 % only used as a simple boolean terminal node in a BDD where the leafs are 1 and 0 only.
 
@@ -19,7 +19,7 @@ negate(1) -> 0; negate(0) -> 1.
 is_any(1) -> true; is_any(_) -> false.
 is_empty(0) -> true; is_empty(_) -> false.
 substitute(_,X,_,_) -> X.
-% there is nothing to substitute in a bdd_bool
+% there is nothing to substitute in a ty_bool
 map_pi(_) -> #{}.
 has_ref(_,_) -> false.
 all_variables(_, _) -> [].
