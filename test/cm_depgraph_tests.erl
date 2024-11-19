@@ -1,7 +1,7 @@
 -module(cm_depgraph_tests).
 
 -include_lib("eunit/include/eunit.hrl").
--include_lib("../src/log.hrl").
+-include("log.hrl").
 
 add_dependency_test() ->
     TestGraph = cm_depgraph:add_dependency("test.erl", "foo.erl", cm_depgraph:new()),

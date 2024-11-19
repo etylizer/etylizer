@@ -1,7 +1,5 @@
 -module(constr_collect).
 
--include_lib("log.hrl").
-
 -export([
     collect_constrs_no_matching_cond/1,
     collect_matching_cond_constrs/1,

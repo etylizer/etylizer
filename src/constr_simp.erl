@@ -1,6 +1,6 @@
 -module(constr_simp).
 
--include_lib("log.hrl").
+-include("log.hrl").
 
 -export([
     simp_constrs/2,

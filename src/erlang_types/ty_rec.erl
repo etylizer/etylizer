@@ -24,7 +24,7 @@
 
 -export([raw_transform/2, transform/2, print/1]).
 
--include_lib("sanity.hrl").
+-include("sanity.hrl").
 
 -record(ty, {predef, atom, interval, list, tuple, function, map}).
 

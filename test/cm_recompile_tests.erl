@@ -1,8 +1,8 @@
 -module(cm_recompile_tests).
 
 -include_lib("eunit/include/eunit.hrl").
--include_lib("../src/ety_main.hrl").
--include_lib("../src/log.hrl").
+-include("ety_main.hrl").
+-include("log.hrl").
 
 % Parse a string such as "1+2" to return {ok, sets:from_list([1,2])}
 -spec parse_versions(string()) -> {ok, sets:set(integer())} | error.

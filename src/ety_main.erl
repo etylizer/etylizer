@@ -4,9 +4,9 @@
 % @doc This is the main module of ety. It parses commandline arguments and orchestrates
 % everything.
 
--include_lib("log.hrl").
--include_lib("parse.hrl").
--include_lib("ety_main.hrl").
+-include("log.hrl").
+-include("parse.hrl").
+-include("ety_main.hrl").
 
 -spec parse_define(string()) -> {atom(), string()}.
 parse_define(S) ->

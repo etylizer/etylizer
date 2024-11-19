@@ -4,8 +4,8 @@
 % specs in the ast module. We do this check to make sure our definitions in ast
 % are correct. See function check/3.
 
--include_lib("log.hrl").
--include_lib("parse.hrl").
+-include("log.hrl").
+-include("parse.hrl").
 -include_lib("eunit/include/eunit.hrl").
 
 -export([

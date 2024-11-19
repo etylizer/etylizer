@@ -12,8 +12,8 @@
 ]).
 -export_type([search_path_entry/0, search_path/0]).
 
--include_lib("log.hrl").
--include_lib("ety_main.hrl").
+-include("log.hrl").
+-include("ety_main.hrl").
 
 % An entry in the search path is a kind (local, dep, or otp), a source directory and a list
 % of include directories.
@@ -213,7 +213,7 @@ rebar_config_from_lock_file(F) ->
 
 -define(TABLE, mod_table).
 
--spec find_module_path(paths:search_path(), atom()) -> paths:search_path_entry().
+-spec find_module_path(search_path(), atom()) -> search_path_entry().
 find_module_path(SearchPath, Module) ->
     case ets:whereis(?TABLE) of
         undefined -> ets:new(?TABLE, [set, named_table, {keypos, 1}]);

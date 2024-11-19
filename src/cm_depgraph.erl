@@ -6,7 +6,7 @@
 % The graph currently records only dependencies between modules local to the project. Hence,
 % if an external dependency changes, you have to delete the index.
 
--include_lib("log.hrl").
+-include("log.hrl").
 
 -export([
     new/0,

@@ -1,6 +1,6 @@
 -module(constr_gen_tests).
 
--include_lib("../src/log.hrl").
+-include("log.hrl").
 -include_lib("eunit/include/eunit.hrl").
 
 -spec pat_guard_lower_upper_test() -> ok.

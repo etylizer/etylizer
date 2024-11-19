@@ -1,7 +1,5 @@
 -module(constr_error_locs).
 
--include_lib("log.hrl").
-
 -export([
     simp_constrs_to_blocks/1
 ]).

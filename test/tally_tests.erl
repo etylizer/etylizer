@@ -1,7 +1,7 @@
 -module(tally_tests).
 
 -include_lib("eunit/include/eunit.hrl").
--include_lib("../src/log.hrl").
+-include("log.hrl").
 
 -import(stdtypes, [tvar/1, ttuple_any/0, tnegate/1, tatom/0, tatom/1, tfun_full/2, tfun1/2, trange/2,
                    tunion/1, tunion/2, tintersect/1, trange_any/0, ttuple/1, tany/0, tnone/0,

@@ -1,7 +1,6 @@
 -module(pretty_test).
 
 -include_lib("eunit/include/eunit.hrl").
--include_lib("log.hrl").
 
 pretty_ty_test() ->
     T = {tuple, [{predef, integer},

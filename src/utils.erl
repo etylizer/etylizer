@@ -2,7 +2,7 @@
 
 % @doc This module defines general purpose utility functions.
 
--include_lib("log.hrl").
+-include("log.hrl").
 
 -export([
     map_opt/3, map_opt/2,

@@ -2,8 +2,7 @@
 
 % @doc A symbol table for information either defined in the current or some external module.
 
--include_lib("log.hrl").
--include_lib("parse.hrl").
+-include("log.hrl").
 
 -compile([nowarn_shadow_vars]).
 
