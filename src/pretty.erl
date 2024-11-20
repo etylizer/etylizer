@@ -3,6 +3,7 @@
 -compile([nowarn_shadow_vars]).
 
 -export([
+         arity/2,
          ty/1,
          tyscheme/1,
          constr/1,
@@ -22,6 +23,9 @@
          render_mono_env/1,
          render_poly_env/1,
          render_fun_env/1,
+         render_op_env/1,
+         render_record_env/1,
+         render_ty_env/1,
          render_any_ref/1,
          render_var/1,
          render_set/2,
@@ -59,6 +63,9 @@ beside(D1, D2, D3) -> beside(D1, beside(D2, D3)).
 
 -spec beside(doc(), doc(), doc(), doc()) -> doc().
 beside(D1, D2, D3, D4) -> beside(D1, beside(D2, beside(D3, D4))).
+
+-spec beside(doc(), doc(), doc(), doc(), doc()) -> doc().
+beside(D1, D2, D3, D4, D5) -> beside(D1, beside(D2, beside(D3, beside(D4, D5)))).
 
 -spec comma_sep(list(doc())) -> doc().
 comma_sep(L) -> sep_by(text(","), L).
@@ -106,11 +113,20 @@ render_subst(S) -> render(subst(S)).
 -spec render_poly_env(constr:constr_poly_env()) -> string().
 render_poly_env(S) -> render(poly_env(S)).
 
--spec render_mono_env(constr:constr_poly_env()) -> string().
+-spec render_mono_env(constr:constr_env()) -> string().
 render_mono_env(S) -> render(mono_env(S)).
 
 -spec render_fun_env(symtab:fun_env()) -> string().
 render_fun_env(S) -> render(fun_env(S)).
+
+-spec render_ty_env(symtab:ty_env()) -> string().
+render_ty_env(S) -> render(ty_env(S)).
+
+-spec render_op_env(symtab:op_env()) -> string().
+render_op_env(S) -> render(op_env(S)).
+
+-spec render_record_env(symtab:record_env()) -> string().
+render_record_env(S) -> render(record_env(S)).
 
 -spec render_any_ref(ast:any_ref()) -> string().
 render_any_ref(R) -> render(ref(R)).
@@ -120,6 +136,9 @@ render_var(R) -> render(var(R)).
 
 -spec atom(atom()) -> doc().
 atom(A) -> text(atom_to_list(A)).
+
+-spec integer(integer()) -> doc().
+integer(I) -> text(integer_to_list(I)).
 
 -spec tyscheme(ast:ty_scheme()) -> doc().
 tyscheme({ty_scheme, [], Ty}) -> ty(Ty);
@@ -148,7 +167,7 @@ ty(Prec, T) ->
         {singleton, A} ->
             case A of
                 _ when is_atom(A) -> atom(A);
-                _ when is_integer(A) -> text(integer_to_list(A));
+                _ when is_integer(A) -> integer(A);
                 _ -> text([$$, A]) % must be a char
             end;
         {binary, I, J} ->
@@ -214,8 +233,8 @@ ty(Prec, T) ->
         {named, _Loc, Ref, Args} ->
             RefP =
                 case Ref of
-                    {ref, Name, _} -> atom(Name);
-                    {qref, Mod, Name, _} ->
+                    {ty_ref, _, Name, _} -> atom(Name);
+                    {ty_qref, Mod, Name, _} ->
                         beside(atom(Mod), text(":"), atom(Name))
                 end,
             beside(RefP, parens(comma_sep(lists:map(fun ty/1, Args))));
@@ -247,13 +266,19 @@ with_parens(true, D) -> parens(D).
 -spec var(ast:exp_var()) -> doc().
 var({var, _, AnyRef}) -> ref(AnyRef).
 
--spec ref(ast:any_ref()) -> doc().
+-spec arity(atom(), arity()) -> doc().
+arity(Name, Arity) -> text(utils:sformat("~w/~w", Name, Arity)).
+
+-spec qarity(atom(), atom(), arity()) -> doc().
+qarity(Mod, Name, Arity) -> text(utils:sformat("~w:~w/~w", Mod, Name, Arity)).
+
+-spec ref(ast:any_ref() | ast:ty_ref()) -> doc().
 ref(AnyRef) ->
     case AnyRef of
-        {ref, Name, Arity} ->
-            text(utils:sformat("~w/~w", Name, Arity));
-        {qref, Mod, Name, Arity} ->
-            text(utils:sformat("~w:~w/~w", Mod, Name, Arity));
+        {ref, Name, Arity} -> arity(Name, Arity);
+        {qref, Mod, Name, Arity} -> qarity(Mod, Name, Arity);
+        {ty_ref, Mod, Name, Arity} -> qarity(Mod, Name, Arity);
+        {ty_qref, Mod, Name, Arity} -> qarity(Mod, Name, Arity);
         {local_ref, {Name, Tok}} ->
             beside(atom(Name), text("@"), text(utils:sformat("~w", Tok)))
     end.
@@ -405,20 +430,49 @@ subst(S) ->
           maps:to_list(subst:base_subst(S))),
     brackets(comma_sep(Elems)).
 
--spec poly_env(constr:constr_poly_env()) -> doc().
-poly_env(Env) ->
+-spec pretty_map(fun((K) -> doc()), fun((V) -> doc()), #{K => V}) -> doc().
+pretty_map(FK, FV, M) ->
     Elems =
         lists:map(
           fun({Ref, T}) ->
-                 beside(ref(Ref),
+                 beside(FK(Ref),
                         text(" => "),
-                        tyscheme(T))
+                        FV(T))
           end,
-          maps:to_list(Env)),
+          maps:to_list(M)),
     brackets(comma_sep(Elems)).
+
+-spec poly_env(constr:constr_poly_env()) -> doc().
+poly_env(Env) ->
+    pretty_map(fun ref/1, fun tyscheme/1, Env).
 
 -spec fun_env(symtab:fun_env()) -> doc().
 fun_env(Env) -> poly_env(Env).
+
+-spec ty_env(symtab:ty_env()) -> doc().
+ty_env(Env) ->
+    pretty_map(
+        fun ({ty_key, Mod, Name, Arity}) ->
+            beside(atom(Mod), text(":"), atom(Name), text("/"), integer(Arity)) end,
+            fun tyscheme/1,
+            Env).
+
+-spec op_env(symtab:op_env()) -> doc().
+op_env(Env) ->
+    pretty_map(fun({OpName, Arity}) -> arity(OpName, Arity) end, fun tyscheme/1, Env).
+
+-spec record_env(symtab:record_env()) -> doc().
+record_env(Env) ->
+    pretty_map(
+        fun(RecName) -> atom(RecName) end,
+        fun({_RecName, Fields}) ->
+            pretty_list(
+                fun({FieldName, FieldTy}) ->
+                    beside(atom(FieldName), text(" :: "), ty(FieldTy))
+                end,
+                Fields)
+        end,
+        Env).
 
 -spec mono_env(constr:constr_env()) -> doc().
 mono_env(Env) ->
@@ -434,7 +488,7 @@ mono_env(Env) ->
 
 -spec constr_block(constr_error_locs:constr_block()) -> doc().
 constr_block({Kind, Loc, What, Ds}) ->
-    brackets(comma_sep([text(atom_to_list(Kind)),
+    brackets(comma_sep([atom(Kind),
                         loc(Loc),
                         text(What),
                         constr(Ds)])).

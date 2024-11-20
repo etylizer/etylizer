@@ -12,6 +12,7 @@
 
 -record(ctx,
         { path :: file:filename(),
+          module_name :: atom(),
           funenv :: funenv(),
           % The records seen so far. We need the record definitions to rewrite record types
           % into tuple types.
@@ -40,6 +41,7 @@ trans(Path, Forms, Mode) ->
 
 -spec trans(string(), [ast_erl:form()], trans_mode(), funenv()) -> [ast:form()].
 trans(Path, Forms, Mode, FunEnv) ->
+    ModName = ast_utils:modname_from_path(Path),
     {RevNewForms, _} =
         lists:foldl(
             fun(F, {NewForms, Ctx}) ->
@@ -49,7 +51,7 @@ trans(Path, Forms, Mode, FunEnv) ->
                     NewForm -> {[NewForm | NewForms], Ctx}
                 end
             end,
-            {[], #ctx{ path = Path, funenv = FunEnv, records = #{} }},
+            {[], #ctx{ path = Path, module_name = ModName, funenv = FunEnv, records = #{} }},
             Forms
             ),
     lists:reverse(RevNewForms).
@@ -279,12 +281,13 @@ trans_ty(Ctx, Env, Ty) ->
         {user_type, Anno, Name, ArgTys} ->
             % FIXME: should we check whether the reference is valid?
             Loc = to_loc(Ctx, Anno),
-            {named, Loc, {ref, Name, arity(Loc, ArgTys)}, trans_tys(Ctx, Env, ArgTys)};
+            Ref = {ty_ref, Ctx#ctx.module_name, Name, arity(Loc, ArgTys)},
+            {named, Loc, Ref, trans_tys(Ctx, Env, ArgTys)};
         {remote_type, Anno, [{'atom', _, ety}, {'atom', _, Name}, ArgTys]} ->
             resolve_ety_ty(to_loc(Ctx, Anno), Name, trans_tys(Ctx, Env, ArgTys));
         {remote_type, Anno, [{'atom', _, Mod}, {'atom', _, Name}, ArgTys]} ->
             Loc = to_loc(Ctx, Anno),
-            {named, Loc, {qref, Mod, Name, arity(Loc, ArgTys)}, trans_tys(Ctx, Env, ArgTys)};
+            {named, Loc, {ty_qref, Mod, Name, arity(Loc, ArgTys)}, trans_tys(Ctx, Env, ArgTys)};
         {type, Anno, Name, ArgTys} ->
             Loc = to_loc(Ctx, Anno),
             NewArgTys = trans_tys(Ctx, Env, ArgTys),

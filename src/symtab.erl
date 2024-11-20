@@ -7,7 +7,11 @@
 -compile([nowarn_shadow_vars]).
 
 -export_type([
-    t/0
+    t/0,
+    fun_env/0,
+    ty_env/0,
+    record_env/0,
+    op_env/0
 ]).
 
 -export([
@@ -20,27 +24,38 @@
     lookup_record/3,
     find_record/2,
     std_symtab/0,
-    extend_symtab/2,
-    extend_symtab_with_fun_env/2,
     extend_symtab/3,
+    extend_symtab_with_fun_env/2,
+    extend_symtab/4,
     empty/0,
     extend_symtab_with_module_list/3
 ]).
 
--export_type([
-    fun_env/0
-]).
-
 -type fun_env() :: #{ ast:global_ref() => ast:ty_scheme() }.
-
+-type ty_key() :: {ty_key, Module::atom(), Name::atom(), Arity::arity()}.
+-type ty_env() :: #{ ty_key() => ast:ty_scheme() }.
+-type record_env() :: #{ atom() => records:record_ty() }.
+-type op_env() :: #{ {atom(), arity()} => ast:ty_scheme() }.
+-type mod_env() :: #{ ast:mod_name() => file:filename() }.
 -record(tab, {
               funs :: fun_env(),
-              ops :: #{ {atom(), arity()} => ast:ty_scheme() },
-              types :: #{ ast:global_ref() => ast:ty_scheme() },
-              records :: #{ atom() => records:record_ty() }
+              ops :: op_env(),
+              types :: ty_env(),
+              records :: record_env(),
+              modules :: mod_env()
 }).
 
 -opaque t() :: #tab{}.
+
+-spec dump_symtab(string(), string(), t()) -> ok.
+dump_symtab(Key, What, Tab) ->
+    ?LOG_DEBUG("Key ~s not defined as ~s in symtab, functions:~n~s~ntypes:~n~s~nOperators:~n~s~nRecords:~n~s",
+        Key,
+        What,
+        pretty:render_fun_env(Tab#tab.funs),
+        pretty:render_ty_env(Tab#tab.types),
+        pretty:render_op_env(Tab#tab.ops),
+        pretty:render_record_env(Tab#tab.records)).
 
 % Get the type declared for a function. The location is the use-site
 % If no such name exists, an error is thrown.
@@ -48,7 +63,10 @@
 lookup_fun(Ref, Loc, Tab) ->
     case find_fun(Ref, Tab) of
         {ok, X} -> X;
-        error -> errors:name_error(Loc, "function ~s undefined", pp:global_ref(Ref))
+        error ->
+            RefStr = pretty:render(pretty:ref(Ref)),
+            dump_symtab(RefStr, "function", Tab),
+            errors:name_error(Loc, "function ~s undefined", RefStr)
     end.
 
 -spec find_fun(ast:global_ref(), t()) -> t:opt(ast:ty_scheme()).
@@ -59,7 +77,10 @@ find_fun(Ref, Tab) -> maps:find(Ref, Tab#tab.funs).
 lookup_op(Name, Arity, Loc, Tab) ->
     case find_op(Name, Arity, Tab) of
         {ok, X} -> X;
-        error -> errors:name_error(Loc, "operator ~w undefined for ~w arguments", [Name, Arity])
+        error ->
+            S = pretty:render(pretty:arity(Name, Arity)),
+            dump_symtab(S, "operator", Tab),
+            errors:name_error(Loc, "operator ~s undefined", S)
     end.
 
 -spec find_op(atom(), arity(), t()) -> t:opt(ast:ty_scheme()).
@@ -67,21 +88,31 @@ find_op(Name, Arity, Tab) -> maps:find({Name, Arity}, Tab#tab.ops).
 
 % Get the type declared for a type. The location is the use-site
 % If no such name exists, an error is thrown.
--spec lookup_ty(ast:global_ref(), ast:loc(), t()) -> ast:ty_scheme().
+-spec lookup_ty(ast:ty_ref(), ast:loc(), t()) -> ast:ty_scheme().
 lookup_ty(Ref, Loc, Tab) ->
     case find_ty(Ref, Tab) of
         {ok, X} -> X;
-        error -> errors:name_error(Loc, "type ~s undefined", pp:global_ref(Ref))
+        error ->
+            RefStr = pretty:render(pretty:ref(Ref)),
+            dump_symtab(RefStr, "type", Tab),
+            errors:name_error(Loc, "type ~s undefined", RefStr)
     end.
 
--spec find_ty(ast:global_ref(), t()) -> t:opt(ast:ty_scheme()).
-find_ty(Ref, Tab) -> maps:find(Ref, Tab#tab.types).
+-spec find_ty(ast:ty_ref(), t()) -> t:opt(ast:ty_scheme()).
+find_ty(Ref, Tab) ->
+    TyRef = case Ref of
+                {ty_ref, M, N, A} -> {ty_key, M, N, A};
+                {ty_qref, M, N ,A} -> {ty_key, M, N, A}
+            end ,
+    maps:find(TyRef, Tab#tab.types).
 
 -spec lookup_record(atom(), ast:loc(), t()) -> records:record_ty().
 lookup_record(Name, Loc, Tab) ->
     case find_record(Name, Tab) of
         {ok, X} -> X;
-        error -> errors:name_error(Loc, "record ~w undefined", Name)
+        error ->
+            dump_symtab(utils:sformat("~w", Name), "record", Tab),
+            errors:name_error(Loc, "record ~w undefined", Name)
     end.
 
 -spec find_record(atom(), t()) -> t:opt(records:record_ty()).
@@ -93,6 +124,7 @@ symbols_for_module(Mod, Tab) ->
         fun({K,_}) ->
             case K of
                 {qref, M, N, A} when M =:= Mod -> {true, {ref, N, A}};
+                {ty_key, M, N, A} when M =:= Mod -> {true, {ref, N, A}};
                 _ -> false
             end
         end,
@@ -100,7 +132,7 @@ symbols_for_module(Mod, Tab) ->
         ).
 
 -spec empty() -> t().
-empty() -> #tab { funs = #{}, ops = #{}, types = #{}, records = #{} }.
+empty() -> #tab { funs = #{}, ops = #{}, types = #{}, records = #{}, modules = #{} }.
 
 -spec std_symtab() -> t().
 std_symtab() ->
@@ -112,20 +144,36 @@ std_symtab() ->
         lists:foldl(fun({Name, Arity, T}, Map) -> maps:put({Name, Arity}, T, Map) end,
                     #{},
                     stdtypes:builtin_ops()),
-    #tab { funs = Funs, ops = Ops, types = #{}, records = #{} }.
+    #tab { funs = Funs, ops = Ops, types = #{}, records = #{}, modules = #{} }.
 
 -type ref() :: ref | {qref, ModuleName::atom()}.
 
--spec extend_symtab([ast:form()], t()) -> t().
-extend_symtab(Forms, Tab) ->
-    extend_symtab_internal(Forms, ref, Tab).
+-spec extend_symtab(file:filename(), [ast:form()], t()) -> t().
+extend_symtab(Filename, Forms, Tab) ->
+    extend_symtab_internal(Filename, Forms, ref, Tab).
 
--spec extend_symtab([ast:form()], atom(), t()) -> t().
-extend_symtab(Forms, Module, Tab) ->
-    extend_symtab_internal(Forms, {qref, Module}, Tab).
+-spec extend_symtab(file:filename(), [ast:form()], atom(), t()) -> t().
+extend_symtab(Filename, Forms, Module, Tab) ->
+    extend_symtab_internal(Filename, Forms, {qref, Module}, Tab).
 
--spec extend_symtab_internal([ast:form()], ref(), t()) -> t().
-extend_symtab_internal(Forms, RefType, Tab) ->
+-spec extend_symtab_internal(file:filename(), [ast:form()], ref(), t()) -> t().
+extend_symtab_internal(Filename, Forms, RefType, Tab) ->
+    case utils:file_exists(Filename) of
+        true -> ok;
+        false ->
+            errors:some_error("File ~s does not exist", [Filename])
+    end,
+    ModuleName = ast_utils:modname_from_path(Filename),
+    case maps:get(ModuleName, Tab#tab.modules, error) of
+        error -> ok;
+        ModulePath ->
+            case utils:is_same_file(Filename, ModulePath) of
+                true -> ok;
+                false ->
+                    errors:some_error("Projects contains two different files defining the same module ~w: ~s and ~s",
+                        [ModuleName, ModulePath, Filename])
+            end
+    end,
     lists:foldl(
         fun(Form, Tab) ->
             case Form of
@@ -133,7 +181,7 @@ extend_symtab_internal(Forms, RefType, Tab) ->
                     Tab#tab { funs = maps:put(create_ref_tuple(RefType, Name, Arity), T, Tab#tab.funs) };
                 {attribute, _, type, _, {Name, TyScm = {ty_scheme, TyVars, _}}} ->
                     Arity = length(TyVars),
-                    Tab#tab { types = maps:put(create_ref_tuple(RefType, Name, Arity), TyScm, Tab#tab.types) };
+                    Tab#tab { types = maps:put({ty_key, ModuleName, Name, Arity}, TyScm, Tab#tab.types) };
                 {attribute, _, record, {RecordName, Fields}} ->
                     RecordTy = records:record_ty_from_decl(RecordName, Fields),
                     Tab#tab { records = maps:put(RecordName, RecordTy, Tab#tab.records) };
@@ -141,7 +189,7 @@ extend_symtab_internal(Forms, RefType, Tab) ->
                     Tab
             end
         end,
-        Tab,
+        Tab#tab { modules = maps:put(ModuleName, Filename, Tab#tab.modules) },
         Forms).
 
 -spec extend_symtab_with_fun_env(fun_env(), t()) -> t().
@@ -157,15 +205,20 @@ create_ref_tuple({qref, Module}, Name, Arity) ->
 extend_symtab_with_module_list(Symtab, SearchPath, Modules) ->
     traverse_module_list(SearchPath, Symtab, Modules).
 
--spec traverse_module_list(paths:search_path(), t(), [ast_utils:ty_module_name()]) -> t().
+-spec traverse_module_list(paths:search_path(), t(), [ast:mod_name()]) -> t().
 traverse_module_list(SearchPath, Symtab, [CurrentModule | RemainingModules]) ->
-    Entry = paths:find_module_path(SearchPath, CurrentModule),
+    Entry = {_, Filename, _} = paths:find_module_path(SearchPath, CurrentModule),
     Forms = retrieve_forms_for_source(Entry),
-    NewSymtab = extend_symtab(Forms, CurrentModule, Symtab),
+    NewSymtab = extend_symtab(Filename, Forms, CurrentModule, Symtab),
     ?LOG_DEBUG("Extended symtab with entries from ~p", CurrentModule),
-    NewSymbols = symbols_for_module(CurrentModule, NewSymtab),
-    ?LOG_TRACE("New symbols from module ~p: ~s", CurrentModule,
-        pretty:render_list(fun pretty:ref/1, NewSymbols)),
+    case log:allow(trace) of
+        true ->
+            NewSymbols = symbols_for_module(CurrentModule, NewSymtab),
+            ?LOG_TRACE("New symbols from module ~p: ~s", CurrentModule,
+                pretty:render_list(fun pretty:ref/1, NewSymbols));
+        false ->
+            ok
+    end,
     traverse_module_list(SearchPath, NewSymtab, RemainingModules);
 
 traverse_module_list(_, Symtab, []) ->

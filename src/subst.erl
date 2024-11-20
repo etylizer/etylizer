@@ -86,8 +86,8 @@ apply_base(S, T) ->
         {record, Name, Fields} ->
             {record, Name,
              lists:map(fun({FieldName, U}) -> {FieldName, apply_base(S, U)} end, Fields)};
-        {named, Loc, Name, Args} ->
-            {named, Loc, Name, apply_list(S, Args)};
+        {named, Loc, Ref, Args} ->
+            {named, Loc, Ref, apply_list(S, Args)};
         {tuple_any} -> T;
         {tuple, Args} -> {tuple, apply_list(S, Args)};
         {var, Alpha} ->

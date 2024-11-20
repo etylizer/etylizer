@@ -24,10 +24,8 @@ transitive_types_test() ->
     verify_contains_type(local_type_2, 0, Interface).
 
 parametrized_types_test() ->
-    Interface = load_interface("./test_files/extract_interface/parametrized_types.erl"),
-
+    Interface = load_interface("./test_files/extract_interface/m_parametrized_types.erl"),
     verify_contains_function(exported_function, 1, Interface),
-
     verify_contains_type(parametrized_type, 1, Interface),
     verify_contains_type(parameter_type, 0, Interface).
 
