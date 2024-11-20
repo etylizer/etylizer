@@ -1,4 +1,4 @@
--module(ty_interval).
+-module(dnf_ty_interval).
 
 %% Efficient interval representation
 
@@ -39,7 +39,7 @@ transform_single({right, R}, M = #{union := U}) when R < 1 ->
 
 to_singletons([]) -> [];
 to_singletons([{range, A, B} | Ints]) ->
-    [ty_rec:interval(dnf_var_int:int(interval(X, X))) || X <- lists:seq(A, B)] ++ to_singletons(Ints);
+    [ty_rec:interval(dnf_var_ty_interval:int(interval(X, X))) || X <- lists:seq(A, B)] ++ to_singletons(Ints);
 to_singletons(_) ->
     error(illegal_state).
 
@@ -158,12 +158,12 @@ normalize_corec(TyInterval, [], [], _Fixed, _) ->
         false -> []
     end;
 normalize_corec(TyInterval, PVar, NVar, Fixed, M) ->
-    Ty = ty_rec:interval(dnf_var_int:int(TyInterval)),
+    Ty = ty_rec:interval(dnf_var_ty_interval:int(TyInterval)),
     % ntlv rule
-    ty_variable:normalize_corec(Ty, PVar, NVar, Fixed, fun(Var) -> ty_rec:interval(dnf_var_int:var(Var)) end, M).
+    ty_variable:normalize_corec(Ty, PVar, NVar, Fixed, fun(Var) -> ty_rec:interval(dnf_var_ty_interval:var(Var)) end, M).
 
 substitute(_, Ty, _, _) -> Ty.
-% there is nothing to substitute in a ty_interval
+% there is nothing to substitute in a dnf_ty_interval
 map_pi(_) -> #{}.
 all_variables(_, _) -> [].
 
@@ -171,12 +171,12 @@ all_variables(_, _) -> [].
 -include_lib("eunit/include/eunit.hrl").
 
 usage_test() ->
-    Ia = ty_interval:interval(5, '*'),
-    Ib = ty_interval:cointerval(2, 10),
-    Ix = ty_interval:intersect(Ia, Ib),
-    false = ty_interval:is_empty(Ix),
-    Ic = ty_interval:interval(1, 1),
-    true = ty_interval:is_empty(ty_interval:intersect(Ix, Ic)),
+    Ia = dnf_ty_interval:interval(5, '*'),
+    Ib = dnf_ty_interval:cointerval(2, 10),
+    Ix = dnf_ty_interval:intersect(Ia, Ib),
+    false = dnf_ty_interval:is_empty(Ix),
+    Ic = dnf_ty_interval:interval(1, 1),
+    true = dnf_ty_interval:is_empty(dnf_ty_interval:intersect(Ix, Ic)),
 
     ok.
 

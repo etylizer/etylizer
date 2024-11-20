@@ -6,6 +6,23 @@ Static typechecker for Erlang based on set-theoretic types.
 
 ## User-level documentation
 
+### Install
+Add this to your `rebar.config` file:
+```erlang
+{plugins, [
+    {rebar3_etylizer, {git, "https://github.com/etylizer/rebar3_etylizer.git"}}
+]}.
+```
+
+Then run:
+```
+rebar3 etylizer
+```
+
+For a full list of plugin options see the [rebar plugin repo](https://github.com/etylizer/rebar3_etylizer).
+
+### Build
+
 * `make` or `rebar3 escriptize` will generate a standalone portable escript called `ety` inside the directory
   `_build/default/bin`
 * `ety -h` for help

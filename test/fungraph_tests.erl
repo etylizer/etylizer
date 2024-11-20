@@ -1,7 +1,7 @@
 -module(fungraph_tests).
 
 -include_lib("eunit/include/eunit.hrl").
--include_lib("log.hrl").
+-include("log.hrl").
 
 -spec fungraph_01_test() -> ok.
 fungraph_01_test() ->

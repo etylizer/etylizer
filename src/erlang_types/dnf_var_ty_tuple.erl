@@ -5,7 +5,7 @@
 -define(F(Z), fun() -> Z end).
 
 -export([normalize_corec/4, substitute/4]).
--export([var/1, tuple/1, all_variables/2, mall_variables/2, transform/2, is_empty_corec/2, apply_to_node/3]).
+-export([var/1, tuple/1, all_variables/2, transform/2, is_empty_corec/2, apply_to_node/3]).
 
 % implementations provided by bdd_var.hrl
 -include("bdd_var.hrl").
@@ -15,13 +15,6 @@ var(Var) -> node(Var).
 
 is_empty_corec(TyBDD, M) -> dnf(TyBDD, {fun(P, N, T)  -> is_empty_coclause_corec(P, N, T, M) end, fun is_empty_union/2}).
 is_empty_coclause_corec(_Pos, _Neg, T, M) -> dnf_ty_tuple:is_empty_corec(T, M).
-
-mall_variables({Default, Others}, M) when is_map(Others) ->
-  lists:usort(lists:flatten(
-    all_variables(Default, M) ++
-    lists:map(fun({_K,V}) -> all_variables(V, M) end, maps:to_list(Others))
-  ));
-mall_variables(Ty, M) -> all_variables(Ty, M).
 
 normalize_corec(Size, Ty, Fixed, M) -> dnf(Ty, {
   fun(Pos, Neg, DnfTy) -> dnf_ty_tuple:normalize_corec(Size, DnfTy, Pos, Neg, Fixed, M) end,

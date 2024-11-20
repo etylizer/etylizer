@@ -1,6 +1,6 @@
 -module(fungraph).
 
--include_lib("log.hrl").
+-include("log.hrl").
 
 -export([dependency_order/1]).
 

@@ -1,7 +1,7 @@
 -module(dnf_ty_tuple).
 
 -define(ELEMENT, ty_tuple).
--define(TERMINAL, bdd_bool).
+-define(TERMINAL, ty_bool).
 -define(F(Z), fun() -> Z end).
 
 -export([is_empty_corec/2, normalize_corec/6, substitute/4, apply_to_node/3]).
@@ -15,7 +15,7 @@ to_singletons(TyBDD) ->
   dnf(TyBDD, {fun to_singletons_coclause/3, fun(F1, F2) -> F1() ++ F2() end}).
 
 to_singletons_coclause(Pos, Neg, T) ->
-  case {Pos, Neg, bdd_bool:any()} of
+  case {Pos, Neg, ty_bool:any()} of
     {_, _, T} ->
       % delete the same singletons occurring both as Pos and Neg
       % does not check whether tuples itself singleton
@@ -33,7 +33,7 @@ is_empty_corec(TyBDD, M) ->
   dnf(TyBDD, {fun(P, N, T) -> is_empty_coclause_corec(P, N, T, M) end, fun is_empty_union/2}).
 
 is_empty_coclause_corec(Pos, Neg, T, M) ->
-  case {Pos, Neg, bdd_bool:empty()} of
+  case {Pos, Neg, ty_bool:empty()} of
     {_, _, T} -> true;
     {[], [], _} -> false;
     {[], [TNeg | _], _} ->
@@ -74,9 +74,9 @@ normalize_corec(Size, Ty, [], [], Fixed, M) ->
   dnf(Ty, {
     fun
       ([], [], T) ->
-        case bdd_bool:empty() of T -> [[]]; _ -> [] end;
+        case ty_bool:empty() of T -> [[]]; _ -> [] end;
       ([], Neg = [TNeg | _], T) ->
-        case bdd_bool:empty() of
+        case ty_bool:empty() of
           T -> [[]];
           _ ->
             Dim = length(ty_tuple:components(TNeg)),
@@ -85,7 +85,7 @@ normalize_corec(Size, Ty, [], [], Fixed, M) ->
             phi_norm_corec(Size, ty_tuple:components(BigS), Neg, Fixed, M)
         end;
       (Pos, Neg, T) ->
-        case bdd_bool:empty() of
+        case ty_bool:empty() of
           T -> [[]];
           _ ->
             BigS = ty_tuple:big_intersect(Pos),

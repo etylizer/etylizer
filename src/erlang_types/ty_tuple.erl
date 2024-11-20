@@ -43,8 +43,8 @@ all_variables({ty_tuple, _, Refs}, M) ->
 
 usage_test() ->
     % (int, int)
-    TIa = ty_rec:interval(dnf_var_int:int(ty_interval:interval('*', '*'))),
-    TIb = ty_rec:interval(dnf_var_int:int(ty_interval:interval('*', '*'))),
+    TIa = ty_rec:interval(dnf_var_ty_interval:int(dnf_ty_interval:interval('*', '*'))),
+    TIb = ty_rec:interval(dnf_var_ty_interval:int(dnf_ty_interval:interval('*', '*'))),
 
     _Ty_Tuple = ty_tuple:tuple([TIa, TIb]),
 

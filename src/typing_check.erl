@@ -5,10 +5,8 @@
     check/3
 ]).
 
--export_type([ctx/0]).
-
--include_lib("log.hrl").
--include_lib("typing.hrl").
+-include("log.hrl").
+-include("typing.hrl").
 
 % Checks all functions against their specs.
 -spec check_all(

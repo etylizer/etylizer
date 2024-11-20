@@ -269,7 +269,7 @@ ast_to_erlang_ty({singleton, Atom}, _Sym, _) when is_atom(Atom) ->
     TAtom = dnf_var_ty_atom:ty_atom(TyAtom),
     ty_rec:atom(TAtom);
 ast_to_erlang_ty({singleton, IntOrChar}, _Sym, _) ->
-    Int = dnf_var_int:int(ty_interval:interval(IntOrChar, IntOrChar)),
+    Int = dnf_var_ty_interval:int(dnf_ty_interval:interval(IntOrChar, IntOrChar)),
     ty_rec:interval(Int);
 % TODO
 ast_to_erlang_ty({binary, _, _}, _Sym, _) ->
@@ -342,9 +342,9 @@ ast_to_erlang_ty({nonempty_improper_list, Ty, Term}, Sym, M) -> ty_rec:diff(ast_
 ast_to_erlang_ty({improper_list, A, B}, Sym, M) ->
     ty_rec:list(dnf_var_ty_list:list(dnf_ty_list:list(ty_list:list(ast_to_erlang_ty(A, Sym, M), ast_to_erlang_ty(B, Sym, M)))));
 ast_to_erlang_ty({empty_list}, _Sym, _) ->
-    ty_rec:predef(dnf_var_predef:predef(ty_predef:predef('[]')));
+    ty_rec:predef(dnf_var_ty_predef:predef(dnf_ty_predef:predef('[]')));
 ast_to_erlang_ty({predef, T}, _Sym, _) when T == pid; T == port; T == reference; T == float ->
-    ty_rec:predef(dnf_var_predef:predef(ty_predef:predef(T)));
+    ty_rec:predef(dnf_var_ty_predef:predef(dnf_ty_predef:predef(T)));
 
 % named
 ast_to_erlang_ty({named, Loc, Ref, Args}, Sym, M) ->
@@ -381,7 +381,7 @@ ast_to_erlang_ty({predef, integer}, _, _) ->
 
 % ints
 ast_to_erlang_ty({range, From, To}, _, _) ->
-    Int = dnf_var_int:int(ty_interval:interval(From, To)),
+    Int = dnf_var_ty_interval:int(dnf_ty_interval:interval(From, To)),
     ty_rec:interval(Int);
 
 ast_to_erlang_ty({union, []}, _, _) -> ty_rec:empty();

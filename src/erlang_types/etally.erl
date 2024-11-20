@@ -5,7 +5,7 @@
   tally/2
 ]).
 
--include_lib("sanity.hrl").
+-include("sanity.hrl").
 
 tally(Constraints) -> tally(Constraints, sets:new()).
 

@@ -1,7 +1,5 @@
 -module(tyutils).
 
--include_lib("log.hrl").
-
 -export([
     free_in_ty/1,
     free_in_ty_scheme/1,

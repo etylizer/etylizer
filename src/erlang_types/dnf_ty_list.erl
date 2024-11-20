@@ -1,7 +1,7 @@
 -module(dnf_ty_list).
 
 -define(ELEMENT, ty_list).
--define(TERMINAL, bdd_bool).
+-define(TERMINAL, ty_bool).
 -define(F(Z), fun() -> Z end).
 
 -export([apply_to_node/3]).
@@ -17,7 +17,7 @@ is_empty_corec(TyBDD, M) -> dnf(TyBDD, {fun(P, N, T) -> is_empty_coclause_corec(
 
 % module specific implementations
 is_empty_coclause_corec(Pos, Neg, T, M) ->
-  case bdd_bool:empty() of
+  case ty_bool:empty() of
     T -> true;
     _ ->
       Big = ty_list:big_intersect(Pos),
@@ -59,9 +59,9 @@ normalize_corec(DnfTyList, PVar, NVar, Fixed, M) ->
 
 
 normalize_coclause_corec([], [], T, _Fixed, _M) ->
-  case bdd_bool:empty() of T -> [[]]; _ -> [] end;
+  case ty_bool:empty() of T -> [[]]; _ -> [] end;
 normalize_coclause_corec(Pos, Neg, T, Fixed, M) ->
-  case bdd_bool:empty() of
+  case ty_bool:empty() of
     T -> [[]];
     _ ->
       Big = ty_list:big_intersect(Pos),

@@ -2,7 +2,7 @@
 
 -compile({no_auto_import,[apply/2, apply/3]}).
 
--include_lib("log.hrl").
+-include("log.hrl").
 
 -export_type([
     t/0,

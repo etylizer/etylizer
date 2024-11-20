@@ -1,6 +1,6 @@
 -module(constr_gen).
 
--include_lib("log.hrl").
+-include("log.hrl").
 
 -export([
          gen_constrs_fun_group/2, gen_constrs_annotated_fun/3,

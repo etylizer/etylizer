@@ -1,8 +1,8 @@
 -module(tycheck_tests).
 
 -include_lib("eunit/include/eunit.hrl").
--include_lib("../src/ety_main.hrl").
--include_lib("../src/log.hrl").
+-include("ety_main.hrl").
+-include("log.hrl").
 
 -type tycheck_result() :: ok | {fail, string()}.
 
