@@ -61,7 +61,7 @@ mono_ty(L, TyScm, FreshStart) ->
 
 -type fresh_fun(State) :: fun((ast:ty_varname(), State) -> {ast:ty_varname(), State}).
 
--spec order_bounds([ast:bound_tyvar()]) -> [ast:bounded_tyvar()] | cyclic.
+-spec order_bounds([ast:bounded_tyvar()]) -> [ast:bounded_tyvar()] | cyclic.
 order_bounds(BoundedTyvars) ->
     VarOrder =
         graph:with_graph(
@@ -103,7 +103,7 @@ is_any_bound(_) -> false.
 
 % assumes that the bounds are already ordered so that if {Beta, Bound} is in the list of
 % bounds and Alpha is free in Bound, the Alpha appears in the list of bounds before Beta,
--spec replace_bounds([ast:bound_tyvar()], [ast:ty_varname()], subst:t(), fresh_fun(State), State) ->
+-spec replace_bounds([ast:bounded_tyvar()], [ast:ty_varname()], subst:t(), State, fresh_fun(State)) ->
     {[ast:ty_varname()], subst:t(), State}.
 replace_bounds([], Polys, Subst, State, _FreshFun) ->
     {lists:reverse(Polys), Subst, State};
