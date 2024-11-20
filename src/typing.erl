@@ -48,7 +48,7 @@ check_forms(Ctx, FileName, Forms, Only) ->
          ),
     % Make sure that Only does not contain an unknown function
     {WithArity, JustNames} = lists:unzip(KnownFuns),
-    Unknowns = sets:subtract(Only, sets:union(sets:from_list(WithArity), sets:from_list(JustNames))),
+    Unknowns = sets:subtract(Only, sets:union(sets:from_list(WithArity, [{version, 2}]), sets:from_list(JustNames, [{version, 2}]))),
     case sets:is_empty(Unknowns) of
         true -> ok;
         false ->

@@ -182,8 +182,8 @@ simple_test_() ->
           _ -> ok
         end,
         check_decls_in_files(ErlFiles,
-                       {exclude, sets:from_list(WhatNot)},
-                       %{include, sets:from_list(What)},
-                       sets:from_list(NoInfer));
+                       {exclude, sets:from_list(WhatNot, [{version, 2}])},
+                       %{include, sets:from_list(What, [{version, 2}])},
+                       sets:from_list(NoInfer, [{version, 2}]));
     _ -> erlang:error("Failed to list test directory " ++ TopDir)
   end.

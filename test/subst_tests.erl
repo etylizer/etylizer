@@ -16,8 +16,8 @@ test_subst(Name, Subst, Type, TypeExpected) ->
   }.
 
 eq_list(L1, L2) ->
-  S1 = sets:from_list(L1),
-  S2 = sets:from_list(L2),
+  S1 = sets:from_list(L1, [{version, 2}]),
+  S2 = sets:from_list(L2, [{version, 2}]),
   sets:is_subset(S1, S2) andalso sets:is_subset(S2, S1).
 
 all_variables_fun_test() ->

@@ -16,7 +16,7 @@
 % Collect all constraints but ignore all branch matching condition constraints.
 % Always return the body constraints for the branches.
 -spec collect_constrs_no_matching_cond(constr:simp_constrs()) -> constr:subty_constrs().
-collect_constrs_no_matching_cond(Ds) -> collect_constrs_no_matching_cond(Ds, sets:new()).
+collect_constrs_no_matching_cond(Ds) -> collect_constrs_no_matching_cond(Ds, sets:new([{version, 2}])).
 
 -spec collect_constrs_no_matching_cond(constr:simp_constrs(), constr:subty_constrs())
     -> constr:subty_constrs().
@@ -83,7 +83,7 @@ collect_constrs_all_combinations(Ds) ->
 collect_constr_all_combinations(D) ->
     case D of
         {scsubty, _, _, _} ->
-            [{sets:new(), utils:single(D)}];
+            [{sets:new([{version, 2}]), utils:single(D)}];
         {sccase, {_, DsScrut}, {_, DsExhaust}, Branches} ->
             ScrutCombs = collect_constrs_all_combinations(DsScrut),
             ExhaustCombs = collect_constrs_all_combinations(DsExhaust),
@@ -115,7 +115,7 @@ add_loc(Loc, List) ->
 cross_union_with_locs(LL) ->
     cross_product(LL,
         fun({Locs1, Cs1}, {Locs2, Cs2}) -> {sets:union(Locs1, Locs2), sets:union(Cs1, Cs2)} end,
-        [{sets:new(), sets:new()}]).
+        [{sets:new([{version, 2}]), sets:new([{version, 2}])}]).
 
 % cross_product([S1, ..., Sn], [T1, ..., Tm], F) computes the cross-product of
 % the two lists, where F is used to combine Si and Tj.

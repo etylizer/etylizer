@@ -15,12 +15,12 @@ free_in_ty(T) ->
                                      _ -> error
                                  end
                          end, T),
-    sets:from_list(L).
+    sets:from_list(L, [{version, 2}]).
 
 -spec free_in_ty_scheme(ast:ty_scheme()) -> sets:set(ast:ty_varname()).
 free_in_ty_scheme({ty_scheme, Bounds, T}) ->
     S1 = free_in_ty(T),
-    S2 = sets:from_list(lists:map(fun ({X, _U}) -> X end, Bounds)),
+    S2 = sets:from_list(lists:map(fun ({X, _U}) -> X end, Bounds), [{version, 2}]),
     sets:subtract(S1, S2).
 
 -spec free_in_poly_env(constr:constr_poly_env()) -> sets:set(ast:ty_varname()).
@@ -38,5 +38,5 @@ free_in_subty_constr(C) ->
 free_in_subty_constrs(Cs) ->
     sets:fold(
         fun (C, Acc) -> sets:union(Acc, free_in_subty_constr(C)) end,
-        sets:new(),
+        sets:new([{version, 2}]),
         Cs).

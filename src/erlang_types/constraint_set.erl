@@ -15,7 +15,7 @@ saturate(C, FixedVariables, Memo) ->
       Normed = fun() -> ty_rec:normalize_start(SnT, FixedVariables) end,
       NewS = meet(fun() -> [C] end, Normed),
       lists:foldl(fun(NewC, AllS) ->
-        NewMerged = fun() -> saturate(NewC, FixedVariables, sets:union(Memo, sets:from_list([SnT]))) end,
+        NewMerged = fun() -> saturate(NewC, FixedVariables, sets:union(Memo, sets:from_list([SnT], [{version, 2}]))) end,
         join(fun() -> AllS end, NewMerged)
                   end, [], NewS);
     _ -> [C]

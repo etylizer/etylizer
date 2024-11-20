@@ -72,9 +72,9 @@ strong_components({G, _}) ->
     LL = digraph_utils:strong_components(G),
     sets:from_list(lists:map(
       fun(L) ->
-              sets:from_list(lists:map(fun(InternV) -> get_extern(G, InternV) end, L))
+              sets:from_list(lists:map(fun(InternV) -> get_extern(G, InternV) end, L), [{version, 2}])
       end,
-      LL)).
+      LL), [{version, 2}]).
 
 -spec topsort(graph(V)) -> [V].
 topsort({G, _}) ->

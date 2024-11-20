@@ -133,7 +133,7 @@ check_alt(Ctx, Decl = {function, Loc, Name, Arity, _}, FunTy, BranchMode, Fixed)
                        Arity,
                        ast:format_loc(Loc),
                        pretty:render_ty(FunTy)),
-            {ok, sets:new()};
+            {ok, sets:new([{version, 2}])};
         {ok, Unmatched} ->
             ?LOG_INFO("Success: function ~w/~w at ~s has type ~s. Unmatched branches: ~s",
                        Name,
