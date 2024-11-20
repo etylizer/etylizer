@@ -59,8 +59,8 @@ check_simp_constrs_return_unmatched(Tab, FixedTyvars, Ds, What) ->
     ok | {error, error() | none}.
 check_simp_constrs(Tab, FixedTyvars, Ds, What) ->
     SubtyConstrs = constr_collect:collect_constrs_no_matching_cond(Ds),
-    ?LOG_DEBUG("Checking constraints for satisfiability to type check ~s:~n~s",
-        What, pretty:render_constr(SubtyConstrs)),
+    ?LOG_DEBUG("Checking constraints for satisfiability to type check ~s:~n~s~nFixed: ~s",
+        What, pretty:render_constr(SubtyConstrs), pretty:render_set(fun pretty:atom/1, FixedTyvars)),
     case is_satisfiable(Tab, SubtyConstrs, FixedTyvars, "satisfiability check") of
         true ->
             % check for redundant branches
@@ -74,14 +74,16 @@ check_simp_constrs(Tab, FixedTyvars, Ds, What) ->
                             All = sets:union(UnmatchedConstrs, SubtyConstrs),
                             case is_satisfiable(Tab, All, FixedTyvars, "redundancy check") of
                                 true ->
-                                    ?LOG_DEBUG("Branch at ~s is redundant. Constraints: ~s",
+                                    ?LOG_DEBUG("Branch at ~s is redundant. Constraints that were added to the constraint above: ~s~nFixed: ~200p",
                                         ast:format_loc(Loc),
-                                        pretty:render_constr(UnmatchedConstrs)),
+                                        pretty:render_constr(UnmatchedConstrs),
+                                        sets:to_list(FixedTyvars)),
                                     {error, {redundant_branch, Loc, ""}};
                                 false ->
-                                    ?LOG_DEBUG("Branch at ~s is not redundant. Constraints: ~s",
+                                    ?LOG_DEBUG("Branch at ~s is not redundant. Constraints that were added to the constraint above: ~s~nFixed: ~200p",
                                         ast:format_loc(Loc),
-                                        pretty:render_constr(UnmatchedConstrs)),
+                                        pretty:render_constr(UnmatchedConstrs),
+                                        sets:to_list(FixedTyvars)),
                                     ok
                             end;
                         _ -> Acc

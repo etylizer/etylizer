@@ -76,10 +76,10 @@ strong_components({G, _}) ->
       end,
       LL)).
 
--spec topsort(graph(V)) -> [V].
+-spec topsort(graph(V)) -> [V] | cyclic.
 topsort({G, _}) ->
     case digraph_utils:topsort(G) of
-        false -> errors:bug("no topological ordering exists");
+        false -> cyclic;
         L ->
             lists:map(fun(InternV) -> get_extern(G, InternV) end, L)
     end.

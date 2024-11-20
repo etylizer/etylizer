@@ -12,6 +12,7 @@
     ty_varname/0,
     local_ref/0,
     any_ref/0,
+    bounded_tyvar/0,
     local_bind/0,
     local_ref_bind/0,
     loc/0,

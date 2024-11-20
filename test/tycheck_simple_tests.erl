@@ -45,7 +45,7 @@ check_infer_ok_fun(Filename, Tab, Decl = {function, L, Name, Arity, _}, Ty) ->
     ?LOG_NOTE("Inferred the following types for ~w/~w: ~s", Name, Arity,
       pretty:render_list(InferredTys, fun pretty:tyscheme/1)),
     case lists:any(
-            fun(InferredTy) -> typing_infer:more_general(InferredTy, Ty, Tab) end,
+            fun(InferredTy) -> typing_infer:more_general(L, InferredTy, Ty, Tab) end,
             InferredTys)
       of
           true -> ok;

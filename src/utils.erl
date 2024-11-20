@@ -20,7 +20,8 @@
     with_default/2, compare/2,
     mingle/5, timing/1, timing_log/3,
     single/1, from_to/2, assocs_find/2, assocs_find_index/2,
-    timeout/2, is_same_file/2, file_exists/1
+    timeout/2, is_same_file/2, file_exists/1,
+    string_contains/2
 ]).
 
 mingle(LeftDefault, RightDefault, AllLeft, AllRight, Op) ->
@@ -400,3 +401,6 @@ file_exists(FilePath) ->
         {ok, _Info} -> true;
         _ -> false
     end.
+
+-spec string_contains(string(), string()) -> boolean().
+string_contains(Full, Search) -> string:str(Full, Search) > 0.

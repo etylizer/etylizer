@@ -53,7 +53,7 @@ ensure_type_supported(Loc, T) ->
 check(Ctx, Decl = {function, Loc, Name, Arity, _}, PolyTy) ->
     ?LOG_INFO("Type checking ~w/~w at ~s against type ~s",
               Name, Arity, ast:format_loc(Loc), pretty:render_tyscheme(PolyTy)),
-    {MonoTy, Fixed, _} = typing_common:mono_ty(PolyTy),
+    {MonoTy, Fixed, _} = typing_common:mono_ty(Loc, PolyTy),
     ensure_type_supported(Loc, MonoTy),
     AltTys =
         case MonoTy of

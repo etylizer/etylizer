@@ -14,6 +14,8 @@
     apply/3,
     domain/1,
     from_list/1,
+    empty/0,
+    extend/3,
     mk_tally_subst/2,
     base_subst/1
 ]).
@@ -103,8 +105,17 @@ apply_base(S, T) ->
 -spec apply_list(base_subst(), [ast:ty()]) -> [ast:ty()].
 apply_list(S, L) -> lists:map(fun(T) -> apply_base(S, T) end, L).
 
+-spec extend(t(), ast:ty_varname(), ast:ty()) -> t().
+extend({tally_subst, BaseSubst, Fixed}, Alpha, T) ->
+    {tally_subst, extend(BaseSubst, Alpha, T), Fixed};
+extend(BaseSubst, Alpha, T) ->
+    maps:put(Alpha, T, BaseSubst).
+
 -spec from_list([{ast:ty_varname(), ast:ty()}]) -> t().
 from_list(L) -> maps:from_list(L).
+
+-spec empty() -> t().
+empty() -> #{}.
 
 -spec mk_tally_subst(sets:set(ast:ty_varname()), base_subst()) -> t().
 mk_tally_subst(Fixed, Base) -> {tally_subst, Base, Fixed}.
