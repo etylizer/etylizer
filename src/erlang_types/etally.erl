@@ -17,6 +17,7 @@ tally(Constraints, FixedVars) ->
   % io:format(user,"SAT~n~p~n", [Saturated]),
   Solved = ?TIME(tally_solve, tally_solve(Saturated, FixedVars)),
   % sanity: every substitution satisfies all given constraints, if no error
+  % io:format(user,"FIN~n", []),
   ?SANITY(substitutions_solve_input_constraints, case Solved of {error, _} -> ok; _ -> [ true = is_valid_substitution(Constraints, Subst) || Subst <- Solved] end),
   Solved.
 

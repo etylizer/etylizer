@@ -242,3 +242,18 @@ recursive_test() ->
   %?assertEqual("mu X . nil | {alpha, mu X}", pretty:render_ty(Pretty)),
 
   ok.
+
+share_bdds_test() ->
+  ecache:reset_all(),
+  V0 = tunion([
+    ttuple([tintersect([tatom(), tvar(a)])]),
+    ttuple([tintersect([tatom(), tvar(a)])])
+  ]),
+  B = ast_lib:ast_to_erlang_ty(V0, symtab:empty()),
+
+  Pretty = ast_lib:erlang_ty_to_ast(B, #{}),
+
+  true = subty:is_equivalent(none, V0, Pretty),
+  ?assertEqual("{a /\\ atom()}", pretty:render_ty(Pretty)),
+
+  ok.

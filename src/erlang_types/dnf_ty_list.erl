@@ -90,4 +90,5 @@ phi_norm_corec(S1, S2, [Ty | N], Fixed, M) ->
   constraint_set:join(T1, ?F(constraint_set:join(T2, T3))).
 
 apply_to_node(Node, Map, Memo) ->
+  error(todo),
   substitute(Node, Map, Memo, fun(N, S, M) -> ty_list:substitute(N, S, M) end).

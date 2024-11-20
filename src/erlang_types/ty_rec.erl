@@ -4,10 +4,10 @@
 
 
 % co-recursive functions on types
--export([is_empty/1, is_empty_start/1, normalize_start/2]).
+-export([unfold_bdds/1, is_empty/1, is_empty_start/1, normalize_start/2]).
 -export([is_empty_corec/2, normalize_corec/3]).
 
--export([empty/0, any/0]).
+-export([hash/1, empty/0, any/0]).
 -export([union/2, negate/1, intersect/2, diff/2, is_any/1]).
 -export([extract_variables/1]).
 
@@ -35,6 +35,7 @@
 -type ty_variable() :: term().
 -type ty_atom() :: term().
 
+hash({ty_ref, Id}) -> Id.
 
 % ======
 % top-level API
@@ -483,22 +484,43 @@ map() ->
 % ======
 
 -spec intersect(ty_ref(), ty_ref()) -> ty_ref().
+intersect(TyRef1, TyRef2) when TyRef2 < TyRef1 -> intersect(TyRef2, TyRef1); % commutativity
+intersect(TyRef1, TyRef1) -> TyRef1;
 intersect(TyRef1, TyRef2) ->
-  ty_ref:op_cache(intersect, {TyRef1, TyRef2},
-    fun() ->
-      #ty{predef = P1, atom = A1, interval = I1, list = L1, tuple = T1, function = F1, map = M1} = ty_ref:load(TyRef1),
-      #ty{predef = P2, atom = A2, interval = I2, list = L2, tuple = T2, function = F2, map = M2} = ty_ref:load(TyRef2),
-      ty_ref:store(#ty{
-        predef = dnf_var_predef:intersect(P1, P2),
-        atom = dnf_var_ty_atom:intersect(A1, A2),
-        interval = dnf_var_int:intersect(I1, I2),
-        list = dnf_var_ty_list:intersect(L1, L2),
-        tuple = multi_intersect(T1, T2),
-        function = multi_intersect_fun(F1, F2),
-        map = dnf_var_ty_map:intersect(M1, M2)
-      })
-    end
-    ).
+  case {any(), empty()} of
+    {TyRef1, _} -> TyRef2;
+    {_, TyRef1} -> empty();
+    _ ->
+    ty_ref:op_cache(intersect, {TyRef1, TyRef2},
+      fun() ->
+        #ty{predef = P1, atom = A1, interval = I1, list = L1, tuple = T1, function = F1, map = M1} = ty_ref:load(TyRef1),
+        #ty{predef = P2, atom = A2, interval = I2, list = L2, tuple = T2, function = F2, map = M2} = ty_ref:load(TyRef2),
+        ty_ref:store(#ty{
+          predef = dnf_var_predef:intersect(P1, P2),
+          atom = dnf_var_ty_atom:intersect(A1, A2),
+          interval = dnf_var_int:intersect(I1, I2),
+          list = dnf_var_ty_list:intersect(L1, L2),
+          tuple = multi_intersect(T1, T2),
+          function = multi_intersect_fun(F1, F2),
+          map = dnf_var_ty_map:intersect(M1, M2)
+        })
+      end)
+  end.
+
+-spec union(ty_ref(), ty_ref()) -> ty_ref().
+union(TyRef1, TyRef2) when TyRef2 < TyRef1 -> union(TyRef2, TyRef1); % commutativity
+union(TyRef1, TyRef1) -> TyRef1;
+union(TyRef1, TyRef2) ->
+  case {any(), empty()} of
+    {TyRef1, _} -> any();
+    {_, TyRef1} -> TyRef2;
+    _ ->
+      ty_ref:op_cache(union, {TyRef1, TyRef2},
+        fun() ->
+      negate(intersect(negate(TyRef1), negate(TyRef2)))
+         end)
+  end
+     .
 
 -spec negate(ty_ref()) -> ty_ref().
 negate(TyRef1) ->
@@ -523,12 +545,6 @@ diff(A, B) ->
       intersect(A, negate(B))
     end).
 
--spec union(ty_ref(), ty_ref()) -> ty_ref().
-union(A, B) ->
-  ty_ref:op_cache(union, {A, B},
-    fun() ->
-  negate(intersect(negate(A), negate(B)))
-     end).
 
 multi_intersect({DefaultT1, T1}, {DefaultT2, T2}) ->
   % get all keys
@@ -875,6 +891,28 @@ all_variables(TyRef, M) ->
       ++ dnf_var_ty_map:all_variables(Maps, Mp)
       )
   end.
+
+%-record(ty, {predef, atom, interval, list, tuple, function, map}).
+unfold_bdds(Ty = #ty{tuple = {DefaultT, T}, function = {DefaultF, F}}) ->
+  {ty, 
+    dnf_var_predef:unfold_bdds(Ty#ty.predef),
+    dnf_var_ty_atom:unfold_bdds(Ty#ty.atom),
+    dnf_var_int:unfold_bdds(Ty#ty.interval),
+    dnf_var_ty_list:unfold_bdds(Ty#ty.list),
+    multi_unfold_tuple(DefaultT, T),
+    multi_unfold_function(DefaultF, F),
+    dnf_var_ty_map:unfold_bdds(Ty#ty.map)
+  }.
+
+multi_unfold_tuple(DefaultT, T) ->
+  X1 = dnf_var_ty_tuple:unfold_bdds(DefaultT),
+  Xs = maps:from_list(lists:map(fun({Size, Tuple}) -> {Size, dnf_var_ty_tuple:unfold_bdds(Tuple)} end, maps:to_list(T))),
+  {X1, Xs}.
+
+multi_unfold_function(DefaultT, T) ->
+  X1 = dnf_var_ty_function:unfold_bdds(DefaultT),
+  Xs = maps:from_list(lists:map(fun({Size, Function}) -> {Size, dnf_var_ty_function:unfold_bdds(Function)} end, maps:to_list(T))),
+  {X1, Xs}.
 
 -ifdef(TEST).
 -include_lib("eunit/include/eunit.hrl").
