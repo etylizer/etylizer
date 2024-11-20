@@ -70,9 +70,9 @@ define_any() ->
   Any = {ty_ref, 0},
 
   % union
-  Ty0 = dnf_var_predef:any(),
+  Ty0 = dnf_var_ty_predef:any(),
   Ty1 = dnf_var_ty_atom:any(),
-  Ty2 = dnf_var_int:any(),
+  Ty2 = dnf_var_ty_interval:any(),
   Tyl = dnf_var_ty_list:any(),
   Ty3 = {dnf_var_ty_tuple:any(), #{}},
   Ty4 = {dnf_var_ty_function:any(), #{}},

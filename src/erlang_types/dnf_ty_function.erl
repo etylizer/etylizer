@@ -5,7 +5,7 @@
 -endif.
 
 -define(ELEMENT, ty_function).
--define(TERMINAL, bdd_bool).
+-define(TERMINAL, ty_bool).
 
 -define(F(Z), fun() -> Z end).
 
@@ -28,7 +28,7 @@ is_empty_corec(TyBDD, M) ->
   dnf(TyBDD, {fun(P, N, T) -> is_empty_coclause_corec(P, N, T, M) end, fun is_empty_union/2}).
 
 is_empty_coclause_corec(AllPos, Neg, T, M) ->
-  case {AllPos, Neg, bdd_bool:empty()} of
+  case {AllPos, Neg, ty_bool:empty()} of
     {_, _, T} -> true;
     {[], [], _} -> false;
     {[], Neg = [TNeg | _], _} ->
@@ -95,9 +95,9 @@ normalize_corec(Size, DnfTyFunction, PVar, NVar, Fixed, M) ->
   ty_variable:normalize_corec(Ty, PVar, NVar, Fixed, fun(Var) -> ty_rec:function(Size, dnf_var_ty_function:var(Var)) end, M).
 
 normalize_coclause_corec([], [], T, _Fixed, _M) ->
-  case bdd_bool:empty() of T -> [[]]; _ -> [] end;
+  case ty_bool:empty() of T -> [[]]; _ -> [] end;
 normalize_coclause_corec(Pos, Neg, T, Fixed, M) ->
-  case bdd_bool:empty() of
+  case ty_bool:empty() of
     T -> [[]];
     _ ->
       [First | _] = Pos ++ Neg,

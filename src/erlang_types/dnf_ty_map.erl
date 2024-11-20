@@ -1,7 +1,7 @@
 -module(dnf_ty_map).
 
 -define(ELEMENT, ty_map).
--define(TERMINAL, bdd_bool).
+-define(TERMINAL, ty_bool).
 
 -define(OPT, optional).
 -define(MAN, mandatory).
@@ -19,7 +19,7 @@ is_empty_corec(TyBDD, M) ->
 
 % module specific implementations
 is_empty_coclause_corec(Pos, Neg, T, M) ->
-  case {Pos, Neg, bdd_bool:empty()} of
+  case {Pos, Neg, ty_bool:empty()} of
     {_, _, T} -> true;
     {[], [], _} -> false;
     {[], [_TNeg | _], _} ->
@@ -38,9 +38,9 @@ normalize_corec(TyMap, [], [], Fixed, M) ->
   dnf(TyMap, {
     fun
       ([], [], T) ->
-        case bdd_bool:empty() of T -> [[]]; _ -> [] end;
+        case ty_bool:empty() of T -> [[]]; _ -> [] end;
       ([], Neg = [_TNeg | _], T) ->
-        case bdd_bool:empty() of 
+        case ty_bool:empty() of 
           T -> [[]]; 
           _ -> 
             P1 = ty_rec:tuple(2, dnf_var_ty_tuple:any()),
@@ -50,7 +50,7 @@ normalize_corec(TyMap, [], [], Fixed, M) ->
             dnf_ty_tuple:phi_norm_corec(2, ty_tuple:components(BigS), Neg, Fixed, M)
         end;
       (Pos, Neg, T) ->
-        case bdd_bool:empty() of
+        case ty_bool:empty() of
           T -> [[]];
           _ ->
             BigS = ty_tuple:big_intersect(Pos),
