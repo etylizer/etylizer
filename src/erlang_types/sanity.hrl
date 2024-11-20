@@ -1,7 +1,7 @@
 -ifndef(SANITY_HRL).
 -define(SANITY_HRL,true).
 
--include_lib("../log.hrl").
+-include("log.hrl").
 
 -define(LOG_THRESHOLD_MS, 10).
 -define(REPORT_THRESHOLD_MS, 100).

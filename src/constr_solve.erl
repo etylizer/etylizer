@@ -1,6 +1,6 @@
 -module(constr_solve).
 
--include_lib("log.hrl").
+-include("log.hrl").
 
 -export([
     check_simp_constrs/4,

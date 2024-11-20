@@ -1,6 +1,6 @@
 -module(tmp).
 
--include_lib("log.hrl").
+-include("log.hrl").
 
 -export([
     with_tmp_file/4,

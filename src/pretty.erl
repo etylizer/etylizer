@@ -1,7 +1,6 @@
 -module(pretty).
 
 -compile([nowarn_shadow_vars]).
--include_lib("log.hrl").
 
 -export([
          arity/2,

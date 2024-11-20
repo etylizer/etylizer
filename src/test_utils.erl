@@ -7,7 +7,7 @@
 % before the first line.
 
 -include_lib("eunit/include/eunit.hrl").
--include_lib("log.hrl").
+-include("log.hrl").
 
 -export([
     extract_tests/1,

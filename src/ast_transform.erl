@@ -8,7 +8,7 @@
 
 -compile([nowarn_shadow_vars]).
 
--include_lib("log.hrl").
+-include("log.hrl").
 
 -record(ctx,
         { path :: file:filename(),

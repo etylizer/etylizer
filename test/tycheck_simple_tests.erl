@@ -3,7 +3,7 @@
 % Test setup for all functions in test_files/tycheck_simple.erl
 
 -include_lib("eunit/include/eunit.hrl").
--include_lib("../src/log.hrl").
+-include("log.hrl").
 
 -spec check_ok_fun(string(), symtab:t(), ast:fun_decl(), ast:ty_scheme()) -> ok.
 check_ok_fun(Filename, Tab, Decl = {function, L, Name, Arity, _}, Ty) ->

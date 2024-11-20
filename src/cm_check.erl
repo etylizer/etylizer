@@ -8,8 +8,8 @@
     perform_sanity_check/3
 ]).
 
--include_lib("log.hrl").
--include_lib("ety_main.hrl").
+-include("log.hrl").
+-include("ety_main.hrl").
 
 -spec perform_type_checks(
     paths:search_path(),
