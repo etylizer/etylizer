@@ -9,7 +9,7 @@
 parse_versions(S) ->
     Comps = string:split(S, "+", all),
     try
-        {ok, sets:from_list(lists:map(fun list_to_integer/1, Comps))}
+        {ok, sets:from_list(lists:map(fun list_to_integer/1, Comps), [{version, 2}])}
     catch error:badarg:_ ->
         error
     end.

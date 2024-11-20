@@ -98,7 +98,7 @@ value_option(Flag, Default, On, OnVal, Off, OffVal, Opts) ->
 -record(usage, {
           calls = maps:new(),			%Who calls who
           imported = [],                        %Actually imported functions
-          used_records = gb_sets:new()          %Used record definitions
+          used_records = gb_sets:new([{version, 2}])          %Used record definitions
               :: gb_sets:set(atom()),
           used_types = maps:new()               %Used type definitions
               :: #{ta() := anno()}

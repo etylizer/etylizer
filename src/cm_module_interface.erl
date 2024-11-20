@@ -65,7 +65,7 @@ extract_exported_functions_and_types(Forms) ->
                           _ -> error
                       end
               end, Forms),
-    {sets:from_list(lists:flatten(Functions)), sets:from_list(lists:flatten(Types))}.
+    {sets:from_list(lists:flatten(Functions), [{version, 2}]), sets:from_list(lists:flatten(Types), [{version, 2}])}.
 
 %% Extracts and aggregates types with their arities from exported type declarations in the AST
 %% of an Erlang module.
@@ -81,7 +81,7 @@ extract_types_from_exported_types(Forms, TypeDeclarations, ExportedTypes) ->
                       error
               end
       end, TySchemes),
-    traverse_named_references(NamedReferences, TypeDeclarations, sets:new()).
+    traverse_named_references(NamedReferences, TypeDeclarations, sets:new([{version, 2}])).
 
 -spec find_ty_schemes_from_types(ast:forms(), sets:set(ast:ty_with_arity())) -> [ast:ty_scheme()].
 find_ty_schemes_from_types(Forms, ExportedTypes) ->
@@ -105,7 +105,7 @@ extract_types_from_function_signatures(Forms, NotExportedTypes, Functions) ->
     TySchemes = find_ty_schemes_from_functions(Forms, Functions),
     lists:foldl(
       fun handle_function_signature/2,
-      sets:new(),
+      sets:new([{version, 2}]),
       [{FunctionSignature, NotExportedTypes} || {ty_scheme, _, FunctionSignature} <- TySchemes]).
 
 -spec find_ty_schemes_from_functions(ast:forms(), sets:set(ast:fun_with_arity())) -> [ast:ty_scheme()].
@@ -136,7 +136,7 @@ handle_function_signature(_, AccTypes) ->
 
 -spec handle_named_references([ast:ty_named()], [ast:type_decl()], sets:set(ast:ty_with_arity())) -> sets:set(ast:ty_with_arity()).
 handle_named_references(NamedReferences, NotExportedTypes, AccTypes) ->
-    sets:union(AccTypes, traverse_named_references(NamedReferences, NotExportedTypes, sets:new())).
+    sets:union(AccTypes, traverse_named_references(NamedReferences, NotExportedTypes, sets:new([{version, 2}]))).
 
 -spec filter_named_references([ast:ty()]) -> [ast:ty_named()].
 filter_named_references(Types) ->
@@ -180,7 +180,7 @@ find_type_declaration({TypeName, TypeArity}, TypeDeclarations) ->
 
 -spec handle_parameter_types([ast:ty()]) -> [ast:ty_named()].
 handle_parameter_types(ParameterTypes) ->
-    References = handle_parameter_types_internal(ParameterTypes, sets:new()),
+    References = handle_parameter_types_internal(ParameterTypes, sets:new([{version, 2}])),
     sets:to_list(References).
 
 -spec handle_parameter_types_internal([ast:ty()], sets:set(ast:ty_named())) -> sets:set(ast:ty_named()).

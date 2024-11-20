@@ -70,7 +70,7 @@ gen_constrs_fun_group(Symtab, Decls) ->
               ThisCs = exp_constrs(Ctx, Exp, Alpha),
               Ref = {ref, Name, Arity},
               {sets:union(ThisCs, Cs), maps:put(Ref, Alpha, Env)}
-      end, {sets:new(), #{}}, Decls).
+      end, {sets:new([{version, 2}]), #{}}, Decls).
 
 % Checking the type spec of a function.
 % This function is invoked for each branch of the intersection type in the type spec.
@@ -142,14 +142,14 @@ exp_constrs(Ctx, E, T) ->
                                      Uppers ++ [ThisUpper],
                                      sets:union(ThisCs, AccCs)}
                             end,
-                            {[], [], [], sets:new()},
+                            {[], [], [], sets:new([{version, 2}])},
                             Clauses),
             CsScrut = sets:union(Cs0, CsCases),
             Exhaust = utils:single(
                 {csubty, mk_locs("case exhaustiveness", L), Alpha, ast_lib:mk_union(Lowers)}),
             sets:from_list([
                 {ccase, mk_locs("case", L), CsScrut, Exhaust, BodyList}
-            ]);
+            ], [{version, 2}]);
         {'catch', L, CatchE} ->
             Top = {predef, any},
             Cs = exp_constrs(Ctx, CatchE, Top),
@@ -175,7 +175,7 @@ exp_constrs(Ctx, E, T) ->
                     {local_bind, F} -> maps:put({local_ref, F}, FunTy, ArgEnv)
                 end,
             sets:from_list([{cdef, mk_locs("function def", L), BodyEnv, CsBody},
-                            {csubty, mk_locs("result of fun exp", L), FunTy, T}]);
+                            {csubty, mk_locs("result of fun exp", L), FunTy, T}], [{version, 2}]);
         {call, L, Var = {var, _, _}, Args} ->
             var_funcall_constrs(Ctx, L, Var, Args, T);
         {call, L, FunExp, Args} ->
@@ -199,7 +199,7 @@ exp_constrs(Ctx, E, T) ->
                           ValCs = exp_constrs(Ctx, ValE, ValAlpha),
                           sets:union([AccCs, KeyCs, ValCs])
                   end,
-                  sets:new(),
+                  sets:new([{version, 2}]),
                   Assocs),
             ResultC = {csubty, mk_locs("map_create", L), MapTy, T},
             sets:add_element(ResultC, AssocsCs);
@@ -236,7 +236,7 @@ exp_constrs(Ctx, E, T) ->
             MsgRes = utils:sformat("result of op ~w", Op),
             OpCs = sets:from_list(
                      [{cop, mk_locs(MsgTy, L), Op, 2, {fun_full, [Alpha1, Alpha2], Beta}},
-                      {csubty, mk_locs(MsgRes, L), Beta, T}]),
+                      {csubty, mk_locs(MsgRes, L), Beta, T}], [{version, 2}]),
             sets:union([Cs1, Cs2, OpCs]);
         {op, L, Op, Arg} ->
             Alpha = fresh_tyvar(Ctx),
@@ -246,7 +246,7 @@ exp_constrs(Ctx, E, T) ->
             MsgRes = utils:sformat("result of op ~w", Op),
             OpCs = sets:from_list(
                      [{cop, mk_locs(MsgTy, L), Op, 1, {fun_full, [Alpha], Beta}},
-                      {csubty, mk_locs(MsgRes, L), Beta, T}]),
+                      {csubty, mk_locs(MsgRes, L), Beta, T}], [{version, 2}]),
             sets:union(ArgCs, OpCs);
         {'receive', L, _CaseClauses} ->
             errors:unsupported(L, "receive: ~200p", [E]);
@@ -261,11 +261,11 @@ exp_constrs(Ctx, E, T) ->
                         {N, Alpha}
                     end,
                     DefFields),
-            DefFieldNames = sets:from_list(lists:map(fun ({N, _}) -> N end, DefFields)),
+            DefFieldNames = sets:from_list(lists:map(fun ({N, _}) -> N end, DefFields), [{version, 2}]),
             GivenFieldNames =
                 % FIXME: deal with record_field_other, which assigns a value to all fields
                 % not mentioned explicitly
-                sets:from_list(lists:map(fun ({record_field, _L, N, _Exp}) -> N end, GivenFields)),
+                sets:from_list(lists:map(fun ({record_field, _L, N, _Exp}) -> N end, GivenFields), [{version, 2}]),
             case sets:is_subset(GivenFieldNames, DefFieldNames) of
                 false -> errors:ty_error(L, "too many record fields given", []);
                 true ->
@@ -281,7 +281,7 @@ exp_constrs(Ctx, E, T) ->
                         ThisCs = exp_constrs(Ctx, Exp, Ty),
                         sets:union(Cs, ThisCs)
                     end,
-                    sets:new(),
+                    sets:new([{version, 2}]),
                     GivenFields),
             RecTupleTy = records:encode_record_ty({Name, VarFields}),
             RecConstr = {csubty, mk_locs("record value constructor", L), RecTupleTy, T},
@@ -314,7 +314,7 @@ exp_constrs(Ctx, E, T) ->
             UpdatedFieldNames =
                 sets:from_list(
                     lists:map(fun({record_field, _, FieldName, _}) -> FieldName end, FieldUpdates)
-                ),
+                    , [{version, 2}]),
             % For typechecking the expression Exp, the updated fields can have type any().
             % But all fields F not updated must be of type Alpha_F (a type variable)
             % The values for all updated fields G must have type Alpha_G
@@ -356,7 +356,7 @@ exp_constrs(Ctx, E, T) ->
                           ThisCs = exp_constrs(Ctx, Arg, Alpha),
                           {[Alpha | Tys], sets:union(Cs, ThisCs)}
                   end,
-                  {[], sets:new()},
+                  {[], sets:new([{version, 2}])},
                   Args),
             TupleC = {csubty, mk_locs("tuple constructor", L), {tuple, Tys}, T},
             sets:add_element(TupleC, Cs);
@@ -377,7 +377,7 @@ gen_funcall_constrs(Ctx, L, FunExp, Args, T) ->
                     Cs = exp_constrs(Ctx, ArgExp, Alpha),
                     {sets:union(AccCs, Cs), [Alpha | AccTys]}
             end,
-            {sets:new(), []},
+            {sets:new([{version, 2}]), []},
             Args),
     Beta = fresh_tyvar(Ctx),
     FunTy = {fun_full, ArgTys, Beta},
@@ -539,7 +539,7 @@ pat_guard_lower_upper(Symtab, P, Gs, E) ->
     UpperETy = ty_of_pat(Symtab, Env, EPat, upper),
     LowerETy = ty_of_pat(Symtab, Env, EPat, lower),
     Upper = ast_lib:mk_intersection([UpperPatTy, UpperETy]),
-    VarsOfGuards = sets:from_list(lists:filtermap(fun ast:local_varname_from_any_ref/1, maps:keys(Env))),
+    VarsOfGuards = sets:from_list(lists:filtermap(fun ast:local_varname_from_any_ref/1, maps:keys(Env)), [{version, 2}]),
     BoundVars = sets:union(bound_vars_pat(P), bound_vars_pat(EPat)),
     Lower =
         case {Status, sets:is_subset(VarsOfGuards, BoundVars)} of
@@ -563,46 +563,46 @@ pat_guard_lower_upper(Symtab, P, Gs, E) ->
 -spec bound_vars_pat(ast:pat()) -> sets:set(ast:local_varname()).
 bound_vars_pat(P) ->
     case P of
-        {'atom', _L, _A} -> sets:new();
-        {'char', _L, _C} -> sets:new();
-        {'integer', _L, _I} -> sets:new();
-        {'float', _L, _F} -> sets:new();
-        {'string', _L, _S} -> sets:new();
+        {'atom', _L, _A} -> sets:new([{version, 2}]);
+        {'char', _L, _C} -> sets:new([{version, 2}]);
+        {'integer', _L, _I} -> sets:new([{version, 2}]);
+        {'float', _L, _F} -> sets:new([{version, 2}]);
+        {'string', _L, _S} -> sets:new([{version, 2}]);
         {bin, L, _Elems} -> errors:unsupported(L, "bitstring patterns");
         {match, _L, P1, P2} ->
             sets:union(bound_vars_pat(P1), bound_vars_pat(P2));
-        {nil, _L} -> sets:new();
+        {nil, _L} -> sets:new([{version, 2}]);
         {cons, _L, P1, P2} ->
             sets:union(bound_vars_pat(P1), bound_vars_pat(P2));
         {op, _L, _Op, Ps} ->
             lists:foldl(
               fun(P, Acc) -> sets:union(Acc, bound_vars_pat(P)) end,
-              sets:new(),
+              sets:new([{version, 2}]),
               Ps
              );
         {map, _L, Assocs} ->
             lists:foldl(
               % NOTE: the key part of a map pattern does not bound variables
               fun({map_field_req, _L, _P1, P2}, Acc) -> sets:union(Acc, bound_vars_pat(P2)) end,
-              sets:new(),
+              sets:new([{version, 2}]),
               Assocs
              );
         {record, _L, _RecName, FieldPatterns} ->
             lists:foldl(
               fun({record_field, _L, _FieldName, P}, Acc) -> sets:union(Acc, bound_vars_pat(P)) end,
-              sets:new(),
+              sets:new([{version, 2}]),
               FieldPatterns
              );
-        {record_index, _L, _Name, _Field} -> sets:new();
+        {record_index, _L, _Name, _Field} -> sets:new([{version, 2}]);
         {tuple, _L, Ps} ->
             lists:foldl(
               fun(P, Acc) -> sets:union(Acc, bound_vars_pat(P)) end,
-              sets:new(),
+              sets:new([{version, 2}]),
               Ps
              );
-        {wildcard, _L} -> sets:new();
-        {var, _L, {local_bind, V}} -> sets:from_list([V]);
-        {var, _L, {local_ref, _V}} -> sets:new()
+        {wildcard, _L} -> sets:new([{version, 2}]);
+        {var, _L, {local_bind, V}} -> sets:from_list([V], [{version, 2}]);
+        {var, _L, {local_ref, _V}} -> sets:new([{version, 2}])
     end.
 
 
@@ -769,7 +769,7 @@ pat_guard_env(Ctx, L, T, P, Gs) ->
 % t // p
 -spec pat_env(ctx(), ast:loc(), ast:ty(), ast:pat()) -> {constr:constrs(), constr:constr_env()}.
 pat_env(Ctx, OuterL, T, P) ->
-    Empty = {sets:new(), #{}},
+    Empty = {sets:new([{version, 2}]), #{}},
     case P of
         {'atom', _L, _A} -> Empty;
         {'char', _L, _C} -> Empty;
@@ -810,7 +810,7 @@ pat_env(Ctx, OuterL, T, P) ->
                         {CV, EnvV} = pat_env(Ctx, OuterL, AlphaV, PV),
                         {sets:union([Cs, CK, CV]), intersect_envs(Env, EnvV)}
                     end,
-                    {sets:new(), #{}},
+                    {sets:new([{version, 2}]), #{}},
                     Assocs),
             C = {csubty, mk_locs("t // #{_}", OuterL), T, stdtypes:tmap(AlphaK, AlphaV)},
             {sets:add_element(C, AssocCs), AssocEnv};
@@ -825,7 +825,7 @@ pat_env(Ctx, OuterL, T, P) ->
                             intersect_envs(AccEnv, ThisEnv),
                             maps:put(FieldName, Alpha, AccFieldTypes)}
                     end,
-                    {sets:new(), #{}, #{}},
+                    {sets:new([{version, 2}]), #{}, #{}},
                     FieldPats),
             FieldTypes =
                 lists:map(
@@ -850,7 +850,7 @@ pat_env(Ctx, OuterL, T, P) ->
                            sets:union(Cs, ThisCs),
                            intersect_envs(Env, ThisEnv)}
                   end,
-                  {[], sets:new(), #{}},
+                  {[], sets:new([{version, 2}]), #{}},
                   Ps),
             C = {csubty, mk_locs("t // {...}", OuterL), T, {tuple, Alphas}},
             {sets:add_element(C, Cs), Env};
@@ -858,10 +858,10 @@ pat_env(Ctx, OuterL, T, P) ->
             Empty;
         {var, _L, {local_bind, V}} ->
             % V binds a fresh variable
-            {sets:new(), #{ {local_ref, V} => T }};
+            {sets:new([{version, 2}]), #{ {local_ref, V} => T }};
         {var, _L, LocalRef} ->
             % V refers to an existing variable
-            {sets:new(), #{ LocalRef => T }}
+            {sets:new([{version, 2}]), #{ LocalRef => T }}
     end.
 
 % (| e |)
@@ -893,7 +893,7 @@ intersect_envs(Env1, Env2) ->
         fun((ast:ty(), ast:ty()) -> ast:ty())
        ) -> constr:constr_env().
 combine_envs(Env1, Env2, F) ->
-    Keys = sets:from_list(maps:keys(Env1) ++ maps:keys(Env2)),
+    Keys = sets:from_list(maps:keys(Env1) ++ maps:keys(Env2), [{version, 2}]),
     sets:fold(
       fun (K, Env) ->
               T1 = maps:get(K, Env1, none),

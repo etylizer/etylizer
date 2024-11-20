@@ -26,7 +26,7 @@
 }.
 
 -spec new() -> dep_graph().
-new() -> {sets:new(), maps:new()}.
+new() -> {sets:new([{version, 2}]), maps:new()}.
 
 -spec pretty_depgraph(dep_graph()) ->
     {[file:filename()], #{file:filename() => [file:filename()]}}.
@@ -54,7 +54,7 @@ add_dependency(Path, Dep, {Srcs, DepGraph}) ->
     DepNorm = normalize(Dep),
     Deps =
         case maps:find(PathNorm, DepGraph) of
-            error -> sets:new();
+            error -> sets:new([{version, 2}]);
             {ok, Files} -> Files
         end,
     NewDepGraph = maps:put(PathNorm, sets:add_element(DepNorm, Deps), DepGraph),
@@ -99,7 +99,7 @@ find_source_for_module(Module, SearchPath) ->
     -> dep_graph().
 build_dep_graph(Files, SearchPath, ParseFun) ->
     build_dep_graph(lists:map(fun normalize/1, Files),
-        SearchPath, ParseFun, new(), sets:new()).
+        SearchPath, ParseFun, new(), sets:new([{version, 2}])).
 
 -spec build_dep_graph(
         [file:filename()],
@@ -118,7 +118,7 @@ build_dep_graph(Worklist, SearchPath, ParseFun, DepGraph, AlreadyHandled) ->
             NewAlreadyHandled = sets:add_element(File, AlreadyHandled),
             NewFiles = sets:subtract(
                 sets:subtract(All, NewAlreadyHandled),
-                sets:from_list(Rest)
+                sets:from_list(Rest, [{version, 2}])
             ),
             ?LOG_INFO("Done adding ~p to dependency graph", File),
             build_dep_graph(

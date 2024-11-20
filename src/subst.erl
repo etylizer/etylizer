@@ -188,24 +188,24 @@ clean_test() ->
     % a is in covariant position
     A = stdtypes:tvar('a'),
     B = stdtypes:tvar('b'),
-    E = clean(A, sets:new()),
+    E = clean(A, sets:new([{version, 2}])),
 
     % intersection: covariant
-    E = clean(stdtypes:tinter(A, B), sets:new()),
+    E = clean(stdtypes:tinter(A, B), sets:new([{version, 2}])),
 
     % union: covariant
-    E = clean(stdtypes:tunion(A, B), sets:new()),
+    E = clean(stdtypes:tunion(A, B), sets:new([{version, 2}])),
 
     % negation: flip
-    E = clean(stdtypes:tnegate(A), sets:new()),
+    E = clean(stdtypes:tnegate(A), sets:new([{version, 2}])),
 
     % function type flips argument variable position
     Arr = stdtypes:tfun1(stdtypes:tany(), stdtypes:tnone()),
-    Arr = clean(stdtypes:tfun1(A, B), sets:new()),
+    Arr = clean(stdtypes:tfun1(A, B), sets:new([{version, 2}])),
 
     % function double flip
     Arr2 = stdtypes:tfun1(stdtypes:tfun1(stdtypes:tnone(), stdtypes:tany()), stdtypes:tnone()),
-    Arr2 = clean(stdtypes:tfun1(stdtypes:tfun1(A, B), stdtypes:tnone()), sets:new()),
+    Arr2 = clean(stdtypes:tfun1(stdtypes:tfun1(A, B), stdtypes:tnone()), sets:new([{version, 2}])),
 
     ok.
 
@@ -215,9 +215,9 @@ clean_negate_var_test() ->
     E = stdtypes:tnone(),
 
     % negation is covariant position
-    E = clean(stdtypes:tnegate(A), sets:new()),
+    E = clean(stdtypes:tnegate(A), sets:new([{version, 2}])),
     % test nnf
-    E = clean(stdtypes:tnegate(stdtypes:tunion(A, stdtypes:tnegate(stdtypes:tatom()))), sets:new()).
+    E = clean(stdtypes:tnegate(stdtypes:tunion(A, stdtypes:tnegate(stdtypes:tatom()))), sets:new([{version, 2}])).
 
 clean_tuples_test() ->
     ecache:reset_all(),
@@ -227,19 +227,19 @@ clean_tuples_test() ->
     T = stdtypes:tany(),
 
     % clean((int, a)) = (int, Bottom) = Bottom
-    Ty1 = clean(stdtypes:ttuple2(stdtypes:tint(), A), sets:new()),
+    Ty1 = clean(stdtypes:ttuple2(stdtypes:tint(), A), sets:new([{version, 2}])),
     Ty1 = E,
 
     % clean(!(int, a)) = !(int, Top)
-    Ty2 = clean(stdtypes:tnegate(stdtypes:ttuple2(stdtypes:tint(), A)), sets:new()),
+    Ty2 = clean(stdtypes:tnegate(stdtypes:ttuple2(stdtypes:tint(), A)), sets:new([{version, 2}])),
     Ty2 = stdtypes:tnegate(stdtypes:ttuple2(stdtypes:tint(), T)),
 
     % clean(!(int, !a)) = !(int, !Empty) = !(int, Top)
-    Ty3 = clean(stdtypes:tnegate(stdtypes:ttuple2(stdtypes:tint(), stdtypes:tnegate(A))), sets:new()),
+    Ty3 = clean(stdtypes:tnegate(stdtypes:ttuple2(stdtypes:tint(), stdtypes:tnegate(A))), sets:new([{version, 2}])),
     Ty3 = stdtypes:tnegate(stdtypes:ttuple2(stdtypes:tint(), T)),
 
     % clean(!(int, !(int, a))) = !(int, !(int, Bottom)) = !(int, Top) = !(int, Top)
-    Ty4 = clean(stdtypes:tnegate(stdtypes:ttuple2(stdtypes:tint(), stdtypes:tnegate(stdtypes:ttuple2(stdtypes:tint(), A)))), sets:new()),
+    Ty4 = clean(stdtypes:tnegate(stdtypes:ttuple2(stdtypes:tint(), stdtypes:tnegate(stdtypes:ttuple2(stdtypes:tint(), A)))), sets:new([{version, 2}])),
     Ty4 = stdtypes:tnegate(stdtypes:ttuple2(stdtypes:tint(), T)),
 
     ok.

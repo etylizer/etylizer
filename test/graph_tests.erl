@@ -26,11 +26,11 @@ test_graph_01(G) ->
     ?assertEqual(["V4", "V1"], graph:out_neighbours(G, "V3")),
     ?assertEqual(
        sets:from_list([
-         sets:from_list(["V0"]),
-         sets:from_list(["V1", "V2", "V3"]),
-         sets:from_list(["V4"]),
-         sets:from_list(["ISOLATED"])
-        ]),
+         sets:from_list(["V0"], [{version, 2}]),
+         sets:from_list(["V1", "V2", "V3"], [{version, 2}]),
+         sets:from_list(["V4"], [{version, 2}]),
+         sets:from_list(["ISOLATED"], [{version, 2}])
+        ], [{version, 2}]),
        graph:strong_components(G)
        ).
 

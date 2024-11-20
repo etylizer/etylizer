@@ -59,11 +59,11 @@ assert_list_of_pair_sets(Expected, L) ->
 cross_union(L1, L2) -> constr_collect:cross_product_binary(L1, L2, fun sets:union/2).
 
 -spec cross_union([[sets:set(T)]]) -> [sets:set(T)].
-cross_union(LL) -> constr_collect:cross_product(LL, fun sets:union/2, [sets:new()]).
+cross_union(LL) -> constr_collect:cross_product(LL, fun sets:union/2, [sets:new([{version, 2}])]).
 
 cross_union_empty_test() ->
     L = cross_union([]),
-    ?assertEqual([sets:new()], L).
+    ?assertEqual([sets:new([{version, 2}])], L).
 
 cross_union_empty2_test() ->
     L = cross_union([[]]),
@@ -109,10 +109,10 @@ mk_loc(I) -> {loc, "test", I, I}.
 mk_stc(I1, I2) -> {scsubty, mk_loc(I1), {singleton, I1}, {singleton, I2}}.
 
 -spec mk_set(list(T)) -> sets:set(T).
-mk_set(L) when is_list(L) -> sets:from_list(L).
+mk_set(L) when is_list(L) -> sets:from_list(L, [{version, 2}]).
 
 -spec mk_set(T, T) -> sets:set(T).
-mk_set(X, Y) -> sets:from_list([X, Y]).
+mk_set(X, Y) -> sets:from_list([X, Y], [{version, 2}]).
 
 -spec collect_constrs_all_combinations_mini_test() -> ok.
 collect_constrs_all_combinations_mini_test() ->
@@ -121,20 +121,20 @@ collect_constrs_all_combinations_mini_test() ->
             {mk_loc(1), mk_set([mk_stc(1, 2)])},   % scrutiny
             {mk_loc(2), mk_set([mk_stc(3, 4)])}, % exhaustiveness
             [{sccase_branch,
-                {mk_loc(3), sets:new()}, % guards
+                {mk_loc(3), sets:new([{version, 2}])}, % guards
                 {mk_loc(4), mk_set([mk_stc(5, 6)])}, % cond
                 {mk_loc(5), mk_set([mk_stc(7, 8)])}, % body
-                {mk_loc(6), sets:new()}}  % result
+                {mk_loc(6), sets:new([{version, 2}])}}  % result
             ]},
-    L = constr_collect:collect_constrs_all_combinations(sets:from_list([C])),
+    L = constr_collect:collect_constrs_all_combinations(sets:from_list([C], [{version, 2}])),
     ?assertEqual(2, length(L)),
     assert_list_of_pair_sets([
         % branch not taken
         {utils:single(mk_loc(4)),
-            sets:from_list([mk_stc(1, 2), mk_stc(3, 4), mk_stc(5, 6)])},
+            sets:from_list([mk_stc(1, 2), mk_stc(3, 4), mk_stc(5, 6)], [{version, 2}])},
         % branch taken
-        {sets:new(),
-            sets:from_list([mk_stc(1, 2), mk_stc(3, 4), mk_stc(7, 8)])}
+        {sets:new([{version, 2}]),
+            sets:from_list([mk_stc(1, 2), mk_stc(3, 4), mk_stc(7, 8)], [{version, 2}])}
     ], L).
 
 -spec mk_sccase(integer()) -> constr:simp_constr_case().
@@ -163,9 +163,9 @@ mk_sccase_combs(I, Add) ->
     Base = 100 * I,
     {AddLoc, AddList} =
         case Add of
-            none -> {sets:new(), []};
+            none -> {sets:new([{version, 2}]), []};
             {Loc, X} -> {utils:single(Loc), [X]};
-            X -> {sets:new(), [X]}
+            X -> {sets:new([{version, 2}]), [X]}
         end,
     Always = AddList ++ [
         mk_stc(Base + 3, Base + 4),
@@ -180,14 +180,14 @@ mk_sccase_combs(I, Add) ->
         mk_stc(Base + 15, Base + 16), mk_stc(Base + 17, Base + 18)]),
     Comb_off_off = mk_set(Always ++ [mk_stc(Base + 11, Base + 12), mk_stc(Base + 13, Base + 14),
         mk_stc(Base + 19, Base + 20), mk_stc(Base + 21, Base + 22)]),
-    [{sets:union(AddLoc, sets:from_list([mk_loc(Base + 4), mk_loc(Base + 8)])), Comb_on_on},
+    [{sets:union(AddLoc, sets:from_list([mk_loc(Base + 4), mk_loc(Base + 8)], [{version, 2}])), Comb_on_on},
       {sets:add_element(mk_loc(Base + 4), AddLoc), Comb_on_off},
       {sets:add_element(mk_loc(Base + 8), AddLoc), Comb_off_on},
       {AddLoc, Comb_off_off}].
 
 collect_constrs_all_combinations_simple_test() ->
     C = mk_sccase(0),
-    L = constr_collect:collect_constrs_all_combinations(sets:from_list([C])),
+    L = constr_collect:collect_constrs_all_combinations(sets:from_list([C], [{version, 2}])),
     ?assertEqual(4, length(L)),
     Expected = mk_sccase_combs(0, none),
     assert_list_of_pair_sets(Expected, L).
@@ -203,10 +203,10 @@ collect_constrs_all_combinations_test() ->
                 {mk_loc(5), mk_set([mk_sccase(5), mk_stc(11, 12)])}, % body
                 {mk_loc(6), mk_set([mk_sccase(6), mk_stc(13, 14)])}  % result
             }]},
-    L = constr_collect:collect_constrs_all_combinations(sets:from_list([C1, C2])),
+    L = constr_collect:collect_constrs_all_combinations(sets:from_list([C1, C2], [{version, 2}])),
     % ExpAlwaysCombs: [constr_collect:all_combinations()]
     ExpAlwaysCombs = [
-        [{sets:new(), mk_set([C1])}],
+        [{sets:new([{version, 2}]), mk_set([C1])}],
         mk_sccase_combs(1, mk_stc(3, 4)), % scrutiny
         mk_sccase_combs(2, mk_stc(5, 6)), % exhaustiveness
         mk_sccase_combs(3, mk_stc(7, 8))   % guards

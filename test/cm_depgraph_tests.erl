@@ -7,8 +7,8 @@ add_dependency_test() ->
     TestGraph = cm_depgraph:add_dependency("test.erl", "foo.erl", cm_depgraph:new()),
     ResultGraph = cm_depgraph:add_dependency("test.erl", "bar.erl", TestGraph),
     AllFiles = ["test.erl", "foo.erl", "bar.erl"],
-    ExpectedGraph = {sets:from_list(AllFiles),
-        #{"test.erl" => sets:from_list(["bar.erl", "foo.erl"])}},
+    ExpectedGraph = {sets:from_list(AllFiles, [{version, 2}]),
+        #{"test.erl" => sets:from_list(["bar.erl", "foo.erl"], [{version, 2}])}},
     ?assertEqual(cm_depgraph:pretty_depgraph(ExpectedGraph),
         cm_depgraph:pretty_depgraph(ResultGraph)).
 
@@ -24,7 +24,7 @@ update_dep_graph_test() ->
         {sets:to_list(sets:from_list(["./test_files/referenced_modules/module1.erl",
             "./test_files/referenced_modules/module2.erl",
             "./test_files/referenced_modules/module3.erl",
-            "./test_files/referenced_modules/module4.erl"])),
+            "./test_files/referenced_modules/module4.erl"], [{version, 2}])),
             #{"./test_files/referenced_modules/module2.erl" => ["./test_files/referenced_modules/module1.erl"],
               "./test_files/referenced_modules/module3.erl" => ["./test_files/referenced_modules/module1.erl"],
               "./test_files/referenced_modules/module4.erl" => ["./test_files/referenced_modules/module1.erl"]}

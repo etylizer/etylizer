@@ -112,6 +112,6 @@ dependency_order(Forms, CallGraph, SCCDepGraph) ->
               sets:from_list(utils:map_flip(
                                sets:to_list(SCC),
                                fun(FunKey) -> maps:get(FunKey, FunMap) end
-                              ))
+                              ), [{version, 2}])
       end
      ).

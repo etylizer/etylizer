@@ -7,7 +7,7 @@
 
 -include("sanity.hrl").
 
-tally(Constraints) -> tally(Constraints, sets:new()).
+tally(Constraints) -> tally(Constraints, sets:new([{version, 2}])).
 
 tally(Constraints, FixedVars) ->
   % io:format(user,"TALLY~n~s~n", [set_of_constraint_sets:print(Constraints)]),
@@ -36,7 +36,7 @@ tally_saturate(Normalized, FixedVars) ->
   lists:foldl(fun(ConstraintSet, A) ->
     constraint_set:join(
       fun() -> A end,
-      fun() -> constraint_set:saturate(ConstraintSet, FixedVars, sets:new()) end
+      fun() -> constraint_set:saturate(ConstraintSet, FixedVars, sets:new([{version, 2}])) end
     )
               end, [], Normalized).
 

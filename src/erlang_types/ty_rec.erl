@@ -229,7 +229,7 @@ subsume_coclauses(Pv, Nv, T, VarMap) ->
              end, VarMap, VarMap).
 
 maybe_remove_subsumed_coclauses(CurrentMap, _CurrentCoclause = {Pv, Nv, T}, _OtherCoclause = {Pv1, Nv1, T1}) ->
-  S = fun(E) -> sets:from_list(E) end,
+  S = fun(E) -> sets:from_list(E, [{version, 2}]) end,
   % other variables in current variables
   % other neg variables in current neg variables
   % other ty in current ty
@@ -244,7 +244,7 @@ maybe_remove_subsumed_coclauses(CurrentMap, _CurrentCoclause = {Pv, Nv, T}, _Oth
   end.
 
 maybe_remove_redundant_negative_variables(CurrentMap, T1, T, Pv, Nv, Pv1, Nv1) ->
-  S = fun(E) -> sets:from_list(E) end,
+  S = fun(E) -> sets:from_list(E, [{version, 2}]) end,
   % if other dnf is subtype of current dnf,
   % remove all other negative variables that are in the current positive variables
 %%  io:format(user,"Clause ~p~n", [{Pv, Nv, T}]),
@@ -293,8 +293,8 @@ maybe_remove_redundant_negative_variables(CurrentMap, T1, T, Pv, Nv, Pv1, Nv1) -
 % currently not needed
 % extract_variables(Ty = #ty{ predef = P, atom = A, interval = I, list = L, tuple = T, function = F, map = M }) ->
 %   PossibleVars = lists:foldl(fun(E, Acc) ->
-%     sets:intersection(sets:from_list(E), Acc)
-%               end, sets:from_list(dnf_var_ty_predef:all_variables(P)),
+%     sets:intersection(sets:from_list(E, [{version, 2}]), Acc)
+%               end, sets:from_list(dnf_var_ty_predef:all_variables(P), [{version, 2}]),
 %     [
 %       dnf_var_ty_atom:all_variables(A),
 %       dnf_var_ty_interval:all_variables(I),

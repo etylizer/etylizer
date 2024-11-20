@@ -340,7 +340,7 @@ timing_log(F, Time, What) ->
     X.
 
 -spec single(T) -> sets:set(T).
-single(X) -> sets:from_list([X]).
+single(X) -> sets:from_list([X], [{version, 2}]).
 
 -spec assocs_find(K, [{K, V}]) -> {ok, V} | error.
 assocs_find(K, L) ->

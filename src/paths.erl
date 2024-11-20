@@ -57,7 +57,7 @@ compute_search_path(Opts) ->
                                 sets:add_element(NormP, Set)}
                 end
             end,
-            {[], sets:new()},
+            {[], sets:new([{version, 2}])},
             SrcDirs),
     LocalPaths = lists:reverse(LocalPathEntries),
     ?LOG_TRACE2("OTP search path: ~p", OtpPaths),
