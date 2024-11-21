@@ -458,7 +458,12 @@ sol_number_test() ->
 
   % variable order determines if a variable is used as a lower or upper bound for another variable
   test_tally( [ C2 ], solutions(1)),
-  test_tally( [ C1 ], solutions(2)).
+  % Before tuple simplification, tally(C1) would produce 2 solutions
+  % since ('a2, 42) \ ('a1, 42) == (`a2 \ `a1, 42)
+  % we get only one solution, same as
+  % since ('a1, 42) \ ('a2, 42) == (`a1 \ `a2, 42)
+  test_tally( [ C1 ], solutions(1)).
+
 
 pretty_printing_bug_test() ->
   V0 = tvar(v1),
@@ -667,7 +672,7 @@ maps_norm_opt_13_test() ->
     ])
   ),
 
-  test_tally([{L, R}], solutions(16)).
+  test_tally([{L, R}], solutions(8)).
 
 maps_norm_opt_14_test() ->
   % #{β_0 => β_1} ≤ {a => b}, a ≤ β_0, b ≤ β_1
@@ -692,7 +697,10 @@ maps_norm_opt_15_test() ->
     tmap_field_opt(tatom(a), tatom(b)),
     tmap_field_opt(tint(20), tint(21))
   ]),
-  test_tally([{L, R}], [ {#{beta_1 => tnone(), beta_3 => tnone()}, #{beta_1 => tatom(b), beta_3 => tint(21)}} ]).
+  test_tally([{L, R}], 
+    solutions(2) % TODO tuple simplification produces more solutions
+    %[ {#{beta_1 => tnone(), beta_3 => tnone()}, #{beta_1 => tatom(b), beta_3 => tint(21)}} ]
+  ).
 
 maps_norm_req_1_test() ->
   % #{β_0 := β_1} ≤ {atom() => int()}

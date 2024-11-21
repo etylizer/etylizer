@@ -13,7 +13,7 @@
 % hide built-in Erlang node function
 -compile({no_auto_import, [node/1]}).
 
--export([raw_transform/2, all_variables/1, has_ref/2, get_dnf/1, any/0, empty/0, equal/2, node/1, terminal/1, compare/2, union/2, intersect/2, negate/1, diff/2]).
+-export([get_dnf_raw/1, dnf_raw/2, raw_transform/2, all_variables/1, has_ref/2, get_dnf/1, any/0, empty/0, equal/2, node/1, terminal/1, compare/2, union/2, intersect/2, negate/1, diff/2]).
 
 % these are defined here so the IDE does not complain
 -ifndef(ELEMENT).
@@ -142,7 +142,7 @@ s_is_empty(_) -> false.
 is_empty_union(F1, F2) ->
   F1() andalso F2().
 
-get_dnf(Bdd) ->
+get_dnf_raw(Bdd) ->
   lists:filter(
     fun({_,_,[]}) -> false; ({_, _, T}) ->
       case ?TERMINAL:empty() of
@@ -150,12 +150,41 @@ get_dnf(Bdd) ->
         _ ->  true
       end
     end,
-    dnf(Bdd, {fun(P, N, T) -> [{P, N, T}] end, fun(C1, C2) -> C1() ++ C2() end})
+    do_dnf(Bdd, {fun(P, N, T) -> [{P, N, T}] end, fun(C1, C2) -> C1() ++ C2() end}, [], [])
   ).
 
+get_dnf(Bdd) ->
+  Raw = lists:filter(
+    fun({_,_,[]}) -> false; ({_, _, T}) ->
+      case ?TERMINAL:empty() of
+        T -> false;
+        _ ->  true
+      end
+    end,
+    do_dnf(Bdd, {fun(P, N, T) -> [{P, N, T}] end, fun(C1, C2) -> C1() ++ C2() end}, [], [])
+  ),
+  case erlang:function_exported(?MODULE, simplify_dnf, 1) of
+    true -> ?MODULE:simplify_dnf(Raw);
+    _ -> Raw
+  end.
+
+dnf_raw(Bdd, {ProcessCoclause, CombineResults}) ->
+  Dnf = get_dnf_raw(Bdd),
+  Empty = ProcessCoclause([], [], ?TERMINAL:empty()),
+
+  lists:foldl(fun({P, N, T}, Acc) -> 
+    Line = ProcessCoclause(P, N, T),
+    CombineResults(fun() -> Line end, fun() -> Acc end) 
+  end, Empty, Dnf).
 
 dnf(Bdd, {ProcessCoclause, CombineResults}) ->
-  do_dnf(Bdd, {ProcessCoclause, CombineResults}, _Pos = [], _Neg = []).
+  Dnf = get_dnf(Bdd),
+  Empty = ProcessCoclause([], [], ?TERMINAL:empty()),
+
+  lists:foldl(fun({P, N, T}, Acc) -> 
+    Line = ProcessCoclause(P, N, T),
+    CombineResults(fun() -> Line end, fun() -> Acc end) 
+  end, Empty, Dnf).
 
 do_dnf({node, Element, Left, Right}, F = {_Process, Combine}, Pos, Neg) ->
   % heuristic: if Left is positive & 1, skip adding the negated Element to the right path
@@ -200,16 +229,14 @@ all_variables(Ty, M) ->
 
 
 transform(Ty, Ops = #{negate := Negate, intersect := Intersect, union := Union}) ->
-  dnf(Ty, {
-    fun
-      (P,N,T) ->
-        P1 = ?TERMINAL:transform(T, Ops),
-        P2 = [?ELEMENT:transform(V, Ops) || V <- P],
-        P3 = [Negate(?ELEMENT:transform(V, Ops)) || V <- N],
-        Intersect([P1] ++ P2 ++ P3)
-    end,
-    fun(F1, F2) -> Union([F1(), F2()]) end
-  }).
+  Dnf = get_dnf(Ty),
+
+  lists:foldl(fun({P, N, T}, Acc) -> 
+    P1 = ?TERMINAL:transform(T, Ops),
+    P2 = [?ELEMENT:transform(V, Ops) || V <- P],
+    P3 = [Negate(?ELEMENT:transform(V, Ops)) || V <- N],
+    Line = Intersect([P1] ++ P2 ++ P3),
+    Union([Line, Acc]) end, Union([]), Dnf).
 
 raw_transform(Ty, Ops = #{negate := Negate, intersect := Intersect, union := Union}) ->
   dnf(Ty, {

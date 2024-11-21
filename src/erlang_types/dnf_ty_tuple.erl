@@ -4,7 +4,7 @@
 -define(TERMINAL, ty_bool).
 -define(F(Z), fun() -> Z end).
 
--export([is_empty_corec/2, normalize_corec/6, substitute/4, apply_to_node/3]).
+-export([simplify_dnf/1, is_empty_corec/2, normalize_corec/6, substitute/4, apply_to_node/3]).
 -export([tuple/1, all_variables/2, transform/2, to_singletons/1, phi_corec/3, phi_norm_corec/5]).
 
 -include("bdd_node.hrl").
@@ -29,8 +29,10 @@ to_singletons_coclause(Pos, Neg, T) ->
   end.
 
 
+is_empty_corec(TyBDD, M = #{mode := opt}) ->
+  dnf(TyBDD, {fun(P, N, T) -> is_empty_coclause_corec(P, N, T, M) end, fun is_empty_union/2});
 is_empty_corec(TyBDD, M) ->
-  dnf(TyBDD, {fun(P, N, T) -> is_empty_coclause_corec(P, N, T, M) end, fun is_empty_union/2}).
+  dnf_raw(TyBDD, {fun(P, N, T) -> is_empty_coclause_corec(P, N, T, M) end, fun is_empty_union/2}).
 
 is_empty_coclause_corec(Pos, Neg, T, M) ->
   case {Pos, Neg, ty_bool:empty()} of
@@ -128,6 +130,93 @@ phi_norm_corec(Size, BigS, [Ty | N], Fixed, M) ->
 
 apply_to_node(Node, Map, Memo) ->
   substitute(Node, Map, Memo, fun(N, S, M) -> ty_tuple:substitute(N, S, M) end).
+
+simplify_dnf([]) -> [];
+simplify_dnf(Dnf) ->
+  case lists:member({[], [], ?TERMINAL:any()}, Dnf) of
+    true -> [{[], [], ?TERMINAL:any()}];
+    _ ->
+      % step 1: intersect positive 
+      A = [{big_intersect(P), N, T} || {P, N, T} <- Dnf],
+
+      % io:format(user, "Left: ~p~n", [A]),
+      % step 2: remove negations
+      NoNeg = lists:flatten([
+        remove_negations(P, N, T, [])
+        || {P, N, T} <- A
+        ]),
+      case NoNeg of
+        [] -> [];
+        _ ->
+          Dimension = begin [X | _] = NoNeg, length(ty_tuple:components(X)) end,
+
+          % step 3: merge tuples with common elements
+          Common = merge_common(Dimension, NoNeg),
+
+          Res = [{[T], [], ?TERMINAL:any()} || T <- Common],
+          % io:format(user, "Remm: ~p~n", [Res]),
+          Res
+      end
+  end.
+
+merge_common(1, Tuples) ->
+  % Tuples;
+  % Fixme obey architecture
+  Ty = lists:foldl(fun(E, Acc) -> ty_rec:union(E, Acc) end, ty_rec:empty(), [T || {ty_tuple, 1, [T]} <- Tuples]), 
+  TT = [{ty_tuple, 1, [Ty]}],
+  io:format(user,"A: ~p~n", [Tuples]),
+  io:format(user,"B: ~p~n", [TT]),
+  Tuples;
+merge_common(2, Tuples) -> %TODO implement n > 1
+  Tuples;
+merge_common(_Dim, Tuples) ->
+  Tuples. 
+
+% assumes P is a single tuple
+remove_negations(P, [], _T, Acc) ->
+  [P | Acc];
+remove_negations([], [NegTuple | N], T, Acc) ->
+  remove_negations([ty_tuple:any(length(ty_tuple:components(NegTuple)))], [NegTuple | N], T, Acc);
+remove_negations(PP, [NegTuple | N], _T, Acc) ->
+  [P] = PP,
+  Sis = ty_tuple:components(P),
+  Tis = ty_tuple:components(NegTuple),
+  Size = length(Sis),
+
+  Dis = [ 
+      [case Index of 
+          I -> ty_rec:diff(lists:nth(Index, Sis), lists:nth(Index, Tis)); 
+          _ -> lists:nth(Index, Sis) 
+        end || Index <- lists:seq(1, Size)]
+      || I <- lists:seq(1, Size)],
+
+
+
+  lists:foldl(fun(Index, AccInner) -> 
+    % check if ith component of Di is empty
+    % if empty, then skip and continue
+    % if not empty, remove_negations on that
+    % if all ith Dis are empty, Acc should be returned
+    DiTuple = lists:nth(Index, Dis),
+    Di = lists:nth(Index, DiTuple),
+    % remove_negations([ty_tuple:tuple(DiTuple)], N, _T, AccInner)
+    case ty_rec:is_empty_raw(Di) of
+      true -> 
+        % skip
+        AccInner;
+      false -> 
+        % don't skip
+        remove_negations([ty_tuple:tuple(DiTuple)], N, _T, AccInner)
+    end
+  end, Acc, lists:seq(1, Size)).
+
+
+big_intersect([]) -> [];
+big_intersect([X]) -> [X];
+big_intersect(X) -> 
+  [ty_tuple:big_intersect(X)].
+
+
 
 -ifdef(TEST).
 -include_lib("eunit/include/eunit.hrl").

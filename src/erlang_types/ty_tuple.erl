@@ -24,7 +24,7 @@ raw_transform(T, Op) -> transform(T, Op).
 transform({ty_tuple, _, Refs}, #{to_tuple := ToTuple}) ->
     ToTuple(Refs).
 
-big_intersect([]) -> error(illegal_state);
+big_intersect([]) -> [];
 big_intersect([X]) -> X;
 big_intersect([X | Y]) ->
     lists:foldl(fun({ty_tuple, _, Refs}, {ty_tuple, Dim, Refs2}) ->

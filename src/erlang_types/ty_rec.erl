@@ -1,7 +1,7 @@
 -module(ty_rec).
 
 % co-recursive functions on types
--export([is_empty/1, is_empty_start/1, normalize_start/2]).
+-export([is_empty_raw/1, is_empty/1, is_empty_start/2, normalize_start/2]).
 -export([is_empty_corec/2, normalize_corec/3]).
 
 -export([empty/0, any/0]).
@@ -43,7 +43,7 @@ ty_of(Predef, Atom, Int, List, Tuple, Function, Map) ->
 
 is_subtype(TyRef1, TyRef2) ->
   NewTy = intersect(TyRef1, ty_rec:negate(TyRef2)),
-  is_empty_start(NewTy).
+  is_empty(NewTy).
 
 is_equivalent(TyRef1, TyRef2) ->
   is_subtype(TyRef1, TyRef2) andalso is_subtype(TyRef2, TyRef1).
@@ -460,16 +460,17 @@ union(A, B) ->
      end).
 
 
-is_empty(TyRef) -> is_empty_start(TyRef).
+is_empty(TyRef) -> is_empty_start(TyRef, opt).
+is_empty_raw(TyRef) -> is_empty_start(TyRef, basic).
 
 % only cache full-chained is_empty, never cache in-between emptiness which depends on the memoization set M
 % we could do that if we knew the tyref at hand is not corecursive
-is_empty_start(TyRef) ->
+is_empty_start(TyRef, Mode) ->
   % first try op-cache
   case ty_ref:is_empty_cached(TyRef) of
     R when R == true; R == false -> R;
     miss ->
-      ty_ref:store_is_empty_cached(TyRef, is_empty_corec(TyRef, #{}))
+      ty_ref:store_is_empty_cached(TyRef, is_empty_corec(TyRef, #{mode => Mode})) % FIXME hack
   end.
 
 is_empty_corec(TyRef, M) ->
