@@ -31,6 +31,7 @@ referenced_modules(Forms) ->
                         case T of
                             {attribute, _, import, {ModuleName, _}} -> {ok, ModuleName};
                             {qref, ModuleName, _, _} -> {ok, ModuleName};
+                            {ty_qref, ModuleName, _, _} -> {ok, ModuleName};
                             _ -> error
                         end
                 end, Forms),
