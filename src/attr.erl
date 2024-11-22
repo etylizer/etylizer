@@ -6,7 +6,12 @@
     ety_attrs_from_file/1
     ]).
 
--include_lib("eunit/include/eunit.hrl").
+-ifdef(TEST).
+-export([
+    parse_ety_attr/2
+   ]).
+-endif.
+    
 
 -type ety_attr() :: {ety, ast:loc(), term()}.
 
@@ -37,7 +42,7 @@ ety_attrs_from_lines(Path, Lineno, Lines) ->
     try {ok, Loop(Lineno, Lines)}
     catch {bad_attr, Msg} -> {error, utils:sformat("~1000p", Msg)} end.
 
--spec parse_ety_attr(ast:loc(), string()) -> no_attr | {ok, ety_attr()}.
+-spec parse_ety_attr(ast:loc(), string()) -> no_attr | {ok, attr:ety_attr()}.
 parse_ety_attr(Loc, S) ->
     {loc, _, N, _} = Loc,
     case S of
@@ -56,10 +61,3 @@ parse_ety_attr(Loc, S) ->
             end;
         _ -> no_attr
     end.
-
--spec parse_ety_attr_test() -> ok.
-parse_ety_attr_test() ->
-    Loc = {loc, "foo.erl", 2, 3},
-    ?assertEqual({ok, {ety, Loc, 1}}, parse_ety_attr(Loc, "%-ety(1).")),
-    ?assertEqual({ok, {ety, Loc, {foo, bar}}}, parse_ety_attr(Loc, "%-ety({foo, bar}).")),
-    ?assertEqual(no_attr, parse_ety_attr(Loc, "%-xx({foo, bar}).")).
