@@ -42,7 +42,7 @@ ety_attrs_from_lines(Path, Lineno, Lines) ->
     try {ok, Loop(Lineno, Lines)}
     catch {bad_attr, Msg} -> {error, utils:sformat("~1000p", Msg)} end.
 
--spec parse_ety_attr(ast:loc(), string()) -> no_attr | {ok, attr:ety_attr()}.
+-spec parse_ety_attr(ast:loc(), string()) -> no_attr | {ok, ety_attr()}.
 parse_ety_attr(Loc, S) ->
     {loc, _, N, _} = Loc,
     case S of
