@@ -86,13 +86,14 @@ traverse_and_check([CurrentFile | RemainingFiles], Symtab, SearchPath, Opts, Ind
     ExpandedSymtab = symtab:extend_symtab_with_module_list(Symtab, SearchPath, ast_utils:referenced_modules(Forms)),
 
     Only = sets:from_list(Opts#opts.type_check_only),
+    Ignore = sets:from_list(Opts#opts.type_check_ignore),
     Sanity = perform_sanity_check(CurrentFile, Forms, Opts#opts.sanity),
     Ctx = typing:new_ctx(ExpandedSymtab, Sanity),
     case Opts#opts.no_type_checking of
         true ->
-            ?LOG_INFO("Not type checking ~p as requested", CurrentFile);
+            ?LOG_NOTE("Not type checking ~p as requested", CurrentFile);
         false ->
-            typing:check_forms(Ctx, CurrentFile, Forms, Only)
+            typing:check_forms(Ctx, CurrentFile, Forms, Only, Ignore)
     end,
     NewIndex = cm_index:insert(CurrentFile, Forms, Index),
     traverse_and_check(RemainingFiles, Symtab, SearchPath, Opts, NewIndex).

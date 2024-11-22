@@ -48,11 +48,13 @@ parse_args(Args) ->
          {sanity, undefined, "sanity", undefined,
             "Perform sanity checks"},
          {no_type_checking, undefined, "no-type-checking", undefined,
-            "Do not perform type cecking"},
+            "Do not perform type cecking at all"},
          {only, $o, "only", string,
-            "Only typecheck these functions (given as name/arity or just the name)"},
+            "Only type check these functions (given as module:name/arity or name/arity or just the name)"},
+         {ignore, $i, "ignore", string,
+            "Do not type check these functions (given as module:name/arity or just name/arity or just the name)"},
          {no_deps, undefined, "no-deps", undefined,
-            "Only typecheck files specified on the commandline (either via --source-path or " ++
+            "Only type check files specified on the commandline (either via --source-path or " ++
             "FILES arguments). The default behavior is to also check the dependencies of these " ++
             "files."},
          {log_level,  $l,   "level",    string,
@@ -81,6 +83,7 @@ parse_args(Args) ->
                         {src_path, F} -> Opts#opts{ src_paths = Opts#opts.src_paths ++ [F]};
                         {include, F} -> Opts#opts{ includes = Opts#opts.includes ++ [F]};
                         {only, S} -> Opts#opts { type_check_only = Opts#opts.type_check_only ++ [S]};
+                        {ignore, S} -> Opts#opts { type_check_ignore = Opts#opts.type_check_ignore ++ [S]};
                         dump_raw -> Opts#opts{ dump_raw = true };
                         dump -> Opts#opts{ dump = true };
                         sanity -> Opts#opts{ sanity = true };
