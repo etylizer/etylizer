@@ -95,7 +95,7 @@ check_simp_constrs(Tab, FixedTyvars, Ds, What) ->
             Blocks = constr_error_locs:simp_constrs_to_blocks(Ds),
             ?LOG_DEBUG("Constraints are not satisfiable, now locating source of errors. Blocks:~n~s",
                 pretty:render_list(fun pretty:constr_block/1, Blocks)),
-            Timeout = 2000,
+            Timeout = 4000,
             case utils:timeout(Timeout, fun () -> locate_tyerror(Tab, FixedTyvars, Blocks) end) of
                 {ok, Res} -> Res;
                 timeout ->
