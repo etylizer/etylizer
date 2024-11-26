@@ -192,10 +192,10 @@ tbool() -> {predef_alias, boolean}.
 
 -spec expand_predef_alias(ast:predef_alias_name()) -> ast:ty().
 expand_predef_alias(term) -> {predef, any};
-expand_predef_alias(binary) -> throw(todo); %% TODO
-expand_predef_alias(nonempty_binary) -> throw(todo); %% TODO
-expand_predef_alias(bitstring) -> throw(todo); %% TODO
-expand_predef_alias(nonempty_bitstring) -> throw(todo); %% TODO
+expand_predef_alias(binary) -> errors:not_implemented("expand_predef_alias for binary");
+expand_predef_alias(nonempty_binary) -> errors:not_implemented("expand_predef_alias for nonempty_binary");
+expand_predef_alias(bitstring) -> errors:not_implemented("expand_predef_alias for bitstring");
+expand_predef_alias(nonempty_bitstring) -> errors:not_implemented("expand_predef_alias for nonempty_bitstring");
 expand_predef_alias(boolean) -> {union, [{singleton, true}, {singleton, false}]};
 expand_predef_alias(byte) -> {range, 0, 255};
 expand_predef_alias(char) -> {range, 0, 1114111};
@@ -230,7 +230,7 @@ expand_predef_alias(neg_integer) -> {range, '*', -1};
 
 expand_predef_alias(Name) ->
     logger:error("Not expanding: ~p", [Name]),
-    errors:not_implemented("expand_predef_alias").
+    errors:not_implemented(utils:sformat("expand_predef_alias for ~w", Name)).
 
 %% Other types
 
