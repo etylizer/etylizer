@@ -1,7 +1,7 @@
 -module(memoize).
 
 %% API
--export([memo_fun/2]).
+%-export([memo_fun/2]).
 
 
 -spec memo_fun({atom(), term()}, fun(() -> A)) -> A.

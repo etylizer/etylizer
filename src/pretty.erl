@@ -4,14 +4,14 @@
 
 -export([
          arity/2,
-         ty/1,
-         tyscheme/1,
-         constr/1,
-         substs/1,
-         subst/1,
+%         ty/1,
+%         tyscheme/1,
+%         constr/1,
+%         substs/1,
+%         subst/1,
          constr_block/1,
          loc/1,
-         locs/1,
+%         locs/1,
          atom/1,
          render/1,
          render_ty/1,
@@ -30,10 +30,18 @@
          render_var/1,
          render_set/2,
          render_list/2,
-         pretty_list/2,
-         render_list_with_braces/2,
+%         pretty_list/2,
+%         render_list_with_braces/2,
          ref/1
         ]).
+
+
+-ifdef(TEST).
+-export([
+    ty/1
+]).
+-endif.
+
 
 -import(prettypr, [text/1]).
 

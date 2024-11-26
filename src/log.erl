@@ -3,7 +3,9 @@
 % @doc Logging module. The logging module that comes with Erlang with too difficult
 % to setup.
 
--export([num_level/1, init/1, allow/1, macro_log/5, parse_level/1, shutdown/0]).
+-export([
+    %num_level/1, shutdown/0,
+    init/1, allow/1, macro_log/5, parse_level/1]).
 -export_type([log_level/0]).
 
 -type log_level() :: trace2 | trace | debug | info | note | warn | error | abort.

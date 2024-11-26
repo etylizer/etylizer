@@ -6,7 +6,13 @@
 -include("log.hrl").
 -include("parse.hrl").
 
--export([parse_file/1, parse_file/2, parse_file_or_die/1, parse_file_or_die/2, parse_transform/2]).
+-export([
+    %parse_file/1, 
+    parse_file/2, 
+    parse_file_or_die/1, 
+    parse_file_or_die/2, 
+    parse_transform/2
+]).
 
 -define(TABLE, parse_result).
 -define(FORMS, forms).

@@ -1,10 +1,10 @@
 -module(rep_basic).
 
--export([union/2, intersect/2, diff/2, eq/2]).
--export([finite/1, cofinite/1]).
--export([empty/0, any/0]).
--export([eval/1]).
--export([is_empty/1]).
+% -export([union/2, intersect/2, diff/2, eq/2]).
+% -export([finite/1, cofinite/1]).
+% -export([empty/0, any/0]).
+% -export([eval/1]).
+% -export([is_empty/1]).
 
 
 % FIXME HACK
