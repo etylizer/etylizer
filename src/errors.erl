@@ -2,7 +2,9 @@
 
 -export([
     unsupported/3, unsupported/2,
-    name_error/3, name_error/2, name_error_no_loc/2,
+    name_error/3, 
+    % name_error/2, 
+    name_error_no_loc/2,
     uncovered_case/3, uncovered_case/4, bug/2, bug/1,
     ty_error/2, ty_error/3, ty_error/1, not_implemented/1, parse_error/1, some_error/2
 ]).

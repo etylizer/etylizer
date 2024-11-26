@@ -12,7 +12,7 @@
 -export([
     apply/2,
     apply/3,
-    domain/1,
+    %domain/1,
     from_list/1,
     empty/0,
     extend/3,

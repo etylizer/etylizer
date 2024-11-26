@@ -1,10 +1,16 @@
 -module(typing_infer).
 
 -export([
-    infer_all/3,
+    infer_all/3
+]).
+
+-ifdef(TEST).
+-export([
     infer/2,
     more_general/4
-]).
+   ]).
+-endif.
+
 
 -include("log.hrl").
 -include("typing.hrl").

@@ -3,9 +3,14 @@
 -include("log.hrl").
 
 -export([
-    with_tmp_file/4,
-    with_tmp_dir/4
+    with_tmp_file/4
     ]).
+
+-ifdef(TEST).
+-export([
+    with_tmp_dir/4
+   ]).
+-endif.
 
 -spec int_to_hex(integer()) -> string().
 int_to_hex(I) -> integer_to_list(I, 16).

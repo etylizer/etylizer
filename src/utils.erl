@@ -5,24 +5,46 @@
 -include_lib("log.hrl").
 -include_lib("kernel/include/file.hrl").
 
+
 -export([
-    map_opt/3, map_opt/2,
-    quit/3, quit/2, undefined/0, everywhere/2, everything/2, error/1, error/2,
+    %map_opt/3, map_opt/2,
+    quit/3, quit/2, 
+    %undefined/0, 
+    everywhere/2, everything/2, 
+    %error/1, 
+    error/2,
     is_string/1, is_char/1,
-    sformat_raw/2, sformat/2, sformat1/2, sformat/3, sformat/4, sformat/5, sformat/6, sformat/7,
-    diff_terms/3, if_true/2,
+    sformat/2, sformat/3, sformat/4,  sformat/6, 
+    if_true/2,
     file_get_lines/1, set_add_many/2, assert_no_error/1,
-    replicate/2, unconsult/2,
+    replicate/2, 
     string_ends_with/2, shorten/2,
-    flatmap_flip/2, map_flip/2, foreach/2, concat_map/2, with_index/1, with_index/2,
+    %flatmap_flip/2, 
+    map_flip/2, foreach/2, concat_map/2, with_index/2,
     mkdirs/1, hash_sha1/1, hash_file/1,
-    list_uniq/1, lists_enumerate/1, lists_enumerate/2,
+    list_uniq/1, 
+    %lists_enumerate/1, 
+    lists_enumerate/2,
     with_default/2, compare/2,
-    mingle/5, timing/1, timing_log/3,
-    single/1, from_to/2, assocs_find/2, assocs_find_index/2,
-    timeout/2, is_same_file/2, file_exists/1,
-    string_contains/2
+    %mingle/5, 
+    timing/1, 
+    %timing_log/3,
+    single/1, 
+    %from_to/2, 
+    assocs_find/2, assocs_find_index/2,
+    timeout/2, is_same_file/2, file_exists/1
 ]).
+
+-ifdef(TEST).
+-export([
+    diff_terms/3, 
+    string_contains/2,
+    unconsult/2,
+    with_index/1,
+    sformat/5, sformat/7, sformat1/2
+]).
+-endif.
+
 
 mingle(LeftDefault, RightDefault, AllLeft, AllRight, Op) ->
     AllKeys = maps:keys(AllLeft) ++ maps:keys(AllRight),
@@ -160,7 +182,7 @@ diff_terms(T1, T2, Del) ->
             io:format(F2, "~200p", [T2]),
             file:close(F1),
             file:close(F2),
-            Out = os:cmd(utils:sformat("diff -u ~s ~s", P1, P2)),
+            Out = os:cmd(sformat("diff -u ~s ~s", P1, P2)),
             {diff, Out}
         end)
     end).

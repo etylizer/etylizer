@@ -10,8 +10,8 @@
     has_file_changed/2,
     has_exported_interface_changed/3,
     has_external_dep_changed/2,
-    insert/3,
-    remove/2
+    insert/3
+    % remove/2
 ]).
 
 -export_type([index/0]).

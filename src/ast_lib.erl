@@ -1,15 +1,28 @@
 -module(ast_lib).
 
--export([reset/0, simplify/2, ast_to_erlang_ty/1, ast_to_erlang_ty/2, raw_erlang_ty_to_ast/1, raw_erlang_ty_to_ast/2, erlang_ty_to_ast/1, erlang_ty_to_ast/2, ast_to_erlang_ty_var/1, erlang_ty_var_to_var/1]).
-
 -export([
-    mk_intersection/1,
-    mk_intersection/2,
-    mk_union/1,
-    mk_union/2,
+    reset/0, 
+    %simplify/2, 
+    ast_to_erlang_ty/1, ast_to_erlang_ty/2, 
+    %raw_erlang_ty_to_ast/1, 
+    %raw_erlang_ty_to_ast/2, 
+    erlang_ty_to_ast/1, erlang_ty_to_ast/2, 
+    ast_to_erlang_ty_var/1, 
+    %erlang_ty_var_to_var/1,
+    mk_intersection/1, 
+    %mk_intersection/2,
+    mk_union/1, 
+    %mk_union/2,
     mk_negation/1,
     mk_diff/2
 ]).
+
+-ifdef(TEST).
+-export([
+    erlang_ty_var_to_var/1
+   ]).
+-endif.
+
 
 reset() ->
     erlang:put(ty_ast_cache, #{}),

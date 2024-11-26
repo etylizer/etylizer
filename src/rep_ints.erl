@@ -2,12 +2,11 @@
 
 -import(stdtypes, [tunion/1, tnegate/1, trange/2]).
 
--export([union/2, intersect/2, diff/2, negate/1]).
--export([empty/0, any/0]).
--export([interval/2, cointerval/2]).
--export([is_empty/1]).
-
--export([eval/1]).
+% -export([union/2, intersect/2, diff/2, negate/1]).
+%-export([empty/0, any/0]).
+%-export([interval/2, cointerval/2]).
+%-export([is_empty/1]).
+%-export([eval/1]).
 
 %% intervals
 %% representation

@@ -2,9 +2,15 @@
 
 -export([
   tally/2,
-  tally/3,
   is_satisfiable/3
 ]).
+
+-ifdef(TEST).
+-export([
+  tally/3
+]).
+-endif.
+
 
 -type tally_res() :: {error, [{error, string()}]} | nonempty_list(subst:t()).
 

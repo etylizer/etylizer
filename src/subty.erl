@@ -3,9 +3,15 @@
 -export([
   is_subty/3,
   is_equivalent/3,
-  is_empty/2,
   is_any/2
 ]).
+
+-ifdef(TEST).
+-export([
+  is_empty/2
+]).
+-endif.
+
 
 is_equivalent(SymTab, S, T) -> is_subty(SymTab, S,T) andalso is_subty(SymTab, T,S).
 

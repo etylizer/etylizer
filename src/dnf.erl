@@ -1,6 +1,10 @@
 -module(dnf).
 
--export([to_dnf/1, to_nnf/1, simplify/1, partitions_to_ty/1, filter_empty_intersections/1]).
+-export([to_dnf/1, to_nnf/1
+%simplify/1, 
+%partitions_to_ty/1, 
+%filter_empty_intersections/1
+]).
 
 %% ============
 %% NNF

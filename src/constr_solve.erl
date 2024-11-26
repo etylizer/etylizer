@@ -5,8 +5,7 @@
 -export([
     check_simp_constrs/4,
     check_simp_constrs_return_unmatched/4,
-    solve_simp_constrs/3,
-    search_failing_prefix/3
+    solve_simp_constrs/3
 ]).
 
 -export_type([
@@ -14,6 +13,10 @@
     error_kind/0
 ]).
 
+-ifdef(TEST).
+-export([search_failing_prefix/3]).
+-endif.
+  
 -type error_kind() :: constr_error_locs:constr_error_kind().
 -type error() :: {error_kind(), ast:loc(), string()}.
 

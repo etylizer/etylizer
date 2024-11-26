@@ -2,13 +2,10 @@
 
 % @doc Parser for -ety attributes
 
--export([
-    ety_attrs_from_file/1
-    ]).
-
 -ifdef(TEST).
 -export([
-    parse_ety_attr/2
+    parse_ety_attr/2,
+    ety_attrs_from_file/1
    ]).
 -endif.
     

@@ -3,8 +3,6 @@
 -include("log.hrl").
 -include_lib("eunit/include/eunit.hrl").
 
-% Tests
-
 mk_test_ty(T) ->
     Loc = {1,1},
     {type,

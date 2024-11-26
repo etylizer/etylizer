@@ -1,11 +1,15 @@
 -module(ast_transform).
 
 -export([
-    trans/2, trans/3, trans/4
+    trans/3, trans/4
 ]).
 
 -export_type([trans_mode/0]).
 
+-ifdef(TEST).
+-export([trans/2]).
+-endif.
+    
 -compile([nowarn_shadow_vars]).
 
 -include("log.hrl").

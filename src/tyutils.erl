@@ -2,8 +2,8 @@
 
 -export([
     free_in_ty/1,
-    free_in_ty_scheme/1,
-    free_in_poly_env/1,
+    %free_in_ty_scheme/1,
+    %free_in_poly_env/1,
     free_in_subty_constrs/1
 ]).
 
