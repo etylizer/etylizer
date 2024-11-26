@@ -202,8 +202,10 @@ expand_predef_alias(char) -> {range, 0, 1114111};
 expand_predef_alias(nil) -> {empty_list};
 expand_predef_alias(number) -> {union, [{predef, float}, {predef, integer}]};
 expand_predef_alias(list) -> {list, {predef, any}};
+% also see code in ast_transform for expanding predefined aliases applied to arguments
 expand_predef_alias(nonempty_list) -> {nonempty_list, {predef, any}};
 expand_predef_alias(maybe_improper_list) -> {improper_list, {predef, any}, {predef, any}};
+expand_predef_alias(nonempty_maybe_improper_list) -> {nonempty_list, {predef, any}};
 expand_predef_alias(string) -> {list, expand_predef_alias(char)};
 expand_predef_alias(nonempty_string) -> {nonempty_list, expand_predef_alias(char)};
 expand_predef_alias(iodata) -> {union, [expand_predef_alias(iolist), expand_predef_alias(binary)]};
