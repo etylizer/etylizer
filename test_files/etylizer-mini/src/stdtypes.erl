@@ -101,10 +101,10 @@ tmap_field_req(K, V) -> {map_field_req, K, V}.
 
 -spec ttuple_n(pos_integer()) -> ast:ty().
 ttuple_n(Size) ->
-    {tuple, [{predef, any} || _ <- lists:seq(1, Size)]}.
+    {tuple, lists:map(fun (_) -> {predef, any} end, lists:seq(1, Size))}.
 
 tarrow_n(Size) ->
-    {fun_full, [{predef, none} || _ <- lists:seq(1, Size)], {predef, any}}.
+    {fun_full, lists:map(fun (_) -> {predef, none} end, lists:seq(1, Size)), {predef, any}}.
 
 tfun_full(Args, Result) ->
     {fun_full, Args, Result}.

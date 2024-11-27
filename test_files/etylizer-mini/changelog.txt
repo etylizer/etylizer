@@ -1,0 +1,6 @@
+Document all changes necessary to get the source code working
+=============================================================
+
+- Logging: two parameters instead of all in one list. See commit
+  ff9c856c8db724682237c4f99265d3f21f7eee37
+- Replace list comprehension with lists:map
