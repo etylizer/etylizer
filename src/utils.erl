@@ -16,7 +16,6 @@
     string_ends_with/2, shorten/2,
     flatmap_flip/2, map_flip/2, foreach/2, concat_map/2, with_index/1, with_index/2,
     mkdirs/1, hash_sha1/1, hash_file/1,
-    list_uniq/1, lists_enumerate/1, lists_enumerate/2,
     with_default/2, compare/2,
     mingle/5, timing/1, timing_log/3,
     single/1, from_to/2, assocs_find/2, assocs_find_index/2,
@@ -271,45 +270,6 @@ compare(I1, I2) ->
                 false -> equal
             end
     end.
-
-% Some functions copied from OTP 25 (we still support OTP 24)
-
--spec list_uniq(List1) -> List2 when
-      List1 :: [T],
-      List2 :: [T],
-      T :: term().
-list_uniq(L) ->
-    list_uniq_1(L, #{}).
-list_uniq_1([X | Xs], M) ->
-    case is_map_key(X, M) of
-        true ->
-            list_uniq_1(Xs, M);
-        false ->
-            [X | list_uniq_1(Xs, M#{X => true})]
-    end;
-list_uniq_1([], _) ->
-    [].
-
--spec lists_enumerate(List1) -> List2 when
-      List1 :: [T],
-      List2 :: [{Index, T}],
-      Index :: integer(),
-      T :: term().
-lists_enumerate(List1) when is_list(List1) ->
-    lists_enumerate_1(1, List1).
-
--spec lists_enumerate(Index, List1) -> List2 when
-      List1 :: [T],
-      List2 :: [{Index, T}],
-      Index :: integer(),
-      T :: term().
-lists_enumerate(Index, List1) when is_integer(Index), is_list(List1) ->
-    lists_enumerate_1(Index, List1).
-
-lists_enumerate_1(Index, [H|T]) ->
-    [{Index, H}|lists_enumerate_1(Index + 1, T)];
-lists_enumerate_1(_Index, []) ->
-    [].
 
 -spec with_default(T | undefined, T) -> T.
 with_default(undefined, Def) -> Def;

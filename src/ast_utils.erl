@@ -35,7 +35,7 @@ referenced_modules(Forms) ->
                             _ -> error
                         end
                 end, Forms),
-    utils:list_uniq(Modules).
+    lists:uniq(Modules).
 
 -spec referenced_variables(ast:ty()) -> [ast:ty_var()].
 referenced_variables(Forms) ->
@@ -46,4 +46,4 @@ referenced_variables(Forms) ->
                             _ -> error
                         end
                 end, Forms),
-    utils:list_uniq(Modules).
+    lists:uniq(Modules).

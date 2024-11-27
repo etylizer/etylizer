@@ -69,7 +69,7 @@ create_check_list(SourceList, Index, DepGraph) ->
                           end,
                           FilesToCheck ++ ChangedFile ++ Deps
                   end, [], SourceList),
-    utils:list_uniq(CheckList).
+    lists:uniq(CheckList).
 
 -spec traverse_and_check(
     [file:filename()], symtab:t(), paths:search_path(), cmd_opts(), cm_index:index())
