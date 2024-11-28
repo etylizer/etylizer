@@ -101,10 +101,10 @@ tmap_field_req(K, V) -> {map_field_req, K, V}.
 
 -spec ttuple_n(pos_integer()) -> ast:ty().
 ttuple_n(Size) ->
-    {tuple, [{predef, any} || _ <- lists:seq(1, Size)]}.
+    {tuple, lists:map(fun (_) -> {predef, any} end, lists:seq(1, Size))}.
 
 tarrow_n(Size) ->
-    {fun_full, [{predef, none} || _ <- lists:seq(1, Size)], {predef, any}}.
+    {fun_full, lists:map(fun (_) -> {predef, none} end, lists:seq(1, Size)), {predef, any}}.
 
 tfun_full(Args, Result) ->
     {fun_full, Args, Result}.
@@ -192,20 +192,18 @@ tbool() -> {predef_alias, boolean}.
 
 -spec expand_predef_alias(ast:predef_alias_name()) -> ast:ty().
 expand_predef_alias(term) -> {predef, any};
-expand_predef_alias(binary) -> errors:not_implemented("expand_predef_alias for binary");
-expand_predef_alias(nonempty_binary) -> errors:not_implemented("expand_predef_alias for nonempty_binary");
-expand_predef_alias(bitstring) -> errors:not_implemented("expand_predef_alias for bitstring");
-expand_predef_alias(nonempty_bitstring) -> errors:not_implemented("expand_predef_alias for nonempty_bitstring");
+expand_predef_alias(binary) -> throw(todo); %% TODO
+expand_predef_alias(nonempty_binary) -> throw(todo); %% TODO
+expand_predef_alias(bitstring) -> throw(todo); %% TODO
+expand_predef_alias(nonempty_bitstring) -> throw(todo); %% TODO
 expand_predef_alias(boolean) -> {union, [{singleton, true}, {singleton, false}]};
 expand_predef_alias(byte) -> {range, 0, 255};
 expand_predef_alias(char) -> {range, 0, 1114111};
 expand_predef_alias(nil) -> {empty_list};
 expand_predef_alias(number) -> {union, [{predef, float}, {predef, integer}]};
 expand_predef_alias(list) -> {list, {predef, any}};
-% also see code in ast_transform for expanding predefined aliases applied to arguments
 expand_predef_alias(nonempty_list) -> {nonempty_list, {predef, any}};
 expand_predef_alias(maybe_improper_list) -> {improper_list, {predef, any}, {predef, any}};
-expand_predef_alias(nonempty_maybe_improper_list) -> {nonempty_list, {predef, any}};
 expand_predef_alias(string) -> {list, expand_predef_alias(char)};
 expand_predef_alias(nonempty_string) -> {nonempty_list, expand_predef_alias(char)};
 expand_predef_alias(iodata) -> {union, [expand_predef_alias(iolist), expand_predef_alias(binary)]};
@@ -230,7 +228,7 @@ expand_predef_alias(neg_integer) -> {range, '*', -1};
 
 expand_predef_alias(Name) ->
     logger:error("Not expanding: ~p", [Name]),
-    errors:not_implemented(utils:sformat("expand_predef_alias for ~w", Name)).
+    errors:not_implemented("expand_predef_alias").
 
 %% Other types
 

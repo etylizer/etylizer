@@ -148,7 +148,7 @@ tyscheme({ty_scheme, Vars, Ty}) ->
                 NameDoc = atom(Name),
                 case Bound of
                     {predef, any} -> NameDoc;
-                    _ -> beside(NameDoc, text(" <: "), ty(Bound))
+                    _ -> beside(NameDoc, text(" :: "), ty(Bound))
                 end
         end,
     beside(text("FORALL "), comma_sep(lists:map(PrettyBound, Vars)),

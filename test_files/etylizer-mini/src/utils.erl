@@ -229,7 +229,7 @@ flatmap_flip(L, F) -> lists:flatmap(F, L).
 map_flip(L, F) -> lists:map(F, L).
 
 -spec concat_map([A], fun((A) -> [B])) -> [B].
-concat_map(L, F) -> lists:concat(lists:map(F, L)).
+concat_map(L, F) -> lists:append(lists:map(F, L)).
 
 -spec foreach([T], fun((T) -> any())) -> ok.
 foreach(L, F) -> lists:foreach(F, L).
