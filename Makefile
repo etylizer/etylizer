@@ -8,7 +8,7 @@ release:
 	$(REBAR) as prod escriptize
 
 build:
-	$(REBAR) as test escriptize
+	$(REBAR) escriptize
 
 clean:
 	$(REBAR) clean
