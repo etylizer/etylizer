@@ -114,7 +114,7 @@ exp_constrs(Ctx, E, T) ->
         {'integer', L, I} -> utils:single({csubty, mk_locs("int literal", L), {singleton, I}, T});
         {'float', L, _F} -> utils:single({csubty, mk_locs("float literal", L), {predef, float}, T});
         {'string', L, ""} -> utils:single({csubty, mk_locs("empty string literal", L), {empty_list}, T});
-        {'string', L, _S} -> utils:single({csubty, mk_locs("string literal", L), {predef_alias, string}, T});
+        {'string', L, _S} -> utils:single({csubty, mk_locs("string literal", L), {predef_alias, nonempty_string}, T});
         {bc, L, _E, _Qs} -> errors:unsupported(L, "bitstrings");
         {block, L, Es} -> exps_constrs(Ctx, L, Es, T);
         {'case', L, ScrutE, Clauses} ->
@@ -157,8 +157,11 @@ exp_constrs(Ctx, E, T) ->
         {cons, L, Head, Tail} ->
             Alpha = fresh_tyvar(Ctx),
             CsHead = exp_constrs(Ctx, Head, Alpha),
-            CsTail = exp_constrs(Ctx, Tail, T),
-            sets:add_element({csubty, mk_locs("result of cons", L), {list, Alpha}, T},
+            Beta = fresh_tyvar(Ctx),
+            TyTail = stdtypes:tlist(Beta),
+            CsTail = exp_constrs(Ctx, Tail, TyTail),
+            TyResult = stdtypes:tnonempty_list(stdtypes:tunion([Alpha, Beta])),
+            sets:add_element({csubty, mk_locs("result of cons", L), TyResult, T},
                              sets:union(CsHead, CsTail));
         {fun_ref, L, GlobalRef} ->
             utils:single({cvar, mk_locs("function ref", L), GlobalRef, T});

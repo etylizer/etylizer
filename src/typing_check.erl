@@ -21,7 +21,8 @@
 check_all(Ctx, FileName, Env, Decls) ->
     ?LOG_INFO("Checking ~w functions in ~s against their specs", length(Decls), FileName),
     ?LOG_DEBUG("Environment: ~s", pretty:render_fun_env(Env)),
-    ExtCtx = Ctx#ctx { symtab = symtab:extend_symtab_with_fun_env(Env, Ctx#ctx.symtab) },
+    ExtSymtab = symtab:extend_symtab_with_fun_env(Env, Ctx#ctx.symtab),
+    ExtCtx = Ctx#ctx { symtab = ExtSymtab },
     try
         lists:foreach(
           fun({Decl, Ty}) -> check(ExtCtx, Decl, Ty) end,

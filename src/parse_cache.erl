@@ -91,7 +91,7 @@ really_parse_file(Kind, File, Opts) ->
                                 Idx, File)
                     end
                 end,
-                utils:lists_enumerate(1, RawForms));
+                lists:enumerate(1, RawForms));
        true -> ok
     end,
 

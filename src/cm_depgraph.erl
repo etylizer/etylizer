@@ -9,7 +9,7 @@
 -include("log.hrl").
 
 -export([
-    new/0,
+    new/0, new/1,
     find_dependent_files/2,
     all_sources/1,
     build_dep_graph/3,
@@ -33,6 +33,10 @@
 
 -spec new() -> dep_graph().
 new() -> {sets:new(), maps:new()}.
+
+-spec new([file:filename()]) -> dep_graph().
+new(Srcs) ->
+    lists:foldl(fun add_file/2, new(), Srcs).
 
 -spec pretty_depgraph(dep_graph()) ->
     {[file:filename()], #{file:filename() => [file:filename()]}}.

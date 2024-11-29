@@ -28,7 +28,8 @@
     extend_symtab_with_fun_env/2,
     %extend_symtab/4,
     empty/0,
-    extend_symtab_with_module_list/3
+    extend_symtab_with_module_list/3,
+    dump_symtab/2
 ]).
 
 -type fun_env() :: #{ ast:global_ref() => ast:ty_scheme() }.
@@ -47,15 +48,19 @@
 
 -opaque t() :: #tab{}.
 
--spec dump_symtab(string(), string(), t()) -> ok.
-dump_symtab(Key, What, Tab) ->
-    ?LOG_DEBUG("Key ~s not defined as ~s in symtab, functions:~n~s~ntypes:~n~s~nOperators:~n~s~nRecords:~n~s",
-        Key,
-        What,
+-spec dump_symtab(string(), t()) -> ok.
+dump_symtab(Msg, Tab) ->
+    ?LOG_DEBUG("~s~nFunctions:~n~s~ntypes:~n~s~nOperators:~n~s~nRecords:~n~s",
+        Msg,
         pretty:render_fun_env(Tab#tab.funs),
         pretty:render_ty_env(Tab#tab.types),
         pretty:render_op_env(Tab#tab.ops),
         pretty:render_record_env(Tab#tab.records)).
+
+-spec dump_symtab_not_defined(string(), string(), t()) -> ok.
+dump_symtab_not_defined(Key, What, Tab) ->
+    Msg = utils:sformat("Key ~s not defined as ~s in symtab", Key, What),
+    dump_symtab(Msg, Tab).
 
 % Get the type declared for a function. The location is the use-site
 % If no such name exists, an error is thrown.
@@ -65,7 +70,7 @@ lookup_fun(Ref, Loc, Tab) ->
         {ok, X} -> X;
         error ->
             RefStr = pretty:render(pretty:ref(Ref)),
-            dump_symtab(RefStr, "function", Tab),
+            dump_symtab_not_defined(RefStr, "function", Tab),
             errors:name_error(Loc, "function ~s undefined", RefStr)
     end.
 
@@ -79,7 +84,7 @@ lookup_op(Name, Arity, Loc, Tab) ->
         {ok, X} -> X;
         error ->
             S = pretty:render(pretty:arity(Name, Arity)),
-            dump_symtab(S, "operator", Tab),
+            dump_symtab_not_defined(S, "operator", Tab),
             errors:name_error(Loc, "operator ~s undefined", S)
     end.
 
@@ -94,7 +99,7 @@ lookup_ty(Ref, Loc, Tab) ->
         {ok, X} -> X;
         error ->
             RefStr = pretty:render(pretty:ref(Ref)),
-            dump_symtab(RefStr, "type", Tab),
+            dump_symtab_not_defined(RefStr, "type", Tab),
             errors:name_error(Loc, "type ~s undefined", RefStr)
     end.
 
@@ -111,7 +116,7 @@ lookup_record(Name, Loc, Tab) ->
     case find_record(Name, Tab) of
         {ok, X} -> X;
         error ->
-            dump_symtab(utils:sformat("~w", Name), "record", Tab),
+            dump_symtab_not_defined(utils:sformat("~w", Name), "record", Tab),
             errors:name_error(Loc, "record ~w undefined", Name)
     end.
 
