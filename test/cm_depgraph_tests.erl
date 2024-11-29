@@ -24,10 +24,12 @@ update_dep_graph_test() ->
         {sets:to_list(sets:from_list(["./test_files/referenced_modules/module1.erl",
             "./test_files/referenced_modules/module2.erl",
             "./test_files/referenced_modules/module3.erl",
-            "./test_files/referenced_modules/module4.erl"])),
+            "./test_files/referenced_modules/module4.erl",
+            "./test_files/referenced_modules/module5.erl"])),
             #{"./test_files/referenced_modules/module2.erl" => ["./test_files/referenced_modules/module1.erl"],
               "./test_files/referenced_modules/module3.erl" => ["./test_files/referenced_modules/module1.erl"],
-              "./test_files/referenced_modules/module4.erl" => ["./test_files/referenced_modules/module1.erl"]}
+              "./test_files/referenced_modules/module4.erl" => ["./test_files/referenced_modules/module1.erl"],
+              "./test_files/referenced_modules/module5.erl" => ["./test_files/referenced_modules/module1.erl"]}
         },
     ?assertEqual(ExpectedGraph, cm_depgraph:pretty_depgraph(ResultGraph)).
 

@@ -9,6 +9,7 @@
                no_type_checking = false :: boolean(),
                no_deps = false :: boolean(),
                type_check_only = [] :: [string()],
+               type_check_ignore = [] :: [string()],
                ast_file = empty :: empty | string(),
                project_root = empty :: empty | string(),
                src_paths = [] :: [string()],

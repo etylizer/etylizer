@@ -10,4 +10,5 @@ referenced_modules_test() ->
     Modules = ast_utils:referenced_modules(Forms),
     true = lists:member(module2, Modules),
     true = lists:member(module3, Modules),
-    true = lists:member(module4, Modules).
+    true = lists:member(module4, Modules),
+    true = lists:member(module5, Modules).
