@@ -7,7 +7,6 @@
 -include("parse.hrl").
 
 -export([
-    %parse_file/1, 
     parse_file/2, 
     parse_file_or_die/1, 
     parse_file_or_die/2, 
@@ -21,9 +20,6 @@
 % Scanner: http://erlang.org/doc/man/erl_parse.html
 % Parser: http://erlang.org/doc/man/erl_parse.html
 % Compile: https://erlang.org/doc/man/compile.html
-
--spec parse_file(string()) -> error | {ok, [ast_erl:form()]}.
-parse_file(Path) -> parse_file(Path, #parse_opts{}).
 
 -spec parse_file(string(), parse_opts()) -> error | {ok, [ast_erl:form()]}.
 parse_file(Path, Opts) ->

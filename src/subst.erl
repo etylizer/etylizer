@@ -12,7 +12,6 @@
 -export([
     apply/2,
     apply/3,
-    %domain/1,
     from_list/1,
     empty/0,
     extend/3,
@@ -36,10 +35,6 @@
 -spec base_subst(t()) -> base_subst().
 base_subst({tally_subst, S, _}) -> S;
 base_subst(S) -> S.
-
--spec domain(t()) -> [ast:ty_varname()].
-domain({tally_subst, S, _}) -> domain(S);
-domain(S) -> maps:keys(S).
 
 -spec clean(ast:ty(), sets:set(ast:ty_varname())) -> ast:ty().
 clean(T, Fixed) ->

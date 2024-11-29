@@ -4,7 +4,6 @@
 
 -export([
          arity/2,
-%         ty/1,
 %         tyscheme/1,
 %         constr/1,
 %         substs/1,
@@ -512,8 +511,3 @@ render_list(Fun, L) ->
 -spec render_set(fun((T) -> doc()), sets:set(T)) -> string().
 render_set(Fun, S) ->
     render_list(Fun, sets:to_list(S)).
-
--spec render_list_with_braces(fun((T) -> doc()), list(T)) -> string().
-render_list_with_braces(Fun, L) ->
-    render(braces(comma_sep(lists:map(Fun, L)))).
-

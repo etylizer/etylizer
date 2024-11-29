@@ -2,35 +2,25 @@
 
 % @doc This module defines general purpose utility functions.
 
--include_lib("log.hrl").
 -include_lib("kernel/include/file.hrl").
 
-
 -export([
-    %map_opt/3, map_opt/2,
     quit/3, quit/2, 
-    %undefined/0, 
-    everywhere/2, everything/2, 
-    %error/1, 
+    everywhere/2, everything/2,  
     error/2,
     is_string/1, is_char/1,
-    sformat/2, sformat/3, sformat/4,  sformat/6, 
+    sformat/2, sformat/3, sformat/4,  sformat/6, sformat/5, sformat/7, sformat1/2,
     if_true/2,
     file_get_lines/1, set_add_many/2, assert_no_error/1,
     replicate/2, 
     string_ends_with/2, shorten/2,
-    %flatmap_flip/2, 
     map_flip/2, foreach/2, concat_map/2, with_index/2,
     mkdirs/1, hash_sha1/1, hash_file/1,
     list_uniq/1, 
-    %lists_enumerate/1, 
     lists_enumerate/2,
     with_default/2, compare/2,
-    %mingle/5, 
     timing/1, 
-    %timing_log/3,
     single/1, 
-    %from_to/2, 
     assocs_find/2, assocs_find_index/2,
     timeout/2, is_same_file/2, file_exists/1
 ]).
@@ -40,30 +30,9 @@
     diff_terms/3, 
     string_contains/2,
     unconsult/2,
-    with_index/1,
-    sformat/5, sformat/7, sformat1/2
+    with_index/1
 ]).
 -endif.
-
-
-mingle(LeftDefault, RightDefault, AllLeft, AllRight, Op) ->
-    AllKeys = maps:keys(AllLeft) ++ maps:keys(AllRight),
-    % LeftDefault + Right (left not assigned)  Left + RightDefault (right not assigned) Left + Right (both)
-    maps:from_list(lists:map(fun(Key) -> {Key, Op(maps:get(Key, AllLeft, LeftDefault), maps:get(Key, AllRight, RightDefault))} end, AllKeys)).
-
--spec map_opt(fun((T) -> U | error), [T]) -> [U].
-map_opt(F, L) -> map_opt(F, error, L).
-
--spec map_opt(fun((T) -> U | V), V, [T]) -> [U].
-map_opt(F, Stop, L) ->
-    case L of
-        [X|Xs] ->
-            case F(X) of
-                Stop -> map_opt(F, Stop, Xs);
-                Y -> [Y | map_opt(F, Stop, Xs)]
-            end;
-        [] -> []
-    end.
 
 % quit exits the erlang program with the given exit code. No stack trace is produced,
 % so don't use this function for aborting because of a bug.
@@ -76,9 +45,6 @@ quit(Code, Msg, L) ->
 quit(Code, Msg) ->
     io:format(Msg),
     halt(Code).
-
--spec undefined() -> none().
-undefined() -> erlang:error("undefined").
 
 -spec sformat_raw(string(), list()) -> string().
 sformat_raw(Msg, L) ->
@@ -119,9 +85,6 @@ sformat(Msg, X1, X2, X3, X4, X5) -> sformat_raw(Msg, [X1, X2, X3, X4, X5]).
 
 -spec sformat(string(), term(), term(), term(), term(), term(), term()) -> string().
 sformat(Msg, X1, X2, X3, X4, X5, X6) -> sformat_raw(Msg, [X1, X2, X3, X4, X5, X6]).
-
--spec error(string()) -> no_return().
-error(Msg) -> erlang:error(Msg).
 
 -spec error(string(), term()) -> no_return().
 error(Msg, L) -> erlang:error(sformat(Msg, L)).
@@ -245,9 +208,6 @@ shorten([X | Xs], N) ->
     {Short, ShortN} = shorten(Xs, N - 1),
     {[X | Short], ShortN + 1}.
 
--spec flatmap_flip([A], fun((A) -> [B])) -> [B].
-flatmap_flip(L, F) -> lists:flatmap(F, L).
-
 -spec map_flip([A], fun((A) -> B)) -> [B].
 map_flip(L, F) -> lists:map(F, L).
 
@@ -312,14 +272,6 @@ list_uniq_1([X | Xs], M) ->
 list_uniq_1([], _) ->
     [].
 
--spec lists_enumerate(List1) -> List2 when
-      List1 :: [T],
-      List2 :: [{Index, T}],
-      Index :: integer(),
-      T :: term().
-lists_enumerate(List1) when is_list(List1) ->
-    lists_enumerate_1(1, List1).
-
 -spec lists_enumerate(Index, List1) -> List2 when
       List1 :: [T],
       List2 :: [{Index, T}],
@@ -345,22 +297,6 @@ timing(F) ->
     End = erlang:timestamp(),
     Delta = round(timer:now_diff(End, Start) / 1000),
     {Res, Delta}.
-
--spec from_to(number(), number()) -> list(number()).
-from_to(Start, End) ->
-    if
-        Start > End -> [];
-        true -> [Start | from_to(Start + 1, End)]
-    end.
-
-% Display a debug message if executing the given function takes more than N milliseconds
--spec timing_log(fun(() -> T), integer(), string()) -> T.
-timing_log(F, Time, What) ->
-    {X, Delta} = timing(F),
-    if Delta > Time -> ?LOG_DEBUG("~s: ~pms", What, Delta);
-        true -> ok
-    end,
-    X.
 
 -spec single(T) -> sets:set(T).
 single(X) -> sets:from_list([X]).

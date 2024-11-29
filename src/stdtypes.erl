@@ -1,4 +1,3 @@
-
 -module(stdtypes).
 
 -include("log.hrl").
