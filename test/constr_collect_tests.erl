@@ -9,7 +9,7 @@ check_lists_for_eq(ExpectedList, GivenList) ->
     case length(ExpectedList) =:= length(GivenList) of
         false ->
             io:format("Lists have different length. Expected length ~w, given length ~w",
-                length(ExpectedList), length(GivenList)),
+                [length(ExpectedList), length(GivenList)]),
             io:format("Expected:~n~200p~n~nGiven:~n~200p", [ExpectedList, GivenList]),
             error(utils:sformat("Lists have different length. Expected length ~w, given length ~w",
                 length(ExpectedList), length(GivenList)));

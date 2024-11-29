@@ -127,10 +127,15 @@ check_decls_in_file(F, What, NoInfer) ->
   end,
   lists:foldl(CollectDecls, [], Forms).
 
--spec should_run(string(), what()) -> boolean().
-should_run(_Name, all) -> true;
+%% Suppress warnings about unmatched patterns
+%% TODO fix this somehow or not...
+-dialyzer({no_match, should_run/2}).
+-spec should_run(string(), all | {include, sets:set(string())} | {exclude, sets:set(string())}) -> boolean().
 should_run(Name, {include, Set}) -> sets:is_element(Name, Set);
-should_run(Name, {exclude, Set}) -> not sets:is_element(Name, Set).
+should_run(Name, {exclude, Set}) -> not sets:is_element(Name, Set);
+should_run(_Name, all) -> true.
+
+
 
 -spec check_decls_in_files(list(string()), what(), sets:set(string())) -> list().
 check_decls_in_files(Files, What, NoInfer) ->
