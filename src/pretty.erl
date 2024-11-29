@@ -4,7 +4,6 @@
 
 -export([
          arity/2,
-%         tyscheme/1,
 %         constr/1,
 %         substs/1,
 %         subst/1,
@@ -37,7 +36,8 @@
 
 -ifdef(TEST).
 -export([
-    ty/1
+    ty/1,
+    tyscheme/1
 ]).
 -endif.
 

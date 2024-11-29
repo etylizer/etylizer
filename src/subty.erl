@@ -12,7 +12,6 @@
 ]).
 -endif.
 
-
 is_equivalent(SymTab, S, T) -> is_subty(SymTab, S,T) andalso is_subty(SymTab, T,S).
 
 -spec is_subty(symtab:t(), ast:ty(), ast:ty()) -> boolean().

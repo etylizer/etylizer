@@ -43,7 +43,7 @@ check_infer_ok_fun(Filename, Tab, Decl = {function, L, Name, Arity, _}, Ty) ->
         end,
         Envs),
     ?LOG_NOTE("Inferred the following types for ~w/~w: ~s", Name, Arity,
-      pretty:render_list(InferredTys, fun pretty:tyscheme/1)),
+      pretty:render_list(fun pretty:tyscheme/1, InferredTys)),
     case lists:any(
             fun(InferredTy) -> typing_infer:more_general(L, InferredTy, Ty, Tab) end,
             InferredTys)
@@ -53,7 +53,7 @@ check_infer_ok_fun(Filename, Tab, Decl = {function, L, Name, Arity, _}, Ty) ->
               io:format(
                 "~s: None of the inferred types ~s for function ~w/~w in ~s is more general than type ~s from spec",
                 [ast:format_loc(L),
-                pretty:render_list(InferredTys, fun pretty:tyscheme/1),
+                pretty:render_list(fun pretty:tyscheme/1, InferredTys),
                 Name, Arity, Filename,
                 pretty:render_tyscheme(Ty)]),
               ?assert(false)
@@ -129,8 +129,8 @@ check_decls_in_file(F, What, NoInfer) ->
 
 -spec should_run(string(), what()) -> boolean().
 should_run(_Name, all) -> true;
-should_run(Name, {include,Set}) -> sets:is_element(Name, Set);
-should_run(Name, {exclude,Set}) -> not sets:is_element(Name, Set).
+should_run(Name, {include, Set}) -> sets:is_element(Name, Set);
+should_run(Name, {exclude, Set}) -> not sets:is_element(Name, Set).
 
 -spec check_decls_in_files(list(string()), what(), sets:set(string())) -> list().
 check_decls_in_files(Files, What, NoInfer) ->
