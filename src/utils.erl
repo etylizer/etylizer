@@ -14,7 +14,8 @@
     file_get_lines/1, set_add_many/2, assert_no_error/1,
     replicate/2, 
     string_ends_with/2, shorten/2,
-    map_flip/2, foreach/2, concat_map/2, with_index/2,
+    map_flip/2, foreach/2, concat_map/2, 
+    with_index/1, with_index/2,
     mkdirs/1, hash_sha1/1, hash_file/1,
     with_default/2, compare/2,
     timing/1, 
@@ -22,15 +23,6 @@
     assocs_find/2, assocs_find_index/2,
     timeout/2, is_same_file/2, file_exists/1
 ]).
-
--ifdef(TEST).
--export([
-    diff_terms/3, 
-    string_contains/2,
-    unconsult/2,
-    with_index/1
-]).
--endif.
 
 % quit exits the erlang program with the given exit code. No stack trace is produced,
 % so don't use this function for aborting because of a bug.
@@ -132,22 +124,6 @@ everything(F, T) ->
         {ok, X} -> [X]
     end.
 
--spec diff_terms(term(), term(), delete | dont_delete) -> equal | {diff, string()}.
-diff_terms(T1, T2, _) when T1 == T2 -> equal;
-diff_terms(T1, T2, Del) ->
-    P = "terms_",
-    S = ".erl",
-    tmp:with_tmp_file(P ++ "1_", S, Del, fun (F1, P1) ->
-        tmp:with_tmp_file(P ++ "2_", S, Del, fun (F2, P2) ->
-            io:format(F1, "~200p", [T1]),
-            io:format(F2, "~200p", [T2]),
-            file:close(F1),
-            file:close(F2),
-            Out = os:cmd(sformat("diff -u ~s ~s", P1, P2)),
-            {diff, Out}
-        end)
-    end).
-
 -spec if_true(boolean(), fun(() -> _T)) -> ok.
 if_true(B, Action) ->
     if  B -> Action();
@@ -185,15 +161,6 @@ assert_no_error(X) ->
 -spec replicate(integer(), T) -> list(T).
 replicate(_N, X) when X =< 0 -> [];
 replicate(N, X) -> [X | replicate(N - 1, X)].
-
--spec unconsult(file:filename(), term()) -> ok | {error, any()}.
-unconsult(F, T) ->
-    L = if is_list(T) -> T;
-           true -> [T]
-        end,
-    {ok, S} = file:open(F, [write]),
-    lists:foreach(fun(X) -> io:format(S, "~200p.~n", [X]) end, L),
-    file:close(S).
 
 -spec string_ends_with(string(), string()) -> boolean().
 string_ends_with(S, Suffix) ->
@@ -327,5 +294,3 @@ file_exists(FilePath) ->
         _ -> false
     end.
 
--spec string_contains(string(), string()) -> boolean().
-string_contains(Full, Search) -> string:str(Full, Search) > 0.

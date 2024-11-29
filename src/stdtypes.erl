@@ -31,7 +31,7 @@
     init/0, cleanup/0
 ]).
 
--ifdef(TEST).
+% These here are actually only used in the tests
 -export([
     is_tlist/1,
     tarrow_n/1,
@@ -53,7 +53,6 @@
     tyscm/2,
     tvar/1
 ]).
--endif.
 
 
 %% Builtin types

@@ -2,14 +2,11 @@
 
 % @doc Parser for -ety attributes
 
--ifdef(TEST).
 -export([
     parse_ety_attr/2,
     ety_attrs_from_file/1
    ]).
--endif.
     
-
 -type ety_attr() :: {ety, ast:loc(), term()}.
 
 -spec ety_attrs_from_file(file:filename()) -> t:opt([ety_attr()], string()).

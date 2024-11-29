@@ -8,16 +8,16 @@
 -include("parse.hrl").
 
 -export([
-         check/4,
-         check_against_type/4,
-         parse_spec/1,
-         merge_specs/1
-        ]).
+    check/3,
+    check/4,
+    check_against_type/4,
+    parse_spec/1,
+    merge_specs/1
+]).
 -export_type([ty_map/0]).
 
 -ifdef(TEST).
 -export([
-    check/3,
     prepare_spec/2,
     inst_ty/3,
     lookup_ty_or_die/4

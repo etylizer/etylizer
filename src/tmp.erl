@@ -51,6 +51,7 @@ with_tmp_file(Prefix, Suffix, Del, Action) ->
                 P, Modes, Reason)})
     end.
 
+-ifdef(TEST).
 -spec with_tmp_dir(string(), string(), delete | dont_delete,
     fun((string()) -> T)) -> T.
 with_tmp_dir(Prefix, Suffix, Del, Action) ->
@@ -65,3 +66,4 @@ with_tmp_dir(Prefix, Suffix, Del, Action) ->
                 os:cmd("rm -Rf " ++ P)
             end)
     end.
+-endif.

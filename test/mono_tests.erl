@@ -2,6 +2,9 @@
 
 -include_lib("eunit/include/eunit.hrl").
 
+-spec string_contains(string(), string()) -> boolean().
+string_contains(Full, Search) -> string:str(Full, Search) > 0.
+
 -spec check_mono_ty(ast:ty_scheme(), ast:ty() | [ast:ty()]| cyclic) -> ok.
 check_mono_ty(Input, cyclic) ->
     try
@@ -9,7 +12,7 @@ check_mono_ty(Input, cyclic) ->
         ?assert(false, "expected exception")
     catch
         throw:{ety,ty_error, Msg} ->
-            ?assert(utils:string_contains(Msg, "Cyclic bounds in type spec"))
+            ?assert(string_contains(Msg, "Cyclic bounds in type spec"))
     end;
 check_mono_ty(Input, Expected) ->
     {Given, _, _} = typing_common:mono_ty(ast:loc_auto(), Input, 0),

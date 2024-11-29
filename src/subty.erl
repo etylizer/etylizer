@@ -25,5 +25,7 @@ is_subty(Symtab, T1, T2) ->
 is_any(T, Sym) ->
   is_subty(Sym, stdtypes:tany(), T).
 
+-ifdef(TEST).
 is_empty(T, Sym) ->
   is_subty(Sym, T, stdtypes:tnone()).
+-endif.
