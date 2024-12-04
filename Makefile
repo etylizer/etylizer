@@ -104,7 +104,7 @@ testtest:
 	$(REBAR) eunit -d test_files/tycheck_disabled/
 
 check:
-	$(REBAR) dialyzer
+	$(REBAR) as test dialyzer
 
 all: build check test
 

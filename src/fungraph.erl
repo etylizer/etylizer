@@ -2,7 +2,9 @@
 
 -include("log.hrl").
 
+-ifdef(TEST).
 -export([dependency_order/1]).
+-endif.
 
 -type call_vertex() :: {Name::atom(), Arity::arity()}.
 -type call_graph() :: graph:graph(call_vertex()).
@@ -119,3 +121,4 @@ dependency_order(Forms, CallGraph, SCCDepGraph) ->
                               ))
       end
      ).
+    

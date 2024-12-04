@@ -76,8 +76,7 @@ empty_tuple_test() ->
       {tuple,[{singleton,a}]}
     ]},
 
-  true = subty:is_empty(O2, none),
-
+  true = subty:is_empty(O2, symtab:empty()),
   ok.
 
 simple_prod_var_test() ->

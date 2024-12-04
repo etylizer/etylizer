@@ -1,9 +1,15 @@
 -module(typing_check).
 
 -export([
-    check_all/4,
-    check/3
+    check_all/4
 ]).
+
+-ifdef(TEST).
+-export([
+    check/3
+   ]).
+-endif.
+
 
 -include("log.hrl").
 -include("typing.hrl").

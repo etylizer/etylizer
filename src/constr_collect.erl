@@ -3,9 +3,6 @@
 -export([
     collect_constrs_no_matching_cond/1,
     collect_matching_cond_constrs/1,
-    cross_product/3,
-    cross_product_binary/3,
-    cross_union_with_locs/1,
     collect_constrs_all_combinations/1
 ]).
 
@@ -13,6 +10,14 @@
     all_combinations/0
 ]).
 
+-ifdef(TEST).
+-export([
+    cross_product/3,
+    cross_product_binary/3,
+    cross_union_with_locs/1
+]).
+-endif.
+  
 % Collect all constraints but ignore all branch matching condition constraints.
 % Always return the body constraints for the branches.
 -spec collect_constrs_no_matching_cond(constr:simp_constrs()) -> constr:subty_constrs().

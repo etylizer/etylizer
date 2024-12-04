@@ -20,13 +20,12 @@
 test_tally(ConstrList, ExpectedSubst) ->
     test_tally(ConstrList, ExpectedSubst, symtab:empty(), []).
 
-
 -spec test_tally(list({ast:ty(), ast:ty()}), list(expected_subst()), [ast:ty_varname()]) -> ok.
 test_tally(ConstrList, ExpectedSubst, FixedVars) ->
     test_tally(ConstrList, ExpectedSubst, symtab:empty(), FixedVars).
 
 -spec test_tally(list({ast:ty(), ast:ty()}), list(expected_subst()), symtab:t(), [ast:ty_varname()]) -> ok.
-test_tally(ConstrList, AllTests, Symtab, FixedVars) ->
+test_tally(ConstrList, ExpectedSubst, Symtab, FixedVars) ->
   Constrs = sets:from_list(
                 lists:map(
                   fun ({T, U}) -> {scsubty, sets:from_list([ast:loc_auto()]), T, U} end,
@@ -38,14 +37,17 @@ test_tally(ConstrList, AllTests, Symtab, FixedVars) ->
     [_ | _] -> 
       ?LOG_WARN("Tally result:~n~s",
         pretty:render_substs(lists:map(fun (S) -> subst:base_subst(S) end, Res))),
-      find_subst(AllTests, Res, Res);
+      find_subst(ExpectedSubst, Res, Res);
     _ -> 
-      case AllTests of 
+      case ExpectedSubst of 
         [] -> ok;
         _ -> error(utils:sformat("Unexpected result from tally: ~w", Res))
       end
   end.
 
+%% Suppress warnings about unmatched patterns
+%% TODO fix this somehow or not...
+-dialyzer({no_match, find_subst/3}).
 -spec find_subst(list(expected_subst()), [subst:t()], [subst:t()]) -> ok.
 find_subst([], [], _) -> ok;
 find_subst([{Low, High} | _], [], Sols) ->
@@ -65,11 +67,9 @@ find_subst(X = [{Low, High} | OtherTests], [TallySubst | Others], AllTally) ->
   Subst = subst:base_subst(TallySubst),
   Valid = lists:any(
     fun({{Var, LowerBound}, {Var, UpperBound}}) ->
-      begin
         TyOther = maps:get(Var, Subst, {var, Var}),
-        not (subty:is_subty(none, LowerBound, TyOther) andalso
-          subty:is_subty(none, TyOther, UpperBound))
-      end
+        not (subty:is_subty(symtab:empty(), LowerBound, TyOther) andalso
+          subty:is_subty(symtab:empty(), TyOther, UpperBound))
     end, lists:zip(lists:sort(maps:to_list(Low)), lists:sort(maps:to_list(High)))),
   case Valid of
     true -> find_subst(X, Others, AllTally);

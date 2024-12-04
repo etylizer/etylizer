@@ -4,10 +4,13 @@
 % updating the index.
 
 -export([
-    perform_type_checks/4,
-    perform_sanity_check/3
+    perform_type_checks/4
 ]).
 
+-ifdef(TEST).
+-export([perform_sanity_check/3]).
+-endif.
+    
 -include("log.hrl").
 -include("ety_main.hrl").
 

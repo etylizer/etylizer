@@ -1,5 +1,12 @@
 -module(ety_main).
--export([main/1, doWork/1]).
+-export([main/1]).
+
+-ifdef(TEST).
+-export([
+    doWork/1
+]).
+-endif.
+    
 
 % @doc This is the main module of ety. It parses commandline arguments and orchestrates
 % everything.

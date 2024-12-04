@@ -10,8 +10,7 @@
     has_file_changed/2,
     has_exported_interface_changed/3,
     has_external_dep_changed/2,
-    insert/3,
-    remove/2
+    insert/3
 ]).
 
 -export_type([index/0]).
@@ -144,7 +143,3 @@ insert(Path, Forms, {DepVersions, Index}) ->
     Interface = cm_module_interface:extract_interface_declaration(Forms),
     InterfaceHash = utils:hash_sha1(io_lib:write(Interface)),
     {DepVersions, maps:put(Path, {FileHash, InterfaceHash}, Index)}.
-
--spec remove(file:filename(), index()) -> index().
-remove(Path, {DepVersions, Index}) ->
-    {DepVersions, maps:remove(Path, Index)}.

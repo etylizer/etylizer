@@ -106,7 +106,7 @@ test_recompile_version(TargetDir, Dir, Version, RebarLockContent, ExpectedChange
     ?assertEqual(ExpectedChangesSorted, RealChangesSorted),
     ?LOG_NOTE("Test successful for code version ~p in ~p", Version, Dir).
 
--type changes_map() :: #{integer() => [string()] | compile_error }.
+-type changes_map() :: #{integer() => [string()] | type_error }.
 
 -spec test_recompile(file:name(), changes_map()) -> ok.
 test_recompile(Dir, VersionMap) ->

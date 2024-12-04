@@ -3,7 +3,8 @@
 % @doc Logging module. The logging module that comes with Erlang with too difficult
 % to setup.
 
--export([num_level/1, init/1, allow/1, macro_log/5, parse_level/1, shutdown/0]).
+-export([
+    init/1, allow/1, macro_log/5, parse_level/1]).
 -export_type([log_level/0]).
 
 -type log_level() :: trace2 | trace | debug | info | note | warn | error | abort.
@@ -60,17 +61,6 @@ get_logger_pid() ->
     case ets:lookup(Table, logger_pid) of
         [] -> none;
         [{_, Pid}] -> Pid
-    end.
-
--spec shutdown() -> ok.
-shutdown() ->
-    case get_logger_pid() of
-        none -> ok;
-        Pid ->
-            Pid ! {shutdown, self()},
-            receive
-                shutdown_done -> ok
-            end
     end.
 
 -spec file_logger() -> ok.

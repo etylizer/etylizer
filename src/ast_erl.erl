@@ -145,7 +145,10 @@
     tydef/0
 ]).
 
--export([ty_varname/1, user_tyname/1]).
+-export([
+    ty_varname/1, 
+    user_tyname/1
+]).
 
 % At several places, the AST contains lists with a fixed number of elements in a fixed order.
 % Such types are not expressible in erlang's type syntax. So we introduce various type synonyms

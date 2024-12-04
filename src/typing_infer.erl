@@ -1,10 +1,16 @@
 -module(typing_infer).
 
 -export([
-    infer_all/3,
+    infer_all/3
+]).
+
+-ifdef(TEST).
+-export([
     infer/2,
     more_general/4
-]).
+   ]).
+-endif.
+
 
 -include("log.hrl").
 -include("typing.hrl").
@@ -93,6 +99,7 @@ infer(Ctx, Decls) ->
             ResultEnvs
     end.
 
+-ifdef(TEST).
 % more_general(L, T1, T2, Sym) return true of T1 is more general than T2
 -spec more_general(ast:loc(), ast:ty_scheme(), ast:ty_scheme(), symtab:t()) -> boolean().
 more_general(Loc, Ts1, Ts2, Tab) ->
@@ -115,6 +122,7 @@ more_general(Loc, Ts1, Ts2, Tab) ->
         pretty:render_tyscheme(Ts2), pretty:render_ty(Mono2),
         Result),
     Result.
+-endif.
 
 % Generalize generalizes the type of a top-level function. As there is no outer
 % environment, we may simply quantify over all free type variables.

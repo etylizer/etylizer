@@ -12,13 +12,19 @@
     new/0, new/1,
     find_dependent_files/2,
     all_sources/1,
-    add_dependency/3,
-    update_dep_graph/4,
     build_dep_graph/3,
     pretty_depgraph/1
 ]).
 
 -export_type([dep_graph/0]).
+
+-ifdef(TEST).
+-export([
+    add_dependency/3,
+    update_dep_graph/4
+]).
+-endif.
+ 
 
 -type dep_graph() :: {
     sets:set(file:filename()),

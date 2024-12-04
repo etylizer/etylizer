@@ -1,15 +1,22 @@
 -module(ast_lib).
 
--export([reset/0, simplify/2, ast_to_erlang_ty/1, ast_to_erlang_ty/2, raw_erlang_ty_to_ast/1, raw_erlang_ty_to_ast/2, erlang_ty_to_ast/1, erlang_ty_to_ast/2, ast_to_erlang_ty_var/1, erlang_ty_var_to_var/1]).
-
 -export([
-    mk_intersection/1,
-    mk_intersection/2,
-    mk_union/1,
-    mk_union/2,
+    reset/0, 
+    ast_to_erlang_ty/1, ast_to_erlang_ty/2, 
+    erlang_ty_to_ast/1, erlang_ty_to_ast/2, 
+    ast_to_erlang_ty_var/1, 
+    mk_union/1, 
     mk_negation/1,
-    mk_diff/2
+    mk_diff/2,
+    mk_intersection/1
 ]).
+
+-ifdef(TEST).
+-export([
+    erlang_ty_var_to_var/1
+   ]).
+-endif.
+
 
 reset() ->
     erlang:put(ty_ast_cache, #{}),
@@ -28,9 +35,6 @@ unfold_union([X | Rest], All) ->
     unfold_union(Rest, All ++ [X]) .
 
 % smart constructors for intersection, union and negation
--spec mk_intersection(ast:ty(), ast:ty()) -> ast:ty().
-mk_intersection(T1, T2) -> mk_intersection([T1, T2]).
-
 -spec mk_intersection([ast:ty()]) -> ast:ty().
 mk_intersection(Tys) ->
     HasEmpty =
@@ -199,63 +203,6 @@ erlang_ty_to_ast(X, M) ->
               error(pretty_printing_bug)
           end,
         FinalTy
-    end.
-
-simplify(Full, Sym) ->
-%%    io:format(user, ">> Full~n~p~n", [Full]),
-    (_Dnf = {union, Unions}) = dnf:to_dnf(dnf:to_nnf(Full)),
-%%    io:format(user, ">> DNF~n~p~n", [_Dnf]),
-    % filter empty intersections
-    FilterEmpty = {union, lists:filter(fun(E) -> not ty_rec:is_empty(ast_to_erlang_ty(E, Sym)) end, Unions)},
-
-    % for any variable, extract them
-    E = ast_to_erlang_ty(FilterEmpty, Sym),
-    {Enew, Extracted} = extract_variables(E, ty_rec:all_variables(E), []),
-    Neww = case Enew of
-        E -> FilterEmpty;
-        _ -> erlang_ty_to_ast(Enew, #{})
-    end,
-
-    R = mk_union([mk_union(Extracted), Neww]),
-    ToReduce = dnf:to_dnf(dnf:to_nnf(R)),
-    % reduce everything rigorously until there are no redundant parts in the type
-    % a full reduce is very expensive
-    reduce_until(ToReduce).
-
-reduce_until(ToReduce) -> find_first_reduce(ToReduce, ToReduce, []).
-
-find_first_reduce(_OriginalTy, {union, []}, OlderLines) -> {union, OlderLines};
-find_first_reduce(OriginalTy, {union, [{intersection, Line} | Lines]}, OlderLines) ->
-    WithoutLine = {union, Lines ++ OlderLines},
-    case subty:is_equivalent(symtab:empty(), WithoutLine, OriginalTy) of % TODO symtab?
-        true ->
-            % is equivalent without the whole line
-            find_first_reduce(OriginalTy, {union, Lines}, OlderLines);
-        false ->
-            ToReplaceLine = find_line_reduce(OriginalTy, {union, Lines ++ OlderLines}, {intersection, Line}, []),
-            find_first_reduce(OriginalTy, {union, Lines}, [ToReplaceLine | OlderLines])
-    end.
-
-find_line_reduce(_OriginalTy, {union, _Lines}, {intersection, []}, OtherPartsOfLine) -> {intersection, OtherPartsOfLine};
-find_line_reduce(OriginalTy, {union, Lines}, {intersection, [Atom | Atoms]}, OtherPartsOfLine) ->
-    ReducedTry = {union, [{intersection, Atoms ++ OtherPartsOfLine} | Lines]},
-    case subty:is_equivalent(symtab:empty(), ReducedTry, OriginalTy) of % TODO symtab?
-        true ->
-            find_line_reduce(OriginalTy, {union, Lines}, {intersection, Atoms}, OtherPartsOfLine);
-        false ->
-            find_line_reduce(OriginalTy, {union, Lines}, {intersection, Atoms}, [Atom | OtherPartsOfLine])
-    end.
-
-
-extract_variables(ETy, [], ExtractedVars) -> {ETy, ExtractedVars};
-extract_variables(ETy, [Var | OtherVars], ExtractedVars) ->
-    V = ty_rec:variable(Var),
-    case ty_rec:is_subtype(V, ETy) of
-        true ->
-            % variable is in the type, diff and extract
-            extract_variables(ty_rec:diff(ETy, V), OtherVars, [erlang_ty_var_to_var(Var) | ExtractedVars]);
-        _ ->
-            extract_variables(ETy, OtherVars, ExtractedVars)
     end.
 
 ast_to_erlang_ty(Ty) ->
