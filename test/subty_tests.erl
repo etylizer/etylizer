@@ -1,8 +1,8 @@
 -module(subty_tests).
 -include_lib("eunit/include/eunit.hrl").
 
--import(stdtypes, [tvar/1, ttuple_any/0, tnegate/1, tatom/0, tatom/1, tfun_full/2, trange/2, tint/1, tunion/1, tintersect/1, trange_any/0, tint/0, ttuple/1, tany/0, tnone/0, tmap/1, tmap_any/0, tmap_field_req/2, tmap_field_opt/2]).
--import(test_utils, [is_subtype/2, is_equiv/2]).
+-import(stdtypes, [tyscm/2, tvar/1, ttuple_any/0, tnegate/1, tatom/0, tatom/1, tfun_full/2, trange/2, tint/1, tunion/1, tintersect/1, trange_any/0, tint/0, ttuple/1, tany/0, tnone/0, tmap/1, tmap_any/0, tmap_field_req/2, tmap_field_opt/2]).
+-import(test_utils, [is_subtype/2, is_equiv/2, named/2]).
 
 foo2_branch1_test() ->
   % $0 /\ {a, 42}
@@ -290,19 +290,28 @@ pos_var_fun_test() ->
   false = is_subtype( T, S ),
   ok.
 
-%%simple_named_test() ->
-%%  Scheme = stdtypes:tyscm([a], stdtypes:tfun([stdtypes:tvar(a), stdtypes:tvar(a)], stdtypes:tatom(ok))),
-%%  TyDef = {mynamed, Scheme},
-%%  Form = {attribute, noloc(), type, transparent, TyDef},
-%%  Sym = symtab:extend_symtab([Form], symtab:empty()),
-%%
-%%  S = {named, noloc(), {ref, mynamed, 1}, [{predef, integer}]},
-%%  T = {named, noloc(), {ref, mynamed, 1}, [stdtypes:tatom(ok)]},
-%%
-%%  false = subty:is_subty(Sym, S, T),
-%%  false = subty:is_subty(Sym, T, S),
-%%  ok.
-%%
+exp_test() ->
+  test_utils:reset_ets(),
+  Sym = test_utils:extend_symtab(exp, tyscm([], ttuple([tunion([b(a), named(exp, [])])]))),
+  S = named(exp, []),
+  true = subty:is_subty(Sym, S, S),
+  ok.
+
+simple_named_test() ->
+  test_utils:reset_ets(),
+  Sym = test_utils:extend_symtab(
+    mynamed, 
+    tyscm([a], tfun_full([tvar(a), tvar(a)], tatom(ok)))
+  ),
+
+  S = named(mynamed, [{predef, integer}]),
+  T = named(mynamed, [b(ok)]),
+
+  true = subty:is_subty(Sym, S, S) and subty:is_subty(Sym, T, T),
+  false = subty:is_subty(Sym, S, T),
+  false = subty:is_subty(Sym, T, S),
+  ok.
+
 %%simple_named2_test() ->
 %%  Scheme2 = stdtypes:tyscm([a], stdtypes:tatom(helloworld)),
 %%  TyDef2 = {mynamed2, Scheme2},
@@ -439,9 +448,6 @@ simple_predef_alias_test() ->
 %%
 %%
 %%
-%%noloc() -> {loc, "no", 0, 0}.
-%%named(Ref, Args) ->
-%%  {named, noloc(), {ref, Ref, length(Args)}, Args}.
 %%
 %%
 %%predefSymbolicTable() ->
