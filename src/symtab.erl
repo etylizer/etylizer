@@ -169,33 +169,38 @@ extend_symtab_internal(Filename, Forms, RefType, Tab) ->
             errors:some_error("File ~s does not exist", [Filename])
     end,
     ModuleName = ast_utils:modname_from_path(Filename),
-    case maps:get(ModuleName, Tab#tab.modules, error) of
-        error -> ok;
-        ModulePath ->
-            case utils:is_same_file(Filename, ModulePath) of
-                true -> ok;
-                false ->
-                    errors:some_error("Projects contains two different files defining the same module ~w: ~s and ~s",
-                        [ModuleName, ModulePath, Filename])
-            end
-    end,
-    lists:foldl(
-        fun(Form, Tab) ->
-            case Form of
-                {attribute, _, spec, Name, Arity, T, _} ->
-                    Tab#tab { funs = maps:put(create_ref_tuple(RefType, Name, Arity), T, Tab#tab.funs) };
-                {attribute, _, type, _, {Name, TyScm = {ty_scheme, TyVars, _}}} ->
-                    Arity = length(TyVars),
-                    Tab#tab { types = maps:put({ty_key, ModuleName, Name, Arity}, TyScm, Tab#tab.types) };
-                {attribute, _, record, {RecordName, Fields}} ->
-                    RecordTy = records:record_ty_from_decl(RecordName, Fields),
-                    Tab#tab { records = maps:put(RecordName, RecordTy, Tab#tab.records) };
-                _ ->
-                    Tab
-            end
+    IsNew =
+        case maps:get(ModuleName, Tab#tab.modules, error) of
+            error -> true;
+            ModulePath ->
+                case utils:is_same_file(Filename, ModulePath) of
+                    true -> false;
+                    false ->
+                        errors:some_error("Projects contains two different files defining the same module ~w: ~s and ~s",
+                            [ModuleName, ModulePath, Filename])
+                end
         end,
-        Tab#tab { modules = maps:put(ModuleName, Filename, Tab#tab.modules) },
-        Forms).
+    case IsNew of
+        false -> Tab;
+        true ->
+            lists:foldl(
+                fun(Form, Tab) ->
+                    case Form of
+                        {attribute, _, spec, Name, Arity, T, _} ->
+                            Tab#tab { funs = maps:put(create_ref_tuple(RefType, Name, Arity), T, Tab#tab.funs) };
+                        {attribute, _, type, _, {Name, TyScm = {ty_scheme, TyVars, _}}} ->
+                            Arity = length(TyVars),
+                            Tab#tab { types = maps:put({ty_key, ModuleName, Name, Arity}, TyScm, Tab#tab.types) };
+                        {attribute, _, record, {RecordName, Fields}} ->
+                            RecordTy = records:record_ty_from_decl(RecordName, Fields),
+                            Tab#tab { records = maps:put(RecordName, RecordTy, Tab#tab.records) };
+                        _ ->
+                            Tab
+                    end
+                end,
+                Tab#tab { modules = maps:put(ModuleName, Filename, Tab#tab.modules) },
+                Forms)
+    end.
 
 -spec extend_symtab_with_fun_env(fun_env(), t()) -> t().
 extend_symtab_with_fun_env(Env, Tab) -> Tab#tab { funs = maps:merge(Tab#tab.funs, Env) }.
