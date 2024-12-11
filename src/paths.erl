@@ -8,7 +8,8 @@
     index_file_name/1,
     find_module_path/2,
     rebar_lock_file/1,
-    rebar_config_from_lock_file/1
+    rebar_config_from_lock_file/1,
+    normalize/1
 ]).
 -export_type([search_path_entry/0, search_path/0]).
 
@@ -158,23 +159,25 @@ find_dependency_roots(ProjectDir, OtpIncDirs) ->
 
 -spec generate_input_file_list(cmd_opts()) -> [file:filename()].
 generate_input_file_list(Opts) ->
-    case Opts#opts.src_paths of
-        [] ->
-            case Opts#opts.files of
-                [] -> utils:quit(1, "No input files given, aborting. Use --help to print help.~n");
-                Files ->
-                    ?LOG_INFO("Only using explicitly specified input files: ~200p", Files),
-                    Files
-            end;
-        Paths ->
-            ?LOG_INFO(
-                "Searching for input files in ~200p and using explicitly specified files as input files: ~200p",
-                Paths, Opts#opts.files),
-            lists:foldl(
-                fun(Path, FileList) -> FileList ++ add_dir_to_list(Path) end,
-                Opts#opts.files,
-                Paths)
-    end.
+    L =
+        case Opts#opts.src_paths of
+            [] ->
+                case Opts#opts.files of
+                    [] -> utils:quit(1, "No input files given, aborting. Use --help to print help.~n");
+                    Files ->
+                        ?LOG_INFO("Only using explicitly specified input files: ~200p", Files),
+                        Files
+                end;
+            Paths ->
+                ?LOG_INFO(
+                    "Searching for input files in ~200p and using explicitly specified files as input files: ~200p",
+                    Paths, Opts#opts.files),
+                lists:foldl(
+                    fun(Path, FileList) -> FileList ++ add_dir_to_list(Path) end,
+                    Opts#opts.files,
+                    Paths)
+        end,
+    lists:map(fun normalize/1, L).
 
 -spec add_dir_to_list(file:filename()) -> [file:filename()].
 add_dir_to_list(Path) ->
@@ -241,7 +244,7 @@ really_find_module_path(SearchPath, Module) ->
       end, SearchPath),
     case SearchResult of
         {value, {Kind, SrcPath, Includes}} ->
-            File = filename:join(SrcPath, Filename),
+            File = normalize(filename:join(SrcPath, Filename)),
             ?LOG_DEBUG("Resolved module ~p to file ~p", Module, File),
             {Kind, File, Includes};
         false ->
@@ -249,4 +252,11 @@ really_find_module_path(SearchPath, Module) ->
             ?LOG_WARN("Module ~p not found, search path: ~s",
                 Module, string:join(Dirs, ":")),
             errors:name_error_no_loc("Module ~p not found", [Module])
+    end.
+
+-spec normalize(file:filename()) -> file:filename().
+normalize(P) ->
+    case filename:nativename(P) of
+        [ $. , $/ | Rest ] -> Rest;
+        S -> S
     end.
