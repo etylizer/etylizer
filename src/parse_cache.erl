@@ -65,6 +65,7 @@ really_parse_file(Kind, File, Opts) ->
         end,
     ?LOG_DEBUG("Parsing ~s ...", File),
     RawForms = parse:parse_file_or_die(File, ParseOpts),
+    ?LOG_DEBUG("Finished parsing ~s", File),
     if  Opts#opts.dump_raw -> ?LOG_NOTE("Raw forms in ~s:~n~p", File, RawForms);
         true -> ok
     end,
