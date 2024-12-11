@@ -4,6 +4,7 @@
     modname_from_path/1,
     remove_locs/1,
     referenced_modules/1,
+    referenced_modules_via_types/1,
     referenced_variables/1
 ]).
 
@@ -23,6 +24,18 @@ remove_locs(X) ->
         end
     end,
     utils:everywhere(LocToError, X).
+
+-spec referenced_modules_via_types(ast:forms()) -> [ast:mod_name()].
+referenced_modules_via_types(Forms) ->
+    Modules = utils:everything(
+                fun(T) ->
+                        case T of
+                            {attribute, _, import, {ModuleName, _}} -> {ok, ModuleName};
+                            {ty_qref, ModuleName, _, _} -> {ok, ModuleName};
+                            _ -> error
+                        end
+                end, Forms),
+    lists:uniq(Modules).
 
 -spec referenced_modules(ast:forms()) -> [ast:mod_name()].
 referenced_modules(Forms) ->

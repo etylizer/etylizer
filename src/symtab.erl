@@ -183,23 +183,25 @@ extend_symtab_internal(Filename, Forms, RefType, Tab) ->
     case IsNew of
         false -> Tab;
         true ->
-            lists:foldl(
-                fun(Form, Tab) ->
-                    case Form of
-                        {attribute, _, spec, Name, Arity, T, _} ->
-                            Tab#tab { funs = maps:put(create_ref_tuple(RefType, Name, Arity), T, Tab#tab.funs) };
-                        {attribute, _, type, _, {Name, TyScm = {ty_scheme, TyVars, _}}} ->
-                            Arity = length(TyVars),
-                            Tab#tab { types = maps:put({ty_key, ModuleName, Name, Arity}, TyScm, Tab#tab.types) };
-                        {attribute, _, record, {RecordName, Fields}} ->
-                            RecordTy = records:record_ty_from_decl(RecordName, Fields),
-                            Tab#tab { records = maps:put(RecordName, RecordTy, Tab#tab.records) };
-                        _ ->
-                            Tab
-                    end
-                end,
-                Tab#tab { modules = maps:put(ModuleName, Filename, Tab#tab.modules) },
-                Forms)
+            NewTab =
+                lists:foldl(
+                    fun(Form, Tab) ->
+                        case Form of
+                            {attribute, _, spec, Name, Arity, T, _} ->
+                                Tab#tab { funs = maps:put(create_ref_tuple(RefType, Name, Arity), T, Tab#tab.funs) };
+                            {attribute, _, type, _, {Name, TyScm = {ty_scheme, TyVars, _}}} ->
+                                Arity = length(TyVars),
+                                Tab#tab { types = maps:put({ty_key, ModuleName, Name, Arity}, TyScm, Tab#tab.types) };
+                            {attribute, _, record, {RecordName, Fields}} ->
+                                RecordTy = records:record_ty_from_decl(RecordName, Fields),
+                                Tab#tab { records = maps:put(RecordName, RecordTy, Tab#tab.records) };
+                            _ ->
+                                Tab
+                        end
+                    end,
+                    Tab#tab { modules = maps:put(ModuleName, Filename, Tab#tab.modules) },
+                    Forms),
+            NewTab
     end.
 
 -spec extend_symtab_with_fun_env(fun_env(), t()) -> t().
@@ -211,26 +213,35 @@ create_ref_tuple(ref, Name, Arity) ->
 create_ref_tuple({qref, Module}, Name, Arity) ->
     {qref, Module, Name, Arity}.
 
+% Extends the symtab with all definitions from the given modules. If such definitions refer
+% to other modules via their type specs, such modules are added as well. (We could add only
+% the types from these modules, but for simplicity, we add everything.)
 -spec extend_symtab_with_module_list(symtab:t(), paths:search_path(), [atom()]) -> symtab:t().
 extend_symtab_with_module_list(Symtab, SearchPath, Modules) ->
     traverse_module_list(SearchPath, Symtab, Modules).
 
 -spec traverse_module_list(paths:search_path(), t(), [ast:mod_name()]) -> t().
 traverse_module_list(SearchPath, Symtab, [CurrentModule | RemainingModules]) ->
-    Entry = {_, Filename, _} = paths:find_module_path(SearchPath, CurrentModule),
-    Forms = retrieve_forms_for_source(Entry),
-    NewSymtab = extend_symtab(Filename, Forms, CurrentModule, Symtab),
-    ?LOG_DEBUG("Extended symtab with entries from ~p", CurrentModule),
-    case log:allow(trace) of
-        true ->
-            NewSymbols = symbols_for_module(CurrentModule, NewSymtab),
-            ?LOG_TRACE("New symbols from module ~p: ~s", CurrentModule,
-                pretty:render_list(fun pretty:ref/1, NewSymbols));
-        false ->
-            ok
-    end,
-    traverse_module_list(SearchPath, NewSymtab, RemainingModules);
-
+    case maps:get(CurrentModule, Symtab#tab.modules, error) of
+        error ->
+            % It's a new module
+            Entry = {_, Filename, _} = paths:find_module_path(SearchPath, CurrentModule),
+            Forms = retrieve_forms_for_source(Entry),
+            NewSymtab = extend_symtab(Filename, Forms, CurrentModule, Symtab),
+            ?LOG_DEBUG("Extended symtab with entries from ~p", CurrentModule),
+            case log:allow(trace) of
+                true ->
+                    NewSymbols = symbols_for_module(CurrentModule, NewSymtab),
+                    ?LOG_TRACE("New symbols from module ~p: ~s", CurrentModule,
+                        pretty:render_list(fun pretty:ref/1, NewSymbols));
+                false ->
+                    ok
+            end,
+            AdditionalModules = ast_utils:referenced_modules_via_types(Forms),
+            ?LOG_DEBUG("Additional modukes for ~w: ~200p", CurrentModule, AdditionalModules),
+            traverse_module_list(SearchPath, NewSymtab, RemainingModules ++ AdditionalModules);
+        _ -> traverse_module_list(SearchPath, Symtab, RemainingModules)
+    end;
 traverse_module_list(_, Symtab, []) ->
     Symtab.
 
