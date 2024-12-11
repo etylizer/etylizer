@@ -28,7 +28,7 @@ cleanup() ->
 
 -spec parse(file_kind(), file:filename()) -> [ast:form()].
 parse(Kind, Path) ->
-    PathNorm = filename:nativename(Path),
+    PathNorm = utils:normalize_path(Path),
     Hash =
         case utils:hash_file(PathNorm) of
             {error, Reason} ->

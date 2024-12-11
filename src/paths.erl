@@ -8,8 +8,7 @@
     index_file_name/1,
     find_module_path/2,
     rebar_lock_file/1,
-    rebar_config_from_lock_file/1,
-    normalize/1
+    rebar_config_from_lock_file/1
 ]).
 -export_type([search_path_entry/0, search_path/0]).
 
@@ -177,7 +176,7 @@ generate_input_file_list(Opts) ->
                     Opts#opts.files,
                     Paths)
         end,
-    lists:map(fun normalize/1, L).
+    lists:map(fun utils:normalize_path/1, L).
 
 -spec add_dir_to_list(file:filename()) -> [file:filename()].
 add_dir_to_list(Path) ->
@@ -244,7 +243,7 @@ really_find_module_path(SearchPath, Module) ->
       end, SearchPath),
     case SearchResult of
         {value, {Kind, SrcPath, Includes}} ->
-            File = normalize(filename:join(SrcPath, Filename)),
+            File = utils:normalize_path(filename:join(SrcPath, Filename)),
             ?LOG_DEBUG("Resolved module ~p to file ~p", Module, File),
             {Kind, File, Includes};
         false ->
@@ -254,9 +253,3 @@ really_find_module_path(SearchPath, Module) ->
             errors:name_error_no_loc("Module ~p not found", [Module])
     end.
 
--spec normalize(file:filename()) -> file:filename().
-normalize(P) ->
-    case filename:nativename(P) of
-        [ $. , $/ | Rest ] -> Rest;
-        S -> S
-    end.

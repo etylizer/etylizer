@@ -49,7 +49,7 @@ all_sources({Srcs, _}) -> sets:to_list(Srcs).
 % Given a filename F, find all files that use something from F.
 -spec find_dependent_files(file:filename(), dep_graph()) -> [file:filename()].
 find_dependent_files(Path, {_, DepGraph}) ->
-    PathNorm = paths:normalize(Path),
+    PathNorm = utils:normalize_path(Path),
     case maps:find(PathNorm, DepGraph) of
         error -> [];
         {ok, Files} -> sets:to_list(Files)
@@ -57,8 +57,8 @@ find_dependent_files(Path, {_, DepGraph}) ->
 
 -spec add_dependency(file:filename(), file:filename(), dep_graph()) -> dep_graph().
 add_dependency(Path, Dep, {Srcs, DepGraph}) ->
-    PathNorm = paths:normalize(Path),
-    DepNorm = paths:normalize(Dep),
+    PathNorm = utils:normalize_path(Path),
+    DepNorm = utils:normalize_path(Dep),
     Deps =
         case maps:find(PathNorm, DepGraph) of
             error -> sets:new();
@@ -70,7 +70,7 @@ add_dependency(Path, Dep, {Srcs, DepGraph}) ->
 
 -spec add_file(file:filename(), dep_graph()) -> dep_graph().
 add_file(Path, {Srcs, DepGraph}) ->
-    PathNorm = paths:normalize(Path),
+    PathNorm = utils:normalize_path(Path),
     NewSrcs = sets:add_element(PathNorm, Srcs),
     {NewSrcs, DepGraph}.
 
@@ -105,7 +105,7 @@ find_source_for_module(Module, SearchPath) ->
     [file:filename()], paths:search_path(), fun((file:filename()) -> [ast:forms()]))
     -> dep_graph().
 build_dep_graph(Files, SearchPath, ParseFun) ->
-    build_dep_graph(lists:map(fun paths:normalize/1, Files),
+    build_dep_graph(lists:map(fun utils:normalize_path/1, Files),
         SearchPath, ParseFun, new(), sets:new()).
 
 -spec build_dep_graph(
@@ -129,7 +129,7 @@ build_dep_graph(Worklist, SearchPath, ParseFun, DepGraph, AlreadyHandled) ->
             ),
             ?LOG_INFO("Done adding ~p to dependency graph", File),
             build_dep_graph(
-                Rest ++ lists:map(fun paths:normalize/1, sets:to_list(NewFiles)),
+                Rest ++ lists:map(fun utils:normalize_path/1, sets:to_list(NewFiles)),
                 SearchPath, ParseFun,
                 NewDepGraph, NewAlreadyHandled)
     end.
