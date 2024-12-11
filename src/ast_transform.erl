@@ -5,7 +5,7 @@
 ]).
 
 -export_type([trans_mode/0]).
-    
+
 -compile([nowarn_shadow_vars]).
 
 -include("log.hrl").
@@ -108,8 +108,13 @@ trans_form(Ctx, Form, Mode) ->
                 {attribute, Loc, callback, Name, Arity, trans_spec_ty(Ctx, Loc, FunTys),
                  without_mod};
             {attribute, Anno, record, {Name, Fields}} ->
-                NewFields = trans_record_fields(Ctx, varenv:empty("type variable"), Fields),
-                NewForm = {attribute, to_loc(Ctx, Anno), record, {Name, NewFields}},
+                % FIXME: this is a dirty hack to work around #152 (support for recursive record
+                % types). We temporarly register the name of the record with an empty record
+                % type, so that fields of the record can refer to the record itself.
+                EmptyRecordTy = {Name, []},
+                TmpCtx = Ctx#ctx { records = maps:put(Name, EmptyRecordTy, Ctx#ctx.records) },
+                NewFields = trans_record_fields(TmpCtx, varenv:empty("type variable"), Fields),
+                NewForm = {attribute, to_loc(TmpCtx, Anno), record, {Name, NewFields}},
                 RecordTy = records:record_ty_from_decl(Name, NewFields),
                 NewCtx = Ctx#ctx { records = maps:put(Name, RecordTy, Ctx#ctx.records) },
                 ?LOG_TRACE("Registered new record type: ~200p", RecordTy),
