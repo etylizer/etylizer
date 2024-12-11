@@ -10,7 +10,7 @@
 -ifdef(TEST).
 -export([perform_sanity_check/3]).
 -endif.
-    
+
 -include("log.hrl").
 -include("ety_main.hrl").
 
@@ -44,7 +44,7 @@ perform_type_checks(SearchPath, SourceList, DepGraph, Opts) ->
             ?LOG_NOTE("Need to check ~p of ~p files: ~p",
                 length(CheckList), length(SourceList), CheckList)
     end,
-    NewIndex2 = traverse_and_check(CheckList, symtab:std_symtab(), SearchPath, Opts, NewIndex1),
+    NewIndex2 = traverse_and_check(CheckList, symtab:std_symtab(SearchPath), SearchPath, Opts, NewIndex1),
     cm_index:save_index(IndexFile, NewIndex2),
     CheckList.
 

@@ -18,15 +18,11 @@
     lookup_fun/3,
     find_fun/2,
     lookup_op/4,
-    %find_op/3,
     lookup_ty/3,
-    %find_ty/2,
     lookup_record/3,
-    %find_record/2,
-    std_symtab/0,
+    std_symtab/1,
     extend_symtab/3,
     extend_symtab_with_fun_env/2,
-    %extend_symtab/4,
     empty/0,
     extend_symtab_with_module_list/3,
     dump_symtab/2
@@ -139,8 +135,9 @@ symbols_for_module(Mod, Tab) ->
 -spec empty() -> t().
 empty() -> #tab { funs = #{}, ops = #{}, types = #{}, records = #{}, modules = #{} }.
 
--spec std_symtab() -> t().
-std_symtab() ->
+-spec std_symtab(paths:search_path()) -> t().
+std_symtab(SearchPath) ->
+    ?LOG_NOTE("Building symtab for standard library ..."),
     Funs =
         lists:foldl(fun({Name, Arity, T}, Map) -> maps:put({qref, erlang, Name, Arity}, T, Map) end,
                     #{},
@@ -149,7 +146,10 @@ std_symtab() ->
         lists:foldl(fun({Name, Arity, T}, Map) -> maps:put({Name, Arity}, T, Map) end,
                     #{},
                     stdtypes:builtin_ops()),
-    #tab { funs = Funs, ops = Ops, types = #{}, records = #{}, modules = #{} }.
+    Tab = #tab { funs = Funs, ops = Ops, types = #{}, records = #{}, modules = #{} },
+    ExtTab = extend_symtab_with_module_list(Tab, SearchPath, [erlang]),
+    ?LOG_NOTE("Done building symtab for standard library"),
+    ExtTab.
 
 -type ref() :: ref | {qref, ModuleName::atom()}.
 

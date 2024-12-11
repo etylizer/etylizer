@@ -4,6 +4,7 @@
 
 -include_lib("eunit/include/eunit.hrl").
 -include("log.hrl").
+-include("ety_main.hrl").
 
 -spec check_ok_fun(string(), symtab:t(), ast:fun_decl(), ast:ty_scheme()) -> ok.
 check_ok_fun(Filename, Tab, Decl = {function, L, Name, Arity, _}, Ty) ->
@@ -83,7 +84,8 @@ has_intersection({ty_scheme, _, _}) -> false.
 check_decls_in_file(F, What, NoInfer) ->
   RawForms = parse:parse_file_or_die(F),
   Forms = ast_transform:trans(F, RawForms),
-  Tab0 = symtab:std_symtab(),
+  SearchPath = paths:compute_search_path(#opts{}),
+  Tab0 = symtab:std_symtab(SearchPath),
   Tab = symtab:extend_symtab(F, Forms, Tab0),
 
   CollectDecls = fun(Decl, TestCases) ->
@@ -170,25 +172,30 @@ simple_test_() ->
   OnlyFiles = [],
   IgnoreFiles = [],
 
-  case file:list_dir(TopDir) of
-    {ok, Entries} ->
-        ErlFiles =
-          lists:filtermap(fun(Entry) ->
-            case filename:extension(Entry) =:= ".erl" andalso
-              (OnlyFiles =:= [] orelse lists:member(Entry, OnlyFiles)) andalso
-              (not lists:member(Entry, IgnoreFiles))
-            of
-              true -> {true, TopDir ++ "/" ++ Entry};
-              false -> false
-            end
-          end, Entries),
-        case ErlFiles of
-          [] -> erlang:error("No test files found in " ++ TopDir);
-          _ -> ok
-        end,
-        check_decls_in_files(ErlFiles,
-                       {exclude, sets:from_list(WhatNot)},
-                       %{include, sets:from_list(What)},
-                       sets:from_list(NoInfer));
-    _ -> erlang:error("Failed to list test directory " ++ TopDir)
+  parse_cache:init(#opts{}),
+  try
+    case file:list_dir(TopDir) of
+      {ok, Entries} ->
+          ErlFiles =
+            lists:filtermap(fun(Entry) ->
+              case filename:extension(Entry) =:= ".erl" andalso
+                (OnlyFiles =:= [] orelse lists:member(Entry, OnlyFiles)) andalso
+                (not lists:member(Entry, IgnoreFiles))
+              of
+                true -> {true, TopDir ++ "/" ++ Entry};
+                false -> false
+              end
+            end, Entries),
+          case ErlFiles of
+            [] -> erlang:error("No test files found in " ++ TopDir);
+            _ -> ok
+          end,
+          check_decls_in_files(ErlFiles,
+                        {exclude, sets:from_list(WhatNot)},
+                        %{include, sets:from_list(What)},
+                        sets:from_list(NoInfer));
+      _ -> erlang:error("Failed to list test directory " ++ TopDir)
+    end
+  after
+    parse_cache:cleanup()
   end.
