@@ -4,7 +4,7 @@
 -include("parse.hrl").
 -include("ety_main.hrl").
 
--export([init/1, cleanup/0, parse/2]).
+-export([init/1, cleanup/0, parse/2, with_cache/2]).
 -export_type([file_kind/0]).
 
 -define(TABLE, forms_table).
@@ -25,6 +25,14 @@ cleanup() ->
     ok.
 
 -type file_kind() :: intern | {extern, [file:filename()]}.
+
+-spec with_cache(#opts{}, fun(() -> T)) -> T.
+with_cache(Opts, Fun) ->
+  parse_cache:init(Opts),
+  try Fun()
+  after
+    parse_cache:cleanup()
+  end.
 
 -spec parse(file_kind(), file:filename()) -> [ast:form()].
 parse(Kind, Path) ->

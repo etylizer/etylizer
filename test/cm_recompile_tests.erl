@@ -180,6 +180,9 @@ file_changes_test_() ->
         #{1 => ["bar.erl", "foo.erl", "main.erl"], 2 => ["main.erl", "foo.erl"]})),
      ?_test(test_recompile_dont_tycheck("cycle",
         #{1 => ["m1.erl", "m2.erl", "main.erl"], 2 => ["m1.erl", "m2.erl"]})),
+     ?_test(test_recompile("transitive-reference",
+        #{1 => ["main.erl", "m2.erl", "m3.erl", "m4.erl"],
+          2 => ["main.erl", "m2.erl", "m3.erl", "m4.erl"]})),
      ?_test(test_rebar_changes())
     ].
 

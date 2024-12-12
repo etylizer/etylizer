@@ -152,8 +152,7 @@ doWork(Opts) ->
                     ?LOG_NOTE("Entry points: ~p, now building dependency graph", SourceList),
                     G = cm_depgraph:build_dep_graph(
                         SourceList,
-                        SearchPath,
-                        fun(P) -> parse_cache:parse(intern, P) end),
+                        SearchPath),
                     ?LOG_DEBUG("Reverse dependency graph: ~p", cm_depgraph:pretty_depgraph(G)),
                     G
             end,

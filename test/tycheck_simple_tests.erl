@@ -172,30 +172,29 @@ simple_test_() ->
   OnlyFiles = [],
   IgnoreFiles = [],
 
-  parse_cache:init(#opts{}),
-  try
-    case file:list_dir(TopDir) of
-      {ok, Entries} ->
-          ErlFiles =
-            lists:filtermap(fun(Entry) ->
-              case filename:extension(Entry) =:= ".erl" andalso
-                (OnlyFiles =:= [] orelse lists:member(Entry, OnlyFiles)) andalso
-                (not lists:member(Entry, IgnoreFiles))
-              of
-                true -> {true, TopDir ++ "/" ++ Entry};
-                false -> false
-              end
-            end, Entries),
-          case ErlFiles of
-            [] -> erlang:error("No test files found in " ++ TopDir);
-            _ -> ok
-          end,
-          check_decls_in_files(ErlFiles,
-                        {exclude, sets:from_list(WhatNot)},
-                        %{include, sets:from_list(What)},
-                        sets:from_list(NoInfer));
-      _ -> erlang:error("Failed to list test directory " ++ TopDir)
-    end
-  after
-    parse_cache:cleanup()
-  end.
+  parse_cache:with_cache(
+    #opts{},
+    fun() ->
+      case file:list_dir(TopDir) of
+        {ok, Entries} ->
+            ErlFiles =
+              lists:filtermap(fun(Entry) ->
+                case filename:extension(Entry) =:= ".erl" andalso
+                  (OnlyFiles =:= [] orelse lists:member(Entry, OnlyFiles)) andalso
+                  (not lists:member(Entry, IgnoreFiles))
+                of
+                  true -> {true, TopDir ++ "/" ++ Entry};
+                  false -> false
+                end
+              end, Entries),
+            case ErlFiles of
+              [] -> erlang:error("No test files found in " ++ TopDir);
+              _ -> ok
+            end,
+            check_decls_in_files(ErlFiles,
+                          {exclude, sets:from_list(WhatNot)},
+                          %{include, sets:from_list(What)},
+                          sets:from_list(NoInfer));
+        _ -> erlang:error("Failed to list test directory " ++ TopDir)
+      end
+    end).
