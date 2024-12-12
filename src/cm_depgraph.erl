@@ -51,7 +51,7 @@ pretty_depgraph({Srcs, DepFiles, _}) ->
 all_sources({Srcs, _, _}) -> sets:to_list(Srcs).
 
 % Checks whether M1 is a dependency of M2
--spec has_rev_dep(atom(), atom(), dep_graph) -> boolean().
+-spec has_rev_dep(atom(), atom(), dep_graph()) -> boolean().
 has_rev_dep(M1, M2, {_, _, DepMod}) ->
     case maps:get(M1, DepMod, not_found) of
         not_found -> false;

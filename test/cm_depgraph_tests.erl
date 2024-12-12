@@ -8,10 +8,11 @@ add_dependency_test() ->
     TestGraph = cm_depgraph:add_dependency("test.erl", "foo.erl", cm_depgraph:new()),
     ResultGraph = cm_depgraph:add_dependency("test.erl", "bar.erl", TestGraph),
     AllFiles = ["test.erl", "foo.erl", "bar.erl"],
-    ExpectedGraph = {sets:from_list(AllFiles),
-        #{"test.erl" => sets:from_list(["bar.erl", "foo.erl"])},
-        #{test => sets:from_list([bar, foo])}},
-    ?assertEqual(cm_depgraph:pretty_depgraph(ExpectedGraph),
+    ExpectedGraph = {
+        sets:to_list(sets:from_list(AllFiles)),
+        #{"test.erl" => sets:to_list(sets:from_list(["bar.erl", "foo.erl"]))}
+    },
+    ?assertEqual(ExpectedGraph,
         cm_depgraph:pretty_depgraph(ResultGraph)).
 
 update_dep_graph_test() ->
