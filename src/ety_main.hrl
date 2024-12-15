@@ -18,6 +18,7 @@
                load_start = [] :: [string()],
                load_end = [] :: [string()],
                files = [] :: [string()],
+               type_overlay = [] :: string(),
                mode = prod_mode :: opts_mode() % only used internally
             }).
 
