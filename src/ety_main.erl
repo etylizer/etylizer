@@ -6,7 +6,7 @@
     doWork/1
 ]).
 -endif.
-    
+
 
 % @doc This is the main module of ety. It parses commandline arguments and orchestrates
 % everything.
@@ -152,9 +152,8 @@ doWork(Opts) ->
                     ?LOG_NOTE("Entry points: ~p, now building dependency graph", SourceList),
                     G = cm_depgraph:build_dep_graph(
                         SourceList,
-                        SearchPath,
-                        fun(P) -> parse_cache:parse(intern, P) end),
-                    ?LOG_DEBUG("Dependency graph: ~p", cm_depgraph:pretty_depgraph(G)),
+                        SearchPath),
+                    ?LOG_DEBUG("Reverse dependency graph: ~p", cm_depgraph:pretty_depgraph(G)),
                     G
             end,
         ?LOG_NOTE("Performing type checking"),

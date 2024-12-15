@@ -5,23 +5,24 @@
 -include_lib("kernel/include/file.hrl").
 
 -export([
-    quit/3, quit/2, 
-    everywhere/2, everything/2,  
+    quit/3, quit/2,
+    everywhere/2, everything/2,
     error/2,
     is_string/1, is_char/1,
     sformat/2, sformat/3, sformat/4,  sformat/6, sformat/5, sformat/7, sformat1/2,
     if_true/2,
     file_get_lines/1, set_add_many/2, assert_no_error/1,
-    replicate/2, 
+    replicate/2,
     string_ends_with/2, shorten/2,
-    map_flip/2, foreach/2, concat_map/2, 
+    map_flip/2, foreach/2, concat_map/2,
     with_index/1, with_index/2,
     mkdirs/1, hash_sha1/1, hash_file/1,
     with_default/2, compare/2,
-    timing/1, 
-    single/1, 
+    timing/1,
+    single/1,
     assocs_find/2, assocs_find_index/2,
-    timeout/2, is_same_file/2, file_exists/1
+    timeout/2, is_same_file/2, file_exists/1,
+    normalize_path/1
 ]).
 
 % quit exits the erlang program with the given exit code. No stack trace is produced,
@@ -294,3 +295,9 @@ file_exists(FilePath) ->
         _ -> false
     end.
 
+-spec normalize_path(file:filename()) -> file:filename().
+normalize_path(P) ->
+    case filename:nativename(P) of
+        [ $. , $/ | Rest ] -> Rest;
+        S -> S
+    end.

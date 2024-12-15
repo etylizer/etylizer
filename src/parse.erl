@@ -7,9 +7,9 @@
 -include("parse.hrl").
 
 -export([
-    parse_file/2, 
-    parse_file_or_die/1, 
-    parse_file_or_die/2, 
+    parse_file/2,
+    parse_file_or_die/1,
+    parse_file_or_die/2,
     parse_transform/2
 ]).
 
@@ -34,7 +34,7 @@ parse_file(Path, Opts) ->
         Ext == ".erl" ->
             NoExt = filename:rootname(Path),
             CompileOpts =
-                [{parse_transform,parse},strong_validation, report] ++
+                [{parse_transform,parse},basic_validation, report] ++
                 (if Opts#parse_opts.verbose -> [verbose]; true -> [] end) ++
                 lists:map(fun (X) -> {i,X} end, Opts#parse_opts.includes) ++
                 lists:map(fun ({Name, Val}) ->
