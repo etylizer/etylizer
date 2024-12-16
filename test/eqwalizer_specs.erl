@@ -13,6 +13,13 @@
 -compile(warn_missing_spec).
 -compile([export_all, nowarn_export_all]).
 
+-ifdef(VERSION_25).
+-type dynamic() :: term().
+-elif(VERSION_26).
+-type dynamic() :: term().
+-endif.
+
+
 % -include_lib("public_key/include/public_key.hrl").
 
 %% -------- application --------
