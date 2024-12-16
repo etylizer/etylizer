@@ -331,7 +331,7 @@ get_bool(_Key, []) ->
       List :: [term()].
 
 get_keys(Ps) ->
-    sets:to_list(get_keys(Ps, sets:new())).
+    sets:to_list(get_keys(Ps, sets:new([{version, 2}]))).
 
 get_keys([P | Ps], Keys) ->
     if is_atom(P) ->

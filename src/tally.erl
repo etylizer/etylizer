@@ -15,7 +15,7 @@
 -type tally_res() :: {error, [{error, string()}]} | nonempty_list(subst:t()).
 
 -spec tally(symtab:t(), constr:subty_constrs()) -> tally_res().
-tally(SymTab, Constraints) -> tally(SymTab, Constraints, sets:new()) .
+tally(SymTab, Constraints) -> tally(SymTab, Constraints, sets:new([{version, 2}])) .
 
 -spec is_satisfiable(symtab:t(), constr:subty_constrs(), sets:set(ast:ty_varname())) ->
   {false, [{error, string()}]} | {true, subst:t()}. % The substitution is just returned for debugging purpose.
@@ -42,7 +42,7 @@ tally(SymTab, Constraints, FixedVars) ->
   ),
   FixedTallyTyvars =
     [ast_lib:ast_to_erlang_ty_var({var, Var}) || Var <- lists:sort(sets:to_list(FixedVars))],
-  InternalResult = etally:tally(InternalConstraints, sets:from_list(FixedTallyTyvars)),
+  InternalResult = etally:tally(InternalConstraints, sets:from_list(FixedTallyTyvars, [{version, 2}])),
  %io:format(user, "Got Constraints ~n~p~n~p~n", [InternalConstraints, InternalResult]),
 
   Free = tyutils:free_in_subty_constrs(Constraints),

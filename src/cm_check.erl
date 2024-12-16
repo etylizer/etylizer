@@ -88,8 +88,8 @@ traverse_and_check([CurrentFile | RemainingFiles], Symtab, SearchPath, Opts, Ind
     Forms = parse_cache:parse(intern, CurrentFile),
     ExpandedSymtab = symtab:extend_symtab_with_module_list(Symtab, SearchPath, ast_utils:referenced_modules(Forms)),
 
-    Only = sets:from_list(Opts#opts.type_check_only),
-    Ignore = sets:from_list(Opts#opts.type_check_ignore),
+    Only = sets:from_list(Opts#opts.type_check_only, [{version, 2}]),
+    Ignore = sets:from_list(Opts#opts.type_check_ignore,[{version, 2}]),
     Sanity = perform_sanity_check(CurrentFile, Forms, Opts#opts.sanity),
     Ctx = typing:new_ctx(ExpandedSymtab, Sanity),
     case Opts#opts.no_type_checking of

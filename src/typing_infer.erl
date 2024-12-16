@@ -109,8 +109,8 @@ more_general(Loc, Ts1, Ts2, Tab) ->
     {Mono1, _, Next} = typing_common:mono_ty(Loc, Ts1, 0),
     % Arbitrary instantiation of Ts2, the type variables A2 are fix
     {Mono2, A2, _} = typing_common:mono_ty(Loc, Ts2, Next),
-    C = {scsubty, sets:new(), Mono1, Mono2},
-    {SatisfyRes, Delta} = utils:timing(fun() -> tally:is_satisfiable(Tab, sets:from_list([C]), A2) end),
+    C = {scsubty, sets:new([{version, 2}]), Mono1, Mono2},
+    {SatisfyRes, Delta} = utils:timing(fun() -> tally:is_satisfiable(Tab, sets:from_list([C], [{version, 2}]), A2) end),
     ?LOG_DEBUG("Tally time: ~pms", Delta),
     Result =
         case SatisfyRes of
@@ -143,4 +143,4 @@ ftv(T) ->
                   end
           end,
           T),
-    sets:from_list(L).
+    sets:from_list(L, [{version, 2}]).

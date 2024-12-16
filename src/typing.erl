@@ -52,9 +52,9 @@ check_forms(Ctx, FileName, Forms, Only, Ignore) ->
     % Make sure that Only does not contain an unknown function
     {WithModuleName, WithArity, JustNames} = lists:unzip3(KnownFuns),
     Unknowns = sets:subtract(Only,
-        sets:union([sets:from_list(WithModuleName),
-                        sets:from_list(WithArity),
-                        sets:from_list(JustNames)])),
+        sets:union([sets:from_list(WithModuleName, [{version, 2}]),
+                        sets:from_list(WithArity, [{version, 2}]),
+                        sets:from_list(JustNames, [{version, 2}])])),
     case sets:is_empty(Unknowns) of
         true -> ok;
         false ->
