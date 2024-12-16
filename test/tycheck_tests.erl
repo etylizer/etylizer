@@ -11,7 +11,8 @@ run_typechecker(File) ->
     Opts = #opts{
         files = [File],
         project_root = filename:dirname(File),
-        mode = test_mode
+        mode = test_mode,
+        force = true
     },
     try
         ety_main:doWork(Opts),

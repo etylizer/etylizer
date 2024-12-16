@@ -5,8 +5,7 @@
 -export([
     check_simp_constrs/4,
     check_simp_constrs_return_unmatched/4,
-    solve_simp_constrs/3,
-    search_failing_prefix/3
+    solve_simp_constrs/3
 ]).
 
 -export_type([
@@ -14,6 +13,10 @@
     error_kind/0
 ]).
 
+-ifdef(TEST).
+-export([search_failing_prefix/3]).
+-endif.
+  
 -type error_kind() :: constr_error_locs:constr_error_kind().
 -type error() :: {error_kind(), ast:loc(), string()}.
 
@@ -59,8 +62,8 @@ check_simp_constrs_return_unmatched(Tab, FixedTyvars, Ds, What) ->
     ok | {error, error() | none}.
 check_simp_constrs(Tab, FixedTyvars, Ds, What) ->
     SubtyConstrs = constr_collect:collect_constrs_no_matching_cond(Ds),
-    ?LOG_DEBUG("Checking constraints for satisfiability to type check ~s:~n~s",
-        What, pretty:render_constr(SubtyConstrs)),
+    ?LOG_DEBUG("Checking constraints for satisfiability to type check ~s:~n~s~nFixed: ~s",
+        What, pretty:render_constr(SubtyConstrs), pretty:render_set(fun pretty:atom/1, FixedTyvars)),
     case is_satisfiable(Tab, SubtyConstrs, FixedTyvars, "satisfiability check") of
         true ->
             % check for redundant branches
@@ -74,14 +77,16 @@ check_simp_constrs(Tab, FixedTyvars, Ds, What) ->
                             All = sets:union(UnmatchedConstrs, SubtyConstrs),
                             case is_satisfiable(Tab, All, FixedTyvars, "redundancy check") of
                                 true ->
-                                    ?LOG_DEBUG("Branch at ~s is redundant. Constraints: ~s",
+                                    ?LOG_DEBUG("Branch at ~s is redundant. Constraints that were added to the constraint above: ~s~nFixed: ~200p",
                                         ast:format_loc(Loc),
-                                        pretty:render_constr(UnmatchedConstrs)),
+                                        pretty:render_constr(UnmatchedConstrs),
+                                        sets:to_list(FixedTyvars)),
                                     {error, {redundant_branch, Loc, ""}};
                                 false ->
-                                    ?LOG_DEBUG("Branch at ~s is not redundant. Constraints: ~s",
+                                    ?LOG_DEBUG("Branch at ~s is not redundant. Constraints that were added to the constraint above: ~s~nFixed: ~200p",
                                         ast:format_loc(Loc),
-                                        pretty:render_constr(UnmatchedConstrs)),
+                                        pretty:render_constr(UnmatchedConstrs),
+                                        sets:to_list(FixedTyvars)),
                                     ok
                             end;
                         _ -> Acc
@@ -93,7 +98,7 @@ check_simp_constrs(Tab, FixedTyvars, Ds, What) ->
             Blocks = constr_error_locs:simp_constrs_to_blocks(Ds),
             ?LOG_DEBUG("Constraints are not satisfiable, now locating source of errors. Blocks:~n~s",
                 pretty:render_list(fun pretty:constr_block/1, Blocks)),
-            Timeout = 2000,
+            Timeout = 4000,
             case utils:timeout(Timeout, fun () -> locate_tyerror(Tab, FixedTyvars, Blocks) end) of
                 {ok, Res} -> Res;
                 timeout ->

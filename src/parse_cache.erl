@@ -4,7 +4,7 @@
 -include("parse.hrl").
 -include("ety_main.hrl").
 
--export([init/1, cleanup/0, parse/2]).
+-export([init/1, cleanup/0, parse/2, with_cache/2]).
 -export_type([file_kind/0]).
 
 -define(TABLE, forms_table).
@@ -26,9 +26,17 @@ cleanup() ->
 
 -type file_kind() :: intern | {extern, [file:filename()]}.
 
+-spec with_cache(#opts{}, fun(() -> T)) -> T.
+with_cache(Opts, Fun) ->
+  parse_cache:init(Opts),
+  try Fun()
+  after
+    parse_cache:cleanup()
+  end.
+
 -spec parse(file_kind(), file:filename()) -> [ast:form()].
 parse(Kind, Path) ->
-    PathNorm = filename:nativename(Path),
+    PathNorm = utils:normalize_path(Path),
     Hash =
         case utils:hash_file(PathNorm) of
             {error, Reason} ->
@@ -65,6 +73,7 @@ really_parse_file(Kind, File, Opts) ->
         end,
     ?LOG_DEBUG("Parsing ~s ...", File),
     RawForms = parse:parse_file_or_die(File, ParseOpts),
+    ?LOG_DEBUG("Finished parsing ~s", File),
     if  Opts#opts.dump_raw -> ?LOG_NOTE("Raw forms in ~s:~n~p", File, RawForms);
         true -> ok
     end,
@@ -91,7 +100,7 @@ really_parse_file(Kind, File, Opts) ->
                                 Idx, File)
                     end
                 end,
-                utils:lists_enumerate(1, RawForms));
+                lists:enumerate(1, RawForms));
        true -> ok
     end,
 

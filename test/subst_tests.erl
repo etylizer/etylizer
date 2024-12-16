@@ -116,3 +116,67 @@ tuple_change_category_test_() ->
       }
     ]
   ].
+
+clean_test() ->
+    ecache:reset_all(),
+
+    E = stdtypes:tnone(),
+
+    % a is in covariant position
+    A = stdtypes:tvar('a'),
+    B = stdtypes:tvar('b'),
+    E = subst:clean(A, sets:new()),
+
+    % intersection: covariant
+    E = subst:clean(stdtypes:tinter(A, B), sets:new()),
+
+    % union: covariant
+    E = subst:clean(stdtypes:tunion(A, B), sets:new()),
+
+    % negation: flip
+    E = subst:clean(stdtypes:tnegate(A), sets:new()),
+
+    % function type flips argument variable position
+    Arr = stdtypes:tfun1(stdtypes:tany(), stdtypes:tnone()),
+    Arr = subst:clean(stdtypes:tfun1(A, B), sets:new()),
+
+    % function double flip
+    Arr2 = stdtypes:tfun1(stdtypes:tfun1(stdtypes:tnone(), stdtypes:tany()), stdtypes:tnone()),
+    Arr2 = subst:clean(stdtypes:tfun1(stdtypes:tfun1(A, B), stdtypes:tnone()), sets:new()),
+
+    ok.
+
+clean_negate_var_test() ->
+    ecache:reset_all(),
+    A = stdtypes:tvar('a'),
+    E = stdtypes:tnone(),
+
+    % negation is covariant position
+    E = subst:clean(stdtypes:tnegate(A), sets:new()),
+    % test nnf
+    E = subst:clean(stdtypes:tnegate(stdtypes:tunion(A, stdtypes:tnegate(stdtypes:tatom()))), sets:new()).
+
+clean_tuples_test() ->
+    ecache:reset_all(),
+
+    A = stdtypes:tvar('a'),
+    E = stdtypes:tnone(),
+    T = stdtypes:tany(),
+
+    % clean((int, a)) = (int, Bottom) = Bottom
+    Ty1 = subst:clean(stdtypes:ttuple2(stdtypes:tint(), A), sets:new()),
+    Ty1 = E,
+
+    % clean(!(int, a)) = !(int, Top)
+    Ty2 = subst:clean(stdtypes:tnegate(stdtypes:ttuple2(stdtypes:tint(), A)), sets:new()),
+    Ty2 = stdtypes:tnegate(stdtypes:ttuple2(stdtypes:tint(), T)),
+
+    % clean(!(int, !a)) = !(int, !Empty) = !(int, Top)
+    Ty3 = subst:clean(stdtypes:tnegate(stdtypes:ttuple2(stdtypes:tint(), stdtypes:tnegate(A))), sets:new()),
+    Ty3 = stdtypes:tnegate(stdtypes:ttuple2(stdtypes:tint(), T)),
+
+    % clean(!(int, !(int, a))) = !(int, !(int, Bottom)) = !(int, Top) = !(int, Top)
+    Ty4 = subst:clean(stdtypes:tnegate(stdtypes:ttuple2(stdtypes:tint(), stdtypes:tnegate(stdtypes:ttuple2(stdtypes:tint(), A)))), sets:new()),
+    Ty4 = stdtypes:tnegate(stdtypes:ttuple2(stdtypes:tint(), T)),
+
+    ok.

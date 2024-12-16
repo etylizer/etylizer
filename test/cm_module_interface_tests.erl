@@ -74,7 +74,7 @@ verify_does_not_contain_function(FunctionName, FunctionArity, Forms) ->
     Result = find_function_spec(FunctionName, FunctionArity, Forms),
     true = Result == [].
 
--spec find_type_definition(atom(), integer(), ast:forms()) -> ast:type_decl().
+-spec find_type_definition(atom(), integer(), ast:forms()) -> any(). %TODO return type should be: ast:fun_spec()?
 find_type_definition(TypeName, TypeArity, Forms) ->
     utils:everything(
       fun(T) ->
@@ -86,7 +86,7 @@ find_type_definition(TypeName, TypeArity, Forms) ->
               end
       end, Forms).
 
--spec find_function_spec(atom(), integer(), ast:forms()) -> ast:fun_spec().
+-spec find_function_spec(atom(), integer(), ast:forms()) -> any(). %TODO return type should be: ast:fun_spec()?
 find_function_spec(FunctionName, FunctionArity, Forms) ->
     utils:everything(
       fun(T) ->

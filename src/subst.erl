@@ -12,11 +12,19 @@
 -export([
     apply/2,
     apply/3,
-    domain/1,
     from_list/1,
+    empty/0,
+    extend/3,
     mk_tally_subst/2,
     base_subst/1
 ]).
+
+-ifdef(TEST).
+-export([
+    clean/2   
+]).
+-endif.
+
 
 -type base_subst() :: #{ ast:ty_varname() => ast:ty() }.
 
@@ -27,10 +35,6 @@
 -spec base_subst(t()) -> base_subst().
 base_subst({tally_subst, S, _}) -> S;
 base_subst(S) -> S.
-
--spec domain(t()) -> [ast:ty_varname()].
-domain({tally_subst, S, _}) -> domain(S);
-domain(S) -> maps:keys(S).
 
 -spec clean(ast:ty(), sets:set(ast:ty_varname())) -> ast:ty().
 clean(T, Fixed) ->
@@ -103,8 +107,17 @@ apply_base(S, T) ->
 -spec apply_list(base_subst(), [ast:ty()]) -> [ast:ty()].
 apply_list(S, L) -> lists:map(fun(T) -> apply_base(S, T) end, L).
 
+-spec extend(t(), ast:ty_varname(), ast:ty()) -> t().
+extend({tally_subst, BaseSubst, Fixed}, Alpha, T) ->
+    {tally_subst, extend(BaseSubst, Alpha, T), Fixed};
+extend(BaseSubst, Alpha, T) ->
+    maps:put(Alpha, T, BaseSubst).
+
 -spec from_list([{ast:ty_varname(), ast:ty()}]) -> t().
 from_list(L) -> maps:from_list(L).
+
+-spec empty() -> t().
+empty() -> #{}.
 
 -spec mk_tally_subst(sets:set(ast:ty_varname()), base_subst()) -> t().
 mk_tally_subst(Fixed, Base) -> {tally_subst, Base, Fixed}.
@@ -175,74 +188,3 @@ collect_vars({var, Name}, CPos, Pos, Fix) ->
 collect_vars(Ty, _, _, _) ->
     logger:error("Unhandled collect vars branch: ~p", [Ty]),
     throw({todo_collect_vars, Ty}).
-
-
--ifdef(TEST).
--include_lib("eunit/include/eunit.hrl").
-
-clean_test() ->
-    ecache:reset_all(),
-
-    E = stdtypes:tnone(),
-
-    % a is in covariant position
-    A = stdtypes:tvar('a'),
-    B = stdtypes:tvar('b'),
-    E = clean(A, sets:new([{version, 2}])),
-
-    % intersection: covariant
-    E = clean(stdtypes:tinter(A, B), sets:new([{version, 2}])),
-
-    % union: covariant
-    E = clean(stdtypes:tunion(A, B), sets:new([{version, 2}])),
-
-    % negation: flip
-    E = clean(stdtypes:tnegate(A), sets:new([{version, 2}])),
-
-    % function type flips argument variable position
-    Arr = stdtypes:tfun1(stdtypes:tany(), stdtypes:tnone()),
-    Arr = clean(stdtypes:tfun1(A, B), sets:new([{version, 2}])),
-
-    % function double flip
-    Arr2 = stdtypes:tfun1(stdtypes:tfun1(stdtypes:tnone(), stdtypes:tany()), stdtypes:tnone()),
-    Arr2 = clean(stdtypes:tfun1(stdtypes:tfun1(A, B), stdtypes:tnone()), sets:new([{version, 2}])),
-
-    ok.
-
-clean_negate_var_test() ->
-    ecache:reset_all(),
-    A = stdtypes:tvar('a'),
-    E = stdtypes:tnone(),
-
-    % negation is covariant position
-    E = clean(stdtypes:tnegate(A), sets:new([{version, 2}])),
-    % test nnf
-    E = clean(stdtypes:tnegate(stdtypes:tunion(A, stdtypes:tnegate(stdtypes:tatom()))), sets:new([{version, 2}])).
-
-clean_tuples_test() ->
-    ecache:reset_all(),
-
-    A = stdtypes:tvar('a'),
-    E = stdtypes:tnone(),
-    T = stdtypes:tany(),
-
-    % clean((int, a)) = (int, Bottom) = Bottom
-    Ty1 = clean(stdtypes:ttuple2(stdtypes:tint(), A), sets:new([{version, 2}])),
-    Ty1 = E,
-
-    % clean(!(int, a)) = !(int, Top)
-    Ty2 = clean(stdtypes:tnegate(stdtypes:ttuple2(stdtypes:tint(), A)), sets:new([{version, 2}])),
-    Ty2 = stdtypes:tnegate(stdtypes:ttuple2(stdtypes:tint(), T)),
-
-    % clean(!(int, !a)) = !(int, !Empty) = !(int, Top)
-    Ty3 = clean(stdtypes:tnegate(stdtypes:ttuple2(stdtypes:tint(), stdtypes:tnegate(A))), sets:new([{version, 2}])),
-    Ty3 = stdtypes:tnegate(stdtypes:ttuple2(stdtypes:tint(), T)),
-
-    % clean(!(int, !(int, a))) = !(int, !(int, Bottom)) = !(int, Top) = !(int, Top)
-    Ty4 = clean(stdtypes:tnegate(stdtypes:ttuple2(stdtypes:tint(), stdtypes:tnegate(stdtypes:ttuple2(stdtypes:tint(), A)))), sets:new([{version, 2}])),
-    Ty4 = stdtypes:tnegate(stdtypes:ttuple2(stdtypes:tint(), T)),
-
-    ok.
-
--endif.
-

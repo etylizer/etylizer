@@ -1,9 +1,15 @@
 -module(typing_check).
 
 -export([
-    check_all/4,
-    check/3
+    check_all/4
 ]).
+
+-ifdef(TEST).
+-export([
+    check/3
+   ]).
+-endif.
+
 
 -include("log.hrl").
 -include("typing.hrl").
@@ -15,7 +21,8 @@
 check_all(Ctx, FileName, Env, Decls) ->
     ?LOG_INFO("Checking ~w functions in ~s against their specs", length(Decls), FileName),
     ?LOG_DEBUG("Environment: ~s", pretty:render_fun_env(Env)),
-    ExtCtx = Ctx#ctx { symtab = symtab:extend_symtab_with_fun_env(Env, Ctx#ctx.symtab) },
+    ExtSymtab = symtab:extend_symtab_with_fun_env(Env, Ctx#ctx.symtab),
+    ExtCtx = Ctx#ctx { symtab = ExtSymtab },
     try
         lists:foreach(
           fun({Decl, Ty}) -> check(ExtCtx, Decl, Ty) end,
@@ -53,7 +60,7 @@ ensure_type_supported(Loc, T) ->
 check(Ctx, Decl = {function, Loc, Name, Arity, _}, PolyTy) ->
     ?LOG_INFO("Type checking ~w/~w at ~s against type ~s",
               Name, Arity, ast:format_loc(Loc), pretty:render_tyscheme(PolyTy)),
-    {MonoTy, Fixed, _} = typing_common:mono_ty(PolyTy),
+    {MonoTy, Fixed, _} = typing_common:mono_ty(Loc, PolyTy),
     ensure_type_supported(Loc, MonoTy),
     AltTys =
         case MonoTy of

@@ -4,7 +4,7 @@
 
 -import(module4, [add/2]).
 
--spec fun1(int) -> int.
+-spec fun1(int) -> module5:blub().
 fun1(X) ->
     module2:fun2(X) + module3:fun3(X) + test_fun(23) + add(X, 4).
 

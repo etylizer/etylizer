@@ -3,11 +3,10 @@
 % @doc Parser for -ety attributes
 
 -export([
+    parse_ety_attr/2,
     ety_attrs_from_file/1
-    ]).
-
--include_lib("eunit/include/eunit.hrl").
-
+   ]).
+    
 -type ety_attr() :: {ety, ast:loc(), term()}.
 
 -spec ety_attrs_from_file(file:filename()) -> t:opt([ety_attr()], string()).
@@ -56,10 +55,3 @@ parse_ety_attr(Loc, S) ->
             end;
         _ -> no_attr
     end.
-
--spec parse_ety_attr_test() -> ok.
-parse_ety_attr_test() ->
-    Loc = {loc, "foo.erl", 2, 3},
-    ?assertEqual({ok, {ety, Loc, 1}}, parse_ety_attr(Loc, "%-ety(1).")),
-    ?assertEqual({ok, {ety, Loc, {foo, bar}}}, parse_ety_attr(Loc, "%-ety({foo, bar}).")),
-    ?assertEqual(no_attr, parse_ety_attr(Loc, "%-xx({foo, bar}).")).

@@ -4,6 +4,7 @@
 
 -include_lib("eunit/include/eunit.hrl").
 -include("log.hrl").
+-include("ety_main.hrl").
 
 -spec check_ok_fun(string(), symtab:t(), ast:fun_decl(), ast:ty_scheme()) -> ok.
 check_ok_fun(Filename, Tab, Decl = {function, L, Name, Arity, _}, Ty) ->
@@ -43,9 +44,9 @@ check_infer_ok_fun(Filename, Tab, Decl = {function, L, Name, Arity, _}, Ty) ->
         end,
         Envs),
     ?LOG_NOTE("Inferred the following types for ~w/~w: ~s", Name, Arity,
-      pretty:render_list(InferredTys, fun pretty:tyscheme/1)),
+      pretty:render_list(fun pretty:tyscheme/1, InferredTys)),
     case lists:any(
-            fun(InferredTy) -> typing_infer:more_general(InferredTy, Ty, Tab) end,
+            fun(InferredTy) -> typing_infer:more_general(L, InferredTy, Ty, Tab) end,
             InferredTys)
       of
           true -> ok;
@@ -53,7 +54,7 @@ check_infer_ok_fun(Filename, Tab, Decl = {function, L, Name, Arity, _}, Ty) ->
               io:format(
                 "~s: None of the inferred types ~s for function ~w/~w in ~s is more general than type ~s from spec",
                 [ast:format_loc(L),
-                pretty:render_list(InferredTys, fun pretty:tyscheme/1),
+                pretty:render_list(fun pretty:tyscheme/1, InferredTys),
                 Name, Arity, Filename,
                 pretty:render_tyscheme(Ty)]),
               ?assert(false)
@@ -83,7 +84,8 @@ has_intersection({ty_scheme, _, _}) -> false.
 check_decls_in_file(F, What, NoInfer) ->
   RawForms = parse:parse_file_or_die(F),
   Forms = ast_transform:trans(F, RawForms),
-  Tab0 = symtab:std_symtab(),
+  SearchPath = paths:compute_search_path(#opts{}),
+  Tab0 = symtab:std_symtab(SearchPath),
   Tab = symtab:extend_symtab(F, Forms, Tab0),
 
   CollectDecls = fun(Decl, TestCases) ->
@@ -127,10 +129,15 @@ check_decls_in_file(F, What, NoInfer) ->
   end,
   lists:foldl(CollectDecls, [], Forms).
 
--spec should_run(string(), what()) -> boolean().
-should_run(_Name, all) -> true;
-should_run(Name, {include,Set}) -> sets:is_element(Name, Set);
-should_run(Name, {exclude,Set}) -> not sets:is_element(Name, Set).
+%% Suppress warnings about unmatched patterns
+%% TODO fix this somehow or not...
+-dialyzer({no_match, should_run/2}).
+-spec should_run(string(), all | {include, sets:set(string())} | {exclude, sets:set(string())}) -> boolean().
+should_run(Name, {include, Set}) -> sets:is_element(Name, Set);
+should_run(Name, {exclude, Set}) -> not sets:is_element(Name, Set);
+should_run(_Name, all) -> true.
+
+
 
 -spec check_decls_in_files(list(string()), what(), sets:set(string())) -> list().
 check_decls_in_files(Files, What, NoInfer) ->
@@ -165,25 +172,29 @@ simple_test_() ->
   OnlyFiles = [],
   IgnoreFiles = [],
 
-  case file:list_dir(TopDir) of
-    {ok, Entries} ->
-        ErlFiles =
-          lists:filtermap(fun(Entry) ->
-            case filename:extension(Entry) =:= ".erl" andalso
-              (OnlyFiles =:= [] orelse lists:member(Entry, OnlyFiles)) andalso
-              (not lists:member(Entry, IgnoreFiles))
-            of
-              true -> {true, TopDir ++ "/" ++ Entry};
-              false -> false
-            end
-          end, Entries),
-        case ErlFiles of
-          [] -> erlang:error("No test files found in " ++ TopDir);
-          _ -> ok
-        end,
-        check_decls_in_files(ErlFiles,
-                       {exclude, sets:from_list(WhatNot, [{version, 2}])},
-                       %{include, sets:from_list(What, [{version, 2}])},
-                       sets:from_list(NoInfer, [{version, 2}]));
-    _ -> erlang:error("Failed to list test directory " ++ TopDir)
-  end.
+  parse_cache:with_cache(
+    #opts{},
+    fun() ->
+      case file:list_dir(TopDir) of
+        {ok, Entries} ->
+            ErlFiles =
+              lists:filtermap(fun(Entry) ->
+                case filename:extension(Entry) =:= ".erl" andalso
+                  (OnlyFiles =:= [] orelse lists:member(Entry, OnlyFiles)) andalso
+                  (not lists:member(Entry, IgnoreFiles))
+                of
+                  true -> {true, TopDir ++ "/" ++ Entry};
+                  false -> false
+                end
+              end, Entries),
+            case ErlFiles of
+              [] -> erlang:error("No test files found in " ++ TopDir);
+              _ -> ok
+            end,
+            check_decls_in_files(ErlFiles,
+                          {exclude, sets:from_list(WhatNot)},
+                          %{include, sets:from_list(What)},
+                          sets:from_list(NoInfer));
+        _ -> erlang:error("Failed to list test directory " ++ TopDir)
+      end
+    end).

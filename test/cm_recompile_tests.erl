@@ -106,7 +106,7 @@ test_recompile_version(TargetDir, Dir, Version, RebarLockContent, ExpectedChange
     ?assertEqual(ExpectedChangesSorted, RealChangesSorted),
     ?LOG_NOTE("Test successful for code version ~p in ~p", Version, Dir).
 
--type changes_map() :: #{integer() => [string()] | compile_error }.
+-type changes_map() :: #{integer() => [string()] | type_error }.
 
 -spec test_recompile(file:name(), changes_map()) -> ok.
 test_recompile(Dir, VersionMap) ->
@@ -180,6 +180,9 @@ file_changes_test_() ->
         #{1 => ["bar.erl", "foo.erl", "main.erl"], 2 => ["main.erl", "foo.erl"]})),
      ?_test(test_recompile_dont_tycheck("cycle",
         #{1 => ["m1.erl", "m2.erl", "main.erl"], 2 => ["m1.erl", "m2.erl"]})),
+     ?_test(test_recompile("transitive-reference",
+        #{1 => ["main.erl", "m2.erl", "m3.erl", "m4.erl"],
+          2 => ["main.erl", "m2.erl", "m3.erl", "m4.erl"]})),
      ?_test(test_rebar_changes())
     ].
 

@@ -9,7 +9,7 @@ check_lists_for_eq(ExpectedList, GivenList) ->
     case length(ExpectedList) =:= length(GivenList) of
         false ->
             io:format("Lists have different length. Expected length ~w, given length ~w",
-                length(ExpectedList), length(GivenList)),
+                [length(ExpectedList), length(GivenList)]),
             io:format("Expected:~n~200p~n~nGiven:~n~200p", [ExpectedList, GivenList]),
             error(utils:sformat("Lists have different length. Expected length ~w, given length ~w",
                 length(ExpectedList), length(GivenList)));
@@ -42,7 +42,8 @@ assert_list_of_sets(Expected, L) ->
     LNormed = norm_list_of_sets(L),
     check_lists_for_eq(ExpectedNormed, LNormed).
 
--spec norm_list_of_pair_sets([{sets:set(T), sets:set(U)}]) -> [[{T, U}]].
+%TODO Needs fix due to imprecise types? 
+% -spec norm_list_of_pair_sets([{sets:set(T), sets:set(U)}]) -> [[{T, U}]].
 norm_list_of_pair_sets(L) ->
     lists:sort(lists:map(
         fun ({Set1, Set2}) ->
@@ -156,7 +157,7 @@ mk_sccase(I) ->
         ]}.
 
 -spec mk_sccase_combs(
-    integer,
+    integer(),
     constr:simp_constr_subty() | {ast:loc(), constr:simp_constr_subty()} | none
 ) -> constr_collect:all_combinations().
 mk_sccase_combs(I, Add) ->

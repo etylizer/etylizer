@@ -2,7 +2,9 @@
 
 -include("log.hrl").
 
+-ifdef(TEST).
 -export([dependency_order/1]).
+-endif.
 
 -type call_vertex() :: {Name::atom(), Arity::arity()}.
 -type call_graph() :: graph:graph(call_vertex()).
@@ -105,7 +107,11 @@ dependency_order(Forms, CallGraph, SCCDepGraph) ->
     ?LOG_DEBUG("SCCDepGraph=~200p",
                graph:to_list(SCCDepGraph, fun scc_to_string/1)),
     % return the topological order of the dependency graph among SCCs
-    SortedSCCs = lists:reverse(graph:topsort(SCCDepGraph)),
+    SortedSCCs =
+      case graph:topsort(SCCDepGraph) of
+        cyclic -> errors:bug("no topological ordering exists");
+        L -> lists:reverse(L)
+      end,
     utils:map_flip(
       SortedSCCs,
       fun(SCC) ->
@@ -115,3 +121,4 @@ dependency_order(Forms, CallGraph, SCCDepGraph) ->
                               ), [{version, 2}])
       end
      ).
+    

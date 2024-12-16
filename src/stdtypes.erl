@@ -1,48 +1,61 @@
-
 -module(stdtypes).
 
 -include("log.hrl").
+-include("parse.hrl").
 
 % @doc Type1sfor funcions and operatortfun([Arg], Res).
 -export([
     tspecial_any/0,
     tempty_list/0,
-    tfloat/0,
     tint/0, tint/1,
-    tbool/0,
     tlist_any/0,
     tlist_improper/2,
     tnonempty_improper_list/2,
-    tlist/1,
     tnonempty_list/0,
     tnonempty_list/1,
     builtin_ops/0, builtin_funs/0,
     tatom/0, tatom/1,
-    tintersect/1, tunion/1, tunion/2, tnegate/1,
-    tinter/1, tinter/2,
-    tyscm/2,
+    tintersect/1, tunion/1, tnegate/1,
+    tinter/2,
+    ttuple/1,
     any/0,
     empty/0,
-    ttuple/1, ttuple_n/1, ttuple_any/0, ttuple1/1, ttuple2/2,
-    tarrow_n/1,
+    ttuple_any/0, 
     tfun_full/2,
-    tfun/2, tfun1/2, tfun2/3, tfun_any/0,
-    tmap/1, tmap/2, tmap_req/2, tmap_field_opt/2, tmap_field_req/2, tmap_any/0,
-    tvar/1,
-    trange_any/0, trange/2,
+    tfun/2, tfun_any/0,
+    tmap/1, tmap/2, tmap_req/2, tmap_any/0,
+    trange/2,
     expand_predef_alias/1,
     tany/0,
     tnone/0,
-    tnot/1,
-    tmu/2,
-    is_tlist/1,
     init/0, cleanup/0
 ]).
 
--include("parse.hrl").
+% These here are actually only used in the tests
+-export([
+    is_tlist/1,
+    tarrow_n/1,
+    tbool/0,
+    tfloat/0,
+    tfun1/2, 
+    tfun2/3, 
+    tinter/1, 
+    tlist/1,
+    tmap_field_opt/2, 
+    tmap_field_req/2,
+    tmu/2,
+    tnot/1,
+    trange_any/0,
+    ttuple1/1, 
+    ttuple2/2,
+    ttuple_n/1,
+    tunion/2, 
+    tyscm/2,
+    tvar/1
+]).
+
 
 %% Builtin types
-
 
 is_tlist({improper_list, _, _}) -> true;
 is_tlist({negation, {improper_list, _, _}}) -> true;
@@ -192,18 +205,20 @@ tbool() -> {predef_alias, boolean}.
 
 -spec expand_predef_alias(ast:predef_alias_name()) -> ast:ty().
 expand_predef_alias(term) -> {predef, any};
-expand_predef_alias(binary) -> throw(todo); %% TODO
-expand_predef_alias(nonempty_binary) -> throw(todo); %% TODO
-expand_predef_alias(bitstring) -> throw(todo); %% TODO
-expand_predef_alias(nonempty_bitstring) -> throw(todo); %% TODO
+expand_predef_alias(binary) -> errors:not_implemented("expand_predef_alias for binary");
+expand_predef_alias(nonempty_binary) -> errors:not_implemented("expand_predef_alias for nonempty_binary");
+expand_predef_alias(bitstring) -> errors:not_implemented("expand_predef_alias for bitstring");
+expand_predef_alias(nonempty_bitstring) -> errors:not_implemented("expand_predef_alias for nonempty_bitstring");
 expand_predef_alias(boolean) -> {union, [{singleton, true}, {singleton, false}]};
 expand_predef_alias(byte) -> {range, 0, 255};
 expand_predef_alias(char) -> {range, 0, 1114111};
 expand_predef_alias(nil) -> {empty_list};
 expand_predef_alias(number) -> {union, [{predef, float}, {predef, integer}]};
 expand_predef_alias(list) -> {list, {predef, any}};
+% also see code in ast_transform for expanding predefined aliases applied to arguments
 expand_predef_alias(nonempty_list) -> {nonempty_list, {predef, any}};
 expand_predef_alias(maybe_improper_list) -> {improper_list, {predef, any}, {predef, any}};
+expand_predef_alias(nonempty_maybe_improper_list) -> {nonempty_list, {predef, any}};
 expand_predef_alias(string) -> {list, expand_predef_alias(char)};
 expand_predef_alias(nonempty_string) -> {nonempty_list, expand_predef_alias(char)};
 expand_predef_alias(iodata) -> {union, [expand_predef_alias(iolist), expand_predef_alias(binary)]};
@@ -228,7 +243,7 @@ expand_predef_alias(neg_integer) -> {range, '*', -1};
 
 expand_predef_alias(Name) ->
     logger:error("Not expanding: ~p", [Name]),
-    errors:not_implemented("expand_predef_alias").
+    errors:not_implemented(utils:sformat("expand_predef_alias for ~w", Name)).
 
 %% Other types
 

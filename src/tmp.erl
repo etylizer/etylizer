@@ -3,9 +3,14 @@
 -include("log.hrl").
 
 -export([
-    with_tmp_file/4,
-    with_tmp_dir/4
+    with_tmp_file/4
     ]).
+
+-ifdef(TEST).
+-export([
+    with_tmp_dir/4
+   ]).
+-endif.
 
 -spec int_to_hex(integer()) -> string().
 int_to_hex(I) -> integer_to_list(I, 16).
@@ -46,6 +51,7 @@ with_tmp_file(Prefix, Suffix, Del, Action) ->
                 P, Modes, Reason)})
     end.
 
+-ifdef(TEST).
 -spec with_tmp_dir(string(), string(), delete | dont_delete,
     fun((string()) -> T)) -> T.
 with_tmp_dir(Prefix, Suffix, Del, Action) ->
@@ -60,3 +66,4 @@ with_tmp_dir(Prefix, Suffix, Del, Action) ->
                 os:cmd("rm -Rf " ++ P)
             end)
     end.
+-endif.
