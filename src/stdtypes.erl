@@ -375,7 +375,7 @@ mk_builtin_funs(Path) ->
                       _ -> Acc
                   end
           end,
-          {sets:new(), []}, RawForms),
+          {sets:new([{version, 2}]), []}, RawForms),
     AllSpecs = ast_transform:trans(Path, lists:reverse(RawSpecs), flat, varenv:empty("function")),
     Result =
         lists:filtermap(

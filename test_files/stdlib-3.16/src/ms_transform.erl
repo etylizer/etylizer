@@ -206,7 +206,7 @@ parse_transform_info() ->
 
 transform_from_shell(Dialect, Clauses, BoundEnvironment) ->
     SaveFilename = setup_filename(),
-    case catch ms_clause_list(1,Clauses,Dialect,gb_sets:new()) of
+    case catch ms_clause_list(1,Clauses,Dialect,gb_sets:new([{version, 2}])) of
 	{'EXIT',Reason} ->
 	    cleanup_filename(SaveFilename),
 	    exit(Reason);
@@ -381,7 +381,7 @@ function(Name, Arity, Clauses0) ->
     {Name,Arity,Clauses1}.
 
 clauses([C0|Cs]) ->
-    C1 = clause(C0,gb_sets:new()),
+    C1 = clause(C0,gb_sets:new([{version, 2}])),
     C2 = clauses(Cs),
     [C1|C2];
 clauses([]) -> [].

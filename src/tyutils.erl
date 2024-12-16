@@ -15,7 +15,7 @@ free_in_ty(T) ->
                                      _ -> error
                                  end
                          end, T),
-    sets:from_list(L).
+    sets:from_list(L, [{version, 2}]).
 
 -spec free_in_subty_constr(constr:simp_constr()) -> sets:set(ast:ty_varname()).
 free_in_subty_constr(C) ->
@@ -27,5 +27,5 @@ free_in_subty_constr(C) ->
 free_in_subty_constrs(Cs) ->
     sets:fold(
         fun (C, Acc) -> sets:union(Acc, free_in_subty_constr(C)) end,
-        sets:new(),
+        sets:new([{version, 2}]),
         Cs).

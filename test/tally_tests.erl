@@ -28,11 +28,11 @@ test_tally(ConstrList, ExpectedSubst, FixedVars) ->
 test_tally(ConstrList, ExpectedSubst, Symtab, FixedVars) ->
   Constrs = sets:from_list(
                 lists:map(
-                  fun ({T, U}) -> {scsubty, sets:from_list([ast:loc_auto()]), T, U} end,
+                  fun ({T, U}) -> {scsubty, sets:from_list([ast:loc_auto()], [{version, 2}]), T, U} end,
                   ConstrList
-                 )),
+                 ), [{version, 2}]),
 
-  Res = tally:tally(Symtab, Constrs, sets:from_list(FixedVars)),
+  Res = tally:tally(Symtab, Constrs, sets:from_list(FixedVars, [{version, 2}])),
   case Res of
     [_ | _] -> 
       ?LOG_WARN("Tally result:~n~s",

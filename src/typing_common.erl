@@ -133,5 +133,5 @@ mono_ty(Loc, TyScm = {ty_scheme, Bounds, T}, FreshStart, FreshFun) ->
             Res = subst:apply(Subst, T),
             ?LOG_TRACE("Result of monomorphizing type scheme ~s:~n~s~nRaw: ~w~nFresh: ~200p",
                pretty:render_tyscheme(TyScm), pretty:render_ty(Res), Res, Fresh),
-            {Res, sets:from_list(Fresh), NewState}
+            {Res, sets:from_list(Fresh, [{version, 2}]), NewState}
     end.

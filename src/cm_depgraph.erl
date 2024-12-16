@@ -36,7 +36,7 @@
 }.
 
 -spec new() -> dep_graph().
-new() -> {sets:new(),  maps:new(), maps:new()}.
+new() -> {sets:new([{version, 2}]), maps:new(), maps:new()}.
 
 -spec new([file:filename()]) -> dep_graph().
 new(Srcs) ->
@@ -73,8 +73,8 @@ add_dependency(Path, Dep, {Srcs, DepFiles, DepMods}) ->
     PathMod = ast_utils:modname_from_path(PathNorm),
     DepNorm = utils:normalize_path(Dep),
     DepMod = ast_utils:modname_from_path(Dep),
-    Deps1 = maps:get(PathNorm, DepFiles, sets:new()),
-    Deps2 = maps:get(PathNorm, DepMods, sets:new()),
+    Deps1 = maps:get(PathNorm, DepFiles, sets:new([{version, 2}])),
+    Deps2 = maps:get(PathNorm, DepMods, sets:new([{version, 2}])),
     NewDepFiles = maps:put(PathNorm, sets:add_element(DepNorm, Deps1), DepFiles),
     NewDepMods = maps:put(PathMod, sets:add_element(DepMod, Deps2), DepMods),
     NewSrcs = sets:add_element(PathNorm, sets:add_element(DepNorm, Srcs)),
@@ -135,7 +135,7 @@ find_source_for_module(Module, SearchPath) ->
 -spec build_dep_graph([file:filename()], paths:search_path()) -> dep_graph().
 build_dep_graph(Files, SearchPath) ->
     build_dep_graph(lists:map(fun utils:normalize_path/1, Files),
-        SearchPath, new(), sets:new()).
+        SearchPath, new(), sets:new([{version, 2}])).
 
 -spec build_dep_graph(
         [file:filename()],
@@ -153,7 +153,7 @@ build_dep_graph(Worklist, SearchPath, DepGraph, AlreadyHandled) ->
             NewAlreadyHandled = sets:add_element(File, AlreadyHandled),
             NewFiles = sets:subtract(
                 sets:subtract(All, NewAlreadyHandled),
-                sets:from_list(Rest)
+                sets:from_list(Rest, [{version, 2}])
             ),
             ?LOG_INFO("Done adding ~p to dependency graph", File),
             build_dep_graph(
