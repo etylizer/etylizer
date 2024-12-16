@@ -36,7 +36,7 @@
 }.
 
 -spec new() -> dep_graph().
-new() -> {sets:new([{version, 2}]), maps:new()}.
+new() -> {sets:new([{version, 2}]), maps:new(), maps:new()}.
 
 -spec new([file:filename()]) -> dep_graph().
 new(Srcs) ->
