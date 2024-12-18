@@ -65,7 +65,9 @@ parse_args(Args) ->
             "FILES arguments). The default behavior is to also check the dependencies of these " ++
             "files."},
          {log_level,  $l,   "level",    string,
-            "Minimal log level (trace2,trace,debug,info,note,warn)"}
+            "Minimal log level (trace2,trace,debug,info,note,warn)"},
+         {type_overlay, undefined, "type-overlay", string,
+            "Overlays for fun and type specs"}
         ],
     Opts = case getopt:parse(OptSpecList, Args) of
         {error, {Reason, Data}} ->
@@ -97,6 +99,7 @@ parse_args(Args) ->
                         force -> Opts#opts{ force = true };
                         no_type_checking -> Opts#opts{ no_type_checking = true };
                         no_deps -> Opts#opts{ no_deps = true };
+                        {type_overlay, S} -> Opts#opts{ type_overlay = S };
                         help -> Opts#opts{ help = true }
                     end
                 end, #opts{ files = RestArgs}, OptList)

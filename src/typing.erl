@@ -1,7 +1,7 @@
 -module(typing).
 
 -export([
-    check_forms/5,
+    check_forms/6,
     new_ctx/2
 ]).
 
@@ -14,9 +14,9 @@ new_ctx(Tab, Sanity) ->
     Ctx.
 
 % Checks all forms of a module
--spec check_forms(ctx(), string(), ast:forms(), sets:set(string()), sets:set(string())) -> ok.
-check_forms(Ctx, FileName, Forms, Only, Ignore) ->
-    ExtTab = symtab:extend_symtab(FileName, Forms, Ctx#ctx.symtab),
+-spec check_forms(ctx(), string(), ast:forms(), sets:set(string()), sets:set(string()), [ast:form()]) -> ok.
+check_forms(Ctx, FileName, Forms, Only, Ignore, OverlayForms) ->
+    ExtTab = symtab:extend_symtab(FileName, Forms, Ctx#ctx.symtab, OverlayForms),
     ExtCtx = Ctx#ctx { symtab = ExtTab },
     ?LOG_DEBUG("Only: ~200p", sets:to_list(Only)),
     ?LOG_DEBUG("Ignore: ~200p", sets:to_list(Ignore)),
