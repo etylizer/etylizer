@@ -6,11 +6,9 @@
 
 a(A, B) -> {fun_full, [A], B}.
 b(A) -> stdtypes:tatom(A).
-n(A) -> stdtypes:tnegate(A).
 u(A,B) -> stdtypes:tunion([A,B]).
 i(A,B) -> stdtypes:tintersect([A,B]).
 v(A) -> stdtypes:tvar(A).
-p(A, B) -> ttuple([A, B]).
 
 
 atoms_test() ->

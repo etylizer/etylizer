@@ -166,7 +166,7 @@ extend_symtab(Def, Scheme) ->
 extend_symtab(Def, Scheme, Symtab) ->
   TyDef = {Def, Scheme},
   Form = {attribute, ast:loc_auto(), type, transparent, TyDef},
-  symtab:extend_symtab('.', [Form], Symtab).
+  symtab:extend_symtab(".", [Form], Symtab).
 
 
 -ifdef(TEST).
