@@ -54,6 +54,9 @@
     tvar/1
 ]).
 
+-export_type([
+    fun_types/0
+]).
 
 %% Builtin types
 

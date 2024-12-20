@@ -20,12 +20,12 @@
     lookup_op/4,
     lookup_ty/3,
     lookup_record/3,
-    std_symtab/1,
-    extend_symtab/3,
+    std_symtab/2,
+    extend_symtab/4,
     extend_symtab_with_fun_env/2,
     empty/0,
-    extend_symtab_with_module_list/3,
-    dump_symtab/2
+    extend_symtab_with_module_list/4,
+    dump_symtab/2, overlay_symtab/1
 ]).
 
 -type fun_env() :: #{ ast:global_ref() => ast:ty_scheme() }.
@@ -46,7 +46,7 @@
 
 -spec dump_symtab(string(), t()) -> ok.
 dump_symtab(Msg, Tab) ->
-    ?LOG_DEBUG("~s~nFunctions:~n~s~ntypes:~n~s~nOperators:~n~s~nRecords:~n~s",
+    ?LOG_INFO("~s~nFunctions:~n~s~ntypes:~n~s~nOperators:~n~s~nRecords:~n~s",
         Msg,
         pretty:render_fun_env(Tab#tab.funs),
         pretty:render_ty_env(Tab#tab.types),
@@ -135,11 +135,12 @@ symbols_for_module(Mod, Tab) ->
 -spec empty() -> t().
 empty() -> #tab { funs = #{}, ops = #{}, types = #{}, records = #{}, modules = #{} }.
 
--spec std_symtab(paths:search_path()) -> t().
-std_symtab(SearchPath) ->
+-spec std_symtab(paths:search_path(), t()) -> t().
+std_symtab(SearchPath, OverlaySymtab) ->
     ?LOG_NOTE("Building symtab for standard library ..."),
     Funs =
-        lists:foldl(fun({Name, Arity, T}, Map) -> maps:put({qref, erlang, Name, Arity}, T, Map) end,
+        lists:foldl(fun({Name, Arity, T}, Map) -> 
+            maps:put({qref, erlang, Name, Arity}, T, Map) end,
                     #{},
                     stdtypes:builtin_funs()),
     Ops =
@@ -147,22 +148,37 @@ std_symtab(SearchPath) ->
                     #{},
                     stdtypes:builtin_ops()),
     Tab = #tab { funs = Funs, ops = Ops, types = #{}, records = #{}, modules = #{} },
-    ExtTab = extend_symtab_with_module_list(Tab, SearchPath, [erlang]),
+    ExtTab = extend_symtab_with_module_list(Tab, SearchPath, [erlang], OverlaySymtab),
     ?LOG_NOTE("Done building symtab for standard library"),
     ExtTab.
 
+-spec overlay_symtab([ast:form()]) -> t().
+overlay_symtab(OverlayForms) ->
+    ?LOG_NOTE("Building symtab for overlay file ..."),
+    lists:foldl(fun(Form, Tab) ->
+        case Form of
+            {attribute, _, spec, Name, Arity, T, _} -> 
+                ?LOG_DEBUG("Overlay added for ~w/~p", Name, Arity),
+                [Module, FunName] = string:split(atom_to_list(Name), ":"),
+                Tab#tab { funs = maps:put(create_ref_tuple({qref, list_to_atom(Module)}, list_to_atom(FunName), Arity), T, Tab#tab.funs) };
+            _ -> Tab
+        end
+    end,
+    empty(),
+    OverlayForms).
+
 -type ref() :: ref | {qref, ModuleName::atom()}.
 
--spec extend_symtab(file:filename(), [ast:form()], t()) -> t().
-extend_symtab(Filename, Forms, Tab) ->
-    extend_symtab_internal(Filename, Forms, ref, Tab).
+-spec extend_symtab(file:filename(), [ast:form()], t(), t()) -> t().
+extend_symtab(Filename, Forms, Tab, OverlaySymtab) ->
+    extend_symtab_internal(Filename, Forms, ref, Tab, OverlaySymtab).
 
--spec extend_symtab(file:filename(), [ast:form()], atom(), t()) -> t().
-extend_symtab(Filename, Forms, Module, Tab) ->
-    extend_symtab_internal(Filename, Forms, {qref, Module}, Tab).
+-spec extend_symtab(file:filename(), [ast:form()], atom(), t(), t()) -> t().
+extend_symtab(Filename, Forms, Module, Tab, OverlaySymtab) ->
+    extend_symtab_internal(Filename, Forms, {qref, Module}, Tab, OverlaySymtab).
 
--spec extend_symtab_internal(file:filename(), [ast:form()], ref(), t()) -> t().
-extend_symtab_internal(Filename, Forms, RefType, Tab) ->
+-spec extend_symtab_internal(file:filename(), [ast:form()], ref(), t(), t()) -> t().
+extend_symtab_internal(Filename, Forms, RefType, Tab, OverlaySymtab) ->
     case utils:file_exists(Filename) of
         true -> ok;
         false ->
@@ -188,7 +204,15 @@ extend_symtab_internal(Filename, Forms, RefType, Tab) ->
                     fun(Form, Tab) ->
                         case Form of
                             {attribute, _, spec, Name, Arity, T, _} ->
-                                Tab#tab { funs = maps:put(create_ref_tuple(RefType, Name, Arity), T, Tab#tab.funs) };
+                                Ref = create_ref_tuple({qref, ModuleName}, Name, Arity),
+                                case find_fun(Ref, OverlaySymtab) of
+                                    error ->
+                                        ?LOG_INFO("No Overlay found for ~w:~w/~p", ModuleName, Name, Arity),
+                                        Tab#tab { funs = maps:put(create_ref_tuple(RefType, Name, Arity), T, Tab#tab.funs) };
+                                    {ok, OverlayT} -> 
+                                        ?LOG_INFO("Overlay found for ~w:~w/~p", ModuleName, Name, Arity),
+                                        Tab#tab { funs = maps:put(create_ref_tuple(RefType, Name, Arity), OverlayT, Tab#tab.funs) }
+                                end;
                             {attribute, _, type, _, {Name, TyScm = {ty_scheme, TyVars, _}}} ->
                                 Arity = length(TyVars),
                                 Tab#tab { types = maps:put({ty_key, ModuleName, Name, Arity}, TyScm, Tab#tab.types) };
@@ -207,7 +231,7 @@ extend_symtab_internal(Filename, Forms, RefType, Tab) ->
 -spec extend_symtab_with_fun_env(fun_env(), t()) -> t().
 extend_symtab_with_fun_env(Env, Tab) -> Tab#tab { funs = maps:merge(Tab#tab.funs, Env) }.
 
--spec create_ref_tuple(ref(), string(), arity()) -> tuple().
+-spec create_ref_tuple(ref(), atom(), arity()) -> tuple().
 create_ref_tuple(ref, Name, Arity) ->
     {ref, Name, Arity};
 create_ref_tuple({qref, Module}, Name, Arity) ->
@@ -216,18 +240,18 @@ create_ref_tuple({qref, Module}, Name, Arity) ->
 % Extends the symtab with all definitions from the given modules. If such definitions refer
 % to other modules via their type specs, such modules are added as well. (We could add only
 % the types from these modules, but for simplicity, we add everything.)
--spec extend_symtab_with_module_list(symtab:t(), paths:search_path(), [atom()]) -> symtab:t().
-extend_symtab_with_module_list(Symtab, SearchPath, Modules) ->
-    traverse_module_list(SearchPath, Symtab, Modules).
+-spec extend_symtab_with_module_list(symtab:t(), paths:search_path(), [atom()], t()) -> symtab:t().
+extend_symtab_with_module_list(Symtab, SearchPath, Modules, OverlaySymtab) ->
+    traverse_module_list(SearchPath, Symtab, Modules, OverlaySymtab).
 
--spec traverse_module_list(paths:search_path(), t(), [ast:mod_name()]) -> t().
-traverse_module_list(SearchPath, Symtab, [CurrentModule | RemainingModules]) ->
+-spec traverse_module_list(paths:search_path(), t(), [ast:mod_name()], t()) -> t().
+traverse_module_list(SearchPath, Symtab, [CurrentModule | RemainingModules], OverlaySymtab) ->
     case maps:get(CurrentModule, Symtab#tab.modules, error) of
         error ->
             % It's a new module
             Entry = {_, Filename, _} = paths:find_module_path(SearchPath, CurrentModule),
             Forms = retrieve_forms_for_source(Entry),
-            NewSymtab = extend_symtab(Filename, Forms, CurrentModule, Symtab),
+            NewSymtab = extend_symtab(Filename, Forms, CurrentModule, Symtab, OverlaySymtab),
             ?LOG_DEBUG("Extended symtab with entries from ~p", CurrentModule),
             case log:allow(trace) of
                 true ->
@@ -239,10 +263,10 @@ traverse_module_list(SearchPath, Symtab, [CurrentModule | RemainingModules]) ->
             end,
             AdditionalModules = ast_utils:referenced_modules_via_types(Forms),
             ?LOG_DEBUG("Additional modukes for ~w: ~200p", CurrentModule, AdditionalModules),
-            traverse_module_list(SearchPath, NewSymtab, RemainingModules ++ AdditionalModules);
-        _ -> traverse_module_list(SearchPath, Symtab, RemainingModules)
+            traverse_module_list(SearchPath, NewSymtab, RemainingModules ++ AdditionalModules, OverlaySymtab);
+        _ -> traverse_module_list(SearchPath, Symtab, RemainingModules, OverlaySymtab)
     end;
-traverse_module_list(_, Symtab, []) ->
+traverse_module_list(_, Symtab, [], _) ->
     Symtab.
 
 -spec retrieve_forms_for_source(paths:search_path_entry()) -> ast:forms().

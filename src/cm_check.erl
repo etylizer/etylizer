@@ -44,7 +44,8 @@ perform_type_checks(SearchPath, SourceList, DepGraph, Opts) ->
             ?LOG_NOTE("Need to check ~p of ~p files: ~p",
                 length(CheckList), length(SourceList), CheckList)
     end,
-    NewIndex2 = traverse_and_check(CheckList, symtab:std_symtab(SearchPath), SearchPath, Opts, NewIndex1),
+    OverlaySymtab = overlay_symtab(Opts),
+    NewIndex2 = traverse_and_check(CheckList, symtab:std_symtab(SearchPath, OverlaySymtab), SearchPath, Opts, NewIndex1),
     cm_index:save_index(IndexFile, NewIndex2),
     CheckList.
 
@@ -85,8 +86,9 @@ traverse_and_check([CurrentFile | RemainingFiles], Symtab, SearchPath, Opts, Ind
         true -> ?LOG_NOTE("Checking ~s", CurrentFile);
         false -> io:format("Checking ~s~n", [CurrentFile])
     end,
+    OverlaySymtab = overlay_symtab(Opts),
     Forms = parse_cache:parse(intern, CurrentFile),
-    ExpandedSymtab = symtab:extend_symtab_with_module_list(Symtab, SearchPath, ast_utils:referenced_modules(Forms)),
+    ExpandedSymtab = symtab:extend_symtab_with_module_list(Symtab, SearchPath, ast_utils:referenced_modules(Forms), OverlaySymtab),
 
     Only = sets:from_list(Opts#opts.type_check_only, [{version, 2}]),
     Ignore = sets:from_list(Opts#opts.type_check_ignore,[{version, 2}]),
@@ -96,7 +98,7 @@ traverse_and_check([CurrentFile | RemainingFiles], Symtab, SearchPath, Opts, Ind
         true ->
             ?LOG_NOTE("Not type checking ~p as requested", CurrentFile);
         false ->
-            typing:check_forms(Ctx, CurrentFile, Forms, Only, Ignore)
+            typing:check_forms(Ctx, CurrentFile, Forms, Only, Ignore, OverlaySymtab)
     end,
     NewIndex = cm_index:insert(CurrentFile, Forms, Index),
     traverse_and_check(RemainingFiles, Symtab, SearchPath, Opts, NewIndex).
@@ -118,3 +120,11 @@ perform_sanity_check(CurrentFile, Forms, DoCheck) ->
             {ok, SpecFullConstr};
        true -> error
     end.
+
+-spec overlay_symtab(cmd_opts()) -> symtab:t().
+overlay_symtab(Opts) ->
+    OverlayForms = case Opts#opts.type_overlay of
+        [] -> [];
+        OverlayFile -> parse_cache:parse(intern, OverlayFile)
+    end,
+    symtab:overlay_symtab(OverlayForms).
