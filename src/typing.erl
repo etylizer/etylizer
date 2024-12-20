@@ -14,7 +14,7 @@ new_ctx(Tab, Sanity) ->
     Ctx.
 
 % Checks all forms of a module
--spec check_forms(ctx(), string(), ast:forms(), sets:set(string()), sets:set(string()), atom()) -> ok.
+-spec check_forms(ctx(), string(), ast:forms(), sets:set(string()), sets:set(string()), symtab:t()) -> ok.
 check_forms(Ctx, FileName, Forms, Only, Ignore, OverlaySymtab) ->
     ExtTab = symtab:extend_symtab(FileName, Forms, Ctx#ctx.symtab, OverlaySymtab),
     ExtCtx = Ctx#ctx { symtab = ExtTab },

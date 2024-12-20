@@ -121,7 +121,7 @@ perform_sanity_check(CurrentFile, Forms, DoCheck) ->
        true -> error
     end.
 
--spec overlay_symtab(cmd_opts()) -> atom().
+-spec overlay_symtab(cmd_opts()) -> symtab:t().
 overlay_symtab(Opts) ->
     OverlayForms = case Opts#opts.type_overlay of
         [] -> [];
