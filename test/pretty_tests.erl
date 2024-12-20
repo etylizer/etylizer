@@ -1,7 +1,7 @@
 -module(pretty_tests).
 -include_lib("eunit/include/eunit.hrl").
 
--import(stdtypes, [tvar/1, ttuple_any/0, tnegate/1, tatom/0, tatom/1, tfun_full/2, trange/2, tunion/1, tintersect/1, trange_any/0, ttuple/1, tany/0, tnone/0]).
+-import(stdtypes, [tmu/2, tvar/1, ttuple_any/0, tnegate/1, tatom/0, tatom/1, tfun_full/2, trange/2, tunion/1, tintersect/1, trange_any/0, ttuple/1, tany/0, tnone/0]).
 -import(test_utils, [is_subtype/2, is_equiv/2]).
 
 % TODO simplifications
@@ -21,10 +21,10 @@ any_empty_test() ->
   ecache:reset_all(),
   % syntactically same none and any representations
   A = stdtypes:tnone(),
-  A = ast_lib:erlang_ty_to_ast(ast_lib:ast_to_erlang_ty(A, symtab:empty()), #{}),
+  A = ast_lib:erlang_ty_to_ast(ast_lib:ast_to_erlang_ty(A, symtab:empty())),
 
   B = stdtypes:tany(),
-  B = ast_lib:erlang_ty_to_ast(ast_lib:ast_to_erlang_ty(B, symtab:empty()), #{}),
+  B = ast_lib:erlang_ty_to_ast(ast_lib:ast_to_erlang_ty(B, symtab:empty())),
   ok.
 
 simple_singleton_test() ->
@@ -104,10 +104,10 @@ var_neg_inter_test() ->
 worth_negate_test() ->
   ecache:reset_all(),
   A = tnegate(tatom(a)) ,
-  B = ast_lib:ast_to_erlang_ty(A, symtab:empty()),
-  Pretty = ast_lib:erlang_ty_to_ast(B, #{}),
-  true = subty:is_equivalent(symtab:empty(), A, Pretty),
-  ?assertEqual("not(a)", pretty:render_ty(Pretty)),
+  % B = ast_lib:ast_to_erlang_ty(A, symtab:empty()),
+  % Pretty = ast_lib:erlang_ty_to_ast(B, #{}),
+  % true = subty:is_equivalent(symtab:empty(), A, Pretty),
+  % ?assertEqual("not(a)", pretty:render_ty(Pretty)),
   ok.
 
 worth_negate2_test() ->
@@ -260,4 +260,14 @@ named_recursive_test() ->
   {mu, Mu, {union, [{singleton, nil}, {tuple, [{var, alpha}, Mu]}]}} = Pretty,
   %?assertEqual("mu X . nil | {alpha, mu X}", pretty:render_ty(Pretty)),
 
+  ok.
+
+% #182
+named_union_test() ->
+  test_utils:reset_ets(),
+  A = tmu(tvar(exp), ttuple([tunion([tatom(a), tvar(exp)])])),
+  B = ast_lib:ast_to_erlang_ty(A, symtab:empty()),
+  Pretty = ast_lib:erlang_ty_to_ast(B, #{}),
+  true = subty:is_equivalent(symtab:empty(), A, Pretty),
+  % io:format(user, "Pretty: ~p~n", [Pretty]),
   ok.

@@ -2,7 +2,7 @@
 
 -export([
     reset/0, 
-    ast_to_erlang_ty/1, ast_to_erlang_ty/2, 
+    ast_to_erlang_ty/2, 
     erlang_ty_to_ast/1, erlang_ty_to_ast/2, 
     ast_to_erlang_ty_var/1, 
     mk_union/1, 
@@ -205,150 +205,199 @@ erlang_ty_to_ast(X, M) ->
         FinalTy
     end.
 
-ast_to_erlang_ty(Ty) ->
-    ast_to_erlang_ty(Ty, symtab:empty(), #{}).
 
 ast_to_erlang_ty(Ty, Sym) ->
-    ast_to_erlang_ty(Ty, Sym, #{}).
+    ErlangTy = ty_ref:new_ty_ref(),
+    ok = convert(queue:from_list([{ErlangTy, Ty, _Memoization = #{}}]), Sym),
+    ErlangTy.
 
-ast_to_erlang_ty({singleton, Atom}, _Sym, _) when is_atom(Atom) ->
+
+convert(Queue, Sym) ->
+    case queue:is_empty(Queue) of
+        true -> ok;
+        _ -> % convert next layer
+            {{value, {ErlangTy, Ty, Memo}}, Q} = queue:out(Queue),
+            {ErlangRec, NewQ} = do_convert(Ty, Q, Sym, Memo),
+            % io:format(user, 
+            %     "===~nFinished one layer~n~p :: ~p~nQueue:~n~p~n", 
+            %     [ErlangTy, ErlangRec, NewQ]),
+            ty_ref:define_ty_ref(ErlangTy, ErlangRec),
+            convert(NewQ, Sym)
+    end.
+
+do_convert({singleton, Atom}, Q, _, _) when is_atom(Atom) ->
     TyAtom = ty_atom:finite([Atom]),
     TAtom = dnf_var_ty_atom:ty_atom(TyAtom),
-    ty_rec:atom(TAtom);
-ast_to_erlang_ty({singleton, IntOrChar}, _Sym, _) ->
+    {ty_rec:s_atom(TAtom), Q};
+do_convert({singleton, IntOrChar}, Q, _, _) ->
     Int = dnf_var_ty_interval:int(dnf_ty_interval:interval(IntOrChar, IntOrChar)),
-    ty_rec:interval(Int);
+    {ty_rec:s_interval(Int), Q};
 % TODO
-ast_to_erlang_ty({binary, _, _}, _Sym, _) ->
+do_convert({binary, _, _}, _, _, _) ->
     erlang:error("Bitstrings not implemented yet");
 
-ast_to_erlang_ty({tuple_any}, _Sym, _) ->
-    ty_rec:tuple();
-ast_to_erlang_ty({tuple, Comps}, Sym, M) when is_list(Comps)->
-    ETy = lists:map(fun(T) -> ast_to_erlang_ty(T, Sym, M) end, Comps),
-
+do_convert({tuple_any}, Q, _, _) ->
+    {ty_rec:s_tuple(), Q};
+do_convert({tuple, Comps}, Q, Sym, M) when is_list(Comps)->
+    {ETy, Q0} = lists:foldl(
+        fun(Element, {Components, OldQ}) ->
+            % to be converted later, add to queue
+            Id = ty_ref:new_ty_ref(),
+            {Components ++ [Id], queue:in({Id, Element, M}, OldQ)}
+        end, {[], Q}, Comps),
+    
     T = dnf_var_ty_tuple:tuple(dnf_ty_tuple:tuple(ty_tuple:tuple(ETy))),
-    ty_rec:tuple(length(Comps), T);
+    {ty_rec:s_tuple(length(Comps), T), Q0};
 
 % funs
-ast_to_erlang_ty({fun_simple}, _Sym, _) ->
-    ty_rec:function();
-ast_to_erlang_ty({fun_full, Comps, Result}, Sym, M) ->
-    ETy = lists:map(fun(T) -> ast_to_erlang_ty(T, Sym, M) end, Comps),
-    TyB = ast_to_erlang_ty(Result, Sym, M),
-
+do_convert({fun_simple}, Q, _, _) ->
+    {ty_rec:s_function(), Q};
+do_convert({fun_full, Comps, Result}, Q, Sym, M) ->
+    {ETy, Q0} = lists:foldl(
+        fun(Element, {Components, OldQ}) ->
+            % to be converted later, add to queue
+            Id = ty_ref:new_ty_ref(),
+            {Components ++ [Id], queue:in({Id, Element, M}, OldQ)}
+        end, {[], Q}, Comps),
+    {TyB, Q1} = do_convert(Result, Q0, Sym, M),
+    
     T = dnf_var_ty_function:function(dnf_ty_function:function(ty_function:function(ETy, TyB))),
-    ty_rec:function(length(Comps), T);
+    {ty_rec:s_function(length(Comps), T), Q1};
 
 % maps
-ast_to_erlang_ty({map_any}, _Sym, _M) ->
-    ty_rec:map();
-ast_to_erlang_ty({map, AssocList}, Sym, _M) ->
-    {_, TupPartTy, FunPartTy} = lists:foldl(
-        fun({Association, Key, Val}, {PrecedenceDomain, Tuples, Functions}) ->
-            case Association of
-                map_field_opt ->
-                    % tuples only
-                    Tup = ast_to_erlang_ty({tuple, [mk_diff(Key, PrecedenceDomain), Val]}, Sym),
-                    {mk_union(PrecedenceDomain, Key), ty_rec:union(Tuples, Tup), Functions};
-                map_field_req ->
-                    % tuples & functions
-                    Tup = ast_to_erlang_ty({tuple, [mk_diff(Key, PrecedenceDomain), Val]}, Sym),
-                    Fun = ast_to_erlang_ty({fun_full, [mk_diff(Key, PrecedenceDomain)], Val}, Sym),
-                    {mk_union(PrecedenceDomain, Key), ty_rec:union(Tuples, Tup), ty_rec:intersect(Functions, Fun)}
-            end
-        end, {stdtypes:tnone(), ty_rec:empty(), ty_rec:function()}, AssocList),
-    MapTuple = ty_tuple:tuple([TupPartTy, FunPartTy]),
-    DnfMap = dnf_ty_map:map(MapTuple),
-    VarDnfMap = dnf_var_ty_map:map(DnfMap),
-    ty_rec:map(VarDnfMap);
-
-% TODO records
+do_convert({map_any}, Q, _Sym, _M) ->
+    {ty_rec:s_map(), Q};
+do_convert({map, AssocList}, _Q, _Sym, _M) ->
+    % TODO queue
+    error(todo_convert_maps);
+    % {_, TupPartTy, FunPartTy} = lists:foldl(
+    %     fun({Association, Key, Val}, {PrecedenceDomain, Tuples, Functions}) ->
+    %         case Association of
+    %             map_field_opt ->
+    %                 % tuples only
+    %                 Tup = ast_to_erlang_ty({tuple, [mk_diff(Key, PrecedenceDomain), Val]}, Sym),
+    %                 {mk_union(PrecedenceDomain, Key), ty_rec:union(Tuples, Tup), Functions};
+    %             map_field_req ->
+    %                 % tuples & functions
+    %                 Tup = ast_to_erlang_ty({tuple, [mk_diff(Key, PrecedenceDomain), Val]}, Sym),
+    %                 Fun = ast_to_erlang_ty({fun_full, [mk_diff(Key, PrecedenceDomain)], Val}, Sym),
+    %                 {mk_union(PrecedenceDomain, Key), ty_rec:union(Tuples, Tup), ty_rec:intersect(Functions, Fun)}
+    %         end
+    %     end, {stdtypes:tnone(), ty_rec:empty(), ty_rec:function()}, AssocList),
+    % MapTuple = ty_tuple:tuple([TupPartTy, FunPartTy]),
+    % DnfMap = dnf_ty_map:map(MapTuple),
+    % VarDnfMap = dnf_var_ty_map:map(DnfMap),
+    % ty_rec:map(VarDnfMap);
 
 % var
-ast_to_erlang_ty(V = {var, A}, _Sym, M) ->
+do_convert(V = {var, A}, Q, _Sym, M) ->
     % FIXME overloading of mu variables and normal variables
     case M of
-        #{V := Ref} -> Ref;
+        #{V := Ref} -> % mu variable
+            % We are allowed to load the memoized ty_ref
+            % because the second occurrence of the mu variable
+            % is below a type constructor, 
+            % i.e. the memoized reference is fully defined
+            {ty_ref:load(Ref), Q};
         _ -> 
             % if this is a special $mu_integer()_name() variable, convert to that representation
             case string:prefix(atom_to_list(A), "$mu_") of 
                 nomatch -> 
-                    ty_rec:variable(ty_variable:new_with_name(A));
+                    {ty_rec:s_variable(ty_variable:new_with_name(A)), Q};
                 IdName -> 
                     % assumption: erlang types generates variables only in this pattern: $mu_integer()_name()
                     [Id, Name] = string:split(IdName, "_"),
-                    ty_rec:variable(ty_variable:new_with_name_and_id(list_to_integer(Id), list_to_atom(Name)))
+                    {ty_rec:s_variable(ty_variable:new_with_name_and_id(list_to_integer(Id), list_to_atom(Name))), Q}
             end
     end;
 
-% ty_some_list
-ast_to_erlang_ty({list, Ty}, Sym, M) -> ty_rec:union( ast_to_erlang_ty({improper_list, Ty, {empty_list}}, Sym, M), ast_to_erlang_ty({empty_list}, Sym, M) );
-ast_to_erlang_ty({nonempty_list, Ty}, Sym, M) -> ast_to_erlang_ty({nonempty_improper_list, Ty, {empty_list}}, Sym, M);
-ast_to_erlang_ty({nonempty_improper_list, Ty, Term}, Sym, M) -> ty_rec:diff(ast_to_erlang_ty({list, Ty}, Sym, M), ast_to_erlang_ty(Term, Sym, M));
-ast_to_erlang_ty({improper_list, A, B}, Sym, M) ->
-    ty_rec:list(dnf_var_ty_list:list(dnf_ty_list:list(ty_list:list(ast_to_erlang_ty(A, Sym, M), ast_to_erlang_ty(B, Sym, M)))));
-ast_to_erlang_ty({empty_list}, _Sym, _) ->
-    ty_rec:predef(dnf_var_ty_predef:predef(dnf_ty_predef:predef('[]')));
-ast_to_erlang_ty({predef, T}, _Sym, _) when T == pid; T == port; T == reference; T == float ->
-    ty_rec:predef(dnf_var_ty_predef:predef(dnf_ty_predef:predef(T)));
+% ty_some_list TODO List
+% do_convert({list, Ty}, Q, Sym, _) -> 
+%     ty_rec:union( ast_to_erlang_ty({improper_list, Ty, {empty_list}}, Sym, M), ast_to_erlang_ty({empty_list}, Sym, M) );
+% ast_to_erlang_ty({nonempty_list, Ty}, Sym, M) -> ast_to_erlang_ty({nonempty_improper_list, Ty, {empty_list}}, Sym, M);
+% ast_to_erlang_ty({nonempty_improper_list, Ty, Term}, Sym, M) -> ty_rec:diff(ast_to_erlang_ty({list, Ty}, Sym, M), ast_to_erlang_ty(Term, Sym, M));
+do_convert({improper_list, A, B}, Q, _Sym, M) ->
+    T1 = ty_ref:new_ty_ref(),
+    T2 = ty_ref:new_ty_ref(),
+    Q0 = queue:in({T1, A, M}, Q),
+    Q1 = queue:in({T2, B, M}, Q0),
+    
+    {ty_rec:s_list(dnf_var_ty_list:list(dnf_ty_list:list(ty_list:list(
+        T1,
+        T2
+    )))), Q1};
+do_convert({empty_list}, Q, _Sym, _) ->
+    {ty_rec:s_predef(dnf_var_ty_predef:predef(dnf_ty_predef:predef('[]'))), Q};
+do_convert({predef, T}, Q, _Sym, _M) when T == pid; T == port; T == reference; T == float ->
+    {ty_rec:s_predef(dnf_var_ty_predef:predef(dnf_ty_predef:predef(T))), Q};
 
 % named
-ast_to_erlang_ty({named, Loc, Ref, Args}, Sym, M) ->
-    case M of
-        #{{Ref, Args} := NewRef} ->
-            NewRef;
-        _ ->
-            ({ty_scheme, Vars, Ty}) = symtab:lookup_ty(Ref, Loc, Sym),
+do_convert({named, Loc, Ref, Args}, _Q, Sym, M) ->
+    error(todo_named);
+    % case M of
+    %     #{{Ref, Args} := NewRef} ->
+    %         NewRef;
+    %     _ ->
+    %         ({ty_scheme, Vars, Ty}) = symtab:lookup_ty(Ref, Loc, Sym),
 
-            % apply args to ty scheme
-            Map = subst:from_list(lists:zip([V || {V, _Bound} <- Vars], Args)),
-            NewTy = subst:apply(Map, Ty, no_clean),
+    %         % apply args to ty scheme
+    %         Map = subst:from_list(lists:zip([V || {V, _Bound} <- Vars], Args)),
+    %         NewTy = subst:apply(Map, Ty, no_clean),
 
-            NewRef = ty_ref:new_ty_ref(),
-            Res = ast_to_erlang_ty(NewTy, Sym, M#{{Ref, Args} => NewRef}),
-            NewRes = ty_ref:define_ty_ref(NewRef, ty_ref:load(Res)),
+    %         NewRef = ty_ref:new_ty_ref(),
+    %         Res = ast_to_erlang_ty(NewTy, Sym, M#{{Ref, Args} => NewRef}),
+    %         NewRes = ty_ref:define_ty_ref(NewRef, ty_ref:load(Res)),
 
-            NewRes
-    end;
+    %         NewRes
+    % end;
 
 % ty_predef_alias
-ast_to_erlang_ty({predef_alias, Alias}, Sym, M) ->
-    ast_to_erlang_ty(stdtypes:expand_predef_alias(Alias), Sym, M);
+do_convert({predef_alias, Alias}, Q, Sym, M) ->
+    do_convert(stdtypes:expand_predef_alias(Alias), Q, Sym, M);
 
 % ty_predef
-ast_to_erlang_ty({predef, atom}, _, _) ->
+do_convert({predef, atom}, Q, _, _) ->
     Atom = dnf_var_ty_atom:any(),
-    ty_rec:atom(Atom);
+    {ty_rec:s_atom(Atom), Q};
 
-ast_to_erlang_ty({predef, any}, _, _) -> ty_rec:any();
-ast_to_erlang_ty({predef, none}, _, _) -> ty_rec:empty();
-ast_to_erlang_ty({predef, integer}, _, _) ->
-    ty_rec:interval();
+do_convert({predef, any}, Q, _, _) -> {ty_rec:s_any(), Q};
+do_convert({predef, none}, Q, _, _) -> {ty_rec:s_empty(), Q};
+do_convert({predef, integer}, Q, _, _) -> {ty_rec:s_interval(), Q};
 
 % ints
-ast_to_erlang_ty({range, From, To}, _, _) ->
+do_convert({range, From, To}, Q, _, _) ->
     Int = dnf_var_ty_interval:int(dnf_ty_interval:interval(From, To)),
-    ty_rec:interval(Int);
+    {ty_rec:s_interval(Int), Q};
 
-ast_to_erlang_ty({union, []}, _, _) -> ty_rec:empty();
-ast_to_erlang_ty({union, [A]}, Sym, M) -> ast_to_erlang_ty(A, Sym, M);
-ast_to_erlang_ty({union, [A|T]}, Sym, M) -> ty_rec:union(ast_to_erlang_ty(A, Sym, M), ast_to_erlang_ty({union, T}, Sym, M));
+do_convert({union, []}, Q, _, _) -> {ty_rec:s_empty(), Q};
+do_convert({union, [A]}, Q, Sym, M) -> do_convert(A, Q, Sym, M);
+do_convert({union, [A|T]}, Q, Sym, M) -> 
+    {R1, Q1} = do_convert(A, Q, Sym, M),
+    {R2, Q2} = do_convert({union, T}, Q1, Sym, M),
+    {ty_rec:s_union(R1, R2), Q2};
 
-ast_to_erlang_ty({intersection, []}, _, _) -> ty_rec:any();
-ast_to_erlang_ty({intersection, [A]}, Sym, M) -> ast_to_erlang_ty(A, Sym, M);
-ast_to_erlang_ty({intersection, [A|T]}, Sym, M) -> ty_rec:intersect(ast_to_erlang_ty(A, Sym, M), ast_to_erlang_ty({intersection, T}, Sym, M));
+do_convert({intersection, []}, Q, _, _) -> {ty_rec:s_any(), Q};
+do_convert({intersection, [A]}, Q, Sym, M) -> do_convert(A, Q, Sym, M);
+do_convert({intersection, [A|T]}, Q, Sym, M) -> 
+    {R1, Q1} = do_convert(A, Q, Sym, M),
+    {R2, Q2} = do_convert({intersection, T}, Q1, Sym, M),
+    {ty_rec:s_intersect(R1, R2), Q2};
 
-ast_to_erlang_ty({negation, Ty}, Sym, M) -> ty_rec:negate(ast_to_erlang_ty(Ty, Sym, M));
+do_convert({negation, Ty}, Q, Sym, M) -> 
+    {R, Q0} = do_convert(Ty, Q, Sym, M),
+    {ty_rec:s_negate(R), Q0};
 
-ast_to_erlang_ty({mu, RecVar, Ty}, Sym, M) ->
+do_convert({mu, RecVar, Ty}, Q, Sym, M) ->
     NewRef = ty_ref:new_ty_ref(),
     Mp = M#{RecVar => NewRef},
-    InternalTy = ast_to_erlang_ty(Ty, Sym, Mp),
-    _NewRes = ty_ref:define_ty_ref(NewRef, ty_ref:load(InternalTy));
+    {InternalTy, NewQ} = do_convert(Ty, Q, Sym, Mp),
+    % define recursive type
+    ty_ref:define_ty_ref(NewRef, InternalTy),
+    % return record
+    {InternalTy, NewQ};
 
-ast_to_erlang_ty(T, _Sym, _M) ->
-    erlang:error({"Norm not implemented or malformed type", T}).
+do_convert(T, _Q, _Sym, _M) ->
+    erlang:error({"Transformation from ast:ty() to ty_rec:ty() not implemented or malformed type", T}).
 
 -spec ast_to_erlang_ty_var(ast:ty_var()) -> ty_variable:var().
 ast_to_erlang_ty_var({var, Name}) when is_atom(Name) ->
@@ -408,6 +457,7 @@ raw_erlang_ty_to_ast(X, M) ->
         Vars = ast_utils:referenced_variables(NewTy),
         FinalTy = case lists:member(Var, Vars) of
             true ->
+            error(todo),
                 {mu, Var, NewTy};
             false ->
                 NewTy
