@@ -112,6 +112,7 @@ define_ty_ref({ty_ref, Id}, Ty) ->
     [] ->
       ok;
     [{_, _OldId}] ->
+      io:format(user, "Store (manual): ~p :=~n~p~n", [Id, Ty]),
 
       % last ty ref inserted is the recursive type, delete from memory and decrease ty number by one
       % ets:delete(?TY_MEMORY, OldId),
@@ -120,7 +121,6 @@ define_ty_ref({ty_ref, Id}, Ty) ->
       ok
   end,
 
-  % io:format(user, "Store (manual): ~p :=~n~p~n", [Id, Ty]),
   ets:insert(?TY_UNIQUE_TABLE, {Ty, Id}),
   ets:insert(?TY_MEMORY, {Id, Ty}),
   {ty_ref, Id}.

@@ -16,6 +16,7 @@
     reset_ets/0,
     ety_to_cduce_tally/2,
     format_tally_config/3,
+    ty_from_term/1,
     named/2,
     extend_symtab/2, 
     extend_symtab/3
@@ -155,6 +156,10 @@ to_cduce(Ast) ->
 to_var({var, Name}) ->
     "'" ++ string:replace(erlang:atom_to_list(Name), "$", "u").
 
+ty_from_term({S, '->', T}) ->
+    ok;
+ty_from_term(Basic) when Basic >= $a, Basic =< $z ->
+    ty_rec:atom(dnf_var_ty_atom:ty_atom(ty_atom:finite([list_to_atom([Basic])]))).
 
 named(Ref, Args) ->
   % Use the dummy '.' file as the module for testing purposes
