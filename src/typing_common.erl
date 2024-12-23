@@ -9,7 +9,7 @@
 
 -export_type([ctx/0]).
 
--include("log.hrl").
+-include_lib("kernel/include/logger.hrl").
 -include("typing.hrl").
 
 -spec format_src_loc(ast:loc()) -> string().
@@ -80,7 +80,7 @@ order_bounds(BoundedTyvars) ->
                     end,
                     BoundedTyvars),
                 L = graph:topsort(G),
-                ?LOG_TRACE("Graph: ~200p, L: ~200p", graph:to_list(G, fun atom_to_list/1), L),
+                ?LOG_DEBUG("Graph: ~200p, L: ~200p", [graph:to_list(G, fun atom_to_list/1), L]),
                 L
             end),
     case VarOrder of
@@ -121,17 +121,17 @@ replace_bounds([{Alpha, Bound} | Rest], Polys, Subst, State, FreshFun) ->
 -spec mono_ty(ast:loc(), ast:ty_scheme(), State, fresh_fun(State)) ->
     {ast:ty(), sets:set(ast:ty_varname()), State}.
 mono_ty(Loc, TyScm = {ty_scheme, Bounds, T}, FreshStart, FreshFun) ->
-    ?LOG_TRACE("Monomorphizing type scheme ~s", pretty:render_tyscheme(TyScm)),
+    ?LOG_DEBUG("Monomorphizing type scheme ~s", [pretty:render_tyscheme(TyScm)]),
     case order_bounds(Bounds) of
         cyclic ->
             errors:ty_error(Loc,
                 "Cyclic bounds in type spec: ~s", [pretty:render_tyscheme(TyScm)]);
         OrderedBounds ->
-            ?LOG_TRACE("Ordered bounds: ~200p", OrderedBounds),
+            ?LOG_DEBUG("Ordered bounds: ~200p", [OrderedBounds]),
             {Fresh, Subst, NewState} =
                 replace_bounds(OrderedBounds, [], subst:empty(), FreshStart, FreshFun),
             Res = subst:apply(Subst, T),
-            ?LOG_TRACE("Result of monomorphizing type scheme ~s:~n~s~nRaw: ~w~nFresh: ~200p",
-               pretty:render_tyscheme(TyScm), pretty:render_ty(Res), Res, Fresh),
+            ?LOG_DEBUG("Result of monomorphizing type scheme ~s:~n~s~nRaw: ~w~nFresh: ~200p",
+               [pretty:render_tyscheme(TyScm), pretty:render_ty(Res), Res, Fresh]),
             {Res, sets:from_list(Fresh, [{version, 2}]), NewState}
     end.

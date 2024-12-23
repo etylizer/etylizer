@@ -11,7 +11,7 @@
 % @doc This is the main module of ety. It parses commandline arguments and orchestrates
 % everything.
 
--include("log.hrl").
+-include_lib("kernel/include/logger.hrl").
 -include("parse.hrl").
 -include("ety_main.hrl").
 
@@ -149,14 +149,14 @@ doWork(Opts) ->
                     % only typecheck the files given
                     cm_depgraph:new(SourceList);
                 false ->
-                    ?LOG_NOTE("Entry points: ~p, now building dependency graph", SourceList),
+                    ?LOG_INFO("Entry points: ~p, now building dependency graph", [SourceList]),
                     G = cm_depgraph:build_dep_graph(
                         SourceList,
                         SearchPath),
-                    ?LOG_DEBUG("Reverse dependency graph: ~p", cm_depgraph:pretty_depgraph(G)),
+                    ?LOG_DEBUG("Reverse dependency graph: ~p", [cm_depgraph:pretty_depgraph(G)]),
                     G
             end,
-        ?LOG_NOTE("Performing type checking"),
+        ?LOG_INFO("Performing type checking"),
         cm_check:perform_type_checks(SearchPath, cm_depgraph:all_sources(DepGraph), DepGraph, Opts)
     after
         parse_cache:cleanup(),
@@ -167,7 +167,7 @@ doWork(Opts) ->
 main(Args) ->
     Opts = parse_args(Args),
     log:init(Opts#opts.log_level),
-    ?LOG_INFO("Parsed commandline options as ~200p", Opts),
+    ?LOG_INFO("Parsed commandline options as ~200p", [Opts]),
     try doWork(Opts)
     catch throw:{ety, K, Msg}:S ->
             Raw = erl_error:format_exception(throw, K, S),
@@ -180,10 +180,10 @@ main(Args) ->
                 end,
             if
                 IsExpected ->
-                    ?LOG_DEBUG("~s", Raw),
+                    ?LOG_DEBUG("~s", [Raw]),
                     io:format("~s~n", [Msg]);
                 true ->
-                    ?LOG_ERROR("~s", Raw),
+                    ?LOG_ERROR("~s", [Raw]),
                     io:format("~s~n", [Msg])
             end,
             erlang:halt(1)

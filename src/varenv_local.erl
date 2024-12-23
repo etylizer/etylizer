@@ -16,7 +16,7 @@
 
 -opaque t() :: {integer(), #{ atom() => ast:unique_tok() }}.
 
--include("log.hrl").
+-include_lib("kernel/include/logger.hrl").
 
 % Constructs a new, empty varenv.
 -spec empty() -> t().
@@ -43,8 +43,8 @@ insert_fresh({Next, Map}) ->
 lookup(Loc, Name, Env) ->
     case find(Name, Env) of
         error ->
-            ?LOG_NOTE("Undefind local variable ~w at ~s, Env=~w",
-                      Name, ast:format_loc(Loc), Env),
+            ?LOG_INFO("Undefind local variable ~w at ~s, Env=~w",
+                      [Name, ast:format_loc(Loc), Env]),
             errors:name_error(Loc, "Undefined local variable ~w", Name);
         {ok, X} -> X
     end.

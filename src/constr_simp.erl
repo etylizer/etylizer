@@ -1,6 +1,7 @@
 -module(constr_simp).
 
--include("log.hrl").
+-include_lib("kernel/include/logger.hrl").
+-include_lib("log.hrl").
 
 -export([
     simp_constrs/2,
@@ -34,7 +35,7 @@ simp_constrs(Ctx, Cs) ->
 
 -spec simp_constr(ctx(), constr:constr()) -> constr:simp_constrs().
 simp_constr(Ctx, C) ->
-    ?LOG_TRACE("simp_constr, C=~w", C),
+    ?LOG_DEBUG("simp_constr, C=~w", [C]),
     case C of
         {csubty, Locs, T1, T2} -> utils:single({scsubty, loc(Locs), T1, T2});
         {cvar, Locs, X, T} ->
@@ -104,10 +105,10 @@ inter_env(Ctx, Env) ->
                     pretty:render_tyscheme(OldTy), pretty:render_tyscheme(NewTy))
         end,
     NewEnv = maps:merge_with(Combiner, Ctx#ctx.env, PolyEnv), % values from the second parameter have precedence
-    ?LOG_TRACE("inter_env(~s, ~s) = ~s",
-        pretty:render_poly_env(Ctx#ctx.env),
-        pretty:render_mono_env(Env),
-        pretty:render_poly_env(NewEnv)),
+    ?LOG_DEBUG("inter_env(~s, ~s) = ~s",
+        [pretty:render_poly_env(Ctx#ctx.env),
+         pretty:render_mono_env(Env),
+         pretty:render_poly_env(NewEnv)]),
     Ctx#ctx { env = NewEnv }.
 
 -spec fresh_tyvar(ctx(), ast:ty_varname()) -> ast:ty_varname().
@@ -159,10 +160,10 @@ extend_env(Ctx, Env) ->
     PolyEnv =
         maps:map(fun(_Key, T) -> {ty_scheme, [], T} end, Env),
     NewEnv = maps:merge(Ctx#ctx.env, PolyEnv), % values from the second parameter have precedence
-    ?LOG_TRACE("extend_env(~s, ~s) = ~s",
-        pretty:render_poly_env(Ctx#ctx.env),
-        pretty:render_mono_env(Env),
-        pretty:render_poly_env(NewEnv)),
+    ?LOG_DEBUG("extend_env(~s, ~s) = ~s",
+        [pretty:render_poly_env(Ctx#ctx.env),
+         pretty:render_mono_env(Env),
+         pretty:render_poly_env(NewEnv)]),
     Ctx#ctx { env = NewEnv }.
 
 -spec sanity_check(any(), ast_check:ty_map()) -> ok.

@@ -1,6 +1,6 @@
 -module(constr_solve).
 
--include("log.hrl").
+-include_lib("kernel/include/logger.hrl").
 
 -export([
     check_simp_constrs/4,
@@ -31,7 +31,7 @@ check_simp_constrs_return_unmatched(Tab, FixedTyvars, Ds, What) ->
     % ?LOG_DEBUG("Constraints:~n~s", pretty:render_constr(Ds)),
     SubtyConstrsDisj = constr_collect:collect_constrs_all_combinations(Ds),
     N = length(SubtyConstrsDisj),
-    ?LOG_DEBUG("Found ~w conjunctions of constraints while type checking ~s", N, What),
+    ?LOG_DEBUG("Found ~w conjunctions of constraints while type checking ~s", [N, What]),
     % SubtyConstrsDisj contains, for each conjunction, a set of
     % locations of branches that are switched off (do not match). If a conjunction
     % is satisifiable, we must return the set of locations. If a location is contained
@@ -42,7 +42,7 @@ check_simp_constrs_return_unmatched(Tab, FixedTyvars, Ds, What) ->
             case Acc of
                 false ->
                     ?LOG_DEBUG("Checking conjunction ~w/~w for satisfiability:~n~s",
-                        I, N, pretty:render_constr(SubtyConstrs)),
+                        [I, N, pretty:render_constr(SubtyConstrs)]),
                     case is_satisfiable(Tab, SubtyConstrs, FixedTyvars, "satisfiability check") of
                         false -> false;
                         true -> {true, SwitchedOffBranches}
@@ -63,13 +63,13 @@ check_simp_constrs_return_unmatched(Tab, FixedTyvars, Ds, What) ->
 check_simp_constrs(Tab, FixedTyvars, Ds, What) ->
     SubtyConstrs = constr_collect:collect_constrs_no_matching_cond(Ds),
     ?LOG_DEBUG("Checking constraints for satisfiability to type check ~s:~n~s~nFixed: ~s",
-        What, pretty:render_constr(SubtyConstrs), pretty:render_set(fun pretty:atom/1, FixedTyvars)),
+        [What, pretty:render_constr(SubtyConstrs), pretty:render_set(fun pretty:atom/1, FixedTyvars)]),
     case is_satisfiable(Tab, SubtyConstrs, FixedTyvars, "satisfiability check") of
         true ->
             % check for redundant branches
             ReduDs = constr_collect:collect_matching_cond_constrs(Ds),
             ?LOG_DEBUG("Constraints are satisfiable, now checking ~w branches for redundancy",
-                length(ReduDs)),
+                [length(ReduDs)]),
             lists:foldl(
                 fun ({Loc, UnmatchedConstrs}, Acc) ->
                     case Acc of
@@ -78,15 +78,15 @@ check_simp_constrs(Tab, FixedTyvars, Ds, What) ->
                             case is_satisfiable(Tab, All, FixedTyvars, "redundancy check") of
                                 true ->
                                     ?LOG_DEBUG("Branch at ~s is redundant. Constraints that were added to the constraint above: ~s~nFixed: ~200p",
-                                        ast:format_loc(Loc),
-                                        pretty:render_constr(UnmatchedConstrs),
-                                        sets:to_list(FixedTyvars)),
+                                        [ast:format_loc(Loc),
+                                         pretty:render_constr(UnmatchedConstrs),
+                                         sets:to_list(FixedTyvars)]),
                                     {error, {redundant_branch, Loc, ""}};
                                 false ->
                                     ?LOG_DEBUG("Branch at ~s is not redundant. Constraints that were added to the constraint above: ~s~nFixed: ~200p",
-                                        ast:format_loc(Loc),
-                                        pretty:render_constr(UnmatchedConstrs),
-                                        sets:to_list(FixedTyvars)),
+                                        [ast:format_loc(Loc),
+                                         pretty:render_constr(UnmatchedConstrs),
+                                         sets:to_list(FixedTyvars)]),
                                     ok
                             end;
                         _ -> Acc
@@ -97,12 +97,12 @@ check_simp_constrs(Tab, FixedTyvars, Ds, What) ->
         false ->
             Blocks = constr_error_locs:simp_constrs_to_blocks(Ds),
             ?LOG_DEBUG("Constraints are not satisfiable, now locating source of errors. Blocks:~n~s",
-                pretty:render_list(fun pretty:constr_block/1, Blocks)),
+                [pretty:render_list(fun pretty:constr_block/1, Blocks)]),
             Timeout = 4000,
             case utils:timeout(Timeout, fun () -> locate_tyerror(Tab, FixedTyvars, Blocks) end) of
                 {ok, Res} -> Res;
                 timeout ->
-                    ?LOG_INFO("Locating type error timed out after ~wms", Timeout),
+                    ?LOG_INFO("Locating type error timed out after ~wms", [Timeout]),
                     {error, none}
             end
     end.
@@ -116,7 +116,7 @@ check_simp_constrs(Tab, FixedTyvars, Ds, What) ->
     list(T), fun((T) -> sets:set(U)), fun((sets:set(U)) -> boolean())) -> T.
 search_failing_prefix(L, F, Pred) ->
     N = length(L),
-    ?LOG_DEBUG("Search for a minimal unsatisfiable prefix in ~w blocks", N),
+    ?LOG_DEBUG("Search for a minimal unsatisfiable prefix in ~w blocks", [N]),
     I = search_failing_prefix(L, F, Pred, 1, N),
     lists:nth(I, L).
 
@@ -131,7 +131,7 @@ search_failing_prefix(L, F, Pred) ->
 search_failing_prefix(L, F, Pred, Left, Right) ->
     Mid = (Left + Right) div 2,
     Prefix = lists:sublist(L, Mid), % take all elements until Mid (inclusive)
-    ?LOG_DEBUG("Checking if the first ~w blocks are satisifiable", Mid),
+    ?LOG_DEBUG("Checking if the first ~w blocks are satisifiable", [Mid]),
     Set = sets:union(lists:map(F, Prefix)),
     Res = Pred(Set),
     % io:format("  Left=~w, Right=~w, Mid=~w, Res=~w, Prefix=~w~n", [Left, Right, Mid, Res, Prefix]),
@@ -173,12 +173,12 @@ is_satisfiable(Tab, Constrs, Fixed, What) ->
     {SatisfyRes, Delta} = utils:timing(fun() -> tally:is_satisfiable(Tab, Constrs, Fixed) end),
     case SatisfyRes of
         {false, ErrList} ->
-            ?LOG_DEBUG("Tally time (~s): ~pms, tally finished with errors.", What, Delta),
-            ?LOG_TRACE("Tally errors: ~s", format_tally_error(ErrList)),
+            ?LOG_DEBUG("Tally time (~s): ~pms, tally finished with errors.", [What, Delta]),
+            ?LOG_DEBUG("Tally errors: ~s", [format_tally_error(ErrList)]),
             false;
         {true, S} ->
-            ?LOG_DEBUG("Tally time (~s): ~pms, tally successful.", What, Delta),
-            ?LOG_TRACE("First substitution:~n~s", [pretty:render_subst(S)]),
+            ?LOG_DEBUG("Tally time (~s): ~pms, tally successful.", [What, Delta]),
+            ?LOG_DEBUG("First substitution:~n~s", [pretty:render_subst(S)]),
             true
     end.
 
@@ -188,11 +188,11 @@ solve_simp_constrs(Tab, Ds, What) ->
     {Res, Delta} = utils:timing(fun() -> tally:tally(Tab, SubtyConstrs) end),
     case Res of
         {error, ErrList} ->
-            ?LOG_DEBUG("Tally time (~s): ~pms, tally finished with errors.", What, Delta),
-            ?LOG_TRACE("Tally errors: ~s", format_tally_error(ErrList)),
+            ?LOG_DEBUG("Tally time (~s): ~pms, tally finished with errors.", [What, Delta]),
+            ?LOG_DEBUG("Tally errors: ~s", [format_tally_error(ErrList)]),
             false;
         Substs ->
-            ?LOG_DEBUG("Tally time (~s): ~pms, tally successful.", What, Delta),
-            ?LOG_TRACE("Substitutions:~n~s", [pretty:render_substs(Substs)]),
+            ?LOG_DEBUG("Tally time (~s): ~pms, tally successful.", [What, Delta]),
+            ?LOG_DEBUG("Substitutions:~n~s", [pretty:render_substs(Substs)]),
             Substs
     end.

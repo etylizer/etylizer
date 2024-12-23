@@ -11,6 +11,7 @@
 -export([perform_sanity_check/3]).
 -endif.
 
+-include_lib("kernel/include/logger.hrl").
 -include("log.hrl").
 -include("ety_main.hrl").
 
@@ -23,7 +24,7 @@ perform_type_checks(SearchPath, SourceList, DepGraph, Opts) ->
     IndexFile = paths:index_file_name(Opts),
     RebarLockFile = paths:rebar_lock_file(Opts),
     Index = cm_index:load_index(RebarLockFile, IndexFile, Opts#opts.mode),
-    ?LOG_INFO("All sources: ~p", SourceList),
+    ?LOG_INFO("All sources: ~p", [SourceList]),
     {DepsChanged, NewIndex1} =
         cm_index:has_external_dep_changed(RebarLockFile, Index),
     CheckList =
@@ -39,10 +40,10 @@ perform_type_checks(SearchPath, SourceList, DepGraph, Opts) ->
                 create_check_list(SourceList, NewIndex1, DepGraph)
         end,
     case CheckList of
-        [] -> ?LOG_NOTE("Need to check 0 of ~p files", length(CheckList));
+        [] -> ?LOG_INFO("Need to check 0 of ~p files", [length(CheckList)]);
         _ ->
-            ?LOG_NOTE("Need to check ~p of ~p files: ~p",
-                length(CheckList), length(SourceList), CheckList)
+            ?LOG_INFO("Need to check ~p of ~p files: ~p",
+                [length(CheckList), length(SourceList), CheckList])
     end,
     NewIndex2 = traverse_and_check(CheckList, symtab:std_symtab(SearchPath), SearchPath, Opts, NewIndex1),
     cm_index:save_index(IndexFile, NewIndex2),
@@ -54,7 +55,7 @@ create_check_list(SourceList, Index, DepGraph) ->
                   fun(Path, FilesToCheck) ->
                           case cm_index:has_file_changed(Path, Index) of
                               true ->
-                                ?LOG_INFO("Need to check ~p because the file has changed.", Path),
+                                ?LOG_INFO("Need to check ~p because the file has changed.", [Path]),
                                 ChangedFile = [Path];
                               false -> ChangedFile = []
                           end,
@@ -66,7 +67,7 @@ create_check_list(SourceList, Index, DepGraph) ->
                                     [] -> ok;
                                     _ ->
                                         ?LOG_INFO("Need to check the following files because the " ++
-                                            "interface of ~p has changed: ~200p", Path, Deps)
+                                            "interface of ~p has changed: ~200p", [Path, Deps])
                                 end;
                               false -> Deps = []
                           end,
@@ -82,7 +83,7 @@ traverse_and_check([], _, _, _, Index) ->
 
 traverse_and_check([CurrentFile | RemainingFiles], Symtab, SearchPath, Opts, Index) ->
     case log:allow(note) of
-        true -> ?LOG_NOTE("Checking ~s", CurrentFile);
+        true -> ?LOG_INFO("Checking ~s", [CurrentFile]);
         false -> io:format("Checking ~s~n", [CurrentFile])
     end,
     Forms = parse_cache:parse(intern, CurrentFile),
@@ -94,7 +95,7 @@ traverse_and_check([CurrentFile | RemainingFiles], Symtab, SearchPath, Opts, Ind
     Ctx = typing:new_ctx(ExpandedSymtab, Sanity),
     case Opts#opts.no_type_checking of
         true ->
-            ?LOG_NOTE("Not type checking ~p as requested", CurrentFile);
+            ?LOG_INFO("Not type checking ~p as requested", [CurrentFile]);
         false ->
             typing:check_forms(Ctx, CurrentFile, Forms, Only, Ignore)
     end,
@@ -105,11 +106,11 @@ traverse_and_check([CurrentFile | RemainingFiles], Symtab, SearchPath, Opts, Ind
 perform_sanity_check(CurrentFile, Forms, DoCheck) ->
     if DoCheck ->
             ?LOG_INFO("Checking whether transformation result for ~p conforms to AST in "
-                      "ast.erl ...", CurrentFile),
+                      "ast.erl ...", [CurrentFile]),
             {AstSpec, _} = ast_check:parse_spec("src/ast.erl"),
             case ast_check:check_against_type(AstSpec, ast, forms, Forms) of
                 true ->
-                    ?LOG_INFO("Transform result from ~s conforms to AST in ast.erl", CurrentFile);
+                    ?LOG_INFO("Transform result from ~s conforms to AST in ast.erl", [CurrentFile]);
                 false ->
                     ?ABORT("Transform result from ~s violates AST in ast.erl", CurrentFile)
             end,

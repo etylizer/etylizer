@@ -11,19 +11,18 @@
    ]).
 -endif.
 
-
--include("log.hrl").
+-include_lib("kernel/include/logger.hrl").
 -include("typing.hrl").
 
 % Infers the types of all the given functions.
 -spec infer_all(ctx(), string(), [ast:fun_decl()]) -> [symtab:fun_env()].
 infer_all(_Ctx, _FileName, []) -> [#{}];
 infer_all(Ctx, FileName, Decls) ->
-    ?LOG_INFO("Inferring types of functions without specs in ~s", FileName),
+    ?LOG_INFO("Inferring types of functions without specs in ~s", [FileName]),
     % FIXME: need to build strongly connected components to infer each group in isolation
     L = infer(Ctx, Decls),
     ?LOG_INFO("Inferring types of functions without specs returned ~w environments in total",
-              length(L)),
+              [length(L)]),
     L.
 
 % Infers the types of a group of (mutually recursive) functions.
@@ -35,7 +34,7 @@ infer(_, []) -> errors:bug("typing_infer:infer called with empty list of declara
 infer(Ctx, Decls) ->
     Funs = lists:map(fun ast:get_fun_name/1, Decls),
     FunsStr = string:join(Funs, ", "),
-    ?LOG_INFO("Inferring types of the following functions: ~s", FunsStr),
+    ?LOG_INFO("Inferring types of the following functions: ~s", [FunsStr]),
     Loc =
         case Decls of
             [{function, L, _, _, _} | _] -> L
@@ -45,7 +44,7 @@ infer(Ctx, Decls) ->
         {ok, TyMap} -> constr_gen:sanity_check(Cs, TyMap);
         error -> ok
     end,
-    ?LOG_DEBUG("Constraints:~n~s", pretty:render_constr(Cs)),
+    ?LOG_DEBUG("Constraints:~n~s", [pretty:render_constr(Cs)]),
     PolyEnv = maps:map(fun(_Key, T) -> {ty_scheme, [], T} end, Env),
     Tab = Ctx#ctx.symtab,
     SimpCtx = constr_simp:new_ctx(Tab, PolyEnv, Ctx#ctx.sanity),
@@ -64,7 +63,7 @@ infer(Ctx, Decls) ->
     FunNamesStr = string:join(Funs, ","),
     ?LOG_DEBUG("Simplified constraint set for a group of mutually recursive functions ~s, now " ++
                 "checking constraints for solvability.~nConstraints:~n~s",
-                FunNamesStr, pretty:render_constr(SimpConstrs)),
+                [FunNamesStr, pretty:render_constr(SimpConstrs)]),
     SolveRes = constr_solve:solve_simp_constrs(Tab, SimpConstrs, "inference"),
     ResultEnvs =
         case SolveRes of
@@ -95,7 +94,7 @@ infer(Ctx, Decls) ->
                             FunsStr);
         N ->
             ?LOG_INFO("Inferred ~w possible environments for functions ~s",
-                      N, FunsStr),
+                      [N, FunsStr]),
             ResultEnvs
     end.
 
@@ -111,16 +110,16 @@ more_general(Loc, Ts1, Ts2, Tab) ->
     {Mono2, A2, _} = typing_common:mono_ty(Loc, Ts2, Next),
     C = {scsubty, sets:new([{version, 2}]), Mono1, Mono2},
     {SatisfyRes, Delta} = utils:timing(fun() -> tally:is_satisfiable(Tab, sets:from_list([C], [{version, 2}]), A2) end),
-    ?LOG_DEBUG("Tally time: ~pms", Delta),
+    ?LOG_DEBUG("Tally time: ~pms", [Delta]),
     Result =
         case SatisfyRes of
             {false, _} -> false;
             _ -> true
         end,
     ?LOG_DEBUG("T1=~s (Mono1=~s) is more general than T2=~s (Mono2=~s): ~s",
-        pretty:render_tyscheme(Ts1), pretty:render_ty(Mono1),
-        pretty:render_tyscheme(Ts2), pretty:render_ty(Mono2),
-        Result),
+        [pretty:render_tyscheme(Ts1), pretty:render_ty(Mono1),
+         pretty:render_tyscheme(Ts2), pretty:render_ty(Mono2),
+         Result]),
     Result.
 -endif.
 

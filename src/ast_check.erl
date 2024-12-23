@@ -4,6 +4,7 @@
 % specs in the ast module. We do this check to make sure our definitions in ast
 % are correct. See function check/3.
 
+-include_lib("kernel/include/logger.hrl").
 -include("log.hrl").
 -include("parse.hrl").
 
@@ -34,12 +35,12 @@ check(Spec, ModuleName, Path) -> check(Spec, ModuleName, Path, #parse_opts{}).
 
 -spec check(ty_map(), module_name(), string(), parse_opts()) -> boolean().
 check(Spec, Module, Path, ParseOpts) ->
-    ?LOG_NOTE("Checking whether AST for ~s conforms to our assumed specification", Path),
+    ?LOG_INFO("Checking whether AST for ~s conforms to our assumed specification", [Path]),
     case parse:parse_file(Path, ParseOpts) of
         {ok, Forms} ->
             check_against_type(Spec, Module, forms, Forms);
         error ->
-            ?LOG_ERROR("Could not check AST in ~s because the file could not be parsed", Path),
+            ?LOG_ERROR("Could not check AST in ~s because the file could not be parsed", [Path]),
             false
     end.
 
@@ -100,7 +101,7 @@ inst_ty(Vars, Args, Ty) ->
                     _ -> error
                 end
             end,
-            ?LOG_TRACE("Instantiating type ~p with arguments ~p", Ty, Args),
+            ?LOG_DEBUG("Instantiating type ~p with arguments ~p", [Ty, Args]),
             utils:everywhere(Replace, Ty)
     end.
 
@@ -117,11 +118,11 @@ check_against_type(Spec, Module, TyOrTyName, Term) ->
     Res = check_ty_with_result(Spec, Module, ResolvedTy, Term, 0),
     case Res of
         ok ->
-            ?LOG_TRACE("Valid term wrt type ~w:~w:~n~200p", Module, ResolvedTy, Term),
+            ?LOG_DEBUG("Valid term wrt type ~w:~w:~n~200p", [Module, ResolvedTy, Term]),
             true;
         {SubTy, SubTerm, Depth} ->
-            ?LOG_WARN("Invalid term wrt type ~w:~w:~n~200p~n~nSubterm does not have type ~200p at depth ~p~n~200p",
-                Module, TyOrTyName, Term, SubTy, Depth, SubTerm),
+            ?LOG_WARNING("Invalid term wrt type ~w:~w:~n~200p~n~nSubterm does not have type ~200p at depth ~p~n~200p",
+                [Module, TyOrTyName, Term, SubTy, Depth, SubTerm]),
             false
     end.
 
@@ -145,7 +146,7 @@ check_ty_with_result(Spec, CurModule, Ty, Form, Depth) ->
 
 -spec check_ty(ty_map(), module_name(), ast_erl:ty(), term(), integer()) -> ok.
 check_ty(Spec, CurModule, Ty, Form, Depth) ->
-    ?LOG_TRACE("Checking term ~1000p~nagainst type ~1000p", Form, Ty),
+    ?LOG_DEBUG("Checking term ~1000p~nagainst type ~1000p", [Form, Ty]),
     % The type has the form as specified in ast_erl
     R = case Ty of
         {ann_type, _, [_, Ty2]} -> check_ty(Spec, CurModule, Ty2, Form, Depth);
@@ -232,7 +233,7 @@ check_ty(Spec, CurModule, Ty, Form, Depth) ->
                 lists:map(
                     fun (T) -> check_ty_with_result(Spec, CurModule, T, Form, Depth + 1) end,
                     Tys),
-            ?LOG_TRACE("Ty=~200p, Form=~200p, Depth=~w, Results=~200p", Ty, Form, Depth, Results),
+            ?LOG_DEBUG("Ty=~200p, Form=~200p, Depth=~w, Results=~200p", [Ty, Form, Depth, Results]),
             case lists:search(fun (X) -> X =:= ok end, Results) of
                 {value, _} -> ok;
                 false ->

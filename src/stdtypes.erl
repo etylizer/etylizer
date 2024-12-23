@@ -1,5 +1,6 @@
 -module(stdtypes).
 
+-include_lib("kernel/include/logger.hrl").
 -include("log.hrl").
 -include("parse.hrl").
 
@@ -386,5 +387,5 @@ mk_builtin_funs(Path) ->
                       _ -> false
                   end
           end, AllSpecs) ++ extra_funs(),
-    ?LOG_TRACE2("Builtin functions: ~200p", Result),
+    ?LOG_DEBUG("Builtin functions: ~200p", [Result]),
     Result.

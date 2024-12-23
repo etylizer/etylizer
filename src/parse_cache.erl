@@ -1,5 +1,6 @@
 -module(parse_cache).
 
+-include_lib("kernel/include/logger.hrl").
 -include("log.hrl").
 -include("parse.hrl").
 -include("ety_main.hrl").
@@ -50,7 +51,7 @@ parse(Kind, Path) ->
                     ?ABORT("Previously parsed ~p with kind ~p, now requested for kind ~p",
                         PathNorm, StoredKind, Kind)
             end,
-            ?LOG_TRACE("Retrieving parse result for ~p from cache", PathNorm),
+            ?LOG_DEBUG("Retrieving parse result for ~p from cache", [PathNorm]),
             Forms;
         [] ->
             [{_, Opts}] = ets:lookup(?TABLE, opts),
@@ -71,13 +72,13 @@ really_parse_file(Kind, File, Opts) ->
             {extern, Includes} ->
                 #parse_opts{ verbose = false, includes = Includes, defines = Opts#opts.defines }
         end,
-    ?LOG_DEBUG("Parsing ~s ...", File),
+    ?LOG_DEBUG("Parsing ~s ...", [File]),
     RawForms = parse:parse_file_or_die(File, ParseOpts),
-    ?LOG_DEBUG("Finished parsing ~s", File),
-    if  Opts#opts.dump_raw -> ?LOG_NOTE("Raw forms in ~s:~n~p", File, RawForms);
+    ?LOG_DEBUG("Finished parsing ~s", [File]),
+    if  Opts#opts.dump_raw -> ?LOG_INFO("Raw forms in ~s:~n~p", [File, RawForms]);
         true -> ok
     end,
-    ?LOG_TRACE("Parse result (raw):~n~120p", RawForms),
+    ?LOG_DEBUG("Parse result (raw):~n~120p", [RawForms]),
 
     IsIntern = Kind =:= intern,
 
@@ -86,7 +87,7 @@ really_parse_file(Kind, File, Opts) ->
     % erlang stdlib would fail sanity checking.
     if IsIntern andalso Opts#opts.sanity ->
             ?LOG_INFO("Checking whether parse result for ~p conforms to AST in ast_erl.erl ...",
-                File),
+                [File]),
             {RawSpec, _} = ast_check:parse_spec("src/ast_erl.erl"),
             lists:foreach(
                 fun({Idx,Form}) ->
@@ -94,7 +95,7 @@ really_parse_file(Kind, File, Opts) ->
                         true ->
                             ?LOG_DEBUG(
                                 "Parse result of form ~p from ~s conforms to AST in ast_erl.erl",
-                                Idx, File);
+                                [Idx, File]);
                         false ->
                             ?ABORT("Parse result of form ~p from ~s violates AST in ast_erl.erl",
                                 Idx, File)
@@ -104,12 +105,12 @@ really_parse_file(Kind, File, Opts) ->
        true -> ok
     end,
 
-    ?LOG_DEBUG("Transforming ~s ...", File),
+    ?LOG_DEBUG("Transforming ~s ...", [File]),
     Forms = ast_transform:trans(File, RawForms,
         if IsIntern -> full; true -> flat end),
     if  Opts#opts.dump ->
-            ?LOG_NOTE("Transformed forms in ~s:~n~p", File, ast_utils:remove_locs(Forms));
+            ?LOG_INFO("Transformed forms in ~s:~n~p", [File, ast_utils:remove_locs(Forms)]);
         true -> ok
     end,
-    ?LOG_TRACE("Parse result (after transform):~n~120p", Forms),
+    ?LOG_DEBUG("Parse result (after transform):~n~120p", [Forms]),
     Forms.

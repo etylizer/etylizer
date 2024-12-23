@@ -1,6 +1,7 @@
 -module(tally_tests).
 
 -include_lib("eunit/include/eunit.hrl").
+-include_lib("kernel/include/logger.hrl").
 -include("log.hrl").
 
 -import(stdtypes, [tvar/1, ttuple_any/0, tnegate/1, tatom/0, tatom/1, tfun_full/2, tfun1/2, trange/2,
@@ -35,8 +36,8 @@ test_tally(ConstrList, ExpectedSubst, Symtab, FixedVars) ->
   Res = tally:tally(Symtab, Constrs, sets:from_list(FixedVars, [{version, 2}])),
   case Res of
     [_ | _] -> 
-      ?LOG_WARN("Tally result:~n~s",
-        pretty:render_substs(lists:map(fun (S) -> subst:base_subst(S) end, Res))),
+      ?LOG_WARNING("Tally result:~n~s",
+        [pretty:render_substs(lists:map(fun (S) -> subst:base_subst(S) end, Res))]),
       find_subst(ExpectedSubst, Res, Res);
     _ -> 
       case ExpectedSubst of 
@@ -51,17 +52,17 @@ test_tally(ConstrList, ExpectedSubst, Symtab, FixedVars) ->
 -spec find_subst(list(expected_subst()), [subst:t()], [subst:t()]) -> ok.
 find_subst([], [], _) -> ok;
 find_subst([{Low, High} | _], [], Sols) ->
-  ?LOG_WARN("~nCould not find substitutions among remaining ~p tally solutions for~n" ++
+  ?LOG_WARNING("~nCould not find substitutions among remaining ~p tally solutions for~n" ++
     "expected lower bound:~n~s~n~nexpected upper bound:~n~s~n~nRemaining:~s",
-            length(Sols),
-            pretty:render_subst(Low),
-            pretty:render_subst(High),
-            pretty:render_substs(lists:map(fun (S) -> subst:base_subst(S) end, Sols))
+            [length(Sols),
+             pretty:render_subst(Low),
+             pretty:render_subst(High),
+             pretty:render_substs(lists:map(fun (S) -> subst:base_subst(S) end, Sols))]
   ),
   error("test failed because tally returned no substitution that matches low and high bounds");
 find_subst([], [_X | _Xs], Remaining) ->
   Substs = lists:map(fun (S) -> subst:base_subst(S) end, Remaining),
-  ?LOG_WARN("~nToo many substitutions return from tally. Unconsumed: ~200p", Substs),
+  ?LOG_WARNING("~nToo many substitutions return from tally. Unconsumed: ~200p", [Substs]),
   error("Too many substitutions returned from tally");
 find_subst(X = [{Low, High} | OtherTests], [TallySubst | Others], AllTally) ->
   Subst = subst:base_subst(TallySubst),

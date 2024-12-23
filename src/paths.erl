@@ -12,6 +12,7 @@
 ]).
 -export_type([search_path_entry/0, search_path/0]).
 
+-include_lib("kernel/include/logger.hrl").
 -include("log.hrl").
 -include("ety_main.hrl").
 
@@ -60,9 +61,9 @@ compute_search_path(Opts) ->
             {[], sets:new([{version, 2}])},
             SrcDirs),
     LocalPaths = lists:reverse(LocalPathEntries),
-    ?LOG_TRACE2("OTP search path: ~p", OtpPaths),
-    ?LOG_TRACE2("rebar search path: ~p", DepPaths),
-    ?LOG_TRACE2("Local search path: ~p", LocalPaths),
+    ?LOG_DEBUG("OTP search path: ~p", [OtpPaths]),
+    ?LOG_DEBUG("rebar search path: ~p", [DepPaths]),
+    ?LOG_DEBUG("Local search path: ~p", [LocalPaths]),
     LocalPaths ++ DepPaths ++ OtpPaths.
 
 -spec has_erl_files(file:filename()) -> boolean().
@@ -111,7 +112,7 @@ standard_path_entries(Kind, D1, D2, ExtraIncludes) ->
             fun(SrcDir) ->
                 {Kind, SrcDir, [SrcDir, filename:join(D, "include")] ++ ExtraIncludes}
             end, SrcDirs),
-    ?LOG_TRACE2("Standard path entries for ~p: ~p", D2, Res),
+    ?LOG_DEBUG("Standard path entries for ~p: ~p", [D2, Res]),
     Res.
 
 -spec find_include_dirs(file:filename(), [file:filename()]) -> [file:filename()].
@@ -164,13 +165,13 @@ generate_input_file_list(Opts) ->
                 case Opts#opts.files of
                     [] -> utils:quit(1, "No input files given, aborting. Use --help to print help.~n");
                     Files ->
-                        ?LOG_INFO("Only using explicitly specified input files: ~200p", Files),
+                        ?LOG_INFO("Only using explicitly specified input files: ~200p", [Files]),
                         Files
                 end;
             Paths ->
                 ?LOG_INFO(
                     "Searching for input files in ~200p and using explicitly specified files as input files: ~200p",
-                    Paths, Opts#opts.files),
+                    [Paths, Opts#opts.files]),
                 lists:foldl(
                     fun(Path, FileList) -> FileList ++ add_dir_to_list(Path) end,
                     Opts#opts.files,
@@ -244,12 +245,12 @@ really_find_module_path(SearchPath, Module) ->
     case SearchResult of
         {value, {Kind, SrcPath, Includes}} ->
             File = utils:normalize_path(filename:join(SrcPath, Filename)),
-            ?LOG_DEBUG("Resolved module ~p to file ~p", Module, File),
+            ?LOG_DEBUG("Resolved module ~p to file ~p", [Module, File]),
             {Kind, File, Includes};
         false ->
             Dirs = lists:map(fun({_, P, _}) -> P end, SearchPath),
-            ?LOG_WARN("Module ~p not found, search path: ~s",
-                Module, string:join(Dirs, ":")),
+            ?LOG_WARNING("Module ~p not found, search path: ~s",
+                [Module, string:join(Dirs, ":")]),
             errors:name_error_no_loc("Module ~p not found", [Module])
     end.
 

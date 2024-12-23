@@ -15,6 +15,7 @@
 
 -export_type([index/0]).
 
+-include_lib("kernel/include/logger.hrl").
 -include("log.hrl").
 -include("ety_main.hrl").
 
@@ -43,7 +44,7 @@ empty_index(RebarLockFile) ->
 load_index(RebarLockFile, Path, Mode) ->
     BadIndex =
         fun(Msg) ->
-            ?LOG_WARN(Msg),
+            ?LOG_WARNING(Msg),
             case Mode of
                 test_mode -> throw("bad index: " ++ Msg);
                 prod_mode -> empty_index(RebarLockFile)
@@ -53,7 +54,7 @@ load_index(RebarLockFile, Path, Mode) ->
         true ->
             case file:consult(Path) of
                 {ok, [{etylizer_index, ?INDEX_VERSION, Index}]} ->
-                    ?LOG_INFO("Loading index from ~p", Path),
+                    ?LOG_INFO("Loading index from ~p", [Path]),
                     Index;
                 {ok, []} ->
                     BadIndex(utils:sformat("Empty index at ~p", Path));
@@ -65,7 +66,7 @@ load_index(RebarLockFile, Path, Mode) ->
                         Reason))
             end;
         false ->
-            ?LOG_INFO("No index exists at ~p, using empty index", Path),
+            ?LOG_INFO("No index exists at ~p, using empty index", [Path]),
             empty_index(RebarLockFile)
     end.
 
@@ -74,7 +75,7 @@ save_index(Path, Index) ->
     filelib:ensure_dir(Path),
     case file:write_file(Path, io_lib:format("~p.~n", [{etylizer_index, ?INDEX_VERSION, Index}])) of
         ok ->
-            ?LOG_INFO("Stored index at ~p", Path),
+            ?LOG_INFO("Stored index at ~p", [Path]),
             ok;
         {error, Reason} ->
             ?ABORT("Error occurred while trying to save index. Reason: ~s", Reason)
@@ -98,7 +99,7 @@ has_exported_interface_changed(Path, Forms, {_, Index}) ->
             true;
         {ok, {_, OldInterfaceHash}} ->
             Interface = cm_module_interface:extract_interface_declaration(Forms),
-            ?LOG_DEBUG("Interface of ~p: ~200p", Path, Interface),
+            ?LOG_DEBUG("Interface of ~p: ~200p", [Path, Interface]),
             NewHash = utils:hash_sha1(io_lib:write(Interface)),
             OldInterfaceHash =/= NewHash
     end.
@@ -127,10 +128,10 @@ has_external_dep_changed(RebarLockFile, {{StoredOtpVersion, StoredRebarHash}, In
         case {OtpVersion =:= StoredOtpVersion, RebarHash =:= StoredRebarHash} of
             {true, true} -> false;
             {false, _} ->
-                ?LOG_INFO("OTP version changed from ~p to ~p", StoredOtpVersion, OtpVersion),
+                ?LOG_INFO("OTP version changed from ~p to ~p", [StoredOtpVersion, OtpVersion]),
                 true;
             {true, false} ->
-                ?LOG_INFO("Rebar lock file ~p changed", RebarLockFile),
+                ?LOG_INFO("Rebar lock file ~p changed", [RebarLockFile]),
                 true
         end,
     NewIndex = {{OtpVersion, RebarHash}, Index},

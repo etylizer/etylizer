@@ -1,6 +1,6 @@
 -module(fungraph).
 
--include("log.hrl").
+-include_lib("kernel/include/logger.hrl").
 
 -ifdef(TEST).
 -export([dependency_order/1]).
@@ -70,9 +70,9 @@ dependency_order(Forms) ->
 -spec dependency_order(ast:forms(), call_graph(), scc_dep_graph()) -> [sets:set(ast:fun_decl())].
 dependency_order(Forms, CallGraph, SCCDepGraph) ->
     FunMap = add_call_vertices(Forms, CallGraph),
-    ?LOG_TRACE("FunMap=~200p", FunMap),
+    ?LOG_DEBUG("FunMap=~200p", [FunMap]),
     lists:foreach(fun (Form) -> add_call_edges(Form, CallGraph) end, Forms),
-    ?LOG_DEBUG("CallGraph=~200p", graph:to_list(CallGraph, fun cv_to_string/1)),
+    ?LOG_DEBUG("CallGraph=~200p", [graph:to_list(CallGraph, fun cv_to_string/1)]),
     SCCs = graph:strong_components(CallGraph),
     % SCCMap maps each vertex to its SCC (strongly connected component)
     % SCCMap: #{ call_vertex() => scc() }
@@ -84,9 +84,9 @@ dependency_order(Forms, CallGraph, SCCDepGraph) ->
             end,
             sets:to_list(SCCs))),
     ?LOG_DEBUG("SCCMap=~p",
-               lists:map(fun({K, SCC}) ->
+               [lists:map(fun({K, SCC}) ->
                                  {cv_to_string(K), scc_to_string(SCC)}
-                         end, maps:to_list(SCCMap))),
+                         end, maps:to_list(SCCMap))]),
     % build a dependency graph among SCCs
     lists:foreach(fun (SCC) -> graph:add_vertex(SCCDepGraph, SCC) end, sets:to_list(SCCs)),
     utils:foreach(
@@ -105,7 +105,7 @@ dependency_order(Forms, CallGraph, SCCDepGraph) ->
                 end)
       end),
     ?LOG_DEBUG("SCCDepGraph=~200p",
-               graph:to_list(SCCDepGraph, fun scc_to_string/1)),
+               [graph:to_list(SCCDepGraph, fun scc_to_string/1)]),
     % return the topological order of the dependency graph among SCCs
     SortedSCCs =
       case graph:topsort(SCCDepGraph) of

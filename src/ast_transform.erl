@@ -8,7 +8,7 @@
 
 -compile([nowarn_shadow_vars]).
 
--include("log.hrl").
+-include_lib("kernel/include/logger.hrl").
 
 -record(ctx,
         { path :: file:filename(),
@@ -117,14 +117,14 @@ trans_form(Ctx, Form, Mode) ->
                 NewForm = {attribute, to_loc(TmpCtx, Anno), record, {Name, NewFields}},
                 RecordTy = records:record_ty_from_decl(Name, NewFields),
                 NewCtx = Ctx#ctx { records = maps:put(Name, RecordTy, Ctx#ctx.records) },
-                ?LOG_TRACE("Registered new record type: ~200p", RecordTy),
+                ?LOG_DEBUG("Registered new record type: ~200p", [RecordTy]),
                 {NewForm, NewCtx};
             {attribute, Anno, type, Def} ->
                 {attribute, to_loc(Ctx, Anno), type, transparent, trans_tydef(Ctx, Def)};
             {attribute, Anno, opaque, Def} ->
                 {attribute, to_loc(Ctx, Anno), type, opaque, trans_tydef(Ctx, Def)};
             {attribute, Anno, Other, _} ->
-                ?LOG_TRACE("Ignoring attribute ~w at ~s", Other, ast:format_loc(to_loc(Ctx, Anno))),
+                ?LOG_DEBUG("Ignoring attribute ~w at ~s", [Other, ast:format_loc(to_loc(Ctx, Anno))]),
                 error;
             {warning, _} -> error;
             {eof, _} -> error;
@@ -443,7 +443,7 @@ trans_exp(Ctx, Env, Exp) ->
             {{'catch', to_loc(Ctx, Anno), trans_exp_noenv(Ctx, Env, E)}, Env};
         {cons, Anno, E1, E2} ->
             {[NewE1, NewE2], NewEnv} = trans_exps(Ctx, Env, [E1, E2]),
-            ?LOG_TRACE("cons, NewEnv=~w", NewEnv),
+            ?LOG_DEBUG("cons, NewEnv=~w", [NewEnv]),
             {{cons, to_loc(Ctx, Anno), NewE1, NewE2}, NewEnv};
         {'fun', Anno, {function, Name, Arity}} ->
             % FIXME: should we check whether the reference is valid?
@@ -462,7 +462,7 @@ trans_exp(Ctx, Env, Exp) ->
         {call, Anno, {'atom', AnnoName, FunName}, Args} -> % special case
             LocName = to_loc(Ctx, AnnoName),
             {NewArgs, NewEnv} = trans_exps(Ctx, Env, Args),
-            ?LOG_TRACE("Env after args: ~w", NewEnv),
+            ?LOG_DEBUG("Env after args: ~w", [NewEnv]),
             Loc = to_loc(Ctx, Anno),
             {{call, Loc,
               {var, LocName, resolve_name(LocName, Ctx, Env, FunName, arity(Loc, Args))},
@@ -702,7 +702,7 @@ trans_pat(Ctx, Env, Pat, BindMode) ->
             case BindMode of
                 shadow ->
                     {Name, NewEnv} = varenv_local:insert(V, Env),
-                    ?LOG_TRACE("Introducing new binding ~w at ~s", Name, ast:format_loc(Loc)),
+                    ?LOG_DEBUG("Introducing new binding ~w at ~s", [Name, ast:format_loc(Loc)]),
                     {{var, Loc, {local_bind, Name}}, NewEnv};
                 no_bind ->
                     case varenv_local:find(V , Env) of
@@ -714,8 +714,8 @@ trans_pat(Ctx, Env, Pat, BindMode) ->
                         {ok, Name} -> {{var, Loc, {local_ref, Name}}, Env};
                         error ->
                             {Name, NewEnv} = varenv_local:insert(V, Env),
-                            ?LOG_TRACE("Introducing new binding ~w at ~s", Name,
-                                       ast:format_loc(Loc)),
+                            ?LOG_DEBUG("Introducing new binding ~w at ~s", 
+                                       [Name, ast:format_loc(Loc)]),
                             {{var, Loc, {local_bind, Name}}, NewEnv}
                     end
             end;
@@ -742,7 +742,7 @@ trans_case_clauses(_Ctx, Env, []) -> {[], Env};
 trans_case_clauses(Ctx, Env, Cs) ->
     {NewClauses, NewEnvs} =
         lists:unzip(lists:map(fun(C) -> trans_case_clause(Ctx, Env, C) end, Cs)),
-    ?LOG_TRACE("Merging envs: ~200p", NewEnvs),
+    ?LOG_DEBUG("Merging envs: ~200p", [NewEnvs]),
     {NewClauses, varenv_local:merge_envs(NewEnvs)}.
 
 -spec trans_case_clause(ctx(), varenv_local:t(), ast_erl:case_clause())
@@ -753,7 +753,7 @@ trans_case_clause(Ctx, Env, C) ->
             {Q, QEnv} = trans_pat(Ctx, Env, Pat, bind_fresh),
             NewGuards = trans_guards(Ctx, QEnv, Guards),
             Loc = to_loc(Ctx, Anno),
-            ?LOG_TRACE("Env for body of case clause at ~s: ~w", ast:format_loc(Loc), QEnv),
+            ?LOG_DEBUG("Env for body of case clause at ~s: ~w", [ast:format_loc(Loc), QEnv]),
             {NewBody, NewEnv} = trans_exp_seq(Ctx, QEnv, Body),
             {{case_clause, Loc, Q, NewGuards, NewBody}, NewEnv};
         X -> errors:uncovered_case(?FILE, ?LINE, X)

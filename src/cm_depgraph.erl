@@ -6,7 +6,7 @@
 % The graph currently records only dependencies between modules local to the project. Hence,
 % if an external dependency changes, you have to delete the index.
 
--include("log.hrl").
+-include_lib("kernel/include/logger.hrl").
 
 -export([
     new/0, new/1,
@@ -94,7 +94,7 @@ add_file(Path, {Srcs, DepFiles, DepMods}) ->
 ) -> dep_graph().
 update_dep_graph(Path, Forms, SearchPath, DepGraph) ->
     Modules = ast_utils:referenced_modules(Forms),
-    ?LOG_DEBUG("Modules referenced from ~p: ~p", Path, Modules),
+    ?LOG_DEBUG("Modules referenced from ~p: ~p", [Path, Modules]),
     traverse_module_list(Path, Modules, SearchPath, add_file(Path, DepGraph)).
 
 -spec traverse_module_list(
@@ -118,7 +118,8 @@ traverse_module_list(Path, [CurrentModule | RemainingModules], SearchPath, DepGr
                     fun (ModName) -> not has_rev_dep(ModName, PathMod, DepGraph) end,
                     ast_utils:referenced_modules_via_types(Forms)
                 ),
-            ?LOG_DEBUG("Additional modules for path ~s (current: ~w): ~200p", Path, CurrentModule, AdditionalModules),
+            ?LOG_DEBUG("Additional modules for path ~s (current: ~w): ~200p", 
+                       [Path, CurrentModule, AdditionalModules]),
             traverse_module_list(Path, RemainingModules ++ AdditionalModules,
                 SearchPath, NewDepGraph)
     end.
@@ -147,7 +148,7 @@ build_dep_graph(Worklist, SearchPath, DepGraph, AlreadyHandled) ->
     case Worklist of
         [] -> DepGraph;
         [File | Rest] ->
-            ?LOG_INFO("Adding ~p to dependency graph", File),
+            ?LOG_INFO("Adding ~p to dependency graph", [File]),
             Forms = parse_intern(File),
             {All, _, _} = NewDepGraph = update_dep_graph(File, Forms, SearchPath, DepGraph),
             NewAlreadyHandled = sets:add_element(File, AlreadyHandled),
@@ -155,7 +156,7 @@ build_dep_graph(Worklist, SearchPath, DepGraph, AlreadyHandled) ->
                 sets:subtract(All, NewAlreadyHandled),
                 sets:from_list(Rest, [{version, 2}])
             ),
-            ?LOG_INFO("Done adding ~p to dependency graph", File),
+            ?LOG_INFO("Done adding ~p to dependency graph", [File]),
             build_dep_graph(
                 Rest ++ lists:map(fun utils:normalize_path/1, sets:to_list(NewFiles)),
                 SearchPath,

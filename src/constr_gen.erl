@@ -1,5 +1,6 @@
 -module(constr_gen).
 
+-include_lib("kernel/include/logger.hrl").
 -include("log.hrl").
 
 -export([
@@ -124,10 +125,10 @@ exp_constrs(Ctx, E, T) ->
             {BodyList, Lowers, _Uppers, CsCases} =
                 lists:foldl(fun (Clause = {case_clause, LocClause, _, _, _},
                                  {BodyList, Lowers, Uppers, AccCs}) ->
-                                    ?LOG_TRACE("Generating constraint for case clause at ~s: Lowers=~s, Uppers=~s",
-                                               ast:format_loc(LocClause),
-                                               pretty:render_tys(Lowers),
-                                               pretty:render_tys(Uppers)),
+                                    ?LOG_DEBUG("Generating constraint for case clause at ~s: Lowers=~s, Uppers=~s",
+                                               [ast:format_loc(LocClause),
+                                                pretty:render_tys(Lowers),
+                                                pretty:render_tys(Uppers)]),
                                     {ThisLower, ThisUpper, ThisCs, ThisConstrBody} =
                                         case_clause_constrs(
                                           Ctx,
@@ -426,7 +427,7 @@ funcall_constrs_with_tyscm(Ctx, L, Var, TyScm, Args, T) ->
                 utils:single(ResConstr),
                 lists:zip(Args, ArgTys)),
             ?LOG_DEBUG("Generating specialized constraints for call of fun ~s with type ~s (type scheme: ~s)",
-                FunName, pretty:render_ty(Mono), pretty:render_tyscheme(TyScm)),
+                [FunName, pretty:render_ty(Mono), pretty:render_tyscheme(TyScm)]),
             Res;
         _ ->
             gen_funcall_constrs(Ctx, L, Var, Args, T)
@@ -493,7 +494,7 @@ case_clause_constrs(Ctx, TyScrut, Scrut, NeedsUnmatchedCheck, LowersBefore,
     {BodyLower, BodyUpper, BodyEnvCs, BodyEnv} =
         case_clause_env(Ctx, L, TyScrut, Scrut, Pat, Guards),
     {_, _, GuardEnvCs, GuardEnv} = case_clause_env(Ctx, L, TyScrut, Scrut, Pat, []),
-    ?LOG_TRACE("TyScrut=~w, Scrut=~w, GuardEnv=~w, BodyEnv=~w", TyScrut, Scrut, GuardEnv, BodyEnv),
+    ?LOG_DEBUG("TyScrut=~w, Scrut=~w, GuardEnv=~w, BodyEnv=~w", [TyScrut, Scrut, GuardEnv, BodyEnv]),
     Beta = fresh_tyvar(Ctx),
     InnerCs = exps_constrs(Ctx, L, Exps, Beta),
     CGuards =
@@ -551,17 +552,17 @@ pat_guard_lower_upper(Symtab, P, Gs, E) ->
             {safe, true} -> ast_lib:mk_intersection([LowerPatTy, LowerETy]);
             _ -> {predef, none}
         end,
-    ?LOG_TRACE("EPat=~200p, UpperPatTy=~s, LowerPatTy=~s, UpperETy=~s, LowerETy=~s Upper=~s, Lower=~s, VarsOfGuards=~200p, BoundVars=~w, Status=~w",
-               EPat,
-               pretty:render_ty(UpperPatTy),
-               pretty:render_ty(LowerPatTy),
-               pretty:render_ty(UpperETy),
-               pretty:render_ty(LowerETy),
-               pretty:render_ty(Upper),
-               pretty:render_ty(Lower),
-               maps:keys(Env),
-               sets:to_list(BoundVars),
-               Status),
+    ?LOG_DEBUG("EPat=~200p, UpperPatTy=~s, LowerPatTy=~s, UpperETy=~s, LowerETy=~s Upper=~s, Lower=~s, VarsOfGuards=~200p, BoundVars=~w, Status=~w",
+               [EPat,
+                pretty:render_ty(UpperPatTy),
+                pretty:render_ty(LowerPatTy),
+                pretty:render_ty(UpperETy),
+                pretty:render_ty(LowerETy),
+                pretty:render_ty(Upper),
+                pretty:render_ty(Lower),
+                maps:keys(Env),
+                sets:to_list(BoundVars),
+                Status]),
     {Lower, Upper}.
 
 % The variables bound by a pattern
@@ -1037,7 +1038,7 @@ var_test_env(FunExp, X, RestArgs) ->
                             _ ->
                                 case string:prefix(atom_to_list(Name), "is_") of
                                     nomatch -> ok;
-                                    _ -> ?LOG_INFO("Unsupported type test ~w", Name)
+                                    _ -> ?LOG_INFO("Unsupported type test ~w", [Name])
                                 end,
                                 Default
                         end
@@ -1045,7 +1046,7 @@ var_test_env(FunExp, X, RestArgs) ->
             _ ->
                 Default
         end,
-    ?LOG_TRACE("Env resulting from var test ~200p for ~w and args ~200p: ~w", FunExp, X, RestArgs, Env),
+    ?LOG_DEBUG("Env resulting from var test ~200p for ~w and args ~200p: ~w", [FunExp, X, RestArgs, Env]),
     Env.
 
 
@@ -1100,7 +1101,7 @@ fun_clauses_to_exp_aux(Ctx, L, FunClauses) ->
     ScrutExp = {tuple, L, lists:map(fun(V) -> {var, L, {local_ref, V}} end, Vars)},
     CaseClauses = lists:map(fun fun_clause_to_case_clause/1, FunClauses),
     E = {'case', L, ScrutExp, CaseClauses},
-    ?LOG_TRACE("Rewrote function clauses at ~s with arguments=~w:\n~200p", ast:format_loc(L), Vars, E),
+    ?LOG_DEBUG("Rewrote function clauses at ~s with arguments=~w:\n~200p", [ast:format_loc(L), Vars, E]),
     {Vars, [E]}.
 
 -spec fun_clause_to_case_clause(ast:fun_clause()) -> ast:case_clause().
