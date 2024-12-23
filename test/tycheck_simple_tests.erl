@@ -3,7 +3,7 @@
 % Test setup for all functions in test_files/tycheck_simple.erl
 
 -include_lib("eunit/include/eunit.hrl").
--include("log.hrl").
+-include_lib("kernel/include/logger.hrl").
 -include("ety_main.hrl").
 
 -spec check_ok_fun(string(), symtab:t(), ast:fun_decl(), ast:ty_scheme()) -> ok.
@@ -43,8 +43,8 @@ check_infer_ok_fun(Filename, Tab, Decl = {function, L, Name, Arity, _}, Ty) ->
           end
         end,
         Envs),
-    ?LOG_NOTE("Inferred the following types for ~w/~w: ~s", Name, Arity,
-      pretty:render_list(fun pretty:tyscheme/1, InferredTys)),
+    ?LOG_NOTICE("Inferred the following types for ~w/~w: ~s", [Name, Arity,
+      pretty:render_list(fun pretty:tyscheme/1, InferredTys)]),
     case lists:any(
             fun(InferredTy) -> typing_infer:more_general(L, InferredTy, Ty, Tab) end,
             InferredTys)
@@ -98,7 +98,7 @@ check_decls_in_file(F, What, NoInfer) ->
         RunTest =
           % FIXME #54 reduce timeout after issue has been fixed
           {timeout, 45, {FullNameStr, fun() ->
-                ?LOG_NOTE("Type checking ~s from ~s", NameStr, F),
+                ?LOG_NOTICE("Type checking ~s from ~s", [NameStr, F]),
                 test_utils:reset_ets(),
                 case ShouldFail of
                   true -> check_fail_fun(F, Tab, Decl, Ty);
@@ -109,7 +109,7 @@ check_decls_in_file(F, What, NoInfer) ->
             },
         InferTest =
           {timeout, 45, {FullNameStr ++ " (infer)", fun() ->
-                ?LOG_NOTE("Infering type for ~s from ~s", NameStr, F),
+                ?LOG_NOTICE("Infering type for ~s from ~s", [NameStr, F]),
                 test_utils:reset_ets(),
                 check_infer_ok_fun(F, Tab, Decl, Ty)
               end}

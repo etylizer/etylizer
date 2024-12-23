@@ -3,7 +3,7 @@
 -export([check/1]).
 
 -include_lib("eunit/include/eunit.hrl").
--include("log.hrl").
+-include_lib("kernel/include/logger.hrl").
 
 % -spec unconsult(file:filename(), term()) -> ok | {error, any()}.
 % unconsult(F, T) ->
@@ -46,9 +46,9 @@ check_test_spec(Path, {good, Lineno, RawForms}) ->
     end,
     OutPath = filename:rootname(Path) ++ ".out",
     % unconsult(OutPath, [Forms]), % DANGER, this line should be commented out
-    ?LOG_NOTE("Loading expected forms from ~s", OutPath),
+    ?LOG_NOTICE("Loading expected forms from ~s", [OutPath]),
     {ok, [Expected]} = file:consult(OutPath),
-    ?LOG_NOTE("Found expected forms in ~s", OutPath),
+    ?LOG_NOTICE("Found expected forms in ~s", [OutPath]),
     case diff_terms(Expected, Forms, dont_delete) of
         equal -> ok;
         {diff, S} ->

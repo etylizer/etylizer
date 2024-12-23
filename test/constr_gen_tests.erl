@@ -1,7 +1,7 @@
 -module(constr_gen_tests).
 
--include("log.hrl").
 -include_lib("eunit/include/eunit.hrl").
+-include_lib("kernel/include/logger.hrl").
 
 -spec pat_guard_lower_upper_test() -> ok.
 pat_guard_lower_upper_test() ->
@@ -12,7 +12,7 @@ pat_guard_lower_upper_test() ->
     G = [{'atom', Loc, true}],
     E = {var, Loc, {local_ref, {foo, 1}}},
     {Upper, Lower} = constr_gen:pat_guard_lower_upper(Symtab, P, [G], E),
-    ?LOG_WARN("Upper: ~w, Lower: ~w", Upper, Lower),
+    ?LOG_WARNING("Upper: ~w, Lower: ~w", [Upper, Lower]),
     % Upper and Lower should be equiv to any()
     Any = {predef, any},
     ?assertEqual(true, test_utils:is_equiv(Upper, Any)),
@@ -24,8 +24,8 @@ assert_ty_of_pat(P, Upper, Lower) ->
     Env = #{},
     GivenUpper = constr_gen:ty_of_pat(Symtab, Env, P, upper),
     GivenLower = constr_gen:ty_of_pat(Symtab, Env, P, lower),
-    ?LOG_WARN("ty_of_pat, P=~200p, Upper=~w, GivenUpper=~w, Lower=~w, GivenLower=~w",
-        P, Upper, GivenUpper, Lower, GivenLower),
+    ?LOG_WARNING("ty_of_pat, P=~200p, Upper=~w, GivenUpper=~w, Lower=~w, GivenLower=~w",
+        [P, Upper, GivenUpper, Lower, GivenLower]),
     ?assertEqual(true, test_utils:is_equiv(Upper, GivenUpper)),
     ?assertEqual(true, test_utils:is_equiv(Lower, GivenLower)).
 

@@ -1,6 +1,7 @@
 -module(cm_recompile_tests).
 
 -include_lib("eunit/include/eunit.hrl").
+-include_lib("kernel/include/logger.hrl").
 -include("ety_main.hrl").
 -include("log.hrl").
 
@@ -70,7 +71,7 @@ run_typechecker(SrcDir, Mode) ->
     file:name(), file:name(), integer(), string(), [string()] | type_error, tycheck_mode()
 ) -> ok.
 test_recompile_version(TargetDir, Dir, Version, RebarLockContent, ExpectedChanges, Mode) ->
-    ?LOG_NOTE("Testing code version ~p in ~p", Version, Dir),
+    ?LOG_NOTICE("Testing code version ~p in ~p", [Version, Dir]),
     % cleanup of previous source files
     {ok, ExistingFiles} = file:list_dir(TargetDir),
     lists:foreach(
@@ -104,7 +105,7 @@ test_recompile_version(TargetDir, Dir, Version, RebarLockContent, ExpectedChange
            true -> RealChanges
         end,
     ?assertEqual(ExpectedChangesSorted, RealChangesSorted),
-    ?LOG_NOTE("Test successful for code version ~p in ~p", Version, Dir).
+    ?LOG_NOTICE("Test successful for code version ~p in ~p", [Version, Dir]).
 
 -type changes_map() :: #{integer() => [string()] | type_error }.
 

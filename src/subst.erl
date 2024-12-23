@@ -2,7 +2,7 @@
 
 -compile({no_auto_import,[apply/2, apply/3]}).
 
--include("log.hrl").
+-include_lib("kernel/include/logger.hrl").
 
 -export_type([
     t/0,
@@ -60,11 +60,11 @@ apply(Subst = {tally_subst, BaseSubst, Fixed}, T, CleanMode) ->
             clean -> clean(U, Fixed);
             no_clean -> U
         end,
-    ?LOG_TRACE("subst:apply, T=~s, Subst=~s, U=~s, Res=~s",
-        pretty:render_ty(T),
-        pretty:render_subst(Subst),
-        pretty:render_ty(U),
-        pretty:render_ty(Res)),
+    ?LOG_DEBUG("subst:apply, T=~s, Subst=~s, U=~s, Res=~s",
+        [pretty:render_ty(T),
+         pretty:render_subst(Subst),
+         pretty:render_ty(U),
+         pretty:render_ty(Res)]),
     Res;
 apply(S, T, _) -> apply_base(S, T).
 

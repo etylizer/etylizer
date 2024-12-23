@@ -1,7 +1,7 @@
 -module(cm_depgraph_tests).
 
 -include_lib("eunit/include/eunit.hrl").
--include("log.hrl").
+-include_lib("kernel/include/logger.hrl").
 -include("ety_main.hrl").
 
 add_dependency_test() ->
@@ -18,7 +18,7 @@ add_dependency_test() ->
 update_dep_graph_test() ->
     parse_cache:with_cache(#opts{}, fun() ->
         ExampleFilePath = "./test_files/referenced_modules/module1.erl",
-        ?LOG_WARN("ExampleFilePath=~s", ExampleFilePath),
+        ?LOG_WARNING("ExampleFilePath=~s", [ExampleFilePath]),
         RawForms = parse:parse_file_or_die(ExampleFilePath),
         Forms = ast_transform:trans(ExampleFilePath, RawForms),
         SearchPath = [{local, "./test_files/referenced_modules/", []}],

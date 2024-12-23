@@ -3,7 +3,7 @@
 % @doc This module provides functionality for parsing the erlang source code.
 % It returns an AST matching the types in the ast module.
 
--include("log.hrl").
+-include_lib("kernel/include/logger.hrl").
 -include("parse.hrl").
 
 -export([
@@ -28,7 +28,7 @@ parse_file(Path, Opts) ->
             ets:new(?TABLE, [named_table, public, set]);
         _ -> ets:delete_all_objects(?TABLE)
     end,
-    ?LOG_TRACE("Parsing ~s", Path),
+    ?LOG_DEBUG("Parsing ~s", [Path]),
     Ext = filename:extension(Path),
     if
         Ext == ".erl" ->
@@ -43,10 +43,10 @@ parse_file(Path, Opts) ->
                         _ -> {d, Name, Val}
                     end
                 end, Opts#parse_opts.defines),
-            ?LOG_TRACE("Calling compile:file for ~s, options: ~200p", NoExt, CompileOpts),
+            ?LOG_DEBUG("Calling compile:file for ~s, options: ~200p", [NoExt, CompileOpts]),
             case compile:file(NoExt, CompileOpts) of
                 {ok, _} ->
-                    ?LOG_TRACE("Done parsing ~s", Path),
+                    ?LOG_DEBUG("Done parsing ~s", [Path]),
                     case ets:lookup(?TABLE, ?FORMS) of
                         [{?FORMS, Forms}] -> {ok, Forms};
                         _ ->
@@ -54,11 +54,11 @@ parse_file(Path, Opts) ->
                             error
                     end;
                 error ->
-                    ?LOG_NOTE("Error parsing ~s", Path),
+                    ?LOG_INFO("Error parsing ~s", [Path]),
                     error
             end;
         true ->
-            ?LOG_ERROR("Invalid input file: ~s", Path),
+            ?LOG_ERROR("Invalid input file: ~s", [Path]),
             error
     end.
 
@@ -81,6 +81,6 @@ parse_transform(Forms, _Opts) ->
         Forms
     catch
         K:E ->
-            ?LOG_ERROR("Error ~p in parse_transform: ~p", K, E),
+            ?LOG_ERROR("Error ~p in parse_transform: ~p", [K, E]),
             Forms
     end.

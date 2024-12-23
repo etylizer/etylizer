@@ -2,7 +2,7 @@
 
 % @doc A symbol table for information either defined in the current or some external module.
 
--include("log.hrl").
+-include_lib("kernel/include/logger.hrl").
 
 -compile([nowarn_shadow_vars]).
 
@@ -47,11 +47,11 @@
 -spec dump_symtab(string(), t()) -> ok.
 dump_symtab(Msg, Tab) ->
     ?LOG_DEBUG("~s~nFunctions:~n~s~ntypes:~n~s~nOperators:~n~s~nRecords:~n~s",
-        Msg,
-        pretty:render_fun_env(Tab#tab.funs),
-        pretty:render_ty_env(Tab#tab.types),
-        pretty:render_op_env(Tab#tab.ops),
-        pretty:render_record_env(Tab#tab.records)).
+        [Msg,
+          pretty:render_fun_env(Tab#tab.funs),
+          pretty:render_ty_env(Tab#tab.types),
+          pretty:render_op_env(Tab#tab.ops),
+          pretty:render_record_env(Tab#tab.records)]).
 
 -spec dump_symtab_not_defined(string(), string(), t()) -> ok.
 dump_symtab_not_defined(Key, What, Tab) ->
@@ -137,7 +137,7 @@ empty() -> #tab { funs = #{}, ops = #{}, types = #{}, records = #{}, modules = #
 
 -spec std_symtab(paths:search_path()) -> t().
 std_symtab(SearchPath) ->
-    ?LOG_NOTE("Building symtab for standard library ..."),
+    ?LOG_INFO("Building symtab for standard library ..."),
     Funs =
         lists:foldl(fun({Name, Arity, T}, Map) -> maps:put({qref, erlang, Name, Arity}, T, Map) end,
                     #{},
@@ -148,7 +148,7 @@ std_symtab(SearchPath) ->
                     stdtypes:builtin_ops()),
     Tab = #tab { funs = Funs, ops = Ops, types = #{}, records = #{}, modules = #{} },
     ExtTab = extend_symtab_with_module_list(Tab, SearchPath, [erlang]),
-    ?LOG_NOTE("Done building symtab for standard library"),
+    ?LOG_INFO("Done building symtab for standard library"),
     ExtTab.
 
 -type ref() :: ref | {qref, ModuleName::atom()}.
@@ -228,17 +228,17 @@ traverse_module_list(SearchPath, Symtab, [CurrentModule | RemainingModules]) ->
             Entry = {_, Filename, _} = paths:find_module_path(SearchPath, CurrentModule),
             Forms = retrieve_forms_for_source(Entry),
             NewSymtab = extend_symtab(Filename, Forms, CurrentModule, Symtab),
-            ?LOG_DEBUG("Extended symtab with entries from ~p", CurrentModule),
+            ?LOG_DEBUG("Extended symtab with entries from ~p", [CurrentModule]),
             case log:allow(trace) of
                 true ->
                     NewSymbols = symbols_for_module(CurrentModule, NewSymtab),
-                    ?LOG_TRACE("New symbols from module ~p: ~s", CurrentModule,
-                        pretty:render_list(fun pretty:ref/1, NewSymbols));
+                    ?LOG_DEBUG("New symbols from module ~p: ~s", 
+                         [CurrentModule, pretty:render_list(fun pretty:ref/1, NewSymbols)]);
                 false ->
                     ok
             end,
             AdditionalModules = ast_utils:referenced_modules_via_types(Forms),
-            ?LOG_DEBUG("Additional modukes for ~w: ~200p", CurrentModule, AdditionalModules),
+            ?LOG_DEBUG("Additional modukes for ~w: ~200p", [CurrentModule, AdditionalModules]),
             traverse_module_list(SearchPath, NewSymtab, RemainingModules ++ AdditionalModules);
         _ -> traverse_module_list(SearchPath, Symtab, RemainingModules)
     end;

@@ -1,7 +1,7 @@
 -module(ast_check_tests).
 
--include("log.hrl").
 -include_lib("eunit/include/eunit.hrl").
+-include_lib("kernel/include/logger.hrl").
 
 mk_test_ty(T) ->
     Loc = {1,1},
@@ -31,14 +31,14 @@ lookup_ty_test() ->
             type,
             {gen_funcall, mk_test_ty(TyVar), [{var,Loc,'T'}]}},
     M = ast_check:prepare_spec(ast_erl, [Attr]),
-    ?LOG_TRACE("M = ~p", M),
+    ?LOG_DEBUG("M = ~p", [M]),
     ?assertEqual(mk_test_ty(TyArg), ast_check:lookup_ty_or_die(M, ast_erl, 'gen_funcall', [TyArg])).
 
 lookup_ty_realworld_test() ->
     Forms = parse:parse_file_or_die("src/ast_erl.erl"),
     M = ast_check:prepare_spec(ast_erl, Forms),
-    ?LOG_TRACE("Forms = ~p", Forms),
-    ?LOG_TRACE("M = ~p", M),
+    ?LOG_DEBUG("Forms = ~p", [Forms]),
+    ?LOG_DEBUG("M = ~p", [M]),
     TyArg = {user_type, {1,1}, guard_test,[]},
     T = ast_check:lookup_ty_or_die(M, ast_erl, 'gen_funcall', [TyArg]),
     ?assertMatch({type, _, tuple, _}, T).

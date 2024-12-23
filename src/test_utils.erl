@@ -7,7 +7,7 @@
 % before the first line.
 
 -include_lib("eunit/include/eunit.hrl").
--include("log.hrl").
+-include_lib("kernel/include/logger.hrl").
 
 -export([
     extract_tests/1,
@@ -64,7 +64,7 @@ extract_tests(Path) ->
                         end;
                     _ -> false
                 end end, AllAttrs),
-            ?LOG_DEBUG("AllAttrs = ~1000p~nLinenoAndResults = ~1000p", AllAttrs, LinenoAndResults),
+            ?LOG_DEBUG("AllAttrs = ~1000p~nLinenoAndResults = ~1000p", [AllAttrs, LinenoAndResults]),
             case LinenoAndResults of
                 [] -> [{good, 0, RawForms}]; % no test spec -> single test
                 _ -> extract_tests(LinenoAndResults, RawForms)
@@ -74,7 +74,7 @@ extract_tests(Path) ->
 -spec extract_tests_test() -> ok.
 extract_tests_test() ->
     Ts = extract_tests("test_files/test_utils_test.erl"),
-    ?LOG_DEBUG("Ts = ~1000p", Ts),
+    ?LOG_DEBUG("Ts = ~1000p", [Ts]),
     case Ts of
         [
             {{bad, "Blub"}, 6, [{function, _, foo, 1, _}, {function, _, bar, 1, _}]},

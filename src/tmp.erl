@@ -1,6 +1,6 @@
 -module(tmp).
 
--include("log.hrl").
+-include_lib("kernel/include/logger.hrl").
 
 -export([
     with_tmp_file/4
@@ -56,13 +56,13 @@ with_tmp_file(Prefix, Suffix, Del, Action) ->
     fun((string()) -> T)) -> T.
 with_tmp_dir(Prefix, Suffix, Del, Action) ->
     P = tmp_filename(Prefix, Suffix),
-    ?LOG_INFO("Creating temporary directory ~p", P),
+    ?LOG_INFO("Creating temporary directory ~p", [P]),
     utils:mkdirs(P),
     try Action(P)
     after
         utils:if_true(Del == delete,
             fun() ->
-                ?LOG_NOTE("Removing temporary directory ~p", P),
+                ?LOG_INFO("Removing temporary directory ~p", [P]),
                 os:cmd("rm -Rf " ++ P)
             end)
     end.

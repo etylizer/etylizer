@@ -5,7 +5,7 @@
     new_ctx/2
 ]).
 
--include("log.hrl").
+-include_lib("kernel/include/logger.hrl").
 -include("typing.hrl").
 
 -spec new_ctx(symtab:t(), t:opt(ast_check:ty_map())) -> ctx().
@@ -18,8 +18,8 @@ new_ctx(Tab, Sanity) ->
 check_forms(Ctx, FileName, Forms, Only, Ignore) ->
     ExtTab = symtab:extend_symtab(FileName, Forms, Ctx#ctx.symtab),
     ExtCtx = Ctx#ctx { symtab = ExtTab },
-    ?LOG_DEBUG("Only: ~200p", sets:to_list(Only)),
-    ?LOG_DEBUG("Ignore: ~200p", sets:to_list(Ignore)),
+    ?LOG_DEBUG("Only: ~200p", [sets:to_list(Only)]),
+    ?LOG_DEBUG("Ignore: ~200p", [sets:to_list(Ignore)]),
     % Split in functions with and without tyspec
     {FunsWithSpec, FunsWithoutSpec, KnownFuns} =
         lists:foldr(
@@ -39,8 +39,8 @@ check_forms(Ctx, FileName, Forms, Only, Ignore) ->
                                       {ok, Ty} -> {[{Form, Ty} | With], Without, [X | Knowns]}
                                   end;
                               false ->
-                                  ?LOG_NOTE("~s: not type checking function ~s as requested",
-                                             ast:format_loc(Loc), RefStr),
+                                  ?LOG_INFO("~s: not type checking function ~s as requested",
+                                             [ast:format_loc(Loc), RefStr]),
                                   {With, Without, [X | Knowns]}
                           end;
                       _ -> Acc
@@ -58,14 +58,14 @@ check_forms(Ctx, FileName, Forms, Only, Ignore) ->
     case sets:is_empty(Unknowns) of
         true -> ok;
         false ->
-            ?LOG_WARN("Unknown functions in only: ~200p", sets:to_list(Unknowns))
+            ?LOG_WARNING("Unknown functions in only: ~200p", [sets:to_list(Unknowns)])
     end,
     % infer types of functions without spec
     InferredTyEnvs = typing_infer:infer_all(ExtCtx, FileName, FunsWithoutSpec),
     % Typechecks the functions with a type spec. We need to check against all InferredTyEnvs,
     % we can stop on the first success.
     ?LOG_INFO("Checking ~w functions in ~s against their specs (~w environments)",
-              length(FunsWithSpec), FileName, length(InferredTyEnvs)),
+              [length(FunsWithSpec), FileName, length(InferredTyEnvs)]),
     Loop =
         fun Loop(Envs, Errs) ->
                 case Envs of
@@ -99,7 +99,7 @@ check_forms(Ctx, FileName, Forms, Only, Ignore) ->
         end,
     Loop(InferredTyEnvs, []),
     ?LOG_INFO("Checking ~w functions in ~s against their specs finished successfully",
-              length(FunsWithSpec), FileName).
+              [length(FunsWithSpec), FileName]).
 
 -spec should_check(string(), string(), string(), sets:set(string()), sets:set(string())) -> boolean().
 should_check(QRefStr, RefStr, NameStr, Only, Ignore) ->

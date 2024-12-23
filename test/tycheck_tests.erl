@@ -1,8 +1,8 @@
 -module(tycheck_tests).
 
 -include_lib("eunit/include/eunit.hrl").
+-include_lib("kernel/include/logger.hrl").
 -include("ety_main.hrl").
--include("log.hrl").
 
 -type tycheck_result() :: ok | {fail, string()}.
 
@@ -34,11 +34,11 @@ run_failing_test(File, ExpectedErrMsg) ->
                 _ ->
                     case string:find(Msg, ExpectedErrMsg) of
                         nomatch ->
-                            ?LOG_NOTE("Error message:~n~s", Msg),
+                            ?LOG_NOTICE("Error message:~n~s", [Msg]),
                             error(utils:sformat("Error message did not include expected string:~n" ++
                                 "Expected: ~s~nGiven   : ~s", ExpectedErrMsg, Msg));
                         _ ->
-                            ?LOG_NOTE("Test ~s failed as expected with the right error message", File)
+                            ?LOG_NOTICE("Test ~s failed as expected with the right error message", [File])
                     end
             end
     end.
@@ -47,7 +47,7 @@ run_failing_test(File, ExpectedErrMsg) ->
 run_ok_test(File) ->
     case run_typechecker(File) of
         ok ->
-            ?LOG_NOTE("Test ~s typecheck as expected", File),
+            ?LOG_NOTICE("Test ~s typecheck as expected", [File]),
             ok;
         {fail, Msg} ->
             error(utils:sformat("Typechecking ~s unexpectedly failed with error message:~n~s", File, Msg))
@@ -84,7 +84,7 @@ analyze_test_file(File) ->
             _ -> false
         end,
     ?LOG_DEBUG("IsFail=~p, CommentLines=~p, ExpectedErrMsg=~p, IsSkip=~p",
-               IsFail, CommentLines, ExpectedErrMsg, IsSkip),
+               [IsFail, CommentLines, ExpectedErrMsg, IsSkip]),
     case {IsSkip, IsFail, ExpectedErrMsg} of
         {true, _, _} -> skip_test;
         {false, false, unspecific} -> ok_test;
@@ -104,13 +104,13 @@ tycheck_test_() ->
         fun(File) ->
             case analyze_test_file(File) of
                 skip_test ->
-                    ?LOG_NOTE("Skipping test ~s", File),
+                    ?LOG_NOTICE("Skipping test ~s", [File]),
                     [];
                 ok_test ->
                     [
                         {"tycheck_ok " ++ File,
                          fun() ->
-                            ?LOG_NOTE("Checking that ~s typechecks successfully", File),
+                            ?LOG_NOTICE("Checking that ~s typechecks successfully", [File]),
                             run_ok_test(File)
                          end}
                     ];
@@ -118,7 +118,7 @@ tycheck_test_() ->
                     [
                         {"tycheck_fail " ++ File,
                          fun() ->
-                             ?LOG_NOTE("Checking that ~s fails typechecking", File),
+                             ?LOG_NOTICE("Checking that ~s fails typechecking", [File]),
                              run_failing_test(File, Err)
                          end}
                     ]
