@@ -85,8 +85,8 @@ check_decls_in_file(F, What, NoInfer) ->
   RawForms = parse:parse_file_or_die(F),
   Forms = ast_transform:trans(F, RawForms),
   SearchPath = paths:compute_search_path(#opts{}),
-  Tab0 = symtab:std_symtab(SearchPath),
-  Tab = symtab:extend_symtab(F, Forms, Tab0),
+  Tab0 = symtab:std_symtab(SearchPath, symtab:empty()),
+  Tab = symtab:extend_symtab(F, Forms, Tab0,symtab:empty()),
 
   CollectDecls = fun(Decl, TestCases) ->
     case Decl of
