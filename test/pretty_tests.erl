@@ -242,3 +242,22 @@ recursive_test() ->
   %?assertEqual("mu X . nil | {alpha, mu X}", pretty:render_ty(Pretty)),
 
   ok.
+
+named_recursive_test() ->
+  ecache:reset_all(),
+  X = tvar(x),
+  L = tunion([
+    tatom(nil),
+    ttuple([tvar(alpha), X])
+  ]),
+  A = {mu, X, L},
+
+  B = ast_lib:ast_to_erlang_ty(A, symtab:empty()),
+  Pretty = ast_lib:erlang_ty_to_ast(B, #{}),
+  true = subty:is_equivalent(symtab:empty(), A, Pretty),
+  
+  % TODO how to test this with string output?
+  {mu, Mu, {union, [{singleton, nil}, {tuple, [{var, alpha}, Mu]}]}} = Pretty,
+  %?assertEqual("mu X . nil | {alpha, mu X}", pretty:render_ty(Pretty)),
+
+  ok.
