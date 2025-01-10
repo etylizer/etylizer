@@ -23,6 +23,7 @@
     string_contains/2
 ]).
 
+-spec mingle(Value, Value, #{Key => Value}, #{Key => Value}, fun((Value, Value) -> Value)) -> #{Key => Value}.
 mingle(LeftDefault, RightDefault, AllLeft, AllRight, Op) ->
     AllKeys = maps:keys(AllLeft) ++ maps:keys(AllRight),
     % LeftDefault + Right (left not assigned)  Left + RightDefault (right not assigned) Left + Right (both)
@@ -343,6 +344,7 @@ timeout(Millis, Fun) ->
         timeout
   end.
 
+-spec is_same_file(string(), string()) -> boolean().
 is_same_file(Path1, Path2) ->
     case {file:read_file_info(Path1), file:read_file_info(Path2)} of
         {{ok, Info1}, {ok, Info2}} ->
