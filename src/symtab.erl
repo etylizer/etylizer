@@ -139,7 +139,7 @@ empty() -> #tab { funs = #{}, ops = #{}, types = #{}, records = #{}, modules = #
 std_symtab(SearchPath, OverlaySymtab) ->
     ?LOG_NOTE("Building symtab for standard library ..."),
     Funs =
-        lists:foldl(fun({Name, Arity, T}, Map) -> 
+        lists:foldl(fun({Name, Arity, T}, Map) ->
             maps:put({qref, erlang, Name, Arity}, T, Map) end,
                     #{},
                     stdtypes:builtin_funs()),
@@ -157,7 +157,7 @@ overlay_symtab(OverlayForms) ->
     ?LOG_NOTE("Building symtab for overlay file ..."),
     lists:foldl(fun(Form, Tab) ->
         case Form of
-            {attribute, _, spec, Name, Arity, T, _} -> 
+            {attribute, _, spec, Name, Arity, T, _} ->
                 ?LOG_DEBUG("Overlay added for ~w/~p", Name, Arity),
                 [Module, FunName] = string:split(atom_to_list(Name), ":"),
                 Tab#tab { funs = maps:put(create_ref_tuple({qref, list_to_atom(Module)}, list_to_atom(FunName), Arity), T, Tab#tab.funs) };
@@ -207,9 +207,9 @@ extend_symtab_internal(Filename, Forms, RefType, Tab, OverlaySymtab) ->
                                 Ref = create_ref_tuple({qref, ModuleName}, Name, Arity),
                                 case find_fun(Ref, OverlaySymtab) of
                                     error ->
-                                        ?LOG_INFO("No Overlay found for ~w:~w/~p", ModuleName, Name, Arity),
+                                        ?LOG_TRACE("No Overlay found for ~w:~w/~p", ModuleName, Name, Arity),
                                         Tab#tab { funs = maps:put(create_ref_tuple(RefType, Name, Arity), T, Tab#tab.funs) };
-                                    {ok, OverlayT} -> 
+                                    {ok, OverlayT} ->
                                         ?LOG_INFO("Overlay found for ~w:~w/~p", ModuleName, Name, Arity),
                                         Tab#tab { funs = maps:put(create_ref_tuple(RefType, Name, Arity), OverlayT, Tab#tab.funs) }
                                 end;
