@@ -1,5 +1,7 @@
 -module(ty_rec).
 
+-export_type([ty_rec/0, ty_ref/0]).
+
 % co-recursive functions on types
 -export([is_empty/1, is_empty_start/1, normalize_start/2]).
 -export([is_empty_corec/2, normalize_corec/3]).
@@ -27,7 +29,6 @@
 
 -record(ty, {predef, atom, interval, list, tuple, function, map}).
 
--export_type([ty_rec/0, ty_ref/0]).
 
 -type ty_rec() :: #ty{}.
 -type ty_ref() :: {ty_ref, integer()}.

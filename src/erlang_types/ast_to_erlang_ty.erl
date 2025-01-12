@@ -28,6 +28,12 @@ ast_to_erlang_ty(Ty, Sym) ->
   LocalRef = new_local_ref(),
   Result = convert(queue:from_list([{LocalRef, Ty, _Memoization = #{}}]), Sym, {#{}, #{}}),
   io:format(user, "Result:~n~p~n", [{LocalRef, Result}]),
+ 
+  % 2. Unify the results
+  % There can be many duplicate type references;
+  % these will be substituted with their representative
+  {UnifiedRef, UnifiedResult} = unify(LocalRef, Result),
+  io:format(user, "Unified Result:~n~p~n", [{UnifiedRef, UnifiedResult}]),
 
   error(todo).
 
@@ -233,3 +239,94 @@ do_convert({{mu, RecVar, Ty}, R}, Q, Sym, M) ->
 
 do_convert(T, _Q, _Sym, _M) ->
   erlang:error({"Transformation from ast:ty() to ty_rec:ty() not implemented or malformed type", T}).
+
+
+-spec unify(temporary_ref(), result()) -> {temporary_ref(), #{temporary_ref() => ty_rec()}}.
+unify(Ref, {IdToTy, TyToIds}) ->
+  % map with references to unify, pick representatives
+  ToUnify = maps:to_list(#{K => choose_representative(V) || K := V <- TyToIds, length(V) > 1}), 
+  % replace equivalent refs with representative
+  {UnifiedRef, {UnifiedIdToTy, _UnifiedTyToIds}} = unify(Ref, {IdToTy, TyToIds}, ToUnify),
+  {UnifiedRef, UnifiedIdToTy}.
+
+-spec choose_representative([temporary_ref()]) -> {temporary_ref(), [temporary_ref()]}.
+choose_representative(Refs) ->
+  [Representative | Others] = lists:usort(
+    fun
+      ({Other, _}, {named_ref, _}) when Other == local_ref; Other == mu_ref -> false;
+      ({local_ref, _}, {mu_ref, _}) -> false;
+      ({_, X}, {_, Y}) -> X =< Y
+    end, 
+    Refs),
+  {Representative, Others}.
+
+-spec unify(temporary_ref(), result(), Worklist) -> 
+  {temporary_ref(), result(), Worklist} 
+  when Worklist :: [{ty_rec(), {temporary_ref(), [temporary_ref()]}}].
+% TODO utils:everywhere too slow, more efficient unify
+unify(Ref, {IdToTy, TyToIds}, [{Ty, {Representative, Duplicates}} | Xs])->
+  {NewRef, {NewIdToTy, NewTyToIds}} =
+  utils:everywhere(fun
+    (Ref = {X, _}) when X == local_ref; X == mu_ref; X == named_ref -> 
+      case lists:member(Ref, Duplicates) of
+        true -> {ok, Representative};
+        false -> error
+      end;
+    (_) -> error
+  end, {Ref, {IdToTy, TyToIds}}),
+  unify(NewRef, {NewIdToTy, NewTyToIds}, Xs);
+unify(Ref, Db, [])->
+  {Ref, Db}.
+
+
+-ifdef(TEST).
+-include_lib("eunit/include/eunit.hrl").
+
+parse(AstType) ->
+  parse(AstType, symtab:empty()).
+
+parse(AstType, Symtab) ->
+  ast_to_erlang_ty(AstType, Symtab).
+
+parse_test() ->
+  test_utils:reset_ets(),
+
+  % Ty1 = parse(tatom(a)),
+  % Ty2 = parse(ttuple([tatom(a)])),
+  % Ty3 = parse(ttuple([tatom(a), tatom(a), tatom(a)])),
+  % Ty4 = parse(tmu(tvar(x), ttuple([tvar(x), tvar(x)]))),
+  
+  % St5 = test_utils:extend_symtab(exp, tyscm([], ttuple([named(exp), named(exp)]))),
+  % Ty5 = parse(named(exp), St5),
+ 
+  % mutual recursion
+  St6 = 
+    extend_symtabs(
+        [
+            {exp, tyscm([], tunion([ttuple([tatom(a)]), ttuple([named(exp2), named(exp2)])]))},
+            {exp2, tyscm([], ttuple([named(exp), named(exp)]))}
+        ],
+        symtab:empty()
+    ),
+  Ty6 = parse(named(exp), St6),
+  
+  % St7 = test_utils:extend_symtab(exp, tyscm([], tunion([
+  %   tatom(b), 
+  %   ttuple([tatom(a), named(exp)])
+  % ]))),
+  % Ty7 = parse(named(exp), St7),
+  
+  % St8 = test_utils:extend_symtab(exp, tyscm([], tatom(a) )),
+  % Ty8 = parse(ttuple([named(exp), tmu(tvar(x), tatom(a))]), St8),
+  
+  % parameterized type
+  % St9 = test_utils:extend_symtab(exp, tyscm([a], tunion([
+  %   tatom(a), 
+  %   ttuple([tvar(a), named(exp, [tatom(b)])])
+  % ]))),
+  % Ty9 = parse(named(exp, [tatom(b)]), St9),
+
+
+  ok.
+
+-endif.
