@@ -17,19 +17,37 @@ simple_named_test() ->
   ok.
 
 % #182
-% mu_test() ->
-%   test_utils:reset_ets(),
-%   S = tmu(tvar(exp), ttuple([tunion([tatom(a), tvar(exp)])])),
-%   true = subty:is_subty(symtab:empty(), S, S),
-%   ok.
+mu_test() ->
+  test_utils:reset_ets(),
+  S = tmu(tvar(exp), ttuple([tunion([tatom(a), tvar(exp)])])),
+  true = subty:is_subty(symtab:empty(), S, S),
+  ok.
 
 % #182
-% exp_test() ->
-%   test_utils:reset_ets(),
-%   Sym = test_utils:extend_symtab(exp, tyscm([], ttuple([tunion([tatom(a), named(exp, [])])]))),
-%   S = named(exp, []),
-%   true = subty:is_subty(Sym, S, S),
-%   ok.
+exp_test() ->
+  test_utils:reset_ets(),
+  Sym = test_utils:extend_symtab(exp, tyscm([], ttuple([tunion([tatom(a), named(exp, [])])]))),
+  S = named(exp, []),
+  true = subty:is_subty(Sym, S, S),
+  ok.
+
+funs_test() ->
+  test_utils:reset_ets(),
+  Sym = test_utils:extend_symtab(exp, tyscm([], tfun_full([tunion([tatom(a), named(exp, [])])], tatom(b)))),
+  S = named(exp, []),
+  true = subty:is_subty(Sym, S, S),
+  ok.
+
+maps_test() ->
+  test_utils:reset_ets(),
+  Map = tmap([
+    tmap_field_req(tint(1), tatom(a)),
+    tmap_field_opt(tint(2), named(exp, []))
+  ]),
+  Sym = test_utils:extend_symtab(exp, tyscm([], ttuple([Map, named(exp, [])]))),
+  S = named(exp, []),
+  true = subty:is_subty(Sym, S, S),
+  ok.
 
 % TODO rewrite 
 %%simple_named2_test() ->

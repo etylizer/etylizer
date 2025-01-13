@@ -5,6 +5,8 @@
 -import(test_utils, [extend_symtabs/2, extend_symtab/2, extend_symtab/3, is_subtype/2, is_equiv/2, named/1, named/2]).
 -endif.
 
+-export([ast_to_erlang_ty/2]).
+
 
 -type temporary_ref() :: 
     {local_ref, integer()} % fresh type references created for the queue
@@ -27,16 +29,34 @@ ast_to_erlang_ty(Ty, Sym) ->
   % Instead use local type references stored in a local map
   LocalRef = new_local_ref(),
   Result = convert(queue:from_list([{LocalRef, Ty, _Memoization = #{}}]), Sym, {#{}, #{}}),
-  io:format(user, "Result:~n~p~n", [{LocalRef, Result}]),
+  % io:format(user, "Result:~n~p~n", [{LocalRef, Result}]),
  
   % 2. Unify the results
   % There can be many duplicate type references;
   % these will be substituted with their representative
   {UnifiedRef, UnifiedResult} = unify(LocalRef, Result),
-  io:format(user, "Unified Result:~n~p~n", [{UnifiedRef, UnifiedResult}]),
+  % io:format(user, "Unified Result:~n~p~n", [{UnifiedRef, UnifiedResult}]),
 
-  error(todo).
+  % 3. create new type references and replace temporary ones
+  %    return result reference
+  ReplaceRefs = maps:from_list([{Ref, ty_ref:new_ty_ref()} || Ref <- maps:keys(UnifiedResult)]),
+  {ReplacedRef, ReplacedResults} = replace_all({UnifiedRef, UnifiedResult}, ReplaceRefs),
 
+  % 4. define types
+  [ty_ref:define_ty_ref(Ref, ToDefineTy) || Ref := ToDefineTy <- ReplacedResults],
+  
+  ReplacedRef.
+
+replace_all({Ref, All}, Map) ->
+  utils:everywhere(fun
+    (RRef = {X, _}) when X == local_ref; X == mu_ref; X == named_ref -> 
+      case Map of
+        #{RRef := Replace} -> {ok, Replace};
+        false -> error
+      end;
+    (_) -> error
+  end, {Ref, All}).
+  
 
 -type queue() :: queue:queue({temporary_ref(), ast:ty(), memo()}).
 -type memo() :: #{}.
