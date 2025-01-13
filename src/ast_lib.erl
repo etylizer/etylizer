@@ -233,7 +233,7 @@ parse_ast_to_erlang_ty({binary, _, _}, _Sym) ->
 parse_ast_to_erlang_ty({tuple_any}, _Sym) ->
     ty_rec:tuple();
 parse_ast_to_erlang_ty({tuple, Comps}, Sym) when is_list(Comps)->
-    ETy = lists:map(fun(T) -> parse_ast_to_erlang_ty(T, Sym) end, Comps),
+    ETy = lists:map(fun(T) -> ast_to_erlang_ty(T, Sym) end, Comps),
 
     T = dnf_var_ty_tuple:tuple(dnf_ty_tuple:tuple(ty_tuple:tuple(ETy))),
     ty_rec:tuple(length(Comps), T);
@@ -242,8 +242,8 @@ parse_ast_to_erlang_ty({tuple, Comps}, Sym) when is_list(Comps)->
 parse_ast_to_erlang_ty({fun_simple}, _Sym) ->
     ty_rec:function();
 parse_ast_to_erlang_ty({fun_full, Comps, Result}, Sym) ->
-    ETy = lists:map(fun(T) -> parse_ast_to_erlang_ty(T, Sym) end, Comps),
-    TyB = parse_ast_to_erlang_ty(Result, Sym),
+    ETy = lists:map(fun(T) -> ast_to_erlang_ty(T, Sym) end, Comps),
+    TyB = ast_to_erlang_ty(Result, Sym),
 
     T = dnf_var_ty_function:function(dnf_ty_function:function(ty_function:function(ETy, TyB))),
     ty_rec:function(length(Comps), T);
@@ -257,12 +257,12 @@ parse_ast_to_erlang_ty({map, AssocList}, Sym) ->
             case Association of
                 map_field_opt ->
                     % tuples only
-                    Tup = parse_ast_to_erlang_ty({tuple, [mk_diff(Key, PrecedenceDomain), Val]}, Sym),
+                    Tup = ast_to_erlang_ty({tuple, [mk_diff(Key, PrecedenceDomain), Val]}, Sym),
                     {mk_union(PrecedenceDomain, Key), ty_rec:union(Tuples, Tup), Functions};
                 map_field_req ->
                     % tuples & functions
-                    Tup = parse_ast_to_erlang_ty({tuple, [mk_diff(Key, PrecedenceDomain), Val]}, Sym),
-                    Fun = parse_ast_to_erlang_ty({fun_full, [mk_diff(Key, PrecedenceDomain)], Val}, Sym),
+                    Tup = ast_to_erlang_ty({tuple, [mk_diff(Key, PrecedenceDomain), Val]}, Sym),
+                    Fun = ast_to_erlang_ty({fun_full, [mk_diff(Key, PrecedenceDomain)], Val}, Sym),
                     {mk_union(PrecedenceDomain, Key), ty_rec:union(Tuples, Tup), ty_rec:intersect(Functions, Fun)}
             end
         end, {stdtypes:tnone(), ty_rec:empty(), ty_rec:function()}, AssocList),
@@ -274,7 +274,7 @@ parse_ast_to_erlang_ty({map, AssocList}, Sym) ->
 % TODO records
 
 % var
-parse_ast_to_erlang_ty(V = {var, A}, _Sym) ->
+parse_ast_to_erlang_ty({var, A}, _Sym) ->
     % if this is a special $mu_integer()_name() variable, convert to that representation
     case string:prefix(atom_to_list(A), "$mu_") of 
         nomatch -> 
@@ -286,24 +286,24 @@ parse_ast_to_erlang_ty(V = {var, A}, _Sym) ->
     end;
 
 % ty_some_list
-parse_ast_to_erlang_ty({list, Ty}, Sym) -> ty_rec:union( parse_ast_to_erlang_ty({improper_list, Ty, {empty_list}}, Sym), parse_ast_to_erlang_ty({empty_list}, Sym) );
-parse_ast_to_erlang_ty({nonempty_list, Ty}, Sym) -> parse_ast_to_erlang_ty({nonempty_improper_list, Ty, {empty_list}}, Sym);
-parse_ast_to_erlang_ty({nonempty_improper_list, Ty, Term}, Sym) -> ty_rec:diff(parse_ast_to_erlang_ty({list, Ty}, Sym), parse_ast_to_erlang_ty(Term, Sym));
+parse_ast_to_erlang_ty({list, Ty}, Sym) -> ty_rec:union( ast_to_erlang_ty({improper_list, Ty, {empty_list}}, Sym), ast_to_erlang_ty({empty_list}, Sym) );
+parse_ast_to_erlang_ty({nonempty_list, Ty}, Sym) -> ast_to_erlang_ty({nonempty_improper_list, Ty, {empty_list}}, Sym);
+parse_ast_to_erlang_ty({nonempty_improper_list, Ty, Term}, Sym) -> ty_rec:diff(ast_to_erlang_ty({list, Ty}, Sym), ast_to_erlang_ty(Term, Sym));
 parse_ast_to_erlang_ty({improper_list, A, B}, Sym) ->
-    ty_rec:list(dnf_var_ty_list:list(dnf_ty_list:list(ty_list:list(parse_ast_to_erlang_ty(A, Sym), parse_ast_to_erlang_ty(B, Sym)))));
+    ty_rec:list(dnf_var_ty_list:list(dnf_ty_list:list(ty_list:list(ast_to_erlang_ty(A, Sym), ast_to_erlang_ty(B, Sym)))));
 parse_ast_to_erlang_ty({empty_list}, _Sym) ->
     ty_rec:predef(dnf_var_ty_predef:predef(dnf_ty_predef:predef('[]')));
 parse_ast_to_erlang_ty({predef, T}, _Sym) when T == pid; T == port; T == reference; T == float ->
     ty_rec:predef(dnf_var_ty_predef:predef(dnf_ty_predef:predef(T)));
 
 % named
-parse_ast_to_erlang_ty(Ty = {named, Loc, Ref, Args}, Sym) ->
+parse_ast_to_erlang_ty(Ty = {named, _Loc, _Ref, _Args}, Sym) ->
     % todo check if really recursive 
     ast_to_erlang_ty:ast_to_erlang_ty(Ty, Sym);
 
 % ty_predef_alias
 parse_ast_to_erlang_ty({predef_alias, Alias}, Sym) ->
-    parse_ast_to_erlang_ty(stdtypes:expand_predef_alias(Alias), Sym);
+    ast_to_erlang_ty(stdtypes:expand_predef_alias(Alias), Sym);
 
 % ty_predef
 parse_ast_to_erlang_ty({predef, atom}, _) ->
@@ -321,14 +321,14 @@ parse_ast_to_erlang_ty({range, From, To}, _) ->
     ty_rec:interval(Int);
 
 parse_ast_to_erlang_ty({union, []}, _) -> ty_rec:empty();
-parse_ast_to_erlang_ty({union, [A]}, Sym) -> parse_ast_to_erlang_ty(A, Sym);
-parse_ast_to_erlang_ty({union, [A|T]}, Sym) -> ty_rec:union(parse_ast_to_erlang_ty(A, Sym), parse_ast_to_erlang_ty({union, T}, Sym));
+parse_ast_to_erlang_ty({union, [A]}, Sym) -> ast_to_erlang_ty(A, Sym);
+parse_ast_to_erlang_ty({union, [A|T]}, Sym) -> ty_rec:union(ast_to_erlang_ty(A, Sym), ast_to_erlang_ty({union, T}, Sym));
 
 parse_ast_to_erlang_ty({intersection, []}, _) -> ty_rec:any();
-parse_ast_to_erlang_ty({intersection, [A]}, Sym) -> parse_ast_to_erlang_ty(A, Sym);
-parse_ast_to_erlang_ty({intersection, [A|T]}, Sym) -> ty_rec:intersect(parse_ast_to_erlang_ty(A, Sym), parse_ast_to_erlang_ty({intersection, T}, Sym));
+parse_ast_to_erlang_ty({intersection, [A]}, Sym) -> ast_to_erlang_ty(A, Sym);
+parse_ast_to_erlang_ty({intersection, [A|T]}, Sym) -> ty_rec:intersect(ast_to_erlang_ty(A, Sym), ast_to_erlang_ty({intersection, T}, Sym));
 
-parse_ast_to_erlang_ty({negation, Ty}, Sym) -> ty_rec:negate(parse_ast_to_erlang_ty(Ty, Sym));
+parse_ast_to_erlang_ty({negation, Ty}, Sym) -> ty_rec:negate(ast_to_erlang_ty(Ty, Sym));
 
 parse_ast_to_erlang_ty(Ty = {mu, Var, InnerTy}, Sym) ->
     % TODO test case if this is capture-avoiding
@@ -342,7 +342,7 @@ parse_ast_to_erlang_ty(Ty = {mu, Var, InnerTy}, Sym) ->
         false ->
             % TODO assume this is simplified before and well-formed ast includes mu -> recursive?
             % otherwise: simplify, not a recursive type
-            parse_ast_to_erlang_ty(InnerTy, Sym)
+            ast_to_erlang_ty(InnerTy, Sym)
     end;
 
 parse_ast_to_erlang_ty(T, _Sym) ->

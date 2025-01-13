@@ -41,9 +41,9 @@ clean(T, Fixed) ->
     % clean
     Cleaned = clean_type(T, Fixed),
     % simplify by converting into internal type and back (processes any() and none() replacements)
-    Res = ast_lib:erlang_ty_to_ast(X = ast_lib:ast_to_erlang_ty(Cleaned)),
+    Res = ast_lib:erlang_ty_to_ast(X = ast_lib:ast_to_erlang_ty(Cleaned, symtab:empty())), % TODO symtab?
     % FIXME remove sanity at some point
-    true = ty_rec:is_subtype(X, ast_lib:ast_to_erlang_ty(T)),
+    true = ty_rec:is_subtype(X, ast_lib:ast_to_erlang_ty(T, symtab:empty())),
     Res.
 
 -spec apply(t(), ast:ty()) -> ast:ty().
@@ -75,6 +75,7 @@ apply_base(S, T) ->
         {binary, _, _} -> T;
         {empty_list} -> T;
         {list, U} -> {list, apply_base(S, U)};
+        {mu, V, U} -> {mu, V, apply_base(S, U)};
         {nonempty_list, U} -> {nonempty_list, apply_base(S, U)};
         {improper_list, U, V} -> {improper_list, apply_base(S, U), apply_base(S, V)};
         {nonempty_improper_list, U, V} -> {nonempty_improper_list, apply_base(S, U), apply_base(S, V)};
@@ -170,6 +171,9 @@ collect_vars({tuple_any}, _CPos, Pos, _) -> Pos;
 collect_vars({fun_simple}, _CPos, Pos, _) -> Pos;
 collect_vars({list, A}, CPos, Pos, Fix) ->
     collect_vars(A, CPos, Pos, Fix);
+collect_vars({mu, MuVar, A}, CPos, Pos, Fix) ->
+    % hack: recursion variables are not really fixed variables, but can be considered as such for cleaning (i.e. don't touch them)
+    collect_vars(A, CPos, Pos, sets:union(Fix, sets:from_list([MuVar]))); 
 collect_vars({Map, A, B}, CPos, Pos, Fix) when Map == map_field_opt; Map == map_field_req ->
     M1 = collect_vars(A, CPos, Pos, Fix),
     M2 = collect_vars(B, CPos, Pos, Fix),

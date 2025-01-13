@@ -208,9 +208,9 @@ check_recursive_variable(Variable) ->
 -ifdef(TEST).
 
 % very unstable, should only be used to generate proper test cases while debugging
--type dump() :: {{ty_ref, integer()}, integer(), #{{ty_ref, integer()} => Ty :: term()}}.
+% -type dump() :: {{ty_ref, integer()}, integer(), #{{ty_ref, integer()} => Ty :: term()}}.
 % % dump a type and all its dependencies for creating a test case via importing the state
--spec write_dump_ty({ty_ref, integer()}) -> dump().
+% -spec write_dump_ty({ty_ref, integer()}) -> dump().
 write_dump_ty(Ty) ->
   State = lists:usort(write_dump_ty_h(Ty)),
 
@@ -231,11 +231,11 @@ write_dump_ty(Ty) ->
   VarIds = lists:usort(lists:flatten(utils:everything(
       fun F(InnerT) ->
           case InnerT of
-              (Ref = {ty_ref, Id}) -> 
+              (Ref = {ty_ref, _Id}) -> 
                 TyRec = load(Ref),
                 OtherIds = utils:everything(F, TyRec),
                 {ok, OtherIds};
-              ({var, Id, Name}) when is_integer(Id) -> 
+              ({var, Id, _Name}) when is_integer(Id) -> 
                 {ok, Id};
               _ -> 
                 error

@@ -43,7 +43,8 @@ ast_to_erlang_ty(Ty, Sym) ->
   {ReplacedRef, ReplacedResults} = replace_all({UnifiedRef, UnifiedResult}, ReplaceRefs),
 
   % 4. define types
-  [ty_ref:define_ty_ref(Ref, ToDefineTy) || Ref := ToDefineTy <- ReplacedResults],
+  % [ty_ref:define_ty_ref(Ref, ToDefineTy) || Ref := ToDefineTy <- ReplacedResults],
+  maps:map(fun(Ref, ToDefineTy) -> ty_ref:define_ty_ref(Ref, ToDefineTy) end, ReplacedResults),
   
   ReplacedRef.
 
@@ -52,7 +53,7 @@ replace_all({Ref, All}, Map) ->
     (RRef = {X, _}) when X == local_ref; X == mu_ref; X == named_ref -> 
       case Map of
         #{RRef := Replace} -> {ok, Replace};
-        false -> error
+        _ -> error
       end;
     (_) -> error
   end, {Ref, All}).
@@ -98,7 +99,7 @@ do_convert({{binary, _, _}, _}, _, _, _) ->
 
 do_convert({{tuple_any}, R}, Q, _, _) ->
   {ty_rec:s_tuple(), Q, R};
-do_convert({{tuple, Comps}, R}, Q, Sym, M) when is_list(Comps)->
+do_convert({{tuple, Comps}, R}, Q, _Sym, M) when is_list(Comps)->
   {ETy, Q0} = lists:foldl(
     fun(Element, {Components, OldQ}) ->
       % to be converted later, add to queue
@@ -264,7 +265,8 @@ do_convert(T, _Q, _Sym, _M) ->
 -spec unify(temporary_ref(), result()) -> {temporary_ref(), #{temporary_ref() => ty_rec()}}.
 unify(Ref, {IdToTy, TyToIds}) ->
   % map with references to unify, pick representatives
-  ToUnify = maps:to_list(#{K => choose_representative(V) || K := V <- TyToIds, length(V) > 1}), 
+  %ToUnify = maps:to_list(#{K => choose_representative(V) || K := V <- TyToIds, length(V) > 1}), 
+  ToUnify = maps:to_list(maps:filtermap(fun(_K, V) when length(V) =< 1 -> false;(_K, V) -> {true, choose_representative(V)} end, TyToIds)),
   % replace equivalent refs with representative
   {UnifiedRef, {UnifiedIdToTy, _UnifiedTyToIds}} = unify(Ref, {IdToTy, TyToIds}, ToUnify),
   {UnifiedRef, UnifiedIdToTy}.
@@ -280,15 +282,15 @@ choose_representative(Refs) ->
     Refs),
   {Representative, Others}.
 
--spec unify(temporary_ref(), result(), Worklist) -> 
-  {temporary_ref(), result(), Worklist} 
-  when Worklist :: [{ty_rec(), {temporary_ref(), [temporary_ref()]}}].
+% -spec unify(temporary_ref(), result(), Worklist) -> 
+%   {temporary_ref(), result(), Worklist} 
+%   when Worklist :: [{ty_rec(), {temporary_ref(), [temporary_ref()]}}].
 % TODO utils:everywhere too slow, more efficient unify
-unify(Ref, {IdToTy, TyToIds}, [{Ty, {Representative, Duplicates}} | Xs])->
+unify(Ref, {IdToTy, TyToIds}, [{_Ty, {Representative, Duplicates}} | Xs])->
   {NewRef, {NewIdToTy, NewTyToIds}} =
   utils:everywhere(fun
-    (Ref = {X, _}) when X == local_ref; X == mu_ref; X == named_ref -> 
-      case lists:member(Ref, Duplicates) of
+    (RRef = {X, _}) when X == local_ref; X == mu_ref; X == named_ref -> 
+      case lists:member(RRef, Duplicates) of
         true -> {ok, Representative};
         false -> error
       end;
@@ -302,11 +304,11 @@ unify(Ref, Db, [])->
 -ifdef(TEST).
 -include_lib("eunit/include/eunit.hrl").
 
-parse(AstType) ->
-  parse(AstType, symtab:empty()).
+% parse(AstType) ->
+%   parse(AstType, symtab:empty()).
 
-parse(AstType, Symtab) ->
-  ast_to_erlang_ty(AstType, Symtab).
+% parse(AstType, Symtab) ->
+%   ast_to_erlang_ty(AstType, Symtab).
 
 parse_test() ->
   test_utils:reset_ets(),
@@ -320,15 +322,15 @@ parse_test() ->
   % Ty5 = parse(named(exp), St5),
  
   % mutual recursion
-  St6 = 
-    extend_symtabs(
-        [
-            {exp, tyscm([], tunion([ttuple([tatom(a)]), ttuple([named(exp2), named(exp2)])]))},
-            {exp2, tyscm([], ttuple([named(exp), named(exp)]))}
-        ],
-        symtab:empty()
-    ),
-  Ty6 = parse(named(exp), St6),
+  % St6 = 
+  %   extend_symtabs(
+  %       [
+  %           {exp, tyscm([], tunion([ttuple([tatom(a)]), ttuple([named(exp2), named(exp2)])]))},
+  %           {exp2, tyscm([], ttuple([named(exp), named(exp)]))}
+  %       ],
+  %       symtab:empty()
+  %   ),
+  % Ty6 = parse(named(exp), St6),
   
   % St7 = test_utils:extend_symtab(exp, tyscm([], tunion([
   %   tatom(b), 

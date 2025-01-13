@@ -834,7 +834,7 @@ nonempty_function_test() ->
 % mu type is not enough, X is chosen fresh on second encounter
 sound_memoization_test() ->
   test_utils:reset_ets(),
-  EmptyList = ast_lib:ast_to_erlang_ty(stdtypes:tempty_list()),
+  EmptyList = ast_lib:ast_to_erlang_ty(stdtypes:tempty_list(), symtab:empty()),
 
   X = ty_ref:new_ty_ref(),
   BasicTuple = dnf_ty_tuple:tuple(ty_tuple:tuple([EmptyList, EmptyList])),
@@ -862,7 +862,7 @@ variable_translation_test() ->
   Tuple = ty_rec:tuple({default, []}, dnf_var_ty_tuple:any()),
   Var = ty_rec:variable(ty_variable:new(alpha)),
   Type = ty_rec:intersect(Tuple, Var),
-  EqType = ast_lib:ast_to_erlang_ty(ast_lib:erlang_ty_to_ast(Type)),
+  EqType = ast_lib:ast_to_erlang_ty(ast_lib:erlang_ty_to_ast(Type), symtab:empty()),
   true = ty_rec:is_equivalent(Type, EqType),
 
   ok.
@@ -876,7 +876,7 @@ tuple_transformation_default_test() ->
   Tuple01 = ty_rec:union(Tuple0, Tuple1),
   Tuple1Again = ty_rec:intersect(Tuple1, Tuple01),
 
-  EqType = ast_lib:ast_to_erlang_ty(ast_lib:erlang_ty_to_ast(Tuple1Again)),
+  EqType = ast_lib:ast_to_erlang_ty(ast_lib:erlang_ty_to_ast(Tuple1Again), symtab:empty()),
   true = ty_rec:is_equivalent(Tuple1Again, EqType),
 
   ok.
