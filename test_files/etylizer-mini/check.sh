@@ -26,7 +26,6 @@ OVERLAY=overlay.erl
     --ignore with_index/2 --ignore assocs_find/2 \
     src/utils.erl
 
-# tmp_dir/0 because of nonempty_string bug #183
 # with_tmp_file/4 and with_tmp_dir/4 because they use try
 # INVESTIGATE: tmp_dir/0
 ../../ety --build --type-overlay $OVERLAY --force --level debug -P . -I src --no-deps \
