@@ -1,6 +1,7 @@
 Document all changes necessary to get the source code working
 =============================================================
 
+- overlay for erlang:element/2
 - spec for utils:mingle/5 and utils:is_same_file (we have to ignore these functions because
   of missing support for binary)
 - Logging: two parameters instead of all in one list. See commit
