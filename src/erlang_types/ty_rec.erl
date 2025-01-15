@@ -13,7 +13,7 @@
 % additional type constructors (hash consed)
 -export([predef/0, predef/1, variable/1, atom/1, interval/1, tuple/2, map/1]).
 % additional type constructors (record only)
--export([s_interval/0, s_intersect/2, s_union/2, s_negate/1, s_any/0, s_empty/0, s_map/0, s_predef/1, s_variable/1, s_atom/1, s_interval/1, s_function/2, s_tuple/2, s_map/1, s_list/1, s_tuple/0, s_function/0]).
+-export([tuple_to_map/1, s_interval/0, s_intersect/2, s_union/2, s_negate/1, s_any/0, s_empty/0, s_map/0, s_predef/1, s_variable/1, s_atom/1, s_interval/1, s_function/2, s_tuple/2, s_map/1, s_list/1, s_tuple/0, s_function/0]).
 % type constructors with type refs
 -export([list/1, function/2]).
 % top type constructors
@@ -478,6 +478,15 @@ map(Map) ->
 s_map() ->
   Empty = ty_ref:load(empty()),
   Empty#ty{ map = dnf_var_ty_map:any() }.
+
+% Converter used by ast_to_erlang_ty
+% to convert from a tuple-encoded map to a map
+tuple_to_map(#ty{tuple = {_, #{2 := VarTupleDnf}}}) ->
+  [{[], [], DnfTyTuple}] = dnf_var_ty_tuple:get_dnf(VarTupleDnf),
+  [{[T], [], _}] = dnf_ty_tuple:get_dnf(DnfTyTuple),
+  DnfMap = dnf_ty_map:map(T),
+  VarDnfMap = dnf_var_ty_map:map(DnfMap),
+  ty_rec:s_map(VarDnfMap).
 
 -spec map() -> ty_ref().
 map() ->

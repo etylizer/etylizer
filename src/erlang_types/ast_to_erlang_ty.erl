@@ -147,7 +147,9 @@ do_convert({{map, AssocList}, R}, Q, Sym, M) ->
             end
         end, {stdtypes:tnone(), stdtypes:tnone(), stdtypes:tfun_any()}, AssocList),
     MapTuple = stdtypes:ttuple([TupPart, FunPart]),
-    do_convert({MapTuple, R}, Q, Sym, M);
+    % TODO: the tuple introduced here (Recc) can be cleaned up in the final temp_ref -> rec mapping
+    {Recc, Q0, R0} = do_convert({MapTuple, R}, Q, Sym, M),
+    {ty_rec:tuple_to_map(Recc), Q0, R0};
 
 % var
 do_convert({V = {var, A}, R = {IdTy, _}}, Q, _Sym, M) ->
@@ -347,6 +349,9 @@ parse_test() ->
   %   ttuple([tvar(a), named(exp, [tatom(b)])])
   % ]))),
   % Ty9 = parse(named(exp, [tatom(b)]), St9),
+  
+  % St10 = test_utils:extend_symtab(t, tyscm([k, v], tmap([ tmap_field_opt(tvar(k), tvar(v)) ]))),
+  % Ty10 = parse(named(t, [tvar(k), tvar(v)]), St10),
 
 
   ok.

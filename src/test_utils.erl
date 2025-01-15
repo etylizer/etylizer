@@ -186,14 +186,14 @@ extend_symtabs(DefSchemes, Symtab) ->
 
 -spec test_tally(list({ast:ty(), ast:ty()}), list(expected_subst())) -> ok.
 test_tally(ConstrList, ExpectedSubst) ->
-    test_tally(ConstrList, ExpectedSubst, symtab:empty(), []).
+    test_tally(ConstrList, ExpectedSubst, [], symtab:empty()).
 
 -spec test_tally(list({ast:ty(), ast:ty()}), list(expected_subst()), [ast:ty_varname()]) -> ok.
 test_tally(ConstrList, ExpectedSubst, FixedVars) ->
-    test_tally(ConstrList, ExpectedSubst, symtab:empty(), FixedVars).
+    test_tally(ConstrList, ExpectedSubst, FixedVars, symtab:empty()).
 
--spec test_tally(list({ast:ty(), ast:ty()}), list(expected_subst()), symtab:t(), [ast:ty_varname()]) -> ok.
-test_tally(ConstrList, ExpectedSubst, Symtab, FixedVars) ->
+-spec test_tally(list({ast:ty(), ast:ty()}), list(expected_subst()), [ast:ty_varname()], symtab:t()) -> ok.
+test_tally(ConstrList, ExpectedSubst, FixedVars, Symtab) ->
   Constrs = sets:from_list(
                 lists:map(
                   fun ({T, U}) -> {scsubty, sets:from_list([ast:loc_auto()], [{version, 2}]), T, U} end,
