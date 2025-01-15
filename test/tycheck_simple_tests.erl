@@ -22,7 +22,7 @@ check_ok_fun(Filename, Tab, OverlayTab, Decl = {function, L, Name, Arity, _}, Ty
 
 -spec check_infer_ok_fun(string(), symtab:t(), symtab:t(), ast:fun_decl(), ast:ty_scheme()) -> ok.
 check_infer_ok_fun(Filename, Tab, OverlayTab, Decl = {function, L, Name, Arity, _}, Ty) ->
-    % Check that the infered type is more general then the type in the spec
+    % Check that the inferred type is more general then the type in the spec
     Ctx = typing:new_ctx(Tab, OverlayTab, error),
     Envs =
        try
@@ -170,7 +170,7 @@ simple_test_() ->
 
   % If OnlyFiles is empty, all files not in IgnoreFiles are checked
   % If OnlyFiles is not empty, only the files in OnlyFiles but not in IgnoreFiels are checked
-  OnlyFiles = ["tuples.erl"],
+  OnlyFiles = [],
   IgnoreFiles = [],
 
   parse_cache:with_cache(
