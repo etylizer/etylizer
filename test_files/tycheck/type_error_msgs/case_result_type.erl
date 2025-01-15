@@ -1,5 +1,5 @@
 % ERROR
-% test_files/tycheck/type_error_msgs/case_result_type.erl:17:13: Type error: expression failed to type check
+% test_files/tycheck/type_error_msgs/case_result_type.erl:17:13: Type error: in foo/1, expression failed to type check
 -module(case_result_type).
 
 -compile(export_all).

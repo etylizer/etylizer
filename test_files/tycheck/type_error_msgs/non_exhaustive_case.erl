@@ -1,5 +1,5 @@
 % ERROR
-% test_files/tycheck/type_error_msgs/non_exhaustive_case.erl:10:5: Type error: not all cases are covered
+% test_files/tycheck/type_error_msgs/non_exhaustive_case.erl:10:5: Type error: in foo/1, not all cases are covered
 -module(non_exhaustive_case).
 
 -compile(export_all).

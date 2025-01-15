@@ -1,5 +1,5 @@
 % ERROR
-% test_files/tycheck/type_error_msgs/invalid_map.erl:12:32: Type error: expression failed to type check
+% test_files/tycheck/type_error_msgs/invalid_map.erl:12:32: Type error: in foo/1, expression failed to type check
 -module(invalid_map).
 
 -compile(export_all).

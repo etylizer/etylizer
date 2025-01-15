@@ -60,6 +60,7 @@ ensure_type_supported(Loc, T) ->
 check(Ctx, Decl = {function, Loc, Name, Arity, _}, PolyTy) ->
     ?LOG_INFO("Type checking ~w/~w at ~s against type ~s",
               Name, Arity, ast:format_loc(Loc), pretty:render_tyscheme(PolyTy)),
+    FunStr = utils:sformat("~w/~w", Name, Arity),
     {MonoTy, Fixed, _} = typing_common:mono_ty(Loc, PolyTy),
     ensure_type_supported(Loc, MonoTy),
     AltTys =
@@ -94,7 +95,7 @@ check(Ctx, Decl = {function, Loc, Name, Arity, _}, PolyTy) ->
             ?LOG_INFO("Type ok for ~w/~w at ~s", Name, Arity, ast:format_loc(Loc)),
             ok;
         [First | _Rest] ->
-            report_tyerror(redundant_branch, First, "")
+            report_tyerror(FunStr, redundant_branch, First, "")
     end.
 
 -type unmatched_branch_mode() ::
@@ -105,6 +106,7 @@ check(Ctx, Decl = {function, Loc, Name, Arity, _}, PolyTy) ->
 -spec check_alt(ctx(), ast:fun_decl(), ast:ty_full_fun(), unmatched_branch_mode(),
     sets:set(ast:ty_varname())) -> {ok, Unmachted::sets:set(ast:loc())}.
 check_alt(Ctx, Decl = {function, Loc, Name, Arity, _}, FunTy, BranchMode, Fixed) ->
+    FunStrShort = utils:sformat("~w/~w", Name, Arity),
     FunStr = utils:sformat("~w/~w at ~s", Name, Arity, ast:format_loc(Loc)),
     ?LOG_INFO("Checking function ~s against type ~s",
                FunStr, pretty:render_ty(FunTy)),
@@ -156,7 +158,7 @@ check_alt(Ctx, Decl = {function, Loc, Name, Arity, _}, FunTy, BranchMode, Fixed)
                             [Name, Arity, pretty:render_ty(FunTy),
                                 typing_common:format_src_loc(Loc)]);
                 {Kind, Loc2, Hint} ->
-                    report_tyerror(Kind, Loc2, Hint)
+                    report_tyerror(FunStrShort, Kind, Loc2, Hint)
             end
     end.
 
@@ -168,10 +170,10 @@ tyerror_msg(Kind) ->
         non_exhaustive_case -> "not all cases are covered"
     end.
 
--spec report_tyerror(constr_error_locs:constr_error_kind(), ast:loc(), string()) -> no_return().
-report_tyerror(Kind, Loc, Hint) ->
+-spec report_tyerror(string(), constr_error_locs:constr_error_kind(), ast:loc(), string()) -> no_return().
+report_tyerror(FunName, Kind, Loc, Hint) ->
     SrcCtx = typing_common:format_src_loc(Loc),
     case Hint of
-        "" -> errors:ty_error(Loc, "~s~n~s", [tyerror_msg(Kind), SrcCtx]);
-        _ -> errors:ty_error(Loc, "~s~n~s~n~n  ~s", [tyerror_msg(Kind), SrcCtx, Hint])
+        "" -> errors:ty_error(Loc, "in ~s, ~s~n~s", [FunName, tyerror_msg(Kind), SrcCtx]);
+        _ -> errors:ty_error(Loc, "in ~s, ~s~n~s~n~n  ~s", [FunName, tyerror_msg(Kind), SrcCtx, Hint])
     end.
