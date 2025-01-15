@@ -1,6 +1,8 @@
 Document all changes necessary to get the source code working
 =============================================================
 
+- fix map_opt/3, it's type was not correct.
+- overlays for several functions using binary
 - overlay for erlang:element/2
 - spec for utils:mingle/5 and utils:is_same_file (we have to ignore these functions because
   of missing support for binary)
