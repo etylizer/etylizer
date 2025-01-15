@@ -1,5 +1,5 @@
 % ERROR
-% test_files/tycheck/type_error_msgs/invalid_scrutiny3.erl:14:18: Type error: expression failed to type check
+% test_files/tycheck/type_error_msgs/invalid_scrutiny3.erl:14:18: Type error: in foo/0, expression failed to type check
 -module(invalid_scrutiny3).
 
 -compile(export_all).

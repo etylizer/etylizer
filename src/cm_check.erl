@@ -45,7 +45,8 @@ perform_type_checks(SearchPath, SourceList, DepGraph, Opts) ->
                 length(CheckList), length(SourceList), CheckList)
     end,
     OverlaySymtab = overlay_symtab(Opts),
-    NewIndex2 = traverse_and_check(CheckList, symtab:std_symtab(SearchPath, OverlaySymtab), SearchPath, Opts, NewIndex1),
+    NewIndex2 = traverse_and_check(CheckList, symtab:std_symtab(SearchPath, OverlaySymtab),
+        OverlaySymtab, SearchPath, Opts, NewIndex1),
     cm_index:save_index(IndexFile, NewIndex2),
     CheckList.
 
@@ -76,32 +77,34 @@ create_check_list(SourceList, Index, DepGraph) ->
     lists:uniq(CheckList).
 
 -spec traverse_and_check(
-    [file:filename()], symtab:t(), paths:search_path(), cmd_opts(), cm_index:index())
+    [file:filename()], symtab:t(), symtab:t(), paths:search_path(), cmd_opts(), cm_index:index())
     -> cm_index:index().
-traverse_and_check([], _, _, _, Index) ->
+traverse_and_check([], _, _, _, _, Index) ->
     Index;
 
-traverse_and_check([CurrentFile | RemainingFiles], Symtab, SearchPath, Opts, Index) ->
+traverse_and_check([CurrentFile | RemainingFiles], Symtab, OverlaySymtab, SearchPath, Opts, Index) ->
     case log:allow(note) of
         true -> ?LOG_NOTE("Checking ~s", CurrentFile);
         false -> io:format("Checking ~s~n", [CurrentFile])
     end,
-    OverlaySymtab = overlay_symtab(Opts),
     Forms = parse_cache:parse(intern, CurrentFile),
-    ExpandedSymtab = symtab:extend_symtab_with_module_list(Symtab, SearchPath, ast_utils:referenced_modules(Forms), OverlaySymtab),
+    ModName = ast_utils:modname_from_path(CurrentFile),
+    Referenced = lists:filter(fun (M) -> M =/= ModName end, ast_utils:referenced_modules(Forms)),
+    ?LOG_DEBUG("Referenced from ~s: ~200p", CurrentFile, Referenced),
+    ExpandedSymtab = symtab:extend_symtab_with_module_list(Symtab, SearchPath, Referenced, OverlaySymtab),
 
     Only = sets:from_list(Opts#opts.type_check_only, [{version, 2}]),
     Ignore = sets:from_list(Opts#opts.type_check_ignore,[{version, 2}]),
     Sanity = perform_sanity_check(CurrentFile, Forms, Opts#opts.sanity),
-    Ctx = typing:new_ctx(ExpandedSymtab, Sanity),
+    Ctx = typing:new_ctx(ExpandedSymtab, OverlaySymtab, Sanity),
     case Opts#opts.no_type_checking of
         true ->
             ?LOG_NOTE("Not type checking ~p as requested", CurrentFile);
         false ->
-            typing:check_forms(Ctx, CurrentFile, Forms, Only, Ignore, OverlaySymtab)
+            typing:check_forms(Ctx, CurrentFile, Forms, Only, Ignore)
     end,
     NewIndex = cm_index:insert(CurrentFile, Forms, Index),
-    traverse_and_check(RemainingFiles, Symtab, SearchPath, Opts, NewIndex).
+    traverse_and_check(RemainingFiles, Symtab, OverlaySymtab, SearchPath, Opts, NewIndex).
 
 -spec perform_sanity_check(file:filename(), ast:forms(), boolean()) -> {ok, ast_check:ty_map()} | error.
 perform_sanity_check(CurrentFile, Forms, DoCheck) ->
@@ -124,7 +127,11 @@ perform_sanity_check(CurrentFile, Forms, DoCheck) ->
 -spec overlay_symtab(cmd_opts()) -> symtab:t().
 overlay_symtab(Opts) ->
     OverlayForms = case Opts#opts.type_overlay of
-        [] -> [];
-        OverlayFile -> parse_cache:parse(intern, OverlayFile)
+        [] ->
+            ?LOG_NOTE("Not using any overlays"),
+            [];
+        OverlayFile ->
+            ?LOG_NOTE("Using overlays from ~s", OverlayFile),
+            parse_cache:parse(intern, OverlayFile)
     end,
     symtab:overlay_symtab(OverlayForms).

@@ -6,7 +6,7 @@
 -include_lib("kernel/include/file.hrl").
 
 -export([
-    map_opt/3, map_opt/2,
+    map_opt/2,
     quit/3, quit/2, undefined/0, everywhere/2, everything/2, error/1, error/2,
     is_string/1, is_char/1,
     sformat_raw/2, sformat/2, sformat1/2, sformat/3, sformat/4, sformat/5, sformat/6, sformat/7,
@@ -23,21 +23,19 @@
     string_contains/2
 ]).
 
+-spec mingle(Value, Value, #{Key => Value}, #{Key => Value}, fun((Value, Value) -> Value)) -> #{Key => Value}.
 mingle(LeftDefault, RightDefault, AllLeft, AllRight, Op) ->
     AllKeys = maps:keys(AllLeft) ++ maps:keys(AllRight),
     % LeftDefault + Right (left not assigned)  Left + RightDefault (right not assigned) Left + Right (both)
     maps:from_list(lists:map(fun(Key) -> {Key, Op(maps:get(Key, AllLeft, LeftDefault), maps:get(Key, AllRight, RightDefault))} end, AllKeys)).
 
 -spec map_opt(fun((T) -> U | error), [T]) -> [U].
-map_opt(F, L) -> map_opt(F, error, L).
-
--spec map_opt(fun((T) -> U | V), V, [T]) -> [U].
-map_opt(F, Stop, L) ->
+map_opt(F, L) ->
     case L of
         [X|Xs] ->
             case F(X) of
-                Stop -> map_opt(F, Stop, Xs);
-                Y -> [Y | map_opt(F, Stop, Xs)]
+                error -> map_opt(F, Xs);
+                Y -> [Y | map_opt(F, Xs)]
             end;
         [] -> []
     end.
@@ -343,6 +341,7 @@ timeout(Millis, Fun) ->
         timeout
   end.
 
+-spec is_same_file(string(), string()) -> boolean().
 is_same_file(Path1, Path2) ->
     case {file:read_file_info(Path1), file:read_file_info(Path2)} of
         {{ok, Info1}, {ok, Info2}} ->

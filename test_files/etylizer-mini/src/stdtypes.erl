@@ -109,6 +109,7 @@ tarrow_n(Size) ->
 tfun_full(Args, Result) ->
     {fun_full, Args, Result}.
 
+-spec ttuple([ast:ty()]) -> ast:ty().
 ttuple(Components) ->
     {tuple, Components}.
 
@@ -137,6 +138,7 @@ any() ->
 empty() ->
     {predef, none}.
 
+-spec tany() -> ast:ty().
 tany() ->
     {predef, any}.
 

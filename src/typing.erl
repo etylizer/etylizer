@@ -1,22 +1,22 @@
 -module(typing).
 
 -export([
-    check_forms/6,
-    new_ctx/2
+    check_forms/5,
+    new_ctx/3
 ]).
 
 -include("log.hrl").
 -include("typing.hrl").
 
--spec new_ctx(symtab:t(), t:opt(ast_check:ty_map())) -> ctx().
-new_ctx(Tab, Sanity) ->
-    Ctx = #ctx{ symtab = Tab, sanity = Sanity },
+-spec new_ctx(symtab:t(), symtab:t(), t:opt(ast_check:ty_map())) -> ctx().
+new_ctx(Tab, Overlay, Sanity) ->
+    Ctx = #ctx{ symtab = Tab, overlay_symtab = Overlay, sanity = Sanity },
     Ctx.
 
 % Checks all forms of a module
--spec check_forms(ctx(), string(), ast:forms(), sets:set(string()), sets:set(string()), symtab:t()) -> ok.
-check_forms(Ctx, FileName, Forms, Only, Ignore, OverlaySymtab) ->
-    ExtTab = symtab:extend_symtab(FileName, Forms, Ctx#ctx.symtab, OverlaySymtab),
+-spec check_forms(ctx(), string(), ast:forms(), sets:set(string()), sets:set(string())) -> ok.
+check_forms(Ctx, FileName, Forms, Only, Ignore) ->
+    ExtTab = symtab:extend_symtab(FileName, Forms, Ctx#ctx.symtab, Ctx#ctx.overlay_symtab),
     ExtCtx = Ctx#ctx { symtab = ExtTab },
     ?LOG_DEBUG("Only: ~200p", sets:to_list(Only)),
     ?LOG_DEBUG("Ignore: ~200p", sets:to_list(Ignore)),
@@ -24,27 +24,36 @@ check_forms(Ctx, FileName, Forms, Only, Ignore, OverlaySymtab) ->
     {FunsWithSpec, FunsWithoutSpec, KnownFuns} =
         lists:foldr(
           fun(Form, Acc = {With, Without, Knowns}) ->
-                  case Form of
-                      {function, Loc, Name, Arity, _Clauses} ->
-                          Ref = {ref, Name, Arity},
-                          ModuleName = ast_utils:modname_from_path(FileName),
-                          RefStr = utils:sformat("~w/~w", Name, Arity),
-                          QRefStr = utils:sformat("~w:~s", ModuleName, RefStr),
-                          NameStr = utils:sformat("~w", Name),
-                          X = {QRefStr, RefStr, NameStr},
-                          case should_check(QRefStr, RefStr, NameStr, Only, Ignore) of
+            case Form of
+                {function, Loc, Name, Arity, _Clauses} ->
+                    ModuleName = ast_utils:modname_from_path(FileName),
+                    Ref = {ref, Name, Arity},
+                    RefStr = utils:sformat("~w/~w", Name, Arity),
+                    QRefStr = utils:sformat("~w:~s", ModuleName, RefStr),
+                    NameStr = utils:sformat("~w", Name),
+                    X = {QRefStr, RefStr, NameStr},
+                    Check = should_check(QRefStr, RefStr, NameStr, Only, Ignore),
+                    case symtab:find_fun(Ref, ExtTab) of
+                        error ->
+                            if
+                              Check ->
+                                  {With, [Form | Without], [X | Knowns]};
                               true ->
-                                  case symtab:find_fun(Ref, ExtTab) of
-                                      error -> {With, [Form | Without], [X | Knowns]};
-                                      {ok, Ty} -> {[{Form, Ty} | With], Without, [X | Knowns]}
-                                  end;
-                              false ->
-                                  ?LOG_NOTE("~s: not type checking function ~s as requested",
-                                             ast:format_loc(Loc), RefStr),
-                                  {With, Without, [X | Knowns]}
-                          end;
-                      _ -> Acc
-                  end
+                                  errors:some_error(
+                                      "Cannot ignore function without type spec: ~s", RefStr
+                                  )
+                            end;
+                        {ok, Ty} ->
+                            if
+                                Check -> {[{Form, Ty} | With], Without, [X | Knowns]};
+                                true ->
+                                    ?LOG_NOTE("~s: not type checking function ~s as requested",
+                                               ast:format_loc(Loc), RefStr),
+                                    {With, Without, [X | Knowns]}
+                            end
+                    end;
+                _ -> Acc
+            end
           end,
           {[], [], []},
           Forms

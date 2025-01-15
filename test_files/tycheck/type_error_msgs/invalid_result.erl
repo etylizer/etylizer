@@ -1,5 +1,5 @@
 % ERROR
-% test_files/tycheck/type_error_msgs/invalid_result.erl:12:18: Type error: expression failed to type check
+% test_files/tycheck/type_error_msgs/invalid_result.erl:12:18: Type error: in make_even/1, expression failed to type check
 -module(invalid_result).
 
 -compile(export_all).

@@ -16,7 +16,7 @@
 -ifdef(TEST).
 -export([search_failing_prefix/3]).
 -endif.
-  
+
 -type error_kind() :: constr_error_locs:constr_error_kind().
 -type error() :: {error_kind(), ast:loc(), string()}.
 
@@ -99,7 +99,10 @@ check_simp_constrs(Tab, FixedTyvars, Ds, What) ->
             ?LOG_DEBUG("Constraints are not satisfiable, now locating source of errors. Blocks:~n~s",
                 pretty:render_list(fun pretty:constr_block/1, Blocks)),
             Timeout = 4000,
-            case utils:timeout(Timeout, fun () -> locate_tyerror(Tab, FixedTyvars, Blocks) end) of
+            TimeoutRes = utils:timeout(
+                Timeout,
+                fun () -> locate_tyerror(Tab, FixedTyvars, Blocks) end),
+            case TimeoutRes of
                 {ok, Res} -> Res;
                 timeout ->
                     ?LOG_INFO("Locating type error timed out after ~wms", Timeout),

@@ -1,5 +1,5 @@
 % ERROR
-% test_files/tycheck/type_error_msgs/invalid_scrutiny.erl:16:14: Type error: expression failed to type check
+% test_files/tycheck/type_error_msgs/invalid_scrutiny.erl:16:14: Type error: in foo/1, expression failed to type check
 % %   16|     case bar(X) of
 % %     |              ^
 -module(invalid_scrutiny).

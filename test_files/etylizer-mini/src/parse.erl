@@ -17,7 +17,10 @@
 % Compile: https://erlang.org/doc/man/compile.html
 
 -spec parse_file(string()) -> error | {ok, [ast_erl:form()]}.
-parse_file(Path) -> parse_file(Path, #parse_opts{}).
+parse_file(Path) -> parse_file(Path, #parse_opts{
+    includes = [],
+    defines = [],
+    verbose = true }).
 
 -spec parse_file(string(), parse_opts()) -> error | {ok, [ast_erl:form()]}.
 parse_file(Path, Opts) ->

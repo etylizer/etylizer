@@ -1,5 +1,5 @@
 % ERROR
-% test_files/tycheck/type_error_msgs/seq_last.erl:21:28: Type error: expression failed to type check
+% test_files/tycheck/type_error_msgs/seq_last.erl:21:28: Type error: in foo/1, expression failed to type check
 -module(seq_last).
 
 -compile(export_all).
