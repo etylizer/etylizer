@@ -20,7 +20,9 @@
     named/2,
     extend_symtab/2, 
     extend_symtab/3,
-    extend_symtabs/2
+    extend_symtabs/2,
+    solutions/1,
+    test_tally/2, test_tally/3, test_tally/4
 ]).
 
 -export_type([
@@ -176,6 +178,74 @@ extend_symtab(Def, Scheme, Symtab) ->
 extend_symtabs(DefSchemes, Symtab) ->
   Forms = [{attribute, ast:loc_auto(), type, transparent, TyDef} || TyDef <- DefSchemes],
   symtab:extend_symtab(".", Forms, Symtab, symtab:empty()).
+
+-type expected_subst() :: {
+  #{ atom() => ast:ty() },  % lower bounds
+  #{ atom() => ast:ty() } % upper bounds
+}.
+
+-spec test_tally(list({ast:ty(), ast:ty()}), list(expected_subst())) -> ok.
+test_tally(ConstrList, ExpectedSubst) ->
+    test_tally(ConstrList, ExpectedSubst, [], symtab:empty()).
+
+-spec test_tally(list({ast:ty(), ast:ty()}), list(expected_subst()), [ast:ty_varname()]) -> ok.
+test_tally(ConstrList, ExpectedSubst, FixedVars) ->
+    test_tally(ConstrList, ExpectedSubst, FixedVars, symtab:empty()).
+
+-spec test_tally(list({ast:ty(), ast:ty()}), list(expected_subst()), [ast:ty_varname()], symtab:t()) -> ok.
+test_tally(ConstrList, ExpectedSubst, FixedVars, Symtab) ->
+  Constrs = sets:from_list(
+                lists:map(
+                  fun ({T, U}) -> {scsubty, sets:from_list([ast:loc_auto()], [{version, 2}]), T, U} end,
+                  ConstrList
+                 ), [{version, 2}]),
+
+  Res = tally:tally(Symtab, Constrs, sets:from_list(FixedVars, [{version, 2}])),
+  case Res of
+    [_ | _] -> 
+      ?LOG_WARN("Tally result:~n~s",
+        pretty:render_substs(lists:map(fun (S) -> subst:base_subst(S) end, Res))),
+      find_subst(ExpectedSubst, Res, Res);
+    _ -> 
+      case ExpectedSubst of 
+        [] -> ok;
+        _ -> error(utils:sformat("Unexpected result from tally: ~w", Res))
+      end
+  end.
+
+%% Suppress warnings about unmatched patterns
+%% TODO fix this somehow or not...
+-dialyzer({no_match, find_subst/3}).
+-spec find_subst(list(expected_subst()), [subst:t()], [subst:t()]) -> ok.
+find_subst([], [], _) -> ok;
+find_subst([{Low, High} | _], [], Sols) ->
+  ?LOG_WARN("~nCould not find substitutions among remaining ~p tally solutions for~n" ++
+    "expected lower bound:~n~s~n~nexpected upper bound:~n~s~n~nRemaining:~s",
+            length(Sols),
+            pretty:render_subst(Low),
+            pretty:render_subst(High),
+            pretty:render_substs(lists:map(fun (S) -> subst:base_subst(S) end, Sols))
+  ),
+  error("test failed because tally returned no substitution that matches low and high bounds");
+find_subst([], [_X | _Xs], Remaining) ->
+  Substs = lists:map(fun (S) -> subst:base_subst(S) end, Remaining),
+  ?LOG_WARN("~nToo many substitutions return from tally. Unconsumed: ~200p", Substs),
+  error("Too many substitutions returned from tally");
+find_subst(X = [{Low, High} | OtherTests], [TallySubst | Others], AllTally) ->
+  Subst = subst:base_subst(TallySubst),
+  Valid = lists:any(
+    fun({{Var, LowerBound}, {Var, UpperBound}}) ->
+        TyOther = maps:get(Var, Subst, {var, Var}),
+        not (subty:is_subty(symtab:empty(), LowerBound, TyOther) andalso
+          subty:is_subty(symtab:empty(), TyOther, UpperBound))
+    end, lists:zip(lists:sort(maps:to_list(Low)), lists:sort(maps:to_list(High)))),
+  case Valid of
+    true -> find_subst(X, Others, AllTally);
+    false -> find_subst(OtherTests, AllTally -- [TallySubst], AllTally -- [TallySubst])
+  end.
+
+solutions(Number) ->
+  [{#{}, #{}} || _ <- lists:seq(1, Number)].
 
 
 -ifdef(TEST).

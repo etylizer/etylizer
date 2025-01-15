@@ -43,7 +43,7 @@ tally(SymTab, Constraints, FixedVars) ->
   FixedTallyTyvars =
     [ast_lib:ast_to_erlang_ty_var({var, Var}) || Var <- lists:sort(sets:to_list(FixedVars))],
   InternalResult = etally:tally(InternalConstraints, sets:from_list(FixedTallyTyvars, [{version, 2}])),
- %io:format(user, "Got Constraints ~n~p~n~p~n", [InternalConstraints, InternalResult]),
+  % io:format(user, "Got Constraints ~n~s~n~p~n", [print(InternalConstraints), InternalResult]),
 
   Free = tyutils:free_in_subty_constrs(Constraints),
 
@@ -60,3 +60,6 @@ tally(SymTab, Constraints, FixedVars) ->
           || Subst <- InternalResult]
 
   end.
+
+% print(Cs) ->
+%   "<<" ++ string:join([ty_rec:print(S) ++ " < " ++ ty_rec:print(T) || {S, T} <- Cs], ",\n") ++ ">>".
