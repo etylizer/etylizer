@@ -90,7 +90,7 @@ traverse_and_check([CurrentFile | RemainingFiles], Symtab, OverlaySymtab, Search
     Forms = parse_cache:parse(intern, CurrentFile),
     ModName = ast_utils:modname_from_path(CurrentFile),
     Referenced = lists:filter(fun (M) -> M =/= ModName end, ast_utils:referenced_modules(Forms)),
-    ?LOG_INFO("Referenced from ~s: ~200p", CurrentFile, Referenced),
+    ?LOG_DEBUG("Referenced from ~s: ~200p", CurrentFile, Referenced),
     ExpandedSymtab = symtab:extend_symtab_with_module_list(Symtab, SearchPath, Referenced, OverlaySymtab),
 
     Only = sets:from_list(Opts#opts.type_check_only, [{version, 2}]),

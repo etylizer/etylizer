@@ -493,7 +493,14 @@ case_clause_constrs(Ctx, TyScrut, Scrut, NeedsUnmatchedCheck, LowersBefore,
     {BodyLower, BodyUpper, BodyEnvCs, BodyEnv} =
         case_clause_env(Ctx, L, TyScrut, Scrut, Pat, Guards),
     {_, _, GuardEnvCs, GuardEnv} = case_clause_env(Ctx, L, TyScrut, Scrut, Pat, []),
-    ?LOG_TRACE("TyScrut=~w, Scrut=~w, GuardEnv=~w, BodyEnv=~w", TyScrut, Scrut, GuardEnv, BodyEnv),
+    ?LOG_TRACE("TyScrut=~s, Scrut=~w, GuardEnv=~s, GuardEnvCs=~s, BodyEnv=~s, BodyEnvCs=~s",
+        pretty:render_ty(TyScrut),
+        Scrut,
+        pretty:render_mono_env(GuardEnv),
+        pretty:render_constr(GuardEnvCs),
+        pretty:render_mono_env(BodyEnv),
+        pretty:render_constr(BodyEnvCs)
+    ),
     Beta = fresh_tyvar(Ctx),
     InnerCs = exps_constrs(Ctx, L, Exps, Beta),
     CGuards =
@@ -655,31 +662,36 @@ ty_of_pat(Symtab, Env, P, Mode) ->
             ast_lib:mk_intersection([ty_of_pat(Symtab, Env, P1, Mode), ty_of_pat(Symtab, Env, P2, Mode)]);
         {nil, _L} -> {empty_list};
         {cons, _L, P1, P2} ->
-            case Mode of
-                upper ->
-                    T1 = ty_of_pat(Symtab, Env, P1, Mode),
-                    T2 = ty_of_pat(Symtab, Env, P2, Mode),
-                    case subty:is_subty(Symtab, T2, stdtypes:tempty_list()) of
-                        true -> stdtypes:tnonempty_list(T1);
-                        false ->
-                            case subty:is_subty(Symtab, T2, stdtypes:tnonempty_list()) of
-                                true -> ast_lib:mk_union([stdtypes:tnonempty_list(T1), T2]);
-                                false ->
-                                    case subty:is_any(T2, Symtab) of
-                                        true -> stdtypes:tnonempty_list();
-                                        false -> stdtypes:tnonempty_improper_list(T1, T2)
-                                    end
-                            end
-                    end;
-                lower ->
-                    T1 = {nonempty_list, ty_of_pat(Symtab, Env, P1, Mode)},
-                    T2 = ty_of_pat(Symtab, Env, P2, Mode),
-                    % FIXME: can we encode this choice as a type?
-                    case subty:is_any(T2, Symtab) of
-                        true -> T1;
-                        false -> stdtypes:empty()
-                    end
-            end;
+            Res =
+                case Mode of
+                    upper ->
+                        T1 = ty_of_pat(Symtab, Env, P1, Mode),
+                        T2 = ty_of_pat(Symtab, Env, P2, Mode),
+                        ?LOG_DEBUG("T1=~s, T2=~s", pretty:render_ty(T1), pretty:render_ty(T2)),
+                        case subty:is_subty(Symtab, T2, stdtypes:tempty_list()) of
+                            true -> stdtypes:tnonempty_list(T1);
+                            false ->
+                                case subty:is_subty(Symtab, T2, stdtypes:tnonempty_list()) of
+                                    true -> ast_lib:mk_union([stdtypes:tnonempty_list(T1), T2]);
+                                    false ->
+                                        case subty:is_any(T2, Symtab) of
+                                            true -> stdtypes:tnonempty_list();
+                                            false -> stdtypes:tnonempty_improper_list(T1, T2)
+                                        end
+                                end
+                        end;
+                    lower ->
+                        T1 = {nonempty_list, ty_of_pat(Symtab, Env, P1, Mode)},
+                        T2 = ty_of_pat(Symtab, Env, P2, Mode),
+                        ?LOG_DEBUG("T1=~s, T2=~s", pretty:render_ty(T1), pretty:render_ty(T2)),
+                        % FIXME: can we encode this choice as a type?
+                        case subty:is_any(T2, Symtab) of
+                            true -> T1;
+                            false -> stdtypes:empty()
+                        end
+                end,
+            ?LOG_DEBUG("Type of list pattern ~200p in mode ~w: ~s", P, Mode, pretty:render_ty(Res)),
+            Res;
         {op, _, '++', [P1, P2]} ->
             ast_lib:mk_intersection([ty_of_pat(Symtab, Env, P1, Mode), ty_of_pat(Symtab, Env, P2, Mode),
                                  {predef_alias, string}]);
@@ -794,7 +806,8 @@ pat_env(Ctx, OuterL, T, P) ->
             {Cs1, Env1} = pat_env(Ctx, OuterL, Alpha1, P1),
             {Cs2, Env2} = pat_env(Ctx, OuterL, Alpha2, P2),
             C1 = {csubty, mk_locs("t // [_ | _]", OuterL), T, {list, Alpha1}},
-            C2 = {csubty, mk_locs("t // [_ | _]", OuterL), T, Alpha2},
+            C2 = {csubty, mk_locs("t // [_ | _]", OuterL),
+                    ast_lib:mk_union([T, stdtypes:tempty_list()]), Alpha2},
             {sets:add_element(C1, sets:add_element(C2, sets:union(Cs1, Cs2))),
              intersect_envs(Env1, Env2)};
         {op, _L, '++', [P1, P2]} ->
