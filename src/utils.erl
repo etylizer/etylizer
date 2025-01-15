@@ -3,6 +3,7 @@
 % @doc This module defines general purpose utility functions.
 
 -include_lib("kernel/include/file.hrl").
+-include("log.hrl").
 
 -export([
     quit/3, quit/2,
@@ -254,27 +255,27 @@ assocs_find_index(K, [_ | Rest]) ->
 
 -spec timeout(integer(), fun(() -> T)) -> {ok, T} | timeout.
 timeout(Millis, Fun) ->
-  Self = self(),
-  Pid = spawn(
-    fun()->
-        try
-            X = Fun(),
-            Self ! {ok, X}
-        catch
-            error:Reason -> Self ! {error, Reason};
-            exit:_Reason -> ok;
-            throw:Reason -> Self ! {throw, Reason}
-        end
-    end),
-  receive
-    {ok, Res} -> {ok, Res};
-    {error, Reason} -> erlang:error(Reason);
-    {throw, Reason} -> erlang:throw(Reason)
-  after
-     Millis ->
-        exit(Pid, kill),
-        timeout
-  end.
+    Self = self(),
+    Pid = spawn(
+      fun()->
+          try
+              X = Fun(),
+              Self ! {ok, X}
+          catch
+              error:Reason -> Self ! {error, Reason};
+              exit:_Reason -> ok;
+              throw:Reason -> Self ! {throw, Reason}
+          end
+      end),
+    receive
+      {ok, Res} -> {ok, Res};
+      {error, Reason} -> erlang:error(Reason);
+      {throw, Reason} -> erlang:throw(Reason)
+    after
+       Millis ->
+          exit(Pid, kill),
+          timeout
+    end.
 
 is_same_file(Path1, Path2) ->
     case {file:read_file_info(Path1), file:read_file_info(Path2)} of

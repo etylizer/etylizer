@@ -197,7 +197,7 @@ extend_symtab_internal(Filename, Forms, RefType, Tab, OverlaySymtab) ->
                 end
         end,
     case IsNew of
-        false -> 
+        false ->
             Tab;
         true ->
             NewTab =
@@ -263,7 +263,7 @@ traverse_module_list(SearchPath, Symtab, [CurrentModule | RemainingModules], Ove
                     ok
             end,
             AdditionalModules = ast_utils:referenced_modules_via_types(Forms),
-            ?LOG_DEBUG("Additional modukes for ~w: ~200p", CurrentModule, AdditionalModules),
+            ?LOG_DEBUG("Additional modules for ~w: ~200p", CurrentModule, AdditionalModules),
             traverse_module_list(SearchPath, NewSymtab, RemainingModules ++ AdditionalModules, OverlaySymtab);
         _ -> traverse_module_list(SearchPath, Symtab, RemainingModules, OverlaySymtab)
     end;
