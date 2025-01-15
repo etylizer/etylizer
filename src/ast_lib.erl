@@ -1,11 +1,11 @@
 -module(ast_lib).
 
 -export([
-    reset/0, 
-    ast_to_erlang_ty/2, 
-    erlang_ty_to_ast/1, erlang_ty_to_ast/2, 
-    ast_to_erlang_ty_var/1, 
-    mk_union/1, 
+    reset/0,
+    ast_to_erlang_ty/2,
+    erlang_ty_to_ast/1, erlang_ty_to_ast/2,
+    ast_to_erlang_ty_var/1,
+    mk_union/1,
     mk_negation/1,
     mk_diff/2,
     mk_intersection/1
@@ -276,10 +276,10 @@ parse_ast_to_erlang_ty({map, AssocList}, Sym) ->
 % var
 parse_ast_to_erlang_ty({var, A}, _Sym) ->
     % if this is a special $mu_integer()_name() variable, convert to that representation
-    case string:prefix(atom_to_list(A), "$mu_") of 
-        nomatch -> 
+    case string:prefix(atom_to_list(A), "$mu_") of
+        nomatch ->
             ty_rec:variable(ty_variable:new_with_name(A));
-        IdName -> 
+        IdName ->
             % assumption: erlang types generates variables only in this pattern: $mu_integer()_name()
             [Id, Name] = string:split(IdName, "_"),
             ty_rec:variable(ty_variable:new_with_name_and_id(list_to_integer(Id), list_to_atom(Name)))
@@ -298,7 +298,7 @@ parse_ast_to_erlang_ty({predef, T}, _Sym) when T == pid; T == port; T == referen
 
 % named
 parse_ast_to_erlang_ty(Ty = {named, _Loc, _Ref, _Args}, Sym) ->
-    % todo check if really recursive 
+    % todo check if really recursive
     ast_to_erlang_ty:ast_to_erlang_ty(Ty, Sym);
 
 % ty_predef_alias
@@ -332,7 +332,7 @@ parse_ast_to_erlang_ty({negation, Ty}, Sym) -> ty_rec:negate(ast_to_erlang_ty(Ty
 
 parse_ast_to_erlang_ty(Ty = {mu, Var, InnerTy}, Sym) ->
     % TODO test case if this is capture-avoiding
-    % what happens with mu X . mu X . X, 
+    % what happens with mu X . mu X . X,
     % assumme type is well-formed and this case should not happen?
     Vars = ast_utils:referenced_variables(InnerTy),
     case lists:member(Var, Vars) of
@@ -348,7 +348,7 @@ parse_ast_to_erlang_ty(Ty = {mu, Var, InnerTy}, Sym) ->
 parse_ast_to_erlang_ty(T, _Sym) ->
     erlang:error({"Norm not implemented or malformed type", T}).
 
-    
+
 -spec ast_to_erlang_ty_var(ast:ty_var()) -> ty_variable:var().
 ast_to_erlang_ty_var({var, Name}) when is_atom(Name) ->
     ty_variable:new_with_name(Name).
@@ -368,7 +368,7 @@ raw_erlang_ty_to_ast(X, M) ->
 
         NewM = M#{X => Var},
 
-        NewTy = 
+        NewTy =
         ty_rec:raw_transform(
             X,
             #{
@@ -412,7 +412,7 @@ raw_erlang_ty_to_ast(X, M) ->
 
         % SANITY CHECK
         % TODO is it always the case that once we are in the semantic world, when we go back we dont need the symtab?
-        Sanity = ast_lib:parse_ast_to_erlang_ty(FinalTy, symtab:empty()),
+        Sanity = parse_ast_to_erlang_ty(FinalTy, symtab:empty()),
           % leave this sanity check for a while
           case ty_rec:is_equivalent(X, Sanity) of
             true -> ok;
