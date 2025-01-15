@@ -25,9 +25,8 @@ OVERLAY=overlay.erl
     src/utils.erl
 
 # with_tmp_file/4 and with_tmp_dir/4 because they use try
-# INVESTIGATE: tmp_dir/0
 ../../ety --build --type-overlay $OVERLAY --force --level debug -P . -I src --no-deps \
-    --ignore tmp_dir/0 --ignore with_tmp_file/4 --ignore with_tmp_dir/4 \
+    --ignore with_tmp_file/4 --ignore with_tmp_dir/4 \
     src/tmp.erl
 
 ../../ety --build --force --level debug -P . -I src --no-deps src/t.erl
@@ -36,17 +35,20 @@ OVERLAY=overlay.erl
 # skip: too slow because of inference
 # ../../ety --build --force --level debug -P . -I src --no-deps src/stdtypes.erl
 
-# Does not work because of #182
+# Too slow, probably because of recursive definitions #163
 # ../../ety --build --force --level debug -P . -I src --no-deps src/ast_transform.erl
 
 # missing support for binary: to_loc/2
-# get_name_fun/1: #196
-# loc_exp/1: too slow (needs overlay for element)
+# get_name_fun/1: too slow #196
+# loc_exp/1: too slow (this one also needs overlay for element) #196
+# format_loc/1: crashes with "no more index entries in atom_tab (max=1048576)" #196
 ../../ety --build --type-overlay $OVERLAY --force --level debug -P . -I src --no-deps \
     --ignore to_loc/2 \
     --ignore get_fun_name/1 \
     --ignore loc_exp/1 \
+    --ignore format_loc/1 \
     src/ast.erl
 
+# MISSING: src/records.erl src/parse.erl src/log.erl src/ast_utils.erl src/ast_lib.erl src/ast_erl.erl
 # FULL
 # ../../ety --build --force --level debug -P . -I src "$@"
