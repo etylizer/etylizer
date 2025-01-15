@@ -17,6 +17,12 @@
 -spec 'filename:join'(string(), string()) -> string().
 'filename:join'(_, _) -> error(overlay).
 
+-spec 'lists:foldl'(fun((T, Acc) -> Acc), Acc, [T]) -> Acc.
+'lists:foldl'(_, _, _) -> error(overlay).
+
+-spec 'lists:keyfind'(Key :: term(), N :: pos_integer(), [Tuple]) -> Tuple | false.
+'lists:keyfind'(_, _, _) -> error(overlay).
+
 -spec 'erlang:element'
     (2, {_A, B}) -> B;
     (2, {_A, B, _C}) -> B;
