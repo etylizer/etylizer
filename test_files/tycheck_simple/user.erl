@@ -62,3 +62,8 @@ user_06(false) -> {foo, user_06(true)}.
 -spec user_07(user_t_07(foo)) -> integer().
 user_07(nil) -> 1;
 user_07({foo, X}) -> user_07(X).
+
+% #182
+-type user_t_08() :: {a | user_t_08()}.
+-spec user_08(user_t_08()) -> user_t_08().
+user_08(Forms) -> user_08(Forms).

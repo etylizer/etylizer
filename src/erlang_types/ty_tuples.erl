@@ -97,7 +97,10 @@ substitute({DefaultTuple, AllTuples}, SubstituteMap, Memo) ->
   AllVars = dnf_var_ty_tuple:all_variables(DefaultTuple),
   % note: OtherTupleKeys not be included in the AllTuples keys, they are known
   % TODO erlang 26 map comprehensions
-  Keys = maps:fold(fun(K,V,AccIn) -> case lists:member(K, AllVars) of true -> ty_rec:tuple_keys(V) -- maps:keys(AllTuples) ++ AccIn; _ -> AccIn end end, [], SubstituteMap),
+  Keys = maps:fold(fun(K,V,AccIn) -> 
+    case lists:member(K, AllVars) of true -> ty_rec:tuple_keys(V) -- maps:keys(AllTuples) ++ AccIn; _ -> AccIn 
+    end 
+  end, [], SubstituteMap),
   % Keys = [(tuple_keys(V) -- maps:keys(AllTuples)) || K := V <- SubstituteMap, lists:member(K, AllVars)],
   OtherTupleKeys = lists:usort(lists:flatten(Keys)),
   NewDefaultOtherTuples = maps:from_list([{Length, dnf_var_ty_tuple:substitute(DefaultTuple, SubstituteMap, Memo, fun(Ty) -> ty_rec:pi({tuple, Length}, Ty) end)} || Length <- OtherTupleKeys]),

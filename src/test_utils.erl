@@ -16,9 +16,11 @@
     reset_ets/0,
     ety_to_cduce_tally/2,
     format_tally_config/3,
+    named/1,
     named/2,
     extend_symtab/2, 
-    extend_symtab/3
+    extend_symtab/3,
+    extend_symtabs/2
 ]).
 
 -export_type([
@@ -156,6 +158,9 @@ to_var({var, Name}) ->
     "'" ++ string:replace(erlang:atom_to_list(Name), "$", "u").
 
 
+named(Ref) ->
+    named(Ref, []).
+
 named(Ref, Args) ->
   % Use the dummy '.' file as the module for testing purposes
   {named, ast:loc_auto(), {ty_ref, '.', Ref, length(Args)}, Args}.
@@ -167,6 +172,10 @@ extend_symtab(Def, Scheme, Symtab) ->
   TyDef = {Def, Scheme},
   Form = {attribute, ast:loc_auto(), type, transparent, TyDef},
   symtab:extend_symtab(".", [Form], Symtab, symtab:empty()).
+
+extend_symtabs(DefSchemes, Symtab) ->
+  Forms = [{attribute, ast:loc_auto(), type, transparent, TyDef} || TyDef <- DefSchemes],
+  symtab:extend_symtab(".", Forms, Symtab, symtab:empty()).
 
 
 -ifdef(TEST).
