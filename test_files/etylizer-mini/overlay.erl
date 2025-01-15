@@ -17,6 +17,9 @@
 -spec 'filename:join'(string(), string()) -> string().
 'filename:join'(_, _) -> error(overlay).
 
+-spec 'lists:map'(fun((A) -> B), [A]) -> [B].
+'lists:map'(_, _) -> error(overlay).
+
 -spec 'lists:foldl'(fun((T, Acc) -> Acc), Acc, [T]) -> Acc.
 'lists:foldl'(_, _, _) -> error(overlay).
 

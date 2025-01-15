@@ -40,7 +40,7 @@ OVERLAY=overlay.erl
 
 # missing support for binary: to_loc/2
 # get_name_fun/1: too slow #196
-# loc_exp/1: too slow (this one also needs overlay for element) #196
+# loc_exp/1: too slow (loc_exp/1 also needs overlay for erlang:element/2) #196
 # format_loc/1: crashes with "no more index entries in atom_tab (max=1048576)" #196
 ../../ety --build --type-overlay $OVERLAY --force --level debug -P . -I src --no-deps \
     --ignore to_loc/2 \
@@ -49,6 +49,16 @@ OVERLAY=overlay.erl
     --ignore format_loc/1 \
     src/ast.erl
 
-# MISSING: src/records.erl src/parse.erl src/log.erl src/ast_utils.erl src/ast_lib.erl src/ast_erl.erl
-# FULL
-# ../../ety --build --force --level debug -P . -I src "$@"
+# record_ty_from_decl/2: slow, maybe #196
+# encode_record_ty/1 and lookup_field_ty/3: slow (very simple functions, maybe they are slow
+#   because they uses the large type ast:ty()?) Could also be #196
+# encode_record_ty/2: slow, maybe #196
+../../ety --build --type-overlay $OVERLAY --force --level debug -P . -I src --no-deps \
+    --ignore record_ty_from_decl/2 \
+    --ignore encode_record_ty/1 \
+    --ignore encode_record_ty/2 \
+    --ignore lookup_field_ty/3 \
+    --ignore lookup_field_index/3 \
+    src/records.erl
+
+# MISSING: src/parse.erl src/log.erl src/ast_utils.erl src/ast_lib.erl src/ast_erl.erl

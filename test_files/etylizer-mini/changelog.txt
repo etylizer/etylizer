@@ -1,6 +1,9 @@
 Document all changes necessary to get the source code working
 =============================================================
 
+- explicitly specify record arguments that have default values (we do not have support for
+  default values) #200
+- add some type annotations to stdtypes, otherwise definitions cannot be used from other modules
 - fix map_opt/3, it's type was not correct.
 - overlays for several functions using binary
 - overlay for erlang:element/2
