@@ -41,3 +41,6 @@
 'erlang:element'(_, {_A, B, _C, _D, _E, _F}) -> B;
 'erlang:element'(_, {_A, B, _C, _D, _E, _F, _G}) -> B;
 'erlang:element'(_, {_A, B, _C, _D, _E, _F, _G, _H}) -> B.
+
+-spec 'maps:find'(Key, #{Key => Value}) -> {ok, Value} | error.
+'maps:find'(_, _) -> error(eqwalizer_specs).
