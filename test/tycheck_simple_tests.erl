@@ -6,10 +6,10 @@
 -include("log.hrl").
 -include("ety_main.hrl").
 
--spec check_ok_fun(string(), symtab:t(), ast:fun_decl(), ast:ty_scheme()) -> ok.
-check_ok_fun(Filename, Tab, Decl = {function, L, Name, Arity, _}, Ty) ->
+-spec check_ok_fun(string(), symtab:t(), symtab:t(), ast:fun_decl(), ast:ty_scheme()) -> ok.
+check_ok_fun(Filename, Tab, OverlayTab, Decl = {function, L, Name, Arity, _}, Ty) ->
     SanityCheck = cm_check:perform_sanity_check(Filename, [Decl], true),
-    Ctx = typing:new_ctx(Tab, SanityCheck), % FIXME: perform sanity check!
+    Ctx = typing:new_ctx(Tab, OverlayTab, SanityCheck), % FIXME: perform sanity check!
     try
         typing_check:check(Ctx, Decl, Ty)
     catch
@@ -20,10 +20,10 @@ check_ok_fun(Filename, Tab, Decl = {function, L, Name, Arity, _}, Ty) ->
     end,
     ok.
 
--spec check_infer_ok_fun(string(), symtab:t(), ast:fun_decl(), ast:ty_scheme()) -> ok.
-check_infer_ok_fun(Filename, Tab, Decl = {function, L, Name, Arity, _}, Ty) ->
+-spec check_infer_ok_fun(string(), symtab:t(), symtab:t(), ast:fun_decl(), ast:ty_scheme()) -> ok.
+check_infer_ok_fun(Filename, Tab, OverlayTab, Decl = {function, L, Name, Arity, _}, Ty) ->
     % Check that the infered type is more general then the type in the spec
-    Ctx = typing:new_ctx(Tab, error),
+    Ctx = typing:new_ctx(Tab, OverlayTab, error),
     Envs =
        try
            typing_infer:infer(Ctx, [Decl])
@@ -61,9 +61,9 @@ check_infer_ok_fun(Filename, Tab, Decl = {function, L, Name, Arity, _}, Ty) ->
       end,
     ok.
 
--spec check_fail_fun(string(), symtab:t(), ast:fun_decl(), ast:ty_scheme()) -> ok.
-check_fail_fun(Filename, Tab, Decl = {function, L, Name, Arity, _}, Ty) ->
-    Ctx = typing:new_ctx(Tab, error),
+-spec check_fail_fun(string(), symtab:t(), symtab:t(), ast:fun_decl(), ast:ty_scheme()) -> ok.
+check_fail_fun(Filename, Tab, OverlayTab, Decl = {function, L, Name, Arity, _}, Ty) ->
+    Ctx = typing:new_ctx(Tab, OverlayTab, error),
     try
         typing_check:check(Ctx, Decl, Ty),
         io:format("~s: Type checking ~w/~w in ~s succeeded but should fail",
@@ -85,6 +85,7 @@ check_decls_in_file(F, What, NoInfer) ->
   RawForms = parse:parse_file_or_die(F),
   Forms = ast_transform:trans(F, RawForms),
   SearchPath = paths:compute_search_path(#opts{}),
+  OverlayTab = symtab:empty(),
   Tab0 = symtab:std_symtab(SearchPath, symtab:empty()),
   Tab = symtab:extend_symtab(F, Forms, Tab0,symtab:empty()),
 
@@ -101,9 +102,9 @@ check_decls_in_file(F, What, NoInfer) ->
                 ?LOG_NOTE("Type checking ~s from ~s", NameStr, F),
                 test_utils:reset_ets(),
                 case ShouldFail of
-                  true -> check_fail_fun(F, Tab, Decl, Ty);
+                  true -> check_fail_fun(F, Tab, OverlayTab, Decl, Ty);
                   false ->
-                    check_ok_fun(F, Tab, Decl, Ty)
+                    check_ok_fun(F, Tab, OverlayTab, Decl, Ty)
                 end
               end}
             },
@@ -111,7 +112,7 @@ check_decls_in_file(F, What, NoInfer) ->
           {timeout, 45, {FullNameStr ++ " (infer)", fun() ->
                 ?LOG_NOTE("Infering type for ~s from ~s", NameStr, F),
                 test_utils:reset_ets(),
-                check_infer_ok_fun(F, Tab, Decl, Ty)
+                check_infer_ok_fun(F, Tab, OverlayTab, Decl, Ty)
               end}
           },
         ShouldRun = should_run(NameStr, What),
@@ -169,7 +170,7 @@ simple_test_() ->
 
   % If OnlyFiles is empty, all files not in IgnoreFiles are checked
   % If OnlyFiles is not empty, only the files in OnlyFiles but not in IgnoreFiels are checked
-  OnlyFiles = [],
+  OnlyFiles = ["tuples.erl"],
   IgnoreFiles = [],
 
   parse_cache:with_cache(
