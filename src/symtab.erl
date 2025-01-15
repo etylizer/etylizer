@@ -197,7 +197,8 @@ extend_symtab_internal(Filename, Forms, RefType, Tab, OverlaySymtab) ->
                 end
         end,
     case IsNew of
-        false -> Tab;
+        false -> 
+            Tab;
         true ->
             NewTab =
                 lists:foldl(
