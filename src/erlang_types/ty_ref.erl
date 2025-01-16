@@ -1,6 +1,6 @@
 -module(ty_ref).
 
--ifdef(TEST).
+-ifdef(DEBUG).
 -export([write_dump_ty/1]).
 -endif.
 
@@ -205,60 +205,68 @@ check_recursive_variable(Variable) ->
 
 
 
--ifdef(TEST).
+-ifdef(DEBUG).
 
 % very unstable, should only be used to generate proper test cases while debugging
 % -type dump() :: {{ty_ref, integer()}, integer(), #{{ty_ref, integer()} => Ty :: term()}}.
 % % dump a type and all its dependencies for creating a test case via importing the state
 % -spec write_dump_ty({ty_ref, integer()}) -> dump().
 write_dump_ty(Ty) ->
-  State = lists:usort(write_dump_ty_h(Ty)),
+  State = lists:usort(write_dump_ty_h(Ty, #{})),
 
-  Ids = lists:usort(lists:flatten(utils:everything(
-      fun F(InnerT) ->
-          case InnerT of
-              (Ref = {ty_ref, Id}) -> 
-                TyRec = load(Ref),
-                OtherIds = utils:everything(F, TyRec),
-                {ok, [Id] ++ OtherIds};
-              _ -> 
-                error
-          end
-      end,
-      Ty))),
-  [MaxId | _] = lists:reverse(Ids),
+  % TODO corecursive IDs
+  % Ids = 
+  % lists:usort(lists:flatten(utils:everything(
+  %     fun F(InnerT) ->
+  %         case InnerT of
+  %             (Ref = {ty_ref, Id}) -> 
+  %               TyRec = load(Ref),
+  %               OtherIds = utils:everything(F, TyRec),
+  %               {ok, [Id] ++ OtherIds};
+  %             _ -> 
+  %               error
+  %         end
+  %     end,
+  %     Ty))),
+  % [MaxId | _] = lists:reverse(Ids),
+  MaxId = -1,
 
-  VarIds = lists:usort(lists:flatten(utils:everything(
-      fun F(InnerT) ->
-          case InnerT of
-              (Ref = {ty_ref, _Id}) -> 
-                TyRec = load(Ref),
-                OtherIds = utils:everything(F, TyRec),
-                {ok, OtherIds};
-              ({var, Id, _Name}) when is_integer(Id) -> 
-                {ok, Id};
-              _ -> 
-                error
-          end
-      end,
-      Ty))) ++ [no_vars],
-  [MaxVarId | _] = lists:reverse(VarIds),
+  % VarIds = lists:usort(lists:flatten(utils:everything(
+  %     fun F(InnerT) ->
+  %         case InnerT of
+  %             (Ref = {ty_ref, _Id}) -> 
+  %               TyRec = load(Ref),
+  %               OtherIds = utils:everything(F, TyRec),
+  %               {ok, OtherIds};
+  %             ({var, Id, _Name}) when is_integer(Id) -> 
+  %               {ok, Id};
+  %             _ -> 
+  %               error
+  %         end
+  %     end,
+  %     Ty))) ++ [no_vars],
+  % [MaxVarId | _] = lists:reverse(VarIds),
+  MaxVarId = -1,
   {Ty, MaxId, MaxVarId, maps:from_list(State)}.
-write_dump_ty_h(Ty) ->
-  State = utils:everything(
-      fun(InnerT) ->
-          % The return value error means: check recursively, no error here
-          case InnerT of
-              (Ref = {ty_ref, _Id}) -> 
-                TyRec = load(Ref),
-                More = write_dump_ty_h(TyRec),
-                {ok, [{Ref, TyRec}] ++ More};
-              _ -> 
-                error
-          end
-      end,
-      Ty),
-  lists:flatten(State).
+write_dump_ty_h(Ty, M) ->
+  case M of
+    #{Ty := []} -> [];
+    _ ->
+      State = utils:everything(
+          fun(InnerT) ->
+              % The return value error means: check recursively, no error here
+              case InnerT of
+                  (Ref = {ty_ref, _Id}) -> 
+                    TyRec = load(Ref),
+                    More = write_dump_ty_h(TyRec, M#{Ty => []}),
+                    {ok, [{Ref, TyRec}] ++ More};
+                  _ -> 
+                    error
+              end
+          end,
+          Ty),
+      lists:flatten(State)
+    end.
 
 % read_dump_ty(Id, VarId, Db) ->
 %   maps:foreach(fun({ty_ref, Idd}, Ty) ->
