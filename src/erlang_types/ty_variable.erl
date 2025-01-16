@@ -5,6 +5,7 @@
 -define(VAR_ETS, variable_counter_ets_table).
 
 -export([update_id/1, compare/2, equal/2, substitute/4, has_ref/2, all_variables/2, name/1]).
+-export([leq/2]).
 
 
 -export([fresh_from/1, new/1, new_with_name/1, new_with_name_and_id/2, smallest/3, normalize_corec/6, raw_transform/2, transform/2, get_new_id/0]).
@@ -42,7 +43,7 @@ compare(#var{id = Id1}, #var{id = Id2}) when Id1 > Id2 -> +1;
 compare(_, _) -> 0.
 
 leq(V1, V2) -> 
-  compare(V1, V2) < 1.
+  (compare(V1, V2) < 1).
 
 has_ref(_, _) -> false.
 
