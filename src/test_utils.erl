@@ -211,7 +211,16 @@ test_tally(ConstrList, ExpectedSubst, FixedVars, Symtab) ->
         [] -> ok;
         _ -> error(utils:sformat("Unexpected result from tally: ~w", Res))
       end
-  end.
+  end,
+
+  % test satisfiable mode of tally
+  {Satisfiable, _} = tally:is_satisfiable(Symtab, Constrs, sets:from_list(FixedVars)),
+  case ExpectedSubst of
+    [] -> false = Satisfiable;
+    [_ | _] -> true = Satisfiable
+  end,
+
+  ok.
 
 %% Suppress warnings about unmatched patterns
 %% TODO fix this somehow or not...
