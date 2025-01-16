@@ -1,12 +1,15 @@
 -module(ty_list).
 
--export([compare/2, equal/2]).
+-export([compare/2, equal/2, mu_equal/2]).
 -export([list/2, pi1/1, pi2/1, has_ref/2, raw_transform/2, transform/2, big_intersect/1, all_variables/2, substitute/3]).
 
 compare(A, B) when A < B -> -1;
 compare(A, B) when A > B -> 1;
 compare(_, _) -> 0.
 
+mu_equal({{ty_list, C, D}, M1}, {{ty_list, C2, D2}, M2}) -> 
+  ty_rec:mu_eq({C, M1}, {C2, M2})
+    andalso ty_rec:mu_eq({D, M1}, {D2, M2}) .
 equal(P1, P2) -> compare(P1, P2) =:= 0.
 
 list(Ref1, Ref2) -> {ty_list, Ref1, Ref2}.

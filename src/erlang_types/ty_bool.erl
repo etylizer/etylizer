@@ -2,7 +2,7 @@
 
 % only used as a simple boolean terminal node in a BDD where the leafs are 1 and 0 only.
 
--export([compare/2, equal/2]).
+-export([compare/2, equal/2, mu_equal/2]).
 
 -export([empty/0, any/0]).
 -export([union/2, intersect/2, diff/2, negate/1, is_any/1]).
@@ -10,6 +10,7 @@
 
 compare(0, 0) -> 0; compare(1, 1) -> 0; compare(1, 0) -> 1; compare(0, 1) -> -1.
 equal(X, Y) -> X =:= Y.
+mu_equal({X,_}, {Y,_}) -> X =:= Y.
 empty() -> 0.
 any() -> 1.
 union(X, Y) -> erlang:max(X, Y).

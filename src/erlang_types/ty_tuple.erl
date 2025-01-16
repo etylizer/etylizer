@@ -1,7 +1,7 @@
 -module(ty_tuple).
 
 %% n-tuple representation
--export([compare/2, equal/2, substitute/3, all_variables/2]).
+-export([compare/2, mu_equal/2, equal/2, substitute/3, all_variables/2]).
 
 -export([tuple/1, pi/2, has_ref/2, components/1, raw_transform/2, transform/2, any/1, empty/1, big_intersect/1]).
 
@@ -11,6 +11,10 @@ any(Size) -> {ty_tuple, Size, [ty_rec:any() || _ <- lists:seq(1, Size)]}.
 compare(A, B) when A < B -> -1;
 compare(A, B) when A > B -> 1;
 compare(_, _) -> 0.
+
+mu_equal({{ty_tuple, Dim, C}, M1}, {{ty_tuple, Dim, C2}, M2}) -> 
+  lists:all(fun({T1, T2}) -> ty_rec:mu_eq({T1, M1}, {T2, M2}) end, lists:zip(C, C2));
+mu_equal({{ty_tuple, _, _}, _}, {{ty_tuple, _, _}, _}) -> false.
 
 equal(P1, P2) -> compare(P1, P2) =:= 0.
 

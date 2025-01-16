@@ -19,7 +19,7 @@
 % top type constructors
 -export([bitstring/1, bitstring/0, list/0, function/0, atom/0, interval/0, tuple/0, map/0, ty_of/8]).
 
--export([is_equivalent/2, is_subtype/2]).
+-export([mu_eq/2, is_equivalent/2, is_subtype/2]).
 
 -export([substitute/2, substitute/3, pi/2, all_variables/1, all_variables/2]).
 
@@ -819,6 +819,36 @@ all_variables(TyRef, M) ->
       )
   end.
 
+mu_eq(Ty1 = {ty_ref, _}, Ty2 = {ty_ref, _}) ->
+  Z = mu_eq({Ty1, #{}}, {Ty2, #{}}),
+  case {Z, is_equivalent(Ty1, Ty2)} of
+    {true, false} -> 
+      io:format(user, "~s~n", [print(Ty1)]),
+      io:format(user, "~s~n", [print(Ty2)]),
+      error(sanity);
+    _ -> ok
+  end,
+  Z;
+mu_eq({T1, M1}, {T2, M2}) ->
+  Cont = fun() -> mu_eq_h({T1, M1#{T1 => true}}, {T2, M2#{T2 => true}}) end,
+  case {M1, M2} of
+    {#{T1 := true}, #{T2 := true}} -> 
+      true;
+    {_, #{T2 := true}} -> false;
+    {#{T1 := true}, _} -> false;
+    {_, _} -> Cont()
+  end.
+
+mu_eq_h({Ty1, M1}, {Ty2, M2}) -> 
+  T1 = ty_ref:load(Ty1),
+  T2 = ty_ref:load(Ty2),
+  dnf_var_ty_predef:equal(T1#ty.predef, T2#ty.predef)
+    andalso dnf_var_ty_atom:equal(T1#ty.atom, T2#ty.atom)
+    andalso dnf_var_ty_interval:equal(T1#ty.interval, T2#ty.interval)
+    andalso dnf_var_ty_list:mu_equal({T1#ty.list, M1}, {T2#ty.list, M2})
+    andalso ty_tuples:mu_equal({T1#ty.tuple, M1}, {T2#ty.tuple, M2})
+    andalso ty_functions:mu_equal({T1#ty.function, M1}, {T2#ty.function, M2})
+    andalso dnf_var_ty_map:mu_equal({T1#ty.map, M1}, {T2#ty.map, M2}).
 -ifdef(TEST).
 -include_lib("eunit/include/eunit.hrl").
 
@@ -921,5 +951,17 @@ tuple_transformation_default_test() ->
   true = ty_rec:is_equivalent(Tuple1Again, EqType),
 
   ok.
+
+% type_equality_test() ->
+%   test_utils:reset_ets(),
+%   Ty1 = ast_lib:ast_to_erlang_ty(stdtypes:tmu(stdtypes:tvar(a), 
+%     stdtypes:tunion([
+%       stdtypes:tatom(),
+%       stdtypes:ttuple([stdtypes:tvar(a), stdtypes:tatom()])
+%     ])
+%   ), symtab:empty()),
+%   Ty2 = ty_rec:substitute(Ty1, #{}), % TODO this test case works while substitute always returns a new type ref
+%   false = Ty1 == Ty2,
+%   true = ty_rec:mu_eq(Ty1, Ty2),
 
 -endif.

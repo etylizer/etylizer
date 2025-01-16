@@ -3,7 +3,7 @@
 %% Efficient interval representation
 
 
--export([compare/2, equal/2]).
+-export([compare/2, mu_equal/2, equal/2]).
 
 
 -export([empty/0, any/0]).
@@ -83,6 +83,7 @@ compare(_, [{right, _} | _]) -> +1;
 compare([any_int], [any_int]) -> 0.
 
 equal(I1, I2) -> compare(I1, I2) =:= 0.
+mu_equal(I1, I2) -> equal(I1, I2).
 
 interval('*', '*') -> any();
 interval('*', To) -> [{left, To}];
