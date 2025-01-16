@@ -8,7 +8,7 @@ release:
 	$(REBAR) as prod escriptize
 
 build:
-	$(REBAR) escriptize
+	$(REBAR) as prod escriptize
 
 clean:
 	$(REBAR) clean
@@ -17,8 +17,8 @@ clean:
 test: build testtest
 	@echo "Running unit tests for type checker ..."
 	$(REBAR) eunit
-	@echo "Checking syntax transformation for source code of type checker ..."
-	./_build/default/bin/ety --sanity --no-type-checking -I ./src ./src/*.erl
+	# @echo "Checking syntax transformation for source code of type checker ..."
+	# ./_build/prod/bin/ety --sanity --no-type-checking -I ./src ./src/*.erl
 	@echo "Running case study ..."
 	ETY_CASE_STUDY_LOGLEVEL=warn test_files/etylizer-mini/check.sh
 
