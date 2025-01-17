@@ -104,7 +104,7 @@ maybe_do_convert({Ty, Res}, Q, Sym, Memo) ->
   maybe_do_convert_h(Cached, {Ty, Res}, Q, Sym, Memo, Cache).
 
 maybe_do_convert_h(undefined, {X, Res}, Q, Sym, Memo, Cache) ->
-  (Z = {Ty0, Q0, R0}) = do_convert({X, Res}, Q, Sym, Memo),
+  (Z = {Ty0, _Q0, _R0}) = do_convert({X, Res}, Q, Sym, Memo),
   CacheNew = maps:put(X, Ty0, Cache),
   put(ast_ty_corec_cache, CacheNew),
   Z;
@@ -225,7 +225,7 @@ do_convert({{predef, T}, R}, Q, _Sym, _M) when T == pid; T == port; T == referen
     {ty_rec:s_predef(dnf_var_ty_predef:predef(dnf_ty_predef:predef(T))), Q, R};
 
 % named
-do_convert({X = {named, Loc, Ref, Args}, R = {IdTy, _}}, Q, Sym, M) ->
+do_convert({{named, Loc, Ref, Args}, R = {IdTy, _}}, Q, Sym, M) ->
   case M of
     #{{Ref, Args} := NewRef} ->
       #{NewRef := Ty} = IdTy,
