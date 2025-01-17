@@ -205,7 +205,15 @@ erlang_ty_to_ast(X, M) ->
         FinalTy
     end.
 
-ast_to_erlang_ty(Ty, Symtab) ->
+replace_loc(Ty) ->
+  utils:everywhere(fun
+    ({loc, _, _, _}) -> {ok, ast:loc_auto()};
+    (_) -> error
+  end, Ty).
+
+ast_to_erlang_ty(TyLoc, Symtab) ->
+  % remove loc annotations for better caching behavior
+  Ty = replace_loc(TyLoc),
   Cache = erlang:get(ast_ty_cache),
   Cached = maps:get(Ty, Cache, undefined),
   maybe_parse(Cached, Ty, Cache, Symtab).
