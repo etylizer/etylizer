@@ -2,10 +2,22 @@
 
 -export([
   tally/1,
-  tally/2
+  tally/2,
+  is_tally_satisfiable/2
 ]).
 
 -include("sanity.hrl").
+
+% early return if constraints are found to be satisfiable
+% does not solve the equations
+is_tally_satisfiable(Constraints, FixedVars) ->
+  % io:format(user,"TALLY~n~s~n", [set_of_constraint_sets:print(Constraints)]),
+  Normalized = ?TIME(tally_normalize, tally_normalize(Constraints, FixedVars)),
+  % io:format(user,"NORM~n", []),
+  Saturated = ?TIME(tally_is_satisfiable, tally_saturate_until_satisfiable(Normalized, FixedVars)),
+  % sanity against full tally calculation
+  ?SANITY(tally_satisfiable_sound, case {tally_saturate(Normalized, FixedVars), Saturated} of {[], false} -> ok; {[_ | _], true} -> ok end),
+  Saturated.
 
 tally(Constraints) -> tally(Constraints, sets:new([{version, 2}])).
 
@@ -31,6 +43,14 @@ tally_normalize(Constraints, FixedVars) ->
       end
     )
               end, [[]], Constraints).
+
+tally_saturate_until_satisfiable(Normalized, FixedVars) ->
+  lists:any(fun(ConstraintSet) -> 
+    case constraint_set:saturate(ConstraintSet, FixedVars, sets:new()) of
+      [] -> false;
+      _ -> true
+    end
+  end, Normalized).
 
 tally_saturate(Normalized, FixedVars) ->
   lists:foldl(fun(ConstraintSet, A) ->

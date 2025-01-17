@@ -19,14 +19,17 @@ tally(SymTab, Constraints) -> tally(SymTab, Constraints, sets:new([{version, 2}]
 
 -spec is_satisfiable(symtab:t(), constr:subty_constrs(), sets:set(ast:ty_varname())) ->
   {false, [{error, string()}]} | {true, subst:t()}. % The substitution is just returned for debugging purpose.
-is_satisfiable(SymTab, Cs, Fixed) ->
-  case tally(SymTab, Cs, Fixed) of % FIXME: optimize
-    {error, ErrList} -> {false, ErrList};
-    [S | _] -> {true, S}
-  end.
+is_satisfiable(SymTab, Constraints, FixedVars) ->
+  tally(SymTab, Constraints, FixedVars, satisfiable).
 
 -spec tally(symtab:t(), constr:subty_constrs(), sets:set(ast:ty_varname())) -> tally_res().
 tally(SymTab, Constraints, FixedVars) ->
+  tally(SymTab, Constraints, FixedVars, solve).
+
+-spec tally
+  (symtab:t(), constr:subty_constrs(), sets:set(ast:ty_varname()), solve) -> tally_res();
+  (symtab:t(), constr:subty_constrs(), sets:set(ast:ty_varname()), satisfiable) -> {false, [{error, string()}]} | {true, subst:t()}.
+tally(SymTab, Constraints, FixedVars, Mode) ->
   % reset the global cache, will be fixed in the future
   ty_ref:reset(),
   ty_variable:reset(),
@@ -42,24 +45,32 @@ tally(SymTab, Constraints, FixedVars) ->
   ),
   FixedTallyTyvars =
     [ast_lib:ast_to_erlang_ty_var({var, Var}) || Var <- lists:sort(sets:to_list(FixedVars))],
-  InternalResult = etally:tally(InternalConstraints, sets:from_list(FixedTallyTyvars, [{version, 2}])),
-  % io:format(user, "Got Constraints ~n~s~n~p~n", [print(InternalConstraints), InternalResult]),
 
-  Free = tyutils:free_in_subty_constrs(Constraints),
+  case Mode of
+    solve ->
+      InternalResult = etally:tally(InternalConstraints, sets:from_list(FixedTallyTyvars, [{version, 2}])),
+      % io:format(user, "Got Constraints ~n~s~n~p~n", [print(InternalConstraints), InternalResult]),
 
-  case InternalResult of
-        {error, []} ->
-          {error, []};
-        _ ->
-          % transform to subst:t()
-          % TODO sanity variable Id == variable name
-          [subst:mk_tally_subst(
-            sets:union(FixedVars, Free),
-            maps:from_list([{VarName, ast_lib:erlang_ty_to_ast(Ty, #{})}
-                          || {{var, _, VarName}, Ty} <- maps:to_list(Subst)]))
-          || Subst <- InternalResult]
+      Free = tyutils:free_in_subty_constrs(Constraints),
+      case InternalResult of
+            {error, []} ->
+              {error, []};
+            _ ->
+              % transform to subst:t()
+              % TODO sanity variable Id == variable name
+              [subst:mk_tally_subst(
+                sets:union(FixedVars, Free),
+                maps:from_list([{VarName, ast_lib:erlang_ty_to_ast(Ty, #{})}
+                              || {{var, _, VarName}, Ty} <- maps:to_list(Subst)]))
+              || Subst <- InternalResult]
+      end;
+    satisfiable ->
+      InternalResult = etally:is_tally_satisfiable(InternalConstraints, sets:from_list(FixedTallyTyvars)),
 
+      case InternalResult of
+        false -> {false, []};
+        true -> {true, subst:empty()}
+      end
   end.
-
 % print(Cs) ->
 %   "<<" ++ string:join([ty_rec:print(S) ++ " < " ++ ty_rec:print(T) || {S, T} <- Cs], ",\n") ++ ">>".
