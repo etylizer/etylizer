@@ -207,6 +207,31 @@ check_recursive_variable(Variable) ->
 
 -ifdef(TEST).
 
+unique(E) ->
+  lists:foldl(fun({Ref, Ty}, Unique) -> 
+    case lists:any(fun(TyUniq) -> ty_rec:is_equivalent({ty_ref, Ref}, TyUniq) end, Unique) of
+      true -> Unique;
+      _ -> Unique ++ [{ty_ref, Ref}]
+    end
+  end, [], E).
+
+mu_unique(E) ->
+  lists:foldl(fun({Ref, Ty}, Unique) -> 
+    case lists:any(fun(TyUniq) -> ty_rec:mu_eq({ty_ref, Ref}, TyUniq) end, Unique) of
+      true -> Unique;
+      _ -> Unique ++ [{ty_ref, Ref}]
+    end
+  end, [], E).
+
+stats() ->
+  E = ets:tab2list(?TY_MEMORY),
+  io:format(user, "Size: ~p~n", [length(E)]),
+  io:format(user, "Size modulo mu-equivalence: ~p~n", [length(mu_unique(E))]),
+  io:format(user, "Unique: ~p~n", [length(unique(E))]),
+  
+  ok.
+
+
 % very unstable, should only be used to generate proper test cases while debugging
 % -type dump() :: {{ty_ref, integer()}, integer(), #{{ty_ref, integer()} => Ty :: term()}}.
 % % dump a type and all its dependencies for creating a test case via importing the state
