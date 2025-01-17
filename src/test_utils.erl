@@ -22,7 +22,8 @@
     extend_symtab/3,
     extend_symtabs/2,
     solutions/1,
-    test_tally/2, test_tally/3, test_tally/4
+    test_tally/2, test_tally/3, test_tally/4,
+    test_tally_satisfiable/4
 ]).
 
 -export_type([
@@ -214,12 +215,19 @@ test_tally(ConstrList, ExpectedSubst, FixedVars, Symtab) ->
   end,
 
   % test satisfiable mode of tally
-  {Satisfiable, _} = tally:is_satisfiable(Symtab, Constrs, sets:from_list(FixedVars)),
-  case ExpectedSubst of
-    [] -> false = Satisfiable;
-    [_ | _] -> true = Satisfiable
-  end,
+  test_tally_satisfiable(length(ExpectedSubst) > 0, ConstrList, FixedVars, Symtab),
 
+  ok.
+
+-spec test_tally_satisfiable(boolean(), list({ast:ty(), ast:ty()}), [ast:ty_varname()], symtab:t()) -> ok.
+test_tally_satisfiable(Satisfiable, ConstrList, FixedVars, Symtab) ->
+  Constrs = sets:from_list(lists:map(
+                  fun ({T, U}) -> {scsubty, sets:from_list([ast:loc_auto()]), T, U} end,
+                  ConstrList
+                 )),
+
+  % test satisfiable mode of tally
+  {Satisfiable, _} = tally:is_satisfiable(Symtab, Constrs, sets:from_list(FixedVars)),
   ok.
 
 %% Suppress warnings about unmatched patterns
