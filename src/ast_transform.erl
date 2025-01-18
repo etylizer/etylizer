@@ -233,7 +233,7 @@ trans_ty(Ctx, Env, Ty) ->
         {'atom', _, X} -> {singleton, X};
         {'char', _, X} -> {singleton, X};
         {'integer', _, X} -> {singleton, X};
-        {type, _, binary, [{'integer', _, X}, {'integer', _, Y}]} -> {binary, X, Y};
+        {type, _, binary, _} -> {bitstring}; % TODO full bitstring support
         {type, _, nil, []} -> {empty_list};
         {type, _, list, [T]} -> {list, trans_ty(Ctx, Env, T)};
         {type, _, 'fun', []} -> {fun_simple};
@@ -311,14 +311,12 @@ trans_ty(Ctx, Env, Ty) ->
                     case {ast:is_predef_name(Name), NewArgTys} of
                         {true, []} -> {predef, Name};
                         {true, _} ->
-                            errors:ty_error("~s: Invalid application of builtin type: ~w",
-                                            [ast:format_loc(Loc), Ty]);
+                            errors:ty_error(Loc, "Invalid application of builtin type: ~w", Ty);
                         {false, _} ->
                             case {ast:is_predef_alias_name(Name), NewArgTys} of
                                 {true, []} -> {predef_alias, Name};
                                 {true, _} ->
-                                    errors:ty_error("~s: Invalid application of builtin alias: ~w ",
-                                                    [ast:format_loc(Loc), Ty]);
+                                    errors:ty_error(Loc, "Invalid application of builtin alias: ~w ", Ty);
                                 _ ->
                                     case {Name, NewArgTys} of
                                         {bool, []} -> {predef_alias, boolean};

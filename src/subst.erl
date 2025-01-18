@@ -72,7 +72,9 @@ apply(S, T, _) -> apply_base(S, T).
 apply_base(S, T) ->
     case T of
         {singleton, _} -> T;
-        {binary, _, _} -> T;
+        % TODO full bitstring support
+        {bitstring} -> T;
+        % {binary, _, _} -> T;
         {empty_list} -> T;
         {list, U} -> {list, apply_base(S, U)};
         {mu, V, U} -> {mu, V, apply_base(S, U)};

@@ -385,7 +385,8 @@ loc_exp(X) -> element(2, X).
 
 % 8.7  Types
 -type ty_singleton() :: {singleton, atom() | integer() | char()}.
--type ty_bitstring() :: {binary, integer(), integer()}.
+% TODO bitstring is imprecise
+-type ty_bitstring() :: {bitstring}. %{binary, binary(), integer(), integer()}.
 
 -type ty_empty_list() :: {empty_list}.
 -type ty_list() :: {list, ty()}.
