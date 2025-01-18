@@ -115,6 +115,9 @@ exp_constrs(Ctx, E, T) ->
         {'float', L, _F} -> utils:single({csubty, mk_locs("float literal", L), {predef, float}, T});
         {'string', L, ""} -> utils:single({csubty, mk_locs("empty string literal", L), {empty_list}, T});
         {'string', L, _S} -> utils:single({csubty, mk_locs("string literal", L), {predef_alias, nonempty_string}, T});
+        % TODO full bitstring support
+        {bin, L, []} -> 
+            utils:single({csubty, mk_locs("empty bitstring", L), {bitstring}, T});
         {bc, L, _E, _Qs} -> errors:unsupported(L, "bitstrings");
         {block, L, Es} -> exps_constrs(Ctx, L, Es, T);
         {'case', L, ScrutE, Clauses} ->
