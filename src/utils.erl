@@ -161,7 +161,7 @@ assert_no_error(X) ->
     end.
 
 -spec replicate(integer(), T) -> list(T).
-replicate(_N, X) when X =< 0 -> [];
+replicate(N, _X) when N =< 0 -> [];
 replicate(N, X) -> [X | replicate(N - 1, X)].
 
 -spec string_ends_with(string(), string()) -> boolean().
