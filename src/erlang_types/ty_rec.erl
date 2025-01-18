@@ -13,11 +13,11 @@
 % additional type constructors (hash consed)
 -export([predef/0, predef/1, variable/1, atom/1, interval/1, tuple/2, map/1]).
 % additional type constructors (record only)
--export([tuple_to_map/1, s_interval/0, s_intersect/2, s_union/2, s_negate/1, s_any/0, s_empty/0, s_map/0, s_predef/1, s_variable/1, s_atom/1, s_interval/1, s_function/2, s_tuple/2, s_map/1, s_list/1, s_tuple/0, s_function/0]).
+-export([tuple_to_map/1, s_bitstring/0, s_interval/0, s_intersect/2, s_union/2, s_negate/1, s_any/0, s_empty/0, s_map/0, s_predef/1, s_variable/1, s_atom/1, s_interval/1, s_function/2, s_tuple/2, s_map/1, s_list/1, s_tuple/0, s_function/0]).
 % type constructors with type refs
 -export([list/1, function/2]).
 % top type constructors
--export([list/0, function/0, atom/0, interval/0, tuple/0, map/0, ty_of/7]).
+-export([bitstring/1, bitstring/0, list/0, function/0, atom/0, interval/0, tuple/0, map/0, ty_of/8]).
 
 -export([is_equivalent/2, is_subtype/2]).
 
@@ -27,7 +27,7 @@
 
 -include("sanity.hrl").
 
--record(ty, {predef, atom, interval, list, tuple, function, map}).
+-record(ty, {predef, atom, interval, bitstring, list, tuple, function, map}).
 
 
 -type ty_rec() :: #ty{}.
@@ -44,8 +44,8 @@
 % ======
 print(Ref) -> pretty:render_ty(ast_lib:erlang_ty_to_ast(Ref)) .
 
-ty_of(Predef, Atom, Int, List, Tuple, Function, Map) ->
-  #ty{predef = Predef, atom = Atom, interval = Int, list = List, tuple = Tuple, function = Function, map = Map}.
+ty_of(Predef, Atom, Int, Bitstring, List, Tuple, Function, Map) ->
+  #ty{predef = Predef, atom = Atom, interval = Int, bitstring = Bitstring, list = List, tuple = Tuple, function = Function, map = Map}.
 
 is_subtype(TyRef1, TyRef2) ->
   NewTy = intersect(TyRef1, ty_rec:negate(TyRef2)),
@@ -327,6 +327,7 @@ s_empty() ->
     predef = dnf_var_ty_predef:empty(),
     atom = dnf_var_ty_atom:empty(),
     interval = dnf_var_ty_interval:empty(),
+    bitstring = dnf_var_ty_bitstring:empty(),
     list = dnf_var_ty_list:empty(),
     tuple = ty_tuples:empty(),
     function = ty_functions:empty(),
@@ -339,6 +340,7 @@ empty() ->
     predef = dnf_var_ty_predef:empty(),
     atom = dnf_var_ty_atom:empty(),
     interval = dnf_var_ty_interval:empty(),
+    bitstring = dnf_var_ty_bitstring:empty(),
     list = dnf_var_ty_list:empty(),
     tuple = ty_tuples:empty(),
     function = ty_functions:empty(),
@@ -357,6 +359,7 @@ s_variable(Var) ->
     predef = dnf_var_ty_predef:var(Var),
     atom = dnf_var_ty_atom:var(Var),
     interval = dnf_var_ty_interval:var(Var),
+    bitstring = dnf_var_ty_bitstring:var(Var),
     list = dnf_var_ty_list:var(Var),
     tuple = ty_tuples:var(Var),
     function = ty_functions:var(Var),
@@ -368,6 +371,7 @@ variable(Var) ->
     predef = dnf_var_ty_predef:var(Var),
     atom = dnf_var_ty_atom:var(Var),
     interval = dnf_var_ty_interval:var(Var),
+    bitstring = dnf_var_ty_bitstring:var(Var),
     list = dnf_var_ty_list:var(Var),
     tuple = ty_tuples:var(Var),
     function = ty_functions:var(Var),
@@ -378,6 +382,15 @@ s_list(List) ->
   Empty = ty_ref:load(empty()),
   Empty#ty{ list = List }.
 
+s_bitstring() -> 
+  Empty = ty_ref:load(empty()),
+  Empty#ty{ bitstring = dnf_var_ty_bitstring:any() }.
+bitstring() -> 
+  bitstring(dnf_var_ty_bitstring:any()).
+
+bitstring(DnfVarBitstring) -> 
+  Empty = ty_ref:load(empty()),
+  ty_ref:store(Empty#ty{ bitstring = DnfVarBitstring }).
 
 list() -> list(dnf_var_ty_list:any()).
 list(List) ->
@@ -502,12 +515,13 @@ map() ->
 intersect(TyRef1, TyRef2) ->
   ty_ref:op_cache(intersect, {TyRef1, TyRef2},
     fun() ->
-      #ty{predef = P1, atom = A1, interval = I1, list = L1, tuple = T1, function = F1, map = M1} = ty_ref:load(TyRef1),
-      #ty{predef = P2, atom = A2, interval = I2, list = L2, tuple = T2, function = F2, map = M2} = ty_ref:load(TyRef2),
+      #ty{predef = P1, atom = A1, interval = I1, bitstring = B1, list = L1, tuple = T1, function = F1, map = M1} = ty_ref:load(TyRef1),
+      #ty{predef = P2, atom = A2, interval = I2, bitstring = B2, list = L2, tuple = T2, function = F2, map = M2} = ty_ref:load(TyRef2),
       ty_ref:store(#ty{
         predef = dnf_var_ty_predef:intersect(P1, P2),
         atom = dnf_var_ty_atom:intersect(A1, A2),
         interval = dnf_var_ty_interval:intersect(I1, I2),
+        bitstring = dnf_var_ty_bitstring:intersect(B1, B2),
         list = dnf_var_ty_list:intersect(L1, L2),
         tuple = ty_tuples:intersect(T1, T2),
         function = ty_functions:intersect(F1, F2),
@@ -520,11 +534,12 @@ intersect(TyRef1, TyRef2) ->
 negate(TyRef1) ->
   ty_ref:op_cache(negate, {TyRef1},
     fun() ->
-      #ty{predef = P1, atom = A1, interval = I1, list = L1, tuple = T, function = F, map = M1} = ty_ref:load(TyRef1),
+      #ty{predef = P1, atom = A1, interval = I1, bitstring = B1, list = L1, tuple = T, function = F, map = M1} = ty_ref:load(TyRef1),
       ty_ref:store(#ty{
         predef = dnf_var_ty_predef:negate(P1),
         atom = dnf_var_ty_atom:negate(A1),
         interval = dnf_var_ty_interval:negate(I1),
+        bitstring = dnf_var_ty_bitstring:negate(B1),
         list = dnf_var_ty_list:negate(L1),
         tuple = ty_tuples:negate(T),
         function = ty_functions:negate(F),
@@ -549,11 +564,12 @@ union(A, B) ->
 s_union(A, B) ->
   s_negate(s_intersect(s_negate(A), s_negate(B))).
 
-s_negate(#ty{predef = P1, atom = A1, interval = I1, list = L1, tuple = T, function = F, map = M1}) ->
+s_negate(#ty{predef = P1, atom = A1, interval = I1, bitstring = B1, list = L1, tuple = T, function = F, map = M1}) ->
   #ty{
     predef = dnf_var_ty_predef:negate(P1),
     atom = dnf_var_ty_atom:negate(A1),
     interval = dnf_var_ty_interval:negate(I1),
+    bitstring = dnf_var_ty_bitstring:negate(B1),
     list = dnf_var_ty_list:negate(L1),
     tuple = ty_tuples:negate(T),
     function = ty_functions:negate(F),
@@ -561,12 +577,13 @@ s_negate(#ty{predef = P1, atom = A1, interval = I1, list = L1, tuple = T, functi
   }.
 
 s_intersect(TyRec1, TyRec2) ->
-  #ty{predef = P1, atom = A1, interval = I1, list = L1, tuple = T1, function = F1, map = M1} = TyRec1,
-  #ty{predef = P2, atom = A2, interval = I2, list = L2, tuple = T2, function = F2, map = M2} = TyRec2,
+  #ty{predef = P1, atom = A1, interval = I1, bitstring = B1, list = L1, tuple = T1, function = F1, map = M1} = TyRec1,
+  #ty{predef = P2, atom = A2, interval = I2, bitstring = B2, list = L2, tuple = T2, function = F2, map = M2} = TyRec2,
   #ty{
     predef = dnf_var_ty_predef:intersect(P1, P2),
     atom = dnf_var_ty_atom:intersect(A1, A2),
     interval = dnf_var_ty_interval:intersect(I1, I2),
+    bitstring = dnf_var_ty_bitstring:intersect(B1, B2),
     list = dnf_var_ty_list:intersect(L1, L2),
     tuple = ty_tuples:intersect(T1, T2),
     function = ty_functions:intersect(F1, F2),
@@ -595,6 +612,7 @@ is_empty_corec(TyRef, M) ->
       dnf_var_ty_predef:is_empty(Ty#ty.predef)
         andalso dnf_var_ty_atom:is_empty(Ty#ty.atom)
         andalso dnf_var_ty_interval:is_empty(Ty#ty.interval)
+        andalso dnf_var_ty_bitstring:is_empty(Ty#ty.bitstring)
         andalso dnf_var_ty_list:is_empty_corec(Ty#ty.list, MNew)
         andalso ty_tuples:is_empty_corec(Ty#ty.tuple, MNew)
         andalso ty_functions:is_empty_corec(Ty#ty.function, MNew)
@@ -620,11 +638,11 @@ normalize_corec(TyRef, Fixed, M) ->
       MNew = M#{TyRef => true},
       PredefNormalize = dnf_var_ty_predef:normalize_corec(Ty#ty.predef, Fixed, MNew),
       AtomNormalize = dnf_var_ty_atom:normalize_corec(Ty#ty.atom, Fixed, MNew),
-      Both = constraint_set:merge_and_meet(PredefNormalize, AtomNormalize),
+      Bitstring = dnf_var_ty_bitstring:normalize_corec(Ty#ty.bitstring, Fixed, MNew),
+      Both = constraint_set:merge_and_meet(Bitstring, constraint_set:merge_and_meet(PredefNormalize, AtomNormalize)),
       case Both of
         [] -> [];
         _ ->
-
           IntervalNormalize = dnf_var_ty_interval:normalize_corec(Ty#ty.interval, Fixed, MNew),
           Res1 = constraint_set:merge_and_meet(Both, IntervalNormalize),
           case Res1 of
@@ -667,6 +685,7 @@ substitute(TyRef, SubstituteMap, OldMemo) ->
         predef = Predef,
         atom = Atoms,
         interval = Ints,
+        bitstring = Bitstring,
         list = Lists,
         tuple = T,
         function = F,
@@ -682,6 +701,7 @@ substitute(TyRef, SubstituteMap, OldMemo) ->
             predef = ?TIME(vardef, dnf_var_ty_predef:substitute(Predef, SubstituteMap, Memo, fun(TTy) -> pi(predef, TTy) end)),
             atom = ?TIME(atom, dnf_var_ty_atom:substitute(Atoms, SubstituteMap, Memo, fun(TTy) -> pi(atom, TTy) end)),
             interval = ?TIME(int, dnf_var_ty_interval:substitute(Ints, SubstituteMap, Memo, fun(TTy) -> pi(interval, TTy) end)),
+            bitstring = ?TIME(bitstring, dnf_var_ty_bitstring:substitute(Bitstring, SubstituteMap, Memo, fun(TTy) -> pi(bitstring, TTy) end)),
             list = ?TIME(list, dnf_var_ty_list:substitute(Lists, SubstituteMap, Memo, fun(TTy) -> pi(list, TTy) end)),
             tuple = ?TIME(multi_tuple, ty_tuples:substitute(T, SubstituteMap, Memo)),
             function = ?TIME(multi_fun, ty_functions:substitute(F, SubstituteMap, Memo)),
@@ -693,6 +713,7 @@ substitute(TyRef, SubstituteMap, OldMemo) ->
             predef = ?TIME(vardef, dnf_var_ty_predef:substitute(Predef, SubstituteMap, OldMemo, fun(TTy) -> pi(predef, TTy) end)),
             atom = ?TIME(atom, dnf_var_ty_atom:substitute(Atoms, SubstituteMap, OldMemo, fun(TTy) -> pi(atom, TTy) end)),
             interval = ?TIME(int, dnf_var_ty_interval:substitute(Ints, SubstituteMap, OldMemo, fun(TTy) -> pi(interval, TTy) end)),
+            bitstring = ?TIME(bitstring, dnf_var_ty_bitstring:substitute(Bitstring, SubstituteMap, OldMemo, fun(TTy) -> pi(bitstring, TTy) end)),
             list = ?TIME(list, dnf_var_ty_list:substitute(Lists, SubstituteMap, OldMemo, fun(TTy) -> pi(list, TTy) end)),
             tuple = ?TIME(multi_tuple, ty_tuples:substitute(T, SubstituteMap, OldMemo)),
             function = ?TIME(multi_fun, ty_functions:substitute(F, SubstituteMap, OldMemo)),
@@ -727,6 +748,9 @@ pi(atom, TyRef) ->
 pi(interval, TyRef) ->
   Ty = ty_ref:load(TyRef),
   Ty#ty.interval;
+pi(bitstring, TyRef) ->
+  Ty = ty_ref:load(TyRef),
+  Ty#ty.bitstring;
 pi(list, TyRef) ->
   Ty = ty_ref:load(TyRef),
   Ty#ty.list;
@@ -768,6 +792,7 @@ all_variables(TyRef, M) ->
         predef = Predefs,
         atom = Atoms,
         interval = Ints,
+        bitstring = Bitstring,
         list = Lists,
         tuple = Tuples,
         function = Functions,
@@ -780,6 +805,7 @@ all_variables(TyRef, M) ->
         dnf_var_ty_predef:all_variables(Predefs, M)
       ++ dnf_var_ty_atom:all_variables(Atoms, M)
       ++ dnf_var_ty_interval:all_variables(Ints, M)
+      ++ dnf_var_ty_bitstring:all_variables(Bitstring, M)
       ++ dnf_var_ty_list:all_variables(Lists, Mp)
       ++ ty_tuples:all_variables(Tuples, Mp)
       ++ ty_functions:all_variables(Functions, Mp)

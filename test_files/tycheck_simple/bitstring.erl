@@ -28,4 +28,7 @@ b1_constant2() -> <<>>.
 b1_constant3() -> <<>>. 
 
 -spec b1_fail() -> <<>>.
-b1_fail() -> <<1>>. % not empty
+b1_fail() -> ok.
+
+-spec b2_fail(<<>> | integer()) -> ok.
+b2_fail(X) when is_integer(X) -> ok.

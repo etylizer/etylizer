@@ -82,7 +82,7 @@ define_any() ->
   Ty4 = {dnf_var_ty_function:any(), #{}},
   Ty5 = dnf_var_ty_map:any(),
 
-  Ty = ty_rec:ty_of(Ty0, Ty1, Ty2, Tyl, Ty3, Ty4, Ty5),
+  Ty = ty_rec:ty_of(Ty0, Ty1, Ty2, dnf_var_ty_bitstring:any(), Tyl, Ty3, Ty4, Ty5),
 
   % define
   ty_ref:define_ty_ref(Any, Ty),

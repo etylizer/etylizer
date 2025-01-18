@@ -226,10 +226,8 @@ parse_ast_to_erlang_ty({singleton, Atom}, _Sym) when is_atom(Atom) ->
 parse_ast_to_erlang_ty({singleton, IntOrChar}, _Sym) ->
     Int = dnf_var_ty_interval:int(dnf_ty_interval:interval(IntOrChar, IntOrChar)),
     ty_rec:interval(Int);
-% TODO
-parse_ast_to_erlang_ty({binary, _, _}, _Sym) ->
-    erlang:error("Bitstrings not implemented yet");
-
+parse_ast_to_erlang_ty({bitstring}, _Sym) ->
+    ty_rec:bitstring();
 parse_ast_to_erlang_ty({tuple_any}, _Sym) ->
     ty_rec:tuple();
 parse_ast_to_erlang_ty({tuple, Comps}, Sym) when is_list(Comps)->
