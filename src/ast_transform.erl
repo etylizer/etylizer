@@ -311,14 +311,12 @@ trans_ty(Ctx, Env, Ty) ->
                     case {ast:is_predef_name(Name), NewArgTys} of
                         {true, []} -> {predef, Name};
                         {true, _} ->
-                            errors:ty_error("~s: Invalid application of builtin type: ~w",
-                                            [ast:format_loc(Loc), Ty]);
+                            errors:ty_error(Loc, "Invalid application of builtin type: ~w", Ty);
                         {false, _} ->
                             case {ast:is_predef_alias_name(Name), NewArgTys} of
                                 {true, []} -> {predef_alias, Name};
                                 {true, _} ->
-                                    errors:ty_error("~s: Invalid application of builtin alias: ~w ",
-                                                    [ast:format_loc(Loc), Ty]);
+                                    errors:ty_error(Loc, "Invalid application of builtin alias: ~w ", Ty);
                                 _ ->
                                     case {Name, NewArgTys} of
                                         {bool, []} -> {predef_alias, boolean};
