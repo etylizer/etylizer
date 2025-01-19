@@ -1,7 +1,7 @@
 -module(ty_atom).
 
 %% Efficient atom representation
--export([compare/2, equal/2]).
+-export([compare/2, mu_equal/2, equal/2]).
 -export([empty/0, any/0]).
 -export([union/2, intersect/2, diff/2, negate/1, is_any/1]).
 -export([is_empty/1]).
@@ -50,6 +50,8 @@ intersect({S, cofinite}, {T, cofinite}) ->
 union(S,T) -> negate(intersect(negate(S), negate(T))).
 
 diff(S,T) -> intersect(S, negate(T)).
+
+mu_equal(A,B) -> equal(A, B).
 
 equal({_, finite},{_, cofinite}) -> false;
 equal({_, cofinite},{_, finite}) -> false;

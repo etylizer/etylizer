@@ -1,10 +1,20 @@
 -module(ty_functions).
 -define(F(Z), fun() -> Z end).
 
+
+-export([mu_equal/2]).
 -export([any/0, empty/0, var/1]).
 -export([intersect/2, negate/1]).
 -export([is_empty_corec/2, normalize_corec/3]).
 -export([transform/2, raw_transform/2, substitute/3, all_variables/2, has_ref/2]).
+
+mu_equal({{Default1, AllFunctions1}, M1}, {{Default2, AllFunctions2}, M2}) ->
+  maps:keys(AllFunctions1) == maps:keys(AllFunctions2) 
+  andalso dnf_var_ty_function:mu_equal({Default1, M1}, {Default2, M2})
+  andalso
+    lists:all(fun({T1, T2}) -> 
+      dnf_var_ty_function:mu_equal({T1, M1}, {T2, M2})
+    end, lists:zip(maps:values(AllFunctions1), maps:values(AllFunctions2))).
 
 empty() ->
   {dnf_var_ty_function:empty(), #{}}.

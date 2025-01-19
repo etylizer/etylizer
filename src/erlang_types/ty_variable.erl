@@ -4,6 +4,7 @@
 -export([setup_all/0, reset/0]).
 -define(VAR_ETS, variable_counter_ets_table).
 
+-export([mu_equal/2]).
 -export([update_id/1, compare/2, equal/2, substitute/4, has_ref/2, all_variables/2, name/1]).
 -export([leq/2]).
 
@@ -28,6 +29,7 @@ setup_all() ->
 
 -spec equal(var(), var()) -> boolean().
 equal(Var1, Var2) -> compare(Var1, Var2) =:= 0.
+mu_equal({Var1, _}, {Var2, _}) -> compare(Var1, Var2) =:= 0.
 
 -spec compare(var(), var()) -> -1 | 0 | 1.
 compare(#var{id = name, name = N1}, #var{id = name, name = N2}) ->

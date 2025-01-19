@@ -13,7 +13,7 @@
 % hide built-in Erlang node function
 -compile({no_auto_import, [node/1]}).
 
--export([raw_transform/2, all_variables/1, has_ref/2, get_dnf/1, any/0, empty/0, equal/2, node/1, terminal/1, compare/2, union/2, intersect/2, negate/1, diff/2]).
+-export([mu_equal/2, raw_transform/2, all_variables/1, has_ref/2, get_dnf/1, any/0, empty/0, equal/2, node/1, terminal/1, compare/2, union/2, intersect/2, negate/1, diff/2]).
 
 % these are defined here so the IDE does not complain
 -ifndef(ELEMENT).
@@ -33,6 +33,15 @@ equal({node, E1, A1, B1}, {node, E2, A2, B2}) ->
 equal({terminal, T1}, {terminal, T2}) ->
   ?TERMINAL:equal(T1, T2);
 equal(_, _) ->
+  false.
+
+mu_equal({{node, E1, A1, B1}, M1}, {{node, E2, A2, B2}, M2}) ->
+  ?ELEMENT:mu_equal({E1, M1}, {E2, M2})
+    andalso mu_equal({A1, M1}, {A2, M2})
+    andalso mu_equal({B1, M1}, {B2, M2});
+mu_equal({{terminal, T1}, M1}, {{terminal, T2}, M2}) ->
+  ?TERMINAL:mu_equal({T1, M1}, {T2, M2});
+mu_equal(_, _) ->
   false.
 
 node(Node) -> s({node, Node, any(), empty()}).

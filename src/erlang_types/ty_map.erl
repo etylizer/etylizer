@@ -1,7 +1,7 @@
 -module(ty_map).
 
 %% {ty, ty}
--export([compare/2, equal/2, substitute/3, all_variables/2]).
+-export([compare/2, mu_equal/2, equal/2, substitute/3, all_variables/2]).
 
 -export([map/2, has_ref/2, raw_transform/2, transform/2, any/0, empty/0]).
 
@@ -12,6 +12,9 @@ compare(A, B) when A < B -> -1;
 compare(A, B) when A > B -> 1;
 compare(_, _) -> 0.
 
+mu_equal({{ty_tuple, 2, [C, D]}, M1}, {{ty_tuple, 2, [C2, D2]}, M2}) -> 
+  ty_rec:mu_eq({C, M1}, {C2, M2})
+    andalso ty_rec:mu_eq({D, M1}, {D2, M2}) .
 equal(P1, P2) -> compare(P1, P2) =:= 0.
 
 map(TupPart,FunPart) -> {ty_tuple, 2, [TupPart, FunPart]}.

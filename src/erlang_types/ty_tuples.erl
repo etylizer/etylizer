@@ -2,10 +2,19 @@
 -module(ty_tuples).
 -define(F(Z), fun() -> Z end).
 
+-export([mu_equal/2]).
 -export([any/0, empty/0, var/1]).
 -export([intersect/2, negate/1]).
 -export([is_empty_corec/2, normalize_corec/3]).
 -export([raw_transform/2, transform/2, substitute/3, all_variables/2, has_ref/2]).
+
+mu_equal({{Default1, AllTuples1}, M1}, {{Default2, AllTuples2}, M2}) ->
+  maps:keys(AllTuples1) == maps:keys(AllTuples2) 
+  andalso dnf_var_ty_tuple:mu_equal({Default1, M1}, {Default2, M2})
+  andalso
+    lists:all(fun({T1, T2}) -> 
+      dnf_var_ty_tuple:mu_equal({T1, M1}, {T2, M2})
+    end, lists:zip(maps:values(AllTuples1), maps:values(AllTuples2))).
 
 empty() ->
   {dnf_var_ty_tuple:empty(), #{}}.
