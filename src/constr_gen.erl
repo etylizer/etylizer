@@ -115,9 +115,11 @@ exp_constrs(Ctx, E, T) ->
         {'float', L, _F} -> utils:single({csubty, mk_locs("float literal", L), {predef, float}, T});
         {'string', L, ""} -> utils:single({csubty, mk_locs("empty string literal", L), {empty_list}, T});
         {'string', L, _S} -> utils:single({csubty, mk_locs("string literal", L), {predef_alias, nonempty_string}, T});
-        % TODO full bitstring support
-        {bin, L, []} -> 
-            utils:single({csubty, mk_locs("empty bitstring", L), {bitstring}, T});
+        {bin, L, []} -> utils:single({csubty, mk_locs("empty bitstring", L), {bitstring}, T});
+        {bin, L, _Cs} -> 
+            % TODO constraints for inner binary pattern elements 
+            ?LOG_WARN("Skipping verification of binary pattern elements of ~s", ast:format_loc(L)),
+            utils:single({csubty, mk_locs("bitstring", L), {bitstring}, T});
         {bc, L, _E, _Qs} -> errors:unsupported(L, "bitstrings");
         {block, L, Es} -> exps_constrs(Ctx, L, Es, T);
         {'case', L, ScrutE, Clauses} ->
@@ -583,7 +585,17 @@ bound_vars_pat(P) ->
         {'integer', _L, _I} -> sets:new([{version, 2}]);
         {'float', _L, _F} -> sets:new([{version, 2}]);
         {'string', _L, _S} -> sets:new([{version, 2}]);
-        {bin, L, _Elems} -> errors:unsupported(L, "bitstring patterns");
+        % TODO correct bounded vars for bitstring patterns
+        {bin, _L, Elems} -> 
+            lists:foldl(
+                fun(P, Acc) -> sets:union(Acc, bound_vars_pat(P)) end, 
+                sets:new([{version, 2}]), 
+                Elems);
+        default -> sets:new([{version, 2}]); % gen_bitstring_elem
+        {bin_element, _L, Value, Size, _TyspecList} -> 
+            % Size can have bound vars
+            % TyspecList is static
+            sets:union(bound_vars_pat(Value), bound_vars_pat(Size));
         {match, _L, P1, P2} ->
             sets:union(bound_vars_pat(P1), bound_vars_pat(P2));
         {nil, _L} -> sets:new([{version, 2}]);
@@ -660,7 +672,8 @@ ty_of_pat(Symtab, Env, P, Mode) ->
         {'integer', _L, I} -> {singleton, I};
         {'float', _L, _F} -> {predef, float};
         {'string', _L, _S} -> {predef_alias, string};
-        {bin, L, _Elems} -> errors:unsupported(L, "bitstring patterns");
+        % TODO correct binary patterns
+        {bin, _L, _Elems} -> {bitstring};
         {match, _L, P1, P2} ->
             ast_lib:mk_intersection([ty_of_pat(Symtab, Env, P1, Mode), ty_of_pat(Symtab, Env, P2, Mode)]);
         {nil, _L} -> {empty_list};
@@ -796,7 +809,26 @@ pat_env(Ctx, OuterL, T, P) ->
         {'integer', _L, _I} -> Empty;
         {'float', _L, _F} -> Empty;
         {'string', _L, _S} -> Empty;
-        {bin, L, _Elems} -> errors:unsupported(L, "bitstring patterns");
+        % TODO correct pattern environment for binaries
+        {bin, _L, Elems} -> 
+            {Cs, Env} =
+                lists:foldl(
+                  fun (P, {Cs, Env}) ->
+                          % unused type variables
+                          Alpha = fresh_tyvar(Ctx),
+                          {ThisCs, ThisEnv} = pat_env(Ctx, OuterL, Alpha, P),
+                          {sets:union(Cs, ThisCs),
+                           intersect_envs(Env, ThisEnv)}
+                  end,
+                  {sets:new([{version, 2}]), #{}},
+                  Elems),
+            C = {csubty, mk_locs("t // <<...>>", OuterL), T, {bitstring}},
+            {sets:add_element(C, Cs), Env};
+        default -> Empty;
+        {bin_element, _L, Value, Size, _TyspecList} -> 
+            {Cs1, Env1} = pat_env(Ctx, OuterL, T, Value),
+            {Cs2, Env2} = pat_env(Ctx, OuterL, T, Size),
+            {sets:union(Cs1, Cs2), intersect_envs(Env1, Env2)};
         {match, _L, P1, P2} ->
             {Cs1, Env1} = pat_env(Ctx, OuterL, T, P1),
             {Cs2, Env2} = pat_env(Ctx, OuterL, T, P2),

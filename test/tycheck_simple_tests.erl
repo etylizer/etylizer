@@ -153,7 +153,9 @@ simple_test_() ->
     % Redundancy check for lists is not powerful enough, see #108
     "list_pattern_08_fail",
     % #115 slow
-    "user_07"
+    "user_07",
+    % TODO binary pattern element size verification
+    "b4_fail"
   ],
 
   NoInfer = [
