@@ -5,12 +5,13 @@
 
 -export([apply_to_node/3]).
 -export([is_empty/1, normalize_corec/3, substitute/4]).
--export([var/1, ty_bitstring/0, all_variables/2]).
+-export([var/1, bitstring/1, ty_bitstring/0, all_variables/2]).
 -export([transform/2]).
 
 -include("bdd_var.hrl").
 
 ty_bitstring() -> terminal(?TERMINAL:any()).
+bitstring(Terminal) -> terminal(Terminal).
 var(Var) -> node(Var).
 
 % partially generic

@@ -67,22 +67,24 @@ raw_transform(TyRef, Ops =
     any_tuple := Tuples,
     any_function := Functions,
     any_int := Intervals,
+    any_bitstring := Bitstrings,
     any_atom := Atoms,
     any_predef := Predef,
     union := Union,
     intersect := Intersect
   }) ->
-  #ty{predef = P, atom = A, interval = I, list = L, map = M, tuple = T, function = F} = ty_ref:load(TyRef),
+  #ty{predef = P, atom = A, interval = I, bitstring = B, list = L, map = M, tuple = T, function = F} = ty_ref:load(TyRef),
 
   NP = Intersect([Predef(), dnf_var_ty_predef:raw_transform(P, Ops)]),
   NA = Intersect([Atoms(), dnf_var_ty_atom:raw_transform(A, Ops)]),
   NI = Intersect([Intervals(), dnf_var_ty_interval:raw_transform(I, Ops)]),
+  NB = Intersect([Bitstrings(), dnf_var_ty_bitstring:raw_transform(B, Ops)]),
   NL = Intersect([Lists(), dnf_var_ty_list:raw_transform(L, Ops)]),
   NM = Intersect([Maps(), dnf_var_ty_map:raw_transform(M, Ops)]),
   NT = Intersect([Tuples(), ty_tuples:raw_transform(T, Ops)]),
   NF = Intersect([Functions(), ty_functions:raw_transform(F, Ops)]),
 
-  Union([NP, NA, NI, NL, NM, NT, NF]).
+  Union([NP, NA, NI, NB, NL, NM, NT, NF]).
 
 transform(TyRef, Ops) ->
   % Do things twice, pos and neg
@@ -111,6 +113,7 @@ transform_p(TyRef, Ops =
     any_tuple := Tuples,
     any_function := Functions,
     any_int := Intervals,
+    any_bitstring := Bitstrings,
     any_atom := Atoms,
     any_predef := Predef,
     any_map := Maps,
@@ -130,15 +133,16 @@ transform_p(TyRef, Ops =
       true ->
         Intersect(NewVars ++ NewVarsN);
       _ ->
-        #ty{predef = P, atom = A, interval = I, list = L, map = M, tuple = T, function = F} = ty_ref:load(TyR),
+        #ty{predef = P, atom = A, interval = I, bitstring = B, list = L, map = M, tuple = T, function = F} = ty_ref:load(TyR),
         NP = maybe_intersect(dnf_var_ty_predef:transform(P, Ops), Predef(), Intersect),
         NA = maybe_intersect(dnf_var_ty_atom:transform(A, Ops), Atoms(), Intersect),
         NI = maybe_intersect(dnf_var_ty_interval:transform(I, Ops), Intervals(), Intersect),
+        NB = maybe_intersect(dnf_var_ty_bitstring:transform(B, Ops), Bitstrings(), Intersect),
         NL = maybe_intersect(dnf_var_ty_list:transform(L, Ops), Lists(), Intersect),
         NM = maybe_intersect(dnf_var_ty_map:transform(M, Ops), Maps(), Intersect),
         NT = maybe_intersect(ty_tuples:transform(T, Ops), Tuples(), Intersect),
         NF = maybe_intersect(ty_functions:transform(F, Ops), Functions(), Intersect),
-        Intersect(NewVars ++ NewVarsN ++ [Union([NP, NA, NI, NL, NT, NF, NM])])
+        Intersect(NewVars ++ NewVarsN ++ [Union([NP, NA, NI, NB, NL, NT, NF, NM])])
     end
            end, DnfMap),
 
@@ -146,18 +150,20 @@ transform_p(TyRef, Ops =
 
 % TODO refactor this properly it's ugly
 prepare(TyRef) ->
-  #ty{predef = P, atom = A, interval = I, list = L, tuple = {DT, T}, function = {DF, F}, map = M} = ty_ref:load(TyRef),
+  #ty{predef = P, atom = A, interval = I, bitstring = B, list = L, tuple = {DT, T}, function = {DF, F}, map = M} = ty_ref:load(TyRef),
   VarMap = #{},
 
   PDnf = dnf_var_ty_predef:get_dnf(P),
   ADnf = dnf_var_ty_atom:get_dnf(A),
   IDnf = dnf_var_ty_interval:get_dnf(I),
+  BDnf = dnf_var_ty_bitstring:get_dnf(B),
   LDnf = dnf_var_ty_list:get_dnf(L),
   MDnf = dnf_var_ty_map:get_dnf(M),
 
   PMapped = lists:map(fun({Pv, Nv, Ty}) -> {{Pv, Nv}, ty_rec:predef(dnf_var_ty_predef:predef(Ty))} end, PDnf),
   AMapped = lists:map(fun({Pv, Nv, Ty}) -> {{Pv, Nv}, ty_rec:atom(dnf_var_ty_atom:ty_atom(Ty))} end, ADnf),
   IMapped = lists:map(fun({Pv, Nv, Ty}) -> {{Pv, Nv}, ty_rec:interval(dnf_var_ty_interval:int(Ty))} end, IDnf),
+  BMapped = lists:map(fun({Pv, Nv, Ty}) -> {{Pv, Nv}, ty_rec:bitstring(dnf_var_ty_bitstring:bitstring(Ty))} end, BDnf),
   LMapped = lists:map(fun({Pv, Nv, Ty}) -> {{Pv, Nv}, ty_rec:list(dnf_var_ty_list:list(Ty))} end, LDnf),
   MMapped = lists:map(fun({Pv, Nv, Ty}) -> {{Pv, Nv}, ty_rec:map(dnf_var_ty_map:map(Ty))} end, MDnf),
 
@@ -174,7 +180,7 @@ prepare(TyRef) ->
     _DnfFunctionMapped = lists:map(fun({Pv, Nv, Tp}) -> {{Pv, Nv}, ty_rec:function(Size, dnf_var_ty_function:function(Tp))} end, DnfFunctions)
                                      end, maps:to_list(F)),
 
-  AllKinds = lists:flatten([PMapped, AMapped, IMapped, LMapped, MMapped, TupleMapped, FunctionMapped, TupleExplicitMapped, FunctionExplicitMapped]),
+  AllKinds = lists:flatten([PMapped, AMapped, IMapped, BMapped, LMapped, MMapped, TupleMapped, FunctionMapped, TupleExplicitMapped, FunctionExplicitMapped]),
 
   UpdateKey = fun(_Key, Ty1, Ty2) -> ty_rec:union(Ty1, Ty2) end,
   AllUnions = lists:foldl(fun({VarKey, Ty}, CurrentMap) ->
@@ -203,7 +209,7 @@ prepare(TyRef) ->
 
   % Distribute top types to all variables redundantly, if any
   % atom() | a & (Any \ atom) => atom() | a
-  TopTypes = [ty_rec:atom(), ty_rec:interval(), ty_rec:tuple(), ty_rec:function(), ty_rec:list(), ty_rec:predef(), ty_rec:map()],
+  TopTypes = [ty_rec:atom(), ty_rec:interval(), ty_rec:bitstring(), ty_rec:tuple(), ty_rec:function(), ty_rec:list(), ty_rec:predef(), ty_rec:map()],
   NoVarsType = maps:get({[], []}, SubsumedUnions2, ty_rec:empty()),
 
   RedundantUnions = lists:foldl(fun(Top, Acc) ->

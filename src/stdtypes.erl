@@ -8,6 +8,7 @@
     tspecial_any/0,
     tempty_list/0,
     tint/0, tint/1,
+    tbitstring/0,
     tlist_any/0,
     tlist_improper/2,
     tnonempty_improper_list/2,
@@ -90,6 +91,9 @@ tatom(A) -> {singleton, A}.
 
 -spec tint() -> ast:ty().
 tint() -> {predef, integer}.
+
+-spec tbitstring() -> ast:ty().
+tbitstring() -> {bitstring}.
 
 -spec tint(integer()) -> ast:ty().
 tint(A) -> {singleton, A}.
