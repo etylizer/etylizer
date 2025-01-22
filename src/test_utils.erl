@@ -133,11 +133,16 @@ ety_to_cduce_tally(Constraints, Order) ->
 
 
 -spec to_cduce(ast:ty()) -> string().
+to_cduce({list, X}) -> io_lib:format("[(~s)*]", [to_cduce(X)]);
+to_cduce({nonempty_list, X}) -> io_lib:format("([(~s)*] \\ [])", [to_cduce(X)]);
+to_cduce({empty_list}) -> "[]";
 to_cduce({predef, any}) -> "Any";
 to_cduce({predef, none}) -> "Empty";
 to_cduce({predef, integer}) -> "Int";
 % floats are treated to tags in CDuce
 to_cduce({predef, float}) -> "`float";
+to_cduce({predef_alias, boolean}) -> "Bool";
+to_cduce({predef_alias, nonempty_list}) -> "([Any*] \\ [])";
 to_cduce({predef_alias, non_neg_integer}) -> "(0--*)";
 to_cduce({singleton, float}) -> "`float";
 to_cduce({mu, _, _}) -> "RECTYPE";
@@ -158,7 +163,15 @@ to_cduce(Ast) ->
 % replace this with some other character
 -spec to_var(ast:ty_var()) -> string().
 to_var({var, Name}) ->
-    "'" ++ string:replace(erlang:atom_to_list(Name), "$", "u").
+    "'" ++ 
+    string:replace(
+    string:replace(
+      string:replace(
+        string:replace(string:lowercase(erlang:atom_to_list(Name)), "$", "u")
+      , "@", "u")
+    , "'", "")
+    , "'", ""
+    ).
 
 
 named(Ref) ->
