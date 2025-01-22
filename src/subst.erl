@@ -72,7 +72,9 @@ apply(S, T, _) -> apply_base(S, T).
 apply_base(S, T) ->
     case T of
         {singleton, _} -> T;
-        {binary, _, _} -> T;
+        % TODO full bitstring support
+        {bitstring} -> T;
+        % {binary, _, _} -> T;
         {empty_list} -> T;
         {list, U} -> {list, apply_base(S, U)};
         {mu, V, U} -> {mu, V, apply_base(S, U)};
@@ -166,6 +168,7 @@ collect_vars({singleton, _}, _CPos, Pos, _) -> Pos;
 collect_vars({range, _, _}, _CPos, Pos, _) -> Pos;
 collect_vars({_, any}, _CPos, Pos, _) -> Pos;
 collect_vars({empty_list}, _CPos, Pos, _) -> Pos;
+collect_vars({bitstring}, _CPos, Pos, _) -> Pos;
 collect_vars({map_any}, _CPos, Pos, _) -> Pos;
 collect_vars({tuple_any}, _CPos, Pos, _) -> Pos;
 collect_vars({fun_simple}, _CPos, Pos, _) -> Pos;

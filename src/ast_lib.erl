@@ -159,6 +159,7 @@ erlang_ty_to_ast(X, M) ->
                 any_function => fun stdtypes:tfun_any/0,
                 any_function_i => fun(Size) -> stdtypes:tfun([stdtypes:tnone() || _ <- lists:seq(1, Size)], stdtypes:tany()) end,
                 any_int => fun stdtypes:tint/0,
+                any_bitstring => fun stdtypes:tbitstring/0,
                 any_list => fun stdtypes:tlist_any/0,
                 any_atom => fun stdtypes:tatom/0,
                 any_predef => fun stdtypes:tspecial_any/0,
@@ -226,10 +227,8 @@ parse_ast_to_erlang_ty({singleton, Atom}, _Sym) when is_atom(Atom) ->
 parse_ast_to_erlang_ty({singleton, IntOrChar}, _Sym) ->
     Int = dnf_var_ty_interval:int(dnf_ty_interval:interval(IntOrChar, IntOrChar)),
     ty_rec:interval(Int);
-% TODO
-parse_ast_to_erlang_ty({binary, _, _}, _Sym) ->
-    erlang:error("Bitstrings not implemented yet");
-
+parse_ast_to_erlang_ty({bitstring}, _Sym) ->
+    ty_rec:bitstring();
 parse_ast_to_erlang_ty({tuple_any}, _Sym) ->
     ty_rec:tuple();
 parse_ast_to_erlang_ty({tuple, Comps}, Sym) when is_list(Comps)->
@@ -387,6 +386,7 @@ raw_erlang_ty_to_ast(X, M) ->
                 any_function => fun stdtypes:tfun_any/0,
                 any_function_i => fun(Size) -> stdtypes:tfun([stdtypes:tnone() || _ <- lists:seq(1, Size)], stdtypes:tany()) end,
                 any_int => fun stdtypes:tint/0,
+                any_bitstring => fun stdtypes:tbitstring/0,
                 any_list => fun stdtypes:tlist_any/0,
                 any_atom => fun stdtypes:tatom/0,
                 any_predef => fun stdtypes:tspecial_any/0,

@@ -8,6 +8,7 @@
     tspecial_any/0,
     tempty_list/0,
     tint/0, tint/1,
+    tbitstring/0,
     tlist_any/0,
     tlist_improper/2,
     tnonempty_improper_list/2,
@@ -90,6 +91,9 @@ tatom(A) -> {singleton, A}.
 
 -spec tint() -> ast:ty().
 tint() -> {predef, integer}.
+
+-spec tbitstring() -> ast:ty().
+tbitstring() -> {bitstring}.
 
 -spec tint(integer()) -> ast:ty().
 tint(A) -> {singleton, A}.
@@ -208,10 +212,11 @@ tbool() -> {predef_alias, boolean}.
 
 -spec expand_predef_alias(ast:predef_alias_name()) -> ast:ty().
 expand_predef_alias(term) -> {predef, any};
-expand_predef_alias(binary) -> errors:not_implemented("expand_predef_alias for binary");
-expand_predef_alias(nonempty_binary) -> errors:not_implemented("expand_predef_alias for nonempty_binary");
-expand_predef_alias(bitstring) -> errors:not_implemented("expand_predef_alias for bitstring");
-expand_predef_alias(nonempty_bitstring) -> errors:not_implemented("expand_predef_alias for nonempty_bitstring");
+% TODO better binaries
+expand_predef_alias(binary) -> {bitstring};
+expand_predef_alias(nonempty_binary) -> {bitstring};
+expand_predef_alias(bitstring) -> {bitstring};
+expand_predef_alias(nonempty_bitstring) -> {bitstring};
 expand_predef_alias(boolean) -> {union, [{singleton, true}, {singleton, false}]};
 expand_predef_alias(byte) -> {range, 0, 255};
 expand_predef_alias(char) -> {range, 0, 1114111};

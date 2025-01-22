@@ -92,11 +92,8 @@ do_convert({{singleton, Atom}, R}, Q, _, _) when is_atom(Atom) ->
 do_convert({{singleton, IntOrChar}, R}, Q, _, _) ->
   Int = dnf_var_ty_interval:int(dnf_ty_interval:interval(IntOrChar, IntOrChar)),
   {ty_rec:s_interval(Int), Q, R};
-
-% TODO
-do_convert({{binary, _, _}, _}, _, _, _) ->
-    erlang:error("Bitstrings not implemented yet");
-
+do_convert({{bitstring}, R}, Q, _, _) ->
+    {ty_rec:s_bitstring(), Q, R};
 do_convert({{tuple_any}, R}, Q, _, _) ->
   {ty_rec:s_tuple(), Q, R};
 do_convert({{tuple, Comps}, R}, Q, _Sym, M) when is_list(Comps)->
