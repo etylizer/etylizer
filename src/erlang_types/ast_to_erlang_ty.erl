@@ -5,8 +5,9 @@
 -import(test_utils, [extend_symtabs/2, extend_symtab/2, extend_symtab/3, is_subtype/2, is_equiv/2, named/1, named/2]).
 -endif.
 
--export([ast_to_erlang_ty/2]).
+-export([ast_to_erlang_ty/2, reset/0]).
 
+-include("sanity.hrl").
 
 -type temporary_ref() :: 
     {local_ref, integer()} % fresh type references created for the queue
@@ -24,17 +25,24 @@ named_ref(Def, Args) -> {named_ref, {Def, Args}}.
 
 -spec ast_to_erlang_ty(ast:ty(), symtab:t()) -> ty_rec:ty_ref().
 ast_to_erlang_ty(Ty, Sym) ->
+  % cache can't be shared across multiple ast_to_erlang_ty calls
+  % we only have temporary references here
+  reset(), 
+
   % 1. Convert to temporary local representation
   % Create a temporary type without internalizing the type refs
   % Instead use local type references stored in a local map
   LocalRef = new_local_ref(),
-  Result = convert(queue:from_list([{LocalRef, Ty, _Memoization = #{}}]), Sym, {#{}, #{}}),
+  Result = ?TIME(ast_parse_corec, convert(queue:from_list([{LocalRef, Ty, _Memoization = #{}}]), Sym, {#{}, #{}})),
   % io:format(user, "Result:~n~p~n", [{LocalRef, Result}]),
  
   % 2. Unify the results
+  % TODO optimize unification, if needed at all
   % There can be many duplicate type references;
   % these will be substituted with their representative
-  {UnifiedRef, UnifiedResult} = unify(LocalRef, Result),
+  % {UnifiedRef, UnifiedResult} = unify(LocalRef, Result),
+  {M1, _} = Result,
+  {UnifiedRef, UnifiedResult} = {LocalRef, M1},
   % io:format(user, "Unified Result:~n~p~n", [{UnifiedRef, UnifiedResult}]),
 
   % 3. create new type references and replace temporary ones
@@ -45,6 +53,9 @@ ast_to_erlang_ty(Ty, Sym) ->
   % 4. define types
   % [ty_ref:define_ty_ref(Ref, ToDefineTy) || Ref := ToDefineTy <- ReplacedResults],
   maps:map(fun(Ref, ToDefineTy) -> ty_ref:define_ty_ref(Ref, ToDefineTy) end, ReplacedResults),
+
+  % free for garbage colletion
+  reset(), 
   
   ReplacedRef.
 
@@ -66,13 +77,16 @@ replace_all({Ref, All}, Map) ->
 % ty_recs can share multiple references, these will be unified
 -type result() :: {#{temporary_ref() => ty_rec()}, #{ty_rec() => [temporary_ref()]}}. 
 
+reset() ->
+  erlang:put(ast_ty_corec_cache, #{}),
+  ok.
+
 -spec group(#{A => list(X)}, A, X) -> #{A := list(X)}.
 group(M, Key, Value) ->
   case M of
     #{Key := Group} -> M#{Key => lists:usort(Group ++ [Value])};
     _ -> M#{Key => [Value]}
   end.
-
 -spec convert(queue(), symtab:t(), result()) -> result().
 convert(Queue, Sym, Res) ->
   case queue:is_empty(Queue) of
@@ -80,9 +94,23 @@ convert(Queue, Sym, Res) ->
       Res; 
     _ -> % convert next layer
       {{value, {LocalRef, Ty, Memo}}, Q} = queue:out(Queue),
-      {ErlangRecOrLocalRef, NewQ, {R1, R2}} = do_convert({Ty, Res}, Q, Sym, Memo),
+      {ErlangRecOrLocalRef, NewQ, {R1, R2}} = maybe_do_convert({Ty, Res}, Q, Sym, Memo),
       convert(NewQ, Sym, {R1#{LocalRef => ErlangRecOrLocalRef}, group(R2, ErlangRecOrLocalRef, LocalRef)})
   end.
+
+maybe_do_convert({Ty, Res}, Q, Sym, Memo) ->
+  Cache = erlang:get(ast_ty_corec_cache),
+  Cached = maps:get(Ty, Cache, undefined),
+  maybe_do_convert_h(Cached, {Ty, Res}, Q, Sym, Memo, Cache).
+
+maybe_do_convert_h(undefined, {X, Res}, Q, Sym, Memo, Cache) ->
+  (Z = {Ty0, _Q0, _R0}) = do_convert({X, Res}, Q, Sym, Memo),
+  CacheNew = maps:put(X, Ty0, Cache),
+  put(ast_ty_corec_cache, CacheNew),
+  Z;
+maybe_do_convert_h(V, {_, Res}, Q, _, _, _) ->
+  {V, Q, Res}.
+
 
 -spec do_convert({ast:ty(), result()}, queue(), symtab:t(), memo()) -> {ty_rec(), queue(), result()}.
 do_convert({{singleton, Atom}, R}, Q, _, _) when is_atom(Atom) ->
@@ -209,7 +237,7 @@ do_convert({{named, Loc, Ref, Args}, R = {IdTy, _}}, Q, Sym, M) ->
       % create a new reference (ref args pair) and memoize
       NewRef = named_ref(Ref, Args),
       Mp = M#{{Ref, Args} => NewRef},
-      {InternalTy, NewQ, {R0, R1}} = do_convert({NewTy, R}, Q, Sym, Mp),
+      {InternalTy, NewQ, {R0, R1}} = maybe_do_convert({NewTy, R}, Q, Sym, Mp),
       
       {InternalTy, NewQ, {R0#{NewRef => InternalTy}, group(R1, InternalTy, NewRef)}}
   end;
@@ -261,43 +289,43 @@ do_convert(T, _Q, _Sym, _M) ->
   erlang:error({"Transformation from ast:ty() to ty_rec:ty() not implemented or malformed type", T}).
 
 
--spec unify(temporary_ref(), result()) -> {temporary_ref(), #{temporary_ref() => ty_rec()}}.
-unify(Ref, {IdToTy, TyToIds}) ->
-  % map with references to unify, pick representatives
-  %ToUnify = maps:to_list(#{K => choose_representative(V) || K := V <- TyToIds, length(V) > 1}), 
-  ToUnify = maps:to_list(maps:filtermap(fun(_K, V) when length(V) =< 1 -> false;(_K, V) -> {true, choose_representative(V)} end, TyToIds)),
-  % replace equivalent refs with representative
-  {UnifiedRef, {UnifiedIdToTy, _UnifiedTyToIds}} = unify(Ref, {IdToTy, TyToIds}, ToUnify),
-  {UnifiedRef, UnifiedIdToTy}.
+% -spec unify(temporary_ref(), result()) -> {temporary_ref(), #{temporary_ref() => ty_rec()}}.
+% unify(Ref, {IdToTy, TyToIds}) ->
+%   % map with references to unify, pick representatives
+%   %ToUnify = maps:to_list(#{K => choose_representative(V) || K := V <- TyToIds, length(V) > 1}), 
+%   ToUnify = maps:to_list(maps:filtermap(fun(_K, V) when length(V) =< 1 -> false;(_K, V) -> {true, choose_representative(V)} end, TyToIds)),
+%   % replace equivalent refs with representative
+%   {UnifiedRef, {UnifiedIdToTy, _UnifiedTyToIds}} = unify(Ref, {IdToTy, TyToIds}, ToUnify),
+%   {UnifiedRef, UnifiedIdToTy}.
 
--spec choose_representative([temporary_ref()]) -> {temporary_ref(), [temporary_ref()]}.
-choose_representative(Refs) ->
-  [Representative | Others] = lists:usort(
-    fun
-      ({Other, _}, {named_ref, _}) when Other == local_ref; Other == mu_ref -> false;
-      ({local_ref, _}, {mu_ref, _}) -> false;
-      ({_, X}, {_, Y}) -> X =< Y
-    end, 
-    Refs),
-  {Representative, Others}.
+% -spec choose_representative([temporary_ref()]) -> {temporary_ref(), [temporary_ref()]}.
+% choose_representative(Refs) ->
+%   [Representative | Others] = lists:usort(
+%     fun
+%       ({Other, _}, {named_ref, _}) when Other == local_ref; Other == mu_ref -> false;
+%       ({local_ref, _}, {mu_ref, _}) -> false;
+%       ({_, X}, {_, Y}) -> X =< Y
+%     end, 
+%     Refs),
+%   {Representative, Others}.
 
-% -spec unify(temporary_ref(), result(), Worklist) -> 
-%   {temporary_ref(), result(), Worklist} 
-%   when Worklist :: [{ty_rec(), {temporary_ref(), [temporary_ref()]}}].
-% TODO utils:everywhere too slow, more efficient unify
-unify(Ref, {IdToTy, TyToIds}, [{_Ty, {Representative, Duplicates}} | Xs])->
-  {NewRef, {NewIdToTy, NewTyToIds}} =
-  utils:everywhere(fun
-    (RRef = {X, _}) when X == local_ref; X == mu_ref; X == named_ref -> 
-      case lists:member(RRef, Duplicates) of
-        true -> {ok, Representative};
-        false -> error
-      end;
-    (_) -> error
-  end, {Ref, {IdToTy, TyToIds}}),
-  unify(NewRef, {NewIdToTy, NewTyToIds}, Xs);
-unify(Ref, Db, [])->
-  {Ref, Db}.
+% % -spec unify(temporary_ref(), result(), Worklist) -> 
+% %   {temporary_ref(), result(), Worklist} 
+% %   when Worklist :: [{ty_rec(), {temporary_ref(), [temporary_ref()]}}].
+% % TODO utils:everywhere too slow, more efficient unify
+% unify(Ref, {IdToTy, TyToIds}, [{_Ty, {Representative, Duplicates}} | Xs])->
+%   {NewRef, {NewIdToTy, NewTyToIds}} =
+%   utils:everywhere(fun
+%     (RRef = {X, _}) when X == local_ref; X == mu_ref; X == named_ref -> 
+%       case lists:member(RRef, Duplicates) of
+%         true -> {ok, Representative};
+%         false -> error
+%       end;
+%     (_) -> error
+%   end, {Ref, {IdToTy, TyToIds}}),
+%   unify(NewRef, {NewIdToTy, NewTyToIds}, Xs);
+% unify(Ref, Db, [])->
+%   {Ref, Db}.
 
 
 -ifdef(TEST).

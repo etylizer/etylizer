@@ -34,6 +34,7 @@ tally(SymTab, Constraints, FixedVars, Mode) ->
   ty_ref:reset(),
   ty_variable:reset(),
   ast_lib:reset(),
+  ast_to_erlang_ty:reset(),
 
   % uncomment to extract a tally test case config file
   % io:format(user, "~s~n", [test_utils:format_tally_config(sets:to_list(Constraints), FixedVars, SymTab)]),
