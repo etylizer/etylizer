@@ -10,6 +10,19 @@
                    tmap/1, tmap_any/0, tmap_field_opt/2, tmap_field_req/2
                   ]).
 
+plus_test_() ->
+  {timeout, 15, {"chained_plus", fun() ->
+    ecache:reset_all(),
+    {ok, [Cons]} = file:consult("test_files/tally/plus_chained.config"),
+
+    test_utils:test_tally_satisfiable(
+      true,
+      Cons,
+      [],
+      symtab:empty()
+    ),
+    ok
+                                         end}}.
 
 fun_local_own_test_() ->
   {timeout, 15, {"fun_local_02_plus", fun() ->

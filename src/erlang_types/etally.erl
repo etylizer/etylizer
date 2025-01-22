@@ -87,7 +87,7 @@ unify([]) -> [];
 unify(EquationList) ->
   % sort to smallest variable
   % select in E the equation α = tα for smallest α
-  [Eq = {eq, Var, TA} | _Tail] = lists:usort(fun({_, Var, _}, {_, Var2, _}) -> ty_variable:compare(Var, Var2) =< 0 end, EquationList),
+  [Eq = {eq, Var, TA} | _Tail] = lists:usort(fun({_, Var, _}, {_, Var2, _}) -> ty_variable:leq(Var, Var2) end, EquationList),
   
   Vars = ty_rec:all_variables(TA),
   NewTA = case length([Z || Z <- Vars, Z == Var]) of
