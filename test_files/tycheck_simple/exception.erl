@@ -1,4 +1,4 @@
--module(expections).
+-module(exception).
 
 -compile(export_all).
 -compile(nowarn_export_all).

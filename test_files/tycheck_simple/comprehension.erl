@@ -1,4 +1,4 @@
--module(maps).
+-module(comprehension).
 
 -compile(export_all).
 -compile(nowarn_export_all).

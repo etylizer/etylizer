@@ -1,4 +1,4 @@
--module(lists).
+-module(list).
 
 -compile(export_all).
 -compile(nowarn_export_all).

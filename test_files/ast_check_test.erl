@@ -1,4 +1,4 @@
--module(check_test).
+-module(ast_check_test).
 
 -export([bar/1, foo/0]).
 
