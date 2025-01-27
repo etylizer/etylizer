@@ -3,10 +3,10 @@
 -export_type([ty_rec/0, ty_ref/0]).
 
 % co-recursive functions on types
--export([is_empty/1, is_empty_start/1, normalize_start/2]).
+-export([is_empty/1, is_empty_raw/1, is_empty_start/2, normalize_start/2]).
 -export([is_empty_corec/2, normalize_corec/3]).
 
--export([empty/0, any/0]).
+-export([empty/0, any/0, of_function_dnf/5, of_function_dnfs/2]).
 -export([union/2, negate/1, intersect/2, diff/2, is_any/1]).
 -export([tuple_keys/1, function_keys/1]).
 
@@ -19,7 +19,7 @@
 % top type constructors
 -export([bitstring/1, bitstring/0, list/0, function/0, atom/0, interval/0, tuple/0, map/0, ty_of/8]).
 
--export([is_equivalent/2, is_subtype/2]).
+-export([is_equivalent/2, is_subtype/2, is_subtype_raw/2]).
 
 -export([substitute/2, substitute/3, pi/2, all_variables/1, all_variables/2]).
 
@@ -49,7 +49,7 @@ ty_of(Predef, Atom, Int, Bitstring, List, Tuple, Function, Map) ->
 
 is_subtype(TyRef1, TyRef2) ->
   NewTy = intersect(TyRef1, ty_rec:negate(TyRef2)),
-  is_empty_start(NewTy).
+  is_empty(NewTy).
 
 is_equivalent(TyRef1, TyRef2) ->
   is_subtype(TyRef1, TyRef2) andalso is_subtype(TyRef2, TyRef1).
@@ -353,6 +353,18 @@ empty() ->
     map = dnf_var_ty_map:empty()
   }).
 
+of_function_dnfs(_, []) -> ty_rec:empty();
+of_function_dnfs(Arity, [{A, B, C, D} | Rest]) -> 
+  Ty = of_function_dnf(Arity, A, B, C, D),
+  union(Ty, of_function_dnfs(Arity, Rest)).
+
+of_function_dnf(Arity, Pvars, Nvars, Pos, Neg) ->
+  L1 = [variable(T) || T <- Pvars],
+  L2 = [negate(variable(T)) || T <- Nvars],
+  L3 = [function(Arity, dnf_var_ty_function:function(dnf_ty_function:function(T))) || T <- Pos],
+  L4 = [negate(function(Arity, dnf_var_ty_function:function(dnf_ty_function:function(T)))) || T <- Neg],
+  lists:foldl(fun(E, Acc) -> intersect(E, Acc) end, any(), L1 ++ L2 ++ L3 ++ L4).
+
 -spec any() -> ty_ref().
 any() ->
   ty_ref:any().
@@ -597,16 +609,17 @@ s_intersect(TyRec1, TyRec2) ->
   }.
 
 
-is_empty(TyRef) -> is_empty_start(TyRef).
+is_empty(TyRef) -> is_empty_start(TyRef, opt).
+is_empty_raw(TyRef) -> is_empty_start(TyRef, basic).
 
 % only cache full-chained is_empty, never cache in-between emptiness which depends on the memoization set M
 % we could do that if we knew the tyref at hand is not corecursive
-is_empty_start(TyRef) ->
+is_empty_start(TyRef, Mode) ->
   % first try op-cache
   case ty_ref:is_empty_cached(TyRef) of
     R when R == true; R == false -> R;
     miss ->
-      ty_ref:store_is_empty_cached(TyRef, is_empty_corec(TyRef, #{}))
+      ty_ref:store_is_empty_cached(TyRef, is_empty_corec(TyRef, #{mode => Mode}))
   end.
 
 is_empty_corec(TyRef, M) ->

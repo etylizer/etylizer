@@ -142,7 +142,7 @@ s_is_empty(_) -> false.
 is_empty_union(F1, F2) ->
   F1() andalso F2().
 
-get_dnf(Bdd) ->
+get_dnf_raw(Bdd) ->
   lists:filter(
     fun({_,_,[]}) -> false; ({_, _, T}) ->
       case ?TERMINAL:empty() of
@@ -150,12 +150,45 @@ get_dnf(Bdd) ->
         _ ->  true
       end
     end,
-    dnf(Bdd, {fun(P, N, T) -> [{P, N, T}] end, fun(C1, C2) -> C1() ++ C2() end})
+    do_dnf(Bdd, {fun(P, N, T) -> [{P, N, T}] end, fun(C1, C2) -> C1() ++ C2() end}, [], [])
   ).
 
+get_dnf(Bdd) ->
+  Raw = get_dnf_raw(Bdd),
+  %io:format(user, "Raw dnf: ~p~n", [Raw]),
+  _Raw = [{P, N, T} || {P, N, T} <- Raw],
+  case erlang:function_exported(?MODULE, simplify_dnf, 1) of
+    true -> ?MODULE:simplify_dnf(Raw);
+    _ -> Raw
+  end.
+
+dnf_raw(Bdd, {ProcessCoclause, CombineResults}) ->
+  Dnf = get_dnf_raw(Bdd),
+  Empty = ProcessCoclause([], [], ?TERMINAL:empty()),
+
+  lists:foldl(fun({P, N, T}, Acc) -> 
+    Line = ProcessCoclause(P, N, T),
+    CombineResults(fun() -> Line end, fun() -> Acc end) 
+  end, Empty, Dnf).
 
 dnf(Bdd, {ProcessCoclause, CombineResults}) ->
-  do_dnf(Bdd, {ProcessCoclause, CombineResults}, _Pos = [], _Neg = []).
+  Dnf = get_dnf(Bdd),
+  Empty = ProcessCoclause([], [], ?TERMINAL:empty()),
+
+  lists:foldl(fun({P, N, T}, Acc) -> 
+    Line = ProcessCoclause(P, N, T),
+    CombineResults(fun() -> Line end, fun() -> Acc end) 
+  end, Empty, Dnf).
+
+back_to_bdd([]) -> [];
+back_to_bdd([{Pv, Nv, P, N}]) -> 
+  L3 = [?TERMINAL:node(T) || T <- P],
+  L4 = [?TERMINAL:negate(?TERMINAL:node(T)) || T <- N],
+  [{Pv, Nv, lists:foldl(fun(E, Acc) -> ?TERMINAL:intersect(E, Acc) end, ?TERMINAL:any(), L3 ++ L4)}];
+back_to_bdd([{Pv, Nv, P, N} | Rest]) -> 
+  Clause = back_to_bdd([{Pv, Nv, P, N}]),
+  Other = back_to_bdd(Rest),
+  Clause ++ Other.
 
 do_dnf({node, Element, Left, Right}, F = {_Process, Combine}, Pos, Neg) ->
   % heuristic: if Left is positive & 1, skip adding the negated Element to the right path
@@ -200,16 +233,24 @@ all_variables(Ty, M) ->
 
 
 transform(Ty, Ops = #{negate := Negate, intersect := Intersect, union := Union}) ->
-  dnf(Ty, {
-    fun
-      (P,N,T) ->
-        P1 = ?TERMINAL:transform(T, Ops),
-        P2 = [?ELEMENT:transform(V, Ops) || V <- P],
-        P3 = [Negate(?ELEMENT:transform(V, Ops)) || V <- N],
-        Intersect([P1] ++ P2 ++ P3)
-    end,
-    fun(F1, F2) -> Union([F1(), F2()]) end
-  }).
+    Dnf = get_dnf(Ty),
+    lists:foldl(fun({P, N, T}, Acc) -> 
+      P1 = ?TERMINAL:transform(T, Ops),
+      P2 = [?ELEMENT:transform(V, Ops) || V <- P],
+      P3 = [Negate(?ELEMENT:transform(V, Ops)) || V <- N],
+      Line = Intersect([P1] ++ P2 ++ P3),
+      Union([Line, Acc]) end, Union([]), Dnf).
+
+  %dnf(Ty, {
+  %  fun
+  %    (P,N,T) ->
+  %      P1 = ?TERMINAL:transform(T, Ops),
+  %      P2 = [?ELEMENT:transform(V, Ops) || V <- P],
+  %      P3 = [Negate(?ELEMENT:transform(V, Ops)) || V <- N],
+  %      Intersect([P1] ++ P2 ++ P3)
+  %  end,
+  %  fun(F1, F2) -> Union([F1(), F2()]) end
+  %}).
 
 raw_transform(Ty, Ops = #{negate := Negate, intersect := Intersect, union := Union}) ->
   dnf(Ty, {
