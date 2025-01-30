@@ -40,3 +40,20 @@ maps_issue_201_test() ->
     [k, v],
     Sym
   ).
+
+issue_226_test() ->
+  GuardTest = named(gen_tuple, [named(guard_test, [])]),
+  GenTuple = ttuple([tlist(tvar('T'))]),
+
+  Sym = test_utils:extend_symtabs([
+    {guard_test, tyscm([], GuardTest)},
+    {gen_tuple, tyscm([t], GenTuple)}
+  ], symtab:empty()),
+
+  test_utils:test_tally_satisfiable(
+    true,
+    [ {named(guard_test, []), tvar(some_var)} ],
+    [],
+    Sym
+  ).
+  
