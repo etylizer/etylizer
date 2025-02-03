@@ -19,7 +19,7 @@
 % top type constructors
 -export([bitstring/1, bitstring/0, list/0, function/0, atom/0, interval/0, tuple/0, map/0, ty_of/8]).
 
--export([is_equivalent/2, is_subtype/2, is_subtype_raw/2]).
+-export([is_equivalent/2, is_subtype/2]).
 
 -export([substitute/2, substitute/3, pi/2, all_variables/1, all_variables/2]).
 
