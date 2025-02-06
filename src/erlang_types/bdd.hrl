@@ -26,8 +26,9 @@
 any() -> {terminal, ?TERMINAL:any()}.
 empty() -> {terminal, ?TERMINAL:empty()}.
 
-equal({node, E1, A1, B1}, {node, E2, A2, B2}) ->
+equal({node, E1, A1, B1, LazyUnion1}, {node, E2, A2, B2, LazyUnion2}) ->
   ?ELEMENT:equal(E1, E2)
+    andalso equal(LazyUnion1, LazyUnion2)
     andalso equal(A1, A2)
     andalso equal(B1, B2);
 equal({terminal, T1}, {terminal, T2}) ->
@@ -35,7 +36,7 @@ equal({terminal, T1}, {terminal, T2}) ->
 equal(_, _) ->
   false.
 
-node(Node) -> s({node, Node, any(), empty()}).
+node(Node) -> s({node, Node, any(), empty(), empty()}).
 terminal(Ty) -> terminal_of(Ty).
 
 terminal_of(Ty) ->
@@ -49,18 +50,31 @@ terminal_of(Ty) ->
       end
   end.
 
-s({node, _, B, B}) -> B;
+s({node, _, B, B, C}) -> union(B, C);
+s(Bdd = {node, _, _, _, B}) -> 
+  case s_is_any(B) of
+    true -> any();
+    _ -> Bdd
+  end;
 s(X) -> X.
 
 % TODO currently unused, when to use?
 compare({terminal, T1}, {terminal, T2}) -> ?TERMINAL:compare(T1, T2);
-compare({terminal, _}, {node, _, _, _}) -> +1;
-compare({node, _, _, _}, {terminal, _}) -> -1;
-compare({node, E1, A1, B1}, {node, E2, A2, B2}) ->
+compare({terminal, _}, {node, _, _, _, _}) -> +1;
+compare({node, _, _, _, _}, {terminal, _}) -> -1;
+compare({node, E1, A1, B1, L1}, {node, E2, A2, B2, L2}) ->
   case ?ELEMENT:compare(E1, E2) of
     0 ->
       case compare(A1, A2) of
-        0 -> compare(B1, B2);
+        0 -> 
+          case compare(B1, B2) of
+            0 -> 
+              case compare(L1, L2) of
+                0 -> 0;
+                Res -> Res
+              end;
+            Res -> Res
+          end;
         Res -> Res
       end;
     Res -> Res
@@ -78,19 +92,19 @@ union(A, B) ->
             _ ->
               case {A, B} of
                 {{terminal, X}, {terminal, Y}} -> terminal_of(?TERMINAL:union(X, Y));
-                {BDD1 = {node, E, A1, B1}, BDD2 = {node, E2, A2, B2}} ->
+                {BDD1 = {node, E, A1, B1, L1}, BDD2 = {node, E2, A2, B2, L2}} ->
                   case ?ELEMENT:compare(E, E2) of
-                    -1 ->
-                      s({node, E, union(A1, BDD2), union(B1, BDD2)});
                     +0 ->
-                      s({node, E, union(A1, A2), union(B1, B2)});
+                      s({node, E, union(A1, A2), union(B1, B2), union(L1, L2)});
+                    -1 ->
+                      s({node, E, A1, B1, union(L1, BDD2)});
                     +1 ->
-                      s({node, E2, union(A2, BDD1), union(B2, BDD1)})
+                      s({node, E2, A2, B2, union(L2, BDD1)})
                   end;
-                {BDD1 = {terminal, _X}, _BDD2 = {node, E2, A2, B2}} ->
-                  s({node, E2,  union(A2, BDD1),  union(B2, BDD1)});
-                {_BDD1 = {node, E1, A1, B1}, BDD2 = {terminal, _X}} ->
-                  s({node, E1,  union(A1, BDD2),  union(B1, BDD2)})
+                {BDD1 = {terminal, _X}, _BDD2 = {node, E2, A2, B2, L2}} ->
+                  s({node, E2,  A2,  B2, union(L2, BDD1)});
+                {_BDD1 = {node, E1, A1, B1, L1}, BDD2 = {terminal, _X}} ->
+                  s({node, E1,  A1,  B1, union(L1, BDD2)})
               end
           end
       end
@@ -108,19 +122,19 @@ intersect(A, B) ->
             _ ->
               case {A, B} of
                 {{terminal, X}, {terminal, Y}} -> terminal_of(?TERMINAL:intersect(X, Y));
-                {BDD1 = {node, E, A1, B1}, BDD2 = {node, E2, A2, B2}} ->
+                {BDD1 = {node, E, A1, B1, L1}, BDD2 = {node, E2, A2, B2, L2}} ->
                   case ?ELEMENT:compare(E, E2) of
-                    -1 ->
-                      s({node, E, intersect(A1, BDD2), intersect(B1, BDD2)});
                     +0 ->
-                      s({node, E, intersect(A1, A2), intersect(B1, B2)});
+                      s({node, E, intersect(union(A1, L1), union(A2, L2)), intersect(union(B1, L1), union(B2, L2)), empty()});
+                    -1 ->
+                      s({node, E, intersect(A1, BDD2), intersect(B1, BDD2), intersect(L1, BDD2)});
                     +1 ->
-                      s({node, E2, intersect(A2, BDD1), intersect(B2, BDD1)})
+                      s({node, E2, intersect(A2, BDD1), intersect(B2, BDD1), intersect(L2, BDD1)})
                   end;
-                {BDD1 = {terminal, _X}, _BDD2 = {node, E2, A2, B2}} ->
-                  s({node, E2, intersect(A2, BDD1), intersect(B2, BDD1)});
-                {_BDD1 = {node, E1, A1, B1}, BDD2 = {terminal, _X}} ->
-                  s({node, E1, intersect(A1, BDD2), intersect(B1, BDD2)})
+                {BDD1 = {terminal, _X}, _BDD2 = {node, E2, A2, B2, L2}} ->
+                  s({node, E2, intersect(A2, BDD1), intersect(B2, BDD1), intersect(L2, BDD1)});
+                {_BDD1 = {node, E1, A1, B1, L1}, BDD2 = {terminal, _X}} ->
+                  s({node, E1, intersect(A1, BDD2), intersect(B1, BDD2), intersect(L1, BDD2)})
               end
           end
       end
@@ -128,7 +142,7 @@ intersect(A, B) ->
 
 negate({terminal, A}) ->
   s({terminal, ?TERMINAL:negate(A)});
-negate({node, E, B1, B2}) -> s({node, E, s(negate(B1)), s(negate(B2))}).
+negate({node, E, B1, B2, L1}) -> s({node, E, s(negate(union(B1, L1))), s(negate(union(B2, L1))), empty()}).
 
 
 diff(A, B) -> intersect(A, negate(B)).
@@ -157,18 +171,20 @@ get_dnf(Bdd) ->
 dnf(Bdd, {ProcessCoclause, CombineResults}) ->
   do_dnf(Bdd, {ProcessCoclause, CombineResults}, _Pos = [], _Neg = []).
 
-do_dnf({node, Element, Left, Right}, F = {_Process, Combine}, Pos, Neg) ->
+do_dnf({node, Element, Left, Right, LazyUnion}, F = {_Process, Combine}, Pos, Neg) ->
   % heuristic: if Left is positive & 1, skip adding the negated Element to the right path
   % TODO can use the see simplifications done in ty_rec:transform to simplify DNF before processing?
   case {terminal, ?TERMINAL:any()} of
     Left ->
       F1 = fun() -> do_dnf(Left, F, [Element | Pos], Neg) end,
       F2 = fun() -> do_dnf(Right, F, Pos, Neg) end,
-      Combine(F1, F2);
+      F3 = fun() -> do_dnf(LazyUnion, F, Pos, Neg) end,
+      Combine(fun() -> Combine(F1, F2) end, F3);
     _ ->
       F1 = fun() -> do_dnf(Left, F, [Element | Pos], Neg) end,
       F2 = fun() -> do_dnf(Right, F, Pos, [Element | Neg]) end,
-      Combine(F1, F2)
+      F3 = fun() -> do_dnf(LazyUnion, F, Pos, Neg) end,
+      Combine(fun() -> Combine(F1, F2) end, F3)
   end;
 do_dnf({terminal, Terminal}, {Proc, _Comb}, Pos, Neg) ->
   Proc(Pos, Neg, Terminal).
