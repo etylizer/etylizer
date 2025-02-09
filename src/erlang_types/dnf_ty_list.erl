@@ -6,9 +6,9 @@
 
 -export([apply_to_node/3]).
 -export([is_empty_corec/2, normalize_corec/5, substitute/4]).
--export([list/1, all_variables/2, transform/2]).
+-export([list/1]).
 
--include("bdd_node.hrl").
+-include("dnf/bdd_node.hrl").
 
 list(TyList) -> node(TyList).
 

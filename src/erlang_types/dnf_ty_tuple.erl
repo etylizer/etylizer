@@ -5,29 +5,11 @@
 -define(F(Z), fun() -> Z end).
 
 -export([is_empty_corec/2, normalize_corec/6, substitute/4, apply_to_node/3]).
--export([tuple/1, all_variables/2, transform/2, to_singletons/1, phi_corec/3, phi_norm_corec/5]).
+-export([tuple/1, phi_corec/3, phi_norm_corec/5]).
 
--include("bdd_node.hrl").
+-include("dnf/bdd_node.hrl").
 
 tuple(TyTuple) -> node(TyTuple).
-
-to_singletons(TyBDD) ->
-  dnf(TyBDD, {fun to_singletons_coclause/3, fun(F1, F2) -> F1() ++ F2() end}).
-
-to_singletons_coclause(Pos, Neg, T) ->
-  case {Pos, Neg, ty_bool:any()} of
-    {_, _, T} ->
-      % delete the same singletons occurring both as Pos and Neg
-      % does not check whether tuples itself singleton
-      TyTuples = lists:foldr(fun lists:delete/2, Pos, Neg),
-      lists:map(fun(TyTuple) ->
-        Ty = dnf_var_ty_tuple:tuple(tuple(TyTuple)),
-        ty_rec:tuple({default, []}, Ty)
-                end, TyTuples);
-    _ ->
-      []
-  end.
-
 
 is_empty_corec(TyBDD, M) ->
   dnf(TyBDD, {fun(P, N, T) -> is_empty_coclause_corec(P, N, T, M) end, fun is_empty_union/2}).

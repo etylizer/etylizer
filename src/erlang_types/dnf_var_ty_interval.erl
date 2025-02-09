@@ -4,9 +4,9 @@
 -define(TERMINAL, dnf_ty_interval).
 
 -export([is_empty/1, normalize_corec/3, substitute/4]).
--export([var/1, int/1, all_variables/2, transform/2, apply_to_node/3, to_singletons/1]).
+-export([var/1, int/1, apply_to_node/3]).
 
--include("bdd_var.hrl").
+-include("dnf/bdd_var.hrl").
 
 int(Interval) -> terminal(Interval).
 var(Var) -> node(Var).
@@ -23,12 +23,6 @@ normalize_corec(Ty, Fixed, M) -> dnf(Ty, {
 % not recursive, no op substitution
 apply_to_node(Node, _StdMap, _Memo) ->
   Node.
-
-to_singletons(TyBDD) -> dnf(TyBDD, {
-  fun([], [], T) -> dnf_ty_interval:to_singletons(T); (_, _, _) -> [] end,
-  fun erlang:'++'/2
-}).
-
 
 -ifdef(TEST).
 -include_lib("eunit/include/eunit.hrl").

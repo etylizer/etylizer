@@ -5,9 +5,9 @@
 
 -export([apply_to_node/3]).
 -export([is_empty/1, normalize_corec/3, substitute/4]).
--export([var/1, predef/1,  all_variables/2, transform/2]).
+-export([var/1, predef/1]).
 
--include("bdd_var.hrl").
+-include("dnf/bdd_var.hrl").
 
 % generic
 predef(Predef) -> terminal(Predef).
