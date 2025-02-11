@@ -40,9 +40,9 @@ ast_to_erlang_ty(Ty, Sym) ->
   % TODO optimize unification, if needed at all
   % There can be many duplicate type references;
   % these will be substituted with their representative
-  % {UnifiedRef, UnifiedResult} = unify(LocalRef, Result),
-  {M1, _} = Result,
-  {UnifiedRef, UnifiedResult} = {LocalRef, M1},
+  {UnifiedRef, UnifiedResult} = unify(LocalRef, Result),
+  % {M1, _} = Result,
+  % {UnifiedRef, UnifiedResult} = {LocalRef, M1},
   % io:format(user, "Unified Result:~n~p~n", [{UnifiedRef, UnifiedResult}]),
 
   % 3. create new type references and replace temporary ones
@@ -289,43 +289,43 @@ do_convert(T, _Q, _Sym, _M) ->
   erlang:error({"Transformation from ast:ty() to ty_rec:ty() not implemented or malformed type", T}).
 
 
-% -spec unify(temporary_ref(), result()) -> {temporary_ref(), #{temporary_ref() => ty_rec()}}.
-% unify(Ref, {IdToTy, TyToIds}) ->
-%   % map with references to unify, pick representatives
-%   %ToUnify = maps:to_list(#{K => choose_representative(V) || K := V <- TyToIds, length(V) > 1}), 
-%   ToUnify = maps:to_list(maps:filtermap(fun(_K, V) when length(V) =< 1 -> false;(_K, V) -> {true, choose_representative(V)} end, TyToIds)),
-%   % replace equivalent refs with representative
-%   {UnifiedRef, {UnifiedIdToTy, _UnifiedTyToIds}} = unify(Ref, {IdToTy, TyToIds}, ToUnify),
-%   {UnifiedRef, UnifiedIdToTy}.
+-spec unify(temporary_ref(), result()) -> {temporary_ref(), #{temporary_ref() => ty_rec()}}.
+unify(Ref, {IdToTy, TyToIds}) ->
+  % map with references to unify, pick representatives
+  %ToUnify = maps:to_list(#{K => choose_representative(V) || K := V <- TyToIds, length(V) > 1}), 
+  ToUnify = maps:to_list(maps:filtermap(fun(_K, V) when length(V) =< 1 -> false;(_K, V) -> {true, choose_representative(V)} end, TyToIds)),
+  % replace equivalent refs with representative
+  {UnifiedRef, {UnifiedIdToTy, _UnifiedTyToIds}} = unify(Ref, {IdToTy, TyToIds}, ToUnify),
+  {UnifiedRef, UnifiedIdToTy}.
 
-% -spec choose_representative([temporary_ref()]) -> {temporary_ref(), [temporary_ref()]}.
-% choose_representative(Refs) ->
-%   [Representative | Others] = lists:usort(
-%     fun
-%       ({Other, _}, {named_ref, _}) when Other == local_ref; Other == mu_ref -> false;
-%       ({local_ref, _}, {mu_ref, _}) -> false;
-%       ({_, X}, {_, Y}) -> X =< Y
-%     end, 
-%     Refs),
-%   {Representative, Others}.
+-spec choose_representative([temporary_ref()]) -> {temporary_ref(), [temporary_ref()]}.
+choose_representative(Refs) ->
+  [Representative | Others] = lists:usort(
+    fun
+      ({Other, _}, {named_ref, _}) when Other == local_ref; Other == mu_ref -> false;
+      ({local_ref, _}, {mu_ref, _}) -> false;
+      ({_, X}, {_, Y}) -> X =< Y
+    end, 
+    Refs),
+  {Representative, Others}.
 
-% % -spec unify(temporary_ref(), result(), Worklist) -> 
-% %   {temporary_ref(), result(), Worklist} 
-% %   when Worklist :: [{ty_rec(), {temporary_ref(), [temporary_ref()]}}].
-% % TODO utils:everywhere too slow, more efficient unify
-% unify(Ref, {IdToTy, TyToIds}, [{_Ty, {Representative, Duplicates}} | Xs])->
-%   {NewRef, {NewIdToTy, NewTyToIds}} =
-%   utils:everywhere(fun
-%     (RRef = {X, _}) when X == local_ref; X == mu_ref; X == named_ref -> 
-%       case lists:member(RRef, Duplicates) of
-%         true -> {ok, Representative};
-%         false -> error
-%       end;
-%     (_) -> error
-%   end, {Ref, {IdToTy, TyToIds}}),
-%   unify(NewRef, {NewIdToTy, NewTyToIds}, Xs);
-% unify(Ref, Db, [])->
-%   {Ref, Db}.
+% -spec unify(temporary_ref(), result(), Worklist) -> 
+%   {temporary_ref(), result(), Worklist} 
+%   when Worklist :: [{ty_rec(), {temporary_ref(), [temporary_ref()]}}].
+% TODO utils:everywhere too slow, more efficient unify
+unify(Ref, {IdToTy, TyToIds}, [{_Ty, {Representative, Duplicates}} | Xs])->
+  {NewRef, {NewIdToTy, NewTyToIds}} =
+  utils:everywhere(fun
+    (RRef = {X, _}) when X == local_ref; X == mu_ref; X == named_ref -> 
+      case lists:member(RRef, Duplicates) of
+        true -> {ok, Representative};
+        false -> error
+      end;
+    (_) -> error
+  end, {Ref, {IdToTy, TyToIds}}),
+  unify(NewRef, {NewIdToTy, NewTyToIds}, Xs);
+unify(Ref, Db, [])->
+  {Ref, Db}.
 
 
 -ifdef(TEST).
