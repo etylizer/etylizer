@@ -54,18 +54,19 @@ is_empty_coclause_corec(AllPos, Neg, T, M) ->
 % (A -> B) ∧ (A -> C) = (A -> B ∧ C)
 % (A -> C) ∧ (B -> C) = (A ∨ B -> C)
 merge_pos([]) -> [];
-merge_pos([P | Rest]) ->
-  NewPos = merge_pos_fun(P, Rest),
-  % TODO: Find a better way to check that a merge happened
-  MergedPos = case Rest == NewPos of
-    % Nothing changed, continue with the next function
-    true -> [P | merge_pos(Rest)];
-    % List changed, i.e. merge happened. Don't need P
-    _ ->
-      %io:format(user, "Functions merged!~n", []),
-      merge_pos(NewPos)
-  end,
-  MergedPos.
+merge_pos(Z) -> Z.
+% merge_pos([P | Rest]) ->
+%   NewPos = merge_pos_fun(P, Rest),
+%   % TODO: Find a better way to check that a merge happened
+%   MergedPos = case Rest == NewPos of
+%     % Nothing changed, continue with the next function
+%     true -> [P | merge_pos(Rest)];
+%     % List changed, i.e. merge happened. Don't need P
+%     _ ->
+%       %io:format(user, "Functions merged!~n", []),
+%       merge_pos(NewPos)
+%   end,
+%   MergedPos.
 
 % Merges a single function type with a list of function types
 merge_pos_fun(_, []) -> [];

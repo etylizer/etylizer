@@ -14,12 +14,15 @@
 function(Tuple) -> terminal(Tuple).
 var(Var) -> node(Var).
 
-normalize(Size, Ty, Fixed, M) -> 
+is_empty_corec(TyBDD, M) -> dnf(TyBDD, {fun(P, N, T) -> is_empty_coclause_corec(P, N, T, M) end, fun is_empty_union/2}).
+is_empty_coclause_corec(_Pos, _Neg, T, M) -> dnf_ty_function:is_empty_corec(T, M).
+
+normalize_corec(Size, Ty, Fixed, M) -> 
   % Simplifies DNF
   Dnf = simplify(get_full_dnf(Ty)),
   lists:foldl(fun({Pos, Neg, DnfTy}, Acc) ->
     % Normalization also merges function types, simplifying the type
-    OtherLazy = fun() -> normalize_coclause(Size, Pos, Neg, DnfTy, Fixed, M) end,
+    OtherLazy = fun() -> dnf_ty_function:normalize_corec(Size, DnfTy, Pos, Neg, Fixed, M) end,
     constraint_set:meet(Acc, OtherLazy)
   end, [[]], Dnf).
 
@@ -42,10 +45,19 @@ simplify(DnfFun) ->
   Arity = length(ty_function:domains(F)),
 
   % Remove 0 summands
-  DnfFun0 = lists:filter(fun({Pvar, Nvar, Pos, Neg}) ->
-      Ty = ty_rec:of_function_dnf(Arity, Pvar, Nvar, Pos, Neg),
-      not ty_rec:is_empty(Ty)
-  end, DnfFun),
+  DnfFun0 = DnfFun,
+  % lists:filter(fun({Pvar, Nvar, Pos, Neg}) ->
+  %     Ty = ty_rec:of_function_dnf(Arity, Pvar, Nvar, Pos, Neg),
+  %     not ty_rec:is_empty(Ty)
+  % end, DnfFun),
+
+  FF = fun(T, L1, L2) ->
+    case length(L1) /= length(L2) of
+      true -> io:format(user,"(~p) ~p -> ~p~n", [T, length(L1), length(L2)]);
+      _ -> ok
+    end
+  end,
+  FF("I", DnfFun, DnfFun0),
 
   % Remove useless summands
   % TODO: Find new test case
@@ -57,13 +69,10 @@ simplify(DnfFun) ->
     TyWithout = ty_rec:of_function_dnfs(Arity, D1),
     TyWith = ty_rec:of_function_dnfs(Arity, DnfFun0),
 
-    % TODO Remove
-    case ty_rec:is_subtype(TyWith, TyWithout) of true -> 
-      io:format(user, "Summand is useless!~n~s~nis contained in bigger type~n~s~n", [ty_rec:print(TyWith), ty_rec:print(TyWithout)]),
-      false;
-      _ -> true
-    end
+    not ty_rec:is_subtype(TyWith, TyWithout)
   end, DnfFun0),
+
+  FF("II", DnfFun0, DnfFunSum),
 
   % Remove useless literals
   DnfFunLit = lists:map(fun({Pvar, Nvar, Pos, Neg}) ->
@@ -90,17 +99,9 @@ simplify(DnfFun) ->
     {Pvar, Nvar, NewPos, NewNeg}
   end, DnfFunSum),
 
-  % TODO Remove
-  begin
-    PosBefore = lists:foldl(fun({_, _, Pos, Neg}, Sum) -> length(Pos) + length(Neg) + Sum end, 0, DnfFunSum),
-    PosAfter = lists:foldl(fun({_, _, Pos, Neg}, Sum) -> length(Pos) + length(Neg) + Sum end, 0, DnfFunLit),
-    case PosBefore > PosAfter of
-      true -> io:format(user, "Removed ~p useless literals~n", [PosBefore - PosAfter]);
-      _ -> ok
-    end
-  end,
+  FF("III", DnfFunSum, DnfFunLit),
 
-  % Merge domains and codomains => This is done in dnf_ty_tuple
+  % Merge domains and codomains => This is done in dnf_ty_function
 
   % TODO apply recursively? (not needed for now)
 

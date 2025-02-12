@@ -14,7 +14,7 @@
 -compile({no_auto_import, [node/1]}).
 
 -export([get_dnf/1, any/0, empty/0, equal/2, node/1, terminal/1, compare/2, union/2, intersect/2, negate/1]).
--export([to_dnf/1]).
+-export([is_empty_union/2]).
 
 -include("generic_dnf.hrl").
 
@@ -171,14 +171,3 @@ do_dnf({node, Element, Left, Right}, F = {_Process, Combine}, Pos, Neg) ->
   end;
 do_dnf({terminal, Terminal}, {Proc, _Comb}, Pos, Neg) ->
   Proc(Pos, Neg, Terminal).
-
-to_dnf([]) -> ?TERMINAL:empty();
-to_dnf([{Pos, Neg} | Rest]) ->
-  P = [node(P) || P <- Pos],
-  N = [node(N) || N <- Neg],
-
-  Pclause = lists:foldl(fun(E, Acc) -> intersect(E, Acc) end, ?TERMINAL:any(), P),
-  Nclause = lists:foldl(fun(E, Acc) -> intersect(negate(E), Acc) end, ?TERMINAL:any(), N),
-  Clause = intersect(Pclause, Nclause),
-  union(Clause, to_dnf(Rest)).
-  
