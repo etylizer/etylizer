@@ -9,10 +9,12 @@
 -export([empty/0, any/0]).
 -export([union/2, intersect/2, diff/2, negate/1, is_any/1]).
 -export([is_empty/1, eval/1, normalize_corec/5, substitute/4, all_variables/2, to_singletons/1]).
-
+-export([get_dnf/1]).
 
 -export([interval/2, cointerval/2]).
 -export([raw_transform/2, transform/2, map_pi/1, has_ref/2]).
+
+get_dnf(Ty) -> Ty.
 
 has_ref(_, _) -> false.
 

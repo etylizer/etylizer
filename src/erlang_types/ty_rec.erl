@@ -340,7 +340,7 @@ s_empty() ->
     map = dnf_var_ty_map:empty()
   }.
 
-of_function_dnfs(Arity, []) -> ty_rec:empty();
+of_function_dnfs(_, []) -> ty_rec:empty();
 of_function_dnfs(Arity, [{A, B, C, D} | Rest]) -> 
   Ty = of_function_dnf(Arity, A, B, C, D),
   union(Ty, of_function_dnfs(Arity, Rest)).
