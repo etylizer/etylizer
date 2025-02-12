@@ -8,6 +8,9 @@
 -export([transform/2, raw_transform/2]).
 -export([finite/1, cofinite/1]).
 -export([has_ref/2, to_singletons/1, normalize_corec/5, substitute/4, all_variables/2]).
+-export([get_dnf/1]).
+
+get_dnf(Ty) -> Ty.
 
 has_ref(_, _) -> false.
 all_variables(_, _) -> [].
