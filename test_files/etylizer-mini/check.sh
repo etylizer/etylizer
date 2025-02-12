@@ -12,9 +12,13 @@ function run_ety() {
     ../../ety --build --type-overlay $OVERLAY --force --level $LOGLEVEL -P . -I src --no-deps "$@" || exit 1
 }
 
+# 6/6
 run_ety src/varenv.erl
+
+# 6/6
 run_ety src/varenv_local.erl
 
+# 36/49
 # unconsult/2, mkdirs/1: #12
 # hash_file/1: Name error: hash_sha1/1 undefined
 # diff_terms/3: Name error: sformat/3 undefined
@@ -25,8 +29,6 @@ run_ety src/varenv_local.erl
 #  quit/2
 # try support:
 #  timeout/2 file_get_lines/1 sformat/2
-# ignored because of missing support for binary:
-#   sformat_raw/2, diff_terms/3, mkdirs/1
 # hard:
 #  everywhere/2 
 #  everything/2
@@ -37,18 +39,52 @@ run_ety \
     --ignore timeout/2 --ignore mingle/5 --ignore unconsult/2 \
     src/utils.erl
 
+# 3/5
 # with_tmp_file/4 and with_tmp_dir/4 because they use try
 run_ety \
     --ignore with_tmp_file/4 --ignore with_tmp_dir/4 \
     src/tmp.erl
 
+# 0/0
 run_ety src/t.erl
 
+# 17/17
 run_ety src/errors.erl
 
-# skip: too slow because of inference -> infer for single functions first, not everything at once
-# run_ety src/stdtypes.erl
+# 29/55
+# type error: builtin_funs/0
+# type error: mk_builtin_funs/1
+# others: too slow
+run_ety src/stdtypes.erl \
+  --ignore extra_funs/0 \
+  --ignore tmu/2 \
+  --ignore tinter/1 \
+  --ignore tinter/2 \
+  --ignore tfun/2 \
+  --ignore tfun1/2 \
+  --ignore tfun2/3 \
+  --ignore tatom/0 \
+  --ignore tmap/1 \
+  --ignore tmap/2 \
+  --ignore tmap_req/2 \
+  --ignore tmap_field_opt/2 \
+  --ignore tmap_field_req/2 \
+  --ignore tfun_full/2 \
+  --ignore ttuple/1 \
+  --ignore ttuple1/1 \
+  --ignore ttuple2/2 \
+  --ignore tintersect/1 \
+  --ignore tunion/1 \
+  --ignore tunion/2 \
+  --ignore tspecial_any/0 \
+  --ignore expand_predef_alias/1 \
+  --ignore tyscm/1 \
+  --ignore tyscm/2 \
+  --ignore builtin_ops/0 \
+  --ignore builtin_funs/0 \
+  --ignore mk_builtin_funs/1
 
+# 6/43
 # trans_tys/3 timeout
 # trans_ty_map_assoc/3 timeout
 # shallow_remove_match/1 timeout
@@ -130,13 +166,16 @@ run_ety src/ast_transform.erl \
     --ignore trans_spec_ty/3 \
     --ignore build_funenv/2
 
+# 9/10
 # to_loc/2 : type error
 run_ety \
     --ignore to_loc/2 \
     src/ast.erl
 
+# 2/2
 run_ety src/ast_erl.erl
 
+# 1/5
 # record_ty_from_decl/2: timeout
 # lookup_field_ty/3: timeout
 # lookup_field_index/3: timeout
@@ -148,6 +187,7 @@ run_ety \
     --ignore lookup_field_index/3 \
     src/records.erl
 
+# 1/5
 # timeout: parse_file/2 parse_file_or_die/2
 # type error: parse_file_or_die/1
 # try: parse_transform/2
@@ -158,6 +198,7 @@ run_ety \
     --ignore parse_transform/2 \
     src/parse.erl
 
+# 5/12
 # BUG: macro_log/5
 # type error: allow/1 (#12)
 # type error: parse_level/1
@@ -169,14 +210,14 @@ run_ety \
     --ignore get_logger_pid --ignore shutdown --ignore file_logger --ignore log_to_file \
     src/log.erl
 
+# 1/4
 # type error: modname_from_path/1 referenced_modules/1 referenced_variables/1
-# timeout: remove_locs/1
+# slow: remove_locs/1
 run_ety \
     --ignore modname_from_path/1 \
     --ignore referenced_modules/1 \
     --ignore referenced_variables/1 \
-    --ignore remove_locs/1 \
     src/ast_utils.erl
 
-# inference slow
-# run_ety src/ast_erl.erl
+# 2/2
+run_ety src/ast_erl.erl

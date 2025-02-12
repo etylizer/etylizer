@@ -13,7 +13,9 @@
 % hide built-in Erlang node function
 -compile({no_auto_import, [node/1]}).
 
--export([raw_transform/2, all_variables/1, has_ref/2, get_dnf/1, any/0, empty/0, equal/2, node/1, terminal/1, compare/2, union/2, intersect/2, negate/1, diff/2]).
+-export([get_dnf/1, any/0, empty/0, equal/2, node/1, terminal/1, compare/2, union/2, intersect/2, negate/1]).
+
+-include("generic_dnf.hrl").
 
 % these are defined here so the IDE does not complain
 -ifndef(ELEMENT).
@@ -130,9 +132,6 @@ negate({terminal, A}) ->
   s({terminal, ?TERMINAL:negate(A)});
 negate({node, E, B1, B2}) -> s({node, E, s(negate(B1)), s(negate(B2))}).
 
-
-diff(A, B) -> intersect(A, negate(B)).
-
 s_is_any({terminal, Ty}) -> ?TERMINAL:equal(Ty, ?TERMINAL:any());
 s_is_any(_) -> false.
 
@@ -153,7 +152,6 @@ get_dnf(Bdd) ->
     dnf(Bdd, {fun(P, N, T) -> [{P, N, T}] end, fun(C1, C2) -> C1() ++ C2() end})
   ).
 
-
 dnf(Bdd, {ProcessCoclause, CombineResults}) ->
   do_dnf(Bdd, {ProcessCoclause, CombineResults}, _Pos = [], _Neg = []).
 
@@ -172,53 +170,3 @@ do_dnf({node, Element, Left, Right}, F = {_Process, Combine}, Pos, Neg) ->
   end;
 do_dnf({terminal, Terminal}, {Proc, _Comb}, Pos, Neg) ->
   Proc(Pos, Neg, Terminal).
-
-
-has_ref(Ty, Ref) ->
-  dnf(Ty, {
-    fun
-      (P,N,T) ->
-        Fun = fun(F) -> ?ELEMENT:has_ref(F, Ref) end,
-        ?TERMINAL:has_ref(T, Ref) orelse
-          lists:any(Fun, P) orelse
-          lists:any(Fun, N)
-    end,
-    fun(F1, F2) -> F1() orelse F2() end
-  }).
-
-all_variables(Ty) -> all_variables(Ty, #{}).
-all_variables(Ty, M) ->
-  dnf(Ty, {
-    fun
-      (P,N,T) ->
-        ?TERMINAL:all_variables(T, M) ++
-          lists:foldl(fun(L, Acc) -> Acc ++ ?ELEMENT:all_variables(L, M) end, [], P) ++
-          lists:foldl(fun(L, Acc) -> Acc ++ ?ELEMENT:all_variables(L, M) end, [], N)
-    end,
-    fun(F1, F2) -> lists:usort(F1() ++ F2()) end
-  }).
-
-
-transform(Ty, Ops = #{negate := Negate, intersect := Intersect, union := Union}) ->
-  dnf(Ty, {
-    fun
-      (P,N,T) ->
-        P1 = ?TERMINAL:transform(T, Ops),
-        P2 = [?ELEMENT:transform(V, Ops) || V <- P],
-        P3 = [Negate(?ELEMENT:transform(V, Ops)) || V <- N],
-        Intersect([P1] ++ P2 ++ P3)
-    end,
-    fun(F1, F2) -> Union([F1(), F2()]) end
-  }).
-
-raw_transform(Ty, Ops = #{negate := Negate, intersect := Intersect, union := Union}) ->
-  dnf(Ty, {
-    fun
-      (P,N,T) ->
-        P1 = ?TERMINAL:raw_transform(T, Ops),
-        P2 = [?ELEMENT:raw_transform(V, Ops) || V <- P],
-        P3 = [Negate(?ELEMENT:raw_transform(V, Ops)) || V <- N],
-        Intersect([P1] ++ P2 ++ P3)
-    end,
-    fun(F1, F2) -> Union([F1(), F2()]) end
-  }).

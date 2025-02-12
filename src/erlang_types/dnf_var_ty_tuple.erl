@@ -5,10 +5,10 @@
 -define(F(Z), fun() -> Z end).
 
 -export([normalize_corec/4, substitute/4]).
--export([var/1, tuple/1, all_variables/2, transform/2, is_empty_corec/2, apply_to_node/3]).
+-export([var/1, tuple/1, is_empty_corec/2, apply_to_node/3]).
 
 % implementations provided by bdd_var.hrl
--include("bdd_var.hrl").
+-include("dnf/bdd_var.hrl").
 
 tuple(Tuple) -> terminal(Tuple).
 var(Var) -> node(Var).

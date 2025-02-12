@@ -12,14 +12,14 @@
 -export([apply_to_node/3]).
 -export([normalize_corec/6, substitute/4, is_empty_corec/2]).
 
--export([function/1, all_variables/2, transform/2]).
+-export([function/1]).
 
 %-type ty_ref() :: {ty_ref, integer()}.
 -type dnf_function() :: term().
 -type ty_function() :: dnf_function().
 -type dnf_ty_function() :: term().
 
--include("bdd_node.hrl").
+-include("dnf/bdd_node.hrl").
 
 -spec function(ty_function()) -> dnf_ty_function().
 function(TyFunction) -> node(TyFunction).

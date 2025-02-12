@@ -5,6 +5,7 @@
 -import(test_utils, [is_subtype/2, is_equiv/2, named/2]).
 
 i(A,B) -> stdtypes:tintersect([A,B]).
+u(A,B) -> stdtypes:tunion([A,B]).
 
 empty_tuples_edge_cases_test() ->
   S = stdtypes:ttuple([]),
@@ -69,3 +70,47 @@ pos_var_prod_test() ->
   false = is_subtype( S, T ),
   false = is_subtype( T, S ),
   ok.
+
+var_subsumption_test() ->
+  S = 
+  u(
+    i(stdtypes:ttuple([stdtypes:tatom(hello)]), stdtypes:tvar(alpha)),
+    stdtypes:ttuple([stdtypes:tatom(hello)])
+  ),
+  T = stdtypes:ttuple([stdtypes:tatom(hello)]),
+
+  true = is_subtype( S, T ),
+  true = is_subtype( T, S ),
+  ok.
+
+var_subsumption_2_test() ->
+  S = 
+  i(
+    u(
+      stdtypes:tnegate(stdtypes:ttuple([stdtypes:tatom(hello)])),
+      i(stdtypes:ttuple([stdtypes:tany()]), stdtypes:tvar(beta))
+    ),
+   stdtypes:tnegate(stdtypes:ttuple([stdtypes:tatom(hello)])) 
+  ),
+  T = stdtypes:tnegate(stdtypes:ttuple([stdtypes:tatom(hello)])),
+
+  true = is_subtype( S, T ),
+  true = is_subtype( T, S ),
+  ok.
+
+var_subsumption_3_test() ->
+  % alpha & !beta & SomeTuple < alpha & SomeTuple
+  S = i(stdtypes:ttuple([stdtypes:tatom(a)]), stdtypes:tvar(alpha)),
+  T = i(
+    stdtypes:ttuple([stdtypes:tatom(a)]), 
+    i(
+      stdtypes:tnegate(stdtypes:tvar(beta)), 
+      stdtypes:tvar(alpha)
+    )
+  ),
+
+  false = is_subtype( S, T ),
+  true = is_subtype( T, S ),
+  ok.
+
+  

@@ -1,8 +1,6 @@
 -module(dnf_ty_predef).
 
 %% Predef representation
-
-
 -export([compare/2, equal/2]).
 
 

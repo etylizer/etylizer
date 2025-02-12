@@ -7,9 +7,9 @@
 
 -export([is_empty_corec/2]).
 -export([normalize_corec/4, substitute/4]).
--export([var/1, function/1, all_variables/2, transform/2]).
+-export([var/1, function/1]).
 
--include("bdd_var.hrl").
+-include("dnf/bdd_var.hrl").
 
 function(Tuple) -> terminal(Tuple).
 var(Var) -> node(Var).

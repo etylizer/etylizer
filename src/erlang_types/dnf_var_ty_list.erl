@@ -4,9 +4,9 @@
 -define(TERMINAL, dnf_ty_list).
 
 -export([is_empty_corec/2, normalize_corec/3, substitute/4]).
--export([var/1, list/1, all_variables/2, transform/2, apply_to_node/3]).
+-export([var/1, list/1, apply_to_node/3]).
 
--include("bdd_var.hrl").
+-include("dnf/bdd_var.hrl").
 
 % fully generic
 list(List) -> terminal(List).

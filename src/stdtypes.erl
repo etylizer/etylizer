@@ -61,6 +61,7 @@
 
 %% Builtin types
 
+-spec is_tlist(ast:ty()) -> boolean().
 is_tlist({improper_list, _, _}) -> true;
 is_tlist({negation, {improper_list, _, _}}) -> true;
 is_tlist(_) -> false.
@@ -123,63 +124,83 @@ tmap_field_req(K, V) -> {map_field_req, K, V}.
 ttuple_n(Size) ->
     {tuple, [{predef, any} || _ <- lists:seq(1, Size)]}.
 
+-spec tarrow_n(pos_integer()) -> ast:ty().
 tarrow_n(Size) ->
     {fun_full, [{predef, none} || _ <- lists:seq(1, Size)], {predef, any}}.
 
+-spec tfun_full([ast:ty()], ast:ty()) -> ast:ty().
 tfun_full(Args, Result) ->
     {fun_full, Args, Result}.
 
+-spec ttuple([ast:ty()]) -> ast:ty().
 ttuple(Components) ->
     {tuple, Components}.
 
+-spec ttuple1(ast:ty()) -> ast:ty().
 ttuple1(T) ->
     {tuple, [T]}.
 
+-spec ttuple2(ast:ty(), ast:ty()) -> ast:ty().
 ttuple2(T, U) ->
     {tuple, [T, U]}.
 
+-spec tintersect([ast:ty()]) -> ast:ty().
 tintersect(Components) ->
     {intersection, Components}.
 
+-spec tnegate(ast:ty()) -> ast:ty().
 tnegate(Ty) ->
     {negation, Ty}.
 
+-spec tnot(ast:ty()) -> ast:ty().
 tnot(Ty) -> tnegate(Ty).
 
+-spec tunion([ast:ty()]) -> ast:ty().
 tunion(Components) ->
     {union, Components}.
 
+-spec tunion(ast:ty(), ast:ty()) -> ast:ty().
 tunion(A, B) -> tunion([A, B]).
 
+-spec any() -> ast:ty().
 any() ->
     {predef, any}.
 
+-spec empty() -> ast:ty().
 empty() ->
     {predef, none}.
 
+-spec tany() -> ast:ty().
 tany() ->
     {predef, any}.
 
+-spec tnone() -> ast:ty().
 tnone() ->
     {predef, none}.
 
+-spec ttuple_any() -> ast:ty().
 ttuple_any() ->
     {tuple_any}.
 
+-spec tfun_any() -> ast:ty().
 tfun_any() ->
     {fun_simple}.
 
+-spec tmap_any() -> ast:ty().
 tmap_any() ->
     {map_any}.
 
+-spec trange_any() -> ast:ty().
 trange_any() ->
     {predef, integer}.
 
+-spec trange(integer() | '*', integer() | '*') -> ast:ty().
 trange(From, To) ->
     {range, From, To}.
 
 %% Builtin type aliases
 
+-spec tspecial_any() -> ast:ty().
 tspecial_any() ->
     tunion([
         {empty_list},
@@ -189,9 +210,11 @@ tspecial_any() ->
         {predef, reference}
     ]).
 
+-spec tlist_any() -> ast:ty().
 tlist_any() ->
     {improper_list, {predef, any}, {predef, any}}.
 
+-spec tlist_improper(ast:ty(), ast:ty()) -> ast:ty().
 tlist_improper(A, B) ->
     {improper_list, A, B}.
 
@@ -199,6 +222,7 @@ tlist_improper(A, B) ->
 tnonempty_improper_list(A, B) ->
     {nonempty_improper_list, A, B}.
 
+-spec tempty_list() -> ast:ty().
 tempty_list() -> {empty_list}.
 
 -spec tnonempty_list(ast:ty()) -> ast:ty().

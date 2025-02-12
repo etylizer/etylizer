@@ -8,9 +8,9 @@
 -define(F(Z), fun() -> Z end).
 
 -export([is_empty_corec/2, normalize_corec/5, substitute/4, apply_to_node/3]).
--export([map/1, all_variables/2, transform/2]).
+-export([map/1]).
 
--include("bdd_node.hrl").
+-include("dnf/bdd_node.hrl").
 
 map(TyMap) -> node(TyMap).
 
