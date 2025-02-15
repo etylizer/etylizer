@@ -11,9 +11,9 @@
 % early return if constraints are found to be satisfiable
 % does not solve the equations
 is_tally_satisfiable(Constraints, FixedVars) ->
-  % io:format(user,"TALLY~n~s~n", [set_of_constraint_sets:print(Constraints)]),
-  Normalized = ?TIME(tally_normalize, tally_normalize(Constraints, FixedVars)),
-  % io:format(user,"NORM~n", []),
+  io:format(user,"TALLY~n~s~n", [set_of_constraint_sets:print(Constraints)]),
+  (Normalized) = ?TIME(tally_normalize, tally_normalize(Constraints, FixedVars)),
+  io:format(user,"NORM~n~s~n", [print(Normalized)]),
   Saturated = ?TIME(tally_is_satisfiable, tally_saturate_until_satisfiable(Normalized, FixedVars)),
   % sanity against full tally calculation
   ?SANITY(tally_satisfiable_sound, case {tally_saturate(Normalized, FixedVars), Saturated} of {[], false} -> ok; {[_ | _], true} -> ok end),
@@ -131,3 +131,7 @@ apply_substitution(Ty, Substitutions) ->
              end,
   lists:foldl(SubstFun, Ty, Substitutions).
 
+print([Xs]) ->
+  string:join(
+    [io_lib:format("~s < ~p < ~s", [ty_rec:print(T1), Name, ty_rec:print(T2)]) || {{var, name, Name}, T1, T2} <- Xs]
+    , "\n").
