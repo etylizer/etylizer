@@ -15,7 +15,7 @@ filtermap_test_() ->
     ecache:reset_all(),
     {ok, [Cons]} = file:consult("test_files/tally/filtermap_hard.config"),
     {ok, [Tab]} = file:consult("test_files/tally/filtermap_hard.symtab"),
-    test_utils:test_tally_satisfiable( true, Cons, [], Tab),
+    test_utils:test_tally_satisfiable( true, Cons, ['T'], Tab),
     ok
                                          end}}.
 tatom_test_() ->
