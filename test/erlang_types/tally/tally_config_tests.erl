@@ -10,6 +10,14 @@
                    tmap/1, tmap_any/0, tmap_field_opt/2, tmap_field_req/2
                   ]).
 
+filtermap_test_() ->
+  {timeout, 15, {"filtermap", fun() ->
+    ecache:reset_all(),
+    {ok, [Cons]} = file:consult("test_files/tally/filtermap_hard.config"),
+    {ok, [Tab]} = file:consult("test_files/tally/filtermap_hard.symtab"),
+    test_utils:test_tally_satisfiable( true, Cons, [], Tab),
+    ok
+                                         end}}.
 tatom_test_() ->
   {timeout, 15, {"guard", fun() ->
     ecache:reset_all(),
