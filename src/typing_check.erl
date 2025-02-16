@@ -58,6 +58,7 @@ ensure_type_supported(Loc, T) ->
 % FORALL A . T1 /\ ... /\/ Tn where the Ti are function types
 -spec check(ctx(), ast:fun_decl(), ast:ty_scheme()) -> ok.
 check(Ctx, Decl = {function, Loc, Name, Arity, _}, PolyTy) ->
+    T0 = erlang:timestamp(),
     ?LOG_INFO("Type checking ~w/~w at ~s against type ~s",
               Name, Arity, ast:format_loc(Loc), pretty:render_tyscheme(PolyTy)),
     FunStr = utils:sformat("~w/~w", Name, Arity),
@@ -92,7 +93,8 @@ check(Ctx, Decl = {function, Loc, Name, Arity, _}, PolyTy) ->
     UnmatchedEverywhere = sets:intersection(UnmatchedList),
     case sets:to_list(UnmatchedEverywhere) of
         [] ->
-            ?LOG_INFO("Type ok for ~w/~w at ~s", Name, Arity, ast:format_loc(Loc)),
+            Tend = timer:now_diff(erlang:timestamp(), T0) / 1000,
+            ?LOG_INFO("Type ok for ~w/~w at ~s in~nTime: ~p", Name, Arity, ast:format_loc(Loc), Tend),
             ok;
         [First | _Rest] ->
             report_tyerror(FunStr, redundant_branch, First, "")

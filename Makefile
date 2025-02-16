@@ -20,7 +20,8 @@ test: build testtest
 	@echo "Checking syntax transformation for source code of type checker ..."
 	./_build/default/bin/ety --sanity --no-type-checking -I ./src ./src/*.erl
 	@echo "Running case study ..."
-	ETY_CASE_STUDY_LOGLEVEL=warn test_files/etylizer-mini/check.sh
+	ETY_CASE_STUDY_LOGLEVEL=info test_files/etylizer-mini/check-std.sh
+	ETY_CASE_STUDY_LOGLEVEL=info test_files/etylizer-mini/check.sh
 
 testtest:
 	@echo "Running unit tests for tests ..."

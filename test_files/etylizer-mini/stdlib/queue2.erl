@@ -17,7 +17,7 @@
 %% 
 %% %CopyrightEnd%
 %%
--module(queue).
+-module(queue2).
 
 %% Creation, inspection and conversion
 -export([new/0,is_queue/1,is_empty/1,len/1,to_list/1,from_list/1,member/2]).

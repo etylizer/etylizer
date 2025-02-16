@@ -23,12 +23,14 @@ reset() ->
     erlang:put(ast_ty_cache, #{}),
     ok.
 
+-spec unfold_intersection([ast:ty()], [ast:ty()]) -> [ast:ty()].
 unfold_intersection([], All) -> All;
 unfold_intersection([{intersection, Components} | Rest], All) ->
     unfold_intersection(Components ++ Rest, All);
 unfold_intersection([X | Rest], All) ->
     unfold_intersection(Rest, All ++ [X]) .
 
+-spec unfold_union([ast:ty()], [ast:ty()]) -> [ast:ty()].
 unfold_union([], All) -> All;
 unfold_union([{union, Components} | Rest], All) ->
     unfold_union(Components ++ Rest, All);
@@ -69,6 +71,7 @@ mk_intersection(Tys) ->
             end
     end.
 
+-spec mk_diff(ast:ty(), ast:ty()) -> ast:ty().
 mk_diff(T1, T2) ->
    mk_intersection([T1, mk_negation(T2)]).
 

@@ -3,12 +3,10 @@ Document all changes necessary to get the source code working
 
 - explicitly specify record arguments that have default values (we do not have support for
   default values) #200
-- add some type annotations to stdtypes, otherwise definitions cannot be used from other modules
 - fix map_opt/3, it's type was not correct.
-- overlays for several functions using binary
+- overlays for imprecise list functions
 - overlay for erlang:element/2
-- spec for utils:mingle/5 and utils:is_same_file (we have to ignore these functions because
-  of missing support for binary)
-- Logging: two parameters instead of all in one list. See commit
-  ff9c856c8db724682237c4f99265d3f21f7eee37
+- spec for utils:mingle/5 and utils:is_same_file 
+- Logging: two parameters instead of all in one list. See commit ff9c856c8db724682237c4f99265d3f21f7eee37
 - Replace list comprehension with lists:map
+- removed reference for self module 

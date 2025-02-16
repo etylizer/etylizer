@@ -64,7 +64,7 @@ parse_file(Path, Opts) ->
     end.
 
 -spec parse_file_or_die(string()) -> [ast_erl:form()].
-parse_file_or_die(Path) -> parse_file_or_die(Path, #parse_opts{}).
+parse_file_or_die(Path) -> parse_file_or_die(Path, #parse_opts{includes = [], defines = [], verbose = true}).
 
 -spec parse_file_or_die(string(), parse_opts()) -> [ast_erl:form()].
 parse_file_or_die(Path, Opts) ->

@@ -69,21 +69,21 @@ merge_pos(Z) -> Z.
 %   MergedPos.
 
 % Merges a single function type with a list of function types
-merge_pos_fun(_, []) -> [];
-merge_pos_fun({Domains1, Codomain1}, Pos) ->
-  % For now just check if the list has the same length
-  lists:map(fun({Domains2, Codomain2}) ->
-    case {ty_rec:is_equivalent(Domains1, Domains2), ty_rec:is_equivalent(Codomain1, Codomain2)} of
-      % They are the same function
-      {true, true} -> {Domains1, Codomain1};
-      % Domains are equal
-      {true, _} -> {Domains1, ty_rec:intersect(Codomain1, Codomain2)};
-      % Codomains are equal
-      {_, true} -> {ty_rec:union(Domains1, Domains2), Codomain1};
-      % No equivalence
-      _ -> {Domains2, Codomain2}
-      end
-  end, Pos).
+% merge_pos_fun(_, []) -> [];
+% merge_pos_fun({Domains1, Codomain1}, Pos) ->
+%   % For now just check if the list has the same length
+%   lists:map(fun({Domains2, Codomain2}) ->
+%     case {ty_rec:is_equivalent(Domains1, Domains2), ty_rec:is_equivalent(Codomain1, Codomain2)} of
+%       % They are the same function
+%       {true, true} -> {Domains1, Codomain1};
+%       % Domains are equal
+%       {true, _} -> {Domains1, ty_rec:intersect(Codomain1, Codomain2)};
+%       % Codomains are equal
+%       {_, true} -> {ty_rec:union(Domains1, Domains2), Codomain1};
+%       % No equivalence
+%       _ -> {Domains2, Codomain2}
+%       end
+%   end, Pos).
 
 is_empty_cont_corec(_, _, [], _M) -> false;
 is_empty_cont_corec(BigSTuple, P, [Function | N], M) ->

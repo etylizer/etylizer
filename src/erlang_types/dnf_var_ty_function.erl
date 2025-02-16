@@ -51,13 +51,13 @@ simplify(DnfFun) ->
   %     not ty_rec:is_empty(Ty)
   % end, DnfFun),
 
-  FF = fun(T, L1, L2) ->
-    case length(L1) /= length(L2) of
-      true -> io:format(user,"(~p) ~p -> ~p~n", [T, length(L1), length(L2)]);
-      _ -> ok
-    end
-  end,
-  FF("I", DnfFun, DnfFun0),
+  % FF = fun(T, L1, L2) ->
+  %   case length(L1) /= length(L2) of
+  %     true -> io:format(user,"(~p) ~p -> ~p~n", [T, length(L1), length(L2)]);
+  %     _ -> ok
+  %   end
+  % end,
+  % FF("I", DnfFun, DnfFun0),
 
   % Remove useless summands
   % TODO: Find new test case
@@ -72,7 +72,7 @@ simplify(DnfFun) ->
     not ty_rec:is_subtype(TyWith, TyWithout)
   end, DnfFun0),
 
-  FF("II", DnfFun0, DnfFunSum),
+  % FF("II", DnfFun0, DnfFunSum),
 
   % Remove useless literals
   DnfFunLit = lists:map(fun({Pvar, Nvar, Pos, Neg}) ->
@@ -99,7 +99,7 @@ simplify(DnfFun) ->
     {Pvar, Nvar, NewPos, NewNeg}
   end, DnfFunSum),
 
-  FF("III", DnfFunSum, DnfFunLit),
+  % FF("III", DnfFunSum, DnfFunLit),
 
   % Merge domains and codomains => This is done in dnf_ty_function
 

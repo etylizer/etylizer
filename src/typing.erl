@@ -16,6 +16,7 @@ new_ctx(Tab, Overlay, Sanity) ->
 % Checks all forms of a module
 -spec check_forms(ctx(), string(), ast:forms(), sets:set(string()), sets:set(string())) -> ok.
 check_forms(Ctx, FileName, Forms, Only, Ignore) ->
+    T0 = erlang:timestamp(),
     ExtTab = symtab:extend_symtab(FileName, Forms, Ctx#ctx.symtab, Ctx#ctx.overlay_symtab),
     ExtCtx = Ctx#ctx { symtab = ExtTab },
     ?LOG_DEBUG("Only: ~200p", sets:to_list(Only)),
@@ -107,8 +108,9 @@ check_forms(Ctx, FileName, Forms, Only, Ignore) ->
                 end
         end,
     Loop(InferredTyEnvs, []),
-    ?LOG_INFO("Checking ~w functions in ~s against their specs finished successfully",
-              length(FunsWithSpec), FileName).
+    Tend = timer:now_diff(erlang:timestamp(), T0) / 1000,
+    ?LOG_INFO("Checking ~w functions in ~s against their specs finished successfully~nTotal time: ~p~n",
+              length(FunsWithSpec), FileName, Tend).
 
 -spec should_check(string(), string(), string(), sets:set(string()), sets:set(string())) -> boolean().
 should_check(QRefStr, RefStr, NameStr, Only, Ignore) ->

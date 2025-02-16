@@ -23,17 +23,32 @@
     single/1,
     assocs_find/2, assocs_find_index/2,
     timeout/2, is_same_file/2, file_exists/1,
-    normalize_path/1
+    normalize_path/1,
+    diff_terms/3
 ]).
+
+-spec diff_terms(term(), term(), delete | dont_delete) -> equal | {diff, string()}.
+diff_terms(T1, T2, _) when T1 == T2 -> equal;
+diff_terms(T1, T2, Del) ->
+    tmp:with_tmp_file("terms_1_", ".erl", Del, fun (F1, P1) ->
+        tmp:with_tmp_file("terms_2_", ".erl", Del, fun (F2, P2) ->
+            io:format(F1, "~200p", [T1]),
+            io:format(F2, "~200p", [T2]),
+            file:close(F1),
+            file:close(F2),
+            Out = os:cmd(utils:sformat("diff -u ~s ~s", P1, P2)),
+            {diff, Out}
+        end)
+    end).
 
 % quit exits the erlang program with the given exit code. No stack trace is produced,
 % so don't use this function for aborting because of a bug.
--spec quit(non_neg_integer(), string(), [_]) -> ok.
+-spec quit(non_neg_integer(), string(), [_]) -> _.
 quit(Code, Msg, L) ->
     io:format(Msg, L),
     halt(Code).
 
--spec quit(integer(), string()) -> ok.
+-spec quit(non_neg_integer(), string()) -> _.
 quit(Code, Msg) ->
     io:format(Msg),
     halt(Code).

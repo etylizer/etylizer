@@ -139,13 +139,13 @@ to_loc(Ctx, Anno) -> ast:to_loc(Ctx#ctx.path, Anno).
 trans_spec_ty(Ctx, Loc, FunTys) ->
     AllTyvars =
         utils:everything(
-          fun (V = {var, _, _}) -> {ok, V};
+          fun (V = {var, _, Z}) -> {ok, V};
               (_) -> error
           end,
           FunTys),
     {UnconstrFunTys, NestedConstrs} =
         lists:unzip(
-          lists:map(
+         lists:map(
             fun ({type, _Anno, bounded_fun, [Ty, Constrs]}) -> {Ty, Constrs};
                 (Ty) -> {Ty, []}
             end, FunTys)),

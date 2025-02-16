@@ -43,10 +43,14 @@ map_opt(F, L) ->
 % quit exits the erlang program with the given exit code. No stack trace is produced,
 % so don't use this function for aborting because of a bug.
 -spec quit(non_neg_integer(), string(), [_]) -> ok.
+% this is the correct spec
+% -spec quit(non_neg_integer(), string(), [_]) -> _.
 quit(Code, Msg, L) ->
     io:format(Msg, L),
     halt(Code).
 
+% thats the correct spec
+% -spec quit(non_neg_integer(), string()) -> no_return().
 -spec quit(integer(), string()) -> ok.
 quit(Code, Msg) ->
     io:format(Msg),
@@ -55,9 +59,14 @@ quit(Code, Msg) ->
 -spec undefined() -> none().
 undefined() -> erlang:error("undefined").
 
+% hack for type overlay + type spec
+-type deepList(A) :: [A | deepList(A)].
+-spec fl(deepList(A)) -> [A].
+fl(L) -> lists:flatten(L).
+
 -spec sformat_raw(string(), list()) -> string().
 sformat_raw(Msg, L) ->
-    lists:flatten(io_lib:format(Msg, L)).
+    fl(io_lib:format(Msg, L)).
 
 % Does some magic to distinguish whether term() is a list of arguments or a single argument
 -spec sformat(string(), term()) -> string().
@@ -254,7 +263,7 @@ hash_sha1(Data) ->
 -spec hash_file(file:filename()) -> string() | {error, any()}.
 hash_file(Path) ->
     case file:read_file(Path) of
-        {ok, FileContent} -> utils:hash_sha1(FileContent);
+        {ok, FileContent} -> hash_sha1(FileContent);
         X -> X
     end.
 
