@@ -78,7 +78,6 @@ gen_constrs_fun_group(Symtab, Decls) ->
 % intersection did not type check.
 -spec gen_constrs_annotated_fun(symtab:t(), ast:ty_full_fun(), ast:fun_decl()) -> constr:constrs().
 gen_constrs_annotated_fun(Symtab, {fun_full, ArgTys, ResTy}, {function, L, Name, Arity, FunClauses}) ->
-  % io:format(user,"~p~n", [FunClauses]),
     Ctx = new_ctx(Symtab),
     {Args, Body} = fun_clauses_to_exp(Ctx, L, FunClauses),
     if length(Args) =/= length(ArgTys) orelse length(Args) =/= Arity ->
@@ -171,9 +170,8 @@ exp_constrs(Ctx, E, T) ->
                              sets:union(CsHead, CsTail));
         {fun_ref, L, GlobalRef} ->
             utils:single({cvar, mk_locs("function ref", L), GlobalRef, T});
-        Funz = {'fun', L, RecName, FunClauses} ->
+        {'fun', L, RecName, FunClauses} ->
             {Args, BodyExps} = fun_clauses_to_exp(Ctx, L, FunClauses),
-            io:format(user,"Fun Transforming~n~p~ninto~n~p~n", [Funz, {Args, BodyExps}]),
             ArgTys = lists:map(fun(X) -> {{local_ref, X}, fresh_tyvar(Ctx)} end, Args),
             ArgEnv = maps:from_list(ArgTys),
             ResTy = fresh_tyvar(Ctx),
@@ -1100,6 +1098,7 @@ var_test_env(FunExp, X, RestArgs) ->
 
 
 % f(p11, p12, ..., p1n) -> e1;
+% f(p21, p22, ..., p2n) -> e2;
 % ...
 % f(pm1, pm2, ..., pmn) -> em
 %
@@ -1107,9 +1106,18 @@ var_test_env(FunExp, X, RestArgs) ->
 %
 % case {X1, ..., Xn} of
 %   (p11, p12, ..., p1n) -> e1;
-%   ...
-%   (pm1, pm2, ..., pmn) -> em
+%   _ -> 
+%       ...
+%       case {X1, ..., Xn} of
+%         (pm1, pm2, ..., pmn) -> em
+%       end
+%     end
 % end
+% 
+% wildcards are filtered
+% special case: don't use tuple if arity is 1
+% 
+% TODO: also filter variables that are unused (_V is not a wildcard, for example)
 -spec fun_clauses_to_exp(ctx(), ast:loc(), [ast:fun_clause()]) -> {[ast:local_varname()], ast:exps()}.
 fun_clauses_to_exp(Ctx, _, FunClauses = [{fun_clause, L, Pats, [], Body}]) ->
     % special case: only one clause, no guards, all patterns are variables
@@ -1122,42 +1130,60 @@ fun_clauses_to_exp(Ctx, _, FunClauses = [{fun_clause, L, Pats, [], Body}]) ->
                             end
                     end, [], Pats),
     case Vars of
-        error -> fun_clauses_to_exp_aux2(Ctx, L, FunClauses);
+        error -> fun_clauses_to_exp_aux(Ctx, L, FunClauses);
         VarList -> {VarList, Body}
     end;
 fun_clauses_to_exp(Ctx, L, FunClauses) ->
-    fun_clauses_to_exp_aux2(Ctx, L, FunClauses).
+    fun_clauses_to_exp_aux(Ctx, L, FunClauses).
 
--spec fun_clauses_to_exp_aux(ctx(), ast:loc(), [ast:fun_clause()]) -> {[ast:local_varname()], ast:exps()}.
-fun_clauses_to_exp_aux(Ctx, L, FunClauses) ->
-    Arity =
-        case FunClauses of
-            [] -> errors:ty_error(L, "expected function clauses");
-            [{fun_clause, _, FirstPats, _, _} | Rest] ->
-                lists:foldl(
-                  fun({fun_clause, ThisLoc, ThisPats, _, _}, Arity) ->
-                          if
-                              length(ThisPats) =:= Arity -> Arity;
-                              true -> errors:ty_error(ThisLoc,
-                                                      "expected ~w arguments, but given ~w",
-                                                      [Arity, length(ThisPats)])
-                          end
-                  end,
-                  length(FirstPats),
-                  Rest)
-        end,
-    Vars = fresh_vars(Ctx, Arity),
-    ScrutExp = {tuple, L, lists:map(fun(V) -> {var, L, {local_ref, V}} end, Vars)},
-    CaseClauses = lists:map(fun fun_clause_to_case_clause/1, FunClauses),
-    E = {'case', L, ScrutExp, CaseClauses},
-    ?LOG_TRACE("Rewrote function clauses at ~s with arguments=~w:\n~200p", ast:format_loc(L), Vars, E),
-    {Vars, [E]}.
+-spec fun_clauses_to_exp_aux(ctx(), ast:loc(), [ast:fun_clause(), ...]) -> {[ast:local_varname()], ast:exps()}.
+fun_clauses_to_exp_aux(Ctx, _, FunClauses = [{fun_clause, _, Pats, _, _} | _]) -> 
+    % generate Variables X1,...,Xn, use as scrutiny for every nested case expression
+    Vars = maps:from_list(lists:zip(lists:seq(1, length(Pats)), fresh_vars(Ctx, length(Pats)))),
+    
+    % generate all case clauses
+    PosAndCaseClauses = lists:map(fun fun_clause_to_case_clause/1, FunClauses),
+    {_, NCl} = nested_clauses(Vars, PosAndCaseClauses),
+    VV = [V || {_, V} <- maps:to_list(Vars)],
+    {VV, [NCl]}.
 
-
--spec fun_clause_to_case_clause(ast:fun_clause()) -> ast:case_clause().
+-spec fun_clause_to_case_clause(ast:fun_clause()) -> {_ArgPositions :: [integer()], ast:case_clause()}.
 fun_clause_to_case_clause({fun_clause, L, Pats, Guards, Exps}) ->
-    {case_clause, L, {tuple, L, Pats}, Guards, Exps}.
+    Wildcard = fun({wildcard,_}) -> true; (_) -> false end,
+    {ResPos, ResPat} = lists:foldl(fun({Pos, Pat}, {AllPos, AllPats}) -> 
+        case Wildcard(Pat) of
+            true -> {AllPos, AllPats};
+            _ -> {AllPos ++ [Pos], AllPats ++ [Pat]}
+        end
+    end, {[], []}, lists:zip(lists:seq(1, length(Pats)), Pats)),
 
+    case ResPat of
+        [] -> {ResPos, {case_clause, L, {tuple, L, []}, Guards, Exps}};
+        [X] -> {ResPos, {case_clause, L, X, Guards, Exps}};
+        _ -> {ResPos, {case_clause, L, {tuple, L, ResPat}, Guards, Exps}}
+    end.
+
+-spec nested_clauses
+(_, []) -> fin;
+(#{integer() => ast:local_varname()}, [{[integer()], ast:case_clause()}]) -> {ast:loc(), ast:case_clause()}.
+nested_clauses(_Vars, []) -> fin;
+nested_clauses(Vars, [{Pos, Clauses = {case_clause, L, _, _, _}} | Rest]) -> 
+  Got = lists:foldl(fun(Index, Res) -> Res ++ [maps:get(Index, Vars)] end, [], Pos),
+
+  ScrutExp = case lists:map(fun(V) -> {var, L, {local_ref, V}} end, Got) of
+      List when length(List) > 1 -> {tuple, L, List};
+      [E] -> E;
+      [] -> {tuple, L, []}
+  end,
+
+  case nested_clauses(Vars, Rest) of
+      fin -> 
+          {L, {'case', L, ScrutExp, [Clauses]}};
+      {Ln, NestedCase} ->
+          NestedWildcard = {case_clause, Ln, {wildcard, Ln}, [], [NestedCase]},
+          {L, {'case', L, ScrutExp, [Clauses, NestedWildcard]}}
+  end.
+  
 % if g1 -> e1;
 %    ...
 %    gn -> en
@@ -1189,49 +1215,3 @@ sanity_check(Cs, Spec) ->
         false ->
             ?ABORT("Sanity check failed: ~s", "invalid constraint generated")
     end.
-
-
-% f(p11, p12, ..., p1n) -> e1;
-% f(p21, p22, ..., p2n) -> e2;
-% ...
-% f(pm1, pm2, ..., pmn) -> em
-%
-% is transformed into
-%
-% case {X11, ..., X1n} of
-%   (p11, p12, ..., p1n) -> e1;
-%   {X21, ..., X2n} -> 
-%     case {X21, ... , X2n} of
-%       {p21, p22, ..., p2n} -> e2;
-%       {X31, ..., X3n} -> 
-%       ...
-%        
-%           {Xm1, ..., Xmn} -> 
-%             case {Xm1, ..., Xmn} of
-%               (pm1, pm2, ..., pmn) -> em
-%             end
-%     end
-% end
--spec fun_clauses_to_exp_aux2(ctx(), ast:loc(), [ast:fun_clause()]) -> {[ast:local_varname()], ast:exps()}.
-fun_clauses_to_exp_aux2(_Ctx, _L, []) -> done;
-fun_clauses_to_exp_aux2(Ctx, Loc, [F = {fun_clause, L, Pats, _, _} | Other]) -> 
-  Arity = length(Pats),
-  C1 = fun_clause_to_case_clause(F),
-
-  Vars = fresh_vars(Ctx, Arity),
-  ScrutExp = {tuple, L, lists:map(fun(V) -> {var, L, {local_ref, V}} end, Vars)},
-
-  % nested exps
-  case fun_clauses_to_exp_aux2(Ctx, Loc, Other) of
-    done -> 
-      E = {'case', L, ScrutExp, [C1]},
-      ?LOG_TRACE("Rewrote function clauses at ~s with arguments=~w:\n~200p", ast:format_loc(L), Vars, E),
-      {Vars, [E]};
-    {NestedVars, [NestedCase]} ->
-      ContExp = {tuple, L, lists:map(fun(V) -> {var, L, {local_bind, V}} end, NestedVars)},
-      % io:format(user,"Got~n~p and~n~p~nNEED BIND: ~p~ninto~n~p~n", [C1, NestedCase, NestedVars, ContExp]),
-      % error(todo),
-      E = {'case', L, ScrutExp, [C1, {case_clause, Loc, ContExp, [], [NestedCase]}]},
-      ?LOG_TRACE("Rewrote function clauses at ~s with arguments=~w:\n~200p", ast:format_loc(L), Vars, E),
-      {Vars, [E]}
-  end.
