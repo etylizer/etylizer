@@ -78,6 +78,7 @@ gen_constrs_fun_group(Symtab, Decls) ->
 % intersection did not type check.
 -spec gen_constrs_annotated_fun(symtab:t(), ast:ty_full_fun(), ast:fun_decl()) -> constr:constrs().
 gen_constrs_annotated_fun(Symtab, {fun_full, ArgTys, ResTy}, {function, L, Name, Arity, FunClauses}) ->
+  % io:format(user,"~p~n", [FunClauses]),
     Ctx = new_ctx(Symtab),
     {Args, Body} = fun_clauses_to_exp(Ctx, L, FunClauses),
     if length(Args) =/= length(ArgTys) orelse length(Args) =/= Arity ->
@@ -170,8 +171,9 @@ exp_constrs(Ctx, E, T) ->
                              sets:union(CsHead, CsTail));
         {fun_ref, L, GlobalRef} ->
             utils:single({cvar, mk_locs("function ref", L), GlobalRef, T});
-        {'fun', L, RecName, FunClauses} ->
+        Funz = {'fun', L, RecName, FunClauses} ->
             {Args, BodyExps} = fun_clauses_to_exp(Ctx, L, FunClauses),
+            io:format(user,"Fun Transforming~n~p~ninto~n~p~n", [Funz, {Args, BodyExps}]),
             ArgTys = lists:map(fun(X) -> {{local_ref, X}, fresh_tyvar(Ctx)} end, Args),
             ArgEnv = maps:from_list(ArgTys),
             ResTy = fresh_tyvar(Ctx),
@@ -1120,11 +1122,11 @@ fun_clauses_to_exp(Ctx, _, FunClauses = [{fun_clause, L, Pats, [], Body}]) ->
                             end
                     end, [], Pats),
     case Vars of
-        error -> fun_clauses_to_exp_aux(Ctx, L, FunClauses);
+        error -> fun_clauses_to_exp_aux2(Ctx, L, FunClauses);
         VarList -> {VarList, Body}
     end;
 fun_clauses_to_exp(Ctx, L, FunClauses) ->
-    fun_clauses_to_exp_aux(Ctx, L, FunClauses).
+    fun_clauses_to_exp_aux2(Ctx, L, FunClauses).
 
 -spec fun_clauses_to_exp_aux(ctx(), ast:loc(), [ast:fun_clause()]) -> {[ast:local_varname()], ast:exps()}.
 fun_clauses_to_exp_aux(Ctx, L, FunClauses) ->
@@ -1150,6 +1152,7 @@ fun_clauses_to_exp_aux(Ctx, L, FunClauses) ->
     E = {'case', L, ScrutExp, CaseClauses},
     ?LOG_TRACE("Rewrote function clauses at ~s with arguments=~w:\n~200p", ast:format_loc(L), Vars, E),
     {Vars, [E]}.
+
 
 -spec fun_clause_to_case_clause(ast:fun_clause()) -> ast:case_clause().
 fun_clause_to_case_clause({fun_clause, L, Pats, Guards, Exps}) ->
@@ -1186,3 +1189,49 @@ sanity_check(Cs, Spec) ->
         false ->
             ?ABORT("Sanity check failed: ~s", "invalid constraint generated")
     end.
+
+
+% f(p11, p12, ..., p1n) -> e1;
+% f(p21, p22, ..., p2n) -> e2;
+% ...
+% f(pm1, pm2, ..., pmn) -> em
+%
+% is transformed into
+%
+% case {X11, ..., X1n} of
+%   (p11, p12, ..., p1n) -> e1;
+%   {X21, ..., X2n} -> 
+%     case {X21, ... , X2n} of
+%       {p21, p22, ..., p2n} -> e2;
+%       {X31, ..., X3n} -> 
+%       ...
+%        
+%           {Xm1, ..., Xmn} -> 
+%             case {Xm1, ..., Xmn} of
+%               (pm1, pm2, ..., pmn) -> em
+%             end
+%     end
+% end
+-spec fun_clauses_to_exp_aux2(ctx(), ast:loc(), [ast:fun_clause()]) -> {[ast:local_varname()], ast:exps()}.
+fun_clauses_to_exp_aux2(_Ctx, _L, []) -> done;
+fun_clauses_to_exp_aux2(Ctx, Loc, [F = {fun_clause, L, Pats, _, _} | Other]) -> 
+  Arity = length(Pats),
+  C1 = fun_clause_to_case_clause(F),
+
+  Vars = fresh_vars(Ctx, Arity),
+  ScrutExp = {tuple, L, lists:map(fun(V) -> {var, L, {local_ref, V}} end, Vars)},
+
+  % nested exps
+  case fun_clauses_to_exp_aux2(Ctx, Loc, Other) of
+    done -> 
+      E = {'case', L, ScrutExp, [C1]},
+      ?LOG_TRACE("Rewrote function clauses at ~s with arguments=~w:\n~200p", ast:format_loc(L), Vars, E),
+      {Vars, [E]};
+    {NestedVars, [NestedCase]} ->
+      ContExp = {tuple, L, lists:map(fun(V) -> {var, L, {local_bind, V}} end, NestedVars)},
+      % io:format(user,"Got~n~p and~n~p~nNEED BIND: ~p~ninto~n~p~n", [C1, NestedCase, NestedVars, ContExp]),
+      % error(todo),
+      E = {'case', L, ScrutExp, [C1, {case_clause, Loc, ContExp, [], [NestedCase]}]},
+      ?LOG_TRACE("Rewrote function clauses at ~s with arguments=~w:\n~200p", ast:format_loc(L), Vars, E),
+      {Vars, [E]}
+  end.
