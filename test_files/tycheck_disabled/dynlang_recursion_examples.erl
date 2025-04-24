@@ -41,7 +41,7 @@ fix(F) ->
 %   ((Int -> Int) -> (*---1 | 1--* -> Int) & (0 -> 1))
 -spec fact_gen
 (any()                        ) -> fun((0) -> 1);
-(fun((integer()) -> integer())) -> ety:intersection(
+(fun((integer()) -> integer())) -> etylizer:intersection(
                                             fun((neg_integer() | pos_integer()) -> integer()), 
                                             fun((0) -> 1)
                                         ).

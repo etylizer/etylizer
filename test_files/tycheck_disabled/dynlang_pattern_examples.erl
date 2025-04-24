@@ -37,7 +37,7 @@ test3_patterns(X, Y) ->
 (char()) -> string();
 (integer()) -> string();
 (boolean()) -> string();
-(any()) -> string(). % we don't have negation to describe the last type without using e.g. ety:not
+(any()) -> string(). % we don't have negation to describe the last type without using e.g. etylizer:not
 typeof_patterns(X) -> 
     case X of
         unit -> "Nil";
@@ -102,7 +102,7 @@ map2(F, Lst) ->
     end.
 
 % ('b -> Any \ `true) & ('a -> Any) -> [ ('a | 'b)* ] -> [ ('a \ 'b)* ]
--spec filter(ety:intersection(fun((A) -> any()), fun((B) -> true)), list(A | B)) -> list(ety:without(A, B)).
+-spec filter(etylizer:intersection(fun((A) -> any()), fun((B) -> true)), list(A | B)) -> list(etylizer:without(A, B)).
 filter(F, L) ->
     case L of
         [] -> [];

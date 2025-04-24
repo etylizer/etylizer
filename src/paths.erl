@@ -13,7 +13,7 @@
 -export_type([search_path_entry/0, search_path/0]).
 
 -include("log.hrl").
--include("ety_main.hrl").
+-include("etylizer_main.hrl").
 
 % An entry in the search path is a kind (local, dep, or otp), a source directory and a list
 % of include directories.

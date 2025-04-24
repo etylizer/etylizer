@@ -202,7 +202,7 @@ trans_constraint(Ctx, Env, C) ->
         X -> errors:uncovered_case(?FILE, ?LINE, X)
     end.
 
-% support for ety:negation, ety:intersection, and ety:without
+% support for etylizer:negation, etylizer:intersection, and etylizer:without
 -spec resolve_ety_ty(ast:loc(), atom(), [ast:ty()]) -> ast:ty().
 resolve_ety_ty(_, negation, [Ty]) -> {negation, Ty};
 resolve_ety_ty(_, intersection, Tys) ->
@@ -213,7 +213,7 @@ resolve_ety_ty(_, intersection, Tys) ->
     end;
 resolve_ety_ty(_, without, [T, U]) -> {intersection, [T, {negation, U}]};
 resolve_ety_ty(L, Name, _) ->
-    errors:ty_error(L, "Invalid use of builtin type ety:~w", Name).
+    errors:ty_error(L, "Invalid use of builtin type etylizer:~w", Name).
 
 -spec eval_const_ty(erl_parse:abstract_expr(), ast:loc()) -> {singleton, integer()}.
 eval_const_ty(Ty, Loc) ->
@@ -288,7 +288,7 @@ trans_ty(Ctx, Env, Ty) ->
             Loc = to_loc(Ctx, Anno),
             Ref = {ty_ref, Ctx#ctx.module_name, Name, arity(Loc, ArgTys)},
             {named, Loc, Ref, trans_tys(Ctx, Env, ArgTys)};
-        {remote_type, Anno, [{'atom', _, ety}, {'atom', _, Name}, ArgTys]} ->
+        {remote_type, Anno, [{'atom', _, etylizer}, {'atom', _, Name}, ArgTys]} ->
             resolve_ety_ty(to_loc(Ctx, Anno), Name, trans_tys(Ctx, Env, ArgTys));
         {remote_type, Anno, [{'atom', _, Mod}, {'atom', _, Name}, ArgTys]} ->
             Loc = to_loc(Ctx, Anno),

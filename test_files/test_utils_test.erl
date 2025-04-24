@@ -3,11 +3,11 @@
 -compile(export_all).
 -compile(nowarn_export_all).
 
-%-ety({test, bad, "Blub"}).
+%-etylizer({test, bad, "Blub"}).
 foo(X) -> X.
 
 bar(X) -> X + 1.
 
-%-ety({test, good}).
+%-etylizer({test, good}).
 
 spam(X) -> X.
