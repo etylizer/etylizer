@@ -61,7 +61,7 @@ check_test_spec(Path, {{bad, SearchPattern}, Lineno, RawForms}) ->
     try ast_transform:trans(Path, RawForms),
         io:format("Test in ~s:~w should fail but did not", [Path, Lineno]),
         ?assert(false)
-    catch throw:{ety, _, Msg} ->
+    catch throw:{etylizer, _, Msg} ->
         case string:find(Msg, SearchPattern) of
             nomatch ->
                 io:format("Test in ~s:~w failed as expected, but with an unexpected "

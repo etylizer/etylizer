@@ -1,13 +1,13 @@
 -module(attr).
 
-% @doc Parser for -ety attributes
+% @doc Parser for -etylizer attributes
 
 -export([
     parse_ety_attr/2,
     ety_attrs_from_file/1
    ]).
     
--type ety_attr() :: {ety, ast:loc(), term()}.
+-type ety_attr() :: {etylizer, ast:loc(), term()}.
 
 -spec ety_attrs_from_file(file:filename()) -> t:opt([ety_attr()], string()).
 ety_attrs_from_file(Path) ->
@@ -40,18 +40,18 @@ ety_attrs_from_lines(Path, Lineno, Lines) ->
 parse_ety_attr(Loc, S) ->
     {loc, _, N, _} = Loc,
     case S of
-       "%-ety" ++ Rest ->
+       "%-etylizer" ++ Rest ->
            case string:trim(Rest) of
                TermStr = ("(" ++ _) ->
                    case erl_scan:string(TermStr, N) of
                        {ok, Toks, _} ->
                            case erl_parse:parse_term(Toks) of
-                               {ok, Term} -> {ok, {ety, Loc, Term}};
+                               {ok, Term} -> {ok, {etylizer, Loc, Term}};
                                {error, E} -> throw({bad_attr, E})
                             end;
                         E -> throw({bad_attr, E})
                     end;
-                _ -> throw({bad_attr, "Invalid ety attribute"})
+                _ -> throw({bad_attr, "Invalid etylizer attribute"})
             end;
         _ -> no_attr
     end.

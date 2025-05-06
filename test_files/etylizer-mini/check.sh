@@ -4,8 +4,8 @@ cd $(dirname $0)
 OVERLAY=overlay.erl
 LOGLEVEL=debug
 
-if [ ! -z "$ETY_CASE_STUDY_LOGLEVEL" ]; then
-    LOGLEVEL="$ETY_CASE_STUDY_LOGLEVEL"
+if [ ! -z "$ETYLIZER_CASE_STUDY_LOGLEVEL" ]; then
+    LOGLEVEL="$ETYLIZER_CASE_STUDY_LOGLEVEL"
 fi
 
 function run_ety() {

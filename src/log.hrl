@@ -115,6 +115,6 @@
         end).
 -define(DO_LOG_AND_DIE(Level,A0,Args),
     log:macro_log(?FILE, ?LINE, Level, "Aborting: " ++ A0, Args),
-    throw({ety, abort, "Aborting"})
+    throw({etylizer, abort, "Aborting"})
 ).
 -endif.

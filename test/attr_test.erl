@@ -6,6 +6,6 @@
 -spec parse_ety_attr_test() -> ok.
 parse_ety_attr_test() ->
     Loc = {loc, "foo.erl", 2, 3},
-    ?assertEqual({ok, {ety, Loc, 1}}, attr:parse_ety_attr(Loc, "%-ety(1).")),
-    ?assertEqual({ok, {ety, Loc, {foo, bar}}}, attr:parse_ety_attr(Loc, "%-ety({foo, bar}).")),
+    ?assertEqual({ok, {etylizer, Loc, 1}}, attr:parse_ety_attr(Loc, "%-etylizer(1).")),
+    ?assertEqual({ok, {etylizer, Loc, {foo, bar}}}, attr:parse_ety_attr(Loc, "%-etylizer({foo, bar}).")),
     ?assertEqual(no_attr, attr:parse_ety_attr(Loc, "%-xx({foo, bar}).")).

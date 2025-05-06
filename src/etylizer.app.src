@@ -1,0 +1,14 @@
+{application, etylizer,
+ [{description, "A type checker for Erlang based on set-theoretic types"},
+  {vsn, "0.1.0"},
+  {env,[
+    {providers, [etc_rebar_plug_prv]}
+  ]},
+  {applications,
+   [kernel,
+    stdlib,
+    getopt
+   ]},
+  {licenses, ["BSD-3"]},
+  {links, [{"GitHub", "https://github.com/etylizer/etylizer"}]}
+ ]}.

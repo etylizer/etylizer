@@ -23,18 +23,18 @@ For a full list of plugin options see the [rebar plugin repo](https://github.com
 
 ### Build
 
-* `make` or `rebar3 escriptize` will generate a standalone portable escript called `ety` inside the directory
+* `make` or `rebar3 escriptize` will generate a standalone portable escript called `etylizer` inside the directory
   `_build/default/bin`
-* `ety -h` for help
-  * if ety is not on the current path, then prepend the folder where ety is located: `$PATH_TO_ETY/ety -h`
-* To check a single module file `hello.erl` execute `ety hello.erl`
+* `etylizer -h` for help
+  * if etylizer is not on the current path, then prepend the folder where etylizer is located: `$PATH_TO_ETYLIZER/etylizer -h`
+* To check a single module file `hello.erl` execute `etylizer hello.erl`
 * To check a rebar project `hello.erl`
     * compile the project (e.g. `rebar3 compile`)
-    * execute `ety -P . -S src` while in the root of the project
+    * execute `etylizer -P . -S src` while in the root of the project
 
 Useful for debugging:
 
-    ety hello.erl --force -l debug -o foo1/1
+    etylizer hello.erl --force -l debug -o foo1/1
 
 * type checks only the function `foo/1` (`-o`) with additional debug information
   (`-l`)

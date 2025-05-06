@@ -1,9 +1,9 @@
 -module(test_utils).
 
 % @doc Extracts tests from files. A test file is an .erl file containing lines of the
-% form %-ety({test, good}) or %-ety({test, bad, "..."). A single test starts with the line
+% form %-etylizer({test, good}) or %-etylizer({test, bad, "..."). A single test starts with the line
 % after such a declaration and extends until the next test declaration or eof.
-% A file without any test declarations implicitly carries the declaration %-ety({test, good})
+% A file without any test declarations implicitly carries the declaration %-etylizer({test, good})
 % before the first line.
 
 -include_lib("eunit/include/eunit.hrl").
@@ -64,7 +64,7 @@ extract_tests(Path) ->
         {ok, AllAttrs} ->
             LinenoAndResults = lists:filtermap(fun (A) ->
                 case A of
-                    {ety, {loc, _, N, _}, Test} ->
+                    {etylizer, {loc, _, N, _}, Test} ->
                         case Test of
                             {test, good} -> {true, {N, good}};
                             {test, bad, Msg} -> {true, {N, {bad, Msg}}};
@@ -118,7 +118,7 @@ format_tally_config(Constraints, _FixedVars, Symtab) ->
     ++ "\n" 
     ++ io_lib:format("~p.", [Symtab]).
 
-% translates the ety tally input constraints to a cduce tally call
+% translates the etylizer tally input constraints to a cduce tally call
 % not all constructs are supported
 % TODO free variables #73
 -spec ety_to_cduce_tally(list(constr:simp_constr()) | list({ast:ty(), ast:ty()}), list(ast:ty_varname())) -> string().

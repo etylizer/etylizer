@@ -35,13 +35,13 @@ init(L1) ->
 get_log_level(L) ->
     case L of
         default ->
-            case os:getenv("ETY_LOG_LEVEL") of
+            case os:getenv("ETYLIZER_LOG_LEVEL") of
                 false -> warn;
                 S ->
                     case parse_level(S) of
                         bad_log_level ->
                             io:format(standard_error,
-                                      "Bad log level in environment variable ETY_LOG_LEVEL: ~p", S),
+                                      "Bad log level in environment variable ETYLIZER_LOG_LEVEL: ~p", S),
                             warn;
                         X -> X
                     end
@@ -65,7 +65,7 @@ get_logger_pid() ->
 
 -spec file_logger() -> ok.
 file_logger() ->
-    {ok, F} = file:open("ety.log", [write]),
+    {ok, F} = file:open("etylizer.log", [write]),
     Loop =
         fun Loop() ->
                 receive

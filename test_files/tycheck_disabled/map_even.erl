@@ -15,14 +15,14 @@
 my_map_infer(_, []) -> [];
 my_map_infer(F, [X | Xs]) -> [F(X) | my_map_infer(F, Xs)].
 
--spec even(integer()) -> boolean(); (T) -> T when T :: ety:negation(integer()).
+-spec even(integer()) -> boolean(); (T) -> T when T :: etylizer:negation(integer()).
 even(X) when is_integer(X) and (X rem 2 == 0) -> true;
 even(X) when is_integer(X) and (X rem 2 == 1) -> false;
 even(X) -> X.
 
 -spec map_even(list(integer())) -> list(boolean());
-              (list(ety:negation(T, integer()))) -> list(ety:negation(T, integer()));
-              (list(T | integer())) -> list(ety:negation(T, integer()) | boolean()).
+              (list(etylizer:negation(T, integer()))) -> list(etylizer:negation(T, integer()));
+              (list(T | integer())) -> list(etylizer:negation(T, integer()) | boolean()).
 map_even(L) -> my_map_infer(fun even/1, L).
 
 my_test() ->
