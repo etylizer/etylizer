@@ -14,6 +14,7 @@
 -compile({no_auto_import, [node/1]}).
 
 -export([get_dnf/1, any/0, empty/0, equal/2, node/1, terminal/1, compare/2, union/2, intersect/2, negate/1]).
+-export([is_empty_union/2]).
 
 -include("generic_dnf.hrl").
 

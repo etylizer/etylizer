@@ -16,11 +16,19 @@ var(Var) -> node(Var).
 is_empty_corec(TyBDD, M) -> dnf(TyBDD, {fun(P, N, T)  -> is_empty_coclause_corec(P, N, T, M) end, fun is_empty_union/2}).
 is_empty_coclause_corec(_Pos, _Neg, T, M) -> dnf_ty_tuple:is_empty_corec(T, M).
 
-normalize_corec(Size, Ty, Fixed, M) -> dnf(Ty, {
-  fun(Pos, Neg, DnfTy) -> dnf_ty_tuple:normalize_corec(Size, DnfTy, Pos, Neg, Fixed, M) end,
-  fun constraint_set:meet/2
-}).
+normalize_corec(Size, Ty, Fixed, M) -> 
+  Dnf = simplify(get_dnf(Ty)),
+  Sol = lists:foldl(fun({Pos, Neg, DnfTy}, Acc) -> 
+    OtherLazy = fun() -> dnf_ty_tuple:normalize_corec(Size, DnfTy, Pos, Neg, Fixed, M) end,
+    constraint_set:meet(Acc, OtherLazy)
+  end, [[]], Dnf),
+  Sol.
 
 % substitution delegates to dnf_ty_tuple substitution
 apply_to_node(Node, Map, Memo) ->
   dnf_ty_tuple:substitute(Node, Map, Memo, fun(N, Subst, M) -> ty_tuple:substitute(N, Subst, M) end).
+
+simplify(Dnf) ->
+  %DnfFun = [{Pos, Neg, Fun}],
+  %[check_useless(F) || ],
+  Dnf.
