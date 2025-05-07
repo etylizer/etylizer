@@ -1,6 +1,6 @@
 {application, etylizer,
  [{description, "A type checker for Erlang based on set-theoretic types"},
-  {vsn, "0.1.0"},
+  {vsn, "0.0.1"},
   {env,[
     {providers, [etc_rebar_plug_prv]}
   ]},
