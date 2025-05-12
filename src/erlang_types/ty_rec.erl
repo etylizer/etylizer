@@ -6,7 +6,7 @@
 -export([is_empty/1, is_empty_start/1, normalize_start/2]).
 -export([is_empty_corec/2, normalize_corec/3]).
 
--export([empty/0, any/0]).
+-export([empty/0, any/0, of_function_dnf/5, of_function_dnfs/2]).
 -export([union/2, negate/1, intersect/2, diff/2, is_any/1]).
 -export([tuple_keys/1, function_keys/1]).
 
@@ -339,6 +339,18 @@ s_empty() ->
     function = ty_functions:empty(),
     map = dnf_var_ty_map:empty()
   }.
+
+of_function_dnfs(_, []) -> ty_rec:empty();
+of_function_dnfs(Arity, [{A, B, C, D} | Rest]) -> 
+  Ty = of_function_dnf(Arity, A, B, C, D),
+  union(Ty, of_function_dnfs(Arity, Rest)).
+
+of_function_dnf(Arity, Pvars, Nvars, Pos, Neg) ->
+  L1 = [variable(T) || T <- Pvars],
+  L2 = [negate(variable(T)) || T <- Nvars],
+  L3 = [function(Arity, dnf_var_ty_function:function(dnf_ty_function:function(T))) || T <- Pos],
+  L4 = [negate(function(Arity, dnf_var_ty_function:function(dnf_ty_function:function(T)))) || T <- Neg],
+  lists:foldl(fun(E, Acc) -> intersect(E, Acc) end, any(), L1 ++ L2 ++ L3 ++ L4).
 
 -spec empty() -> ty_ref().
 empty() ->

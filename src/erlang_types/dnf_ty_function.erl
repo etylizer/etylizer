@@ -38,15 +38,51 @@ is_empty_coclause_corec(AllPos, Neg, T, M) ->
         ty_rec:union(Acc, domains_to_tuple(ty_function:domains(FunTy)))
                               end, domains_to_tuple(ty_function:domains(P)), []),
       is_empty_cont_corec(BigSTuple, AllPos, Neg, M);
-    {[P | Pos], Neg, _} ->
-      % TODO here do these simplifications
-      % A -> B && C -> B == A|C -> B
-      % A -> B && A -> C == A -> B&C
-      BigSTuple = lists:foldl(fun(FunTy, Acc) ->
-        ty_rec:union(Acc, domains_to_tuple(ty_function:domains(FunTy)))
-                              end, domains_to_tuple(ty_function:domains(P)), Pos),
+    {Pos, Neg, _} ->
+      % Transform list of function types to tuples
+      NewPos = [{domains_to_tuple(ty_function:domains(P)), ty_function:codomain(P)} || P <- Pos],
+
+      % As an optimization merge positive function types
+      [{Domains1, _} | Pos1] = merge_pos(NewPos),
+
+      BigSTuple = lists:foldl(fun({Domains, _}, Acc) -> ty_rec:union(Acc, Domains) end, Domains1, Pos1),
       is_empty_cont_corec(BigSTuple, AllPos, Neg, M)
-  end.
+    end.
+
+% Assume list contains tuples (domain_tuple, codomain)
+% Merges positive function types according to following simplification rules:
+% (A -> B) ∧ (A -> C) = (A -> B ∧ C)
+% (A -> C) ∧ (B -> C) = (A ∨ B -> C)
+merge_pos([]) -> [];
+merge_pos([P | Rest]) ->
+  NewPos = merge_pos_fun(P, Rest),
+  % TODO: Find a better way to check that a merge happened
+  MergedPos = case Rest == NewPos of
+    % Nothing changed, continue with the next function
+    true -> [P | merge_pos(Rest)];
+    % List changed, i.e. merge happened. Don't need P
+    _ ->
+      %io:format(user, "Functions merged!~n", []),
+      merge_pos(NewPos)
+  end,
+  MergedPos.
+
+% Merges a single function type with a list of function types
+merge_pos_fun(_, []) -> [];
+merge_pos_fun({Domains1, Codomain1}, Pos) ->
+  % For now just check if the list has the same length
+  lists:map(fun({Domains2, Codomain2}) ->
+    case {ty_rec:is_equivalent(Domains1, Domains2), ty_rec:is_equivalent(Codomain1, Codomain2)} of
+      % They are the same function
+      {true, true} -> {Domains1, Codomain1};
+      % Domains are equal
+      {true, _} -> {Domains1, ty_rec:intersect(Codomain1, Codomain2)};
+      % Codomains are equal
+      {_, true} -> {ty_rec:union(Domains1, Domains2), Codomain1};
+      % No equivalence
+      _ -> {Domains2, Codomain2}
+      end
+  end, Pos).
 
 is_empty_cont_corec(_, _, [], _M) -> false;
 is_empty_cont_corec(BigSTuple, P, [Function | N], M) ->
@@ -102,7 +138,16 @@ normalize_coclause_corec(Pos, Neg, T, Fixed, M) ->
     _ ->
       [First | _] = Pos ++ Neg,
       Size = length(ty_function:domains(First)),
-      S = lists:foldl(fun ty_rec:union/2, ty_rec:empty(), [domains_to_tuple(Refs) || {ty_function, Refs, _} <- Pos]),
+
+      % TODO: Same optimization as in is_empty_coclause; try to combine them
+
+      % Transform list of function types to tuples
+      NewPos = [{domains_to_tuple(ty_function:domains(P)), ty_function:codomain(P)} || P <- Pos],
+      % As an optimization merge positive function types
+      [{Domains1, _} | Pos1] = merge_pos(NewPos),
+
+      S = lists:foldl(fun({Domains, _}, Acc) -> ty_rec:union(Acc, Domains) end, Domains1, Pos1),
+
       normalize_no_vars_corec(Size, S, Pos, Neg, Fixed, M)
   end.
 
