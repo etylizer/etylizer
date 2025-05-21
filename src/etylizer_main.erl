@@ -189,6 +189,13 @@ main(Args) ->
                     ?LOG_ERROR("~s", Raw),
                     io:format("~s~n", [Msg])
             end,
-            erlang:halt(1)
+            case K of
+              ty_error -> erlang:halt(1);
+              name_error -> erlang:halt(1);
+              parse_error -> erlang:halt(1);
+              unsupported -> erlang:halt(5);
+              not_implemented -> erlang:halt(5);
+              _ -> erlang:halt(2)
+            end
     end,
     ok.

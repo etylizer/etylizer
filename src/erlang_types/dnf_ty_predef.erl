@@ -6,7 +6,7 @@
 
 -export([empty/0, any/0]).
 -export([union/2, intersect/2, diff/2, negate/1, is_any/1]).
--export([is_empty/1, eval/1, normalize_corec/5, substitute/4]).
+-export([is_empty/1, normalize_corec/5, substitute/4]).
 
 -export([has_ref/2, predef/1, raw_transform/2, transform/2, all_variables/2]).
 
@@ -32,8 +32,6 @@ transform(All = [Predef | Others], Ops = #{union := U, any := A}) ->
 transform_single(Predef, #{to_predef := P}) ->
     P(Predef).
 
-% TODO witness
-eval(_) -> erlang:error("TODO").
 
 empty() -> [].
 any() -> [ '[]', float, pid, port, reference ].
