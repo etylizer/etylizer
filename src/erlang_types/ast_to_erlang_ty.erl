@@ -286,7 +286,7 @@ do_convert({{mu, RecVar, Ty}, R}, Q, Sym, M) ->
   {InternalTy, NewQ, {R0#{NewRef => InternalTy}, group(R1, InternalTy, NewRef)}};
 
 do_convert(T, _Q, _Sym, _M) ->
-  erlang:error({"Transformation from ast:ty() to ty_rec:ty() not implemented or malformed type", T}).
+  errors:bug({"Transformation from ast:ty() to ty_rec:ty() not implemented or malformed type", T}).
 
 
 -spec unify(temporary_ref(), result()) -> {temporary_ref(), #{temporary_ref() => ty_rec()}}.

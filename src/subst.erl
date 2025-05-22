@@ -194,4 +194,4 @@ collect_vars({var, Name}, CPos, Pos, Fix) ->
     end;
 collect_vars(Ty, _, _, _) ->
     logger:error("Unhandled collect vars branch: ~p", [Ty]),
-    throw({todo_collect_vars, Ty}).
+    errors:bug("Unhandled collect vars branch").

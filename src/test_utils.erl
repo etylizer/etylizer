@@ -156,8 +156,8 @@ to_cduce({union, X}) -> "(" ++ lists:join(" | ", [to_cduce(Z) || Z <- X]) ++ ")"
 to_cduce({var, Name}) -> to_var({var, Name});
 to_cduce({named, _, _, _}) -> "NAMED";
 to_cduce({fun_full, [S], T}) -> io_lib:format("(~s -> ~s)", [to_cduce(S), to_cduce(T)]);
-to_cduce(Ast) ->
-    error({construct_not_supported, Ast}).
+to_cduce(_Ast) ->
+    errors:not_implemented("Cduce construct not supported").
 
 % we use $ in the variable name which is not a valid character in OCaml
 % replace this with some other character

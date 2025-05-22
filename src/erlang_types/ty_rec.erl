@@ -7,7 +7,7 @@
 -export([is_empty_corec/2, normalize_corec/3]).
 
 -export([empty/0, any/0]).
--export([union/2, negate/1, intersect/2, diff/2, is_any/1]).
+-export([union/2, negate/1, intersect/2, diff/2]).
 -export([tuple_keys/1, function_keys/1]).
 
 % additional type constructors (hash consed)
@@ -624,9 +624,6 @@ is_empty_corec(TyRef, M) ->
         andalso ty_functions:is_empty_corec(Ty#ty.function, MNew)
         andalso dnf_var_ty_map:is_empty_corec(Ty#ty.map, MNew)
   end.
-
-is_any(_Arg0) ->
-  erlang:error(any_not_implemented). % TODO needed?
 
 normalize_start(TyRef, Fixed) ->
   % first try op-cache

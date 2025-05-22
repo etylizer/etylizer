@@ -37,7 +37,7 @@ split_into_associations({fun_simple}, OnlyOptional) ->
             [{map_field_opt, X, Y} || {tuple, [X, Y]} <- Tuples];
         Got -> 
             io:format(user,"Got:~p~n", [Got]),
-            error(sanity_not_implemented)
+            errors:bug("Internal map representation error")
     end;
 split_into_associations({intersection, Funs}, {union, Tups}) ->
     RawFun = [{A, B} || {fun_full, [A], B} <- Funs],
@@ -51,7 +51,7 @@ split_into_associations(F = {fun_full, [_], _}, T = {tuple, [_, _]}) ->
 split_into_associations(Mandatory, MandatoryAndOptional) ->
     io:format(user,"Mandatory: ~p~n", [Mandatory]),
     io:format(user,"Mandatory and opt: ~p~n", [MandatoryAndOptional]),
-    error(illegal_internal_map_representation).
+    errors:bug("Illegal internal map representation").
 
 substitute({ty_tuple, Dim, Refs}, Map, Memo) ->
     {ty_tuple, Dim, [ ty_rec:substitute(B, Map, Memo) || B <- Refs ] }.

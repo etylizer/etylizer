@@ -95,7 +95,7 @@ mk_union(Tys) ->
                     fun(T) ->
                         case T of
                             {predef, none} -> false;
-                            [] -> error(Tys);
+                            [] -> errors:bug(utils:sformat("~w", Tys));
                             _ -> true
                         end
                     end,
@@ -133,7 +133,7 @@ erlang_ty_to_ast(X) ->
         %   io:format(user, "~p => ~p~n", [X, ty_ref:load(X)]),
         %   io:format(user, "~p~n", [FinalTy]),
           raw_erlang_ty_to_ast(X), % check if this is really a pretty printing bug or a transformation bug
-          error(pretty_printing_bug)
+          errors:bug("Pretty printing bug")
       end,
 
     FinalTy.
@@ -357,7 +357,7 @@ parse_ast_to_erlang_ty(Ty = {mu, Var, InnerTy}, Sym) ->
     end;
 
 parse_ast_to_erlang_ty(T, _Sym) ->
-    erlang:error({"Norm not implemented or malformed type", T}).
+    errors:bug({"Norm not implemented or malformed type", T}).
 
 
 -spec ast_to_erlang_ty_var(ast:ty_var()) -> ty_variable:var().
@@ -380,7 +380,7 @@ raw_erlang_ty_to_ast(X) ->
             % io:format(user, "--------~n", []),
             % io:format(user, "~p => ~p~n", [X, ty_ref:load(X)]),
             % io:format(user, "~p~n", [FinalTy]),
-            error(raw_printing_bug)
+            errors:bug("Raw printing bug")
       end,
       
     FinalTy.
