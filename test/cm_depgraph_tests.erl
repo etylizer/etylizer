@@ -2,7 +2,7 @@
 
 -include_lib("eunit/include/eunit.hrl").
 -include("log.hrl").
--include("ety_main.hrl").
+-include("etylizer_main.hrl").
 
 add_dependency_test() ->
     TestGraph = cm_depgraph:add_dependency("test.erl", "foo.erl", cm_depgraph:new()),

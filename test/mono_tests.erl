@@ -11,7 +11,7 @@ check_mono_ty(Input, cyclic) ->
         typing_common:mono_ty(ast:loc_auto(), Input, 0),
         ?assert(false, "expected exception")
     catch
-        throw:{ety,ty_error, Msg} ->
+        throw:{etylizer,ty_error, Msg} ->
             ?assert(string_contains(Msg, "Cyclic bounds in type spec"))
     end;
 check_mono_ty(Input, Expected) ->

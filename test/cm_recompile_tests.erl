@@ -1,7 +1,7 @@
 -module(cm_recompile_tests).
 
 -include_lib("eunit/include/eunit.hrl").
--include("ety_main.hrl").
+-include("etylizer_main.hrl").
 -include("log.hrl").
 
 % Parse a string such as "1+2" to return {ok, sets:from_list([1,2])}
@@ -64,7 +64,7 @@ run_typechecker(SrcDir, Mode) ->
         mode = test_mode,
         no_type_checking = (Mode =:= dont_tycheck)
     },
-    ety_main:doWork(Opts).
+    etylizer_main:doWork(Opts).
 
 -spec test_recompile_version(
     file:name(), file:name(), integer(), string(), [string()] | type_error, tycheck_mode()
@@ -93,7 +93,7 @@ test_recompile_version(TargetDir, Dir, Version, RebarLockContent, ExpectedChange
     RealChanges =
         try
             run_typechecker(TargetDir, Mode)
-        catch throw:{ety, ty_error, _}:_ -> type_error
+        catch throw:{etylizer, ty_error, _}:_ -> type_error
         end,
     ExpectedChangesSorted =
         if is_list(ExpectedChanges) -> lists:sort(ExpectedChanges);

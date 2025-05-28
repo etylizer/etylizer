@@ -293,6 +293,7 @@ tyscm(Vars, Ty) -> {ty_scheme, lists:map(fun(Alpha) -> {Alpha, {predef, any}} en
 -spec builtin_ops() -> [{atom(), arity(), ast:ty_scheme()}].
 builtin_ops() ->
     NumOpTy = tyscm(tinter([
+        tfun([{predef_alias, non_neg_integer}, {predef_alias, non_neg_integer}], {predef_alias, non_neg_integer}),
         tfun([tint(), tint()], tint()),
         tfun([tint(), tfloat()], tfloat()),
         tfun([tfloat(), tint()], tfloat()),
@@ -305,8 +306,8 @@ builtin_ops() ->
     IntOpTy = tyscm(tfun([tint(), tint()], tint())),
     BoolOpTy = tyscm(tfun([tbool(), tbool()], tbool())),
     AndShortcutOpTy = tyscm(tinter([tfun([tatom(false), tany()], tatom(false)), tfun([tatom(true), tvar(a)], tvar(a))])),
-    OrShortcutOpTy = tyscm(tinter([tfun([tatom(true), tany()], tatom(true)), tfun([tatom(false), tvar(a)], tvar(a))])),
-    PolyOpTy = tyscm(tfun([tvar(a), tvar(a)], tbool())),
+    OrShortcutOpTy = tyscm(tinter([tfun([tatom(true), tany()], tatom(true)), tfun([tatom(false), tvar(b)], tvar(b))])),
+    PolyOpTy = tyscm(tfun([tvar(aa), tvar(aa)], tbool())),
     [
         {'+', 2, NumOpTy},
         {'-', 2, NumOpTy},

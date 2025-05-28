@@ -12,7 +12,7 @@
 -endif.
 
 -include("log.hrl").
--include("ety_main.hrl").
+-include("etylizer_main.hrl").
 
 -spec perform_type_checks(
     paths:search_path(),

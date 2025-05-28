@@ -2,7 +2,7 @@
 
 -include("log.hrl").
 -include("parse.hrl").
--include("ety_main.hrl").
+-include("etylizer_main.hrl").
 
 -export([init/1, cleanup/0, parse/2, with_cache/2]).
 -export_type([file_kind/0]).

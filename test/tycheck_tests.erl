@@ -1,7 +1,7 @@
 -module(tycheck_tests).
 
 -include_lib("eunit/include/eunit.hrl").
--include("ety_main.hrl").
+-include("etylizer_main.hrl").
 -include("log.hrl").
 
 -type tycheck_result() :: ok | {fail, string()}.
@@ -16,11 +16,11 @@ run_typechecker(File) ->
         type_overlay = "./overlays/eqwalizer_specs.erl"
     },
     try
-        ety_main:doWork(Opts),
+        etylizer_main:doWork(Opts),
         ok
     catch
-        throw:{ety, ty_error, Msg}:_ -> {fail, Msg};
-        throw:{ety, parse_error, Msg}:_ -> {fail, Msg}
+        throw:{etylizer, ty_error, Msg}:_ -> {fail, Msg};
+        throw:{etylizer, parse_error, Msg}:_ -> {fail, Msg}
     end.
 
 -type error_msg() :: unspecific | string().

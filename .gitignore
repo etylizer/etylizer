@@ -13,7 +13,7 @@ _etylizer/
 _build/
 _checkouts/
 
-ety.log
+etylizer.log
 *.trace
 *.analyze
 

@@ -30,7 +30,7 @@ check_all(Ctx, FileName, Env, Decls) ->
          ),
         ?LOG_NOTE("Successfully checked functions in ~s against their specs", FileName),
         ok
-    catch throw:{ety, ty_error, Msg} ->
+    catch throw:{etylizer, ty_error, Msg} ->
             ?LOG_NOTE("Checking failed: ~s", Msg),
             {error, Msg}
     end.

@@ -637,9 +637,6 @@ is_empty_corec(TyRef, M) ->
         andalso dnf_var_ty_map:is_empty_corec(Ty#ty.map, MNew)
   end.
 
-is_any(_Arg0) ->
-  erlang:error(any_not_implemented). % TODO needed?
-
 normalize_start(TyRef, Fixed) ->
   % first try op-cache
   case ty_ref:normalize_cached({TyRef, Fixed}) of

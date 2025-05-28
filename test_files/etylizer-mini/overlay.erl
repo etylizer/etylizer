@@ -17,6 +17,9 @@
 -spec 'filename:join'(string(), string()) -> string().
 'filename:join'(_, _) -> error(overlay).
 
+-spec 'filename:basename'(string(), string()) -> string().
+'filename:basename'(_, _) -> error(overlay).
+
 -spec 'lists:map'(fun((A) -> B), [A]) -> [B].
 'lists:map'(_, _) -> error(overlay).
 
@@ -25,6 +28,13 @@
 
 -spec 'lists:keyfind'(Key :: term(), N :: pos_integer(), [Tuple]) -> Tuple | false.
 'lists:keyfind'(_, _, _) -> error(overlay).
+
+-spec 'maps:from_list'([{Key, Value}]) -> #{Key => Value}.
+'maps:from_list'(_) -> error(overlay).
+
+% -type deepList(A) :: [A | deepList(A)].
+% -spec 'lists:flatten'(deepList(A)) -> [A].
+% 'lists:flatten'(_) -> error(overlay).
 
 -spec 'erlang:element'
     (2, {_A, B}) -> B;
@@ -41,6 +51,3 @@
 'erlang:element'(_, {_A, B, _C, _D, _E, _F}) -> B;
 'erlang:element'(_, {_A, B, _C, _D, _E, _F, _G}) -> B;
 'erlang:element'(_, {_A, B, _C, _D, _E, _F, _G, _H}) -> B.
-
--spec 'maps:find'(Key, #{Key => Value}) -> {ok, Value} | error.
-'maps:find'(_, _) -> error(eqwalizer_specs).
