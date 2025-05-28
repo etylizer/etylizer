@@ -7,7 +7,7 @@
 -export([is_empty_corec/2, normalize_corec/3]).
 
 -export([empty/0, any/0, of_function_dnf/5, of_function_dnfs/2]).
--export([union/2, negate/1, intersect/2, diff/2, is_any/1]).
+-export([union/2, negate/1, intersect/2, diff/2]).
 -export([tuple_keys/1, function_keys/1]).
 
 % additional type constructors (hash consed)
