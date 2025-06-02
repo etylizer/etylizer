@@ -88,6 +88,7 @@ traverse_and_check([CurrentFile | RemainingFiles], Symtab, OverlaySymtab, Search
         false -> io:format("Checking ~s~n", [CurrentFile])
     end,
     Forms = parse_cache:parse(intern, CurrentFile),
+    check_exported_funs_specified(Forms),
     ModName = ast_utils:modname_from_path(CurrentFile),
     Referenced = lists:filter(fun (M) -> M =/= ModName end, ast_utils:referenced_modules(Forms)),
     ?LOG_DEBUG("Referenced from ~s: ~200p", CurrentFile, Referenced),
@@ -135,3 +136,14 @@ overlay_symtab(Opts) ->
             parse_cache:parse(intern, OverlayFile)
     end,
     symtab:overlay_symtab(OverlayForms).
+
+-spec check_exported_funs_specified(ast:forms()) -> ok | no_return().
+check_exported_funs_specified(Forms) ->
+    Exported = [Exp || {attribute, _, export, Exports} <- Forms, Exp <- Exports],
+    Speced = [{Fun, Arity} || {attribute, _, spec, Fun, Arity, _, _} <- Forms],
+    Missing = [ utils:sformat("~w/~w", Fun, Arity) || {Fun, Arity} <- Exported, not lists:member({Fun, Arity}, Speced) ],
+    case Missing of
+        [] -> ok;
+    _ ->
+        errors:ty_error(utils:sformat("The following exported functions are missing a type spec: ~s", [string:join(Missing, ", ")]))
+    end.
