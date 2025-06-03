@@ -13,7 +13,8 @@ run_typechecker(File) ->
         project_root = filename:dirname(File),
         mode = test_mode,
         force = true,
-        type_overlay = "./overlays/eqwalizer_specs.erl"
+        type_overlay = "./overlays/eqwalizer_specs.erl",
+        check_exports = true
     },
     try
         etylizer_main:doWork(Opts),
