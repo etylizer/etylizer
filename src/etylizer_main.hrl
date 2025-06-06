@@ -8,6 +8,7 @@
                force = false :: boolean(),
                no_type_checking = false :: boolean(),
                no_deps = false :: boolean(),
+               check_exports = false :: boolean(),
                type_check_only = [] :: [string()],
                type_check_ignore = [] :: [string()],
                ast_file = empty :: empty | string(),
@@ -20,6 +21,7 @@
                files = [] :: [string()],
                type_overlay = [] :: string(),
                mode = prod_mode :: opts_mode() % only used internally
+
             }).
 
 -type cmd_opts() :: #opts{}.
