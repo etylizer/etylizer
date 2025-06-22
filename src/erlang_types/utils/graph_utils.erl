@@ -1,4 +1,4 @@
--module(utils).
+-module(graph_utils).
 
 -compile([export_all, nowarn_export_all]).
 
@@ -17,34 +17,6 @@ compare(Cmp, [T1 | Ts1], [T2 | Ts2]) ->
 %     true -> equal(Eq, Ts1, Ts2);
 %     false -> false
 %   end.
-
-% -spec everywhere(fun((term()) -> t:opt(term())), T) -> T.
-everywhere(F, T) ->
-    TransList = fun(L) -> lists:map(fun(X) -> everywhere(F, X) end, L) end,
-    case F(T) of
-        error ->
-            case T of
-                X when is_list(X) -> TransList(X);
-                X when is_tuple(X) -> list_to_tuple(TransList(tuple_to_list(X)));
-                X when is_map(X) -> #{everywhere(F, K) => everywhere(F, V) || K := V <- X};
-                X -> X
-            end;
-        {ok, X} -> X;
-        {rec, X} -> F(F, X)
-    end.
-
-everything(F, T) ->
-    TransList = fun(L) -> lists:flatmap(fun(X) -> everything(F, X) end, L) end,
-    case F(T) of
-        error ->
-            case T of
-                X when is_list(X) -> TransList(X);
-                X when is_tuple(X) -> TransList(tuple_to_list(X));
-                X when is_map(X) -> TransList(maps:to_list(X));
-                _ -> []
-            end;
-        {ok, X} -> [X]
-    end.
 
 replace(Term, Mapping) ->
     replace_term(Term, Mapping).

@@ -125,46 +125,47 @@ fix_load_path(Opts) ->
 
 -spec doWork(#opts{}) -> [file:filename()].
 doWork(Opts) ->
-    ?LOG_INFO("Initializing ETS tables"),
-    ecache:reset_all(),
-    parse_cache:init(Opts),
-    stdtypes:init(),
-    try
-        fix_load_path(Opts),
-        case Opts#opts.ast_file of
-            empty -> ok;
-            AstPath ->
-                {Spec, Module} = ast_check:parse_spec(AstPath),
-                ParseOpts = #parse_opts{
-                    includes = Opts#opts.includes,
-                    defines = Opts#opts.defines
-                },
-                lists:foreach(fun(F) ->
-                    ast_check:check(Spec, Module, F, ParseOpts)
-                end, Opts#opts.files),
-                erlang:halt(0)
-        end,
-        SourceList = paths:generate_input_file_list(Opts),
-        SearchPath = paths:compute_search_path(Opts),
-        DepGraph =
-            case Opts#opts.no_deps of
-                true ->
-                    % only typecheck the files given
-                    cm_depgraph:new(SourceList);
-                false ->
-                    ?LOG_NOTE("Entry points: ~p, now building dependency graph", SourceList),
-                    G = cm_depgraph:build_dep_graph(
-                        SourceList,
-                        SearchPath),
-                    ?LOG_DEBUG("Reverse dependency graph: ~p", cm_depgraph:pretty_depgraph(G)),
-                    G
-            end,
-        ?LOG_NOTE("Performing type checking"),
-        cm_check:perform_type_checks(SearchPath, cm_depgraph:all_sources(DepGraph), DepGraph, Opts)
-    after
-        parse_cache:cleanup(),
-        stdtypes:cleanup()
-    end.
+    global_state:with_new_state(fun() ->
+      ?LOG_INFO("Initializing ETS tables"),
+      parse_cache:init(Opts),
+      stdtypes:init(),
+      try
+          fix_load_path(Opts),
+          case Opts#opts.ast_file of
+              empty -> ok;
+              AstPath ->
+                  {Spec, Module} = ast_check:parse_spec(AstPath),
+                  ParseOpts = #parse_opts{
+                      includes = Opts#opts.includes,
+                      defines = Opts#opts.defines
+                  },
+                  lists:foreach(fun(F) ->
+                      ast_check:check(Spec, Module, F, ParseOpts)
+                  end, Opts#opts.files),
+                  erlang:halt(0)
+          end,
+          SourceList = paths:generate_input_file_list(Opts),
+          SearchPath = paths:compute_search_path(Opts),
+          DepGraph =
+              case Opts#opts.no_deps of
+                  true ->
+                      % only typecheck the files given
+                      cm_depgraph:new(SourceList);
+                  false ->
+                      ?LOG_NOTE("Entry points: ~p, now building dependency graph", SourceList),
+                      G = cm_depgraph:build_dep_graph(
+                          SourceList,
+                          SearchPath),
+                      ?LOG_DEBUG("Reverse dependency graph: ~p", cm_depgraph:pretty_depgraph(G)),
+                      G
+              end,
+          ?LOG_NOTE("Performing type checking"),
+          cm_check:perform_type_checks(SearchPath, cm_depgraph:all_sources(DepGraph), DepGraph, Opts)
+      after
+          parse_cache:cleanup(),
+          stdtypes:cleanup()
+      end
+                                end).
 
 -spec main([string()]) -> ok.
 main(Args) ->
