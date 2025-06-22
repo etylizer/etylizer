@@ -1,51 +1,49 @@
 -module(ty_variable).
 
-% ETS table is used to strict monotonically increment a variable ID counter
--export([setup_all/0, reset/0]).
 -define(VAR_ETS, variable_counter_ets_table).
+-define(ALL_ETS, [?VAR_ETS]).
 
--export([update_id/1, compare/2, equal/2, substitute/4, has_ref/2, all_variables/2, name/1]).
--export([leq/2]).
+-spec init() -> _.
+init() ->
+  case ets:whereis(?VAR_ETS) of
+      undefined -> 
+        [ets:new(T, [set, named_table]) || T <- ?ALL_ETS],
+        ets:insert(?VAR_ETS, {variable_id, 0});
+      _ -> ok
+  end.
 
-
--export([fresh_from/1, new/1, new_with_name/1, new_with_name_and_id/2, smallest/3, normalize_corec/6, raw_transform/2, transform/2, get_new_id/0]).
-
--export_type([var/0]).
+-spec clean() -> _.
+clean() ->
+  case ets:whereis(?VAR_ETS) of
+      undefined -> ok;
+      _ -> 
+        [ets:delete(T) || T <- ?ALL_ETS]
+  end.
 
 % variables have either their name as their ID (coming from a ast_lib conversion)
-%  or a unique ID (usually generated inside the erlang_types library)
+% or a unique ID (usually generated inside the erlang_types library)
 -record(var, {id, name}).
 -type var() :: 
   #var{id :: integer() | name, name :: atom()}.
 
-reset() ->
-  catch ets:delete(?VAR_ETS),
-  setup_all().
-
-setup_all() ->
-  ets:new(?VAR_ETS, [public, named_table]),
-  ets:insert(?VAR_ETS, {variable_id, 0}).
-
 -spec equal(var(), var()) -> boolean().
-equal(Var1, Var2) -> compare(Var1, Var2) =:= 0.
+equal(Var1, Var2) -> compare(Var1, Var2) =:= eq.
 
--spec compare(var(), var()) -> -1 | 0 | 1.
+-spec compare(var(), var()) -> lt | eq | gt.
 compare(#var{id = name, name = N1}, #var{id = name, name = N2}) ->
   case {N1 > N2, N1 < N2} of
-    {false, false} -> 0;
-    {true, _} -> +1;
-    {_, true} -> -1
+    {false, false} -> eq;
+    {true, _} -> gt;
+    {_, true} -> lt
   end;
-compare(#var{id = name}, #var{}) -> -1;
-compare(#var{}, #var{id = name}) -> +1;
-compare(#var{id = Id1}, #var{id = Id2}) when Id1 < Id2 -> -1;
-compare(#var{id = Id1}, #var{id = Id2}) when Id1 > Id2 -> +1;
-compare(_, _) -> 0.
+compare(#var{id = name}, #var{}) -> lt;
+compare(#var{}, #var{id = name}) -> gt;
+compare(#var{id = Id1}, #var{id = Id2}) when Id1 < Id2 -> lt;
+compare(#var{id = Id1}, #var{id = Id2}) when Id1 > Id2 -> gt;
+compare(_, _) -> eq.
 
 leq(V1, V2) -> 
-  (compare(V1, V2) < 1).
-
-has_ref(_, _) -> false.
+  compare(V1, V2) /= gt.
 
 update_id(Id) ->
 	ets:update_counter(?VAR_ETS, variable_id, {2, Id}).
@@ -76,84 +74,58 @@ new_with_name_and_id(Id, Name) when is_atom(Name) ->
 get_new_id() ->
   ets:update_counter(?VAR_ETS, variable_id, {2,1}).
 
-% assumption: PVars U NVars is not empty
-smallest(PositiveVariables, NegativeVariables, FixedVariables) ->
-  true = (length(PositiveVariables) + length(NegativeVariables)) > 0,
+unparse(#var{id = name, name = Name}, _) ->
+  {var, Name};
+unparse(#var{id = Id, name = Name}, _) ->
+  {var, list_to_atom("$ety_" ++ integer_to_list(Id) ++ "_" ++ atom_to_list(Name))}.
 
-  % fixed variables are higher order than all non-fixed ones, will be picked last
-  PositiveVariablesTagged = [{pos, V} || V <- PositiveVariables, not sets:is_element(V, FixedVariables)],
-  NegativeVariablesTagged = [{neg, V} || V <- NegativeVariables, not sets:is_element(V, FixedVariables)],
+% % assumption: PVars U NVars is not empty
+% smallest(PositiveVariables, NegativeVariables, FixedVariables) ->
+%   true = (length(PositiveVariables) + length(NegativeVariables)) > 0,
 
-  RestTagged =
-    [{{delta, neg}, V} || V <- NegativeVariables, sets:is_element(V, FixedVariables)] ++
-    [{{delta, pos}, V} || V <- PositiveVariables, sets:is_element(V, FixedVariables)],
+%   % fixed variables are higher order than all non-fixed ones, will be picked last
+%   PositiveVariablesTagged = [{pos, V} || V <- PositiveVariables, not sets:is_element(V, FixedVariables)],
+%   NegativeVariablesTagged = [{neg, V} || V <- NegativeVariables, not sets:is_element(V, FixedVariables)],
 
-  Sort = fun({_, V}, {_, V2}) -> leq(V, V2) end,
-  [X | Z] = lists:sort(Sort, PositiveVariablesTagged++NegativeVariablesTagged) ++ lists:sort(Sort, RestTagged),
+%   RestTagged =
+%     [{{delta, neg}, V} || V <- NegativeVariables, sets:is_element(V, FixedVariables)] ++
+%     [{{delta, pos}, V} || V <- PositiveVariables, sets:is_element(V, FixedVariables)],
 
-  {X, Z}.
+%   Sort = fun({_, V}, {_, V2}) -> leq(V, V2) end,
+%   [X | Z] = lists:sort(Sort, PositiveVariablesTagged++NegativeVariablesTagged) ++ lists:sort(Sort, RestTagged),
 
-
-single(Pol, VPos, VNeg, Ty, VarToTy) ->
-  AccP = lists:foldl(fun(Var, TTy) -> ty_rec:intersect(TTy, VarToTy(Var)) end, Ty, VPos),
-  AccN = lists:foldl(fun(Var, TTy) -> ty_rec:union(TTy, VarToTy(Var)) end, ty_rec:empty(), VNeg),
-  S = ty_rec:diff(AccP, AccN),
-  case Pol of
-    true -> ty_rec:negate(S);
-    _ -> S
-  end.
+%   {X, Z}.
 
 
-% (NTLV rule)
-normalize_corec(Ty, PVar, NVar, Fixed, VarToTy, Mx) ->
-  SmallestVar = ty_variable:smallest(PVar, NVar, Fixed),
-  case SmallestVar of
-    {{pos, Var}, _Others} ->
-      Singled = single(true, PVar -- [Var], NVar, Ty, VarToTy ),
-      [[{Var, ty_rec:empty(), Singled}]];
-    {{neg, Var}, _Others} ->
-      Singled = single(false, PVar, NVar -- [Var], Ty, VarToTy),
-      [[{Var, Singled, ty_rec:any()}]];
-    {{{delta, _}, _}, _} ->
-      % part 1 paper Lemma C.3 and C.11 all fixed variables can be eliminated
-      ty_rec:normalize_corec(Ty, Fixed, Mx)
-  end.
+% single(Pol, VPos, VNeg, Ty, VarToTy) ->
+%   AccP = lists:foldl(fun(Var, TTy) -> ty_rec:intersect(TTy, VarToTy(Var)) end, Ty, VPos),
+%   AccN = lists:foldl(fun(Var, TTy) -> ty_rec:union(TTy, VarToTy(Var)) end, ty_rec:empty(), VNeg),
+%   S = ty_rec:diff(AccP, AccN),
+%   case Pol of
+%     true -> ty_rec:negate(S);
+%     _ -> S
+%   end.
 
-substitute(MkTy, Var, Map, _Memo) ->
-  X = maps:get(Var, Map, ty_rec:variable(Var)),
-  MkTy(X).
 
-all_variables(Var, _) -> [Var].
-raw_transform(T, Op) -> transform(T, Op).
-transform(Ty, #{var := ToVar}) -> ToVar(Ty).
+% % (NTLV rule)
+% normalize_corec(Ty, PVar, NVar, Fixed, VarToTy, Mx) ->
+%   SmallestVar = ty_variable:smallest(PVar, NVar, Fixed),
+%   case SmallestVar of
+%     {{pos, Var}, _Others} ->
+%       Singled = single(true, PVar -- [Var], NVar, Ty, VarToTy ),
+%       [[{Var, ty_rec:empty(), Singled}]];
+%     {{neg, Var}, _Others} ->
+%       Singled = single(false, PVar, NVar -- [Var], Ty, VarToTy),
+%       [[{Var, Singled, ty_rec:any()}]];
+%     {{{delta, _}, _}, _} ->
+%       % part 1 paper Lemma C.3 and C.11 all fixed variables can be eliminated
+%       ty_rec:normalize_corec(Ty, Fixed, Mx)
+%   end.
 
--ifdef(TEST).
--include_lib("eunit/include/eunit.hrl").
+% substitute(MkTy, Var, Map, _Memo) ->
+%   X = maps:get(Var, Map, ty_rec:variable(Var)),
+%   MkTy(X).
 
-usage_test() ->
-  % create a fresh variable with a descriptor "A"
-  _VarA = ty_variable:new(a),
-  ok.
-
-strictly_increasing_id_test() ->
-  #var{id = IdA} = ty_variable:new(a),
-  #var{id = IdB} = ty_variable:new(b),
-  #var{id = IdC} = ty_variable:new(c),
-  true = (IdA < IdB),
-  true = (IdB < IdC),
-  ok.
-
-same_name_different_id_test() ->
-  VarA = ty_variable:new(a),
-  VarB = ty_variable:new(a),
-  -1 = ty_variable:compare(VarA, VarB),
-  ok.
-
-same_name_same_id_test() ->
-  VarA = ty_variable:new_with_name(a),
-  VarB = ty_variable:new_with_name(a),
-  0 = ty_variable:compare(VarA, VarB),
-  ok.
-
--endif.
-
+% all_variables(Var, _) -> [Var].
+% raw_transform(T, Op) -> transform(T, Op).
+% transform(Ty, #{var := ToVar}) -> ToVar(Ty).

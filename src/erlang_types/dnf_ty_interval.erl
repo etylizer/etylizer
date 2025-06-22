@@ -1,51 +1,7 @@
 -module(dnf_ty_interval).
 
-%% Efficient interval representation
-
-
--export([compare/2, equal/2]).
-
-
--export([empty/0, any/0]).
--export([union/2, intersect/2, diff/2, negate/1, is_any/1]).
--export([is_empty/1, normalize_corec/5, substitute/4, all_variables/2, to_singletons/1]).
-
-
--export([interval/2, cointerval/2]).
--export([raw_transform/2, transform/2, map_pi/1, has_ref/2]).
-
-has_ref(_, _) -> false.
-
-raw_transform(T, Op) -> transform(T, Op).
-
-transform([], #{empty := E}) -> E();
-transform([any_int], #{any := E}) -> E();
-transform([Int | Others], Ops = #{union := U}) -> U([transform_single(Int, Ops), transform(Others, Ops)]).
-
-transform_single({range, A, B}, #{to_int := Int}) -> Int(A, B);
-% TODO hack
-transform_single({left, -1}, _) -> {predef_alias, neg_integer};
-transform_single({right, 1}, _) -> {predef_alias, pos_integer};
-
-transform_single({left, L}, M = #{diff := D}) when L < -1 ->
-    D({predef_alias, neg_integer}, transform_single({range, (L + 1), -1}, M));
-transform_single({left, L}, M = #{union := U}) when L > -1 ->
-    U([{predef_alias, neg_integer}, transform_single({range, -1, L}, M)]);
-
-transform_single({right, R}, M = #{diff := D}) when R > 1 ->
-    D({predef_alias, pos_integer}, transform_single({range, 1, (R - 1)}, M));
-transform_single({right, R}, M = #{union := U}) when R < 1 ->
-    U([{predef_alias, pos_integer}, transform_single({range, R, 1}, M)]).
-
-to_singletons([]) -> [];
-to_singletons([{range, A, B} | Ints]) ->
-    [ty_rec:interval(dnf_var_ty_interval:int(interval(X, X))) || X <- lists:seq(A, B)] ++ to_singletons(Ints);
-to_singletons(_) ->
-    error(illegal_state).
-
 %% representation
 %% left? range* right?
-
 
 empty() -> [].
 any() -> [any_int].
@@ -90,8 +46,8 @@ interval(_, _) -> [].
 cointerval(From, To) ->
     negate(interval(From, To)).
 
-is_empty([]) -> true;
-is_empty(_) -> false.
+is_empty([], ST) -> {true, ST};
+is_empty(_, ST) -> {false, ST}.
 
 is_any([any_int]) -> true;
 is_any(_) -> false.
@@ -112,7 +68,7 @@ union(I1, I2) ->
 intersect(I1, I2) ->
     negate(union(negate(I1), negate(I2))).
 
-diff(I1, I2) ->
+difference(I1, I2) ->
     intersect(I1, negate(I2)).
 
 interval_add({range, A, B}, Xs) -> add_range(Xs, A, B);
@@ -148,33 +104,32 @@ add_range([{left, B1} | Xs], _A, B) ->
 add_range([{right, A1} | _], A, _B) -> [{right, min(A, A1)}];
 add_range([any_int | _], _A, _B) -> any().
 
-normalize_corec(TyInterval, [], [], _Fixed, _) ->
-    % Fig. 3 Line 3
-    case is_empty(TyInterval) of
-        true -> [[]];
-        false -> []
-    end;
-normalize_corec(TyInterval, PVar, NVar, Fixed, M) ->
-    Ty = ty_rec:interval(dnf_var_ty_interval:int(TyInterval)),
-    % ntlv rule
-    ty_variable:normalize_corec(Ty, PVar, NVar, Fixed, fun(Var) -> ty_rec:interval(dnf_var_ty_interval:var(Var)) end, M).
+normalize(Dnf, _Fixed, ST) ->
+  % Fig. 3 Line 3
+  case is_empty(Dnf, #{}) of
+    {true, _} -> {[[]], ST};
+    {false, _} -> {[], ST}
+  end.
 
-substitute(_, Ty, _, _) -> Ty.
-% there is nothing to substitute in a dnf_ty_interval
-map_pi(_) -> #{}.
-all_variables(_, _) -> [].
 
--ifdef(TEST).
--include_lib("eunit/include/eunit.hrl").
 
-usage_test() ->
-    Ia = dnf_ty_interval:interval(5, '*'),
-    Ib = dnf_ty_interval:cointerval(2, 10),
-    Ix = dnf_ty_interval:intersect(Ia, Ib),
-    false = dnf_ty_interval:is_empty(Ix),
-    Ic = dnf_ty_interval:interval(1, 1),
-    true = dnf_ty_interval:is_empty(dnf_ty_interval:intersect(Ix, Ic)),
+unparse([], _) -> {predef, none};
+unparse([any_int], _) -> {predef, any};
+unparse([Int | Others], C) -> {union, [unparse_single(Int), unparse(Others, C)]}.
 
-    ok.
+unparse_single({range, A, B}) -> {range, A, B};
+unparse_single({left, -1}) -> {predef_alias, neg_integer};
+unparse_single({right, 1}) -> {predef_alias, pos_integer};
 
--endif.
+unparse_single({left, L}) when L < -1 ->
+  {intersection, [
+                  {predef_alias, neg_integer}, 
+                  {negation, unparse_single({range, (L + 1), -1})}
+                 ]};
+unparse_single({left, L}) when L > -1 ->
+  {union, [{predef_alias, neg_integer}, unparse_single({range, -1, L})]};
+
+unparse_single({right, R}) when R > 1 ->
+  {intersection, [{predef_alias, pos_integer}, unparse_single({range, 1, (R - 1)})]};
+unparse_single({right, R}) when R < 1 ->
+  {union, [{predef_alias, pos_integer}, unparse_single({range, R, 1})]}.

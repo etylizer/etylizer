@@ -1,12 +1,8 @@
--module(ty_bool).
+-module(dnf_ty_bitstring).
 
-% only used as a simple boolean terminal node in a BDD where the leafs are 1 and 0 only.
--compile([export_all, nowarn_export_all]).
--export_type([type/0]).
+% currently only supported: bitstring yes/no
 
--type type() :: 0 | 1.
-
-compare(0, 0) -> 0; compare(1, 1) -> 0; compare(1, 0) -> 1; compare(0, 1) -> -1.
+compare(X, X) -> eq; compare(1, 0) -> gt; compare(0, 1) -> lt.
 equal(X, Y) -> X =:= Y.
 empty() -> 0.
 any() -> 1.
@@ -21,5 +17,16 @@ substitute(_,X,_,_) -> X.
 map_pi(_) -> #{}.
 has_ref(_,_) -> false.
 all_variables(_, _) -> [].
+raw_transform(T, Op) -> transform(T, Op).
+transform(0, #{empty := E}) -> E();
+transform(1, #{any := A}) -> A().
+
+normalize(Dnf, _Fixed, ST) ->
+  % Fig. 3 Line 3
+  case is_empty(Dnf, #{}) of
+    {true, _} -> {[[]], ST};
+    {false, _} -> {[], ST}
+  end.
+
 unparse(0, _) -> {predef, none};
 unparse(1, _) -> {predef, any}.

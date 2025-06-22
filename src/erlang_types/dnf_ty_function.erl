@@ -1,143 +1,144 @@
 -module(dnf_ty_function).
 
--ifdef(TEST).
--export([explore_function_norm_corec/6]).
--endif.
+-compile([export_all, nowarn_export_all]).
 
--define(ELEMENT, ty_function).
--define(TERMINAL, ty_bool).
+-define(ATOM, ty_function).
+-define(LEAF, ty_bool).
+-define(NODE, ty_node).
 
 -define(F(Z), fun() -> Z end).
 
--export([apply_to_node/3]).
--export([normalize_corec/6, substitute/4, is_empty_corec/2]).
+-include("dnf/bdd.hrl").
 
--export([function/1]).
+-type type() :: any(). % TODO
+% -spec function(ty_function()) -> dnf_ty_function().
+% function(TyFunction) -> node(TyFunction).
 
-%-type ty_ref() :: {ty_ref, integer()}.
--type dnf_function() :: term().
--type ty_function() :: dnf_function().
--type dnf_ty_function() :: term().
+% -> {boolean(), local_cache()}.
+is_empty_line({AllPos, Neg, _T}, ST) ->
+  _T = ?LEAF:any(), % sanity
+  % continue searching for any arrow ∈ N such that the line becomes empty
+  lists:foldl(
+    fun
+      (_NegatedFun, {true, ST0}) -> {true, ST0}; 
+      (NegatedFun, {false, ST0}) -> is_empty_cont(AllPos, NegatedFun, ST0) 
+    end, 
+    {false, ST}, 
+    Neg
+  ).
 
--include("dnf/bdd_node.hrl").
+% -> {boolean(), local_cache()}.
+is_empty_cont(Ps, NegatedFun, ST0) ->
+  %% ∃ Ts-->T2 ∈ N s.t.
+  %%    Ts is in the domains of the function
+  T1 = ty_function:domain(NegatedFun),
 
--spec function(ty_function()) -> dnf_ty_function().
-function(TyFunction) -> node(TyFunction).
-
-is_empty_corec(TyBDD, M) ->
-  dnf(TyBDD, {fun(P, N, T) -> is_empty_coclause_corec(P, N, T, M) end, fun is_empty_union/2}).
-
-is_empty_coclause_corec(AllPos, Neg, T, M) ->
-  case {AllPos, Neg, ty_bool:empty()} of
-    {_, _, T} -> true;
-    {[], [], _} -> false;
-    {[], Neg = [TNeg | _], _} ->
-      Dim = length(ty_function:domains(TNeg)),
-      P = ty_function:function([ty_rec:empty() || _ <- lists:seq(1, Dim)], ty_rec:any()),
-      BigSTuple = lists:foldl(fun(FunTy, Acc) ->
-        ty_rec:union(Acc, domains_to_tuple(ty_function:domains(FunTy)))
-                              end, domains_to_tuple(ty_function:domains(P)), []),
-      is_empty_cont_corec(BigSTuple, AllPos, Neg, M);
-    {[P | Pos], Neg, _} ->
-      % TODO here do these simplifications
-      % A -> B && C -> B == A|C -> B
-      % A -> B && A -> C == A -> B&C
-      BigSTuple = lists:foldl(fun(FunTy, Acc) ->
-        ty_rec:union(Acc, domains_to_tuple(ty_function:domains(FunTy)))
-                              end, domains_to_tuple(ty_function:domains(P)), Pos),
-      is_empty_cont_corec(BigSTuple, AllPos, Neg, M)
+  AllDomains = lists:map(fun ty_function:domain/1, Ps),
+  Disj = ?NODE:disjunction(AllDomains),
+  maybe 
+    {true, ST1} ?= ?NODE:leq(T1, Disj, ST0),
+    NegatedCodomain = ?NODE:negate(ty_function:codomain(NegatedFun)),
+    explore_function(T1, NegatedCodomain, Ps, ST1)
   end.
-
-is_empty_cont_corec(_, _, [], _M) -> false;
-is_empty_cont_corec(BigSTuple, P, [Function | N], M) ->
-  Ts = ty_function:domains(Function),
-  T2 = ty_function:codomain(Function),
-  (
-      %% ∃ Ts-->T2 ∈ N s.t.
-      %%    Ts is in the domains of the function
-      %%    BigS is the union of all domains of the positive function intersections
-      ty_rec:is_empty_corec(ty_rec:intersect(domains_to_tuple(Ts), ty_rec:negate(BigSTuple)), M)
-        andalso
-        explore_function_corec(domains_to_tuple(Ts), ty_rec:negate(T2), P, M)
-  )
-  %% Continue searching for another arrow ∈ N
-    orelse
-    is_empty_cont_corec(BigSTuple, P, N, M).
-
-domains_to_tuple(Domains) ->
-  ty_rec:tuple(length(Domains), dnf_var_ty_tuple:tuple(dnf_ty_tuple:tuple(ty_tuple:tuple(Domains)))).
 
 % optimized phi' (4.10) from paper covariance and contravariance
 % justification for this version of phi can be found in `prop_phi_function.erl`
 %-spec explore_function(ty_ref(), ty_ref(), [term()]) -> boolean().
-explore_function_corec(Ts, T2, [], M) ->
-  ty_rec:is_empty_corec(T2, M) orelse ty_rec:is_empty_corec(Ts, M);
-explore_function_corec(Ts, T2, [Function | P], M) ->
-  ty_rec:is_empty_corec(Ts, M) orelse ty_rec:is_empty_corec(T2, M)
-  orelse
-    begin
-      BigS1 = domains_to_tuple(ty_function:domains(Function)),
-      S2 = ty_function:codomain(Function),
-      explore_function_corec(Ts, ty_rec:intersect(T2, S2), P, M)
-        andalso
-        explore_function_corec(ty_rec:diff(Ts, BigS1), T2, P, M)
-    end.
-
-normalize_corec(_Size, DnfTyFunction, [], [], Fixed, M) ->
-  dnf(DnfTyFunction, {
-    fun(Pos, Neg, DnfTyList) -> normalize_coclause_corec(Pos, Neg, DnfTyList, Fixed, M) end,
-    fun constraint_set:meet/2
-  })
-;
-normalize_corec(Size, DnfTyFunction, PVar, NVar, Fixed, M) ->
-  Ty = ty_rec:function(Size, dnf_var_ty_function:function(DnfTyFunction)),
-  % ntlv rule
-  ty_variable:normalize_corec(Ty, PVar, NVar, Fixed, fun(Var) -> ty_rec:function(Size, dnf_var_ty_function:var(Var)) end, M).
-
-normalize_coclause_corec([], [], T, _Fixed, _M) ->
-  case ty_bool:empty() of T -> [[]]; _ -> [] end;
-normalize_coclause_corec(Pos, Neg, T, Fixed, M) ->
-  case ty_bool:empty() of
-    T -> [[]];
-    _ ->
-      [First | _] = Pos ++ Neg,
-      Size = length(ty_function:domains(First)),
-      S = lists:foldl(fun ty_rec:union/2, ty_rec:empty(), [domains_to_tuple(Refs) || {ty_function, Refs, _} <- Pos]),
-      normalize_no_vars_corec(Size, S, Pos, Neg, Fixed, M)
+explore_function(_T1, _T2, [], ST) ->
+  {true, ST};
+explore_function(T1, T2, [Function | Ps], ST0) ->
+  {S1, S2} = {ty_function:domain(Function), ty_function:codomain(Function)},
+  maybe 
+    {true, ST1} ?= phi(T1, ?NODE:intersect(T2, S2), Ps, ST0),
+    phi(?NODE:difference(T1, S1), T2, Ps, ST1)
   end.
 
-normalize_no_vars_corec(_Size, _, _, [], _Fixed, _) -> []; % non-empty
-normalize_no_vars_corec(Size, S, P, [Function | N], Fixed, M) ->
-  T1 = domains_to_tuple(ty_function:domains(Function)),
+phi(T1, T2, [], ST0) ->
+  maybe
+    {false, ST1} ?= ?NODE:is_empty(T1, ST0),
+    ?NODE:is_empty(T2, ST1)
+  end;
+phi(T1, T2, [Function | Ps], ST0) ->
+  {S1, S2} = {ty_function:domain(Function), ty_function:codomain(Function)},
+  maybe 
+    {false, ST1} ?= ?NODE:is_empty(T1, ST0),
+    {false, ST2} ?= ?NODE:is_empty(T2, ST1),
+    maybe
+      {true, ST4} ?= maybe
+        {false, ST3} ?= ?NODE:leq(T1, S1, ST2),
+        Codomains = lists:map(fun ty_function:codomain/1, Ps),
+        Conj = ?NODE:conjunction(Codomains),
+        ?NODE:leq(Conj, ?NODE:negate(T2), ST3)
+      end,
+      {true, ST5} ?= phi(T1, ?NODE:intersect(T2, S2), Ps, ST4),
+      phi(?NODE:difference(T1, S1), T2, Ps, ST5)
+    end
+  end.
+
+normalize_line({Pos, Neg, _T}, Fixed, ST) ->
+  _T = ?LEAF:any(), % sanity
+  %io:format(user, "[function] Normalizing ~p~n", [{Pos, Neg}]),
+
+  S = lists:foldl(fun ty_node:union/2, ty_node:empty(), [ty_function:domain(FF) || FF = {ty_function, Refs, _} <- Pos]),
+  %io:format(user, "All positive domains~n~p~n", [ty_node:dump(S)]),
+
+  normalize_line_cont(S, Pos, Neg, Fixed, ST).
+
+% -> ty_node()
+domains_to_tuple(Domains) ->
+  ty_node:make(dnf_ty_variable:leaf(ty_rec:tuples(ty_tuples:singleton(length(Domains), dnf_ty_tuple:singleton(ty_tuple:tuple(Domains)))))).
+
+normalize_line_cont(_, _, [], _Fixed, ST) -> {[], ST}; % non-empty
+normalize_line_cont(S, P, [Function | N], Fixed, ST) ->
+  T1 = ty_function:domain(Function),
   T2 = ty_function:codomain(Function),
+
   %% ∃ T1-->T2 ∈ N s.t.
   %%   T1 is in the domain of the function
   %%   S is the union of all domains of the positive function intersections
-  X1 = ?F(ty_rec:normalize_corec(ty_rec:intersect(T1, ty_rec:negate(S)), Fixed, M)),
-  X2 = ?F(explore_function_norm_corec(Size, T1, ty_rec:negate(T2), P, Fixed, M)),
-  R1 = ?F(constraint_set:meet(X1, X2)),
-  %% Continue searching for another arrow ∈ N
-  R2 = ?F(normalize_no_vars_corec(Size, S, P, N, Fixed, M)),
-  constraint_set:join(R1, R2).
+  {X1, ST0} = ty_node:normalize(ty_node:intersect(T1, ty_node:negate(S)), Fixed, ST),
+
+  %io:format(user,"Exploring: ~p~n~p~n", [ty_node:dump(T1), ty_node:dump(ty_node:negate(T2))]),
+  {X2, ST1} = explore_function_norm_corec(T1, ty_node:negate(T2), P, Fixed, ST0),
+
+  R1 = constraint_set:meet(X1, X2),
+
+  {R2, ST2} = normalize_line_cont(S, P, N, Fixed, ST1),
+
+  % Continue searching for another arrow ∈ N
+  {constraint_set:join(R1, R2), ST2}.
 
 
-explore_function_norm_corec(_Size, BigT1, T2, [], Fixed, M) ->
-  NT1 = ?F(ty_rec:normalize_corec(BigT1, Fixed, M)),
-  NT2 = ?F(ty_rec:normalize_corec(T2, Fixed, M)),
-  constraint_set:join( NT1, NT2 );
-explore_function_norm_corec(Size, T1, T2, [Function | P], Fixed, M) ->
-  NT1 = ?F(ty_rec:normalize_corec(T1, Fixed, M)),
-  NT2 = ?F(ty_rec:normalize_corec(T2, Fixed, M)),
+% obs1: NT2 is [[]] more often than NT1, but both take <1ms
+explore_function_norm_corec(BigT1, T2, [], Fixed, ST0) ->
+  %T0 = os:system_time(millisecond),
+  {NT1, ST1} = ty_node:normalize(BigT1, Fixed, ST0),
+  {NT2, ST2} = ty_node:normalize(T2, Fixed, ST1),
+  %case NT2 of [[]] -> io:format(user,"X~n~p~n~p~n~n~n", [NT1, constraint_set:join(NT1, NT2)]); _ -> ok end,
+  %case NT2 of [[]] -> error(todo); _ -> ok end,
+  %io:format(user,"~p~n",[os:system_time(millisecond) - T0]),
+  {constraint_set:join(NT1, NT2), ST2};
+% obs2: meet(NS1, NS2) is [[]] more often than NT1, but the checks for NT1 and NT2 are fast
+explore_function_norm_corec(T1, T2, [Function | P], Fixed, ST0) ->
+  Tx0 = os:system_time(millisecond),
+  {NT1, ST1} = ty_node:normalize(T1, Fixed, ST0),
+  {NT2, ST2} = ty_node:normalize(T2, Fixed, ST1),
+  % case NT1 of [[]] -> error(todo); _ -> ok end,
+  % case NT2 of [[]] -> error(todo); _ -> ok end,
+  Tx1 = os:system_time(millisecond),
 
-  S1 = domains_to_tuple(ty_function:domains(Function)),
+  S1 = ty_function:domain(Function),
   S2 = ty_function:codomain(Function),
 
-  NS1 = ?F(explore_function_norm_corec(Size, T1, ty_rec:intersect(T2, S2), P, Fixed, M)),
-  NS2 = ?F(explore_function_norm_corec(Size, ty_rec:diff(T1, S1), T2, P, Fixed, M)),
+  T0 = os:system_time(millisecond),
+  {NS1, ST3} = explore_function_norm_corec(T1, ty_node:intersect(T2, S2), P, Fixed, ST2),
+  {NS2, ST4} = explore_function_norm_corec(ty_node:difference(T1, S1), T2, P, Fixed, ST3),
+  % io:format(user,"~p VS ~p~n",[Tx1 - Tx0, os:system_time(millisecond) - T0]),
 
-  constraint_set:join(NT1,
-    ?F(constraint_set:join(NT2,
-      ?F(constraint_set:meet(NS1, NS2))))).
+  % case NT1 of [] -> error(todo); _ -> ok end,
+  % case NT2 of [] -> error(todo); _ -> ok end,
+  % case constraint_set:meet(NS1, NS2) of [[]] -> error(todo); _ -> ok end,
 
-apply_to_node(Node, Map, Memo) ->
-  substitute(Node, Map, Memo, fun(N, S, M) -> ty_function:substitute(N, S, M) end).
+  {constraint_set:join(NT1,
+    constraint_set:join(NT2,
+      constraint_set:meet(NS1, NS2))), ST4}.
