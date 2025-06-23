@@ -75,3 +75,7 @@ is_subtype_stateful(S, T) ->
   {A, B} = {ty_parser:parse(S), ty_parser:parse(T)},
   ty_node:leq(A, B).
 
+system(File) ->
+  {ok, [System]} = file:consult(File),
+  System.
+

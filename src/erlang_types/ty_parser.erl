@@ -257,15 +257,19 @@ new_local_ref(Term) ->
 -spec extend_symtab(ety_ref(), ety_ty_scheme()) -> _. 
 extend_symtab({_, Namespace, Type, ArgsCount}, TyScheme) ->
   Ref = {Namespace, Type, ArgsCount},
-  %io:format(user,"Extending symtab by ~p~n", [Ref]),
+  % io:format(user,"Extending symtab by ~p~n With scheme: ~p~n", [Ref, TyScheme]),
   ets:insert(?SYMTAB, {Ref, TyScheme}).
 
 -spec lookup_ty(ety_ref()) -> ety_ty_scheme().
 lookup_ty({ty_qref, A, B, C}) ->
-  %io:format(user, "Looking up ~p~n", [{A, B, C}]),
   [{_, Scheme}] = ets:lookup(?SYMTAB, {A, B, C}),
   Scheme;
 lookup_ty({ty_ref, A, B, C}) ->
+  Ref = {A, B, C},
+  [{_, Scheme}] = ets:lookup(?SYMTAB, Ref),
+  Scheme;
+lookup_ty({R, A, B, C}) ->
+  error(R),
   Ref = {A, B, C},
   [{_, Scheme}] = ets:lookup(?SYMTAB, Ref),
   Scheme.
@@ -283,6 +287,7 @@ do_convert({X = {named, _, Ref, Args}, R = {IdTy, _}}, Q, Cache) ->
       {Ty, Q, R, Cache};
     _ ->
       % find ty in global table
+      % io:format(user,"Lookup ~p~n", [Ref]),
       ({ty_scheme, Vars, Ty}) = lookup_ty(Ref),
 
       % Map = subst:from_list(lists:zip([V || {V, _Bound} <- Vars], Args)),
@@ -494,7 +499,7 @@ unify(Ref, {IdToTy, TyToIds}) ->
 unparse(Node) ->
   case ets:lookup(?UNPARSE_CACHE, Node) of
     [{_, Ref}] -> 
-      Ty = persistent_term:get(Ref);
+      persistent_term:get(Ref);
     _ ->
       R = ty_node:unparse(Node, #{}),
       Ref = make_ref(),
