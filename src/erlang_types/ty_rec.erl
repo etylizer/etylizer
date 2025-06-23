@@ -150,25 +150,25 @@ unparse(Ty, Cache) ->
                P = Module:unparse(Value, Cache),
                Acc ++ [unparse_any(Module, P)]
               end, [], Ty),
-  {union, Z}.
+  ast_lib:mk_union(Z).
 
 unparse_any(dnf_ty_predefined, Result) -> 
-  {intersection, 
+  ast_lib:mk_intersection(
    [{union, [{empty_list}, {predef, float}, {predef, pid}, {predef, port}, {predef, reference}]}, 
-    {union, Result}]};
+    ast_lib:mk_union(Result)]);
 unparse_any(dnf_ty_atom, Result) -> 
-  {intersection, [{predef, atom}, Result]};
+  ast_lib:mk_intersection([{predef, atom}, Result]);
 unparse_any(dnf_ty_interval, Result) -> 
-  {intersection, [{predef, integer}, Result]};
+  ast_lib:mk_intersection([{predef, integer}, Result]);
 unparse_any(dnf_ty_list, Result) -> 
-  {intersection, [{list, {predef, any}}, Result]};
+  ast_lib:mk_intersection([{list, {predef, any}}, Result]);
 unparse_any(dnf_ty_bitstring, Result) -> 
-  {intersection, [{bitstring}, Result]};
+  ast_lib:mk_intersection([{bitstring}, Result]);
 unparse_any(ty_tuples, Result) -> 
-  {intersection, [{tuple_any}, Result]};
+  ast_lib:mk_intersection([{tuple_any}, Result]);
 unparse_any(ty_functions, Result) -> 
-  {intersection, [{fun_simple}, Result]};
+  ast_lib:mk_intersection([{fun_simple}, Result]);
 unparse_any(dnf_ty_map, Result) -> 
-  {intersection, [{map_any}, Result]};
+  ast_lib:mk_intersection([{map_any}, Result]);
 unparse_any(Module, _) -> 
   error({no_unparse_implemented, Module}).

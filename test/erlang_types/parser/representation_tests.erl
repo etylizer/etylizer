@@ -90,18 +90,14 @@ debug_mu_test() ->
   with_symtab(
     fun() -> 
         A = ty_parser:parse(tnamed(a)),
-        % X = ty_node:is_empty(A),
+        X = ty_node:is_empty(A),
         Eval = ty_parser:unparse(A),
-        io:format(user, "~p~n", [Eval]),
         AA = ty_parser:parse(Eval),
+        X = ty_node:is_empty(AA),
         ok
     end,
     #{ 
       {ty_key,'.','a',0} => 
-      {ty_scheme,[],
-       {tuple,[
-               {predef,none},
-               {tuple,[{predef,none},{named,0,{ty_ref,'.','a',0},[]}]}
-              ]}}
+      {ty_scheme,[], {tuple,[ {named,0,{ty_ref,'.','a',0},[]} ]}}
      }).
 

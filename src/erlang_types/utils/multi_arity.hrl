@@ -88,12 +88,13 @@ unparse({Default, T}, C) ->
     end
   end, maps:to_list(T)),
 
-  {union, [
-           {intersection, [
-                           X1, 
-                           {negation, {union, Xs}}
-                          ]}, 
-           {union, Xs}]}.
+  ast_lib:mk_union([ 
+    ast_lib:mk_intersection([ 
+      X1, 
+      ast_lib:mk_negation(ast_lib:mk_union(Xs)) 
+    ]), 
+    ast_lib:mk_union(Xs)
+  ]).
 
 
 % substitute({DefaultFunction, AllFunctions}, SubstituteMap, Memo) ->

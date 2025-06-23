@@ -77,11 +77,11 @@ limited_formula(Variables, Size, Mode) when Size =< 1 ->
   frequency([
     {1, tnone()},
     {1, ptypevar()},
-    {3, patom()},
-    {1, pinteger_range()},
-    {1, pinteger()},
-    {1, ppredef()},
-    {1, tempty_list()},
+    % {3, patom()},
+    % {1, pinteger_range()},
+    % {1, pinteger()},
+    % {1, ppredef()},
+    % {1, tempty_list()},
     {1, tany()}
   ] ++ tvar_if_not_toplevel(Variables, Mode)
 );

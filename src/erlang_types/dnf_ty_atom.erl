@@ -54,6 +54,6 @@ normalize(Dnf, _Fixed, ST) ->
   end.
 
 unparse({Atoms, finite}, _) ->
-  {union, lists:map(fun(A) -> {singleton, A} end, gb_sets:to_list(Atoms))};
+  ast_lib:mk_union(lists:map(fun(A) -> {singleton, A} end, gb_sets:to_list(Atoms)));
 unparse({Atoms, cofinite}, _) ->
-  {negation, {union, lists:map(fun(A) -> {singleton, A} end, gb_sets:to_list(Atoms))}}.
+  ast_lib:mk_negation(ast_lib:mk_union(lists:map(fun(A) -> {singleton, A} end, gb_sets:to_list(Atoms)))).

@@ -159,14 +159,14 @@ normalize(Dnf, Fixed, ST) ->
 % Unparse
 % =============
 unparse(Dnf, Cache) ->
-  {union, lists:map(fun(Line) -> unparse_line(Line, Cache) end, dnf(Dnf))}.
+  ast_lib:mk_union(lists:map(fun(Line) -> unparse_line(Line, Cache) end, dnf(Dnf))).
 
 unparse_line({Pos, Neg, Leaf}, Cache) ->
-  {intersection, 
+  ast_lib:mk_intersection(
    [?ATOM:unparse(P, Cache) || P <- Pos] 
-   ++ [{negation, ?ATOM:unparse(N, Cache)} || N <- Neg]
+   ++ [ast_lib:mk_negation(?ATOM:unparse(N, Cache)) || N <- Neg]
    ++ [?LEAF:unparse(Leaf, Cache)]
-  }.
+  ).
 
 % do_dnf({node, Element, Left, Right}, F = {_Process, Combine}, Pos, Neg) ->
 %   % heuristic: if Left is positive & 1, skip adding the negated Element to the right path

@@ -115,21 +115,21 @@ normalize(Dnf, _Fixed, ST) ->
 
 unparse([], _) -> {predef, none};
 unparse([any_int], _) -> {predef, any};
-unparse([Int | Others], C) -> {union, [unparse_single(Int), unparse(Others, C)]}.
+unparse([Int | Others], C) -> ast_lib:mk_union([unparse_single(Int), unparse(Others, C)]).
 
 unparse_single({range, A, B}) -> {range, A, B};
 unparse_single({left, -1}) -> {predef_alias, neg_integer};
 unparse_single({right, 1}) -> {predef_alias, pos_integer};
 
 unparse_single({left, L}) when L < -1 ->
-  {intersection, [
+  ast_lib:mk_intersection([
                   {predef_alias, neg_integer}, 
-                  {negation, unparse_single({range, (L + 1), -1})}
-                 ]};
+                  ast_lib:mk_negation(unparse_single({range, (L + 1), -1}))
+                 ]);
 unparse_single({left, L}) when L > -1 ->
-  {union, [{predef_alias, neg_integer}, unparse_single({range, -1, L})]};
+  ast_lib:mk_union([{predef_alias, neg_integer}, unparse_single({range, -1, L})]);
 
 unparse_single({right, R}) when R > 1 ->
-  {intersection, [{predef_alias, pos_integer}, unparse_single({range, 1, (R - 1)})]};
+  ast_lib:mk_intersection([{predef_alias, pos_integer}, unparse_single({range, 1, (R - 1)})]);
 unparse_single({right, R}) when R < 1 ->
-  {union, [{predef_alias, pos_integer}, unparse_single({range, R, 1})]}.
+  ast_lib:mk_union([{predef_alias, pos_integer}, unparse_single({range, R, 1})]).
