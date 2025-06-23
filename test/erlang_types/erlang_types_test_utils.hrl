@@ -35,6 +35,8 @@ tbitstring() -> {bitstring}.
 ttuple_any() -> {tuple_any}.
 ttuple(Types) -> {tuple, Types}.
 ttuple1(Type) -> {tuple, [Type]}.
+test_key(Key) -> test_key(Key, 0).
+test_key(Key, LenArgs) -> {test_key, '.', Key, LenArgs}.
 tnamed(Ref) -> tnamed(Ref, []).
 tnamed(Ref, Args) ->
   % Use the dummy '.' file as the module for testing purposes
