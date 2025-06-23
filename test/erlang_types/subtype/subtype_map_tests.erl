@@ -26,7 +26,7 @@ maps_any_empty_test() ->
 maps_steps_test() ->
   Empty = tmap([]),
   AStep = tmap_field_opt(b(), tany()),
-  IStep = tmap_field_opt(int(), tany()),
+  IStep = tmap_field_opt(tint(), tany()),
   M1 = tmap([AStep]),
   M2 = tmap([IStep]),
   M3 = tmap([AStep, IStep]),
@@ -40,14 +40,14 @@ maps_steps_test() ->
 maps_singletons_opt_test() ->
   % {1 := a, 2 => b, 10 => c}  !≤ ≥!  {1 => a, 2 := b, 3 => c}
   L = tmap([
-    tmap_field_opt(int(1), b(a)),
-    tmap_field_opt(int(2), b(b)),
-    tmap_field_opt(int(10), b(c))
+    tmap_field_opt(tint(1), b(a)),
+    tmap_field_opt(tint(2), b(b)),
+    tmap_field_opt(tint(10), b(c))
   ]),
   R = tmap([
-    tmap_field_opt(int(1), b(a)),
-    tmap_field_opt(int(2), b(b)),
-    tmap_field_opt(int(3), b(c))
+    tmap_field_opt(tint(1), b(a)),
+    tmap_field_opt(tint(2), b(b)),
+    tmap_field_opt(tint(3), b(c))
   ]),
   false = is_subtype(L, R),
   false = is_subtype(R, L),
@@ -56,14 +56,14 @@ maps_singletons_opt_test() ->
 maps_singletons_mixed_test() ->
   % {1 := a, 2 => b, 10 => c}  !≤ ≥!  {1 => a, 2 := b, 3 => c}
   L = tmap([
-    tmap_field_req(int(1), b(a)),
-    tmap_field_opt(int(2), b(b)),
-    tmap_field_opt(int(10), b(c))
+    tmap_field_req(tint(1), b(a)),
+    tmap_field_opt(tint(2), b(b)),
+    tmap_field_opt(tint(10), b(c))
   ]),
   R = tmap([
-    tmap_field_opt(int(1), b(a)),
-    tmap_field_req(int(2), b(b)),
-    tmap_field_opt(int(3), b(c))
+    tmap_field_opt(tint(1), b(a)),
+    tmap_field_req(tint(2), b(b)),
+    tmap_field_opt(tint(3), b(c))
   ]),
   false = is_subtype(L, R),
   false = is_subtype(R, L),
@@ -72,16 +72,16 @@ maps_singletons_mixed_test() ->
 maps_singletons_opt_2_test() ->
   % {1 => a, _ => none}  ≤ ≥!  {1 => a, 3 => a, _ => none} =:= {1|3 => a, _ => none}
   L = tmap([
-    tmap_field_opt(int(1), b(a)),
+    tmap_field_opt(tint(1), b(a)),
     tmap_field_opt(tany(), tempty())
   ]),
   R = tmap([
-    tmap_field_opt(int(1), b(a)),
-    tmap_field_opt(int(3), b(a)),
+    tmap_field_opt(tint(1), b(a)),
+    tmap_field_opt(tint(3), b(a)),
     tmap_field_opt(tany(), tempty())
   ]),
   R2 = tmap([
-    tmap_field_opt(u([int(1), int(3)]), b(a)),
+    tmap_field_opt(u([tint(1), tint(3)]), b(a)),
     tmap_field_opt(tany(), tempty())
   ]),
   true = is_subtype(L, R),
@@ -92,12 +92,12 @@ maps_singletons_opt_2_test() ->
 maps_singletons_mixed_2_test() ->
   % {1 := a, 2 => b}  !≤ ≥!  {1 => a, 2 := b}
   L = tmap([
-    tmap_field_req(int(1), b(a)),
-    tmap_field_opt(int(2), b(b))
+    tmap_field_req(tint(1), b(a)),
+    tmap_field_opt(tint(2), b(b))
   ]),
   R = tmap([
-    tmap_field_opt(int(1), b(a)),
-    tmap_field_req(int(2), b(b))
+    tmap_field_opt(tint(1), b(a)),
+    tmap_field_req(tint(2), b(b))
   ]),
   false = is_subtype(L, R),
   false = is_subtype(R, L),
@@ -107,12 +107,12 @@ maps_precedence_1_test() ->
   % left-most match takes precedence
   % #{int() => int(), Any => foo} =:= {int() => int(), Any\int() => foo}
   L = tmap([
-    tmap_field_opt(int(), int()),
+    tmap_field_opt(tint(), tint()),
     tmap_field_opt(tany(), b(foo))
   ]),
   R = tmap([
-    tmap_field_opt(int(), int()),
-    tmap_field_opt(i([tany(), n(int())]), b(foo))
+    tmap_field_opt(tint(), tint()),
+    tmap_field_opt(i([tany(), n(tint())]), b(foo))
   ]),
   true = is_subtype(L, R),
   true = is_subtype(R, L),

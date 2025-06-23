@@ -3,7 +3,7 @@
 -include_lib("test/erlang_types/erlang_types_test_utils.hrl").
 
 simple_named_test() ->
-  S = tnamed(mynamed, [int()]),
+  S = tnamed(mynamed, [tint()]),
   T = tnamed(mynamed, [b(ok)]),
 
   with_symtab(fun() ->

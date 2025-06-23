@@ -2,6 +2,15 @@
 
 -include_lib("proper/include/proper.hrl").
 -include_lib("eunit/include/eunit.hrl").
+-include_lib("test/erlang_types/erlang_types_test_utils.hrl").
+
+% property tests with fixed timeouts are not too stable, 
+% but randomly generated test cases shouldn't take longer than these timeouts
+% currently starts failing after with n > 10000
+% test should pass with at least n = 1000
+% execute with rebar3 proper -m prop_erlang_types_equiv
+-define(PARSETIMEOUTMS, 500).
+-define(EMPTYTIMEOUTMS, 50).
 
 -define(COMMON_ERLANG_ATOMS, [
     ok, error, undefined, true, false,
@@ -42,83 +51,68 @@
 ]).
 
 
-tany() -> {predef, any}.
-tempty() -> {predef, none}.
-tnegation(A) -> {negation, A}.
-tunion(A, B) -> {union, [A, B]}.
-tintersection(A, B) -> {intersection, [A, B]}.
-tarrow(A, B) -> {fun_full, [A], B}.
-tproduct(A, B) -> {tuple, [A, B]}.
-tlist(A) -> {list, A}.
-tfun(As, B) -> {fun_full, As, B}.
-tvar(Variables) ->
-  ?LET(Varname, oneof(Variables), {named, 0, {ty_ref, '.', Varname, 0}, []}).
-ttypevar() ->
+ptypevar() ->
   ?LET(Varname, oneof([alpha, beta, gamma, delta, epsilon]), {var, Varname}).
-tpredef() ->
+ppredef() ->
   ?LET(Predef, oneof([float, reference, pid, port]), {predef, Predef}).
-tatom() ->
-  ?LET(Atom, oneof(?COMMON_ERLANG_ATOMS), {singleton, Atom}).
-tinteger_range() ->
+pinteger_range() ->
   ?LET({Left, Right}, oneof(?COMMON_INTEGER_RANGES), {range, Left, Right}).
-tinteger() ->
+pinteger() ->
   ?LET(Int, oneof(?COMMON_INTEGERS), {range, Int, Int}).
+patom() ->
+  ?LET(Atom, oneof(?COMMON_ERLANG_ATOMS), {singleton, Atom}).
+pvar(Variables) ->
+  ?LET(Varname, oneof(Variables), {named, 0, {ty_ref, '.', Varname, 0}, []}).
 
 limited_formula(Variables) ->
   ?SIZED(Size, limited_formula(Variables, Size, toplevel)).
 
 tvar_if_not_toplevel(Variables, Mode) -> 
-  case Mode of toplevel -> []; _ -> [{1, tvar(Variables)}] end.
+  case Mode of toplevel -> []; _ -> [{1, pvar(Variables)}] end.
 
 -define(F, limited_formula(Variables, Size div 2, Mode)).
 -define(Fi, limited_formula(Variables, Size div 2, inside)).
 
 limited_formula(Variables, Size, Mode) when Size =< 1 ->
   frequency([
-    {1, tempty()},
-    {1, ttypevar()},
-    {3, tatom()},
-    {1, tinteger_range()},
-    {1, tinteger()},
-    {1, tpredef()},
-    {1, {empty_list}},
+    {1, tnone()},
+    {1, ptypevar()},
+    {3, patom()},
+    {1, pinteger_range()},
+    {1, pinteger()},
+    {1, ppredef()},
+    {1, tempty_list()},
     {1, tany()}
   ] ++ tvar_if_not_toplevel(Variables, Mode)
 );
 limited_formula(Variables, Size, Mode) ->
   frequency([
-    {2, tempty()},
+    {2, tnone()},
     {2, tany()},
-    {1, ?LAZY(?LET(A, ?F, tnegation(A))) },
-    {4, ?LAZY(?LET({A, B}, {?F, ?F}, tunion(A, B))) },
-    {4, ?LAZY(?LET({A, B}, {?F, ?F}, tintersection(A, B))) },
-    {8, ?LAZY(?LET({A, B}, {?Fi, ?Fi}, tproduct(A, B))) },
+    {1, ?LAZY(?LET(A, ?F, n(A))) },
+    {4, ?LAZY(?LET({A, B}, {?F, ?F}, u([A, B]))) },
+    {4, ?LAZY(?LET({A, B}, {?F, ?F}, i([A, B]))) },
+    {8, ?LAZY(?LET({A, B}, {?Fi, ?Fi}, ttuple([A, B]))) },
     {1, ?LAZY(?LET({A}, {?Fi}, tlist(A))) },
-    {4, ?LAZY(?LET({A, B}, {?Fi, ?Fi}, tarrow(A, B))) },
-    {1, ?LAZY(?LET({As, B}, {list(?Fi), ?Fi}, tfun(As, B))) }
+    {4, ?LAZY(?LET({A, B}, {?Fi, ?Fi}, f([A], B))) },
+    {1, ?LAZY(?LET({As, B}, {list(?Fi), ?Fi}, f(As, B))) }
   ] ++ tvar_if_not_toplevel(Variables, Mode)
 ).
 
-system(Variables) ->
+psystem(Variables) ->
+  Refs = [{ty_key, '.', V, 0} || V <- Variables],
   ?SUCHTHAT(Ty, ?LET(Formulas, [limited_formula(Variables) || _ <- Variables], 
-    maps:from_list(lists:zip(Variables, Formulas))
+    maps:from_list(lists:zip(Refs, [{ty_scheme, [], F} || F <- Formulas]))
   ), valid_system(Ty)).
 
-% property tests with fixed timeouts are not too stable, 
-% but randomly generated test cases shouldn't take longer than these timeouts
-% currently starts failing after with n > 10000
--define(PARSETIMEOUTMS, 500).
--define(EMPTYTIMEOUTMS, 50).
 
 % property that checks if we can parse a random type and check emptyness 
 % in a reasonable amount of time
 prop_parse_and_emptiness() -> 
-  ?FORALL(X, ?LET(Types, nonempty_list(atom()), system(Types)), begin 
-    global_state:with_new_state(fun() ->
-      maps:foreach(fun(VarName, AstTy) -> ty_parser:extend_symtab(VarName, {ty_scheme, [], AstTy}) end, X),
-
-      maps:map(fun(Name, _) -> 
-        Ty = {named, noloc, {ty_ref, '.', Name, 0}, []},
+  ?FORALL(X, ?LET(Types, nonempty_list(atom()), psystem(Types)), begin 
+    with_symtab(fun() ->
+      maps:map(fun({ty_key, '.', Name, 0}, _) -> 
+        Ty = tnamed(Name),
         T0 = os:system_time(millisecond),
         Parsed = ty_parser:parse(Ty),
         true = ((T1 = os:system_time(millisecond)) - T0) < ?PARSETIMEOUTMS,
@@ -126,12 +120,12 @@ prop_parse_and_emptiness() ->
         true = (os:system_time(millisecond) - T1) < ?EMPTYTIMEOUTMS
       end, X),
       true
-    end)
+    end, X)
   end).
 
 % in addition to prop_parse_and_emptiness, 
-% this should ensure that the growing state in ty_parser 
-% won't result in slow down of the whole parser
+% this should ensure that the growing global state in any module
+% won't result in slow down of the whole solver
 prop_parse_and_emptiness_cache() -> 
   ?SETUP(
     fun() ->
@@ -145,61 +139,57 @@ prop_parse_and_emptiness_cache() ->
         ok
       end
     end,
-    ?FORALL(X, ?LET(Types, nonempty_list(atom()), system(Types)), begin 
-      maps:foreach(fun(VarName, AstTy) -> ty_parser:extend_symtab({test_ref, '.', VarName, 0}, {ty_scheme, [], AstTy}) end, X),
-
-      maps:map(fun(Name, _) -> 
-        Ty = {named, noloc, {ty_ref, '.', Name, 0}, []},
-        T0 = os:system_time(millisecond),
-        Parsed = ty_parser:parse(Ty),
-        true = ((T1 = os:system_time(millisecond)) - T0) < ?PARSETIMEOUTMS,
-        ty_node:is_empty(Parsed),
-        true = (os:system_time(millisecond) - T1) < ?EMPTYTIMEOUTMS
-      end, X),
-      true 
+    ?FORALL(X, ?LET(Types, nonempty_list(atom()), psystem(Types)), begin 
+      with_symtab(fun() -> 
+        maps:map(fun({ty_key, '.', Name, 0}, _) -> 
+          Ty = tnamed(Name),
+          T0 = os:system_time(millisecond),
+          Parsed = ty_parser:parse(Ty),
+          true = ((T1 = os:system_time(millisecond)) - T0) < ?PARSETIMEOUTMS,
+          ty_node:is_empty(Parsed),
+          true = (os:system_time(millisecond) - T1) < ?EMPTYTIMEOUTMS
+        end, X),
+        true 
+      end, X) 
     end)
   ).
 
 % generates subtype checks that look like S & !T
 prop_subtype_instances() -> 
-  ?FORALL(X, ?LET(Types, nonempty_list(atom()), system(Types)), begin 
-    global_state:with_new_state(fun() ->
-      maps:foreach(fun(VarName, AstTy) -> ty_parser:extend_symtab({test_ref, '.', VarName, 0}, {ty_scheme, [], AstTy}) end, X),
-
-      AllTypes = [ty_parser:parse({named, noloc, {ty_ref, '.', Name, 0}, []}) || {Name, _} <- maps:to_list(X)],
-
-      Instances = [ty_node:intersect(A, ty_node:negate(B)) || A <- AllTypes, B <- AllTypes],
-      lists:foreach(fun(Ty) -> 
+  ?FORALL(X, ?LET(Types, nonempty_list(atom()), psystem(Types)), begin 
+    with_symtab(fun() ->
+      lists:foreach(fun({{{ty_key, '.', NameA, 0}, _}, {{ty_key, '.', NameB, 0}, _}}) -> 
         T0 = os:system_time(millisecond),
-        ty_node:is_empty(Ty),
-        true = (os:system_time(millisecond) - T0) < 10 % if something is slower than 10ms -> good random test case
-      end, Instances),
-      true 
-    end)
+        S = ty_parser:parse(tnamed(NameA)),
+        T = ty_parser:parse(tnamed(NameB)),
+        true = ((T1 = os:system_time(millisecond)) - T0) < ?PARSETIMEOUTMS,
+        ty_node:is_empty(ty_node:difference(S, T)),
+        true = (os:system_time(millisecond) - T1) < ?EMPTYTIMEOUTMS
+      end, 
+      [{A, B} || A <- maps:to_list(X), B <- maps:to_list(X)]),
+      true
+    end, X)
   end).
 
 % T, parse T as T', unparse T' as T'', T and T'' should be equivalent
-prop_parse_unparse_equivalency() -> 
-  ?FORALL(X, ?LET(Types, nonempty_list(atom()), system(Types)), begin 
-    global_state:with_new_state(fun() ->
-      maps:foreach(fun(VarName, AstTy) -> ty_parser:extend_symtab({test_ref, '.', VarName, 0}, {ty_scheme, [], AstTy}) end, X),
-      [begin 
-         % io:format(user,"Parsing ~p...~n", [Name]),
-         {Time1, T} = timer:tc(fun() -> ty_parser:parse({named, noloc, {ty_ref, '.', Name, 0}, []}) end),
-         % io:format(user,"Unparsing ~p...~n~p~n", [T, ty_node:dump(T)]),
-         {Time2, Tp} = timer:tc(fun() -> ty_parser:unparse(T) end),
-         case Time2/Time1 > 100 of 
-           true -> 
-             io:format(user,"Unparse 100x slower than parse: ~p vs ~p~n", [Time1, Time2]),
-             error(todo);
-           _ -> ok
-         end
-          
-       end
-       || {Name, _} <- maps:to_list(X)],
-      true 
-    end)
+% TODO once unparse is fast enough integrate this into the emptiness property
+prop_parse_unparse_equivalence() -> 
+  ?FORALL(X, ?LET(Types, nonempty_list(atom()), psystem(Types)), begin 
+    with_symtab(fun() ->
+      maps:map(fun({ty_key, '.', Name, 0}, _) -> 
+
+        Ty = tnamed(Name),
+        Parsed = ty_parser:parse(Ty),
+        R = ty_node:is_empty(Parsed),
+        Parsed2 = ty_parser:parse(ty_parser:unparse(Parsed)),
+        R = ty_node:is_empty(Parsed2),
+
+        ok
+      end, X),
+      true
+    end, X)
   end).
+
 
 % checks if for each variable the recursive system
 % that variable is only contained under a type constructor (if at all)
@@ -211,12 +201,14 @@ valid_rec({_, {predef, _}}) -> true;
 valid_rec({_, {var, _}}) -> true;
 valid_rec({_, {singleton, _}}) -> true;
 valid_rec({_, {range, _, _}}) -> true;
+valid_rec({Ty, {ty_scheme, [], L}}) -> valid_rec({Ty, L});
 valid_rec({Ty, {negation, L}}) -> valid_rec({Ty, L});
 valid_rec({Ty, {union, L}}) -> lists:all(fun(E) -> valid_rec({Ty, E}) end, L);
 valid_rec({Ty, {intersection, L}}) -> lists:all(fun(E) -> valid_rec({Ty, E}) end, L);
 valid_rec({_, {fun_full, _, _}}) -> true;
 valid_rec({_, {list, _}}) -> true;
 valid_rec({_, {tuple, _}}) -> true;
+% recursion should happen only under a type constructor for any variable
 valid_rec({Ty, {named, _, {ty_ref, '.', Ty, 0}, []}}) -> false;
-valid_rec({_, {named, _, _Ty, []}}) -> false. % lets say recursion happens only under a type constructor for any variable
+valid_rec({_, {named, _, _Ty, []}}) -> false. 
   

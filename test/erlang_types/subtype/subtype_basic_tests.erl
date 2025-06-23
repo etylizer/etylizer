@@ -20,25 +20,25 @@ empty_functions_test() ->
 
 intervals_test() ->
   [true = Result || Result <- [
-    is_subtype(u([u([int(), int(1)]), int(2)]), int()),
-    is_subtype(int(1,2), int()),
-    is_subtype(int(-254,299), int()),
-    is_subtype(int(), int()),
-    is_subtype(int(0), int()),
-    is_subtype(int(0), int()),
-    is_subtype(int(1), int()),
-    is_subtype(int(-1), int()),
-    is_subtype(u([int(1), int(2)]), int()),
-    is_subtype(u([int(-20,400), int(300,405)]), int()),
-    is_subtype(i([u([int(1), int(2)]), int(1,2)]), int()),
-    is_subtype(int(2),  int(1,2)),
-    is_subtype(i([int(), int(2)]),  int(1,2))
+    is_subtype(u([u([tint(), tint(1)]), tint(2)]), tint()),
+    is_subtype(tint(1,2), tint()),
+    is_subtype(tint(-254,299), tint()),
+    is_subtype(tint(), tint()),
+    is_subtype(tint(0), tint()),
+    is_subtype(tint(0), tint()),
+    is_subtype(tint(1), tint()),
+    is_subtype(tint(-1), tint()),
+    is_subtype(u([tint(1), tint(2)]), tint()),
+    is_subtype(u([tint(-20,400), tint(300,405)]), tint()),
+    is_subtype(i([u([tint(1), tint(2)]), tint(1,2)]), tint()),
+    is_subtype(tint(2),  tint(1,2)),
+    is_subtype(i([tint(), tint(2)]),  tint(1,2))
   ]].
 
 intervals_not_test() ->
   [false = Result || Result <- [
-    is_subtype(int(), int(1,2)),
-    is_subtype(int(1), tempty())
+    is_subtype(tint(), tint(1,2)),
+    is_subtype(tint(1), tempty())
   ]].
 
 intersection_test() ->
@@ -63,7 +63,7 @@ edge_cases_test() ->
 simple_var_test() ->
   S = v(alpha),
   T = b(int),
-  A = int(10, 20),
+  A = tint(10, 20),
 
   false = is_subtype(S, A),
   false = is_subtype(S, T),
@@ -110,8 +110,8 @@ nonempty_list_2_test() ->
   true = is_equiv(T1, T2).
 
 number_list_test() ->
-  T = tlist(u([int(), tfloat()])),
-  S = tlist(int()),
+  T = tlist(u([tint(), tfloat()])),
+  S = tlist(tint()),
 
   true = is_subtype(S, T),
   false = is_subtype(T, S).

@@ -1,3 +1,11 @@
+-define(LOAD, begin [code:ensure_loaded(M) || M <- [
+    persistent_term, constraint_set, dnf_ty_atom, dnf_ty_bitstring,
+    dnf_ty_function, dnf_ty_interval, dnf_ty_list, dnf_ty_map, dnf_ty_predefined,
+    dnf_ty_tuple, dnf_ty_variable, global_state, ty_bool, ty_function, ty_functions, 
+    ty_node, ty_parser, ty_rec, ty_tuple, ty_tuples, ty_variable,
+    ty, tarjan, utils
+  ]]end).
+
 a(A, B) -> {fun_full, [A], B}.
 f() -> {fun_simple}.
 f(A, B) -> {fun_full, A, B}.
@@ -11,10 +19,8 @@ u(S) -> {union, S}.
 i(A,B) -> {intersection, [A, B]}.
 i(S) -> {intersection, S}.
 tint() -> {range, '*', '*'}.
-int() -> {range, '*', '*'}.
-int(A) -> {range, A, A}.
 tint(A) -> {range, A, A}.
-int(A,B) -> {range, A, B}.
+tint(A,B) -> {range, A, B}.
 v(A) -> {var, A}.
 tvar_mu(A) -> {mu_var, A}.
 tempty() -> {predef, none}.
@@ -37,10 +43,13 @@ ttuple(Types) -> {tuple, Types}.
 ttuple1(Type) -> {tuple, [Type]}.
 test_key(Key) -> test_key(Key, 0).
 test_key(Key, LenArgs) -> {test_key, '.', Key, LenArgs}.
+tnamed_ns(Ns, Ref, Args) -> 
+  {named, {loc, "AUTO", -1, -1}, {ty_ref, Ns, Ref, length(Args)}, Args}.
 tnamed(Ref) -> tnamed(Ref, []).
 tnamed(Ref, Args) ->
   % Use the dummy '.' file as the module for testing purposes
-  {named, {loc, "AUTO", -1, -1}, {ty_ref, '.', Ref, length(Args)}, Args}.
+  tnamed_ns('.', Ref, Args).
+
 tyscm(Ty) -> {ty_scheme, [], Ty}.
 tyscm(Vars, Ty) -> {ty_scheme, lists:map(fun(Alpha) -> {Alpha, {predef, any}} end, Vars), Ty}.
 tmu(Var, Ty) -> {mu, Var, Ty}.

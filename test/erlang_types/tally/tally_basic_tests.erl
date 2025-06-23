@@ -11,24 +11,24 @@
 
 tally_01_test() ->
   test_tally(
-    [{v(alpha), int()}],
+    [{v(alpha), tint()}],
     [{
       #{alpha => tnone()},
-      #{alpha => int()}
+      #{alpha => tint()}
     }]
   ).
 
 tally_01n_test() ->
   test_tally(
-    [{b(), v(alpha)}, {v(alpha), int()}],
+    [{b(), v(alpha)}, {v(alpha), tint()}],
     solutions(0)
   ).
 
 tally_02_test() ->
   test_tally(
-    [{int(), v(alpha)}],
+    [{tint(), v(alpha)}],
     [{
-      #{alpha => int()},
+      #{alpha => tint()},
       #{alpha => tany()}
     }]
   ).
@@ -52,10 +52,10 @@ tally_04_test() ->
     [
       {Alpha, ttuple([tany()])},
       {ttuple([Beta]), Alpha},
-      {int(), Beta}
+      {tint(), Beta}
     ],
     [{
-      #{alpha => ttuple([int()]), beta => int()},
+      #{alpha => ttuple([tint()]), beta => tint()},
       #{alpha => ttuple([tany()]), beta => tany()}
     }]
   ).
@@ -122,13 +122,13 @@ tally_07_test() ->
 tally_08_test() ->
   Alpha = v(alpha),
   Beta = v(beta),
-  OneOrTwo = u(int(1), int(2)),
-  OneOrTwoRange = int(1, 2),
+  OneOrTwo = u(tint(1), tint(2)),
+  OneOrTwoRange = tint(1, 2),
   test_tally(
     [
       {OneOrTwo, Alpha},
       {Beta, OneOrTwo},
-      {i(f([int()], int()), f([OneOrTwo], OneOrTwo)), f([Alpha], Beta)}
+      {i(f([tint()], tint()), f([OneOrTwo], OneOrTwo)), f([Alpha], Beta)}
     ],
     [{
       #{alpha => OneOrTwoRange, beta => OneOrTwoRange},
@@ -139,8 +139,8 @@ tally_08a_test() ->
   Alpha = v(alpha),
   test_tally(
     [
-      {int(1), Alpha},
-      {f([int()], int()), f([Alpha], int())}
+      {tint(1), Alpha},
+      {f([tint()], tint()), f([Alpha], tint())}
     ],
     solutions(1)).
 
@@ -158,10 +158,10 @@ tally_09_test() ->
     Beta = v(beta),
     Gamma = v(gamma),
     Delta = v(delta),
-    One = int(1),
-    Two = int(2),
+    One = tint(1),
+    Two = tint(2),
     OneOrTwo = u(One, Two),
-    I = int(),
+    I = tint(),
     F = tfloat(),
     test_tally(
       [{i([f([I, I], I), f([I, F], F), f([F, I], F), f([F, F], F)]), f([Alpha, Beta], Gamma)},
@@ -173,12 +173,12 @@ tally_09_test() ->
        {Gamma, Delta}],
 
       [{
-        #{alpha => u(u([int(3, '*')]), u([int('*', 0)])),
-          beta => int(1, 1),
+        #{alpha => u(u([tint(3, '*')]), u([tint('*', 0)])),
+          beta => tint(1, 1),
           gamma => I,
           delta => I },
-        #{alpha => int(),
-          beta => int(),
+        #{alpha => tint(),
+          beta => tint(),
           gamma => I,
           delta => I }
       }]
@@ -228,21 +228,21 @@ tally_issue_8_test() ->
     [
       {f([A1], A2), A0},
       {A4, A2},
-      {int(42), A4},
-      {i([A3, int()]), A4},
-      {i([A3, int()]), A5},
+      {tint(42), A4},
+      {i([A3, tint()]), A4},
+      {i([A3, tint()]), A5},
       {f([tany()], tbool()), f([A5], A6)},
       {A6, tbool()},
       {A1, A3}
     ],
     [
       {
-        #{ alpha2 => int(42), alpha1 => tnone(), alpha3 => tnone(), alpha6 => tbool(), alpha4 => int(42) },
+        #{ alpha2 => tint(42), alpha1 => tnone(), alpha3 => tnone(), alpha6 => tbool(), alpha4 => tint(42) },
         #{ alpha2 => tany(), alpha1 => tany(), alpha3 => tany(), alpha6 => tbool(), alpha4 => tany() }
       },
       {
-        #{ alpha0 => f([tany()], int(42)), alpha5 => tnone(), alpha2 => int(42), alpha1 => tnone(), alpha3 => tnone(), alpha6 => tnone(), alpha4 => tnone() },
-        #{ alpha0 => tany(), alpha5 => tnone(), alpha2 => tany(), alpha1 => i([tany(), n(int())]), alpha3 => i([tany(), n(int())]), alpha6 => tbool(), alpha4 => tany() }
+        #{ alpha0 => f([tany()], tint(42)), alpha5 => tnone(), alpha2 => tint(42), alpha1 => tnone(), alpha3 => tnone(), alpha6 => tnone(), alpha4 => tnone() },
+        #{ alpha0 => tany(), alpha5 => tnone(), alpha2 => tany(), alpha1 => i([tany(), n(tint())]), alpha3 => i([tany(), n(tint())]), alpha6 => tbool(), alpha4 => tany() }
       }
     ]).
 
@@ -352,7 +352,7 @@ tally_fun_cons_test() ->
     [
       {tempty_list(), A1},
       {tempty_list(), A2},
-      {A3, tlist(int())},
+      {A3, tlist(tint())},
       {f([A4, A4], A4), f([A1, A2], A3)}
     ],
     solutions(1)).
