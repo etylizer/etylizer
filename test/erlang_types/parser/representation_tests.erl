@@ -101,3 +101,64 @@ debug_mu_test() ->
       {ty_scheme,[], {tuple,[ {named,0,{ty_ref,'.','a',0},[]} ]}}
      }).
 
+debug_parser_test() ->
+  with_symtab(
+    fun() -> 
+        A = ty_parser:parse(tnamed(a)),
+        io:format(user,"~p~n~p~n", [A, ty_node:dump(A)]),
+        X = ty_node:is_empty(A),
+        io:format(user,"Unparsing start: ~p~n", [A]),
+        Eval = ty_parser:unparse(A),
+        io:format(user,"~p~n", [Eval]),
+        %AA = ty_parser:parse(Eval),
+        %X = ty_node:is_empty(AA),
+        ok
+    end,
+#{
+  {ty_key,'.','a',0} => 
+    {ty_scheme,[],
+     {union,[
+             {tuple,[
+                     {union,[
+                             {named,0,{ty_ref,'.','a',0},[]},
+                             {var,alpha}
+                            ]},
+                     {intersection,[
+                                    {named,0,{ty_ref,'.','a',0},[]},
+                                    {var,alpha}
+                                   ]}
+                    ]},
+             {tuple,[{named,0,{ty_ref,'.','a',0},[]}]}
+            ]}}
+ }
+   ).
+
+% This is an invalid type (a duplicate mu_var should map to the same body, otherwise the parser errors out)
+% The unparser has to guarantee that a type equation produces the same body for the same binder
+debug_unparse_test() ->
+  with_symtab(
+    fun() -> 
+        Node = 
+{mu, {mu_var,'$node_1'},
+ {tuple,
+      [{mu, {mu_var,'$node_2'},
+        {tuple, [{mu_var,'$node_2'}]}
+       },
+       {mu,
+        {mu_var,'$node_3'},
+        {union,
+           [{tuple,[{mu_var,'$node_3'}]},
+            {tuple,
+             [{mu,
+               {mu_var,'$node_2'},
+               {union,
+                    [{tuple,[{mu_var,'$node_3'}]},
+                     {tuple,[{mu_var,'$node_2'}]}]}},
+              {mu_var,'$node_3'}]}]}}]}},
+        _Parsed = ty_parser:parse(Node),
+        io:format(user,"Fin~n", []),
+        %Eval = ty_parser:unparse(Parsed),
+        %io:format(user,"~p~n", [Eval]),
+        ok
+    end,
+#{}).

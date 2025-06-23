@@ -272,23 +272,28 @@ normalize(TyNode, FixedVariables, LocalCache) ->
   end.
 
 unparse(Node = {node, Id}, Cache) -> 
+  io:format(user,"Unparse... ~p~n", [Node]),
   case Cache of
     #{Node := RecVar} -> 
-      RecVar;
+      {RecVar, Cache};
     _ -> 
       % a node can map to the recursive variable with the same identifier
       RecVar = {mu_var, erlang:list_to_atom("$node_" ++ integer_to_list(Id))},
+
+      % sanity
+      false = maps:is_key(Node, Cache),
       NewCache = Cache#{Node => RecVar},
 
       % load and continue
       Ty = ty_node:load(Node),
-      R = ?TY:unparse(Ty, NewCache),
+      {R, C0} = ?TY:unparse(Ty, NewCache),
+      io:format(user,"Unparsing~n~p~nFrom::~n~p~nGot::~n~p~n", [Node, Ty, R]),
 
       % make type equation (if needed)
       Vars = ast_utils:referenced_recursive_variables(R),
       case lists:member(RecVar, Vars) of 
-        true -> {mu, RecVar, R};
-        false -> R
+        true -> {{mu, RecVar, R}, C0};
+        false -> {R, C0}
       end
   end.
 

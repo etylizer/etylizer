@@ -295,6 +295,9 @@ do_convert({X = {named, _, Ref, Args}, R = {IdTy, _}}, Q, Cache) ->
       Map = from_list(lists:zip([V || {V, _Bound} <- Vars], Args)),
       NewTy = ty_parser:apply(Map, Ty, no_clean),
       
+      % sanity
+      false = maps:is_key({Ref, Args}, Cache),
+
       NewRef = new_local_ref(X),
       case ets:lookup(?CACHE, NewRef) of 
         [] -> 
@@ -311,6 +314,8 @@ do_convert({X = {named, _, Ref, Args}, R = {IdTy, _}}, Q, Cache) ->
 % entrypoint for recursion: local equation
 do_convert({AstTy = {mu, RecVar = {mu_var, _Name}, Ty}, R}, Q, Cache) ->
   NewRef = new_local_ref(AstTy),
+  io:format(user,"~nParsing mu equation, got mapping~n~p~n-> ~p~n", [AstTy, NewRef]),
+  false = maps:is_key(RecVar, Cache),
   NewCache = Cache#{RecVar => NewRef},
   {InternalTy, NewQ, {R0, R1}, C0} = do_convert({Ty, R}, Q, NewCache),
   % return record
@@ -501,7 +506,7 @@ unparse(Node) ->
     [{_, Ref}] -> 
       persistent_term:get(Ref);
     _ ->
-      R = ty_node:unparse(Node, #{}),
+      {R, _} = ty_node:unparse(Node, #{}),
 
       Ref = make_ref(),
       persistent_term:put(Ref, R),

@@ -158,8 +158,13 @@ normalize(Dnf, Fixed, ST) ->
 % =============
 % Unparse
 % =============
-unparse(Dnf, Cache) ->
-  ast_lib:mk_union(lists:map(fun(Line) -> unparse_line(Line, Cache) end, dnf(Dnf))).
+unparse(Dnf, ST) ->
+  {ToUnion, ST2} = lists:foldl(
+                     fun(Line, {Acc, ST0}) -> {Ele, ST1} = unparse_line(Line, ST0), {Acc ++ [Ele], ST1} end, 
+                     {[], ST}, 
+                     dnf(Dnf)
+                    ),
+  {ast_lib:mk_union(ToUnion), ST2}.
 
 unparse_line({Pos, Neg, Leaf}, Cache) ->
   ast_lib:mk_intersection(
