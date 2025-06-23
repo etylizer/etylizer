@@ -502,10 +502,12 @@ unparse(Node) ->
       persistent_term:get(Ref);
     _ ->
       R = ty_node:unparse(Node, #{}),
+
       Ref = make_ref(),
       persistent_term:put(Ref, R),
       % inserting R into ets (as a value) is extremely slow if R is a big term
       true = ets:insert_new(?UNPARSE_CACHE, {Node, Ref}),
+      
       R
   end.
 

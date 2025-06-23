@@ -282,7 +282,14 @@ unparse(Node = {node, Id}, Cache) ->
 
       % load and continue
       Ty = ty_node:load(Node),
-      ?TY:unparse(Ty, NewCache)
+      R = ?TY:unparse(Ty, NewCache),
+
+      % make type equation (if needed)
+      Vars = ast_utils:referenced_recursive_variables(R),
+      case lists:member(RecVar, Vars) of 
+        true -> {mu, RecVar, R};
+        false -> R
+      end
   end.
 
 % ===

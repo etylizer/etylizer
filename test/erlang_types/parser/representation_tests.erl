@@ -24,7 +24,7 @@ redundant_default_test() ->
 % parser should map sub-structures of a recursive type to the same ID
 % across parse passes
 share_sub_recursive_types_test() ->
-  {ok, [System]} = file:consult("test_files/erlang_types/system_rec"),
+  {ok, [System]} = file:consult("test_files/erlang_types/parser/system_rec"),
   with_symtab(fun() -> 
     Ty = ty_parser:parse(tnamed(ty)),
     Ty2 = ty_parser:parse(tnamed(ty_tuple)),
@@ -33,7 +33,7 @@ share_sub_recursive_types_test() ->
   end, System).
 
 share_same_recursive_types_test() ->
-  {ok, [System]} = file:consult("test_files/erlang_types/system_rec"),
+  {ok, [System]} = file:consult("test_files/erlang_types/parser/system_rec"),
   with_symtab(fun() -> 
     Ty = ty_parser:parse(tnamed(ty)),
     Ty2 = ty_parser:parse(u([tnamed(ty)])),
@@ -62,7 +62,7 @@ share_simple_types_2_test() ->
   end).
 
 share_topological_recursive_types_test() ->
-  {ok, [System]} = file:consult("test_files/erlang_types/system_topological"),
+  {ok, [System]} = file:consult("test_files/erlang_types/parser/system_topological"),
   with_symtab(fun() ->
     Ty = {tuple, [
       {tuple, [{tuple, [{tuple, [{singleton, bar}, {singleton ,foo}]}]}]},
@@ -85,3 +85,23 @@ share_isomorphic_recursive_types_test() ->
     % TODO test case with two isomorphic recursive types, and implement isomorphic detection
     ok
   end).
+
+debug_mu_test() ->
+  with_symtab(
+    fun() -> 
+        A = ty_parser:parse(tnamed(a)),
+        % X = ty_node:is_empty(A),
+        Eval = ty_parser:unparse(A),
+        io:format(user, "~p~n", [Eval]),
+        AA = ty_parser:parse(Eval),
+        ok
+    end,
+    #{ 
+      {ty_key,'.','a',0} => 
+      {ty_scheme,[],
+       {tuple,[
+               {predef,none},
+               {tuple,[{predef,none},{named,0,{ty_ref,'.','a',0},[]}]}
+              ]}}
+     }).
+
