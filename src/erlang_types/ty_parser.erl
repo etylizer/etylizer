@@ -254,7 +254,6 @@ new_local_ref(Term) ->
     _ -> Reff 
   end.
 
-%TODO this is likely ty_key or ty_ref, check back when integrating with etylizer and fix tests
 -spec extend_symtab(ety_ref(), ety_ty_scheme()) -> _. 
 extend_symtab({_, Namespace, Type, ArgsCount}, TyScheme) ->
   Ref = {Namespace, Type, ArgsCount},
