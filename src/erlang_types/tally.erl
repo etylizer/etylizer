@@ -51,7 +51,9 @@ tally(_SymTab, Constraints, MonomorphicVariables, Mode) ->
       sets:to_list(Constraints))
   ),
 
-  MonomorphicTallyVariables = maps:from_list([ty_variable:new_with_name(Var) || {var, Var} <- sets:to_list(MonomorphicVariables)]),
+  io:format(user,"MonomorphicVariables: ~p (is set ~p)~n", [MonomorphicVariables, sets:is_set(MonomorphicVariables)]),
+  MonomorphicTallyVariables = maps:from_list([{ty_variable:new_with_name(Var), []} || Var <- sets:to_list(MonomorphicVariables)]),
+  io:format(user,"MonomorphicVariables: ~p~n", [MonomorphicTallyVariables]),
 
   case Mode of
     solve ->
@@ -72,13 +74,11 @@ tally(_SymTab, Constraints, MonomorphicVariables, Mode) ->
               || Subst <- InternalResult]
       end;
     satisfiable ->
-      % InternalResult = etally:is_tally_satisfiable(InternalConstraints, sets:from_list(FixedTallyTyvars)),
-      InternalResult = etally:is_tally_satisfiable(InternalConstraints, #{}),
+      InternalResult = etally:is_tally_satisfiable(InternalConstraints, MonomorphicTallyVariables),
 
       case InternalResult of
         false -> {false, []};
-        true -> {true, #{}}
-        % true -> {true, subst:empty()}
+        true -> {true, subst:empty()}
       end
   end.
 

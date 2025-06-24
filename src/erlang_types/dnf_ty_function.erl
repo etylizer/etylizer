@@ -106,7 +106,7 @@ normalize_line_cont(S, P, [Function | N], Fixed, ST) ->
   {R2, ST2} = normalize_line_cont(S, P, N, Fixed, ST1),
 
   % Continue searching for another arrow ∈ N
-  {constraint_set:join(R1, R2), ST2}.
+  {constraint_set:join(R1, R2, Fixed), ST2}.
 
 
 % obs1: NT2 is [[]] more often than NT1, but both take <1ms

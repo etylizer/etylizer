@@ -56,8 +56,7 @@ normalize_line({PVar, NVar, TyRec}, Fixed, ST) ->
       {[[{Var, ty_node:make(Singled), ty_node:any()}]], ST};
     {{{delta, _}, _}, _} ->
       % part 1 paper Lemma C.3 and C.11 all fixed variables can be eliminated
-      error(todo_no_vars)
-      % ty_rec:normalize_corec(Ty, Fixed, Mx)
+      ty_rec:normalize(TyRec, Fixed, ST)
   end.
 
 single(Pol, VPos, VNeg, Ty) ->

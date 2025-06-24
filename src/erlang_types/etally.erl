@@ -17,7 +17,7 @@
 is_tally_satisfiable(Constraints, MonomorphicVariables) ->
   % io:format(user,"TALLY~n~s~n", [set_of_constraint_sets:print(Constraints)]),
   % Normalized = ?TIME(tally_normalize, tally_normalize(Constraints, MonomorphicVariables)),
-  io:format(user,"~n=== Step 1: Normalize~n~p~n===~n~n", [Constraints]),
+  io:format(user,"~n=== Step 1: Normalize~n~p~n~p~n===~n~n", [Constraints, MonomorphicVariables]),
   Normalized = tally_normalize(Constraints, MonomorphicVariables),
 
   io:format(user,"~n=== Step 2: Saturate~n~p sets of constraint sets~n", [length(Normalized)]),
