@@ -135,7 +135,7 @@ normalize(TyRec, Fixed, ST) ->
         (_, _, {[], LC0}) -> {[], LC0};
         (Module, Value, {ConstrsCurrent, LC0}) -> 
           {Normalized, LC1} = Module:normalize(Value, Fixed, LC0),
-          {constraint_set:meet(ConstrsCurrent, Normalized), LC1}
+          {constraint_set:meet(ConstrsCurrent, Normalized, Fixed), LC1}
       end, 
       {[[]], ST},
       TyRec).

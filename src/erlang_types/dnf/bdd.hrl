@@ -148,7 +148,7 @@ normalize(Dnf, Fixed, ST) ->
         (Line, {CurrentConstr, ST0}) -> 
           {ResConstr, ST1} = normalize_line(Line, Fixed, ST0),
           %io:format(user,"[~p] Single step result:~n~p~nMeet with~n~p~n", [?MODULE, ResConstr, CurrentConstr]),
-          {constraint_set:meet(CurrentConstr, ResConstr), ST1}
+          {constraint_set:meet(CurrentConstr, ResConstr, Fixed), ST1}
       end, {[[]], ST}, D),
 
       %io:format(user,"Normalized finished:~n~p~n", [Cs]),

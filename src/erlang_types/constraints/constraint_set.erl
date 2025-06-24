@@ -2,14 +2,14 @@
 
 -define(TY, ty_node).
 
-meet([], _) -> [];
-meet(_, []) -> [];
-meet([[]], Set2) -> Set2;
-meet(Set1, [[]]) -> Set1;
-meet(S1, S2) -> 
+meet([], _, _) -> [];
+meet(_, [], _) -> [];
+meet([[]], Set2, _) -> Set2;
+meet(Set1, [[]], _) -> Set1;
+meet(S1, S2, Fixed) -> 
   {T0, R} = timer:tc(fun() -> lists:map(fun(E) -> unionlist(S2, E) end, S1) end),
   %io:format(user,"R: ~p~n", [R]),
-  {T1, R2} = timer:tc(fun() -> lists:foldl(fun(NewS, All) -> join(NewS, All) end, [], R) end),
+  {T1, R2} = timer:tc(fun() -> lists:foldl(fun(NewS, All) -> join(NewS, All, Fixed) end, [], R) end),
   %io:format(user,"R2: ~p~n", [R2]),
 
   case erlang:phash2({S1, S2}) of
@@ -33,12 +33,12 @@ meet(S1, S2) ->
   %io:format(user,"(~p) Phases: ~p  ~p  ~p us~n", [erlang:phash2({S1, S2}), T0, T1, T2]),
   Z.
 
-join([[]], _Set2) -> [[]];
-join(_Set1, [[]]) -> [[]];
-join([], Set) -> Set;
-join(Set, []) -> Set;
-join(S1, S2) ->
-  MayAdd = fun (S, Con) -> (not is_empty(Con)) andalso (not (has_smaller_constraint(Con, S))) end,
+join([[]], _Set2, _Fixed) -> [[]];
+join(_Set1, [[]], _Fixed) -> [[]];
+join([], Set, _Fixed) -> Set;
+join(Set, [], _Fixed) -> Set;
+join(S1, S2, Fixed) ->
+  MayAdd = fun (S, Con) -> (not is_empty(Con, Fixed)) andalso (not (has_smaller_constraint(Con, S))) end,
   S22 = lists:filter(fun(C) -> MayAdd(S1, C) end, S2),
   S11 = lists:filter(fun(C) -> MayAdd(S22, C) end, S1),
   lists:map(fun lists:usort/1, lists:usort(S11 ++ S22)).
@@ -61,9 +61,9 @@ nunion(LeftAll = [NextLeft = {V1, T1, T2} | C1], RightAll = [NextRight = {V2, S1
       [NextRight] ++ nunion(C2, LeftAll)
   end.
 
-is_empty(Con) -> 
+is_empty(Con, Fixed) -> 
   lists:any(fun({_Var, L, R}) -> 
-                case ty_node:normalize(ty_node:difference(L, R), #{}) of % FIXME fixed variables
+                case ty_node:normalize(ty_node:difference(L, R), Fixed) of
                   [] ->
                     io:format(user,"Filtering constraint set: ~p~n", [length(Con)]),
                     true;
@@ -124,11 +124,11 @@ saturate(C, FixedVariables, Cache) ->
       SnT = ty_node:intersect(S, ty_node:negate(T)),
 
       Normed = ty_node:normalize(SnT, FixedVariables),
-      NewS = meet([C], Normed),
+      NewS = meet([C], Normed, FixedVariables),
       
       lists:foldl(fun(NewC, AllS) ->
         NewMerged = saturate(NewC, FixedVariables, Cache#{SnT => true}),
-        join(AllS, NewMerged)
+        join(AllS, NewMerged, FixedVariables)
                   end, [], NewS);
     none -> 
       [C]

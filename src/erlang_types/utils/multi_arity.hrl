@@ -71,13 +71,13 @@ normalize({Default, All}, Fixed, ST) ->
   {Others, ST2} = 
     maps:fold(fun(_Size, V, {Acc, ST0}) -> % FIXME shortcut behavior
       {Res, ST1} = ?MULTIARITY:normalize(V, Fixed, ST0),
-      {constraint_set:meet(Acc, Res), ST1}
+      {constraint_set:meet(Acc, Res, Fixed), ST1}
               end, {[[]], ST}, All),
 
   % {DF, ST2} = ?MULTIARITY:normalize({default, maps:keys(All)}, Default, Fixed, ST2),
   {DF, ST2} = ?MULTIARITY:normalize(Default, Fixed, ST2),
 
-  {constraint_set:meet(DF, Others), ST2}.
+  {constraint_set:meet(DF, Others, Fixed), ST2}.
 
 unparse({Default, T}, ST0) ->
   {X1, ST1} = ?MULTIARITY:unparse(Default, ST0),

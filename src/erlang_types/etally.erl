@@ -63,7 +63,7 @@ tally_normalize(Constraints, MonomorphicVariables) ->
       % io:format(user,"[Tally I] Normalize the difference ~p:~n~p~n", [SnT, ty_node:dump(SnT)]),
       Normalized = ?TY:normalize(SnT, MonomorphicVariables),
       %io:format(user,"Meeting:~n~p~nand~n~p~n", [A, Normalized]),
-      {Time, R} = timer:tc(fun() -> constraint_set:meet(A, Normalized) end),
+      {Time, R} = timer:tc(fun() -> constraint_set:meet(A, Normalized, MonomorphicVariables) end),
       %io:format(user,"Result meet:~n~p~n", [R]),
       % io:format(user,"Time: ~p us  Sizes:~p and ~p -> ~p~n", [Time, length(A), length(Normalized), length(R)]),
       R
@@ -82,7 +82,7 @@ tally_saturate(Normalized, MonomorphicVariables) ->
     fun
       (ConstraintSet, [[]]) -> error(todo_shortcut);
       (ConstraintSet, A) ->
-        constraint_set:join(A, constraint_set:saturate(ConstraintSet, MonomorphicVariables, _Cache = #{})) 
+        constraint_set:join(A, constraint_set:saturate(ConstraintSet, MonomorphicVariables, _Cache = #{}), MonomorphicVariables) 
     end, [], Normalized).
 
 tally_solve([], _MonomorphicVariables) -> {error, []};

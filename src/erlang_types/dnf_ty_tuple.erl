@@ -71,7 +71,7 @@ phi_norm(BigS, [], Fixed, ST) ->
   lists:foldl( % FIXME shortcut
     fun(S, {Res, ST0}) -> 
       {R, ST1} = ty_node:normalize(S, Fixed, ST0),
-      {constraint_set:join(Res, R), ST1} 
+      {constraint_set:join(Res, R, Fixed), ST1} 
     end, 
     {[], ST}, 
     BigS);
@@ -87,13 +87,13 @@ phi_norm(BigS, [Ty | N], Fixed, ST) ->
       end,
     NewBigS = lists:map(DoDiff, lists:zip(lists:seq(1, length(BigS)), BigS)),
     {Res01, ST01} = phi_norm(NewBigS, N, Fixed, ST00),
-    {constraint_set:meet(Result, Res01), ST01}
+    {constraint_set:meet(Result, Res01, Fixed), ST01}
           end,
 
   {R1, ST0} = lists:foldl(
     fun(S, {R2, ST2}) -> 
       {R3, ST3} = ty_node:normalize(S, Fixed, ST2),
-      {constraint_set:join(R2, R3), ST3}
+      {constraint_set:join(R2, R3, Fixed), ST3}
     end, 
     {[], ST}, 
     BigS),
@@ -104,7 +104,7 @@ phi_norm(BigS, [Ty | N], Fixed, ST) ->
     lists:zip(lists:seq(1, length(ty_tuple:components(Ty))), lists:zip(BigS, ty_tuple:components(Ty)))
   ),
 
-  {constraint_set:join(R1, R4), ST4}.
+  {constraint_set:join(R1, R4, Fixed), ST4}.
 
 
 % apply_to_node(Node, Map, Memo) ->

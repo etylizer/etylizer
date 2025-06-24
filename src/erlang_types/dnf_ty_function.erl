@@ -79,7 +79,7 @@ normalize_line({Pos, Neg, _T}, Fixed, ST) ->
   _T = ?LEAF:any(), % sanity
   %io:format(user, "[function] Normalizing ~p~n", [{Pos, Neg}]),
 
-  S = lists:foldl(fun ty_node:union/2, ty_node:empty(), [ty_function:domain(FF) || FF = {ty_function, Refs, _} <- Pos]),
+  S = lists:foldl(fun ty_node:union/2, ty_node:empty(), [ty_function:domain(FF) || FF = {ty_function, _, _} <- Pos]),
   %io:format(user, "All positive domains~n~p~n", [ty_node:dump(S)]),
 
   normalize_line_cont(S, Pos, Neg, Fixed, ST).
@@ -101,7 +101,7 @@ normalize_line_cont(S, P, [Function | N], Fixed, ST) ->
   %io:format(user,"Exploring: ~p~n~p~n", [ty_node:dump(T1), ty_node:dump(ty_node:negate(T2))]),
   {X2, ST1} = explore_function_norm_corec(T1, ty_node:negate(T2), P, Fixed, ST0),
 
-  R1 = constraint_set:meet(X1, X2),
+  R1 = constraint_set:meet(X1, X2, Fixed),
 
   {R2, ST2} = normalize_line_cont(S, P, N, Fixed, ST1),
 
@@ -117,14 +117,12 @@ explore_function_norm_corec(BigT1, T2, [], Fixed, ST0) ->
   %case NT2 of [[]] -> io:format(user,"X~n~p~n~p~n~n~n", [NT1, constraint_set:join(NT1, NT2)]); _ -> ok end,
   %case NT2 of [[]] -> error(todo); _ -> ok end,
   %io:format(user,"~p~n",[os:system_time(millisecond) - T0]),
-  {constraint_set:join(NT1, NT2), ST2};
+  {constraint_set:join(NT1, NT2, Fixed), ST2};
 % obs2: meet(NS1, NS2) is [[]] more often than NT1, but the checks for NT1 and NT2 are fast
 explore_function_norm_corec(T1, T2, [Function | P], Fixed, ST0) ->
   Tx0 = os:system_time(millisecond),
   {NT1, ST1} = ty_node:normalize(T1, Fixed, ST0),
   {NT2, ST2} = ty_node:normalize(T2, Fixed, ST1),
-  % case NT1 of [[]] -> error(todo); _ -> ok end,
-  % case NT2 of [[]] -> error(todo); _ -> ok end,
   Tx1 = os:system_time(millisecond),
 
   S1 = ty_function:domain(Function),
@@ -135,10 +133,6 @@ explore_function_norm_corec(T1, T2, [Function | P], Fixed, ST0) ->
   {NS2, ST4} = explore_function_norm_corec(ty_node:difference(T1, S1), T2, P, Fixed, ST3),
   % io:format(user,"~p VS ~p~n",[Tx1 - Tx0, os:system_time(millisecond) - T0]),
 
-  % case NT1 of [] -> error(todo); _ -> ok end,
-  % case NT2 of [] -> error(todo); _ -> ok end,
-  % case constraint_set:meet(NS1, NS2) of [[]] -> error(todo); _ -> ok end,
-
   {constraint_set:join(NT1,
     constraint_set:join(NT2,
-      constraint_set:meet(NS1, NS2))), ST4}.
+      constraint_set:meet(NS1, NS2, Fixed), Fixed), Fixed), ST4}.
