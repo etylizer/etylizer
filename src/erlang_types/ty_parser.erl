@@ -56,7 +56,11 @@ clean() ->
   logger:debug("~p state cleaned", [?MODULE]).
 
 -spec parse(ast_ty()) -> type().
-parse(Ty) ->
+parse(RawTy) ->
+  % first: rename such that mu-binders have no collisions
+  % use DeBruijn indexes and then convert back to fresh named variables
+  Ty = convert_back(debruijn(RawTy)),
+  
   % create a reference, check if it is inside the cache
   LocalRef = new_local_ref(Ty),
 
@@ -312,17 +316,24 @@ do_convert({X = {named, _, Ref, Args}, R = {IdTy, _}}, Q, Cache) ->
   end;
 
 % entrypoint for recursion: local equation
-do_convert({AstTy = {mu, RecVar = {mu_var, _Name}, Ty}, R}, Q, Cache) ->
+do_convert({AstTy = {mu, RecVar = {mu_var, Name}, Ty}, R}, Q, Cache) ->
+  true = is_atom(Name),
+
   NewRef = new_local_ref(AstTy),
-  % This can happen because of ... why?
-  % false = maps:is_key(RecVar, Cache),
+  % all binders should be unique, 
+  % only binders with the same body are allowed to share the name
+  case maps:is_key(RecVar, Cache) of
+    false -> ok;
+    true -> NewRef = maps:get(RecVar, Cache)
+  end,
   NewCache = Cache#{RecVar => NewRef},
   {InternalTy, NewQ, {R0, R1}, C0} = do_convert({Ty, R}, Q, NewCache),
   % return record
   {InternalTy, NewQ, {R0#{NewRef => InternalTy}, group(R1, InternalTy, NewRef)}, C0};
 
 % exit for recursion: local equation variable
-do_convert({AstTy = {mu_var, _Name}, R = {IdTy, _}}, Q, Cache) ->
+do_convert({AstTy = {mu_var, Name}, R = {IdTy, _}}, Q, Cache) ->
+  true = is_atom(Name),
   #{AstTy := Ref} = Cache,
   % We are allowed to load the memoized ref
   % because the second occurrence of the mu variable
@@ -561,6 +572,7 @@ expand_predef_alias(Name) ->
     errors:not_implemented(utils:sformat("expand_predef_alias for ~w", Name)).
 
 
+
 % FIXME remove once integrated into Etylizer
 apply(S, T, _) -> apply_base(S, T).
 
@@ -595,6 +607,7 @@ apply_base(S, T) ->
                 error -> {var, Alpha};
                 {ok, U} -> U
             end;
+        {mu_var, Alpha} -> {mu_var, Alpha};
         {union, Args} -> {union, apply_list(S, Args)};
         {intersection, Args} -> {intersection, apply_list(S, Args)};
         {negation, U} -> {negation, apply_base(S, U)}
@@ -603,4 +616,145 @@ apply_base(S, T) ->
 apply_list(S, L) -> lists:map(fun(T) -> apply_base(S, T) end, L).
 
 from_list(L) -> maps:from_list(L).
+
+
+
+%% Main conversion function
+debruijn(Type) ->
+    debruijn(Type, []).
+
+%% Conversion helper with environment stack
+debruijn({singleton, _} = T, _Env) -> T;
+debruijn({bitstring}, _Env) -> {bitstring};
+debruijn({empty_list}, _Env) -> {empty_list};
+debruijn({list, U}, Env) -> {list, debruijn(U, Env)};
+debruijn({mu, {mu_var, Name}, Body}, Env) ->
+    NewEnv = [Name | Env],
+    {mu, debruijn(Body, NewEnv)};
+debruijn({nonempty_list, U}, Env) -> {nonempty_list, debruijn(U, Env)};
+debruijn({improper_list, U, V}, Env) -> 
+    {improper_list, debruijn(U, Env), debruijn(V, Env)};
+debruijn({nonempty_improper_list, U, V}, Env) -> 
+    {nonempty_improper_list, debruijn(U, Env), debruijn(V, Env)};
+debruijn({fun_simple}, _Env) -> {fun_simple};
+debruijn({fun_any_arg, U}, Env) -> {fun_any_arg, debruijn(U, Env)};
+debruijn({fun_full, Args, U}, Env) -> 
+    {fun_full, debruijn_list(Args, Env), debruijn(U, Env)};
+debruijn({range, Min, Max}, _Env) -> {range, Min, Max};
+debruijn({map_any}, _Env) -> {map_any};
+debruijn({map, Assocs}, Env) ->
+    {map, lists:map(fun({Kind, U, V}) -> 
+        {Kind, debruijn(U, Env), debruijn(V, Env)} 
+    end, Assocs)};
+debruijn({predef, Name}, _Env) -> {predef, Name};
+debruijn({predef_alias, Name}, _Env) -> {predef_alias, Name};
+debruijn({named, Loc, Ref, Args}, Env) ->
+    {named, Loc, Ref, debruijn_list(Args, Env)};
+debruijn({tuple_any}, _Env) -> {tuple_any};
+debruijn({tuple, Args}, Env) -> {tuple, debruijn_list(Args, Env)};
+debruijn({mu_var, Name}, Env) ->
+    case index_of(Name, Env) of
+        {ok, Index} -> {mu_var, Index};
+        not_found -> error({unbound_variable, Name})
+    end;
+debruijn({var, Alpha}, Env) ->
+    case index_of(Alpha, Env) of
+        {ok, Index} -> {mu_var, Index};
+        not_found -> {var, Alpha}
+    end;
+debruijn({union, Args}, Env) -> {union, debruijn_list(Args, Env)};
+debruijn({intersection, Args}, Env) -> {intersection, debruijn_list(Args, Env)};
+debruijn({negation, U}, Env) -> {negation, debruijn(U, Env)}.
+
+%% Helper to debruijn lists of types
+debruijn_list(Types, Env) ->
+    [debruijn(T, Env) || T <- Types].
+
+%% Helper to find the index of a name in the environment
+index_of(Name, Env) ->
+    index_of(Name, Env, 0).
+
+index_of(Name, [Name|_], Index) -> {ok, Index};
+index_of(Name, [_|Rest], Index) -> index_of(Name, Rest, Index + 1);
+index_of(_, [], _) -> not_found.
+
+
+
+%% Conversion back to named variables with fresh names
+convert_back(Type) ->
+    {Result, _} = convert_back(Type, [], 0),
+    Result.
+
+%% Helper for conversion back to named variables
+convert_back({mu, Body}, Env, Counter) ->
+    Name = make_fresh_name(Counter),
+    NewEnv = [Name | Env],
+    {ConvertedBody, NewCounter} = convert_back(Body, NewEnv, Counter + 1),
+    {{mu, {mu_var, Name}, ConvertedBody}, NewCounter};
+convert_back({mu_var, Index}, Env, Counter) ->
+    case lists:nth(Index + 1, Env) of
+        Name -> {{mu_var, Name}, Counter}
+    end;
+convert_back({var, Name}, _Env, Counter) ->
+    {{var, Name}, Counter};
+convert_back({tuple, Args}, Env, Counter) ->
+    {ConvertedArgs, NewCounter} = convert_back_list(Args, Env, Counter),
+    {{tuple, ConvertedArgs}, NewCounter};
+convert_back({union, Args}, Env, Counter) ->
+    {ConvertedArgs, NewCounter} = convert_back_list(Args, Env, Counter),
+    {{union, ConvertedArgs}, NewCounter};
+convert_back({intersection, Args}, Env, Counter) ->
+    {ConvertedArgs, NewCounter} = convert_back_list(Args, Env, Counter),
+    {{intersection, ConvertedArgs}, NewCounter};
+%% Handle all other type constructors similarly
+convert_back(Type, Env, Counter) when is_tuple(Type) ->
+    case element(1, Type) of
+        Constructor when Constructor =:= list; 
+                         Constructor =:= nonempty_list;
+                         Constructor =:= improper_list;
+                         Constructor =:= nonempty_improper_list ->
+            [Arg] = tuple_to_list(Type),
+            {ConvertedArg, NewCounter} = convert_back(Arg, Env, Counter),
+            {list_to_tuple([Constructor, ConvertedArg]), NewCounter};
+        Constructor when Constructor =:= fun_any_arg;
+                         Constructor =:= negation ->
+            [Arg] = tuple_to_list(Type),
+            {ConvertedArg, NewCounter} = convert_back(Arg, Env, Counter),
+            {list_to_tuple([Constructor, ConvertedArg]), NewCounter};
+        fun_full ->
+            [Args, Ret] = tuple_to_list(Type),
+            {ConvertedArgs, Counter1} = convert_back_list(Args, Env, Counter),
+            {ConvertedRet, NewCounter} = convert_back(Ret, Env, Counter1),
+            {{fun_full, ConvertedArgs, ConvertedRet}, NewCounter};
+        map ->
+            [Assocs] = tuple_to_list(Type),
+            {ConvertedAssocs, NewCounter} = convert_back_assocs(Assocs, Env, Counter),
+            {{map, ConvertedAssocs}, NewCounter};
+        named ->
+            io:format(user,"~n~p~n", [Type]),
+            [named, Loc, Ref, Args] = tuple_to_list(Type),
+            {ConvertedArgs, NewCounter} = convert_back_list(Args, Env, Counter),
+            {{named, Loc, Ref, ConvertedArgs}, NewCounter};
+        _ ->
+            {Type, Counter} % For atomic types
+    end;
+convert_back(Type, _Env, Counter) ->
+    {Type, Counter}. % For non-tuple types
+
+%% Helper functions
+convert_back_list([], _Env, Counter) -> {[], Counter};
+convert_back_list([Type|Rest], Env, Counter) ->
+    {Converted, Counter1} = convert_back(Type, Env, Counter),
+    {ConvertedRest, NewCounter} = convert_back_list(Rest, Env, Counter1),
+    {[Converted|ConvertedRest], NewCounter}.
+
+convert_back_assocs([], _, Counter) -> {[], Counter};
+convert_back_assocs([{Kind, K, V}|Rest], Env, Counter) ->
+    {ConvertedK, Counter1} = convert_back(K, Env, Counter),
+    {ConvertedV, Counter2} = convert_back(V, Env, Counter1),
+    {ConvertedRest, NewCounter} = convert_back_assocs(Rest, Env, Counter2),
+    {[{Kind, ConvertedK, ConvertedV}|ConvertedRest], NewCounter}.
+
+make_fresh_name(Counter) ->
+    list_to_atom("$var_" ++ integer_to_list(Counter)).
 
