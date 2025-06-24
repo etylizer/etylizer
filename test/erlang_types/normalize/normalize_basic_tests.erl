@@ -21,7 +21,7 @@ basic_test() ->
       1 = length(Norm2),
 
       % 1 constraint can be filtered (one variable cannot be empty anymore)
-      Meet = constraint_set:meet(Norm, Norm2),
+      Meet = constraint_set:meet(Norm, Norm2, #{}),
       2 = length(Meet),
 
       ok

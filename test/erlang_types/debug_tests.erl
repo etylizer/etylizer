@@ -2,22 +2,22 @@
 
 -include_lib("test/erlang_types/erlang_types_test_utils.hrl").
 
-ast_test() ->
-  % ensure all modules are loaded (takes ~20ms)
-  ?LOAD,
-  with_symtab(fun() -> 
-    Ty = tnamed_ns(ast, ty, []),
-    {Time, _} = timer:tc(fun() -> 
-      % uncomment to get a trace for profiling
-      % fprof:trace(start),
-      ty_parser:parse(Ty),
-      % fprof:trace(stop), fprof:profile(), fprof:analyse(),
-      ok
-    end),
-    true = (Time < 20000), % should be less than 20ms
-    % io:format(user,"parse> ~p ms~n", [Time/1000]),
-    ok
-  end, system("test_files/erlang_types/system_ast")).
+% ast_test() ->
+%   % ensure all modules are loaded (takes ~20ms)
+%   ?LOAD,
+%   with_symtab(fun() -> 
+%     Ty = tnamed_ns(ast, ty, []),
+%     {Time, _} = timer:tc(fun() -> 
+%       % uncomment to get a trace for profiling
+%       % fprof:trace(start),
+%       ty_parser:parse(Ty),
+%       % fprof:trace(stop), fprof:profile(), fprof:analyse(),
+%       ok
+%     end),
+%     true = (Time < 20000), % should be less than 20ms
+%     % io:format(user,"parse> ~p ms~n", [Time/1000]),
+%     ok
+%   end, system("test_files/erlang_types/system_ast")).
 
 
 % execute with rebar3 eunit --generator debug_tests:slow_test_

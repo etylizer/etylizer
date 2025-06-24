@@ -49,6 +49,20 @@ tally(Constraints, MonomorphicVariables) ->
   % Solved = ?TIME(tally_solve, tally_solve(Saturated, MonomorphicVariables)),
   Solved = tally_solve(Saturated, MonomorphicVariables),
 
+  % debug for tally 09
+  % io:format(user,"Solution~n~p~n", [Solved]),
+  % [#{
+  %   {var, name, alpha} := N1,
+  %   {var, name, beta} := N2,
+  %   {var, name, gamma} := N3,
+  %   {var, name, delta} := N4
+  %  }] = Solved,
+  % io:format(user,"Alpha: ~p~n~p~n", [N1, ty_parser:unparse(N1)]),
+  % io:format(user,"Beta: ~p~n~p~n", [N2, ty_parser:unparse(N2)]),
+  % io:format(user,"Gamma: ~p~n~p~n", [N3, ty_parser:unparse(N3)]),
+  % io:format(user,"Delta: ~p~n~p~n", [N4, ty_parser:unparse(N4)]),
+  % io:format(user,"~n~n", []),
+
   % TODO sanity: every substitution satisfies all given constraints, if no error
   % ?SANITY(substitutions_solve_input_constraints, case Solved of {error, _} -> ok; _ -> [ true = is_valid_substitution(Constraints, Subst) || Subst <- Solved] end),
  

@@ -172,17 +172,3 @@ unparse_line({Pos, Neg, Leaf}, C0) ->
   {Lf, C3} = ?LEAF:unparse(Leaf, C2),
 
   {ast_lib:mk_intersection(Ps ++ Ns ++ [Lf]), C3}.
-
-% do_dnf({node, Element, Left, Right}, F = {_Process, Combine}, Pos, Neg) ->
-%   % heuristic: if Left is positive & 1, skip adding the negated Element to the right path
-%   case {terminal, ?TERMINAL:any()} of
-%     Left ->
-%       F1 = fun() -> do_dnf(Left, F, [Element | Pos], Neg) end,
-%       F2 = fun() -> do_dnf(Right, F, Pos, Neg) end,
-%       Combine(F1, F2);
-%     _ ->
-%       F1 = fun() -> do_dnf(Left, F, [Element | Pos], Neg) end,
-%       F2 = fun() -> do_dnf(Right, F, Pos, [Element | Neg]) end,
-%       Combine(F1, F2)
-%   end;
-
