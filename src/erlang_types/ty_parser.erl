@@ -315,6 +315,7 @@ lookup_ty({ty_qref, A, B, C}) ->
   Scheme;
 lookup_ty({ty_ref, A, B, C}) ->
   Ref = {A, B, C},
+  io:format(user,"Lookup: ~p~nin~n~p~n", [Ref, ets:tab2list(?SYMTAB)]),
   [{_, Scheme}] = ets:lookup(?SYMTAB, Ref),
   Scheme;
 lookup_ty({R, A, B, C}) ->
@@ -765,12 +766,16 @@ convert_back({intersection, Args}, Env, Counter) ->
 convert_back(Type, Env, Counter) when is_tuple(Type) ->
     case element(1, Type) of
         Constructor when Constructor =:= list; 
-                         Constructor =:= nonempty_list;
-                         Constructor =:= improper_list;
-                         Constructor =:= nonempty_improper_list ->
+                         Constructor =:= nonempty_list ->
             [Constructor, Arg] = tuple_to_list(Type),
             {ConvertedArg, NewCounter} = convert_back(Arg, Env, Counter),
             {list_to_tuple([Constructor, ConvertedArg]), NewCounter};
+        Constructor when Constructor =:= improper_list;
+                         Constructor =:= nonempty_improper_list ->
+            [Constructor, Arg, Arg2] = tuple_to_list(Type),
+            {ConvertedArg, NewCounter} = convert_back(Arg, Env, Counter),
+            {ConvertedArg2, NewCounter2} = convert_back(Arg2, Env, NewCounter),
+            {list_to_tuple([Constructor, ConvertedArg, ConvertedArg2]), NewCounter2};
         Constructor when Constructor =:= fun_any_arg;
                          Constructor =:= negation ->
             [Constructor, Arg] = tuple_to_list(Type),

@@ -61,6 +61,7 @@ tmap_field_opt(K, V) -> {map_field_opt, K, V}.
 with_symtab(Fun, Definitions) when is_map(Definitions) ->
   with_symtab(Fun, maps:to_list(Definitions));
 with_symtab(Fun, Definitions) when is_list(Definitions) ->
+                      io:format(user,"Extending: ~p~n", [Definitions]),
   global_state:with_new_state(fun() ->
     lists:foreach(fun({Key, Scheme}) -> 
       ty_parser:extend_symtab(Key, Scheme) 

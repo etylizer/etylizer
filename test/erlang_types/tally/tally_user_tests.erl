@@ -20,7 +20,7 @@ maps_issue_201_test() ->
   L = tmap([ tmap_field_opt(K, V) ]),
   R = tmap([ tmap_field_opt(v(alpha_0), v(alpha_1)) ]),
 
-  Sym = [{t, tyscm([k, v], L)}],
+  Sym = [{test_key(t, 2), tyscm([k, v], L)}],
   
   test_tally(
     [
@@ -42,8 +42,8 @@ issue_226_test() ->
   GenTuple = ttuple([tlist(v('T'))]),
 
   Sym = [
-    {guard_test, tyscm([], GuardTest)},
-    {gen_tuple, tyscm([t], GenTuple)}
+    {test_key(guard_test), tyscm([], GuardTest)},
+    {test_key(gen_tuple, 1), tyscm([t], GenTuple)}
   ],
 
   test_tally_satisfiable(

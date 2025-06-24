@@ -25,6 +25,7 @@ test_tally(ConstrList, ExpectedSubst, FixedVars) ->
   test_tally(ConstrList, ExpectedSubst, FixedVars, []).
 
 test_tally(ConstrList, ExpectedSubst, FixedVars, Symtab) ->
+  io:format(user,"SYM: ~p~n", [Symtab]),
   % test satisfiable mode of tally
   test_tally_satisfiable(length(ExpectedSubst) > 0, ConstrList, FixedVars, Symtab),
 

@@ -312,7 +312,7 @@ unparse(Node = {node, Id}, Cache) ->
 substitute(Node, Varmap) ->
   % io:format(user,"Substitution: ~p with ~p~n", [Node, Varmap]),
   T1 = ty_parser:unparse(Node),
-  Subst = #{begin {var, Name} = ty_variable:unparse(K, #{}), Name end => ty_parser:unparse(V) || K := V <- Varmap},
+  Subst = #{begin {{var, Name}, _} = ty_variable:unparse(K, #{}), Name end => ty_parser:unparse(V) || K := V <- Varmap},
   % io:format(user,"Substitution: ~p with~n ~p~n", [T1, Subst]),
   Res = ty_parser:apply(Subst, T1, no_clean),
   NewNode = ty_parser:parse(Res),
