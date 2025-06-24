@@ -22,7 +22,15 @@
 % cache for unparsing nodes
 -define(UNPARSE_CACHE, ty_parser_unparse_cache).
 
--define(ALL_ETS, [?CACHE, ?SYMTAB, ?TERMREFS, ?UNIFY, ?UNPARSE_CACHE]).
+% mapping from node -> named used in unparsing
+% this is a bit of a hack;
+% during conversion, save all encountered {named, ...} types
+% after conversion, convert them (which have not yet been converted yet) one by one again and save that reverse mapping
+-define(UNPARSE_NAMED_MAPPING, ty_parser_unparse_name_cache).
+-define(UNPARSE_NAMED_QUEUE, ty_parser_unparse_queue).
+-define(UNPARSE_NAMED_FINISHED, ty_parser_unparse_finish).
+
+-define(ALL_ETS, [?CACHE, ?SYMTAB, ?TERMREFS, ?UNIFY, ?UNPARSE_CACHE, ?UNPARSE_NAMED_QUEUE, ?UNPARSE_NAMED_FINISHED, ?UNPARSE_NAMED_MAPPING]).
 
 -define(TY, dnf_ty_variable).
 -define(NODE, ty_node).
@@ -42,16 +50,16 @@
 -spec init() -> _.
 init() ->
   case ets:whereis(?SYMTAB) of
-      undefined -> [ets:new(T, [set, named_table]) || T <- ?ALL_ETS];
-      _ -> logger:info("~p state already initialized, skip init", [?MODULE])
+    undefined -> [ets:new(T, [set, named_table]) || T <- ?ALL_ETS];
+    _ -> logger:info("~p state already initialized, skip init", [?MODULE])
   end,
   logger:debug("~p state initialized", [?MODULE]).
 
 -spec clean() -> _.
 clean() ->
   case ets:whereis(?SYMTAB) of
-      undefined -> logger:info("~p state already deleted, skip clean", [?MODULE]);
-      _ -> [ets:delete(T) || T <- ?ALL_ETS]
+    undefined -> logger:info("~p state already deleted, skip clean", [?MODULE]);
+    _ -> [ets:delete(T) || T <- ?ALL_ETS]
   end,
   logger:debug("~p state cleaned", [?MODULE]).
 
@@ -59,11 +67,13 @@ clean() ->
 parse(RawTy) ->
   % first: rename such that mu-binders have no collisions
   % use DeBruijn indexes and then convert back to fresh named variables
+  % this has to be done anytime a {named, ...} reference is unfolded, too
   Ty = convert_back(debruijn(RawTy)),
-  
+
   % create a reference, check if it is inside the cache
   LocalRef = new_local_ref(Ty),
 
+  FinalResult = 
   case ets:lookup(?CACHE, LocalRef) of
     [{LocalRef, Node}] -> 
       Node;
@@ -101,7 +111,7 @@ parse(RawTy) ->
       {Scc, Condensed} = utils:condense(Graph),
 
       Components = lists:foldl(fun({Node, Root}, Acc) ->
-          maps:update_with(Root, fun(Nodes) -> [Node | Nodes] end, [Node], Acc)
+        maps:update_with(Root, fun(Nodes) -> [Node | Nodes] end, [Node], Acc)
       end, #{}, maps:to_list(Scc)),
 
       Sort = utils:dfs(Condensed),
@@ -110,78 +120,113 @@ parse(RawTy) ->
 
       DefineAndReplace = fun({{ReplacedRef1, RefMapping, ResultMapping, LocalDefinitions}, Def, Rest}) -> 
         {NewReplacedRef, NewRef, NewRes, NewLocalDefinitions, NewRest} = lists:foldl(fun(DefineOrReplace, Acc = {ReplacedRef0, Refmapping, ResultMapping0, LocalDefinitions0, Rest0}) ->
-            case ?NODE:is_defined(DefineOrReplace) of
-              true -> % from previous parsing runs
-                Acc;
-              false ->
-                ToDefineTy = maps:get(DefineOrReplace, ResultMapping0),
-                case is_consed(ToDefineTy, LocalDefinitions0) of
-                  {true, N} -> 
-                    ToDefine = DefineOrReplace,
+          case ?NODE:is_defined(DefineOrReplace) of
+            true -> % from previous parsing runs
+              Acc;
+            false ->
+              ToDefineTy = maps:get(DefineOrReplace, ResultMapping0),
+              case is_consed(ToDefineTy, LocalDefinitions0) of
+                {true, N} -> 
+                  ToDefine = DefineOrReplace,
 
-                    NodeContainedIn = maps:get(ToDefine, RevGraph, []),
+                  NodeContainedIn = maps:get(ToDefine, RevGraph, []),
 
-                    NewRefmapping = #{K => case V of ToDefine -> N; _ -> V end || K := V <- Refmapping},
+                  NewRefmapping = #{K => case V of ToDefine -> N; _ -> V end || K := V <- Refmapping},
 
-                    % remove ToDefine from result mapping, its already consed
-                    SmallerResultMapping = maps:remove(ToDefine, ResultMapping0),
+                  % remove ToDefine from result mapping, its already consed
+                  SmallerResultMapping = maps:remove(ToDefine, ResultMapping0),
 
-                    FinalResultMapping = lists:foldl(fun(E, Acc0) -> 
-                      Val = maps:get(E, Acc0),
-                      Fin = utils:replace(Val, #{ToDefine => N}),
-                      Acc0#{E => Fin} 
-                    end, SmallerResultMapping, NodeContainedIn),
+                  FinalResultMapping = lists:foldl(fun(E, Acc0) -> 
+                    Val = maps:get(E, Acc0),
+                    Fin = utils:replace(Val, #{ToDefine => N}),
+                    Acc0#{E => Fin} 
+                  end, SmallerResultMapping, NodeContainedIn),
 
-                    NewReplacedRef = case ReplacedRef0 of ToDefine -> N; _ -> ReplacedRef0 end,
+                  NewReplacedRef = case ReplacedRef0 of ToDefine -> N; _ -> ReplacedRef0 end,
 
-                    {NewReplacedRef, NewRefmapping, FinalResultMapping, LocalDefinitions0, Rest0};
-                  false ->
-                    % so this can happen with recursive types:
-                    % the ty_rec is already consed,
-                    % but the reference has been used already in a previous definition.
-                    % Ideally, we don't want to define this reference.
-                    % But we need to, since this reference is used in another definition already (in this local parse)
-                    % We don't want to touch anything that has been defined already (globally),
-                    % so we need to prevent this case from happening in the first place.
-                    % The problem is that local unification is not smart enough to merge these two type references in one pass:
-                    % 
-                    % {local_ref,-576460752303423167} => ... {ty_function, [{local_ref,-576460752303423071}], {local_ref,-576460752303423231}} ...
-                    % {local_ref,-576460752303423135} => ... {ty_function, [{local_ref,-576460752303423071}], {local_ref,-576460752303423231}} ...
-                    % 
-                    % Which (before and) after replacement point to the same records
-                    % 
-                    % {node,3} => ... {ty_function,[{node,6}],{node,1}} ...
-                    % {node,4} => ... {ty_function,[{node,6}],{node,1}} ...
-                    % 
-                    % Therefore, we don't define the types globally, but locally first
-                    % and remove the duplicates once a consed match is detected
-                    {ReplacedRef0, Refmapping, ResultMapping0, LocalDefinitions0#{ToDefineTy => DefineOrReplace}, Rest0}
-                end
+                  {NewReplacedRef, NewRefmapping, FinalResultMapping, LocalDefinitions0, Rest0};
+                false ->
+                  % so this can happen with recursive types:
+                  % the ty_rec is already consed,
+                  % but the reference has been used already in a previous definition.
+                  % Ideally, we don't want to define this reference.
+                  % But we need to, since this reference is used in another definition already (in this local parse)
+                  % We don't want to touch anything that has been defined already (globally),
+                  % so we need to prevent this case from happening in the first place.
+                  % The problem is that local unification is not smart enough to merge these two type references in one pass:
+                  % 
+                  % {local_ref,-576460752303423167} => ... {ty_function, [{local_ref,-576460752303423071}], {local_ref,-576460752303423231}} ...
+                  % {local_ref,-576460752303423135} => ... {ty_function, [{local_ref,-576460752303423071}], {local_ref,-576460752303423231}} ...
+                  % 
+                  % Which (before and) after replacement point to the same records
+                  % 
+                  % {node,3} => ... {ty_function,[{node,6}],{node,1}} ...
+                  % {node,4} => ... {ty_function,[{node,6}],{node,1}} ...
+                  % 
+                  % Therefore, we don't define the types globally, but locally first
+                  % and remove the duplicates once a consed match is detected
+                  {ReplacedRef0, Refmapping, ResultMapping0, LocalDefinitions0#{ToDefineTy => DefineOrReplace}, Rest0}
               end
+            end
           end, {ReplacedRef1, RefMapping, ResultMapping, LocalDefinitions, Rest}, Def),
 
-        {{NewReplacedRef, NewRef, NewRes, NewLocalDefinitions}, NewRest}
-      end,
+      {{NewReplacedRef, NewRef, NewRes, NewLocalDefinitions}, NewRest}
+    end,
 
-      % Modifying the context is not needed
-      % TODO refactor
-      {FinalReplacedRef, FinalReplaceRefs, FinalReplacedResults, _FinalLocalDefinitions} = utils:fold_with_context(DefineAndReplace, {ReplacedRef, ReplaceRefs, ReplacedResults, _LocalDefinitions = #{}}, Define),
+    % Modifying the context is not needed
+    % TODO refactor
+    {FinalReplacedRef, FinalReplaceRefs, FinalReplacedResults, _FinalLocalDefinitions} = utils:fold_with_context(DefineAndReplace, {ReplacedRef, ReplaceRefs, ReplacedResults, _LocalDefinitions = #{}}, Define),
 
-      % define the final results globally
-      [?NODE:define(NodeRef, Record) || NodeRef := Record <- FinalReplacedResults],
+    % define the final results globally
+    [?NODE:define(NodeRef, Record) || NodeRef := Record <- FinalReplacedResults],
 
-      % 5. update global cache, there are now old entries to overwrite
-      %    this invariant has to be kept up inside do_convert
-      %    whenever a new reference is created with new_local_ref(...),
-      %    we need to check the global cache if that reference does not already point
-      %    to a real node inside the global system
-      %    the true = ... check is a sanity check
-      [true = ets:insert_new(?CACHE, {LLocalRef, Node}) || LLocalRef := Node <- FinalReplaceRefs],
+    % 5. update global cache, there are now old entries to overwrite
+    %    this invariant has to be kept up inside do_convert
+    %    whenever a new reference is created with new_local_ref(...),
+    %    we need to check the global cache if that reference does not already point
+    %    to a real node inside the global system
+    %    the true = ... check is a sanity check
+    %    if somethings has been inserted before, it had to be Node already
+    [case ets:insert_new(?CACHE, {LLocalRef, Node}) of
+       true -> ok;
+       false -> [{LLocalRef, Node}] = ets:lookup(?CACHE, LLocalRef), ok
+     end
+     || LLocalRef := Node <- FinalReplaceRefs],
 
-      % sanity check: all references should be defined
-      % [ty_node:dump(Node) || _LLocalRef := Node <- FinalReplaceRefs],
+    % sanity check: all references should be defined
+    % [ty_node:dump(Node) || _LLocalRef := Node <- FinalReplaceRefs],
       
-      FinalReplacedRef
+    FinalReplacedRef
+  end,
+  
+  % generate the reverse named mapping at the end
+  InQueue = ets:tab2list(?UNPARSE_NAMED_QUEUE),
+  lists:foreach(
+    fun({N, _}) -> 
+      case ets:lookup(?UNPARSE_NAMED_FINISHED, N) of 
+        [] -> 
+          ets:insert(?UNPARSE_NAMED_FINISHED, {N, []}),
+          ets:delete(?UNPARSE_NAMED_QUEUE, N),
+          Mapping = parse(N),
+          case ets:insert_new(?UNPARSE_NAMED_MAPPING, {Mapping, N}) of
+            true -> 
+              % io:format(user, "Created reverse mapping for ~w :: ~w~n", [Mapping, N]),
+              ok;
+            _ -> 
+              % [{Mapping, OldNode}] = ets:lookup(?UNPARSE_NAMED_MAPPING, Mapping), 
+              % io:format(user, "Warning: ~p maps to a node that already has a reverse mapping:~n~p~n", [N, OldNode]),
+              ok
+          end;
+        _ -> ok 
+      end 
+    end, InQueue),
+  
+  FinalResult.
+
+unparse_mapping(Node) ->
+  case ets:lookup(?UNPARSE_NAMED_MAPPING, Node) of
+    [{Node, Res}] -> {hit, Res};
+    _ -> no_hit
   end.
 
 is_consed(ToDefineTy, LocalDefs) ->
@@ -285,6 +330,12 @@ group(M, Key, Value) ->
 % entrypoint for recursion: named type
 -spec do_convert({ast_ty(), database()}, queue(), local_cache()) -> {ty_rec(), queue(), database(), local_cache()}.
 do_convert({X = {named, _, Ref, Args}, R = {IdTy, _}}, Q, Cache) ->
+  % add to create a reverse mapping between the internal result node and the named type
+  case ets:lookup(?UNPARSE_NAMED_FINISHED, X) of
+    [] -> ets:insert(?UNPARSE_NAMED_QUEUE, {X, []});
+    _ -> ok % already processed
+  end,
+
   case Cache of
     #{{Ref, Args} := NewRef} ->
       #{NewRef := Ty} = IdTy,
@@ -294,10 +345,12 @@ do_convert({X = {named, _, Ref, Args}, R = {IdTy, _}}, Q, Cache) ->
       % io:format(user,"Lookup ~p~n", [Ref]),
       ({ty_scheme, Vars, Ty}) = lookup_ty(Ref),
 
+      % FIXME ust subst:apply
       % Map = subst:from_list(lists:zip([V || {V, _Bound} <- Vars], Args)),
       % NewTy = subst:apply(Map, Ty, no_clean),
       Map = from_list(lists:zip([V || {V, _Bound} <- Vars], Args)),
-      NewTy = ty_parser:apply(Map, Ty, no_clean),
+      % we can do this since recursive variables should not descend "into" a named type
+      NewTy = convert_back(debruijn(ty_parser:apply(Map, Ty, no_clean))),
       
       % sanity
       false = maps:is_key({Ref, Args}, Cache),
@@ -334,6 +387,8 @@ do_convert({AstTy = {mu, RecVar = {mu_var, Name}, Ty}, R}, Q, Cache) ->
 % exit for recursion: local equation variable
 do_convert({AstTy = {mu_var, Name}, R = {IdTy, _}}, Q, Cache) ->
   true = is_atom(Name),
+
+
   #{AstTy := Ref} = Cache,
   % We are allowed to load the memoized ref
   % because the second occurrence of the mu variable
@@ -713,25 +768,24 @@ convert_back(Type, Env, Counter) when is_tuple(Type) ->
                          Constructor =:= nonempty_list;
                          Constructor =:= improper_list;
                          Constructor =:= nonempty_improper_list ->
-            [Arg] = tuple_to_list(Type),
+            [Constructor, Arg] = tuple_to_list(Type),
             {ConvertedArg, NewCounter} = convert_back(Arg, Env, Counter),
             {list_to_tuple([Constructor, ConvertedArg]), NewCounter};
         Constructor when Constructor =:= fun_any_arg;
                          Constructor =:= negation ->
-            [Arg] = tuple_to_list(Type),
+            [Constructor, Arg] = tuple_to_list(Type),
             {ConvertedArg, NewCounter} = convert_back(Arg, Env, Counter),
             {list_to_tuple([Constructor, ConvertedArg]), NewCounter};
         fun_full ->
-            [Args, Ret] = tuple_to_list(Type),
+            [fun_full, Args, Ret] = tuple_to_list(Type),
             {ConvertedArgs, Counter1} = convert_back_list(Args, Env, Counter),
             {ConvertedRet, NewCounter} = convert_back(Ret, Env, Counter1),
             {{fun_full, ConvertedArgs, ConvertedRet}, NewCounter};
         map ->
-            [Assocs] = tuple_to_list(Type),
+            [map, Assocs] = tuple_to_list(Type),
             {ConvertedAssocs, NewCounter} = convert_back_assocs(Assocs, Env, Counter),
             {{map, ConvertedAssocs}, NewCounter};
         named ->
-            io:format(user,"~n~p~n", [Type]),
             [named, Loc, Ref, Args] = tuple_to_list(Type),
             {ConvertedArgs, NewCounter} = convert_back_list(Args, Env, Counter),
             {{named, Loc, Ref, ConvertedArgs}, NewCounter};

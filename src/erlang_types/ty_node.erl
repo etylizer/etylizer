@@ -272,32 +272,37 @@ normalize(TyNode, FixedVariables, LocalCache) ->
   end.
 
 unparse(Node = {node, Id}, Cache) -> 
-  case Cache of
-    #{Node := RecVar} -> 
-      {RecVar, Cache};
-    _ -> 
-      % a node can map to the recursive variable with the same identifier
-      RecVar = {mu_var, erlang:list_to_atom("$node_" ++ integer_to_list(Id))},
+  case ty_parser:unparse_mapping(Node) of
+    {hit, Result} -> {Result, Cache};
+    _ ->
+      case Cache of
+        #{Node := RecVar} -> 
+          {RecVar, Cache};
+        _ -> 
+          % a node can map to the recursive variable with the same identifier
+          RecVar = {mu_var, erlang:list_to_atom("$node_" ++ integer_to_list(Id))},
 
-      % sanity
-      false = maps:is_key(Node, Cache),
-      NewCache = Cache#{Node => RecVar},
+          % sanity
+          false = maps:is_key(Node, Cache),
+          NewCache = Cache#{Node => RecVar},
 
-      % load and continue
-      Ty = ty_node:load(Node),
-      {R, C0} = ?TY:unparse(Ty, NewCache),
+          % load and continue
+          Ty = ty_node:load(Node),
+          {R, C0} = ?TY:unparse(Ty, NewCache),
 
-      % make type equation (if needed)
-      Vars = ast_utils:referenced_recursive_variables(R),
-      FinalTy = case lists:member(RecVar, Vars) of 
-        true -> {mu, RecVar, R};
-        false -> R
-      end,
+          % make type equation (if needed)
+          Vars = ast_utils:referenced_recursive_variables(R),
+          FinalTy = case lists:member(RecVar, Vars) of 
+            true -> {mu, RecVar, R};
+            false -> R
+          end,
 
-      % parallel cache
-      % overwrite the recursion variable reference so that the whole binder + body is returned
-      % otherwise there are recursion variables left-over which are unbounded
-      {FinalTy, C0#{Node => FinalTy}}
+          % FIXME parallel cache not needed anymore
+          % parallel cache
+          % overwrite the recursion variable reference so that the whole binder + body is returned
+          % otherwise there are recursion variables left-over which are unbounded
+          {FinalTy, C0#{Node => FinalTy}}
+      end
   end.
 
 % ===
