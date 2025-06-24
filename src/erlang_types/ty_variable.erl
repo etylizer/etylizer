@@ -74,10 +74,10 @@ new_with_name_and_id(Id, Name) when is_atom(Name) ->
 get_new_id() ->
   ets:update_counter(?VAR_ETS, variable_id, {2,1}).
 
-unparse(#var{id = name, name = Name}, _) ->
-  {var, Name};
-unparse(#var{id = Id, name = Name}, _) ->
-  {var, list_to_atom("$ety_" ++ integer_to_list(Id) ++ "_" ++ atom_to_list(Name))}.
+unparse(#var{id = name, name = Name}, C) ->
+  {{var, Name}, C};
+unparse(#var{id = Id, name = Name}, C) ->
+  {{var, list_to_atom("$ety_" ++ integer_to_list(Id) ++ "_" ++ atom_to_list(Name))}, C}.
 
 % % assumption: PVars U NVars is not empty
 % smallest(PositiveVariables, NegativeVariables, FixedVariables) ->

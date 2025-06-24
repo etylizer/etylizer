@@ -110,8 +110,9 @@ debug_parser_test() ->
         io:format(user,"Unparsing start: ~p~n", [A]),
         Eval = ty_parser:unparse(A),
         io:format(user,"~p~n", [Eval]),
-        %AA = ty_parser:parse(Eval),
-        %X = ty_node:is_empty(AA),
+        AA = ty_parser:parse(Eval),
+        io:format(user,"Reparse~n~p~n~p~n", [AA, ty_node:dump(AA)]),
+        X = ty_node:is_empty(AA),
         ok
     end,
 #{
@@ -157,6 +158,31 @@ debug_unparse_test() ->
               {mu_var,'$node_3'}]}]}}]}},
         _Parsed = ty_parser:parse(Node),
         io:format(user,"Fin~n", []),
+        %Eval = ty_parser:unparse(Parsed),
+        %io:format(user,"~p~n", [Eval]),
+        ok
+    end,
+#{}).
+
+debug_parse2_test() ->
+  with_symtab(
+    fun() -> 
+        Node = 
+{mu, {mu_var,'$node_1'},
+ {tuple,
+      [{mu, {mu_var,'$node_2'},
+        {tuple, [{singleton, a}, {mu_var,'$node_1'}]}
+       },
+       {mu, {mu_var,'$node_2'},
+        {tuple, [{singleton, b}, {mu_var,'$node_2'}]}
+       },
+       {mu, {mu_var,'$node_2'},
+        {tuple, [{singleton, b}, {mu_var,'$node_2'}]}
+       }
+      ]
+ }},
+        Parsed = ty_parser:parse(Node),
+        io:format(user,"Fin~n~p~n~p~n", [Parsed, ty_node:dump(Parsed)]),
         %Eval = ty_parser:unparse(Parsed),
         %io:format(user,"~p~n", [Eval]),
         ok

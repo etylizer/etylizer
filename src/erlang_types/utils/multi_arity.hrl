@@ -79,22 +79,24 @@ normalize({Default, All}, Fixed, ST) ->
 
   {constraint_set:meet(DF, Others), ST2}.
 
-unparse({Default, T}, C) ->
-  X1 = ?MULTIARITY:unparse(Default, C),
-  Xs = lists:map(fun({Size, TT}) -> 
-    case ?MULTIARITY:unparse(TT, C) of
-      {predef, any} -> error(todo); %AnyTupleI(Size);
-      X -> X
-    end
-  end, maps:to_list(T)),
+unparse({Default, T}, ST0) ->
+  {X1, ST1} = ?MULTIARITY:unparse(Default, ST0),
 
-  ast_lib:mk_union([ 
-    ast_lib:mk_intersection([ 
+  {Xs, ST2} =
+  lists:foldl(fun({Size, TT}, {Cs, ST00}) -> 
+    case ?MULTIARITY:unparse(TT, ST00) of
+      {{predef, any}, _} -> error(todo_multi_unparse); %AnyTupleI(Size);
+      {X, ST01} -> {Cs ++ [X], ST01}
+    end
+  end, {[], ST1}, maps:to_list(T)),
+
+  {ast_lib:mk_union([ 
+    ast_lib:mk_diff( 
       X1, 
-      ast_lib:mk_negation(ast_lib:mk_union(Xs)) 
-    ]), 
+      ast_lib:mk_union(Xs)
+    ), 
     ast_lib:mk_union(Xs)
-  ]).
+  ]), ST2}.
 
 
 % substitute({DefaultFunction, AllFunctions}, SubstituteMap, Memo) ->

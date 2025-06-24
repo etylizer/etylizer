@@ -46,8 +46,8 @@ normalize(Dnf, _Fixed, ST) ->
     {false, _} -> {[], ST}
   end.
 
-unparse(<<Bitmask:?ELEMENTS>>, _) ->
-    lists:foldl(
+unparse(<<Bitmask:?ELEMENTS>>, ST) ->
+  {lists:foldl(
         fun({Atom, Bit}, Acc) ->
             case Bit band Bitmask of
                 0 -> Acc;
@@ -60,4 +60,4 @@ unparse(<<Bitmask:?ELEMENTS>>, _) ->
         end,
         [],
         [ {'[]', 1}, {float, 2}, {pid, 4}, {port, 8}, {reference, 16} ]
-    ).
+    ), ST}.

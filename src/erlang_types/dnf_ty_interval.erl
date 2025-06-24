@@ -112,10 +112,11 @@ normalize(Dnf, _Fixed, ST) ->
   end.
 
 
+unparse(C, ST) -> {unp(C), ST}.
 
-unparse([], _) -> {predef, none};
-unparse([any_int], _) -> {predef, any};
-unparse([Int | Others], C) -> ast_lib:mk_union([unparse_single(Int), unparse(Others, C)]).
+unp([]) -> {predef, none};
+unp([any_int]) -> {predef, any};
+unp([Int | Others]) -> ast_lib:mk_union([unparse_single(Int), unp(Others)]).
 
 unparse_single({range, A, B}) -> {range, A, B};
 unparse_single({left, -1}) -> {predef_alias, neg_integer};

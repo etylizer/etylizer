@@ -33,8 +33,15 @@ domain({ty_function, Domains, _}) ->
 
 codomain({ty_function, _, Codomain}) when not is_list(Codomain) -> Codomain.
 
-unparse({ty_function, Refs, Codomain}, Cache) ->
-  {fun_full, [ty_node:unparse(R, Cache) || R <- Refs], ty_node:unparse(Codomain, Cache)}.
+unparse({ty_function, Refs, Codomain}, ST0) ->
+  {All, ST3} = lists:foldl(
+                 fun(R, {Cs, ST1}) -> {C, ST2} = ty_node:unparse(R, ST1), {Cs ++ [C], ST2} end, 
+                 {[], ST0}, 
+                 Refs
+                ),
+  {Cod, ST4} = ty_node:unparse(Codomain, ST3),
+  {{fun_full, All, Cod}, ST4}.
+
 
 % substitute({ty_function, Refs, B}, Map, Memo) ->
 %     {ty_function,

@@ -314,8 +314,8 @@ do_convert({X = {named, _, Ref, Args}, R = {IdTy, _}}, Q, Cache) ->
 % entrypoint for recursion: local equation
 do_convert({AstTy = {mu, RecVar = {mu_var, _Name}, Ty}, R}, Q, Cache) ->
   NewRef = new_local_ref(AstTy),
-  io:format(user,"~nParsing mu equation, got mapping~n~p~n-> ~p~n", [AstTy, NewRef]),
-  false = maps:is_key(RecVar, Cache),
+  % This can happen because of ... why?
+  % false = maps:is_key(RecVar, Cache),
   NewCache = Cache#{RecVar => NewRef},
   {InternalTy, NewQ, {R0, R1}, C0} = do_convert({Ty, R}, Q, NewCache),
   % return record

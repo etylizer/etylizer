@@ -28,5 +28,5 @@ normalize(Dnf, _Fixed, ST) ->
     {false, _} -> {[], ST}
   end.
 
-unparse(0, _) -> {predef, none};
-unparse(1, _) -> {predef, any}.
+unparse(0, ST) -> {{predef, none}, ST};
+unparse(1, ST) -> {{predef, any}, ST}.

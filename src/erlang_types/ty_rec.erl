@@ -143,14 +143,18 @@ normalize(TyRec, Fixed, ST) ->
 % ===
 % Unparse
 % ===
-unparse(any, Cache) -> {predef, any};
-unparse(empty, Cache) -> {predef, none};
-unparse(Ty, Cache) ->
-  Z = fold(fun(Module, Value, Acc) -> 
-               P = Module:unparse(Value, Cache),
-               Acc ++ [unparse_any(Module, P)]
-              end, [], Ty),
-  ast_lib:mk_union(Z).
+unparse(any, Cache) -> {{predef, any}, Cache};
+unparse(empty, Cache) -> {{predef, none}, Cache};
+unparse(Ty, ST) ->
+  {Z, ST2} = 
+  fold(fun 
+         (Module, Value, {Acc, ST0}) -> 
+           {P, ST1} = Module:unparse(Value, ST0), 
+           {Acc ++ [unparse_any(Module, P)], ST1}
+       end, 
+       {[], ST}, 
+       Ty),
+  {ast_lib:mk_union(Z), ST2}.
 
 unparse_any(dnf_ty_predefined, Result) -> 
   ast_lib:mk_intersection(

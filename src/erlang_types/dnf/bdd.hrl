@@ -166,12 +166,12 @@ unparse(Dnf, ST) ->
                     ),
   {ast_lib:mk_union(ToUnion), ST2}.
 
-unparse_line({Pos, Neg, Leaf}, Cache) ->
-  ast_lib:mk_intersection(
-   [?ATOM:unparse(P, Cache) || P <- Pos] 
-   ++ [ast_lib:mk_negation(?ATOM:unparse(N, Cache)) || N <- Neg]
-   ++ [?LEAF:unparse(Leaf, Cache)]
-  ).
+unparse_line({Pos, Neg, Leaf}, C0) ->
+  {Ps, C1} = lists:foldl(fun(P, {Acc, C00}) -> {Pp, C01} = ?ATOM:unparse(P, C00), {Acc ++ [Pp], C01} end, {[], C0}, Pos),
+  {Ns, C2} = lists:foldl(fun(N, {Acc, C00}) -> {Nn, C01} = ?ATOM:unparse(N, C00), {Acc ++ [ast_lib:mk_negation(Nn)], C01} end, {[], C1}, Neg),
+  {Lf, C3} = ?LEAF:unparse(Leaf, C2),
+
+  {ast_lib:mk_intersection(Ps ++ Ns ++ [Lf]), C3}.
 
 % do_dnf({node, Element, Left, Right}, F = {_Process, Combine}, Pos, Neg) ->
 %   % heuristic: if Left is positive & 1, skip adding the negated Element to the right path

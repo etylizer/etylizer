@@ -32,8 +32,13 @@ big_intersect([X | Y]) ->
 all_variables({ty_tuple, _, Refs}, M) ->
     lists:flatten([?NODE:all_variables(E, M) || E <- Refs]).
 
-unparse({ty_tuple, _, Refs}, Cache) ->
-  {tuple, [ty_node:unparse(R, Cache) || R <- Refs]}.
+unparse({ty_tuple, _, Refs}, ST0) ->
+  {All, ST3} = lists:foldl(
+                 fun(R, {Cs, ST1}) -> {C, ST2} = ty_node:unparse(R, ST1), {Cs ++ [C], ST2} end, 
+                 {[], ST0}, 
+                 Refs
+                ),
+  {{tuple, All}, ST3}.
 
 % -ifdef(TEST).
 % -include_lib("eunit/include/eunit.hrl").

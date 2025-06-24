@@ -272,7 +272,6 @@ normalize(TyNode, FixedVariables, LocalCache) ->
   end.
 
 unparse(Node = {node, Id}, Cache) -> 
-  io:format(user,"Unparse... ~p~n", [Node]),
   case Cache of
     #{Node := RecVar} -> 
       {RecVar, Cache};
@@ -287,14 +286,18 @@ unparse(Node = {node, Id}, Cache) ->
       % load and continue
       Ty = ty_node:load(Node),
       {R, C0} = ?TY:unparse(Ty, NewCache),
-      io:format(user,"Unparsing~n~p~nFrom::~n~p~nGot::~n~p~n", [Node, Ty, R]),
 
       % make type equation (if needed)
       Vars = ast_utils:referenced_recursive_variables(R),
-      case lists:member(RecVar, Vars) of 
-        true -> {{mu, RecVar, R}, C0};
-        false -> {R, C0}
-      end
+      FinalTy = case lists:member(RecVar, Vars) of 
+        true -> {mu, RecVar, R};
+        false -> R
+      end,
+
+      % parallel cache
+      % overwrite the recursion variable reference so that the whole binder + body is returned
+      % otherwise there are recursion variables left-over which are unbounded
+      {FinalTy, C0#{Node => FinalTy}}
   end.
 
 % ===

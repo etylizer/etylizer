@@ -21,5 +21,5 @@ substitute(_,X,_,_) -> X.
 map_pi(_) -> #{}.
 has_ref(_,_) -> false.
 all_variables(_, _) -> [].
-unparse(0, _) -> {predef, none};
-unparse(1, _) -> {predef, any}.
+unparse(0, C) -> {{predef, none}, C};
+unparse(1, C) -> {{predef, any}, C}.
