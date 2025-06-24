@@ -50,7 +50,7 @@
 -spec init() -> _.
 init() ->
   case ets:whereis(?SYMTAB) of
-    undefined -> [ets:new(T, [set, named_table]) || T <- ?ALL_ETS];
+    undefined -> [ets:new(T, [public, set, named_table]) || T <- ?ALL_ETS];
     _ -> logger:info("~p state already initialized, skip init", [?MODULE])
   end,
   logger:debug("~p state initialized", [?MODULE]).

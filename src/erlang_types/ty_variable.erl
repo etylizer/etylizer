@@ -7,7 +7,7 @@
 init() ->
   case ets:whereis(?VAR_ETS) of
       undefined -> 
-        [ets:new(T, [set, named_table]) || T <- ?ALL_ETS],
+        [ets:new(T, [public, set, named_table]) || T <- ?ALL_ETS],
         ets:insert(?VAR_ETS, {variable_id, 0});
       _ -> ok
   end.

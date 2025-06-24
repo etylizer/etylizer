@@ -25,7 +25,8 @@
     extend_symtab_with_fun_env/2,
     empty/0,
     extend_symtab_with_module_list/4,
-    dump_symtab/2, overlay_symtab/1
+    dump_symtab/2, overlay_symtab/1,
+    get_types/1
 ]).
 
 -type fun_env() :: #{ ast:global_ref() => ast:ty_scheme() }.
@@ -43,6 +44,8 @@
 }).
 
 -opaque t() :: #tab{}.
+
+get_types(#tab{types = Types}) -> Types.
 
 -spec dump_symtab(string(), t()) -> ok.
 dump_symtab(Msg, Tab) ->

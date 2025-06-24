@@ -21,7 +21,7 @@
 init() ->
   case ets:whereis(?ID) of
       undefined -> 
-        [ets:new(T, [set, named_table]) || T <- ?ALL_ETS],
+        [ets:new(T, [public, set, named_table]) || T <- ?ALL_ETS],
         ets:insert(?ID, {id, 0});
       _ -> 
         ok % cleanup()

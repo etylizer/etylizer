@@ -35,7 +35,7 @@ tally(SymTab, Constraints, FixedVars, Mode) ->
   % io:format(user, "~s~n", [test_utils:format_tally_config(sets:to_list(Constraints), FixedVars, SymTab)]),
   
   % FIXME hack
-  {tab, _, _, Types, _, _} = SymTab,
+  Types = symtab:get_types(SymTab),
   maps:foreach(fun(K, V) -> ty_parser:extend_symtab(K, V) end, Types),
 
   InternalConstraints = 
@@ -48,6 +48,7 @@ tally(SymTab, Constraints, FixedVars, Mode) ->
   case Mode of
     solve ->
       % implemented but not tested yet
+      io:format(user, "SOLVE NOT IMPLEMENTED~n", []),
       error(todo_solve_tally); 
       % InternalResult = etally:tally(InternalConstraints, sets:from_list(FixedTallyTyvars, [{version, 2}])),
       % % io:format(user, "Got Constraints ~n~s~n~p~n", [print(InternalConstraints), InternalResult]),

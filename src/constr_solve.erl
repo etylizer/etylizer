@@ -102,6 +102,7 @@ check_simp_constrs(Tab, FixedTyvars, Ds, What) ->
             TimeoutRes = utils:timeout(
                 Timeout,
                 fun () -> locate_tyerror(Tab, FixedTyvars, Blocks) end),
+            io:format(user,"timeout res:~p~n", [TimeoutRes]),
             case TimeoutRes of
                 {ok, Res} -> Res;
                 timeout ->
@@ -181,7 +182,7 @@ is_satisfiable(Tab, Constrs, Fixed, What) ->
             false;
         {true, S} ->
             ?LOG_DEBUG("Tally time (~s): ~pms, tally successful.", What, Delta),
-            ?LOG_TRACE("First substitution:~n~s", [pretty:render_subst(S)]),
+            ?LOG_TRACE("First substitution:~n~s", pretty:render_subst(S)),
             true
     end.
 
@@ -196,6 +197,6 @@ solve_simp_constrs(Tab, Ds, What) ->
             false;
         Substs ->
             ?LOG_DEBUG("Tally time (~s): ~pms, tally successful.", What, Delta),
-            ?LOG_TRACE("Substitutions:~n~s", [pretty:render_substs(Substs)]),
+            ?LOG_TRACE("Substitutions:~n~s", pretty:render_substs(Substs)),
             Substs
     end.
