@@ -172,11 +172,11 @@ collect_vars({bitstring}, _CPos, Pos, _) -> Pos;
 collect_vars({map_any}, _CPos, Pos, _) -> Pos;
 collect_vars({tuple_any}, _CPos, Pos, _) -> Pos;
 collect_vars({fun_simple}, _CPos, Pos, _) -> Pos;
+collect_vars({mu_var, _Name}, _CPos, Pos, _) -> Pos;
 collect_vars({list, A}, CPos, Pos, Fix) ->
     collect_vars(A, CPos, Pos, Fix);
-collect_vars({mu, MuVar, A}, CPos, Pos, Fix) ->
-    % hack: recursion variables are not really fixed variables, but can be considered as such for cleaning (i.e. don't touch them)
-    collect_vars(A, CPos, Pos, sets:union(Fix, sets:from_list([MuVar]))); 
+collect_vars({mu, _MuVar, A}, CPos, Pos, Fix) -> % skip recursion variables
+    collect_vars(A, CPos, Pos, Fix); 
 collect_vars({Map, A, B}, CPos, Pos, Fix) when Map == map_field_opt; Map == map_field_req ->
     M1 = collect_vars(A, CPos, Pos, Fix),
     M2 = collect_vars(B, CPos, Pos, Fix),

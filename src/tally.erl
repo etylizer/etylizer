@@ -50,25 +50,23 @@ tally(SymTab, Constraints, FixedVars, Mode) ->
   case Mode of
     solve ->
       % implemented but not tested yet
-      error(todo_solve_tally); 
-      % InternalResult = etally:tally(InternalConstraints, sets:from_list(FixedTallyTyvars, [{version, 2}])),
-      % % io:format(user, "Got Constraints ~n~s~n~p~n", [print(InternalConstraints), InternalResult]),
-      %
-      % Free = tyutils:free_in_subty_constrs(Constraints),
-      % case InternalResult of
-      %       {error, []} ->
-      %         {error, []};
-      %       _ ->
-      %         % transform to subst:t()
-      %         % TODO sanity variable Id == variable name
-      %         [subst:mk_tally_subst(
-      %           sets:union(FixedVars, Free),
-      %           maps:from_list([{VarName, ast_lib:erlang_ty_to_ast(Ty, #{})}
-      %                         || {{var, _, VarName}, Ty} <- maps:to_list(Subst)]))
-      %         || Subst <- InternalResult]
-      % end;
+      InternalResult = etally:tally(InternalConstraints, MonomorphicTallyVariables),
+      % io:format(user, "Got Constraints ~n~s~n~p~n", [print(InternalConstraints), InternalResult]),
+
+      Free = tyutils:free_in_subty_constrs(Constraints),
+      case InternalResult of
+            {error, []} ->
+              {error, []};
+            _ ->
+              % transform to subst:t()
+              % TODO sanity variable Id == variable name
+              [subst:mk_tally_subst(
+                sets:union(FixedVars, Free),
+                maps:from_list([{VarName, ty_parser:unparse(Ty)}
+                              || {{var, _, VarName}, Ty} <- maps:to_list(Subst)]))
+              || Subst <- InternalResult]
+      end;
     satisfiable ->
-      %InternalResult = etally:is_tally_satisfiable(InternalConstraints, sets:from_list(FixedTallyTyvars)),
       InternalResult = etally:is_tally_satisfiable(InternalConstraints, MonomorphicTallyVariables),
 
       case InternalResult of
