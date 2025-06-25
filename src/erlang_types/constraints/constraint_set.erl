@@ -65,7 +65,7 @@ is_empty(Con, Fixed) ->
   lists:any(fun({_Var, L, R}) -> 
                 case ty_node:normalize(ty_node:difference(L, R), Fixed) of
                   [] ->
-                    io:format(user,"Filtering constraint set: ~p~n", [length(Con)]),
+                    % io:format(user,"Filtering constraint set: ~p~n", [length(Con)]),
                     true;
                   _ -> false
                 end

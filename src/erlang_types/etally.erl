@@ -17,14 +17,14 @@
 is_tally_satisfiable(Constraints, MonomorphicVariables) ->
   % io:format(user,"TALLY~n~s~n", [set_of_constraint_sets:print(Constraints)]),
   % Normalized = ?TIME(tally_normalize, tally_normalize(Constraints, MonomorphicVariables)),
-  io:format(user,"~n=== Step 1: Normalize~n~p~n~p~n===~n~n", [Constraints, MonomorphicVariables]),
+  % io:format(user,"~n=== Step 1: Normalize~n~p~n~p~n===~n~n", [Constraints, MonomorphicVariables]),
   Normalized = tally_normalize(Constraints, MonomorphicVariables),
 
-  io:format(user,"~n=== Step 2: Saturate~n~p sets of constraint sets~n", [length(Normalized)]),
-  io:format(user,"~p~n", [Normalized]),
+  % io:format(user,"~n=== Step 2: Saturate~n~p sets of constraint sets~n", [length(Normalized)]),
+  % io:format(user,"~p~n", [Normalized]),
   % Saturated = ?TIME(tally_is_satisfiable, tally_saturate_until_satisfiable(Normalized, MonomorphicVariables)),
   Saturated = tally_saturate_until_satisfiable(Normalized, MonomorphicVariables),
-  io:format(user,"SAT~n~p~n", [Saturated]),
+  % io:format(user,"SAT~n~p~n", [Saturated]),
 
   % sanity against full tally calculation
   % ?SANITY(tally_satisfiable_sound, case {tally_saturate(Normalized, MonomorphicVariables), Saturated} of {[], false} -> ok; {[_ | _], true} -> ok end),
@@ -37,15 +37,15 @@ tally(Constraints) -> tally(Constraints, #{}).
 tally(Constraints, MonomorphicVariables) ->
   % io:format(user,"TALLY~n~s~n", [set_of_constraint_sets:print(Constraints)]),
   % Normalized = ?TIME(tally_normalize, tally_normalize(Constraints, MonomorphicVariables)),
-  io:format(user,"~n=== Step 1: Normalize~n~p~n===~n~n", [Constraints]),
+  % io:format(user,"~n=== Step 1: Normalize~n~p~n===~n~n", [Constraints]),
   Normalized = tally_normalize(Constraints, MonomorphicVariables),
 
-  io:format(user,"~n=== Step 2: Saturate~n~p sets of constraint sets~n", [length(Normalized)]),
-  io:format(user,"~p~n", [Normalized]),
+  % io:format(user,"~n=== Step 2: Saturate~n~p sets of constraint sets~n", [length(Normalized)]),
+  % io:format(user,"~p~n", [Normalized]),
   Saturated = tally_saturate(Normalized, MonomorphicVariables),
   % Saturated = ?TIME(tally_saturate, tally_saturate(Normalized, MonomorphicVariables)),
  
-  io:format(user,"SAT~n~p~n", [Saturated]),
+  % io:format(user,"SAT~n~p~n", [Saturated]),
   % Solved = ?TIME(tally_solve, tally_solve(Saturated, MonomorphicVariables)),
   Solved = tally_solve(Saturated, MonomorphicVariables),
 
@@ -115,7 +115,7 @@ solve_single([{SmallestVar, Left, Right} | Cons], Equations, Fix) ->
   % reuse var
   %FreshVar = ty_variable:fresh_from(SmallestVar), 
   FreshTyVar = ty_node:make(dnf_ty_variable:singleton(SmallestVar)),
-  io:format(user,"~p = ~p & (~p U ~p)~n", [SmallestVar, Left, FreshTyVar, Right]),
+  % io:format(user,"~p = ~p & (~p U ~p)~n", [SmallestVar, Left, FreshTyVar, Right]),
 
   Result = ty_node:intersect(ty_node:union(Left, FreshTyVar), Right),
   NewEq = Equations ++ [{eq, SmallestVar, Result}],
@@ -144,12 +144,12 @@ unify(EquationList) ->
   % NewMap = #{Var => NewTA},
   
  
-  io:format(user,"Unify ~p -> ~p~n", [Var, TA]),
+  % io:format(user,"Unify ~p -> ~p~n", [Var, TA]),
   NewMap = #{Var => TA},
 
   E_ = 
   [ begin
-      io:format(user,"Substitute ~p in ~p = ~p~n", [TA, XA, TAA]),
+      % io:format(user,"Substitute ~p in ~p = ~p~n", [TA, XA, TAA]),
       {eq, XA, ty_node:substitute(TAA, NewMap)} 
     end
         ||
@@ -160,7 +160,7 @@ unify(EquationList) ->
   % ?SANITY(solve_equation_list_length, true = length(EquationList) - 1 == length(E_)),
 
   Sigma = unify(E_),
-  io:format(user,"Σ: ~p~n", [Sigma]),
+  % io:format(user,"Σ: ~p~n", [Sigma]),
   NewTASigma = apply_substitution(TA, Sigma),
 
   [{Var, NewTASigma}] ++ Sigma.

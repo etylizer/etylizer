@@ -255,19 +255,16 @@ assocs_find_index(K, [_ | Rest]) ->
 
 -spec timeout(integer(), fun(() -> T)) -> {ok, T} | timeout.
 timeout(Millis, Fun) ->
-  io:format(user,"DOO~n1~n", []),
     Self = self(),
     Pid = spawn(
       fun()->
           try
-              io:format(user,"START~n~n", []),
               X = Fun(),
-              io:format(user,"FINISH~n~n", []),
               Self ! {ok, X}
-          catch
-              error:Reason:Stack -> io:format(user,"2221~n~p~n~p~n", [Reason, Stack]), Self ! {error, Reason};
-            exit:_Reason:_ -> io:format(user,"2222~n", []),ok;
-              throw:Reason -> io:format(user,"2223~n", []), Self ! {throw, Reason}
+          catch % TODO at least include the stack in the error, otherwise its impossible to debug
+              error:Reason:_Stack -> Self ! {error, Reason};
+            exit:_Reason:_ -> ok;
+              throw:Reason -> Self ! {throw, Reason}
           end
       end),
     receive

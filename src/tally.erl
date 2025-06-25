@@ -43,12 +43,13 @@ tally(SymTab, Constraints, FixedVars, Mode) ->
     lists:sort( fun ({scsubty, _, S, T}, {scsubty, _, X, Y}) -> (erts_debug:size({S, T})) < erts_debug:size(({X, Y})) end,
       sets:to_list(Constraints))
   ),
-  MonomorphicTallyVariables = maps:from_list([ty_variable:new_with_name(Var) || {var, Var} <- sets:to_list(FixedVars)]),
+  %io:format(user,"Mono variables: ~w~n", [FixedVars]),
+  MonomorphicTallyVariables = maps:from_list([{ty_variable:new_with_name(Var), []} || Var <- sets:to_list(FixedVars)]),
+  %io:format(user,"Fixed variables: ~w~n", [MonomorphicTallyVariables]),
 
   case Mode of
     solve ->
       % implemented but not tested yet
-      io:format(user, "SOLVE NOT IMPLEMENTED~n", []),
       error(todo_solve_tally); 
       % InternalResult = etally:tally(InternalConstraints, sets:from_list(FixedTallyTyvars, [{version, 2}])),
       % % io:format(user, "Got Constraints ~n~s~n~p~n", [print(InternalConstraints), InternalResult]),

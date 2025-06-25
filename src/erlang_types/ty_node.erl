@@ -239,7 +239,7 @@ normalize(TyNode, FixedVariables) ->
       % TODO can do global cache instead of just TyNode
       {Time, {Result, _LocalCache}} = timer:tc(fun() -> normalize(TyNode, FixedVariables, #{}) end),
       ets:insert(?NORMCACHE, [{{TyNode, FixedVariables}, Result}]),
-      io:format(user,"Normalize ~p in ~p us~n", [TyNode, Time]),
+      % io:format(user,"Normalize ~p in ~p us~n", [TyNode, Time]),
       Result
   end.
 

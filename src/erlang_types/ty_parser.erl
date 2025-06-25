@@ -315,7 +315,7 @@ lookup_ty({ty_qref, A, B, C}) ->
   Scheme;
 lookup_ty({ty_ref, A, B, C}) ->
   Ref = {A, B, C},
-  io:format(user,"Lookup: ~p~nin~n~p~n", [Ref, ets:tab2list(?SYMTAB)]),
+  % io:format(user,"Lookup: ~p~nin~n~p~n", [Ref, ets:tab2list(?SYMTAB)]),
   [{_, Scheme}] = ets:lookup(?SYMTAB, Ref),
   Scheme;
 lookup_ty({R, A, B, C}) ->
