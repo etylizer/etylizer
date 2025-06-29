@@ -165,7 +165,7 @@ unparse_any(dnf_ty_atom, Result) ->
 unparse_any(dnf_ty_interval, Result) -> 
   ast_lib:mk_intersection([{predef, integer}, Result]);
 unparse_any(dnf_ty_list, Result) -> 
-  ast_lib:mk_intersection([{list, {predef, any}}, Result]);
+  ast_lib:mk_intersection([{improper_list, {predef, any}, {predef, any}}, Result]);
 unparse_any(dnf_ty_bitstring, Result) -> 
   ast_lib:mk_intersection([{bitstring}, Result]);
 unparse_any(ty_tuples, Result) -> 
