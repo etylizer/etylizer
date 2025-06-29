@@ -15,7 +15,7 @@
 -type tally_res() :: {error, [{error, string()}]} | nonempty_list(subst:t()).
 
 -spec tally(symtab:t(), constr:subty_constrs()) -> tally_res().
-tally(SymTab, Constraints) -> tally(SymTab, Constraints, sets:new([{version, 2}])) .
+tally(SymTab, Constraints) -> tally(SymTab, Constraints, sets:new()) .
 
 -spec is_satisfiable(symtab:t(), constr:subty_constrs(), sets:set(ast:ty_varname())) ->
   {false, [{error, string()}]} | {true, subst:t()}. % The substitution is just returned for debugging purpose.
