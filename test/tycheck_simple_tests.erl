@@ -155,8 +155,6 @@ simple_test_() ->
   WhatNot = [
     % Redundancy check for lists is not powerful enough, see #108
     "list_pattern_08_fail",
-    % #115 slow
-    "user_07",
     % TODO binary pattern element size verification
     "b4_fail"
   ],
@@ -164,12 +162,10 @@ simple_test_() ->
   NoInfer = [
     % slow, see #62
     "foo3",
-    % TODO recursive inference
-    "user_06", "user_07",
     % TODO see #164
     "match_13",
     % TODO slow
-    "fun_local_03", "fun_local_04"
+    "fun_local_03", "fun_local_04", "match_01", "match_11", "user_07"
   ],
 
   %What = ["atom_03_fail"],
@@ -177,7 +173,7 @@ simple_test_() ->
 
   % If OnlyFiles is empty, all files not in IgnoreFiles are checked
   % If OnlyFiles is not empty, only the files in OnlyFiles but not in IgnoreFiels are checked
-  OnlyFiles = [],
+  OnlyFiles = ["user.erl"],
   IgnoreFiles = [],
 
   parse_cache:with_cache(

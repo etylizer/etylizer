@@ -172,6 +172,7 @@ unparse_any(dnf_ty_bitstring, Result) ->
 unparse_any(ty_tuples, Result = {tuple, _}) -> Result;
 unparse_any(ty_tuples, Result) -> 
   ast_lib:mk_intersection([{tuple_any}, Result]);
+unparse_any(ty_functions, Result = {fun_full, _, _}) -> Result;
 unparse_any(ty_functions, Result) -> 
   ast_lib:mk_intersection([{fun_simple}, Result]);
 unparse_any(dnf_ty_map, Result) -> 

@@ -176,6 +176,7 @@ collect_vars({fun_simple}, _CPos, Pos, _) -> Pos;
 collect_vars({mu_var, _Name}, _CPos, Pos, _) -> Pos;
 collect_vars({list, A}, CPos, Pos, Fix) ->
     collect_vars(A, CPos, Pos, Fix);
+collect_vars({named, _, _, _}, _CPos, Pos, _Fix) -> Pos; % skip user types
 collect_vars({mu, _MuVar, A}, CPos, Pos, Fix) -> % skip recursion variables
     collect_vars(A, CPos, Pos, Fix); 
 collect_vars({Map, A, B}, CPos, Pos, Fix) when Map == map_field_opt; Map == map_field_req ->
@@ -195,4 +196,4 @@ collect_vars({var, Name}, CPos, Pos, Fix) ->
     end;
 collect_vars(Ty, _, _, _) ->
     logger:error("Unhandled collect vars branch: ~p", [Ty]),
-    errors:bug("Unhandled collect vars branch").
+    errors:bug("Unhandled collect vars branch: ~p", [Ty]).
