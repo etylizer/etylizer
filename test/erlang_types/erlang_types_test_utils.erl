@@ -39,7 +39,8 @@ test_tally(ConstrList, ExpectedSubst, FixedVars, Symtab) ->
         ConstrList
        )),
 
-    Res = tally:tally(Symtab, Constrs, sets:from_list(FixedVars)),
+    % symtab is parsed before tally
+    Res = tally:tally(symtab:empty(), Constrs, sets:from_list(FixedVars)),
 
     case Res of
       [_ | _] -> 
@@ -69,8 +70,8 @@ test_tally_satisfiable(Satisfiable, ConstrList, FixedVars, Symtab) ->
           ConstrList
       )),
 
-    % test satisfiable mode of tally
-    {Satisfiable, _} = tally:is_satisfiable(Symtab, Constrs, sets:from_list(FixedVars)),
+    % test satisfiable mode of tally, symtab parsed before tally
+    {Satisfiable, _} = tally:is_satisfiable(symtab:empty(), Constrs, sets:from_list(FixedVars)),
     ok
               end,
     Symtab).

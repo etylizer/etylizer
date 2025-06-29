@@ -112,7 +112,7 @@ solve_single([], Equations, _) -> Equations;
 solve_single([{SmallestVar, Left, Right} | Cons], Equations, Fix) ->
   % constraints are already sorted by variable ordering
   % smallest variable first
-  % reuse var
+  % reuse variable
   %FreshVar = ty_variable:fresh_from(SmallestVar), 
   FreshTyVar = ty_node:make(dnf_ty_variable:singleton(SmallestVar)),
   % io:format(user,"~p = ~p & (~p U ~p)~n", [SmallestVar, Left, FreshTyVar, Right]),
@@ -128,21 +128,6 @@ unify(EquationList) ->
   % sort to smallest variable
   % select in E the equation α = tα for smallest α
   [Eq = {eq, Var, TA} | _Tail] = lists:usort(fun({_, Var, _}, {_, Var2, _}) -> ty_variable:leq(Var, Var2) end, EquationList),
-
-  % old implementation
-  % Vars = ty_rec:all_variables(TA),
-  % NewTA = case length([Z || Z <- Vars, Z == Var]) of
-  %           0 -> TA; % recursive variable is not contained
-  %           _ -> % create new recursive type μX
-  %             MuX = ty_ref:new_ty_ref(),
-  %             % define type μX.(tα{X/α}) (X fresh)
-  %             Mapping = #{Var => MuX},
-  %             Inner = ty_rec:substitute(TA, Mapping),
-  %             ty_ref:define_ty_ref(MuX, ty_ref:load(Inner)),
-  %             MuX
-  %         end,
-  % NewMap = #{Var => NewTA},
-  
  
   % io:format(user,"Unify ~p -> ~p~n", [Var, TA]),
   NewMap = #{Var => TA},

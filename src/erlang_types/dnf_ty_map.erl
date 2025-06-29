@@ -1,6 +1,6 @@
 -module(dnf_ty_map).
 
--define(ATOM, ty_tuple).
+-define(ATOM, ty_map).
 -define(LEAF, ty_bool).
 -define(NODE, ty_node).
 -define(F(Z), fun() -> Z end).

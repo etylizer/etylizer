@@ -452,15 +452,14 @@ do_convert({{negation, Ty}, R}, Q, Cache) ->
 
 % variables
 do_convert({{var, A}, R}, Q, Cache) ->
-  % if this is a special $mu_integer()_name() variable, convert to that representation
-  case string:prefix(atom_to_list(A), "#ety_") of 
+  % if this is a special $ety_integer()_name() variable, convert to that representation
+  case string:prefix(atom_to_list(A), "$ety_") of 
     nomatch -> 
       {?TY:singleton(ty_variable:new_with_name(A)), Q, R, Cache};
-    _IdName -> 
-      error(todo_ety_variable_not_implemented) % TODO
-      % assumption: erlang types generates variables only in this pattern: $mu_integer()_name()
-      % [Id, Name] = string:split(IdName, "_"),
-      % {ty_rec:s_variable(ty_variable:new_with_name_and_id(list_to_integer(Id), list_to_atom(Name))), Q, R}
+    IdName -> 
+      % assumption: erlang types generates variables only in this pattern: $ety_integer()_name()
+      [Id, Name] = string:split(IdName, "_"),
+      {?TY:singleton(ty_variable:new_with_name_and_id(list_to_integer(Id), list_to_atom(Name))), Q, R, Cache}
   end;
 
 % === term rewrites

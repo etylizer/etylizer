@@ -156,6 +156,7 @@ unparse(Ty, ST) ->
        Ty),
   {ast_lib:mk_union(Z), ST2}.
 
+% TODO only intersect if needed
 unparse_any(dnf_ty_predefined, Result) -> 
   ast_lib:mk_intersection(
    [{union, [{empty_list}, {predef, float}, {predef, pid}, {predef, port}, {predef, reference}]}, 
@@ -168,6 +169,7 @@ unparse_any(dnf_ty_list, Result) ->
   ast_lib:mk_intersection([{improper_list, {predef, any}, {predef, any}}, Result]);
 unparse_any(dnf_ty_bitstring, Result) -> 
   ast_lib:mk_intersection([{bitstring}, Result]);
+unparse_any(ty_tuples, Result = {tuple, _}) -> Result;
 unparse_any(ty_tuples, Result) -> 
   ast_lib:mk_intersection([{tuple_any}, Result]);
 unparse_any(ty_functions, Result) -> 

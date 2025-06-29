@@ -52,6 +52,7 @@ fresh_from(#var{id = name, name = Name}) ->
   Id = get_new_id(),
   #var{id = Id, name = Name};
 fresh_from(#var{id = _Id, name = Name}) ->
+  error(todooo),
   new(Name).
 
 -spec name(var()) -> atom().
