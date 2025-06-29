@@ -22,7 +22,7 @@ test_tally(ConstrList, ExpectedSubst) ->
 
 % -spec test_tally(list({ast:ty(), ast:ty()}), list(expected_subst()), [ast:ty_varname()]) -> _.
 test_tally(ConstrList, ExpectedSubst, FixedVars) ->
-  test_tally(ConstrList, ExpectedSubst, FixedVars, []).
+  test_tally(ConstrList, ExpectedSubst, FixedVars, symtab:empty()).
 
 test_tally(ConstrList, ExpectedSubst, FixedVars, Symtab) ->
   % io:format(user,"Fixed variables: ~p~n", [FixedVars]),
@@ -38,8 +38,7 @@ test_tally(ConstrList, ExpectedSubst, FixedVars, Symtab) ->
         ConstrList
        )),
 
-    % TODO symtab
-    Res = tally:tally(nosymtab, Constrs, sets:from_list(FixedVars)),
+    Res = tally:tally(Symtab, Constrs, sets:from_list(FixedVars)),
 
     case Res of
       [_ | _] -> 
@@ -57,7 +56,7 @@ test_tally(ConstrList, ExpectedSubst, FixedVars, Symtab) ->
   end, Symtab).
 
 test_tally_satisfiable(Satisfiable, ConstrList) ->
-  test_tally_satisfiable(Satisfiable, ConstrList, [], []).
+  test_tally_satisfiable(Satisfiable, ConstrList, [], symtab:empty()).
 
 % -spec test_tally_satisfiable(boolean(), list({ast:ty(), ast:ty()}), [ast:ty_varname()], symtab:t()) -> ok.
 test_tally_satisfiable(Satisfiable, ConstrList, FixedVars, Symtab) ->

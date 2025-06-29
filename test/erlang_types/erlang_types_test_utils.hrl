@@ -58,17 +58,21 @@ tmap(Fields) -> {map, Fields}.
 tmap_field_req(K, V) -> {map_field_req, K, V}.
 tmap_field_opt(K, V) -> {map_field_opt, K, V}.
 
-with_symtab(Fun, Definitions) when is_map(Definitions) ->
+with_symtab(Fun, Definitions) when is_map(Definitions) -> % map
   with_symtab(Fun, maps:to_list(Definitions));
-with_symtab(Fun, Definitions) when is_list(Definitions) ->
-                      io:format(user,"Extending: ~p~n", [Definitions]),
+with_symtab(Fun, Definitions) when is_list(Definitions) -> % list
   global_state:with_new_state(fun() ->
     lists:foreach(fun({Key, Scheme}) -> 
       ty_parser:extend_symtab(Key, Scheme) 
     end, Definitions),
     Fun()
+  end);
+with_symtab(Fun, SymTab) -> % full symtab
+  global_state:with_new_state(fun() ->
+    Types = symtab:get_types(SymTab),
+    maps:foreach(fun(K, V) -> ty_parser:extend_symtab(K, V) end, Types),
+    Fun()
   end).
-
 
 is_equiv(A, B) -> is_subtype(A, B) andalso is_subtype(B, A).
 
