@@ -3,6 +3,7 @@
 -compile([nowarn_export_all, export_all]).
 
 -include_lib("test/erlang_types/erlang_types_test_utils.hrl").
+-include("log.hrl").
 
 -type expected_subst() :: {
   #{ atom() => ast:ty() },  % lower bounds
@@ -76,17 +77,17 @@ test_tally_satisfiable(Satisfiable, ConstrList, FixedVars, Symtab) ->
 
 % Suppress warnings about unmatched patterns
 % TODO fix this somehow or not...
--dialyzer({no_match, find_subst/3}).
--spec find_subst(list(expected_subst()), [subst:t()], [subst:t()]) -> ok.
+% -dialyzer({no_match, find_subst/3}).
+% -spec find_subst(list(expected_subst()), [subst:t()], [subst:t()]) -> ok.
 find_subst([], [], _) -> ok;
 find_subst([{Low, High} | _], [], Sols) ->
-  % ?LOG_WARN("~nCould not find substitutions among remaining ~p tally solutions for~n" ++
-  %   "expected lower bound:~n~s~n~nexpected upper bound:~n~s~n~nRemaining:~s",
-  %           length(Sols),
-  %           pretty:render_subst(Low),
-  %           pretty:render_subst(High),
-  %           pretty:render_substs(lists:map(fun (S) -> subst:base_subst(S) end, Sols))
-  % ),
+  ?LOG_WARN("~nCould not find substitutions among remaining ~p tally solutions for~n" ++
+    "expected lower bound:~n~s~n~nexpected upper bound:~n~s~n~nRemaining:~s",
+            length(Sols),
+            pretty:render_subst(Low),
+            pretty:render_subst(High),
+            pretty:render_substs(lists:map(fun (S) -> subst:base_subst(S) end, Sols))
+  ),
   error("test failed because tally returned no substitution that matches low and high bounds");
 find_subst([], [_X | _Xs], _Remaining) ->
   % Substs = lists:map(fun (S) -> subst:base_subst(S) end, Remaining),

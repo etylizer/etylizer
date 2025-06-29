@@ -123,14 +123,14 @@ unparse_single({left, -1}) -> {predef_alias, neg_integer};
 unparse_single({right, 1}) -> {predef_alias, pos_integer};
 
 unparse_single({left, L}) when L < -1 ->
-  ast_lib:mk_intersection([
+  ast_lib:mk_diff(
                   {predef_alias, neg_integer}, 
-                  ast_lib:mk_negation(unparse_single({range, (L + 1), -1}))
-                 ]);
+                  unparse_single({range, (L + 1), -1})
+                 );
 unparse_single({left, L}) when L > -1 ->
   ast_lib:mk_union([{predef_alias, neg_integer}, unparse_single({range, -1, L})]);
 
 unparse_single({right, R}) when R > 1 ->
-  ast_lib:mk_intersection([{predef_alias, pos_integer}, unparse_single({range, 1, (R - 1)})]);
+  ast_lib:mk_diff({predef_alias, pos_integer}, unparse_single({range, 1, (R - 1)}));
 unparse_single({right, R}) when R < 1 ->
   ast_lib:mk_union([{predef_alias, pos_integer}, unparse_single({range, R, 1})]).

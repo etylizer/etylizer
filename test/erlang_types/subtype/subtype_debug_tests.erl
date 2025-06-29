@@ -256,3 +256,12 @@ simplification_10_test() ->
   ]),
   true = is_equiv(S, T),
   ok.
+
+tally_09_expected_test() ->
+  S = tint(1),
+  T = u([ 
+         i([tint(1), tint(), n(v(beta))]),
+         i([v(beta), tint()])
+        ]),
+  true = is_subtype(S, T),
+  ok.

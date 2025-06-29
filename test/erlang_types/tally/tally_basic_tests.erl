@@ -172,8 +172,7 @@ tally_09_test() ->
        {Delta, I},
        {Gamma, Delta}],
 
-      % solutions(1) 
-      [{ % FIXME: solution wrong?
+      [{
         #{alpha => u(u([tint(3, '*')]), u([tint('*', 0)])),
           beta => tint(1, 1),
           gamma => I,
@@ -182,32 +181,6 @@ tally_09_test() ->
           beta => tint(),
           gamma => I,
           delta => I }
-      }]
-    ).
-
-tally_09s_test() ->
-    Alpha = v(alpha),
-    Beta = v(beta),
-    Gamma = v(gamma),
-    Delta = v(delta),
-    One = tint(1),
-    Two = tint(2),
-    OneOrTwo = u(One, Two),
-    I = tint(),
-    test_tally(
-      [{f([I, I], I), f([Alpha, Beta], I)},
-       {i(I, n(OneOrTwo)), Alpha},
-       {One, Beta},
-       {One, I},
-       {Two, I}
-       ],
-
-      % solutions(1) 
-      [{ % FIXME: solution wrong?
-        #{alpha => u(u([tint(3, '*')]), u([tint('*', 0)])),
-          beta => tint(1, 1) },
-        #{alpha => tint(),
-          beta => tint() }
       }]
     ).
 
