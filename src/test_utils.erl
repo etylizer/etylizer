@@ -261,11 +261,9 @@ solutions(Number) ->
 -include_lib("eunit/include/eunit.hrl").
 
 cduce_translation_test() ->
-    test_utils:reset_ets(),
     {ok, [Cons]} = file:consult("test_files/tally/fun_local_02_plus.config"),
     % should not crash
     _Str = ety_to_cduce_tally(Cons, []),
-    % io:format(user, "~s~n", [_Str]),
     ok.
 
 -endif.
