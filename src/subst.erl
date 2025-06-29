@@ -41,9 +41,9 @@ clean(T, Fixed) ->
     % clean
     Cleaned = clean_type(T, Fixed),
     % simplify by converting into internal type and back (processes any() and none() replacements)
-    Res = ast_lib:erlang_ty_to_ast(X = ast_lib:ast_to_erlang_ty(Cleaned, symtab:empty())), % TODO symtab?
+    Res = ty_parser:unparse(X = ty_parser:parse(Cleaned)),
     % FIXME remove sanity at some point
-    true = ty_rec:is_subtype(X, ast_lib:ast_to_erlang_ty(T, symtab:empty())),
+    true = ty_node:leq(X, ty_parser:parse(T)),
     Res.
 
 -spec apply(t(), ast:ty()) -> ast:ty().
@@ -97,6 +97,7 @@ apply_base(S, T) ->
             {named, Loc, Ref, apply_list(S, Args)};
         {tuple_any} -> T;
         {tuple, Args} -> {tuple, apply_list(S, Args)};
+        {mu_var, _} -> T;
         {var, Alpha} ->
             case maps:find(Alpha, S) of
                 error -> {var, Alpha};

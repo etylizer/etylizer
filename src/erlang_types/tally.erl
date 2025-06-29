@@ -51,15 +51,15 @@ tally(_SymTab, Constraints, MonomorphicVariables, Mode) ->
       sets:to_list(Constraints))
   ),
 
-  io:format(user,"MonomorphicVariables: ~p (is set ~p)~n", [MonomorphicVariables, sets:is_set(MonomorphicVariables)]),
+  %io:format(user,"MonomorphicVariables: ~p (is set ~p)~n", [MonomorphicVariables, sets:is_set(MonomorphicVariables)]),
   MonomorphicTallyVariables = maps:from_list([{ty_variable:new_with_name(Var), []} || Var <- sets:to_list(MonomorphicVariables)]),
-  io:format(user,"MonomorphicVariables: ~p~n", [MonomorphicTallyVariables]),
+  %io:format(user,"MonomorphicVariables: ~p~n", [MonomorphicTallyVariables]),
 
   case Mode of
     solve ->
       % io:format(user,"Vars: ~p~n", [MonomorphicTallyVariables]),
       InternalResult = etally:tally(InternalConstraints, MonomorphicTallyVariables),
-      io:format(user,"Solution: ~p~n", [InternalResult]),
+      % io:format(user,"Solution: ~p~n", [InternalResult]),
 
       % % io:format(user, "Got Constraints ~n~s~n~p~n", [print(InternalConstraints), InternalResult]),
 
