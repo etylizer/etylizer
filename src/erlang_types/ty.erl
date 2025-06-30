@@ -18,3 +18,10 @@ is_equivalent(T1, T2) ->
 
 substitute(T, Map) ->
   ty_node:substitute(T, Map).
+
+% constructors for various levels
+atom() ->
+  ty_node:make(dnf_ty_variable:atom(dnf_ty_atom:any())).
+
+variable(TyVariable) ->
+  ty_node:make(dnf_ty_variable:singleton(TyVariable)).
