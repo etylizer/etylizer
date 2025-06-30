@@ -11,7 +11,10 @@
 ]).
 -endif.
 
+-export_type([monomorphic_variables/0]).
 
+
+-type monomorphic_variables() :: term().
 -type tally_res() :: {error, [{error, string()}]} | nonempty_list(subst:t()).
 
 -spec tally(symtab:t(), constr:subty_constrs()) -> tally_res().

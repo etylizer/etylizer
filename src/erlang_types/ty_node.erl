@@ -2,7 +2,7 @@
 
 -compile([export_all, nowarn_export_all]).
 
--export_type([local_cache/0]).
+-export_type([type/0, local_cache/0]).
 
 -behaviour(global_state).
 
@@ -38,7 +38,7 @@ clean() ->
   end.
 
 % -record(ty_node, {id :: integer(), definition :: term()}).
--type type() :: any(). %TODO
+-opaque type() :: any(). %TODO
 -opaque local_cache() :: #{}. % TODO type cache is only allowed to be inspected in this module
 
 compare({node, Id1}, {node, Id2}) when Id1 < Id2 -> lt;

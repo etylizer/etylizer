@@ -3,6 +3,10 @@
 -define(VAR_ETS, variable_counter_ets_table).
 -define(ALL_ETS, [?VAR_ETS]).
 
+-export_type([type/0]).
+
+-opaque type() :: term().
+
 -spec init() -> _.
 init() ->
   case ets:whereis(?VAR_ETS) of
