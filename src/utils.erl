@@ -261,9 +261,11 @@ timeout(Millis, Fun) ->
           try
               X = Fun(),
               Self ! {ok, X}
-          catch % TODO at least include the stack in the error, otherwise its impossible to debug
-              error:Reason:_Stack -> Self ! {error, Reason};
-            exit:_Reason:_ -> ok;
+          catch % TODO at least include the stack in the error, otherwise its impossible to debug FIXME ast_transform bug for stacktrace
+              % error:Reason:_Stack -> Self ! {error, Reason};
+              error:Reason -> Self ! {error, Reason};
+              %exit:_Reason:_ -> ok;
+              exit:_Reason -> ok;
               throw:Reason -> Self ! {throw, Reason}
           end
       end),

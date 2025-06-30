@@ -184,18 +184,3 @@ mu_overlap_test() ->
       ok
     end,
   #{}).
-
-debug_parser2_test() ->
-  with_symtab(
-    fun() -> 
-        % check if b can be reverse mapped even though its contained only as a sub-term in a
-        P = ty_parser:parse(tnamed(a)),
-        P2 = ty_parser:parse(ty_parser:unparse(P)),
-        io:format(user,"~p~n", [{P, P2}]),
-        ok
-    end,
-  #{{ty_key,'.','a',0} =>
-    {ty_scheme, [], {tuple,
-               [{union,[{predef,none},{named,0,{ty_ref,'.','a',0},[]}]},
-                {predef,none}]}}}
-   ).

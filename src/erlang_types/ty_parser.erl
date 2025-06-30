@@ -531,7 +531,7 @@ do_convert({{improper_list, A, B}, R}, Q, Cache) ->
 % maps 
 
 do_convert(T, _Q, _) ->
-  io:format(user,"~p~n", [T]),
+  % io:format(user,"~p~n", [T]),
   erlang:error({"Transformation from ast:ty() to ty_rec:ty() not implemented or malformed type", T}).
 
 -spec queue_if_new(ast_ty(), queue()) -> {type() | temporary_ref(), queue()}.
