@@ -12,3 +12,6 @@ is_empty_line(Line, ST) ->
 
 normalize_line(Line, Fixed, ST) ->
   dnf_ty_tuple:normalize_line(Line, Fixed, ST).
+
+all_variables_line(P, N, Leaf, Cache) ->
+  dnf_ty_tuple:all_variables_line(P, N, Leaf, Cache).

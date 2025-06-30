@@ -123,6 +123,16 @@ tuple_to_map(#ty{ty_tuples = {_, #{2 := TupleDnf}}}) ->
   DnfMap = dnf_ty_map:singleton(T),
   map(DnfMap).
 
+all_variables(any, _Cache) -> sets:new();
+all_variables(empty, _Cache) -> sets:new();
+all_variables(TyRec, Cache) ->
+  fold(fun
+        (Module, Value, Vars) -> 
+          sets:union(Vars, Module:all_variables(Value, Cache))
+      end, 
+      sets:new(),
+      TyRec).
+
 
 % ===
 % Tallying

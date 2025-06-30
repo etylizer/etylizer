@@ -98,6 +98,15 @@ unparse({Default, T}, ST0) ->
     ast_lib:mk_union(Xs)
   ]), ST2}.
 
+all_variables({Default, All}, Cache) ->
+  V1 = ?MULTIARITY:all_variables(Default, Cache),
+  ResVars = 
+    maps:fold(fun(_Size, V, VarAcc) -> 
+      Res = ?MULTIARITY:all_variables(V, Cache),
+      sets:union(VarAcc, Res)
+              end, sets:new(), All),
+  sets:union(V1, ResVars).
+
 
 % substitute({DefaultFunction, AllFunctions}, SubstituteMap, Memo) ->
 %   % see multi_substitute for comments

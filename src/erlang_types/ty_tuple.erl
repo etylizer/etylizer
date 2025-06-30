@@ -29,8 +29,10 @@ big_intersect([X | Y]) ->
                 end, X, Y).
 
 
-all_variables({ty_tuple, _, Refs}, M) ->
-    lists:flatten([?NODE:all_variables(E, M) || E <- Refs]).
+all_variables({ty_tuple, _, Refs}, Cache) ->
+  sets:union(
+    [ty_node:all_variables(T, Cache) || T <- Refs]
+  ).
 
 unparse({ty_tuple, _, Refs}, ST0) ->
   {All, ST3} = lists:foldl(

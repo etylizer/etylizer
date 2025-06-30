@@ -134,3 +134,5 @@ unparse_single({right, R}) when R > 1 ->
   ast_lib:mk_diff({predef_alias, pos_integer}, unparse_single({range, 1, (R - 1)}));
 unparse_single({right, R}) when R < 1 ->
   ast_lib:mk_union([{predef_alias, pos_integer}, unparse_single({range, R, 1})]).
+
+all_variables(_, _) -> sets:new().

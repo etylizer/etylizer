@@ -16,7 +16,6 @@ substitute(_,X,_,_) -> X.
 % there is nothing to substitute in a ty_bool
 map_pi(_) -> #{}.
 has_ref(_,_) -> false.
-all_variables(_, _) -> [].
 raw_transform(T, Op) -> transform(T, Op).
 transform(0, #{empty := E}) -> E();
 transform(1, #{any := A}) -> A().
@@ -30,3 +29,5 @@ normalize(Dnf, _Fixed, ST) ->
 
 unparse(0, ST) -> {{predef, none}, ST};
 unparse(1, ST) -> {{predef, any}, ST}.
+
+all_variables(_, _) -> sets:new().

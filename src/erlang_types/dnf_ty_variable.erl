@@ -92,3 +92,9 @@ smallest(PositiveVariables, NegativeVariables, FixedVariables) ->
   [X | Z] = lists:sort(Sort, PositiveVariablesTagged++NegativeVariablesTagged) ++ lists:sort(Sort, RestTagged),
 
   {X, Z}.
+
+all_variables_line(P, N, Leaf, Cache) ->
+  sets:union([sets:from_list(P),
+              sets:from_list(N),
+              ty_rec:all_variables(Leaf, Cache)
+             ]).

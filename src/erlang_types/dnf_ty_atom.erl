@@ -57,3 +57,5 @@ unparse({Atoms, finite}, ST) ->
   {ast_lib:mk_union(lists:map(fun(A) -> {singleton, A} end, gb_sets:to_list(Atoms))), ST};
 unparse({Atoms, cofinite}, ST) ->
   {ast_lib:mk_negation(ast_lib:mk_union(lists:map(fun(A) -> {singleton, A} end, gb_sets:to_list(Atoms)))), ST}.
+
+all_variables(_, _) -> sets:new().

@@ -31,3 +31,5 @@ normalize_line({Pos, Neg, _T}, Fixed, ST) ->
   BigS = ty_tuple:big_intersect(Pos),
   dnf_ty_tuple:phi_norm(ty_tuple:components(BigS), Neg, Fixed, ST).
 
+all_variables_line(P, N, L, Cache) ->
+  dnf_ty_tuple:all_variables_line(P, N, L, Cache).

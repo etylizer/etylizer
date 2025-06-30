@@ -318,3 +318,10 @@ substitute(Node, Varmap) ->
   NewNode = ty_parser:parse(Res),
   % io:format(user,"~p~n~p~n", [NewNode, dump(NewNode)]),
   NewNode.
+
+all_variables(Ty, Cache) ->
+  case Cache of
+    #{Ty := []}-> sets:new();
+    _ ->
+      dnf_ty_variable:all_variables(load(Ty), Cache#{Ty => []})
+  end.

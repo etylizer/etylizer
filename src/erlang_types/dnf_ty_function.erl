@@ -136,3 +136,10 @@ explore_function_norm_corec(T1, T2, [Function | P], Fixed, ST0) ->
   {constraint_set:join(NT1,
     constraint_set:join(NT2,
       constraint_set:meet(NS1, NS2, Fixed), Fixed), Fixed), ST4}.
+
+all_variables_line(P, N, Leaf, Cache) ->
+  Leaf = ty_bool:any(),
+  sets:union(
+     [ty_function:all_variables(F, Cache) || F <- P]
+  ++ [ty_function:all_variables(F, Cache) || F <- N]
+  ).

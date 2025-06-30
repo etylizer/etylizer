@@ -61,3 +61,5 @@ unparse(<<Bitmask:?ELEMENTS>>, ST) ->
         [],
         [ {'[]', 1}, {float, 2}, {pid, 4}, {port, 8}, {reference, 16} ]
     ), ST}.
+
+all_variables(_, _) -> sets:new().

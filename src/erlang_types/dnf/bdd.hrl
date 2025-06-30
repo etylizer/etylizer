@@ -123,6 +123,7 @@ dnf_acc(Acc, Ps, Ns, {node, A, P, N}) ->
   Acc0 = dnf_acc(Acc, [A | Ps], Ns, P),
   dnf_acc(Acc0, Ps, [A | Ns], N).
 
+
 is_empty(Ty, ST) ->
   Dnf = dnf(Ty),
   lists:foldl(fun
@@ -172,3 +173,10 @@ unparse_line({Pos, Neg, Leaf}, C0) ->
   {Lf, C3} = ?LEAF:unparse(Leaf, C2),
 
   {ast_lib:mk_intersection(Ps ++ Ns ++ [Lf]), C3}.
+
+
+all_variables(Dnf, Cache) ->
+  AllLines = dnf(Dnf),
+  lists:foldl(fun({P, N, Leaf}, Atoms) -> 
+    sets:union([Atoms, all_variables_line(P, N, Leaf, Cache)]) 
+  end, sets:new(), AllLines).

@@ -42,6 +42,11 @@ unparse({ty_function, Refs, Codomain}, ST0) ->
   {Cod, ST4} = ty_node:unparse(Codomain, ST3),
   {{fun_full, All, Cod}, ST4}.
 
+all_variables({ty_function, Domains, Codomain}, Cache) ->
+  sets:union(
+     [ty_node:all_variables(F, Cache) || F <- Domains]
+  ++ [ty_node:all_variables(Codomain, Cache)]
+  ).
 
 % substitute({ty_function, Refs, B}, Map, Memo) ->
 %     {ty_function,

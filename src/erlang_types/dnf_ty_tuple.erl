@@ -106,6 +106,13 @@ phi_norm(BigS, [Ty | N], Fixed, ST) ->
 
   {constraint_set:join(R1, R4, Fixed), ST4}.
 
+all_variables_line(P, N, Leaf, Cache) ->
+  Leaf = ty_bool:any(),
+  sets:union(
+     [ty_tuple:all_variables(F, Cache) || F <- P]
+  ++ [ty_tuple:all_variables(F, Cache) || F <- N]
+  ).
+
 
 % apply_to_node(Node, Map, Memo) ->
 %   substitute(Node, Map, Memo, fun(N, S, M) -> ty_tuple:substitute(N, S, M) end).
