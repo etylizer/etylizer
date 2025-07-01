@@ -2,13 +2,15 @@
 
 -compile([export_all, nowarn_export_all]).
 
+-export_type([type/0]).
+
 -define(ATOM, ty_variable).
 -define(LEAF, ty_rec).
 % -define(NODE, ty_node).
 
 -include("dnf/bdd.hrl").
 
--type type() :: any(). % TODO
+-opaque type() :: any(). % TODO
 % -spec function(ty_function()) -> dnf_ty_function().
 % function(TyFunction) -> node(TyFunction).
 
