@@ -19,8 +19,6 @@ compare({ty_function, Domains1, Codomain1}, {ty_function, Domains2, Codomain2}) 
     Domains2 ++ [Codomain2]
   ).
 
--spec equal(type(), type()) -> boolean().
-equal(T1, T2) -> compare(T1, T2) =:= eq.
 
 function(Refs, Ref2) when is_list(Refs) ->
   {ty_function, Refs, Ref2}.
@@ -47,9 +45,3 @@ all_variables({ty_function, Domains, Codomain}, Cache) ->
      [ty_node:all_variables(F, Cache) || F <- Domains]
   ++ [ty_node:all_variables(Codomain, Cache)]
   ).
-
-% substitute({ty_function, Refs, B}, Map, Memo) ->
-%     {ty_function,
-%         lists:map(fun(C) -> ty_rec:substitute(C, Map, Memo) end, Refs),
-%         ty_rec:substitute(B, Map, Memo)
-%     }.

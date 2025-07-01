@@ -109,19 +109,19 @@ tycheck_test_() ->
                     [];
                 ok_test ->
                     [
-                        {"tycheck_ok " ++ File,
+                     {timeout, 15, {"tycheck_ok " ++ File,
                          fun() ->
                             ?LOG_NOTE("Checking that ~s typechecks successfully", File),
                             run_ok_test(File)
-                         end}
+                         end}}
                     ];
                 {fail_test, Err} ->
                     [
-                        {"tycheck_fail " ++ File,
+                     {timeout, 15, {"tycheck_fail " ++ File,
                          fun() ->
                              ?LOG_NOTE("Checking that ~s fails typechecking", File),
                              run_failing_test(File, Err)
-                         end}
+                         end}}
                     ]
             end
         end, Files).

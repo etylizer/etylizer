@@ -7,6 +7,7 @@
   finite/1,
   cofinite/1,
   negate/1,
+  intersect/2,
   union/2,
   difference/2,
   is_empty/2,
@@ -60,7 +61,7 @@ union(S,T) -> negate(intersect(negate(S), negate(T))).
 -spec difference(T, T) -> T when T :: type().
 difference(S,T) -> intersect(S, negate(T)).
 
--spec is_empty(type(), T) -> {boolean, T}.
+-spec is_empty(type(), T) -> {boolean(), T}.
 is_empty(Rep, ST) ->
   case Rep of
     {{0, nil}, finite} -> {true, ST};

@@ -1,8 +1,10 @@
 -module(global_state).
 
--compile([export_all, nowarn_export_all]).
-
--type state() :: term().
+-export([
+  init/0,
+  clean/0,
+  with_new_state/1
+]).
 
 -callback init() -> ok.
 
@@ -17,16 +19,7 @@ init() ->
 clean() ->
   lists:foreach(fun(M) -> M:clean() end, modules_with_global_state()).
 
--spec get_state(atom()) -> state().
-get_state(Table) ->
-  [{state, State}] = ets:lookup(Table, state),
-  State.
-
--spec set_state(atom(), state()) -> ok.
-set_state(Table, State) ->
-  ets:insert(Table, {state, State}).
-  
-
+-spec with_new_state(fun(() -> _)) -> _.
 with_new_state(Fun) ->
   clean(),
   init(),

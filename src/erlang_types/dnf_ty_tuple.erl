@@ -3,10 +3,19 @@
 -define(ATOM, ty_tuple).
 -define(LEAF, ty_bool).
 -define(NODE, ty_node).
--define(F(Z), fun() -> Z end).
+
+-export([
+  % exported because other types are encoded via tuples
+  is_empty_line/2,
+  normalize_line/3,
+  all_variables_line/4,
+  phi/3,
+  phi_norm/4
+]).
 
 -include("dnf/bdd.hrl").
 
+-spec is_empty_line({[T], [T], ?LEAF:type()}, S) -> {boolean(), S} when T :: ?ATOM:type().
 is_empty_line({[], [], _T}, ST) -> {false, ST};
 is_empty_line({[], Neg = [TNeg | _], T}, ST) ->
   % if there are only negative tuples 
@@ -15,12 +24,13 @@ is_empty_line({[], Neg = [TNeg | _], T}, ST) ->
   Dim = length(ty_tuple:components(TNeg)),
   PosAny = ty_tuple:any(Dim),
   is_empty_line({[PosAny], Neg, T}, ST);
-is_empty_line({Pos, Neg, _T}, ST) ->
-  _T = ?LEAF:any(), % sanity
+is_empty_line({Pos, Neg, T}, ST) ->
+  T = ?LEAF:any(), % sanity
   BigS = ty_tuple:big_intersect(Pos),
   phi(ty_tuple:components(BigS), Neg, ST).
 
 
+-spec phi(T, [T], S) -> {boolean(), S} when T :: ?ATOM:type().
 phi(BigS, [], ST) ->
   % TODO how big of a performance hit is non-shortcut behavior of the true branch?
   lists:foldl(
@@ -55,18 +65,19 @@ phi(BigS, [Ty | N], ST) ->
   end.
 
 
-normalize_line({[], [], _T}, _Fixed, _ST) -> 
-  error(_T);
+-spec normalize_line({[T], [T], ?LEAF:type()}, monomorphic_variables(), S) -> {set_of_constraint_sets(), S} when T :: ?ATOM:type().
+normalize_line({[], [], _T}, _Fixed, _ST) -> error(_T);
 normalize_line({[], Neg = [TNeg | _], T}, Fixed, ST) -> 
   Dim = length(ty_tuple:components(TNeg)),
   PosAny = ty_tuple:any(Dim),
   normalize_line({[PosAny], Neg, T}, Fixed, ST);
-normalize_line({Pos, Neg, _T}, Fixed, ST) -> 
-  _T = ?LEAF:any(), % sanity
+normalize_line({Pos, Neg, T}, Fixed, ST) -> 
+  T = ?LEAF:any(), % sanity
   BigS = ty_tuple:big_intersect(Pos),
   phi_norm(ty_tuple:components(BigS), Neg, Fixed, ST).
 
 
+-spec phi_norm(T, [T], monomorphic_variables(), S) -> {set_of_constraint_sets(), S} when T :: ?ATOM:type().
 phi_norm(BigS, [], Fixed, ST) ->
   lists:foldl( % FIXME shortcut
     fun(S, {Res, ST0}) -> 
@@ -77,6 +88,7 @@ phi_norm(BigS, [], Fixed, ST) ->
     BigS);
 phi_norm(BigS, [Ty | N], Fixed, ST) ->
   Solve = fun({Index, {_PComponent, NComponent}}, {Result, ST00}) -> % FIXME shortcut
+    % TODO can be implemented easier with new Erlang list zipper &&
     % remove pi_Index(NegativeComponents) from pi_Index(PComponents) and continue searching
     DoDiff = 
       fun({IIndex, PComp}) -> 
@@ -106,6 +118,7 @@ phi_norm(BigS, [Ty | N], Fixed, ST) ->
 
   {constraint_set:join(R1, R4, Fixed), ST4}.
 
+-spec all_variables_line([T], [T], ?LEAF:type(), cache()) -> sets:set(variable()) when T :: ?ATOM:type().
 all_variables_line(P, N, Leaf, Cache) ->
   Leaf = ty_bool:any(),
   sets:union(
@@ -113,16 +126,3 @@ all_variables_line(P, N, Leaf, Cache) ->
   ++ [ty_tuple:all_variables(F, Cache) || F <- N]
   ).
 
-
-% apply_to_node(Node, Map, Memo) ->
-%   substitute(Node, Map, Memo, fun(N, S, M) -> ty_tuple:substitute(N, S, M) end).
-
-% -ifdef(TEST).
-% -include_lib("eunit/include/eunit.hrl").
-
-% empty_0tuple_test() ->
-%   Tuple = {node,{ty_tuple,0,[]},{terminal,0},{terminal,1}},
-%   true = is_empty_corec(Tuple, #{}),
-%   ok.
-
-% -endif.
