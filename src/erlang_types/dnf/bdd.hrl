@@ -19,6 +19,8 @@
   all_variables/2
 ]).
 
+-export_type([type/0]).
+
 % hide built-in Erlang node function
 -compile({no_auto_import, [node/1]}).
 

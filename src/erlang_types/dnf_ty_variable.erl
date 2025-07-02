@@ -16,8 +16,6 @@
   tuple_to_map/1
 ]).
 
--export_type([type/0]).
-
 -define(ATOM, ty_variable).
 -define(LEAF, ty_rec).
 

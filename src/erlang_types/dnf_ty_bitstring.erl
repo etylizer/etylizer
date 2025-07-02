@@ -17,7 +17,9 @@
   all_variables/2
 ]).
 
--type type() :: 0 | 1.
+-export_type([type/0]).
+
+-opaque type() :: 0 | 1.
 -type set_of_constraint_sets() :: constraint_set:set_of_constraint_sets().
 -type ast_ty() :: ast:ty().
 

@@ -139,6 +139,12 @@
     predef_alias_name/0
 ]).
 
+% extension of the Erlang AST
+-export_type([
+    ty_mu/0,
+    ty_mu_var/0
+]).
+
 -export([
     format_loc/1, to_loc/2, loc_auto/0, min_loc/2, leq_loc/2, is_predef_name/1, is_predef_alias_name/1,
     local_varname_from_any_ref/1, get_fun_name/1, loc_exp/1

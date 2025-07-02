@@ -20,8 +20,10 @@
   all_variables/2
 ]).
 
+-export_type([type/0]).
+
 -type component() :: any_int | {range, integer(), integer()} | {left, integer()} | {right, integer()}.
--type type() :: [component()].
+-opaque type() :: [component()].
 -type set_of_constraint_sets() :: constraint_set:set_of_constraint_sets().
 -type ast_ty() :: ast:ty().
 

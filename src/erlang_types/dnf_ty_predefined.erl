@@ -15,7 +15,9 @@
   all_variables/2
 ]).
 
--type type() :: binary().
+-export_type([type/0]).
+
+-opaque type() :: binary().
 -type set_of_constraint_sets() :: constraint_set:set_of_constraint_sets().
 -type ast_ty() :: ast:ty().
 

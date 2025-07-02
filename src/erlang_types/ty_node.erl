@@ -44,14 +44,16 @@
 
 -export_type([
   type/0, 
-  cache/0
+  cache/0,
+  all_variables_cache/0
 ]).
 
 -opaque type() :: {node, term()}.
+-opaque cache() :: #{type() => boolean()}.
+-opaque all_variables_cache() :: #{type() => _}.
 -type type_descriptor() :: dnf_ty_variable:type().
 -type temporary_type() :: {local_ref, term()}. % used in ty_parser
--opaque cache() :: #{type() => boolean()}.
--type set_of_constraint_sets() :: contraint_set:set_of_constraint_sets().
+-type set_of_constraint_sets() :: constraint_set:set_of_constraint_sets().
 -type monomorphic_variables() :: etally:monomorphic_variables().
 -type ast_mu_var() :: ast:ty_mu_var().
 -type ast_ty() :: ast:ty().
@@ -344,7 +346,7 @@ substitute(Node, Varmap) ->
   Res = subst:apply(Subst, T1, no_clean),
   ty_parser:parse(Res).
 
--spec all_variables(type(), #{type() => _}) -> sets:set(variable()).
+-spec all_variables(type(), all_variables_cache()) -> sets:set(variable()).
 all_variables(Ty, Cache) ->
   case Cache of
     #{Ty := _}-> sets:new();

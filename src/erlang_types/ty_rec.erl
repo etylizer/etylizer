@@ -48,10 +48,9 @@
   | dnf_ty_list | dnf_ty_bitstring | ty_tuples 
   | ty_functions | dnf_ty_map.
 -type ast_ty() :: ast:ty().
--type local_cache() :: ty_node:local_cache().
 -type variable() :: ty_variable:type().
 -type all_variables_cache() :: term(). %TODO
--type set_of_constraint_sets() :: contraint_set:set_of_constraint_sets().
+-type set_of_constraint_sets() :: constraint_set:set_of_constraint_sets().
 -type monomorphic_variables() :: etally:monomorphic_variables().
 
 
@@ -88,7 +87,7 @@ empty0() ->
 empty() -> empty.
   
 
--spec is_empty(type(), local_cache()) -> {boolean(), local_cache()}.
+-spec is_empty(type(), ST) -> {boolean(), ST}.
 is_empty(any, Cache) -> {false, Cache};
 is_empty(empty, Cache) -> {true, Cache};
 is_empty(Ty, Cache) ->
@@ -279,7 +278,7 @@ binary_map(BinaryMap, Record1, Record2) ->
     lists:zip(lists:seq(2, length(Fields) + 1), Fields)
   ).
 
--spec fold(fun((Module :: type_module(), Value, Acc) -> Value), Acc, type()) -> type(). % when Value :: Module:type()
+-spec fold(fun((Module :: type_module(), Value, Acc) -> Value), Acc, type()) -> Acc. % when Value :: Module:type()
 fold(Fold, BaseAcc, Record) ->
   Fields = record_info(fields, ty),
   lists:foldl(
@@ -290,7 +289,7 @@ fold(Fold, BaseAcc, Record) ->
     lists:zip(lists:seq(2, length(Fields) + 1), Fields)
   ).
 
--spec binary_fold(fun((Module :: type_module(), Value, Value, Acc) -> Value), Acc, type(), type()) -> type(). % when Value :: Module:type()
+-spec binary_fold(fun((Module :: type_module(), Value, Value, Acc) -> Value), Acc, type(), type()) -> Acc. % when Value :: Module:type()
 binary_fold(BinaryFold, BaseAcc, Record1, Record2) ->
   Fields = record_info(fields, ty),
   lists:foldl(

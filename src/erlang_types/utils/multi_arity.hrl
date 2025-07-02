@@ -2,8 +2,10 @@
 -define(MULTIARITY, dnf_ty_function).
 -endif.
 
--type type() :: {?MULTIARITY:type(), #{non_neg_integer() => ?MULTIARITY:type()}}.
--type set_of_constraint_sets() :: contraint_set:set_of_constraint_sets().
+-export_type([type/0]).
+
+-opaque type() :: {?MULTIARITY:type(), #{non_neg_integer() => ?MULTIARITY:type()}}.
+-type set_of_constraint_sets() :: constraint_set:set_of_constraint_sets().
 -type monomorphic_variables() :: etally:monomorphic_variables().
 -type ast_ty() :: ast:ty().
 -type variable() :: ty_variable:type().

@@ -35,12 +35,12 @@
 
 % quit exits the erlang program with the given exit code. No stack trace is produced,
 % so don't use this function for aborting because of a bug.
--spec quit(non_neg_integer(), string(), [_]) -> _.
+-spec quit(non_neg_integer(), string(), [_]) -> no_return().
 quit(Code, Msg, L) ->
     io:format(Msg, L),
     halt(Code).
 
--spec quit(non_neg_integer(), string()) -> _.
+-spec quit(non_neg_integer(), string()) -> no_return().
 quit(Code, Msg) ->
     io:format(Msg),
     halt(Code).

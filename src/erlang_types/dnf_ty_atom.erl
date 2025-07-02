@@ -17,7 +17,9 @@
   all_variables/2
 ]).
 
--type type() :: {gb_sets:set(), finite | cofinite}.
+-export_type([type/0]).
+
+-opaque type() :: {gb_sets:set(), finite | cofinite}.
 -type set_of_constraint_sets() :: constraint_set:set_of_constraint_sets().
 -type ast_ty() :: ast:ty().
 
