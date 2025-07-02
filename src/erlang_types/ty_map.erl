@@ -33,7 +33,7 @@ unparse({ty_tuple, 2, [TupPart, FunPart]}, ST0) ->
   {{map, split_into_associations(Mandatory, MandatoryAndOptional)}, ST2}.
 
 % depends on ast:ty() internals
--spec split_into_associations(ast_ty(), ast_ty()) -> [ast:map_assoc()].
+-spec split_into_associations(ast_ty(), ast_ty()) -> [ast:ty_map_assoc()].
 split_into_associations({fun_simple}, OnlyOptional) ->
     % only optional associations
     case OnlyOptional of

@@ -115,7 +115,7 @@ make(Ty) ->
     _ -> define(new_ty_node(), Ty)
   end.
 
--spec is_consed(type_descriptor()) -> boolean().
+-spec is_consed(type_descriptor()) -> {true, type()} | false.
 is_consed(Ty) ->
   Res = ets:lookup(?UNIQUETABLE, Ty),
   case Res of
@@ -302,7 +302,7 @@ normalize(TyNode, FixedVariables, Cache) ->
       end
   end.
 
--spec unparse(type(), #{type() => ast_mu_var()}) -> ast_ty().
+-spec unparse(type(), ST) -> {ast_ty(), ST} when ST :: #{type() => ast_mu_var()}.
 unparse(Node = {node, Id}, Cache) -> 
   case ty_parser:unparse_mapping(Node) of
     {hit, Result} -> {Result, Cache};
