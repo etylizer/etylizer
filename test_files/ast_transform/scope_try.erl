@@ -1,4 +1,4 @@
--module(scope_receive).
+-module(scope_try).
 
 -compile(export_all).
 -compile([nowarn_export_all, nowarn_shadow_vars]).

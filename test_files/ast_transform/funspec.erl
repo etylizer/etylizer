@@ -1,4 +1,4 @@
--module(funcall).
+-module(funspec).
 
 -compile(export_all).
 -compile(nowarn_export_all).

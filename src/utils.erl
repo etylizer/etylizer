@@ -350,8 +350,9 @@ replace_term(Map, Mapping) when is_map(Map) ->
 replace_term(Term, _Mapping) ->
     Term.
 
-size(Term) ->
-  (erts_debug:size(Term) * 8)/1024.
+% -spec size(term()) -> number().
+% size(Term) ->
+%   (erts_debug:size(Term) * 8)/1024.
 
 update_ets_from_map(EtsTable, LocalMap) ->
   % Filter LocalMap to only new/changed entries
