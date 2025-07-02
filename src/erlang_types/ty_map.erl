@@ -1,14 +1,25 @@
 -module(ty_map).
 
-compare(A, B) -> ty_tuple:compare(A, B).
-equal(P1, P2) -> ty_tuple:equal(P1, P2).
-map(TupPart, FunPart) -> ty_tuple:tuple([TupPart, FunPart]).
-%empty(Size) -> ty_tuple:empty(Size).
-%any(Size) -> ty_tuple:any(Size).
-%components(T) -> ty_tuple:components(T).
-%pi(I, T) -> ty_tuple:pi(I, T).
-%big_intersect(X) -> ty_tuple:big_intersect(X).
+-export([
+  equal/2,
+  compare/2,
+  map/2,
+  unparse/2
+]).
 
+-type type() :: ty_tuple:type().
+-type ast_ty() :: ast:ty().
+
+-spec compare(type(), type()) -> lt | gt | eq.
+compare(A, B) -> ty_tuple:compare(A, B).
+
+-spec equal(type(), type()) -> boolean().
+equal(A, B) -> compare(A, B) == eq.
+
+-spec map(N, N) -> type() when N :: ty_node:type().
+map(TupPart, FunPart) -> ty_tuple:tuple([TupPart, FunPart]).
+
+-spec unparse(type(), T) -> {ast_ty(), T}.
 unparse({ty_tuple, 2, [TupPart, FunPart]}, ST0) ->
   % MandatoryAndOptional = ast_lib:erlang_ty_to_ast(Tup),
   % this is a bit messy
@@ -19,6 +30,8 @@ unparse({ty_tuple, 2, [TupPart, FunPart]}, ST0) ->
   {Mandatory, ST2} = ty_node:unparse(FunPart, ST1),
   {{map, split_into_associations(Mandatory, MandatoryAndOptional)}, ST2}.
 
+% depends on ast:ty() internals
+-spec split_into_associations(ast_ty(), ast_ty()) -> [ast:map_assoc()].
 split_into_associations({fun_simple}, OnlyOptional) ->
     % only optional associations
     case OnlyOptional of
@@ -41,7 +54,6 @@ split_into_associations({intersection, Funs}, {union, Tups}) ->
     [{map_field_opt, A, B} || {A, B} <- RawTuple];
 split_into_associations(F = {fun_full, [_], _}, T = {tuple, [_, _]}) ->
     split_into_associations({intersection, [F]}, {union, [T]});
-
 split_into_associations(Mandatory, MandatoryAndOptional) ->
     io:format(user,"Mandatory: ~p~n", [Mandatory]),
     io:format(user,"Mandatory and opt: ~p~n", [MandatoryAndOptional]),

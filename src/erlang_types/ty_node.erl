@@ -341,7 +341,7 @@ unparse(Node = {node, Id}, Cache) ->
 substitute(Node, Varmap) ->
   T1 = ty_parser:unparse(Node),
   Subst = #{begin {{var, Name}, _} = ty_variable:unparse(K, #{}), Name end => ty_parser:unparse(V) || K := V <- Varmap},
-  Res = ty_parser:apply(Subst, T1, no_clean),
+  Res = subst:apply(Subst, T1, no_clean),
   ty_parser:parse(Res).
 
 -spec all_variables(type(), #{type() => _}) -> sets:set(variable()).

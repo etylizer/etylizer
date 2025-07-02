@@ -37,9 +37,10 @@
 
 -type temporary_ref() :: {local_ref, integer()}. % type references created for the queue
 -type type() :: ?NODE:type().
+-type type_descriptor() :: dnf_ty_variable:type().
 -type ty_rec() :: ?TY:type().
--type ast_ty() :: term(). %TODO ast:ty()
--type ety_ty_scheme() :: term(). %TODO etylizer ty scheme
+-type ast_ty() :: ast:ty(). 
+-type ety_ty_scheme() :: ast:ty_scheme().
 -type ety_ref() :: term(). %TODO etylizer reference
 -type ety_args() :: term(). %TODO [ast:ty()]
 -type database() :: {term(), term()}. 
@@ -223,22 +224,25 @@ parse(RawTy) ->
   
   FinalResult.
 
+-spec unparse_mapping(type()) -> {hit, ast_ty()} | no_hit.
 unparse_mapping(Node) ->
   case ets:lookup(?UNPARSE_NAMED_MAPPING, Node) of
     [{Node, Res}] -> {hit, Res};
     _ -> no_hit
   end.
 
+-spec is_consed(type_descriptor(), #{type_descriptor() => type()}) -> {true, type()} | false.
 is_consed(ToDefineTy, LocalDefs) ->
-  case ?NODE:is_consed(ToDefineTy) of
-    {true, N} -> {true, N};
+  case ty_node:is_consed(ToDefineTy) of
+    {true, Node} -> {true, Node};
     _ ->
       case LocalDefs of
-        #{ToDefineTy := Rec} -> {true, Rec};
+        #{ToDefineTy := Node} -> {true, Node};
         _ -> false
       end
   end.
 
+-spec collect_refs(type(), #{type() => type_descriptor()}) -> _.
 collect_refs(Ref, Results) ->
   utils:everything(fun
     (E = {node, _}) -> {ok, E};
@@ -346,12 +350,9 @@ do_convert({X = {named, _, Ref, Args}, R = {IdTy, _}}, Q, Cache) ->
       % io:format(user,"Lookup ~p~n", [Ref]),
       ({ty_scheme, Vars, Ty}) = lookup_ty(Ref),
 
-      % FIXME ust subst:apply
-      % Map = subst:from_list(lists:zip([V || {V, _Bound} <- Vars], Args)),
-      % NewTy = subst:apply(Map, Ty, no_clean),
-      Map = from_list(lists:zip([V || {V, _Bound} <- Vars], Args)),
+      Map = subst:from_list(lists:zip([V || {V, _Bound} <- Vars], Args)),
       % we can do this since recursive variables should not descend "into" a named type
-      NewTy = convert_back(debruijn(ty_parser:apply(Map, Ty, no_clean))),
+      NewTy = convert_back(debruijn(subst:apply(Map, Ty, no_clean))),
       
       % sanity
       false = maps:is_key({Ref, Args}, Cache),
@@ -403,7 +404,7 @@ do_convert({{predef, any}, R}, Q, Cache) -> {?TY:any(), Q, R, Cache};
 do_convert({{predef, none}, R}, Q, Cache) -> {?TY:empty(), Q, R, Cache};
 do_convert({{predef, atom}, R}, Q, Cache) -> {?TY:atom(dnf_ty_atom:any()), Q, R, Cache};
 do_convert({{predef, integer}, R}, Q, Cache) -> {?TY:interval(dnf_ty_interval:any()), Q, R, Cache};
-do_convert({{predef_alias, Alias}, R}, Q, Cache) -> do_convert({expand_predef_alias(Alias), R}, Q, Cache);
+do_convert({{predef_alias, Alias}, R}, Q, Cache) -> do_convert({stdtypes:expand_predef_alias(Alias), R}, Q, Cache);
 
 % predefined
 do_convert({{fun_simple}, R}, Q, Cache) -> {?TY:functions(ty_functions:any()), Q, R, Cache};
@@ -526,7 +527,7 @@ do_convert({{improper_list, A, B}, R}, Q, Cache) ->
   {T1, Q0} = queue_if_new(A, Q),
   {T2, Q1} = queue_if_new(B, Q0),
     
-  {?TY:list(dnf_ty_list:singleton(ty_list:tuple([T1, T2]))), Q1, R, Cache};
+  {?TY:list(dnf_ty_list:singleton(ty_list:list([T1, T2]))), Q1, R, Cache};
 
 % maps 
 
@@ -567,6 +568,7 @@ unify(Ref, {IdToTy, TyToIds}) ->
   ToReplace = maps:from_list(lists:flatten([[{Single, Represent} || Single <- Dupl ] || {_, {Represent, Dupl}}<- ToUnify])),
   utils:replace({Ref, IdToTy}, ToReplace).
 
+-spec unparse(type()) -> ast_ty().
 unparse(Node) ->
   case ets:lookup(?UNPARSE_CACHE, Node) of
     [{_, Ref}] -> 
@@ -582,98 +584,8 @@ unparse(Node) ->
       R
   end.
 
-% FIXME remove once integrated
-% -spec expand_predef_alias(ast:predef_alias_name()) -> ast:ty(). %TODO
-expand_predef_alias(term) -> {predef, any};
-% TODO better binaries
-expand_predef_alias(binary) -> {bitstring};
-expand_predef_alias(nonempty_binary) -> {bitstring};
-expand_predef_alias(bitstring) -> {bitstring};
-expand_predef_alias(nonempty_bitstring) -> {bitstring};
-expand_predef_alias(boolean) -> {union, [{singleton, true}, {singleton, false}]};
-expand_predef_alias(byte) -> {range, 0, 255};
-expand_predef_alias(char) -> {range, 0, 1114111};
-expand_predef_alias(nil) -> {empty_list};
-expand_predef_alias(number) -> {union, [{predef, float}, {predef, integer}]};
-expand_predef_alias(list) -> {list, {predef, any}};
-% also see code in ast_transform for expanding predefined aliases applied to arguments
-expand_predef_alias(nonempty_list) -> {nonempty_list, {predef, any}};
-expand_predef_alias(maybe_improper_list) -> {improper_list, {predef, any}, {predef, any}};
-expand_predef_alias(nonempty_maybe_improper_list) -> {nonempty_list, {predef, any}};
-expand_predef_alias(string) -> {list, expand_predef_alias(char)};
-expand_predef_alias(nonempty_string) -> {nonempty_list, expand_predef_alias(char)};
-expand_predef_alias(iodata) -> {union, [expand_predef_alias(iolist), expand_predef_alias(binary)]};
-expand_predef_alias(iolist) ->
-    % TODO fix variable IDs
-    RecVarID = erlang:unique_integer(),
-    Var = {var, erlang:list_to_atom("mu" ++ integer_to_list(RecVarID))},
-    RecType = {improper_list, {union, [expand_predef_alias(byte), expand_predef_alias(binary), Var]}, {union, [expand_predef_alias(binary), {empty_list}]}},
-    {mu, Var, RecType};
-expand_predef_alias(map) -> {map, [{map_field_opt, {predef, any}, {predef, any}}]};
-expand_predef_alias(function) -> {fun_simple};
-expand_predef_alias(module) -> {predef, atom};
-expand_predef_alias(mfa) -> {tuple, [{predef, atom}, {predef, atom}, {predef, integer}]};
-expand_predef_alias(arity) -> {predef, integer};
-expand_predef_alias(identifier) -> {union, [{predef, pid}, {predef, port}, {predef, reference}]};
-expand_predef_alias(node) -> {predef, atom};
-expand_predef_alias(timeout) -> {union, [{singleton, infinity}, expand_predef_alias(non_neg_integer)]};
-expand_predef_alias(no_return) -> {predef, none};
-expand_predef_alias(non_neg_integer) -> {range, 0, '*'};
-expand_predef_alias(pos_integer) -> {range, 1, '*'};
-expand_predef_alias(neg_integer) -> {range, '*', -1};
 
-expand_predef_alias(Name) ->
-    logger:error("Not expanding: ~p", [Name]),
-    errors:not_implemented(utils:sformat("expand_predef_alias for ~w", Name)).
-
-
-
-% FIXME remove once integrated into Etylizer
-apply(S, T, _) -> apply_base(S, T).
-
-apply_base(S, T) ->
-    case T of
-        {singleton, _} -> T;
-        {bitstring} -> T;
-        {empty_list} -> T;
-        {list, U} -> {list, apply_base(S, U)};
-        {mu, V, U} -> {mu, V, apply_base(S, U)};
-        {nonempty_list, U} -> {nonempty_list, apply_base(S, U)};
-        {improper_list, U, V} -> {improper_list, apply_base(S, U), apply_base(S, V)};
-        {nonempty_improper_list, U, V} -> {nonempty_improper_list, apply_base(S, U), apply_base(S, V)};
-        {fun_simple} -> T;
-        {fun_any_arg, U} -> {fun_any_arg, apply_base(S, U)};
-        {fun_full, Args, U} -> {fun_full, apply_list(S, Args), apply_base(S, U)};
-        {range, _, _} -> T;
-        {map_any} -> T;
-        {map, Assocs} ->
-            {map, lists:map(fun({Kind, U, V}) -> {Kind, apply_base(S, U), apply_base(S, V)} end, Assocs)};
-        {predef, _} -> T;
-        {predef_alias, _} -> T;
-        {record, Name, Fields} ->
-            {record, Name,
-             lists:map(fun({FieldName, U}) -> {FieldName, apply_base(S, U)} end, Fields)};
-        {named, Loc, Ref, Args} ->
-            {named, Loc, Ref, apply_list(S, Args)};
-        {tuple_any} -> T;
-        {tuple, Args} -> {tuple, apply_list(S, Args)};
-        {var, Alpha} ->
-            case maps:find(Alpha, S) of
-                error -> {var, Alpha};
-                {ok, U} -> U
-            end;
-        {mu_var, Alpha} -> {mu_var, Alpha};
-        {union, Args} -> {union, apply_list(S, Args)};
-        {intersection, Args} -> {intersection, apply_list(S, Args)};
-        {negation, U} -> {negation, apply_base(S, U)}
-    end.
-
-apply_list(S, L) -> lists:map(fun(T) -> apply_base(S, T) end, L).
-
-from_list(L) -> maps:from_list(L).
-
-
-
+-spec debruijn(ast_ty()) -> _.
 %% Main conversion function
 debruijn(Type) ->
     debruijn(Type, []).
@@ -709,7 +621,7 @@ debruijn({tuple_any}, _Env) -> {tuple_any};
 debruijn({tuple, Args}, Env) -> {tuple, debruijn_list(Args, Env)};
 debruijn({mu_var, Name}, Env) ->
     case index_of(Name, Env) of
-        {ok, Index} -> {mu_var, Index};
+        {ok, Index} -> {mu_var, list_to_atom(integer_to_list(Index))};
         not_found -> error({unbound_variable, Name})
     end;
 debruijn({var, Alpha}, Env) ->
@@ -747,7 +659,7 @@ convert_back({mu, Body}, Env, Counter) ->
     {ConvertedBody, NewCounter} = convert_back(Body, NewEnv, Counter + 1),
     {{mu, {mu_var, Name}, ConvertedBody}, NewCounter};
 convert_back({mu_var, Index}, Env, Counter) ->
-    case lists:nth(Index + 1, Env) of
+    case lists:nth(list_to_integer(atom_to_list(Index)) + 1, Env) of
         Name -> {{mu_var, Name}, Counter}
     end;
 convert_back({var, Name}, _Env, Counter) ->

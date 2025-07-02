@@ -3,6 +3,7 @@
 % only used as a simple boolean terminal node in a BDD where the leafs are 1 and 0 only.
 -export([
   compare/2,
+  equal/2,
   empty/0,
   any/0,
   union/2,
@@ -23,6 +24,8 @@
 
 -spec compare(T, T) -> eq | lt | gt when T :: type().
 compare(X, X) -> eq; compare(1, 0) -> gt; compare(0, 1) -> lt.
+-spec equal(T, T) -> boolean() when T :: type().
+equal(X, Y) -> X =:= Y.
 -spec empty() -> type().
 empty() -> 0.
 -spec any() -> type().

@@ -2,15 +2,57 @@
 -define(MULTIARITY, dnf_ty_function).
 -endif.
 
-compare(Fs1, Fs2) ->
-  error({todo, impl, Fs1, Fs2}).
+-type type() :: {?MULTIARITY:type(), #{non_neg_integer() => ?MULTIARITY:type()}}.
+-type set_of_constraint_sets() :: contraint_set:set_of_constraint_sets().
+-type monomorphic_variables() :: etally:monomorphic_variables().
+-type ast_ty() :: ast:ty().
+-type variable() :: ty_variable:type().
+-type all_variables_cache() :: term(). % TODO
 
+-export([
+  compare/2,
+  singleton/2,
+  any/0,
+  empty/0,
+  negate/1,
+  union/2,
+  intersect/2,
+  difference/2,
+  is_empty/2,
+  normalize/3,
+  unparse/2,
+  all_variables/2
+]).
+
+-spec compare(T, T) -> eq | lt | gt when T :: type().
+compare({D, M}, {D2, M2}) ->
+  case ?MULTIARITY:compare(D, D2) of
+    eq ->
+      case maps:size(M) < maps:size(M2) of
+        true -> lt;
+        _ ->
+          case maps:size(M) > maps:size(M2) of
+            true -> gt;
+            _ ->
+              lists:foldl(
+                fun({{_, A}, {_, B}}, eq) -> ?MULTIARITY:compare(A, B); (_, R) -> R end, 
+                eq, 
+                lists:zip(maps:to_list(M), maps:to_list(M2))
+              )
+          end
+      end;
+    R -> R
+  end.
+
+-spec empty() -> type().
 empty() ->
   {?MULTIARITY:empty(), #{}}.
 
+-spec any() -> type().
 any() ->
   {?MULTIARITY:any(), #{}}.
 
+-spec is_empty(type(), T) -> {boolean, T}.
 is_empty({Default, All}, ST) ->
   maybe
     {true, ST1} ?= ?MULTIARITY:is_empty(Default, ST),
@@ -20,13 +62,15 @@ is_empty({Default, All}, ST) ->
     end, {true, ST1}, All)
   end.
 
+-spec singleton(non_neg_integer(), ?MULTIARITY:type()) -> type().
 singleton(Length, Dnf) when is_integer(Length) ->
   remove_redundant({?MULTIARITY:empty(), #{Length => Dnf}}).
 
+-spec negate(T) -> T when T :: type().
 negate({Default, Ty}) ->
   remove_redundant({?MULTIARITY:negate(Default), maps:map(fun(_K,V) -> ?MULTIARITY:negate(V) end, Ty)}).
 
-
+-spec union(T, T) -> T when T :: type().
 union({DefaultF1, F1}, {DefaultF2, F2}) ->
   % get all keys
   AllKeys = maps:keys(F1) ++ maps:keys(F2),
@@ -38,6 +82,7 @@ union({DefaultF1, F1}, {DefaultF2, F2}) ->
                  end,
   remove_redundant({?MULTIARITY:union(DefaultF1, DefaultF2), maps:from_list([{Key, UnionKey(Key)} || Key <- AllKeys])}).
 
+-spec intersect(T, T) -> T when T :: type().
 intersect({DefaultF1, F1}, {DefaultF2, F2}) ->
   % get all keys
   AllKeys = maps:keys(F1) ++ maps:keys(F2),
@@ -49,6 +94,7 @@ intersect({DefaultF1, F1}, {DefaultF2, F2}) ->
                  end,
   remove_redundant({?MULTIARITY:intersect(DefaultF1, DefaultF2), maps:from_list([{Key, IntersectKey(Key)} || Key <- AllKeys])}).
 
+-spec difference(T, T) -> T when T :: type().
 difference({DefaultF1, F1}, {DefaultF2, F2}) ->
   % get all keys
   AllKeys = maps:keys(F1) ++ maps:keys(F2),
@@ -61,12 +107,14 @@ difference({DefaultF1, F1}, {DefaultF2, F2}) ->
   remove_redundant({?MULTIARITY:difference(DefaultF1, DefaultF2), maps:from_list([{Key, DifferenceKey(Key)} || Key <- AllKeys])}).
 
 % removes mappings in others which are syntactically equivalent to the default value
+-spec remove_redundant(T) -> T when T :: type().
 remove_redundant({Default, Others}) ->
   {
     Default,
     #{Arity => TypeOfArity || Arity := TypeOfArity <- Others, TypeOfArity /= Default}
   }.
 
+-spec normalize(type(), monomorphic_variables(), T) -> {set_of_constraint_sets(), T}.
 normalize({Default, All}, Fixed, ST) ->
   {Others, ST2} = 
     maps:fold(fun(_Size, V, {Acc, ST0}) -> % FIXME shortcut behavior
@@ -79,11 +127,12 @@ normalize({Default, All}, Fixed, ST) ->
 
   {constraint_set:meet(DF, Others, Fixed), ST2}.
 
+-spec unparse(type(), T) -> {ast_ty(), T}.
 unparse({Default, T}, ST0) ->
   {X1, ST1} = ?MULTIARITY:unparse(Default, ST0),
 
   {Xs, ST2} =
-  lists:foldl(fun({Size, TT}, {Cs, ST00}) -> 
+  lists:foldl(fun({_Size, TT}, {Cs, ST00}) -> 
     case ?MULTIARITY:unparse(TT, ST00) of
       {{predef, any}, _} -> error(todo_multi_unparse); %AnyTupleI(Size);
       {X, ST01} -> {Cs ++ [X], ST01}
@@ -98,6 +147,7 @@ unparse({Default, T}, ST0) ->
     ast_lib:mk_union(Xs)
   ]), ST2}.
 
+-spec all_variables(type(), all_variables_cache()) -> sets:set(variable()).
 all_variables({Default, All}, Cache) ->
   V1 = ?MULTIARITY:all_variables(Default, Cache),
   ResVars = 
@@ -107,24 +157,3 @@ all_variables({Default, All}, Cache) ->
               end, sets:new(), All),
   sets:union(V1, ResVars).
 
-
-% substitute({DefaultFunction, AllFunctions}, SubstituteMap, Memo) ->
-%   % see multi_substitute for comments
-%   % TODO refactor abstract into one function for both tuples and funcions
-%   NewDefaultFunction = dnf_var_ty_function:substitute(DefaultFunction, SubstituteMap, Memo, fun(Ty) -> ty_rec:pi({function, default}, Ty) end),
-%   AllVars = dnf_var_ty_function:all_variables(DefaultFunction),
-%   % TODO erlang 26 map comprehensions
-%   Keys = maps:fold(fun(K,V,AccIn) -> case lists:member(K, AllVars) of true -> ty_rec:function_keys(V) -- maps:keys(AllFunctions) ++ AccIn; _ -> AccIn end end, [], SubstituteMap),
-%   % Keys = [function_keys(V) || K := V <- SubstituteMap, lists:member(K, AllVars)],
-%   OtherFunctionKeys = lists:usort(lists:flatten(Keys)),
-%   NewDefaultOtherFunctions = maps:from_list([{Length, dnf_var_ty_function:substitute(DefaultFunction, SubstituteMap, Memo, fun(Ty) -> ty_rec:pi({function, Length}, Ty) end)} || Length <- OtherFunctionKeys]),
-%   AllKeys = maps:keys(AllFunctions) ++ maps:keys(NewDefaultOtherFunctions),
-
-%   NewOtherFunctions = maps:from_list(lists:map(fun(Key) ->
-%     {Key, case maps:is_key(Key, AllFunctions) of
-%             true -> dnf_var_ty_function:substitute(maps:get(Key, AllFunctions), SubstituteMap, Memo, fun(Ty) -> ty_rec:pi({function, Key}, Ty) end);
-%             _ -> maps:get(Key, NewDefaultOtherFunctions, NewDefaultFunction)
-%           end}
-%                                             end, AllKeys)),
-
-%   {NewDefaultFunction, NewOtherFunctions}.

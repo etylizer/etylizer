@@ -1,9 +1,23 @@
 -module(ty_tuple).
 
+-export([
+  compare/2,
+  equal/2,
+  tuple/1,
+  any/1,
+  empty/1,
+  all_variables/2,
+  unparse/2,
+  big_intersect/1,
+  components/1
+]).
+
 -ifndef(NODE).
 -define(NODE, ty_node).
 -endif.
 %% n-tuple representation
+
+
 
 compare(A, B) when A < B -> lt;
 compare(A, B) when A > B -> gt;

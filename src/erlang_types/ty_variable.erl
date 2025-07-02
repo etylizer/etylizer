@@ -3,6 +3,20 @@
 -define(VAR_ETS, variable_counter_ets_table).
 -define(ALL_ETS, [?VAR_ETS]).
 
+-export([
+  init/0,
+  clean/0
+]).
+
+-export([
+  equal/2,
+  compare/2,
+  leq/2,
+  fresh_from/1,
+  new_with_name/1,
+  unparse/2
+]).
+
 -export_type([type/0]).
 
 -opaque type() :: term().
@@ -72,6 +86,7 @@ new_with_name(Name) when is_atom(Name) ->
   #var{id = name, name = Name}.
 
 new_with_name_and_id(Id, Name) when is_atom(Name) ->
+  error(todo),
   Current = ets:update_counter(?VAR_ETS, variable_id, {2,0}),
   false = (Current < Id),
   #var{id = Id, name = Name}.

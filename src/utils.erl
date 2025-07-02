@@ -23,7 +23,14 @@
     single/1,
     assocs_find/2, assocs_find_index/2,
     timeout/2, is_same_file/2, file_exists/1,
-    normalize_path/1
+    normalize_path/1,
+    replace/2,
+    reverse_graph/1,
+    condense/1,
+    dfs/1,
+    fold_with_context/3,
+    compare/3,
+    update_ets_from_map/2
 ]).
 
 % quit exits the erlang program with the given exit code. No stack trace is produced,
