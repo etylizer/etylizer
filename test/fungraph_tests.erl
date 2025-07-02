@@ -11,11 +11,11 @@ fungraph_01_test() ->
     L = fungraph:dependency_order(Forms),
     NamesOnly =
         lists:map(fun (Set) ->
-                          sets:from_list(lists:map(fun ast:get_fun_name/1, sets:to_list(Set)), [{version, 2}])
+                          sets:from_list(lists:map(fun ast:get_fun_name/1, sets:to_list(Set)))
                   end, L),
     ?LOG_WARN("NamesOnly: ~p", lists:map(fun sets:to_list/1, NamesOnly)),
-    ?assertEqual([sets:from_list(["spam/0"], [{version, 2}]),
-                  sets:from_list(["foo/0", "bar/0", "with_spec/0"], [{version, 2}]),
-                  sets:from_list(["egg/1"], [{version, 2}]),
-                  sets:from_list(["buzz/0"], [{version, 2}])],
+    ?assertEqual([sets:from_list(["spam/0"]),
+                  sets:from_list(["foo/0", "bar/0", "with_spec/0"]),
+                  sets:from_list(["egg/1"]),
+                  sets:from_list(["buzz/0"])],
                  NamesOnly).
