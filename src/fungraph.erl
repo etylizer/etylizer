@@ -6,6 +6,9 @@
 -export([dependency_order/1]).
 -endif.
 
+% FIXME #253
+-compile(nowarn_unused_function).
+
 -type call_vertex() :: {Name::atom(), Arity::arity()}.
 -type call_graph() :: graph:graph(call_vertex()).
 
