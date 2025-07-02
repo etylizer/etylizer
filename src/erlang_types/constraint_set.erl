@@ -5,7 +5,8 @@
 -export([meet/3, join/3, saturate/3]).
 -export_type([set_of_constraint_sets/0]).
 
--opaque set_of_constraint_sets() :: [constraint_set()].
+% not opaque: we match on unsatisfiable and satisfiable constraint sets [] and [[]]
+-type set_of_constraint_sets() :: [constraint_set()].
 -type monomorphic_variables() :: etally:monomorphic_variables().
 -type constraint_set() :: [constraint()].
 -type constraint() :: {ty_variable:type(), ty:type(), ty:type()}.
