@@ -35,7 +35,7 @@ is_empty_cont(Ps, NegatedFun, ST0) ->
 
 % optimized phi' (4.10) from paper covariance and contravariance
 % justification for this version of phi can be found in `prop_phi_function.erl`
--spec explore_function(Ty, Ty, [?ATOM:type()], S) -> {boolean(), S} when Ty :: ty:type().
+-spec explore_function(Ty, Ty, [?ATOM:type()], S) -> {boolean(), S} when Ty :: ty_node:type().
 explore_function(_T1, _T2, [], ST) -> {true, ST};
 explore_function(T1, T2, [Function | Ps], ST0) ->
   {S1, S2} = {ty_function:domain(Function), ty_function:codomain(Function)},
@@ -44,7 +44,7 @@ explore_function(T1, T2, [Function | Ps], ST0) ->
     phi(?NODE:difference(T1, S1), T2, Ps, ST1)
   end.
 
--spec phi(Ty, Ty, [?ATOM:type()], S) -> {boolean(), S} when Ty :: ty:type().
+-spec phi(Ty, Ty, [?ATOM:type()], S) -> {boolean(), S} when Ty :: ty_node:type().
 phi(T1, T2, [], ST0) ->
   maybe
     {false, ST1} ?= ?NODE:is_empty(T1, ST0),
@@ -77,7 +77,7 @@ normalize_line({Pos, Neg, T}, Fixed, ST) ->
 % domains_to_tuple(Domains) ->
 %   ty_node:make(dnf_ty_variable:leaf(ty_rec:tuples(ty_tuples:singleton(length(Domains), dnf_ty_tuple:singleton(ty_tuple:tuple(Domains)))))).
 
--spec normalize_line_cont(ty_node:type(), [T], [T], monomorphic_variables(), T) -> {set_of_constraint_sets(), T} when T :: ?ATOM:type().
+-spec normalize_line_cont(ty_node:type(), [T], [T], monomorphic_variables(), ST) -> {set_of_constraint_sets(), ST} when T :: ?ATOM:type().
 normalize_line_cont(_, _, [], _Fixed, ST) -> {[], ST}; % non-empty
 normalize_line_cont(S, P, [Function | N], Fixed, ST) ->
   T1 = ty_function:domain(Function),
@@ -99,7 +99,7 @@ normalize_line_cont(S, P, [Function | N], Fixed, ST) ->
   {constraint_set:join(R1, R2, Fixed), ST2}.
 
 
--spec explore_function_norm(ty_node:type(), ty_nod, [T], monomorphic_variables(), S) -> {set_of_constraint_sets(), S} when T :: ?ATOM:type().
+-spec explore_function_norm(ty_node:type(), ty_node:type(), [T], monomorphic_variables(), S) -> {set_of_constraint_sets(), S} when T :: ?ATOM:type().
 explore_function_norm(BigT1, T2, [], Fixed, ST0) ->
   {NT1, ST1} = ty_node:normalize(BigT1, Fixed, ST0),
   {NT2, ST2} = ty_node:normalize(T2, Fixed, ST1),

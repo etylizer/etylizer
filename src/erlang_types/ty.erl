@@ -4,7 +4,7 @@
 
 -export_type([type/0]).
 
--opaque type() :: ty_node:type().
+-type type() :: ty_node:type().
 -type monomorphic_variables() :: etally:monomorphic_variables().
 -type set_of_constraint_sets() :: constraint_set:set_of_constraint_sets().
 -type variable() :: ty_variable:type().
@@ -20,7 +20,7 @@ empty() -> ty_node:empty().
 
 -spec all_variables(type()) -> sets:set(variable()).
 all_variables(Ty) ->
-  ty_node:all_variables(Ty, #{}).
+  ty_node:all_variables(Ty).
 
 % subtyping
 -spec is_equivalent(T, T) -> boolean() when T :: type().

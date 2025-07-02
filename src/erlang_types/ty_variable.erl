@@ -20,7 +20,6 @@
 
 -export_type([type/0]).
 
--opaque type() :: term().
 
 -spec init() -> _.
 init() ->
@@ -42,13 +41,12 @@ clean() ->
 % variables have either their name as their ID (coming from a ast_lib conversion)
 % or a unique ID (usually generated inside the erlang_types library)
 -record(var, {id, name}).
--type var() :: 
-  #var{id :: integer() | name, name :: atom()}.
+-opaque type() :: #var{id :: integer() | name, name :: atom()}.
 
--spec equal(var(), var()) -> boolean().
+-spec equal(type(), type()) -> boolean().
 equal(Var1, Var2) -> compare(Var1, Var2) =:= eq.
 
--spec compare(var(), var()) -> lt | eq | gt.
+-spec compare(type(), type()) -> lt | eq | gt.
 compare(#var{id = name, name = N1}, #var{id = name, name = N2}) ->
   case {N1 > N2, N1 < N2} of
     {false, false} -> eq;
@@ -70,17 +68,17 @@ fresh_from(#var{id = name, name = Name}) ->
 fresh_from(#var{id = _Id, name = Name}) ->
   new(Name).
 
--spec new(atom()) -> var().
+-spec new(atom()) -> type().
 new(Name) when is_atom(Name) ->
   NewId = ets:update_counter(?VAR_ETS, variable_id, {2,1}),
   #var{id = NewId, name = Name}.
 
--spec new_with_name(atom()) -> var().
+-spec new_with_name(atom()) -> type().
 new_with_name(Name) when is_atom(Name) ->
   #var{id = name, name = Name}.
 
 % used in ty_parser to convert already known variables
--spec with_name_and_id(integer(), atom()) -> var().
+-spec with_name_and_id(integer(), atom()) -> type().
 with_name_and_id(Id, Name) when is_atom(Name) ->
   #var{id = Id, name = Name}.
 

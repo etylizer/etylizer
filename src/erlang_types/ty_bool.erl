@@ -40,7 +40,7 @@ difference(_, 1) -> 0; difference(X, _) -> X.
 negate(1) -> 0; negate(0) -> 1.
 -spec is_any(type()) -> boolean().
 is_any(1) -> true; is_any(_) -> false.
--spec is_empty(type(), T) -> {boolean, T}.
+-spec is_empty(type(), T) -> {boolean(), T}.
 is_empty(0, S) -> {true, S}; is_empty(_, S) -> {false, S}.
 -spec all_variables(type(), _) -> sets:set().
 all_variables(_, _) -> sets:new().

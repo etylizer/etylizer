@@ -69,7 +69,7 @@ interval(_, _) -> [].
 cointerval(From, To) ->
     negate(interval(From, To)).
 
--spec is_empty(type(), T) -> {boolean, T}.
+-spec is_empty(type(), T) -> {boolean(), T}.
 is_empty([], ST) -> {true, ST};
 is_empty(_, ST) -> {false, ST}.
 

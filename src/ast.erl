@@ -500,7 +500,7 @@ is_predef_alias_name(N) ->
 -type ty_named() :: {named, loc(), Name::ty_ref(), Args::[ty()]}.
 
 % recursive type
--type ty_mu() :: {mu, RecursiveVariable::ty_var(), MaybeRecursiveType::ty()}.
+-type ty_mu() :: {mu, RecursiveVariable::ty_mu_var(), MaybeRecursiveType::ty()}.
 -type ty_mu_var() :: {mu_var, ty_varname()}.
 
 -type ty_tuple_any() :: {tuple_any}.

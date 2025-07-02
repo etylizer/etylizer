@@ -37,6 +37,7 @@
   any/0,
   empty/0,
 
+  all_variables/1,
   all_variables/2,
   substitute/2
 ]).
@@ -346,6 +347,10 @@ substitute(Node, Varmap) ->
   Subst = #{begin {{var, Name}, _} = ty_variable:unparse(K, #{}), Name end => ty_parser:unparse(V) || K := V <- Varmap},
   Res = subst:apply(Subst, T1, no_clean),
   ty_parser:parse(Res).
+
+-spec all_variables(type()) -> sets:set(variable()).
+all_variables(Ty) ->
+  all_variables(Ty, #{}).
 
 -spec all_variables(type(), all_variables_cache()) -> sets:set(variable()).
 all_variables(Ty, Cache) ->
