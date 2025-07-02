@@ -468,13 +468,6 @@ dfs_visit(Graph, Node, Acc, VisitedSet) ->
     ),
     {[Node | NewAcc], FinalVisited}.
 
-revert_map(OriginalMap) ->
-    maps:fold(fun(Key, Values, Acc) ->
-        lists:foldl(fun(Value, InnerAcc) ->
-            maps:put(Value, Key, InnerAcc)
-        end, Acc, Values)
-    end, #{}, OriginalMap).
-
 reverse_graph(Graph) ->
     Keys = maps:keys(Graph),
     lists:foldl(
@@ -498,14 +491,14 @@ reverse_graph(Graph) ->
     ).
 
 
-map_with_context(Fun, List) ->
-    map_with_context(Fun, List, []).
-
-map_with_context(_Fun, [], Acc) ->
-    lists:reverse(Acc);
-map_with_context(Fun, [H|T], Acc) ->
-    {Result, NewT} = Fun({H, T}),
-    map_with_context(Fun, NewT, [Result|Acc]).
+% map_with_context(Fun, List) ->
+%     map_with_context(Fun, List, []).
+%
+% map_with_context(_Fun, [], Acc) ->
+%     lists:reverse(Acc);
+% map_with_context(Fun, [H|T], Acc) ->
+%     {Result, NewT} = Fun({H, T}),
+%     map_with_context(Fun, NewT, [Result|Acc]).
 
 
 fold_with_context(_Fun, Acc, []) ->

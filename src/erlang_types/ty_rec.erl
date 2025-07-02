@@ -27,6 +27,8 @@
   is_literal_empty/1
 ]).
 
+-export_type([type/0]).
+
 -record(ty, 
   {
     dnf_ty_predefined = dnf_ty_predefined:empty(),
@@ -40,12 +42,12 @@
   }).
 
 % all components (=> Erlang module names) of the type record
+-opaque type() :: #ty{} | any | empty.
 -type type_module() :: 
     dnf_ty_predefined | dnf_ty_atom | dnf_ty_interval 
   | dnf_ty_list | dnf_ty_bitstring | ty_tuples 
   | ty_functions | dnf_ty_map.
 -type ast_ty() :: ast:ty().
--type type() :: #ty{} | any | empty.
 -type local_cache() :: ty_node:local_cache().
 -type variable() :: ty_variable:type().
 -type all_variables_cache() :: term(). %TODO

@@ -179,7 +179,7 @@ unparse(Dnf, ST) ->
                     ),
   {ast_lib:mk_union(ToUnion), ST2}.
 
--spec unparse_line({[T], [T], ?LEAF:type()}, T) -> {boolean(), T} when T :: ?ATOM:type().
+-spec unparse_line({[T], [T], ?LEAF:type()}, T) -> {ast_ty(), T} when T :: ?ATOM:type().
 unparse_line({Pos, Neg, Leaf}, C0) ->
   {Ps, C1} = lists:foldl(fun(P, {Acc, C00}) -> {Pp, C01} = ?ATOM:unparse(P, C00), {Acc ++ [Pp], C01} end, {[], C0}, Pos),
   {Ns, C2} = lists:foldl(fun(N, {Acc, C00}) -> {Nn, C01} = ?ATOM:unparse(N, C00), {Acc ++ [ast_lib:mk_negation(Nn)], C01} end, {[], C1}, Neg),
