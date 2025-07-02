@@ -43,7 +43,7 @@ any(Size) -> {ty_tuple, Size, [?NODE:any() || _ <- lists:seq(1, Size)]}.
 -spec components(type()) -> [?NODE:type()].
 components({ty_tuple, _, Refs}) -> Refs.
 
--spec big_intersect(nonempty_list(?NODE:type())) -> type().
+-spec big_intersect(nonempty_list(type())) -> type().
 big_intersect([X]) -> X;
 big_intersect([X | Y]) ->
     lists:foldl(fun({ty_tuple, _, Refs}, {ty_tuple, Dim, Refs2}) ->

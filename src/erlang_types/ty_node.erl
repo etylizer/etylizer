@@ -51,6 +51,7 @@
 -opaque type() :: {node, term()}.
 -opaque cache() :: #{type() => boolean()}.
 -opaque all_variables_cache() :: #{type() => _}.
+-type normalize_cache() :: #{{type_descriptor(), monomorphic_variables()} => boolean()}.
 -type type_descriptor() :: dnf_ty_variable:type().
 -type temporary_type() :: {local_ref, term()}. % used in ty_parser
 -type set_of_constraint_sets() :: constraint_set:set_of_constraint_sets().
@@ -271,7 +272,7 @@ normalize(TyNode, FixedVariables) ->
       Result
   end.
 
--spec normalize(type(), monomorphic_variables(), cache()) -> set_of_constraint_sets().
+-spec normalize(type(), monomorphic_variables(), ST) -> {set_of_constraint_sets(), ST} when ST :: normalize_cache().
 normalize(TyNode, FixedVariables, Cache) ->
   Ty = load(TyNode),
 

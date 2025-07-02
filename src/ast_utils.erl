@@ -50,7 +50,7 @@ referenced_modules(Forms) ->
                 end, Forms),
     lists:uniq(Modules).
 
--spec referenced_recursive_variables(ast:ty()) -> [ast:ty_var()].
+-spec referenced_recursive_variables(ast:ty()) -> [ast:ty_mu_var()].
 referenced_recursive_variables(Forms) ->
     Modules = utils:everything(
                 fun(T) ->
