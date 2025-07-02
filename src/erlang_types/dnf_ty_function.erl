@@ -77,7 +77,7 @@ normalize_line({Pos, Neg, T}, Fixed, ST) ->
 % domains_to_tuple(Domains) ->
 %   ty_node:make(dnf_ty_variable:leaf(ty_rec:tuples(ty_tuples:singleton(length(Domains), dnf_ty_tuple:singleton(ty_tuple:tuple(Domains)))))).
 
--spec normalize_line_cont(T, [T], [T], monomorphic_variables(), T) -> {set_of_constraint_sets(), T} when T :: ?ATOM:type().
+-spec normalize_line_cont(ty_node:type(), [T], [T], monomorphic_variables(), T) -> {set_of_constraint_sets(), T} when T :: ?ATOM:type().
 normalize_line_cont(_, _, [], _Fixed, ST) -> {[], ST}; % non-empty
 normalize_line_cont(S, P, [Function | N], Fixed, ST) ->
   T1 = ty_function:domain(Function),
