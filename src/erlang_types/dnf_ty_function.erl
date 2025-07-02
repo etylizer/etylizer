@@ -99,7 +99,7 @@ normalize_line_cont(S, P, [Function | N], Fixed, ST) ->
   {constraint_set:join(R1, R2, Fixed), ST2}.
 
 
--spec explore_function_norm(T, T, [T], monomorphic_variables(), S) -> {set_of_constraint_sets(), S} when T :: ?ATOM:type().
+-spec explore_function_norm(ty_node:type(), ty_nod, [T], monomorphic_variables(), S) -> {set_of_constraint_sets(), S} when T :: ?ATOM:type().
 explore_function_norm(BigT1, T2, [], Fixed, ST0) ->
   {NT1, ST1} = ty_node:normalize(BigT1, Fixed, ST0),
   {NT2, ST2} = ty_node:normalize(T2, Fixed, ST1),

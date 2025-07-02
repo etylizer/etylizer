@@ -17,7 +17,9 @@
 
 -export_type([type/0]).
 
--opaque type() :: binary().
+-define(ELEMENTS, 5).
+
+-opaque type() :: <<_:?ELEMENTS>>.
 -type set_of_constraint_sets() :: constraint_set:set_of_constraint_sets().
 -type ast_ty() :: ast:ty().
 
@@ -35,7 +37,6 @@
 -spec compare(T, T) -> eq | lt | gt when T :: type().
 compare(R1, R2) -> case R1 < R2 of true -> lt; _ -> case R1 > R2 of true -> gt; _ -> eq end end.
 
--define(ELEMENTS, 5).
 -spec predefined('[]' | float | pid | port | reference) -> type().
 % Map each element to a unique bit position
 predefined('[]') -> <<1:?ELEMENTS>>; 

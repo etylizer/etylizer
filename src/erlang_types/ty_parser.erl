@@ -44,7 +44,7 @@
 -type ety_ref() :: term(). %TODO etylizer reference
 -type ety_args() :: term(). %TODO [ast:ty()]
 -type database() :: {term(), term()}. 
--type local_cache() :: {{Ref :: ety_ref(), Args :: ety_args()}, temporary_ref()}. % the local cache should only consist of temporary references
+-type local_cache() :: #{{Ref :: ety_ref(), Args :: ety_args()} => temporary_ref()}. % the local cache should only consist of temporary references
 -type queue() :: queue:queue({temporary_ref(), ast_ty()}).
 
 % global state
@@ -234,7 +234,8 @@ unparse_mapping(Node) ->
 -spec is_consed(type_descriptor(), #{type_descriptor() => type()}) -> {true, type()} | false.
 is_consed(ToDefineTy, LocalDefs) ->
   case ty_node:is_consed(ToDefineTy) of
-    {true, Node} -> {true, Node};
+    {true, Node} -> 
+      {true, Node};
     _ ->
       case LocalDefs of
         #{ToDefineTy := Node} -> {true, Node};
@@ -458,9 +459,10 @@ do_convert({{var, A}, R}, Q, Cache) ->
     nomatch -> 
       {?TY:singleton(ty_variable:new_with_name(A)), Q, R, Cache};
     IdName -> 
+      % TODO test case for this branch
       % assumption: erlang types generates variables only in this pattern: $ety_integer()_name()
       [Id, Name] = string:split(IdName, "_"),
-      {?TY:singleton(ty_variable:new_with_name_and_id(list_to_integer(Id), list_to_atom(Name))), Q, R, Cache}
+      {?TY:singleton(ty_variable:with_name_and_id(list_to_integer(Id), list_to_atom(Name))), Q, R, Cache}
   end;
 
 % === term rewrites

@@ -14,7 +14,8 @@
   leq/2,
   fresh_from/1,
   new_with_name/1,
-  unparse/2
+  unparse/2,
+  with_name_and_id/2
 ]).
 
 -export_type([type/0]).
@@ -78,11 +79,10 @@ new(Name) when is_atom(Name) ->
 new_with_name(Name) when is_atom(Name) ->
   #var{id = name, name = Name}.
 
-% new_with_name_and_id(Id, Name) when is_atom(Name) ->
-%   error(todo),
-%   Current = ets:update_counter(?VAR_ETS, variable_id, {2,0}),
-%   false = (Current < Id),
-%   #var{id = Id, name = Name}.
+% used in ty_parser to convert already known variables
+-spec with_name_and_id(integer(), atom()) -> var().
+with_name_and_id(Id, Name) when is_atom(Name) ->
+  #var{id = Id, name = Name}.
 
 get_new_id() ->
   ets:update_counter(?VAR_ETS, variable_id, {2,1}).

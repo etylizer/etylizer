@@ -22,9 +22,10 @@ is_empty_line({Pos, Neg, T}, ST) ->
 -spec normalize_line({[T], [T], ?LEAF:type()}, monomorphic_variables(), S) -> {set_of_constraint_sets(), S} when T :: ?ATOM:type().
 normalize_line({[], [], _T}, _Fixed, _ST) -> error(todo);
 normalize_line({[], Neg = [_ | _], T}, Fixed, ST) ->
-  P1 = ty_rec:tuple(2, dnf_var_ty_tuple:any()),
-  P2 = ty_rec:function(2, dnf_var_ty_function:any()),
-  PPos = ty_tuple:tuple([P1, P2]),
+  % TODO test case for tally map for this branch
+  P1 = ty:tuples(ty_tuples:singleton(2, dnf_ty_tuple:any())),
+  P2 = ty:functions(ty_functions:singleton(2, dnf_ty_function:any())),
+  PPos = ty_map:map(P1, P2),
   normalize_line({[PPos], Neg, T}, Fixed, ST);
 normalize_line({Pos, Neg, T}, Fixed, ST) ->
   T = ?LEAF:any(), % sanity

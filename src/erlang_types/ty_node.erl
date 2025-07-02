@@ -152,7 +152,7 @@ load(TyNode) ->
 leq(T1, T2) ->
   is_empty(difference(T1, T2)).
 
--spec leq(T, T, cache()) -> boolean() when T :: type().
+-spec leq(T, T, ST) -> {boolean(), ST} when T :: type().
 leq(T1, T2, Cache) ->
   is_empty(difference(T1, T2), Cache).
 
@@ -239,7 +239,7 @@ conjunction(Nodes) ->
 dump(Ty) ->
   do_dump([Ty], #{}).
 
--spec do_dump(type(), M) -> M when M :: #{type() => type_descriptor()}.
+-spec do_dump([type()], M) -> M when M :: #{type() => type_descriptor()}.
 do_dump([], Res) -> Res;
 do_dump([Ty | T], Res) ->
   case maps:is_key(Ty, Res) of

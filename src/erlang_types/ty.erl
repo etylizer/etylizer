@@ -54,3 +54,11 @@ atom() ->
 -spec variable(variable()) -> type().
 variable(TyVariable) ->
   ty_node:make(dnf_ty_variable:singleton(TyVariable)).
+
+-spec tuples(ty_tuples:type()) -> type().
+tuples(T) ->
+  ty_node:make(dnf_ty_variable:tuples(T)).
+
+-spec functions(ty_functions:type()) -> type().
+functions(T) ->
+  ty_node:make(dnf_ty_variable:functions(T)).

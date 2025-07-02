@@ -30,7 +30,7 @@ is_empty_line({Pos, Neg, T}, ST) ->
   phi(ty_tuple:components(BigS), Neg, ST).
 
 
--spec phi(T, [T], S) -> {boolean(), S} when T :: ?ATOM:type().
+-spec phi([ty_node:type()], [T], S) -> {boolean(), S} when T :: ?ATOM:type().
 phi(BigS, [], ST) ->
   % TODO how big of a performance hit is non-shortcut behavior of the true branch?
   lists:foldl(
@@ -77,7 +77,7 @@ normalize_line({Pos, Neg, T}, Fixed, ST) ->
   phi_norm(ty_tuple:components(BigS), Neg, Fixed, ST).
 
 
--spec phi_norm(T, [T], monomorphic_variables(), S) -> {set_of_constraint_sets(), S} when T :: ?ATOM:type().
+-spec phi_norm([ty_node:type()], [T], monomorphic_variables(), S) -> {set_of_constraint_sets(), S} when T :: ?ATOM:type().
 phi_norm(BigS, [], Fixed, ST) ->
   lists:foldl( % FIXME shortcut
     fun(S, {Res, ST0}) -> 
