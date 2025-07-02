@@ -57,9 +57,6 @@ mk_intersection(Tys) ->
 mk_diff(T1, T2) ->
    mk_intersection([T1, mk_negation(T2)]).
 
--spec mk_union(ast:ty(), ast:ty()) -> ast:ty().
-mk_union(T1, T2) -> mk_union([T1, T2]).
-
 -spec mk_union([ast:ty()]) -> ast:ty().
 mk_union(Tys) ->
     HasAny =

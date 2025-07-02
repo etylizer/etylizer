@@ -31,7 +31,7 @@
 -endif.
 
 -type monomorphic_variables() :: etally:monomorphic_variables().
--type set_of_constraint_sets() :: contraint_set:set_of_constraint_sets().
+-type set_of_constraint_sets() :: constraint_set:set_of_constraint_sets().
 -type ast_ty() :: ast:ty().
 -type variable() :: ty_variable:type().
 -type cache() :: term(). %TODO
@@ -55,7 +55,7 @@ negated_singleton(Atom) -> {node, Atom, empty(), any()}.
 -spec leaf(?LEAF:type()) -> bdd().
 leaf(Leaf) -> {leaf, Leaf}.
 
--spec equal(bdd(), bdd()) -> bdd().
+-spec equal(type(), type()) -> boolean().
 equal({node, A1, P1, N1}, {node, A2, P2, N2}) ->
   ?ATOM:equal(A1, A2) andalso equal(P1, P2) andalso equal(N1, N2);
 equal({leaf, T1}, {leaf, T2}) -> ?LEAF:equal(T1, T2);

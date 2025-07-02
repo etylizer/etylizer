@@ -12,6 +12,8 @@
   components/1
 ]).
 
+-export_type([type/0]).
+
 -ifndef(NODE).
 -define(NODE, ty_node).
 -endif.

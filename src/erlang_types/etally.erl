@@ -2,13 +2,15 @@
 
 -define(TY, ty_node).
 
--compile(export_all).
+-type monomorphic_variables() :: term().
 
-% -export([
-%   tally/1,
-%   tally/2,
-%   is_tally_satisfiable/2
-% ]).
+-export_type([monomorphic_variables/0]).
+
+-export([
+  tally/1,
+  tally/2,
+  is_tally_satisfiable/2
+]).
 
 % -include("sanity.hrl").
 
@@ -77,10 +79,7 @@ tally_normalize(Constraints, MonomorphicVariables) ->
       % io:format(user,"[Tally I] Normalize the difference ~p:~n~p~n", [SnT, ty_node:dump(SnT)]),
       Normalized = ?TY:normalize(SnT, MonomorphicVariables),
       %io:format(user,"Meeting:~n~p~nand~n~p~n", [A, Normalized]),
-      {Time, R} = timer:tc(fun() -> constraint_set:meet(A, Normalized, MonomorphicVariables) end),
-      %io:format(user,"Result meet:~n~p~n", [R]),
-      % io:format(user,"Time: ~p us  Sizes:~p and ~p -> ~p~n", [Time, length(A), length(Normalized), length(R)]),
-      R
+      constraint_set:meet(A, Normalized, MonomorphicVariables)
               end, [[]], Constraints).
 
 tally_saturate_until_satisfiable(Normalized, MonomorphicVariables) ->
@@ -94,7 +93,7 @@ tally_saturate_until_satisfiable(Normalized, MonomorphicVariables) ->
 tally_saturate(Normalized, MonomorphicVariables) ->
   lists:foldl(
     fun
-      (ConstraintSet, [[]]) -> error(todo_shortcut);
+      (_ConstraintSet, [[]]) -> error(todo_shortcut);
       (ConstraintSet, A) ->
         constraint_set:join(A, constraint_set:saturate(ConstraintSet, MonomorphicVariables, _Cache = #{}), MonomorphicVariables) 
     end, [], Normalized).

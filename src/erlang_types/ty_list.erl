@@ -7,6 +7,8 @@
   list/1
 ]).
 
+-export_type([type/0]).
+
 -type type() :: ty_tuple:type().
 -type ast_ty() :: ast:ty().
 
