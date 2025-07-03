@@ -587,19 +587,27 @@ unparse(Node) ->
   end.
 
 
--spec debruijn(ast_ty()) -> _.
-%% Main conversion function
+-spec debruijn(ast_ty()) -> ast_ty().
 debruijn(Type) ->
     debruijn(Type, []).
 
-%% Conversion helper with environment stack
+-type var_env() :: [ast:ty_varname()].
+%% helper with variable name environment stack
+-spec debruijn(ast_ty(), var_env()) -> ast_ty().
+% local recursion
+debruijn({mu, {mu_var, Name}, Body}, Env) ->
+    NewEnv = [Name | Env],
+    {mu, {mu_var, nameless}, debruijn(Body, NewEnv)}; % add mu_var anyway to still be a ast_ty()
+debruijn({mu_var, Name}, Env) ->
+    case index_of(Name, Env) of
+        {ok, Index} -> {mu_var, list_to_atom(integer_to_list(Index))};
+        not_found -> error({unbound_variable, Name})
+    end;
+% other cases
 debruijn({singleton, _} = T, _Env) -> T;
 debruijn({bitstring}, _Env) -> {bitstring};
 debruijn({empty_list}, _Env) -> {empty_list};
 debruijn({list, U}, Env) -> {list, debruijn(U, Env)};
-debruijn({mu, {mu_var, Name}, Body}, Env) ->
-    NewEnv = [Name | Env],
-    {mu, debruijn(Body, NewEnv)};
 debruijn({nonempty_list, U}, Env) -> {nonempty_list, debruijn(U, Env)};
 debruijn({improper_list, U, V}, Env) -> 
     {improper_list, debruijn(U, Env), debruijn(V, Env)};
@@ -621,41 +629,36 @@ debruijn({named, Loc, Ref, Args}, Env) ->
     {named, Loc, Ref, debruijn_list(Args, Env)};
 debruijn({tuple_any}, _Env) -> {tuple_any};
 debruijn({tuple, Args}, Env) -> {tuple, debruijn_list(Args, Env)};
-debruijn({mu_var, Name}, Env) ->
-    case index_of(Name, Env) of
-        {ok, Index} -> {mu_var, list_to_atom(integer_to_list(Index))};
-        not_found -> error({unbound_variable, Name})
-    end;
-debruijn({var, Alpha}, Env) ->
-    case index_of(Alpha, Env) of
-        {ok, Index} -> {mu_var, Index};
-        not_found -> {var, Alpha}
-    end;
+debruijn({var, Alpha}, _Env) -> {var, Alpha};
 debruijn({union, Args}, Env) -> {union, debruijn_list(Args, Env)};
 debruijn({intersection, Args}, Env) -> {intersection, debruijn_list(Args, Env)};
 debruijn({negation, U}, Env) -> {negation, debruijn(U, Env)}.
 
 %% Helper to debruijn lists of types
+
+-spec debruijn_list([ast_ty()], var_env()) -> [ast_ty()].
 debruijn_list(Types, Env) ->
     [debruijn(T, Env) || T <- Types].
 
 %% Helper to find the index of a name in the environment
+-spec index_of(ast:ty_varname(), var_env()) -> {ok, non_neg_integer()} | not_found.
 index_of(Name, Env) ->
     index_of(Name, Env, 0).
 
+-spec index_of(ast:ty_varname(), var_env(), non_neg_integer()) -> {ok, non_neg_integer()} | not_found.
 index_of(Name, [Name|_], Index) -> {ok, Index};
 index_of(Name, [_|Rest], Index) -> index_of(Name, Rest, Index + 1);
 index_of(_, [], _) -> not_found.
 
 
-
 %% Conversion back to named variables with fresh names
+-spec convert_back(ast_ty()) -> ast_ty().
 convert_back(Type) ->
     {Result, _} = convert_back(Type, [], 0),
     Result.
 
-%% Helper for conversion back to named variables
-convert_back({mu, Body}, Env, Counter) ->
+-spec convert_back(ast_ty(), var_env(), non_neg_integer()) -> {ast_ty(), non_neg_integer()}.
+convert_back({mu, _, Body}, Env, Counter) ->
     Name = make_fresh_name(Counter),
     NewEnv = [Name | Env],
     {ConvertedBody, NewCounter} = convert_back(Body, NewEnv, Counter + 1),
@@ -713,13 +716,14 @@ convert_back(Type, Env, Counter) when is_tuple(Type) ->
 convert_back(Type, _Env, Counter) ->
     {Type, Counter}. % For non-tuple types
 
-%% Helper functions
+-spec convert_back_list([ast_ty()], var_env(), non_neg_integer()) -> {[ast_ty()], non_neg_integer()}.
 convert_back_list([], _Env, Counter) -> {[], Counter};
 convert_back_list([Type|Rest], Env, Counter) ->
     {Converted, Counter1} = convert_back(Type, Env, Counter),
     {ConvertedRest, NewCounter} = convert_back_list(Rest, Env, Counter1),
     {[Converted|ConvertedRest], NewCounter}.
 
+-spec convert_back_assocs([ast:ty_map_assoc()], var_env(), non_neg_integer()) -> {[ast:ty_map_assoc()], non_neg_integer()}.
 convert_back_assocs([], _, Counter) -> {[], Counter};
 convert_back_assocs([{Kind, K, V}|Rest], Env, Counter) ->
     {ConvertedK, Counter1} = convert_back(K, Env, Counter),
@@ -727,6 +731,7 @@ convert_back_assocs([{Kind, K, V}|Rest], Env, Counter) ->
     {ConvertedRest, NewCounter} = convert_back_assocs(Rest, Env, Counter2),
     {[{Kind, ConvertedK, ConvertedV}|ConvertedRest], NewCounter}.
 
+-spec make_fresh_name(non_neg_integer()) -> ast:ty_varname().
 make_fresh_name(Counter) ->
     list_to_atom("$var_" ++ integer_to_list(Counter)).
 

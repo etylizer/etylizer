@@ -59,9 +59,11 @@ compare(#var{id = Id1}, #var{id = Id2}) when Id1 < Id2 -> lt;
 compare(#var{id = Id1}, #var{id = Id2}) when Id1 > Id2 -> gt;
 compare(_, _) -> eq.
 
+-spec leq(type(), type()) -> boolean().
 leq(V1, V2) -> 
   compare(V1, V2) /= gt.
 
+-spec fresh_from(type()) -> type().
 fresh_from(#var{id = name, name = Name}) ->
   Id = get_new_id(),
   #var{id = Id, name = Name};
@@ -82,9 +84,11 @@ new_with_name(Name) when is_atom(Name) ->
 with_name_and_id(Id, Name) when is_atom(Name) ->
   #var{id = Id, name = Name}.
 
+-spec get_new_id() -> non_neg_integer().
 get_new_id() ->
   ets:update_counter(?VAR_ETS, variable_id, {2,1}).
 
+-spec unparse(type(), ST) -> {ast:ty(), ST}.
 unparse(#var{id = name, name = Name}, C) ->
   {{var, Name}, C};
 unparse(#var{id = Id, name = Name}, C) ->
