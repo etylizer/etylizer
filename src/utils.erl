@@ -286,6 +286,7 @@ timeout(Millis, Fun) ->
           timeout
     end.
 
+-spec is_same_file(file:filename(), file:filename()) -> boolean().
 is_same_file(Path1, Path2) ->
     case {file:read_file_info(Path1), file:read_file_info(Path2)} of
         {{ok, Info1}, {ok, Info2}} ->
@@ -328,9 +329,11 @@ compare(Cmp, [T1 | Ts1], [T2 | Ts2]) ->
 %     false -> false
 %   end.
 
+-spec replace(A, #{term() => term()}) -> A.
 replace(Term, Mapping) ->
     replace_term(Term, Mapping).
 
+-spec replace_term(A, #{term() => term()}) -> A.
 replace_term({node, _} = Ref, Mapping) ->
     case maps:find(Ref, Mapping) of
         {ok, NewTerm} -> NewTerm;
@@ -350,10 +353,8 @@ replace_term(Map, Mapping) when is_map(Map) ->
 replace_term(Term, _Mapping) ->
     Term.
 
-% -spec size(term()) -> number().
-% size(Term) ->
-%   (erts_debug:size(Term) * 8)/1024.
 
+-spec update_ets_from_map(term(), #{term() => term()}) -> _.
 update_ets_from_map(EtsTable, LocalMap) ->
   % Filter LocalMap to only new/changed entries
   ChangedEntries = maps:fold(
@@ -370,6 +371,7 @@ update_ets_from_map(EtsTable, LocalMap) ->
   % Bulk-insert changes
   ets:insert(EtsTable, ChangedEntries).
 
+-spec map(Graph :: #{Node => [Node]}) -> {#{integer() => [integer()]}, #{Node => integer()}} when Node :: term().
 map(Graph) ->
   All = lists:usort(lists:flatten([[K, V] || K := V <- Graph])),
   {Max, Mapping} = lists:foldl(fun(Node, {Id, Map}) -> {Id + 1, Map#{Node => Id}} end, {0, #{}}, All),
@@ -433,6 +435,7 @@ condense(Graph) ->
   {Roots, CondensedGraph}.
 
 
+-spec dfs(Graph :: #{Node => [Node]}) -> [Node] when Node :: term().
 dfs(Graph) ->
     Nodes = maps:keys(Graph),
     Visited = sets:new(),
@@ -451,6 +454,9 @@ dfs(Graph) ->
     ),
     lists:reverse(Order).
 
+
+-spec dfs_visit(Graph :: #{Node => [Node]}, Node :: term(), Acc :: [Node], VisitedSet :: sets:set(Node)) -> 
+    {[Node], sets:set(Node)} when Node :: term().
 dfs_visit(Graph, Node, Acc, VisitedSet) ->
     NewVisited = sets:add_element(Node, VisitedSet),
     Neighbors = maps:get(Node, Graph, []),
@@ -468,6 +474,8 @@ dfs_visit(Graph, Node, Acc, VisitedSet) ->
     ),
     {[Node | NewAcc], FinalVisited}.
 
+
+-spec reverse_graph(Graph :: #{Node => [Node]}) -> #{Node => [Node]} when Node :: term().
 reverse_graph(Graph) ->
     Keys = maps:keys(Graph),
     lists:foldl(
@@ -500,7 +508,14 @@ reverse_graph(Graph) ->
 %     {Result, NewT} = Fun({H, T}),
 %     map_with_context(Fun, NewT, [Result|Acc]).
 
-
+-spec fold_with_context(Fun, Acc, List) -> Acc when
+    Fun :: fun(({Acc, H, T}) -> {NewAcc, NewT}),
+    Acc :: term(),
+    List :: [H],
+    H :: term(),
+    T :: [H],
+    NewAcc :: term(),
+    NewT :: [H].
 fold_with_context(_Fun, Acc, []) ->
     Acc;
 fold_with_context(Fun, Acc, [H|T]) ->
