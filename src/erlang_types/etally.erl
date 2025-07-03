@@ -2,7 +2,6 @@
 
 -define(TY, ty_node).
 
--type monomorphic_variables() :: term().
 
 -export_type([monomorphic_variables/0]).
 
@@ -12,10 +11,19 @@
   is_tally_satisfiable/2
 ]).
 
+-type constraint_set() :: constraint_set:constraint_set().
+-type set_of_constraint_sets() :: constraint_set:set_of_constraint_sets().
+-type monomorphic_variables() :: #{variable() => _}.
+-type variable() :: ty_variable:type().
+-type input_constraint() :: {ty:type(), ty:type()}.
+-type input_constraints() :: [input_constraint()].
+-type tally_solutions() :: [#{variable() => ty:type()}].
+
 % -include("sanity.hrl").
 
 % early return if constraints are found to be satisfiable
 % does not solve the equations
+-spec is_tally_satisfiable(input_constraints(), monomorphic_variables()) -> boolean().
 is_tally_satisfiable(Constraints, MonomorphicVariables) ->
   % io:format(user,"TALLY~n~s~n", [set_of_constraint_sets:print(Constraints)]),
   % Normalized = ?TIME(tally_normalize, tally_normalize(Constraints, MonomorphicVariables)),
@@ -33,9 +41,10 @@ is_tally_satisfiable(Constraints, MonomorphicVariables) ->
    
   Saturated.
 
-% TODO solve
+-spec tally(input_constraints()) -> {error, []} | tally_solutions().
 tally(Constraints) -> tally(Constraints, #{}).
 
+-spec tally(input_constraints(), monomorphic_variables()) -> {error, []} | tally_solutions().
 tally(Constraints, MonomorphicVariables) ->
   % io:format(user,"TALLY~n~s~n", [set_of_constraint_sets:print(Constraints)]),
   % Normalized = ?TIME(tally_normalize, tally_normalize(Constraints, MonomorphicVariables)),
@@ -51,25 +60,12 @@ tally(Constraints, MonomorphicVariables) ->
   % Solved = ?TIME(tally_solve, tally_solve(Saturated, MonomorphicVariables)),
   Solved = tally_solve(Saturated, MonomorphicVariables),
 
-  % debug for tally 09
-  % io:format(user,"Solution~n~p~n", [Solved]),
-  % [#{
-  %   {var, name, alpha} := N1,
-  %   {var, name, beta} := N2,
-  %   {var, name, gamma} := N3,
-  %   {var, name, delta} := N4
-  %  }] = Solved,
-  % io:format(user,"Alpha: ~p~n~p~n", [N1, ty_parser:unparse(N1)]),
-  % io:format(user,"Beta: ~p~n~p~n", [N2, ty_parser:unparse(N2)]),
-  % io:format(user,"Gamma: ~p~n~p~n", [N3, ty_parser:unparse(N3)]),
-  % io:format(user,"Delta: ~p~n~p~n", [N4, ty_parser:unparse(N4)]),
-  % io:format(user,"~n~n", []),
-
   % TODO sanity: every substitution satisfies all given constraints, if no error
   % ?SANITY(substitutions_solve_input_constraints, case Solved of {error, _} -> ok; _ -> [ true = is_valid_substitution(Constraints, Subst) || Subst <- Solved] end),
  
   Solved.
 
+-spec tally_normalize(input_constraints(), monomorphic_variables()) -> set_of_constraint_sets().
 tally_normalize(Constraints, MonomorphicVariables) ->
   lists:foldl(fun
     ({_S, _T}, []) -> [];
@@ -82,6 +78,7 @@ tally_normalize(Constraints, MonomorphicVariables) ->
       constraint_set:meet(A, Normalized, MonomorphicVariables)
               end, [[]], Constraints).
 
+-spec tally_saturate_until_satisfiable(set_of_constraint_sets(), monomorphic_variables()) -> boolean().
 tally_saturate_until_satisfiable(Normalized, MonomorphicVariables) ->
   lists:any(fun(ConstraintSet) -> 
                 case constraint_set:saturate(ConstraintSet, MonomorphicVariables, _Cache = #{}) of
@@ -90,6 +87,7 @@ tally_saturate_until_satisfiable(Normalized, MonomorphicVariables) ->
                 end
             end, Normalized).
 
+-spec tally_saturate(set_of_constraint_sets(), monomorphic_variables()) -> set_of_constraint_sets().
 tally_saturate(Normalized, MonomorphicVariables) ->
   lists:foldl(
     fun
@@ -98,15 +96,19 @@ tally_saturate(Normalized, MonomorphicVariables) ->
         constraint_set:join(A, constraint_set:saturate(ConstraintSet, MonomorphicVariables, _Cache = #{}), MonomorphicVariables) 
     end, [], Normalized).
 
+-spec tally_solve(set_of_constraint_sets(), monomorphic_variables()) -> {error, []} | tally_solutions().
 tally_solve([], _MonomorphicVariables) -> {error, []};
 tally_solve(Saturated, MonomorphicVariables) ->
   Solved = solve(Saturated, MonomorphicVariables),
   [ maps:from_list(Subst) || Subst <- Solved].
 
+-spec solve(set_of_constraint_sets(), monomorphic_variables()) -> [[{variable(), ty:type()}]].
 solve(SaturatedSetOfConstraintSets, MonomorphicVariables) ->
   S = ([ solve_single(C, [], MonomorphicVariables) || C <- SaturatedSetOfConstraintSets]),
   [ unify(E) || E <- S].
 
+-type equation() :: {eq, variable(), ty:type()}.
+-spec solve_single(constraint_set(), [equation()], monomorphic_variables()) -> [equation()].
 solve_single([], Equations, _) -> Equations;
 solve_single([{SmallestVar, Left, Right} | Cons], Equations, Fix) ->
   % constraints are already sorted by variable ordering
@@ -122,6 +124,7 @@ solve_single([{SmallestVar, Left, Right} | Cons], Equations, Fix) ->
   solve_single(Cons, NewEq, Fix).
 
 
+-spec unify([equation()]) -> [{variable(), ty:type()}].
 unify([]) -> [];
 unify(EquationList) ->
   % sort to smallest variable
@@ -150,6 +153,8 @@ unify(EquationList) ->
   [{Var, NewTASigma}] ++ Sigma.
 
 
+% TODO apply substitution all at once
+-spec apply_substitution(ty:type(), [{variable(), ty:type()}]) -> ty:type().
 apply_substitution(Ty, []) -> Ty;
 apply_substitution(Ty, Substitutions) ->
   % io:format(user, "Applying: ~p with ~p~n", [Ty, Substitutions]),

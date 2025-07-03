@@ -2,8 +2,16 @@
 
 -include_lib("etylizer/src/log.hrl").
 
--export([meet/3, join/3, saturate/3]).
--export_type([set_of_constraint_sets/0]).
+-export([
+  meet/3, 
+  join/3, 
+  saturate/3
+]).
+
+-export_type([
+  set_of_constraint_sets/0, 
+  constraint_set/0
+]).
 
 % not opaque: we match on unsatisfiable and satisfiable constraint sets [] and [[]]
 -type set_of_constraint_sets() :: [constraint_set()].
