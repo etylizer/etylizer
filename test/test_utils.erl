@@ -12,7 +12,6 @@
 -export([
     extract_tests/1,
     ety_to_cduce_tally/2,
-    format_tally_config/3,
     named/1,
     named/2,
     extend_symtab/2, 
@@ -89,13 +88,6 @@ extract_tests_test() ->
             io:format("Unexpected test: ~100p", [Ts]),
             ?assert(false)
     end.
-
-% transforms a tally:tally constraints to a config file which can be loaded in the tally_tests.erl tests
-% TODO free variables #74
-format_tally_config(Constraints, _FixedVars, Symtab) ->
-    "[" ++ lists:join(",", [io_lib:format("{~p, ~p}", [S, T]) || {_, _, S, T} <- Constraints]) ++ "]." 
-    ++ "\n" 
-    ++ io_lib:format("~p.", [Symtab]).
 
 % translates the etylizer tally input constraints to a cduce tally call
 % not all constructs are supported

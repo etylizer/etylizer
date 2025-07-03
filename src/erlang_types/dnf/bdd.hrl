@@ -157,7 +157,11 @@ is_empty(Ty, ST) ->
 % tallying
 -spec normalize(type(), monomorphic_variables(), S) -> {set_of_constraint_sets(), S}.
 normalize(Dnf, Fixed, ST) ->
+  T0 = os:system_time(microsecond),
   D = dnf(Dnf),
+  %io:format(user,"~p~n", [os:system_time(microsecond)-T0]),
+  % io:format(user,"len ~p~n", [length(D)]),
+
   case D of
     [] -> {[[]], ST};
     _ ->
@@ -196,3 +200,7 @@ all_variables(Dnf, Cache) ->
   lists:foldl(fun({P, N, Leaf}, Atoms) -> 
     sets:union([Atoms, all_variables_line(P, N, Leaf, Cache)]) 
   end, sets:new(), AllLines).
+
+
+
+

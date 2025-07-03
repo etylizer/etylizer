@@ -6,11 +6,13 @@ cd $(dirname $0)
 
 # drop_r drop out out_r memory exhaustive
 # delete_with/2 split/2 delete/2 timeout
+# in/2 filter/2 join/2 timeout 
 # delete_front unknown type error
 # f2r/1 r2f/1 get/2 get_r/1 peek/1 peek_r/1 type error, imprecise
 # split_f1_to_r2 split_r1_to_f2 exhaustiveness fail
 # filter_f filtermap_r needs function optimizations
 ../../ety --build --no-deps -f -l debug stdlib/queue2.erl \
+  -i in/2 -i join/2 -i filter/2 -i filtermap/2 \
   -i out \
   -i out_r \
   -i get/2 \

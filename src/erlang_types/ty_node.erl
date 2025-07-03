@@ -39,7 +39,9 @@
 
   all_variables/1,
   all_variables/2,
-  substitute/2
+  substitute/2,
+
+  force_load/2
 ]).
 
 
@@ -144,6 +146,21 @@ define(Reference, Node) ->
   % io:format(user,"  +++++++++++++~nStore: ~p~n~p~n  +++++++++++++~n", [Reference, Node]),
   Reference.
 
+% for loading serialized test types through dump/1
+-spec force_load(T, type_descriptor()) -> T when T :: type().
+force_load(Reference = {node, Id}, Node) ->
+  ets:insert(?SYSTEM, {Reference, Node}),
+  ets:insert(?UNIQUETABLE, {Node, Reference}),
+  % update counter
+  CurrentId = ets:update_counter(?ID, id, 0),
+  case CurrentId < Id of
+    true -> 
+      io:format(user,"Current counter:~p -> ~p~n", [CurrentId, CurrentId + 1 + (Id - CurrentId)]),
+      ets:update_counter(?ID, id, (Id - CurrentId + 1));
+    _ -> ok
+  end,
+  Reference.
+
 
 -spec load(type()) -> type_descriptor().
 load(TyNode) ->
@@ -163,9 +180,9 @@ is_empty(TyNode) ->
   case ets:lookup(?CACHE, TyNode) of
     [{_, R}] -> R;
     [] ->
-      % T0 = os:system_time(microsecond),
+      T0 = os:system_time(microsecond),
       {Result, LocalCache} = is_empty(TyNode, #{}),
-      %io:format(user,"Empty ~p in ~p us~n", [TyNode, os:system_time(microsecond)-T0]),
+      % io:format(user,"Empty ~p in ~p us~n", [TyNode, os:system_time(microsecond)-T0]),
       utils:update_ets_from_map(?CACHE, LocalCache),
       ets:insert(?CACHE, [{TyNode, Result}]),
       Result
@@ -267,9 +284,16 @@ normalize(TyNode, FixedVariables) ->
   case ets:lookup(?NORMCACHE, {TyNode, FixedVariables}) of
     [{_, Result}] -> Result;
     [] ->
+      T0 = os:system_time(millisecond),
       {Result, _LocalCache} = normalize(TyNode, FixedVariables, #{}),
       ets:insert(?NORMCACHE, [{{TyNode, FixedVariables}, Result}]),
-      % io:format(user,"Normalize ~p in ~p us~n", [TyNode, Time]),
+      % case (os:system_time(millisecond)-T0) > 10000 of
+      %   true -> 
+      %     io:format(user, "~p~n", [ty_node:dump(TyNode)]),
+      %     error(eend);
+      %   _ -> ok
+      % end,
+      % io:format(user,"Normalize ~p in ~p ms~n", [TyNode, os:system_time(millisecond)-T0]),
       Result
   end.
 
@@ -278,10 +302,11 @@ normalize(TyNode, FixedVariables, Cache) ->
   Ty = load(TyNode),
 
   case Cache of
-    #{{Ty, FixedVariables} := Res} -> {Res, Cache};
+    #{{Ty, FixedVariables} := Res} -> 
+      {Res, Cache};
     _ -> 
       % assume type is normalized and add to local cache
-      {Result, LC_0} = ?TY:normalize(Ty, FixedVariables, Cache#{{Ty, FixedVariables} => [[]]}),
+      {Result, LC_0} = dnf_ty_variable:normalize(Ty, FixedVariables, Cache#{{Ty, FixedVariables} => [[]]}),
 
       case Result of 
         % satisfiable; 

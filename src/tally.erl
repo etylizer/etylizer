@@ -35,7 +35,7 @@ tally(SymTab, Constraints, FixedVars) ->
 tally(SymTab, Constraints, FixedVars, Mode) ->
 
   % uncomment to extract a tally test case config file
-  % io:format(user, "~s~n", [test_utils:format_tally_config(sets:to_list(Constraints), FixedVars, SymTab)]),
+  % io:format(user, "~s~n", [utils:format_tally_config(sets:to_list(Constraints), FixedVars, SymTab)]),
   
   % FIXME hack
   Types = symtab:get_types(SymTab),

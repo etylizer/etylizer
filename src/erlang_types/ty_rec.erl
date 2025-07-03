@@ -14,6 +14,7 @@
   all_variables/2,
   unparse/2,
 
+  pi/2,
   functions/1,
   tuples/1,
   atom/1,
@@ -53,6 +54,15 @@
 -type set_of_constraint_sets() :: constraint_set:set_of_constraint_sets().
 -type monomorphic_variables() :: etally:monomorphic_variables().
 
+find_atom_index(Atom, List) ->
+    case lists:keyfind(Atom, 1, lists:zip(List, lists:seq(1, length(List)))) of
+        {Atom, Index} -> Index;
+        false -> not_found
+    end.
+pi(Ty, Mod) ->
+  Fields = record_info(fields, ty),
+  Ind = find_atom_index(Mod, Fields),
+  element(Ind + 1, Ty).
 
 -spec compare(type(), type()) -> lt | gt | eq.
 compare(any, any) -> eq;

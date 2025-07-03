@@ -6,6 +6,8 @@
     ty, tarjan, utils
   ]]end).
 
+-compile([nowarn_export_all, export_all]).
+
 a(A, B) -> {fun_full, [A], B}.
 f() -> {fun_simple}.
 f(A, B) -> {fun_full, A, B}.
@@ -71,6 +73,15 @@ with_symtab(Fun, SymTab) -> % full symtab
   global_state:with_new_state(fun() ->
     Types = symtab:get_types(SymTab),
     maps:foreach(fun(K, V) -> ty_parser:extend_symtab(K, V) end, Types),
+    Fun()
+  end).
+
+with_type(Fun, Types) ->
+  global_state:with_new_state(fun() ->
+    % load all nodes directly, assume no collisions
+    maps:foreach(fun(Node, Descriptor) -> 
+      ty_node:force_load(Node, Descriptor)
+    end, Types),
     Fun()
   end).
 

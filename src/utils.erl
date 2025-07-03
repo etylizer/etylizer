@@ -27,7 +27,8 @@
     replace/2,
     fold_with_context/3,
     compare/3,
-    update_ets_from_map/2
+    update_ets_from_map/2,
+    format_tally_config/3
 ]).
 
 % quit exits the erlang program with the given exit code. No stack trace is produced,
@@ -390,3 +391,12 @@ fold_with_context(_Fun, Acc, []) ->
 fold_with_context(Fun, Acc, [H|T]) ->
     {NewAcc, NewT} = Fun({Acc, H, T}),
     fold_with_context(Fun, NewAcc, NewT).
+
+% transforms a tally:tally constraints to a config file which can be loaded in the tally_tests.erl tests
+% TODO free variables #74
+format_tally_config(Constraints, FixedVars, Symtab) ->
+    "[" ++ lists:join(",", [io_lib:format("{~p, ~p}", [S, T]) || {_, _, S, T} <- Constraints]) ++ "]." 
+    ++ "\n" 
+    ++ io_lib:format("~p.", [symtab:get_types(Symtab)])
+    ++ "\n" 
+    ++ io_lib:format("~p.", [FixedVars]).

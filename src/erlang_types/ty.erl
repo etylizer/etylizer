@@ -23,6 +23,10 @@ all_variables(Ty) ->
   ty_node:all_variables(Ty).
 
 % subtyping
+-spec is_empty(type()) -> boolean().
+is_empty(T) ->
+  ty_node:is_empty(T).
+
 -spec is_equivalent(T, T) -> boolean() when T :: type().
 is_equivalent(T1, T2) ->
   ty_node:leq(T1, T2) andalso ty_node:leq(T2, T1).
