@@ -107,15 +107,15 @@ parse(RawTy) ->
       % 4. define types
       % 4.1 create a graph, a reverse graph, a condensed graph, then topological sort, then define and replace if already consed
       Graph = #{K => lists:usort(V) || K := V <- #{Ref => collect_refs(Ref, ReplacedResults) || Ref := _ <- ReplacedResults}},
-      RevGraph = utils:reverse_graph(Graph),
+      RevGraph = tarjan:reverse_graph(Graph),
 
-      {Scc, Condensed} = utils:condense(Graph),
+      {Scc, Condensed} = tarjan:condense(Graph),
 
       Components = lists:foldl(fun({Node, Root}, Acc) ->
         maps:update_with(Root, fun(Nodes) -> [Node | Nodes] end, [Node], Acc)
       end, #{}, maps:to_list(Scc)),
 
-      Sort = utils:dfs(Condensed),
+      Sort = tarjan:dfs(Condensed),
       Define = [maps:get(T, Components) || T <- Sort],
 
 

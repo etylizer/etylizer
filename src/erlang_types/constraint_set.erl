@@ -1,7 +1,5 @@
 -module(constraint_set).
 
--include_lib("etylizer/src/log.hrl").
-
 -export([
   meet/3, 
   join/3, 
