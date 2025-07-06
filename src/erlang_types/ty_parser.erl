@@ -66,6 +66,7 @@ clean() ->
 
 -spec parse(ast_ty()) -> type().
 parse(RawTy) ->
+  io:format(user,"Parse: ~w~n", [RawTy]),
   % first: rename such that mu-binders have no collisions
   % use DeBruijn indexes and then convert back to fresh named variables
   % this has to be done anytime a {named, ...} reference is unfolded, too

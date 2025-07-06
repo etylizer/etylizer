@@ -184,3 +184,13 @@ mu_overlap_test() ->
       ok
     end,
   #{}).
+
+parse_bug_test() ->
+  {ok, [ListToParse]} = file:consult("test_files/erlang_types/parser/ast_bug"),
+  {ok, [Tab]} = file:consult("test_files/erlang_types/parser/ast_bug.tab"),
+  io:format(user, "~p~n", [Tab]),
+  
+  with_symtab(fun() -> 
+    [ty_parser:parse(RawTy) || RawTy <- ListToParse],
+    ok
+  end, Tab).

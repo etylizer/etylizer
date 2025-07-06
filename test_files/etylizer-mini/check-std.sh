@@ -12,7 +12,7 @@ cd $(dirname $0)
 # split_f1_to_r2 split_r1_to_f2 exhaustiveness fail
 # filter_f filtermap_r needs function optimizations
 ../../ety --build --no-deps -f -l debug stdlib/queue2.erl \
-  -i in/2 -i join/2 -i filter/2 -i filtermap/2 \
+  -i in/2 -i join/2 -i filter/2 -i filtermap/2 -i fold/3 -i any/2 -i all/2 \
   -i out \
   -i out_r \
   -i get/2 \
