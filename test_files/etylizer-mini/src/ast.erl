@@ -141,7 +141,7 @@
 
 -export([
     % format_loc/1, 
-    % loc_auto/0, min_loc/2, leq_loc/2, is_predef_name/1, is_predef_alias_name/1,
+    loc_auto/0, min_loc/2, leq_loc/2, is_predef_name/1, is_predef_alias_name/1,
     local_varname_from_any_ref/1, get_fun_name/1, loc_exp/1
 ]).
 
@@ -191,6 +191,12 @@ leq_loc({loc, _, Line1, Col1}, {loc, _, Line2, Col2}) ->
             end
     end.
 
+-spec min_loc(loc(), loc()) -> loc().
+min_loc(L1, L2) ->
+    case leq_loc(L1, L2) of
+        true -> L1;
+        false -> L2
+    end.
 
 
 % 8.1  Module Declarations and Forms

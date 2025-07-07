@@ -39,7 +39,7 @@ tally(SymTab, Constraints, FixedVars, Mode) ->
   
   % FIXME hack
   Types = symtab:get_types(SymTab),
-  io:format(user,"~w~n", [Types]),
+  % io:format(user,"~w~n", [Types]),
   maps:foreach(fun(K, V) -> ty_parser:extend_symtab(K, V) end, Types),
 
   InternalConstraints = 

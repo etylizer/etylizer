@@ -180,7 +180,7 @@ is_empty(TyNode) ->
   case ets:lookup(?CACHE, TyNode) of
     [{_, R}] -> R;
     [] ->
-      T0 = os:system_time(microsecond),
+      % T0 = os:system_time(microsecond),
       {Result, LocalCache} = is_empty(TyNode, #{}),
       % io:format(user,"Empty ~p in ~p us~n", [TyNode, os:system_time(microsecond)-T0]),
       utils:update_ets_from_map(?CACHE, LocalCache),
@@ -284,7 +284,7 @@ normalize(TyNode, FixedVariables) ->
   case ets:lookup(?NORMCACHE, {TyNode, FixedVariables}) of
     [{_, Result}] -> Result;
     [] ->
-      T0 = os:system_time(millisecond),
+      % T0 = os:system_time(millisecond),
       {Result, _LocalCache} = normalize(TyNode, FixedVariables, #{}),
       ets:insert(?NORMCACHE, [{{TyNode, FixedVariables}, Result}]),
       % case (os:system_time(millisecond)-T0) > 10000 of

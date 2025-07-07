@@ -66,7 +66,7 @@ clean() ->
 
 -spec parse(ast_ty()) -> type().
 parse(RawTy) ->
-  io:format(user,"Parse: ~w~n", [RawTy]),
+  % io:format(user,"Parse: ~w~n", [RawTy]),
   % first: rename such that mu-binders have no collisions
   % use DeBruijn indexes and then convert back to fresh named variables
   % this has to be done anytime a {named, ...} reference is unfolded, too
@@ -101,7 +101,7 @@ parse(RawTy) ->
 
       % 3. create new type references and replace temporary ones
       %    return result reference
-      ReplaceRefs = maps:from_list([{Ref, ?NODE:new_ty_node()} || Ref <- maps:keys(UnifiedResult)]),
+      ReplaceRefs = maps:from_list([{Ref, ?NODE:new_ty_node()} || Ref <- lists:sort(maps:keys(UnifiedResult))]),
       {ReplacedRef, ReplacedResults} = utils:replace({UnifiedRef, UnifiedResult}, ReplaceRefs),
       % io:format(user,"Replaced:~n~p~n", [ReplacedResults]),
 
@@ -114,7 +114,7 @@ parse(RawTy) ->
 
       Components = lists:foldl(fun({Node, Root}, Acc) ->
         maps:update_with(Root, fun(Nodes) -> [Node | Nodes] end, [Node], Acc)
-      end, #{}, maps:to_list(Scc)),
+      end, #{}, lists:sort(maps:to_list(Scc))),
 
       Sort = tarjan:dfs(Condensed),
       Define = [maps:get(T, Components) || T <- Sort],
@@ -278,7 +278,9 @@ convert(Queue, Res, LocalCache) ->
 new_local_ref() -> {local_ref, erlang:unique_integer()}.
 
 -spec new_local_ref(ast_ty()) -> temporary_ref().
-new_local_ref(Term) -> 
+new_local_ref(RawTerm) -> 
+  % we want to lookup terms modulo LOC
+  Term = replace_locs(RawTerm),
   % we could apply some simplifications here
   % &[A] = A
   % &[...,Empty,...] = Empty
@@ -310,14 +312,17 @@ new_local_ref(Term) ->
   end.
 
 -spec extend_symtab(ety_ref(), ety_ty_scheme()) -> _. 
-extend_symtab({_, Namespace, Type, ArgsCount}, TyScheme) ->
+extend_symtab({_, Namespace, Type, ArgsCount}, RawTyScheme) ->
   Ref = {Namespace, Type, ArgsCount},
+  % replace all locs 
+  TyScheme = replace_locs(RawTyScheme),
   % io:format(user,"Extending symtab by ~p~n With scheme: ~p~n", [Ref, TyScheme]),
   ets:insert(?SYMTAB, {Ref, TyScheme}).
 
 -spec lookup_ty(ety_ref()) -> ety_ty_scheme().
 lookup_ty({ty_qref, A, B, C}) ->
-  [{_, Scheme}] = ets:lookup(?SYMTAB, {A, B, C}),
+  Ref = {A, B, C},
+  [{_, Scheme}] = ets:lookup(?SYMTAB, Ref),
   Scheme;
 lookup_ty({ty_ref, A, B, C}) ->
   Ref = {A, B, C},
@@ -735,4 +740,11 @@ convert_back_assocs([{Kind, K, V}|Rest], Env, Counter) ->
 -spec make_fresh_name(non_neg_integer()) -> ast:ty_varname().
 make_fresh_name(Counter) ->
     list_to_atom("$var_" ++ integer_to_list(Counter)).
+
+
+replace_locs(Term) ->
+  utils:everywhere(fun
+    ({loc, _, _, _}) -> {ok, {loc, "AUTO", -1, -1}};
+    (_) -> error 
+  end, Term).
 

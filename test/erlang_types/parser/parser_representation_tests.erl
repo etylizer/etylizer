@@ -137,29 +137,30 @@ share_isomorphic_recursive_types_test() ->
   end,
   #{}).
 
-debug_parser_test() ->
-  with_symtab(
-    fun() -> 
-        % check if b can be reverse mapped even though its contained only as a sub-term in a
-        ty_parser:parse(tnamed(a)),
-        % TODO unstable test, how to get the node for {named, 'b'} without parsing it?
-        Named = tnamed(b),
-        Named = ty_parser:unparse({node, 4}),
-        ok
-    end,
-  #{
-    {ty_key,'.','b',0} => {ty_scheme, [], {var, alpha}},
-    {ty_key,'.','a',0} => {ty_scheme,[],
-      {union,[{tuple,[{union,[
-        {named,{loc,"AUTO", -1, -1},{ty_ref,'.','a',0},[]},
-        {named,{loc,"AUTO", -1, -1},{ty_ref,'.','b',0},[]}
-      ]}, 
-      {intersection,[
-        {named,{loc,"AUTO", -1, -1},{ty_ref,'.','a',0},[]},
-        {named,{loc,"AUTO", -1, -1},{ty_ref,'.','b',0},[]}
-      ]}]},
-      {tuple,[{named,{loc,"AUTO", -1, -1},{ty_ref,'.','a',0},[]}]} ]}} 
-   }).
+% just for debugging
+% debug_parser_test() ->
+%   with_symtab(
+%     fun() -> 
+%         % check if b can be reverse mapped even though its contained only as a sub-term in a
+%         ty_parser:parse(tnamed(a)),
+%         % TODO unstable test, how to get the node for {named, 'b'} without parsing it?
+%         Named = tnamed(b),
+%         Named = ty_parser:unparse({node, 4}),
+%         ok
+%     end,
+%   #{
+%     {ty_key,'.','b',0} => {ty_scheme, [], {var, alpha}},
+%     {ty_key,'.','a',0} => {ty_scheme,[],
+%       {union,[{tuple,[{union,[
+%         {named,{loc,"AUTO", -1, -1},{ty_ref,'.','a',0},[]},
+%         {named,{loc,"AUTO", -1, -1},{ty_ref,'.','b',0},[]}
+%       ]}, 
+%       {intersection,[
+%         {named,{loc,"AUTO", -1, -1},{ty_ref,'.','a',0},[]},
+%         {named,{loc,"AUTO", -1, -1},{ty_ref,'.','b',0},[]}
+%       ]}]},
+%       {tuple,[{named,{loc,"AUTO", -1, -1},{ty_ref,'.','a',0},[]}]} ]}} 
+%    }).
 
 mu_overlap_test() ->
   with_symtab(
@@ -188,7 +189,7 @@ mu_overlap_test() ->
 parse_bug_test() ->
   {ok, [ListToParse]} = file:consult("test_files/erlang_types/parser/ast_bug"),
   {ok, [Tab]} = file:consult("test_files/erlang_types/parser/ast_bug.tab"),
-  io:format(user, "~p~n", [Tab]),
+  % io:format(user, "~p~n", [Tab]),
   
   with_symtab(fun() -> 
     [ty_parser:parse(RawTy) || RawTy <- ListToParse],
