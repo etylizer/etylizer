@@ -76,6 +76,14 @@ with_symtab(Fun, SymTab) -> % full symtab
     Fun()
   end).
 
+with_type(Fun, {Type, Types}) when is_map(Types) ->
+  global_state:with_new_state(fun() ->
+    % load all nodes directly, assume no collisions
+    maps:foreach(fun(Node, Descriptor) -> 
+      ty_node:force_load(Node, Descriptor)
+    end, Types),
+    Fun(Type)
+  end);
 with_type(Fun, Types) ->
   global_state:with_new_state(fun() ->
     % load all nodes directly, assume no collisions

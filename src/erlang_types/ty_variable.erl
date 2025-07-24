@@ -61,7 +61,7 @@ compare(_, _) -> eq.
 
 -spec leq(type(), type()) -> boolean().
 leq(V1, V2) -> 
-  compare(V1, V2) /= gt.
+  (compare(V1, V2) == eq) orelse (compare(V1, V2) == lt).
 
 -spec fresh_from(type()) -> type().
 fresh_from(#var{id = name, name = Name}) ->

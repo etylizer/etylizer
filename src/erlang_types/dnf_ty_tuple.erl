@@ -71,10 +71,12 @@ normalize_line({[], Neg = [TNeg | _], T}, Fixed, ST) ->
   Dim = length(ty_tuple:components(TNeg)),
   PosAny = ty_tuple:any(Dim),
   normalize_line({[PosAny], Neg, T}, Fixed, ST);
-normalize_line({Pos, Neg, T}, Fixed, ST) -> 
+normalize_line(L = {Pos, Neg, T}, Fixed, ST) -> 
+  % {Res, _} = is_empty_line(L, #{}),
   T = ?LEAF:any(), % sanity
   BigS = ty_tuple:big_intersect(Pos),
-  phi_norm(ty_tuple:components(BigS), Neg, Fixed, ST).
+  {Time, {Z, ZZ}} = timer:tc(fun() -> phi_norm(ty_tuple:components(BigS), Neg, Fixed, ST) end, millisecond),
+  {Z, ZZ}.
 
 
 -spec phi_norm([ty_node:type()], [T], monomorphic_variables(), S) -> {set_of_constraint_sets(), S} when T :: ?ATOM:type().

@@ -27,6 +27,38 @@ basic_test() ->
       ok
     end, system("test_files/erlang_types/normalize/plus.config")).
 
+queue_slow1_test_() ->
+  {timeout, 50, fun() -> with_type(
+    fun(Type) -> 
+      FixedVariables = #{{var,name,'Item'} => [],{var,name,'Q1'} => [],{var,name,'Q2'} => []},
+      {T, V} = timer:tc(fun() -> ty:normalize(Type, FixedVariables) end, millisecond),
+      io:format(user,"~p ms~n~p~n", [T, length(V)]),
+      19 = length(V),
+      [{_, _, TyD}] = dnf_ty_variable:dnf(ty_node:load(Type)),
+      {_, #{2 := Tup}} = ty_rec:pi(TyD, ty_tuples),
+      Dnf = dnf_ty_tuple:dnf(Tup),
+      io:format(user,"Dnf:~n~p~n", [length(Dnf)]),
+
+      ok
+    end, system("test_files/erlang_types/normalize/queue19.config")),
+
+  with_type(
+    fun(Type) -> 
+      FixedVariables = #{{var,name,'Item'} => [],{var,name,'Q1'} => [],{var,name,'Q2'} => []},
+      {T, V} = timer:tc(fun() -> ty:normalize(Type, FixedVariables) end, millisecond),
+      io:format(user,"~p ms~n~p~n", [T, length(V)]),
+      10 = length(V),
+      [{_, _, TyD}] = dnf_ty_variable:dnf(ty_node:load(Type)),
+      {_, #{2 := Tup}} = ty_rec:pi(TyD, ty_tuples),
+      Dnf = dnf_ty_tuple:dnf(Tup),
+      io:format(user,"Dnf:~n~p~n", [length(Dnf)]),
+      ok
+    end, system("test_files/erlang_types/normalize/queue10.config"))
+                end }.
+
+
+
+
 
 % 1. caching is not the problem
 % just for debugging

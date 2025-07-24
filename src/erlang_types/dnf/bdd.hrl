@@ -24,6 +24,8 @@
 % hide built-in Erlang node function
 -compile({no_auto_import, [node/1]}).
 
+-define(INSIDE(Mod, Exp), case ?MODULE of Mod -> Exp; _ -> ok end).
+
 % make erlang_ls happy
 -ifndef(ATOM).
 -define(ATOM, ty_bool).
@@ -154,6 +156,12 @@ is_empty(Ty, ST) ->
     (Line, {true, ST0}) -> is_empty_line(Line, ST0)
   end, {true, ST}, Dnf).
 
+shuffle(List) -> shuffle(List, []).
+shuffle([], Acc) -> Acc;
+shuffle(List, Acc) ->
+    {Leading, [H | T]} = lists:split(random:uniform(length(List)) - 1, List),
+    shuffle(Leading ++ T, [H | Acc]).
+
 % tallying
 -spec normalize(type(), monomorphic_variables(), S) -> {set_of_constraint_sets(), S}.
 normalize(Dnf, Fixed, ST) ->
@@ -165,9 +173,18 @@ normalize(Dnf, Fixed, ST) ->
       lists:foldl(fun
         (_Line, {[], ST0}) -> {[], ST0};
         (Line, {CurrentConstr, ST0}) -> 
-          {ResConstr, ST1} = normalize_line(Line, Fixed, ST0),
-          {constraint_set:meet(CurrentConstr, ResConstr, Fixed), ST1}
-      end, {[[]], ST}, D)
+                      {Time, {ResConstr, ST1}} = timer:tc(fun() -> normalize_line(Line, Fixed, ST0) end, millisecond),
+          Final = constraint_set:meet(CurrentConstr, ResConstr, Fixed),
+          ?INSIDE(dnf_ty_tuple, 
+          case ResConstr of
+            [[]] -> ok;
+            _ -> 
+              % io:format(user,"Current: ~p~n", [length(ResConstr)]),
+              % io:format(user,"Current -> Next: ~p -> ~p~n", [length(CurrentConstr), length(Final)])
+              io:format(user,"~nCurrent -> Next: ~p -> ~p~n(~p ms) ~w~n", [length(CurrentConstr), length(Final), Time, (ResConstr)])
+          end),
+          {Final, ST1}
+      end, {[[]], ST}, (D))
   end.
 
 % =============

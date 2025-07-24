@@ -8,7 +8,8 @@
 -export([
   unparse/2,
 
-  dump/1,
+  dump/1, 
+  dumpp/1,
 
   compare/2,
   make/1,
@@ -155,7 +156,7 @@ force_load(Reference = {node, Id}, Node) ->
   CurrentId = ets:update_counter(?ID, id, 0),
   case CurrentId < Id of
     true -> 
-      io:format(user,"Current counter:~p -> ~p~n", [CurrentId, CurrentId + 1 + (Id - CurrentId)]),
+      % io:format(user,"Current counter:~p -> ~p~n", [CurrentId, CurrentId + 1 + (Id - CurrentId)]),
       ets:update_counter(?ID, id, (Id - CurrentId + 1));
     _ -> ok
   end,
@@ -253,6 +254,10 @@ disjunction(Nodes) ->
 -spec conjunction([type()]) -> type().
 conjunction(Nodes) ->
   lists:foldl(fun(E, Acc) -> intersect(E, Acc) end, any(), Nodes).
+
+-spec dumpp(type()) -> {type(), #{type() => type_descriptor()}}.
+dumpp(Ty) ->
+  {Ty, dump(Ty)}.
 
 -spec dump(type()) -> #{type() => type_descriptor()}.
 dump(Ty) ->

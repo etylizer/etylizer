@@ -27,13 +27,25 @@
 is_tally_satisfiable(Constraints, MonomorphicVariables) ->
   % io:format(user,"TALLY~n~s~n", [set_of_constraint_sets:print(Constraints)]),
   % Normalized = ?TIME(tally_normalize, tally_normalize(Constraints, MonomorphicVariables)),
-  % io:format(user,"~n=== Step 1: Normalize~n~p~n~p~n===~n~n", [Constraints, MonomorphicVariables]),
+  io:format(user,"~n=== Step 1: Normalize~n~p~n~p~n===~n~n", [Constraints, MonomorphicVariables]),
+  T0 = os:system_time(millisecond),
   Normalized = tally_normalize(Constraints, MonomorphicVariables),
+  % io:format(user,"Normalize in ~p ms: ~p~n~p~n", [os:system_time(millisecond)-T0, length(Normalized), Normalized]),
+  io:format(user,"Normalize in ~p ms~n", [(T1 = os:system_time(millisecond))-T0]),
+  io:format(user,"Result~n~p~n", [Normalized]),
+  % [Set] = Normalized,
+  % [begin 
+  %   io:format(user, "~n~n~p~n", [V]),
+  %   % io:format(user, "~p~n", [ty_node:dumpp(L)])
+  %   io:format(user, "~p~n", [ty_node:dumpp(R)])
+  %  end|| {V, L, R} <- Set],
+  % error(todo),
 
-  % io:format(user,"~n=== Step 2: Saturate~n~p sets of constraint sets~n", [length(Normalized)]),
+  io:format(user,"~n=== Step 2: Saturate~n~p sets of constraint sets~n", [length(Normalized)]),
   % io:format(user,"~p~n", [Normalized]),
   % Saturated = ?TIME(tally_is_satisfiable, tally_saturate_until_satisfiable(Normalized, MonomorphicVariables)),
   Saturated = tally_saturate_until_satisfiable(Normalized, MonomorphicVariables),
+  io:format(user,"Saturate in ~p ms~n", [(os:system_time(millisecond))-T1]),
   % io:format(user,"SAT~n~p~n", [Saturated]),
 
   % sanity against full tally calculation

@@ -1,8 +1,10 @@
 -module(constraint_set).
 
+-define(LAZY(Term), fun() -> Term end).
+
 -export([
-  meet/3, 
-  join/3, 
+  meet/3, meet_lazy/3,
+  join/3, join_lazy/3,
   saturate/3
 ]).
 
@@ -18,6 +20,19 @@
 -type constraint() :: {ty_variable:type(), ty:type(), ty:type()}.
 -type cache() :: #{ty:type() => []}.
 
+meet_lazy(S1, S2, Fixed) ->
+  Res = S1(),
+  case Res of
+    [] -> [];
+    _ -> meet(Res, S2(), Fixed)
+  end.
+join_lazy(S1, S2, Fixed) ->
+  Res = S1(),
+  case Res of
+    [[]] -> [[]];
+    _ -> join(Res, S2(), Fixed)
+  end.
+
 -spec meet(S, S, monomorphic_variables()) -> S when S :: set_of_constraint_sets().
 meet([], _, _) -> [];
 meet(_, [], _) -> [];
@@ -28,9 +43,11 @@ meet(S1, S2, Fixed) ->
   % this in turn could mean the whole constraint set can become unsatisfiable
   % it is appararently faster to join everything together, 
   % then minimizing the meet result by using join
+  % io:format(user,"1- meet result~n", []),
   MeetResult = [[join_constraint_sets(C1, C2, Fixed) || C2 <- S2] || C1 <- S1],
+  % io:format(user,"2- Join result~n", []),
   R = lists:foldl(fun(S, Acc) -> join(S, Acc, Fixed) end, [], MeetResult),
-  minimize(R).
+  assert_all_cs_sorted(minimize(R)).
 
 % TODO this implementation creates smaller result set of constraint sets, investigate
 % meet(S1, S2, Fixed) -> 
@@ -68,26 +85,52 @@ join(_Set1, [[]], _Fixed) -> [[]];
 join([], Set, _Fixed) -> Set;
 join(Set, [], _Fixed) -> Set;
 join(S1, S2, Fixed) ->
-  MayAdd = fun (S, Con) -> (not is_unsatisfiable(Con, Fixed)) andalso (not (has_smaller_constraint(Con, S))) end,
+  MayAdd = fun (S, Con) -> (not (has_smaller_constraint(Con, S))) end,
   S22 = lists:filter(fun(C) -> MayAdd(S1, C) end, S2),
   S11 = lists:filter(fun(C) -> MayAdd(S22, C) end, S1),
-  lists:map(fun lists:usort/1, lists:usort(S11 ++ S22)).
+  assert_all_cs_sorted((lists:usort(S11 ++ S22))).
 
 % step 2. from merge phase
 % step 1. happens by construction automatically
 -spec saturate(constraint_set(), monomorphic_variables(), cache()) -> set_of_constraint_sets().
 saturate(C, FixedVariables, Cache) ->
+  % io:format(user,"PICK: ~p~n", [C]),
   case pick_bounds_in_c(C, Cache) of
     {_Var, S, T} ->
+      T0 = os:system_time(millisecond), 
+      % io:format(user, "Difference~n", []),
       SnT = ty:difference(S, T),
+      % io:format(user,"picked var var: ~p~n", [{_Var, SnT}]),
+      %     io:format(user,"vars: ~p~n", [FixedVariables]),
+      io:format(user,"~p~n", [ty_node:dumpp(SnT)]),
 
-      Normed = ty:normalize(SnT, FixedVariables),
+      % case _Var of
+      %   {var, name, '$6'} -> 
+      %     io:format(user,"var: ~p~n", [{_Var, SnT}]),
+      %     % io:format(user,"ty:~n~p~n", [ty_node:dump(SnT)]),
+      %     Tx = os:system_time(microsecond),
+      %     NNormed = ty:normalize(SnT, FixedVariables),
+      %     io:format(user,"~p~n", [os:system_time(microsecond)-Tx]),
+      %     ok;
+      %   _ -> ok 
+      % end,
+      % io:format(user, "pick: ~p~n", [SnT]),
+
+      % io:format(user, "Normalize~n", []),
+      {TT, Normed} = timer:tc(fun() -> ty:normalize(SnT, FixedVariables) end, millisecond),
+      io:format(user,"in: ~p ms~n~p~n", [TT, length(Normed)]),
+      error(todo),
+      % io:format(user, "Meet~n", []),
+      % io:format(user, "Meet all~n~p~nwith~n~p~n", [[C], Normed]),
       NewS = meet([C], Normed, FixedVariables),
       
-      lists:foldl(fun(NewC, AllS) ->
-        NewMerged = saturate(NewC, FixedVariables, Cache#{SnT => []}),
-        join(AllS, NewMerged, FixedVariables)
-                  end, [], NewS);
+      % io:format(user,"pick: ~p ms,  ~p~n", [os:system_time(millisecond)-T0, {_Var, SnT}]),
+      % io:format(user,"pick: ~p ms,  ~p~n", [os:system_time(millisecond)-T0, SnT]),
+      Z = lists:foldl(fun(NewC, AllS) ->
+        NewMerged = ?LAZY(saturate(NewC, FixedVariables, Cache#{SnT => []})),
+        join_lazy(?LAZY(AllS), NewMerged, FixedVariables)
+                  end, [], NewS),
+      Z;
     none -> 
       [C]
   end.
@@ -182,6 +225,26 @@ minimize([Cs | Others], All) ->
       minimize(NewS, NewS);
     _ -> minimize(Others, All)
   end.
+
+assert_all_cs_sorted(S) ->
+    % Verify all constraint sets are sorted by sorting them and checking for equality
+    lists:foreach(fun(ConstraintSet) ->
+        Sorted = lists:sort(
+            fun({Var1, _, _}, {Var2, _, _}) ->
+                case ty_variable:compare(Var1, Var2) of
+                    lt -> true;
+                    eq -> true;
+                    gt -> false
+                end
+            end,
+            ConstraintSet
+        ),
+        case ConstraintSet =:= Sorted of
+            true -> ok;
+            false -> error({unsorted_constraint_set, ConstraintSet, Sorted})
+        end
+    end, S),
+    S.
 
 -ifdef(TEST).
 -include_lib("eunit/include/eunit.hrl").
