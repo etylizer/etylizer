@@ -68,6 +68,7 @@ phi(BigS, [Ty | N], ST) ->
 -spec normalize_line({[T], [T], ?LEAF:type()}, monomorphic_variables(), S) -> {set_of_constraint_sets(), S} when T :: ?ATOM:type().
 normalize_line({[], [], _T}, _Fixed, _ST) -> error(_T);
 normalize_line({[], Neg = [TNeg | _], T}, Fixed, ST) -> 
+  error(todo),
   Dim = length(ty_tuple:components(TNeg)),
   PosAny = ty_tuple:any(Dim),
   normalize_line({[PosAny], Neg, T}, Fixed, ST);
@@ -88,7 +89,7 @@ phi_norm(BigS, [], Fixed, ST) ->
     end, 
     {[], ST}, 
     BigS);
-phi_norm(BigS, [Ty | N], Fixed, ST) ->
+phi_norm(BigS, Z = [Ty | N], Fixed, ST) ->
   Solve = fun({Index, {_PComponent, NComponent}}, {Result, ST00}) -> % FIXME shortcut
     % TODO can be implemented easier with new Erlang list zipper &&
     % remove pi_Index(NegativeComponents) from pi_Index(PComponents) and continue searching

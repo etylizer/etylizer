@@ -93,7 +93,7 @@ find_subst([{Low, High} | _], [], Sols) ->
 find_subst([], [_X | _Xs], _Remaining) ->
   % Substs = lists:map(fun (S) -> subst:base_subst(S) end, Remaining),
   % ?LOG_WARN("~nToo many substitutions return from tally. Unconsumed: ~200p", Substs),
-  error("Too many substitutions returned from tally");
+  error("Too many substitutions returned from tally: " ++ integer_to_list(length(_Remaining)));
 find_subst(X = [{Low, High} | OtherTests], [TallySubst | Others], AllTally) ->
   Subst = base_subst(TallySubst),
   Valid = lists:any(

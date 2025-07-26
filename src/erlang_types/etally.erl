@@ -27,12 +27,12 @@
 is_tally_satisfiable(Constraints, MonomorphicVariables) ->
   % io:format(user,"TALLY~n~s~n", [set_of_constraint_sets:print(Constraints)]),
   % Normalized = ?TIME(tally_normalize, tally_normalize(Constraints, MonomorphicVariables)),
-  io:format(user,"~n=== Step 1: Normalize~n~p~n~p~n===~n~n", [Constraints, MonomorphicVariables]),
+  % io:format(user,"=== Step 1: Normalize~n~p~n~p~n===~n", [Constraints, MonomorphicVariables]),
   T0 = os:system_time(millisecond),
   Normalized = tally_normalize(Constraints, MonomorphicVariables),
   % io:format(user,"Normalize in ~p ms: ~p~n~p~n", [os:system_time(millisecond)-T0, length(Normalized), Normalized]),
-  io:format(user,"Normalize in ~p ms~n", [(T1 = os:system_time(millisecond))-T0]),
-  io:format(user,"Result~n~p~n", [Normalized]),
+  % io:format(user,"Normalize in ~p ms~n", [(T1 = os:system_time(millisecond))-T0]),
+  % io:format(user,"Result~n~p~n", [Normalized]),
   % [Set] = Normalized,
   % [begin 
   %   io:format(user, "~n~n~p~n", [V]),
@@ -41,11 +41,11 @@ is_tally_satisfiable(Constraints, MonomorphicVariables) ->
   %  end|| {V, L, R} <- Set],
   % error(todo),
 
-  io:format(user,"~n=== Step 2: Saturate~n~p sets of constraint sets~n", [length(Normalized)]),
+  % io:format(user,"~n=== Step 2: Saturate~n~p sets of constraint sets~n", [length(Normalized)]),
   % io:format(user,"~p~n", [Normalized]),
   % Saturated = ?TIME(tally_is_satisfiable, tally_saturate_until_satisfiable(Normalized, MonomorphicVariables)),
   Saturated = tally_saturate_until_satisfiable(Normalized, MonomorphicVariables),
-  io:format(user,"Saturate in ~p ms~n", [(os:system_time(millisecond))-T1]),
+  % io:format(user,"Saturate in ~p ms~n", [(os:system_time(millisecond))-T1]),
   % io:format(user,"SAT~n~p~n", [Saturated]),
 
   % sanity against full tally calculation
@@ -82,7 +82,7 @@ tally_normalize(Constraints, MonomorphicVariables) ->
   lists:foldl(fun
     ({_S, _T}, []) -> [];
     ({S, T}, A) -> 
-      %io:format(user,"[Tally I] Normalize ~p and ~p:~n~p~nand~n~p~n", [S, T, ty_node:dump(S), ty_node:dump(T)]),
+      % io:format(user,"[Tally I] Normalize ~p and ~p:~n~p~nand~n~p~n", [S, T, ty_node:dump(S), ty_node:dump(T)]),
       SnT = ?TY:difference(S, T),
       % io:format(user,"[Tally I] Normalize the difference ~p:~n~p~n", [SnT, ty_node:dump(SnT)]),
       Normalized = ?TY:normalize(SnT, MonomorphicVariables),

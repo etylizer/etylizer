@@ -165,7 +165,8 @@ shuffle(List, Acc) ->
 % tallying
 -spec normalize(type(), monomorphic_variables(), S) -> {set_of_constraint_sets(), S}.
 normalize(Dnf, Fixed, ST) ->
-  D = dnf(Dnf),
+  DD = dnf(Dnf),
+  D = minimize_dnf(DD),
 
   case D of
     [] -> {[[]], ST};
@@ -175,14 +176,23 @@ normalize(Dnf, Fixed, ST) ->
         (Line, {CurrentConstr, ST0}) -> 
                       {Time, {ResConstr, ST1}} = timer:tc(fun() -> normalize_line(Line, Fixed, ST0) end, millisecond),
           Final = constraint_set:meet(CurrentConstr, ResConstr, Fixed),
-          ?INSIDE(dnf_ty_tuple, 
-          case ResConstr of
-            [[]] -> ok;
-            _ -> 
-              % io:format(user,"Current: ~p~n", [length(ResConstr)]),
-              % io:format(user,"Current -> Next: ~p -> ~p~n", [length(CurrentConstr), length(Final)])
-              io:format(user,"~nCurrent -> Next: ~p -> ~p~n(~p ms) ~w~n", [length(CurrentConstr), length(Final), Time, (ResConstr)])
-          end),
+          % ?INSIDE(dnf_ty_tuple, 
+          %         io:format(user,"Current: ~p~n", [CurrentConstr])
+          %                  ),
+          % ?INSIDE(dnf_ty_tuple, 
+          %         io:format(user,"Line: ~p~nResult: ~p~n", [Line, ResConstr])
+          %                  ),
+          % ?INSIDE(dnf_ty_tuple, 
+          %         io:format(user,"Final: ~p~n", [Final])
+          %                  ),
+          % case ResConstr of
+          %   [[]] -> ok;
+          %   _ -> 
+          %     ok
+          %     % io:format(user,"Current: ~p~n", [length(ResConstr)]),
+          %     % io:format(user,"Current -> Next: ~p -> ~p~n", [length(CurrentConstr), length(Final)])
+          %     % io:format(user,"~nCurrent -> Next: ~p -> ~p~n(~p ms) ~w~n", [length(CurrentConstr), length(Final), Time, (ResConstr)])
+          % end),
           {Final, ST1}
       end, {[[]], ST}, (D))
   end.
@@ -215,6 +225,82 @@ all_variables(Dnf, Cache) ->
     sets:union([Atoms, all_variables_line(P, N, Leaf, Cache)]) 
   end, sets:new(), AllLines).
 
+minimize_dnf(Dnf) ->
+  case ?MODULE of
+    dnf_ty_variable -> minimize_var_dnf(Dnf);
+    dnf_ty_tuple -> minimize_node_dnf(Dnf);
+    dnf_ty_function -> minimize_node_dnf(Dnf);
+    _ -> Dnf
+  end.
+
+% minimize function for first layer BDDs (variables)
+minimize_var_dnf([]) -> [];
+minimize_var_dnf([X]) -> [X];
+minimize_var_dnf(Dnf) ->
+  error(Dnf),
+  Dnf.
+
+% minimize function for second layer BDDs
+minimize_node_dnf([]) -> [];
+minimize_node_dnf([X]) -> [X];
+% only minimize dnfs with more than one line
+minimize_node_dnf(Dnf) ->
+  % T0 = os:system_time(millisecond),
+  % using espresso names
+  AllVariables = lists:foldl(fun({Pos, Neg, _}, Env) -> 
+    lists:foldl(fun(Term, Env2) -> Env2#{Term => []} end, Env, Pos ++ Neg)
+                  end, #{}, Dnf),
+  % .i length(AllVariables)
+  I = maps:size(AllVariables),
+  % we have only 0/1 leafs, so we look only at '1' outputs
+  % TODO with algebraic bdds, the amount of output functions is the amount of syntactically different leafs which are not 0
+  O = 1,
+
+  % now for all variables assign an index
+  % TODO list comprehension zip?
+  {_, VariableIndices, RevVariableIndices} = maps:fold(fun(K, V, {Index, Vars, RevVars}) -> {Index+1, Vars#{K => Index}, RevVars#{Index => K}} end, {1, AllVariables, #{}}, AllVariables),
+
+  % convert all lines using the variable indices
+  AllLines = lists:foldl(fun({Pos, Neg, _}, All) -> 
+                             MinTerm = list_to_tuple(lists:duplicate(I, "-") ++ " 1"),
+                             NewMinTerm0 = lists:foldl(fun(P, Min) -> replace_index("1", P, Min, VariableIndices) end, MinTerm, Pos),
+                             NewMinTerm1 = lists:foldl(fun(N, Min) -> replace_index("0", N, Min, VariableIndices) end, NewMinTerm0, Neg),
+                             [lists:flatten(tuple_to_list(NewMinTerm1))] ++ All
+                         end, [], Dnf),
+
+  StrInput = ".i " ++ integer_to_list(I) ++ "\n.o 1\n" ++ lists:flatten(lists:join("\n", AllLines)),
+
+  
+  file:write_file("espresso_input.pla", StrInput),
+  T0 = os:system_time(millisecond),
+  Result = os:cmd("./espresso < espresso_input.pla"),
+  io:format(user,"~p ms~n", [os:system_time(millisecond) - T0]),
+  OnlyResultLines = extract_integer_lines(Result, I),
+  Inn = [string:slice(L, 0, I) || L <- AllLines],
+  Out = extract_integer_lines(Result, I),
+  E = [convert_back_to_repr(Line, RevVariableIndices, 1, {[], [], 1}) || Line <- OnlyResultLines],
+  case Inn /= Out of
+    true -> 
+      io:format(user,"Inn: ~p~n", [Inn]),
+      io:format(user,"Out: ~p~n", [Out]),
+      io:format(user,"~p ms~n", [os:system_time(millisecond) - T0]);
+    _ -> 
+      ok 
+  end,
+  E.
+
+replace_index(Val, Term, CurrentLine, VariableIndices) ->
+  erlang:setelement(maps:get(Term, VariableIndices), CurrentLine, Val).
+
+extract_integer_lines(Str, Max) ->
+    Lines = string:split(Str, "\n", all),
+    [string:slice(Line,0, Max) || Line <- Lines, is_integer_start(Line)].
+
+is_integer_start([C|_]) when C >= $0, C =< $9 -> true;
+is_integer_start(_) -> false.
 
 
-
+convert_back_to_repr([], IndexToTerms, CurrentIndex, Acc) -> Acc;
+convert_back_to_repr([$- | Rest], IndexToTerms, CurrentIndex, Acc) -> convert_back_to_repr(Rest, IndexToTerms, CurrentIndex + 1, Acc);
+convert_back_to_repr([$1 | Rest], IndexToTerms, CurrentIndex, {Pos, Neg, 1}) -> convert_back_to_repr(Rest, IndexToTerms, CurrentIndex + 1, {Pos ++ [maps:get(CurrentIndex, IndexToTerms)], Neg, 1});
+convert_back_to_repr([$0 | Rest], IndexToTerms, CurrentIndex, {Pos, Neg, 1}) -> convert_back_to_repr(Rest, IndexToTerms, CurrentIndex + 1, {Pos, Neg ++ [maps:get(CurrentIndex, IndexToTerms)], 1}).

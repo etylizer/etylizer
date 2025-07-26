@@ -102,7 +102,7 @@ saturate(C, FixedVariables, Cache) ->
       SnT = ty:difference(S, T),
       % io:format(user,"picked var var: ~p~n", [{_Var, SnT}]),
       %     io:format(user,"vars: ~p~n", [FixedVariables]),
-      io:format(user,"~p~n", [ty_node:dumpp(SnT)]),
+      % io:format(user,"~p~n", [ty_node:dumpp(SnT)]),
 
       % case _Var of
       %   {var, name, '$6'} -> 
@@ -118,8 +118,7 @@ saturate(C, FixedVariables, Cache) ->
 
       % io:format(user, "Normalize~n", []),
       {TT, Normed} = timer:tc(fun() -> ty:normalize(SnT, FixedVariables) end, millisecond),
-      io:format(user,"in: ~p ms~n~p~n", [TT, length(Normed)]),
-      error(todo),
+      % io:format(user,"in: ~p ms~n~p~n", [TT, length(Normed)]),
       % io:format(user, "Meet~n", []),
       % io:format(user, "Meet all~n~p~nwith~n~p~n", [[C], Normed]),
       NewS = meet([C], Normed, FixedVariables),
