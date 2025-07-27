@@ -1,6 +1,7 @@
 % A generic BDD parameterized over both the 'nodes and 'leafs
 
 -export([
+  assert_valid/1,
   any/0,
   empty/0,
   singleton/1,
@@ -44,6 +45,29 @@
 -type leaf() :: {leaf, ?LEAF:type()}.
 -type bdd() :: leaf() | {node, _Atom :: ?ATOM:type(), _PositiveEdge :: bdd(), _NegativeEdge :: bdd()}.
 
+assert_valid(Bdd) -> is_ordered(Bdd).
+
+-spec is_ordered(bdd()) -> boolean().
+is_ordered(Bdd = {leaf, T}) -> ?LEAF:assert_valid(T), Bdd;
+is_ordered(Bdd = {node, Atom, PositiveEdge, NegativeEdge}) ->
+  io:format(user,"Checking ~p~n", [Bdd]),
+    % Check that all atoms in positive and negative edges are smaller than current atom
+    check_branch(Atom, PositiveEdge),
+    check_branch(Atom, NegativeEdge),
+    % Recursively check the subtrees
+    is_ordered(PositiveEdge),
+    is_ordered(NegativeEdge),
+    Bdd.
+
+-spec check_branch(?ATOM:type(), bdd()) -> _.
+check_branch(_ParentAtom, Bdd = {leaf, _}) -> ok;
+check_branch(ParentAtom, Bdd = {node, ChildAtom, Left, Right}) ->
+    case ?ATOM:compare(ParentAtom, ChildAtom) of
+        lt -> check_branch(ParentAtom, Left), check_branch(ParentAtom, Right);
+        eq -> error({eq, ParentAtom, ChildAtom, Bdd}); % Shouldn't have equal atoms in proper BDD
+        gt -> error({gt, ParentAtom, ChildAtom, Bdd})  % Child is greater than parent - invalid
+    end.
+
 -spec any() -> bdd().
 any() -> {leaf, ?LEAF:any()}.
 
@@ -80,8 +104,16 @@ compare({node, A1, P1, N1}, {node, A2, P2, N2}) ->
   end.
 
 -spec negate(bdd()) -> bdd().
-negate({leaf, A}) -> {leaf, ?LEAF:negate(A)};
-negate({node, Atom, Pos, Neg}) -> {node, Atom, negate(Pos), negate(Neg)}.
+negate(Bdd1 = {leaf, A}) -> 
+  is_ordered(Bdd1),
+  Z = {leaf, ?LEAF:negate(A)},
+  io:format(user,"Doing OP: ~p on~n~n~p~nResult:~p~n", [negate, Bdd1, Z]),
+  is_ordered(Z);
+negate(Bdd1 = {node, Atom, Pos, Neg}) -> 
+  is_ordered(Bdd1),
+  Z = {node, Atom, negate(Pos), negate(Neg)},
+  io:format(user,"Doing OP: ~p on~n~n~p~nResult:~p~n", [negate, Bdd1, Z]),
+  is_ordered(Z).
 
 
 % simplification for BDDs
@@ -98,6 +130,8 @@ normalize(X) -> X.
 
 -spec op(fun((?LEAF:type(), ?LEAF:type()) -> ?LEAF:type()), bdd(), bdd()) -> bdd().
 op(LeafOperation, Bdd1, Bdd2) ->
+  is_ordered(Bdd1),
+  is_ordered(Bdd2),
   Op = fun ROp(T1, T2) ->
     Res = 
     case {T1, T2} of
@@ -107,10 +141,13 @@ op(LeafOperation, Bdd1, Bdd2) ->
       {{node, A, P, N}, {leaf, L}} -> 
         {node, A, ROp(P, {leaf, L}), ROp(N, {leaf, L})};
       {{node, A1, P1, N1}, {node, A2, P2, N2}} ->
+        io:format(user,"Compare: ~w and ~w: ~p~n", [A1, A2, ?ATOM:compare(A1, A2)]),
         case ?ATOM:compare(A1, A2) of
           lt ->
+            io:format(user,"A1 is less than, putting A1 first:~w < ~w~n", [A1, A2]),
             {node, A1, ROp(P1, T2), ROp(N1, T2)};
           gt ->
+            io:format(user,"A2 is greater than, putting A2 first~n", []),
             {node, A2, ROp(T1, P2), ROp(T1, N2)};
           eq ->
             {node, A1, ROp(P1, P2), ROp(N1, N2)}
@@ -118,7 +155,9 @@ op(LeafOperation, Bdd1, Bdd2) ->
     end,
     normalize(Res)
   end,
-  Op(Bdd1, Bdd2).
+  Z = Op(Bdd1, Bdd2),
+  io:format(user,"Doing OP: ~p on~n~p~n~p~nResult:~p~n", [LeafOperation, Bdd1, Bdd2, Z]),
+  is_ordered(Z).
 
 -spec union(bdd(), bdd()) -> bdd().
 union(T1, T2) -> 
@@ -156,16 +195,13 @@ is_empty(Ty, ST) ->
     (Line, {true, ST0}) -> is_empty_line(Line, ST0)
   end, {true, ST}, Dnf).
 
-shuffle(List) -> shuffle(List, []).
-shuffle([], Acc) -> Acc;
-shuffle(List, Acc) ->
-    {Leading, [H | T]} = lists:split(random:uniform(length(List)) - 1, List),
-    shuffle(Leading ++ T, [H | Acc]).
-
 % tallying
 -spec normalize(type(), monomorphic_variables(), S) -> {set_of_constraint_sets(), S}.
 normalize(Dnf, Fixed, ST) ->
   DD = dnf(Dnf),
+  ?INSIDE(dnf_ty_tuple, 
+          io:format(user,"Current: ~p~n", [Dnf])
+                   ),
   D = minimize_dnf(DD),
 
   case D of
@@ -176,9 +212,6 @@ normalize(Dnf, Fixed, ST) ->
         (Line, {CurrentConstr, ST0}) -> 
                       {Time, {ResConstr, ST1}} = timer:tc(fun() -> normalize_line(Line, Fixed, ST0) end, millisecond),
           Final = constraint_set:meet(CurrentConstr, ResConstr, Fixed),
-          % ?INSIDE(dnf_ty_tuple, 
-          %         io:format(user,"Current: ~p~n", [CurrentConstr])
-          %                  ),
           % ?INSIDE(dnf_ty_tuple, 
           %         io:format(user,"Line: ~p~nResult: ~p~n", [Line, ResConstr])
           %                  ),
@@ -227,7 +260,7 @@ all_variables(Dnf, Cache) ->
 
 minimize_dnf(Dnf) ->
   case ?MODULE of
-    dnf_ty_variable -> minimize_var_dnf(Dnf);
+    % dnf_ty_variable -> minimize_var_dnf(Dnf);
     dnf_ty_tuple -> minimize_node_dnf(Dnf);
     dnf_ty_function -> minimize_node_dnf(Dnf);
     _ -> Dnf
@@ -237,7 +270,19 @@ minimize_dnf(Dnf) ->
 minimize_var_dnf([]) -> [];
 minimize_var_dnf([X]) -> [X];
 minimize_var_dnf(Dnf) ->
-  error(Dnf),
+  AllVariables = lists:foldl(fun({Pos, Neg, _}, Env) -> 
+    lists:foldl(fun(Term, Env2) -> Env2#{Term => []} end, Env, Pos ++ Neg)
+                  end, #{}, Dnf),
+  % .i length(AllVariables)
+  I = maps:size(AllVariables),
+
+  AllOutputs = lists:foldl(fun({_, _, T}, Env) -> 
+                               Env#{T => []}
+                  end, #{}, Dnf),
+  % .o length(AllOutputs)
+  O = maps:size(AllOutputs),
+
+  error({Dnf, AllVariables, AllOutputs}),
   Dnf.
 
 % minimize function for second layer BDDs
@@ -252,9 +297,15 @@ minimize_node_dnf(Dnf) ->
                   end, #{}, Dnf),
   % .i length(AllVariables)
   I = maps:size(AllVariables),
+
   % we have only 0/1 leafs, so we look only at '1' outputs
-  % TODO with algebraic bdds, the amount of output functions is the amount of syntactically different leafs which are not 0
-  O = 1,
+  % with algebraic bdds, the amount of output functions 
+  % is the amount of syntactically different leafs which are not 0
+  AllOutputs = lists:foldl(fun({_, _, T}, Env) -> 
+                               Env#{T => []}
+                  end, #{}, Dnf),
+  % .o length(AllOutputs)
+  O = maps:size(AllOutputs),
 
   % now for all variables assign an index
   % TODO list comprehension zip?
@@ -281,6 +332,7 @@ minimize_node_dnf(Dnf) ->
   E = [convert_back_to_repr(Line, RevVariableIndices, 1, {[], [], 1}) || Line <- OnlyResultLines],
   case Inn /= Out of
     true -> 
+      io:format(user,"Inn raw:~n~p~n", [Dnf]),
       io:format(user,"Inn: ~p~n", [Inn]),
       io:format(user,"Out: ~p~n", [Out]),
       io:format(user,"~p ms~n", [os:system_time(millisecond) - T0]);

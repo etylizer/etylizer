@@ -24,9 +24,8 @@
 -type ast_ty() :: ast:ty().
 
 -spec compare(type(), type()) -> lt | gt | eq.
-compare(A, B) when A < B -> lt;
-compare(A, B) when A > B -> gt;
-compare(_, _) -> eq.
+compare({ty_tuple, Dim, C}, {ty_tuple, Dim, C2}) ->
+  utils:compare(fun ?NODE:compare/2, C, C2).
 
 -spec equal(type(), type()) -> boolean().
 equal(P1, P2) -> compare(P1, P2) =:= eq.

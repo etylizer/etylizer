@@ -107,8 +107,15 @@ compare({node, _Id1}, {node, _Id2}) -> eq;
 compare({local_ref, Id1}, {local_ref, Id2}) when Id1 < Id2 -> lt;
 compare({local_ref, Id1}, {local_ref, Id2}) when Id1 > Id2 -> gt;
 compare({local_ref, _Id1}, {local_ref, _Id2}) -> eq;
-compare({local_ref, _}, {node, _}) -> lt;
-compare({node, _}, {local_ref, _}) -> gt.
+% now this gets hacky
+% we need to ensure that comparing these two structures behaves as if 
+% the local_ref was replaced, i.e. the order result be the same
+% before and after replacing the local_ref
+% otherwise we get invalid BDDs
+compare(L = {local_ref, _}, N = {node, _}) -> 
+  compare(ty_parser:lookup_ref(L), N);
+compare(N = {node, _}, L = {local_ref, _}) -> 
+  compare(N, ty_parser:lookup_ref(L)).
 
 -spec make(type_descriptor()) -> type().
 make(Ty) ->
@@ -140,11 +147,12 @@ new_ty_node() ->
 
 -spec define(T, type_descriptor()) -> T when T :: type().
 define(Reference, Node) ->
+  io:format(user,"  +++++++++++++~nStore: ~p~n~p~n  +++++++++++++~n", [Reference, Node]),
+  dnf_ty_variable:assert_valid(Node),
   [] = ets:lookup(?SYSTEM, Reference),
   [] = ets:lookup(?UNIQUETABLE, {Node, Reference}),
   ets:insert(?SYSTEM, {Reference, Node}),
   ets:insert(?UNIQUETABLE, {Node, Reference}),
-  % io:format(user,"  +++++++++++++~nStore: ~p~n~p~n  +++++++++++++~n", [Reference, Node]),
   Reference.
 
 % for loading serialized test types through dump/1

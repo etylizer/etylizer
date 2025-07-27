@@ -1,6 +1,8 @@
 -module(ty_rec).
 
 -export([
+  assert_valid/1,
+
   compare/2,
   equal/2,
   any/0,
@@ -53,6 +55,14 @@
 -type all_variables_cache() :: term(). %TODO
 -type set_of_constraint_sets() :: constraint_set:set_of_constraint_sets().
 -type monomorphic_variables() :: etally:monomorphic_variables().
+
+% TODO
+assert_valid(any) -> ok;
+assert_valid(empty) -> ok;
+assert_valid(#ty{ty_tuples = T}) ->
+  io:format(user,"Do1 ~n", []),
+  ty_tuples:assert_valid(T),
+  ok.
 
 find_atom_index(Atom, List) ->
     case lists:keyfind(Atom, 1, lists:zip(List, lists:seq(1, length(List)))) of

@@ -2,6 +2,13 @@
 
 -compile([export_all, nowarn_export_all]).
 
+% TODO 
+% the mixing of {local_ref, ...} and {node, ...} inside a BDD structure
+% creates very ugly side effects and results in a complex implementation
+% if we don't take care to ensure the correct ordering between all interactions of local_refs and nodes,
+% one very easily generates invalid BDDs
+% is there a more elegant solution providing the same guarantees with comparable efficiency?
+
 % a mapping from to-parse terms to a shorter form of local temporary references
 -define(TERMREFS, ty_parser_term_references).
 
@@ -15,6 +22,11 @@
 % replacing the temporary reference at the end by a real reference
 -define(CACHE, ty_parser_cache).
 
+% a mapping from temporary references to real references
+% used for correct ordering inside a BDD 
+% to be used by ty_node:compare/2 when comparing temporary references against real references
+-define(LOCAL_TO_NODE_MAPPING, ty_parser_local_to_node_Mapping).
+
 % a cache of discarded references which disappear after unification
 % used to re-map local references to the unified reference, if possible
 -define(UNIFY, ty_parser_unify).
@@ -26,11 +38,12 @@
 % this is a bit of a hack;
 % during conversion, save all encountered {named, ...} types
 % after conversion, convert them (which have not yet been converted yet) one by one again and save that reverse mapping
+% TODO is there a more elegant solution for saving that information for unparsing?
 -define(UNPARSE_NAMED_MAPPING, ty_parser_unparse_name_cache).
 -define(UNPARSE_NAMED_QUEUE, ty_parser_unparse_queue).
 -define(UNPARSE_NAMED_FINISHED, ty_parser_unparse_finish).
 
--define(ALL_ETS, [?CACHE, ?SYMTAB, ?TERMREFS, ?UNIFY, ?UNPARSE_CACHE, ?UNPARSE_NAMED_QUEUE, ?UNPARSE_NAMED_FINISHED, ?UNPARSE_NAMED_MAPPING]).
+-define(ALL_ETS, [?CACHE, ?SYMTAB, ?TERMREFS, ?UNIFY, ?UNPARSE_CACHE, ?UNPARSE_NAMED_QUEUE, ?UNPARSE_NAMED_FINISHED, ?UNPARSE_NAMED_MAPPING, ?LOCAL_TO_NODE_MAPPING]).
 
 -define(TY, dnf_ty_variable).
 -define(NODE, ty_node).
@@ -64,8 +77,21 @@ clean() ->
   end,
   logger:debug("~p state cleaned", [?MODULE]).
 
+lookup_ref(Ref) ->
+  % we have already created the node beforehand, it needs to exist
+  [{Ref, Node}] = ets:lookup(?LOCAL_TO_NODE_MAPPING, Ref),
+  Node.
+
+create_ref(Ref) ->
+  % we have already created the node beforehand, it needs to exist
+  case ets:lookup(?LOCAL_TO_NODE_MAPPING, Ref) of
+    [] -> true = ets:insert_new(?LOCAL_TO_NODE_MAPPING, [{Ref, ty_node:new_ty_node()}]);
+    _ -> ok
+  end.
+
 -spec parse(ast_ty()) -> type().
 parse(RawTy) ->
+  io:format(user,"Phase 0 start~n", []),
   % io:format(user,"Parse: ~w~n", [RawTy]),
   % first: rename such that mu-binders have no collisions
   % use DeBruijn indexes and then convert back to fresh named variables
@@ -74,20 +100,24 @@ parse(RawTy) ->
 
   % create a reference, check if it is inside the cache
   LocalRef = new_local_ref(Ty),
+  io:format(user,"Phase 0.5 refs~n", []),
 
   FinalResult = 
   case ets:lookup(?CACHE, LocalRef) of
     [{LocalRef, Node}] -> 
+  io:format(user,"Phase done: cache~n", []),
       Node;
     _ ->
       % 1. Convert to temporary local representation
       %    Create a temporary type equation with a first entrypoint LocalRef = ...
       %    and parse the type layer by layer
       %    use local type references stored in a local map
+      io:format(user,"Phase 1 convert...~n", []),
       ({{NewR, NewTUnsorted}, _NewCache}) = convert(queue:from_list([{LocalRef, Ty}]), {_RefToTy = #{}, _TyToRef = #{}}, #{}),
       % can have duplicates, e.g. TODO explain
       NewT = #{K => lists:usort(V) || K := V <- NewTUnsorted},
       % io:format(user,"Result of Converting:~n~p~n~p~n", [NewR, NewT]),
+      io:format(user,"Phase 1 done~n", []),
 
       % 2. (Locally) unify the results
       %    There can be many duplicate type references;
@@ -98,12 +128,17 @@ parse(RawTy) ->
       %    replace all ref2 by ref1, so that no unecessary nodes are created
       {UnifiedRef, UnifiedResult} = unify(LocalRef, {NewR, NewT}),
       % io:format(user,"Unified:~n~p~n", [UnifiedResult]),
+      io:format(user,"Phase 2 done~n", []),
 
       % 3. create new type references and replace temporary ones
       %    return result reference
-      ReplaceRefs = maps:from_list([{Ref, ?NODE:new_ty_node()} || Ref <- lists:sort(maps:keys(UnifiedResult))]),
+      io:format(user,"UnifiedResult: ~p~n", [UnifiedResult]),
+      % ReplaceRefs = maps:from_list([{Ref, ?NODE:new_ty_node()} || Ref <- lists:sort(maps:keys(UnifiedResult))]),
+      ReplaceRefs = maps:from_list([{Ref, lookup_ref(Ref)} || Ref <- lists:sort(maps:keys(UnifiedResult))]),
       {ReplacedRef, ReplacedResults} = utils:replace({UnifiedRef, UnifiedResult}, ReplaceRefs),
       % io:format(user,"Replaced:~n~p~n", [ReplacedResults]),
+      io:format(user,"Phase 3 done~n", []),
+      assert_replaced_refs_have_good_order(ReplaceRefs),
 
       % 4. define types
       % 4.1 create a graph, a reverse graph, a condensed graph, then topological sort, then define and replace if already consed
@@ -122,6 +157,7 @@ parse(RawTy) ->
 
       DefineAndReplace = fun({{ReplacedRef1, RefMapping, ResultMapping, LocalDefinitions}, Def, Rest}) -> 
         {NewReplacedRef, NewRef, NewRes, NewLocalDefinitions, NewRest} = lists:foldl(fun(DefineOrReplace, Acc = {ReplacedRef0, Refmapping, ResultMapping0, LocalDefinitions0, Rest0}) ->
+          io:format(user,"Is defined?? ~p: ~p~n", [DefineOrReplace, ?NODE:is_defined(DefineOrReplace)]),
           case ?NODE:is_defined(DefineOrReplace) of
             true -> % from previous parsing runs
               Acc;
@@ -177,10 +213,13 @@ parse(RawTy) ->
 
     % Modifying the context is not needed
     % TODO refactor
+    io:format(user,"Replace to define results...~n~p~n~p~n", [Define, ReplaceRefs]),
     {FinalReplacedRef, FinalReplaceRefs, FinalReplacedResults, _FinalLocalDefinitions} = utils:fold_with_context(DefineAndReplace, {ReplacedRef, ReplaceRefs, ReplacedResults, _LocalDefinitions = #{}}, Define),
+    io:format(user,"Phase 4 done~n", []),
 
     % define the final results globally
-    [?NODE:define(NodeRef, Record) || NodeRef := Record <- FinalReplacedResults],
+    io:format(user,"Defining types...~n~p~n", [FinalReplacedResults]),
+    [?NODE:define(NodeRef, Record) || NodeRef := Record <- FinalReplacedResults, is_not_defined(NodeRef, Record)],
 
     % 5. update global cache, there are now old entries to overwrite
     %    this invariant has to be kept up inside do_convert
@@ -201,6 +240,7 @@ parse(RawTy) ->
     FinalReplacedRef
   end,
   
+  io:format(user,"Phase 5: Generating reverse mapping...~n", []),
   % generate the reverse named mapping at the end
   InQueue = ets:tab2list(?UNPARSE_NAMED_QUEUE),
   lists:foreach(
@@ -222,8 +262,17 @@ parse(RawTy) ->
         _ -> ok 
       end 
     end, InQueue),
+
+  io:format(user,"Phase finished...~n", []),
   
   FinalResult.
+
+is_not_defined(Node, Rec) ->
+  case ets:lookup(ty_node_system, Node) of
+    [] -> true;
+    [{Node, Rec}] -> false; % filter this FIXME why does this happen?
+    _ -> error(sanity) % this should not happen
+  end.
 
 -spec unparse_mapping(type()) -> {hit, ast_ty()} | no_hit.
 unparse_mapping(Node) ->
@@ -306,10 +355,22 @@ new_local_ref(RawTerm) ->
   % we replace that generated reference with the unified reference,
   % to be able to hit the global cache 
   % (no unified discarded reference appears in the global cache)
-  case ets:lookup(?UNIFY, Reff) of
+  Final = case ets:lookup(?UNIFY, Reff) of
     [{Reff, UnifiedRef}] -> UnifiedRef;
     _ -> Reff 
-  end.
+  end,
+
+  % this temporary reference has to behave exactly as a real node reference
+  % when ordering inside a BDD
+  % therefore, when comparing a temporary reference with a real reference
+  % we have to already know to what the temporary reference would map to (in ty_node:compare/2)
+  % therefore, we create a real reference beforehand and save it in the ty_parser state
+  % whenever ty_node tries to compare a temporary reference against a real reference
+  % ty_node has to look up the future mapping in ty_parser
+  % create the future node mapping if not created already
+  create_ref(Final),
+
+  Final.
 
 -spec extend_symtab(ety_ref(), ety_ty_scheme()) -> _. 
 extend_symtab({_, Namespace, Type, ArgsCount}, RawTyScheme) ->
@@ -528,6 +589,7 @@ do_convert({{tuple, Comps}, R}, Q, Cache) ->
     end, {[], Q}, Comps),
     
   T = ty_tuples:singleton(length(Comps), dnf_ty_tuple:singleton(ty_tuple:tuple(ParsedComponents))),
+  io:format(user,"Tuples: ~p~n", [T]),
   {?TY:tuples(T), Q0, R, Cache};
 
 % lists
@@ -548,9 +610,12 @@ queue_if_new(Element, Queue) ->
   Id = new_local_ref(Element),
   case ets:lookup(?CACHE, Id) of
     % to be converted later, add to queue, return temporary reference
-    [] -> {Id, queue:in({Id, Element}, Queue)};
+    [] -> 
+      {Id, queue:in({Id, Element}, Queue)};
     % if already known, don't process and return a real reference
-    [{Id, Node}] -> {Node, Queue}
+    [{Id, Node}] -> 
+      io:format(user,"Got Node: ~p~n", [{Id, Node}]),
+      {Node, Queue}
   end.
 
 -spec unify(temporary_ref(), database()) -> {temporary_ref(), #{temporary_ref() => ty_rec()}}.
@@ -741,6 +806,24 @@ convert_back_assocs([{Kind, K, V}|Rest], Env, Counter) ->
 make_fresh_name(Counter) ->
     list_to_atom("$var_" ++ integer_to_list(Counter)).
 
+assert_replaced_refs_have_good_order(Refs) ->
+  io:format(user,"Validating temporary -> node replacement order~n~p~n", [Refs]),
+  validate_map(Refs),
+  ok.
+
+validate_map(Map) ->
+    Pairs = lists:keysort(1, maps:to_list(Map)),
+    check_pairs(Pairs).
+
+check_pairs([]) -> true;
+check_pairs([_]) -> true;
+check_pairs([{K1, {node, N1}}, {K2, {node, N2}} | Rest]) ->
+    case K1 < K2 of
+        true when N1 < N2 -> check_pairs([{K2, {node, N2}} | Rest]);
+        true -> false;  % K1 < K2 but N1 >= N2
+        false -> check_pairs([{K2, {node, N2}} | Rest])  % K1 >= K2, no requirement
+    end;
+check_pairs(_) -> false.  % invalid value format
 
 replace_locs(Term) ->
   utils:everywhere(fun

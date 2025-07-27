@@ -12,6 +12,7 @@
 -type all_variables_cache() :: term(). % TODO
 
 -export([
+  assert_valid/1,
   compare/2,
   singleton/2,
   any/0,
@@ -25,6 +26,10 @@
   unparse/2,
   all_variables/2
 ]).
+
+assert_valid({D, M}) ->
+  ?MULTIARITY:assert_valid(D),
+  maps:foreach(fun(_, V) -> ?MULTIARITY:assert_valid(V) end, M).
 
 -spec compare(T, T) -> eq | lt | gt when T :: type().
 compare({D, M}, {D2, M2}) ->
