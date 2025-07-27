@@ -12,6 +12,7 @@
 -type all_variables_cache() :: term(). % TODO
 
 -export([
+  reorder/1,
   assert_valid/1,
   compare/2,
   singleton/2,
@@ -26,6 +27,9 @@
   unparse/2,
   all_variables/2
 ]).
+
+reorder({D, M}) ->
+  {?MULTIARITY:reorder(D), maps:map(fun(_, V) -> ?MULTIARITY:reorder(V) end, M)}.
 
 assert_valid({D, M}) ->
   ?MULTIARITY:assert_valid(D),

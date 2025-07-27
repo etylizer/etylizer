@@ -132,7 +132,7 @@ parse(RawTy) ->
 
       % 3. create new type references and replace temporary ones
       %    return result reference
-      io:format(user,"UnifiedResult: ~p~n", [UnifiedResult]),
+      io:format(user,"UnifiedResult:~n~p~n", [UnifiedResult]),
       % ReplaceRefs = maps:from_list([{Ref, ?NODE:new_ty_node()} || Ref <- lists:sort(maps:keys(UnifiedResult))]),
       ReplaceRefs = maps:from_list([{Ref, lookup_ref(Ref)} || Ref <- lists:sort(maps:keys(UnifiedResult))]),
       {ReplacedRef, ReplacedResults} = utils:replace({UnifiedRef, UnifiedResult}, ReplaceRefs),
@@ -176,8 +176,16 @@ parse(RawTy) ->
 
                   FinalResultMapping = lists:foldl(fun(E, Acc0) -> 
                     Val = maps:get(E, Acc0),
+                    dnf_ty_variable:assert_valid(Val),
+
+                    % just a syntactical replacement is not valid here
+                    % e.g. replacing {node, 80} by {node, 1} 
+                    % needs to trigger a reorder of the BDD
                     Fin = utils:replace(Val, #{ToDefine => N}),
-                    Acc0#{E => Fin} 
+                    io:format(user,"REPLACE ~p -> ~p~n", [ToDefine, N]),
+                    io:format(user,"Inside ~p~n", [Val]),
+                    dnf_ty_variable:assert_valid(FinalReordered = dnf_ty_variable:reorder(Fin)),
+                    Acc0#{E => FinalReordered} 
                   end, SmallerResultMapping, NodeContainedIn),
 
                   NewReplacedRef = case ReplacedRef0 of ToDefine -> N; _ -> ReplacedRef0 end,

@@ -1,6 +1,7 @@
 -module(dnf_ty_predefined).
 
 -export([
+  reorder/1,
   predefined/1,
   compare/2,
   empty/0,
@@ -34,6 +35,8 @@
 % intersect(P1, P2) -> [X || X <- P1, lists:member(X, P2)].
 % diff(I1, I2) -> intersect(I1, negate(I2)).
  
+reorder(X) -> X.
+
 -spec compare(T, T) -> eq | lt | gt when T :: type().
 compare(R1, R2) -> case R1 < R2 of true -> lt; _ -> case R1 > R2 of true -> gt; _ -> eq end end.
 

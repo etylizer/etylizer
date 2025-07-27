@@ -2,6 +2,7 @@
 
 -export([
   assert_valid/1,
+  reorder/1,
 
   compare/2,
   equal/2,
@@ -56,11 +57,15 @@
 -type set_of_constraint_sets() :: constraint_set:set_of_constraint_sets().
 -type monomorphic_variables() :: etally:monomorphic_variables().
 
+reorder(any) -> any;
+reorder(empty) -> empty;
+reorder(Ty) ->
+  simpl_to_repr(map(fun(Module, Value) -> Module:reorder(Value) end, Ty)).
+
 % TODO
 assert_valid(any) -> ok;
 assert_valid(empty) -> ok;
 assert_valid(#ty{ty_tuples = T}) ->
-  io:format(user,"Do1 ~n", []),
   ty_tuples:assert_valid(T),
   ok.
 

@@ -3,6 +3,7 @@
 % currently only supported: bitstring yes/no
 
 -export([
+  reorder/1,
   compare/2,
   empty/0,
   any/0,
@@ -23,6 +24,7 @@
 -type set_of_constraint_sets() :: constraint_set:set_of_constraint_sets().
 -type ast_ty() :: ast:ty().
 
+reorder(X) -> X.
 -spec compare(T, T) -> eq | lt | gt when T :: type().
 compare(X, X) -> eq; compare(1, 0) -> gt; compare(0, 1) -> lt.
 -spec empty() -> type().

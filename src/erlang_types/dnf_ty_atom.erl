@@ -1,6 +1,7 @@
 -module(dnf_ty_atom).
 
 -export([
+  reorder/1,
   compare/2,
   empty/0,
   any/0,
@@ -22,6 +23,8 @@
 -opaque type() :: {gb_sets:set(), finite | cofinite}.
 -type set_of_constraint_sets() :: constraint_set:set_of_constraint_sets().
 -type ast_ty() :: ast:ty().
+       
+reorder(X) -> X.
 
 -spec compare(T, T) -> eq | lt | gt when T :: type().
 compare(R1, R2) -> case R1 < R2 of true -> lt; _ -> case R1 > R2 of true -> gt; _ -> eq end end.

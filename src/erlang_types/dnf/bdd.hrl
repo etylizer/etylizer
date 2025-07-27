@@ -1,6 +1,7 @@
 % A generic BDD parameterized over both the 'nodes and 'leafs
 
 -export([
+  reorder/1,
   assert_valid/1,
   any/0,
   empty/0,
@@ -45,12 +46,106 @@
 -type leaf() :: {leaf, ?LEAF:type()}.
 -type bdd() :: leaf() | {node, _Atom :: ?ATOM:type(), _PositiveEdge :: bdd(), _NegativeEdge :: bdd()}.
 
+%% Reorders a potentially invalid BDD
+-spec reorder(bdd()) -> bdd().
+reorder({leaf, Value}) -> {leaf, ?LEAF:reorder(Value)};
+reorder(B = {node, Atom, Pos, Neg}) ->
+    % Recursively reorder children first
+    OrderedPos = reorder(Pos),
+    OrderedNeg = reorder(Neg),
+    
+    % Get the top atoms of the children (if they exist)
+    PosAtom = case OrderedPos of
+        {node, PA, _, _} -> PA;
+        _ -> undefined
+    end,
+    NegAtom = case OrderedNeg of
+        {node, NA, _, _} -> NA;
+        _ -> undefined
+    end,
+    
+    % Determine if we need to push this node down
+    assert_valid(case {PosAtom, NegAtom} of
+        {undefined, undefined} ->
+            % Both children are leaves - ordering is correct
+            {node, Atom, OrderedPos, OrderedNeg};
+        _ ->
+          case PosAtom /= undefined andalso ?ATOM:compare(Atom, PosAtom) == gt of
+            true -> 
+              io:format(user,"Reordering:~n~p~nBecause: ~p > ~p~n", [B, Atom, PosAtom]),
+              % Positive child violates ordering - push down
+              push_down(Atom, OrderedPos, OrderedNeg);
+            _ ->
+            case NegAtom /= undefined andalso ?ATOM:compare(Atom, NegAtom) == gt of
+              true -> 
+                io:format(user,"Reordering:~n~p~nBecause: ~p > ~p~n", [B, Atom, NegAtom]),
+                io:format(user,"Push down: ~p~n ~w and ~w~n", [Atom, OrderedPos, OrderedNeg]),
+                % Negative child violates ordering - push down
+                Z = push_down(Atom, OrderedPos, OrderedNeg),
+                io:format(user,"Result:~n~p~n", [Z]),
+                Z;
+              _ ->
+              {node, Atom, OrderedPos, OrderedNeg}
+            end
+          end
+                 end).
+               
+
+push_down(TopAtom, Pos, Neg) -> 
+    union(
+      intersect(
+      singleton(TopAtom),
+      Pos
+    ),
+    intersect(
+      negate(singleton(TopAtom)),
+      Neg
+    )
+     ).
+
+% %% Pushes a node down when children violate ordering
+% -spec push_down(?ATOM:type(), bdd(), bdd()) -> bdd().
+% push_down(Atom, {node, ChildAtom, ChildPos, ChildNeg}, OtherBranch) ->
+%     % Equivalent to: (B ∧ (A ∧ BP)) ∨ (¬B ∧ (A ∧ BN)) ∨ Other
+%     % But optimized for the ordering fix case
+%     % Reconstruct the BDD to maintain ordering
+%     error(todo),
+%     case ?ATOM:compare(Atom, ChildAtom) of
+%         _ when OtherBranch =:= {leaf, false} ->
+%             % Special case: can optimize when other branch is false
+%             {node, ChildAtom, 
+%              {node, Atom, ChildPos, {leaf, false}},
+%              {node, Atom, ChildNeg, {leaf, false}}};
+%         _ ->
+%             % General case
+%             {node, ChildAtom,
+%              {node, Atom, ChildPos, copy_to_leaves(OtherBranch, ChildPos)},
+%              {node, Atom, ChildNeg, copy_to_leaves(OtherBranch, ChildNeg)}}
+%     end.
+
+%% Helper to copy a branch to all leaves of another BDD
+-spec copy_to_leaves(bdd(), bdd()) -> bdd().
+copy_to_leaves(Branch, {leaf, _}) -> Branch;
+copy_to_leaves(Branch, {node, Atom, Pos, Neg}) ->
+    {node, Atom, 
+     copy_to_leaves(Branch, Pos),
+     copy_to_leaves(Branch, Neg)}.
+
+% substitute_internal_atom({leaf, T}, M) -> ?LEAF:substitute_internal_atom(T, M);
+% substitute_internal_atom({node, Atom, L, R}, M) -> 
+%   case ?ATOM:substitute_internal_atom(Atom, M) of
+%     {substitute, NewAtom} -> error(todo);
+%     _ -> 
+%       {node, Atom, substitute
+%   ?LEAF:substitute_internal_atom(T);
+
+
 assert_valid(Bdd) -> is_ordered(Bdd).
 
 -spec is_ordered(bdd()) -> boolean().
 is_ordered(Bdd = {leaf, T}) -> ?LEAF:assert_valid(T), Bdd;
 is_ordered(Bdd = {node, Atom, PositiveEdge, NegativeEdge}) ->
-  io:format(user,"Checking ~p~n", [Bdd]),
+  % io:format(user,"Checking ~p~n", [Bdd]),
     % Check that all atoms in positive and negative edges are smaller than current atom
     check_branch(Atom, PositiveEdge),
     check_branch(Atom, NegativeEdge),
@@ -107,12 +202,12 @@ compare({node, A1, P1, N1}, {node, A2, P2, N2}) ->
 negate(Bdd1 = {leaf, A}) -> 
   is_ordered(Bdd1),
   Z = {leaf, ?LEAF:negate(A)},
-  io:format(user,"Doing OP: ~p on~n~n~p~nResult:~p~n", [negate, Bdd1, Z]),
+  % io:format(user,"Doing OP: ~p on~n~n~p~nResult:~p~n", [negate, Bdd1, Z]),
   is_ordered(Z);
 negate(Bdd1 = {node, Atom, Pos, Neg}) -> 
   is_ordered(Bdd1),
   Z = {node, Atom, negate(Pos), negate(Neg)},
-  io:format(user,"Doing OP: ~p on~n~n~p~nResult:~p~n", [negate, Bdd1, Z]),
+  % io:format(user,"Doing OP: ~p on~n~n~p~nResult:~p~n", [negate, Bdd1, Z]),
   is_ordered(Z).
 
 
@@ -141,13 +236,13 @@ op(LeafOperation, Bdd1, Bdd2) ->
       {{node, A, P, N}, {leaf, L}} -> 
         {node, A, ROp(P, {leaf, L}), ROp(N, {leaf, L})};
       {{node, A1, P1, N1}, {node, A2, P2, N2}} ->
-        io:format(user,"Compare: ~w and ~w: ~p~n", [A1, A2, ?ATOM:compare(A1, A2)]),
+        % io:format(user,"Compare: ~w and ~w: ~p~n", [A1, A2, ?ATOM:compare(A1, A2)]),
         case ?ATOM:compare(A1, A2) of
           lt ->
-            io:format(user,"A1 is less than, putting A1 first:~w < ~w~n", [A1, A2]),
+            % io:format(user,"A1 is less than, putting A1 first:~w < ~w~n", [A1, A2]),
             {node, A1, ROp(P1, T2), ROp(N1, T2)};
           gt ->
-            io:format(user,"A2 is greater than, putting A2 first~n", []),
+            % io:format(user,"A2 is greater than, putting A2 first~n", []),
             {node, A2, ROp(T1, P2), ROp(T1, N2)};
           eq ->
             {node, A1, ROp(P1, P2), ROp(N1, N2)}
@@ -156,7 +251,7 @@ op(LeafOperation, Bdd1, Bdd2) ->
     normalize(Res)
   end,
   Z = Op(Bdd1, Bdd2),
-  io:format(user,"Doing OP: ~p on~n~p~n~p~nResult:~p~n", [LeafOperation, Bdd1, Bdd2, Z]),
+  % io:format(user,"Doing OP: ~p on~n~p~n~p~nResult:~p~n", [LeafOperation, Bdd1, Bdd2, Z]),
   is_ordered(Z).
 
 -spec union(bdd(), bdd()) -> bdd().

@@ -4,6 +4,7 @@
 %% left? range* right?
 
 -export([
+  reorder/1,
   empty/0,
   any/0,
   compare/2,
@@ -26,6 +27,8 @@
 -opaque type() :: [component()].
 -type set_of_constraint_sets() :: constraint_set:set_of_constraint_sets().
 -type ast_ty() :: ast:ty().
+
+reorder(X) -> X.
 
 -spec empty() -> type().
 empty() -> [].

@@ -2,6 +2,7 @@
 
 % only used as a simple boolean terminal node in a BDD where the leafs are 1 and 0 only.
 -export([
+  reorder/1,
   assert_valid/1,
   compare/2,
   equal/2,
@@ -55,3 +56,4 @@ normalize(Dnf, _, ST) ->
     {false, _} -> {[], ST}
   end.
 assert_valid(_) -> ok.
+reorder(X) -> X.
