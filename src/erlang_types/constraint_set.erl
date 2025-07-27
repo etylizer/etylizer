@@ -85,7 +85,7 @@ join(_Set1, [[]], _Fixed) -> [[]];
 join([], Set, _Fixed) -> Set;
 join(Set, [], _Fixed) -> Set;
 join(S1, S2, Fixed) ->
-  MayAdd = fun (S, Con) -> (not (has_smaller_constraint(Con, S))) end,
+  MayAdd = fun (S, Con) -> (not is_unsatisfiable(Con, Fixed)) andalso (not (has_smaller_constraint(Con, S))) end,
   S22 = lists:filter(fun(C) -> MayAdd(S1, C) end, S2),
   S11 = lists:filter(fun(C) -> MayAdd(S22, C) end, S1),
   assert_all_cs_sorted((lists:usort(S11 ++ S22))).

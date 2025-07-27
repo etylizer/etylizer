@@ -50,13 +50,13 @@ equal(Var1, Var2) -> compare(Var1, Var2) =:= eq.
 compare(#var{id = name, name = N1}, #var{id = name, name = N2}) ->
   case {N1 > N2, N1 < N2} of
     {false, false} -> eq;
-    {true, _} -> gt;
-    {_, true} -> lt
+    {true, _} -> lt;
+    {_, true} -> gt
   end;
-compare(#var{id = name}, #var{}) -> lt;
-compare(#var{}, #var{id = name}) -> gt;
-compare(#var{id = Id1}, #var{id = Id2}) when Id1 < Id2 -> lt;
-compare(#var{id = Id1}, #var{id = Id2}) when Id1 > Id2 -> gt;
+compare(#var{id = name}, #var{}) -> gt;
+compare(#var{}, #var{id = name}) -> lt;
+compare(#var{id = Id1}, #var{id = Id2}) when Id1 < Id2 -> gt;
+compare(#var{id = Id1}, #var{id = Id2}) when Id1 > Id2 -> lt;
 compare(_, _) -> eq.
 
 -spec leq(type(), type()) -> boolean().

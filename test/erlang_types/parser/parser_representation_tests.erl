@@ -195,3 +195,10 @@ parse_bug_test() ->
     [ty_parser:parse(RawTy) || RawTy <- ListToParse],
     ok
   end, Tab).
+
+parse_bug2_test() ->
+  {ok, [ListToParse]} = file:consult("test_files/erlang_types/parser/ast_bug2"),
+  global_state:with_new_state(fun() ->
+    [ty_parser:parse(RawTy) || RawTy <- ListToParse],
+    ok
+                 end).

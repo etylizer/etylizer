@@ -4,7 +4,7 @@
 
 -include_lib("eunit/include/eunit.hrl").
 
-% 2.7 -> 0.5
+% 2.7 -> 0.1
 plus_test() ->
   {ok, [Cons]} = file:consult("test_files/erlang_types/tally/plus_chained.config"),
   test_tally_satisfiable(true, Cons).
@@ -25,7 +25,7 @@ recursive_test() ->
   {ok, [Cons]} = file:consult("test_files/erlang_types/tally/user_07.config"),
   test_tally_satisfiable(true, Cons).
 
-% timeout -> 1.1
+% timeout -> 2.0
 std_union_test() ->
   {ok, [Cons]} = file:consult("test_files/erlang_types/tally/union.config"),
   {ok, [Fixed]} = file:consult("test_files/erlang_types/tally/union.fixed"),

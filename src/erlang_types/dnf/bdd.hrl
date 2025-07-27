@@ -66,18 +66,20 @@ reorder(B = {node, Atom, Pos, Neg}) ->
   end,
     
   % Determine if we need to push this node down
-  assert_valid(case {PosAtom, NegAtom} of
+  Z = case {PosAtom, NegAtom} of
     {undefined, undefined} -> {node, Atom, OrderedPos, OrderedNeg};
     _ -> 
-      case PosAtom /= undefined andalso ?ATOM:compare(Atom, PosAtom) == gt of
+      case PosAtom /= undefined andalso ?ATOM:compare(Atom, PosAtom) /= lt of
         true -> push_down(Atom, OrderedPos, OrderedNeg);
         _ -> 
-          case NegAtom /= undefined andalso ?ATOM:compare(Atom, NegAtom) == gt of
+          case NegAtom /= undefined andalso ?ATOM:compare(Atom, NegAtom) /= lt of
             true -> push_down(Atom, OrderedPos, OrderedNeg);
              _ -> {node, Atom, OrderedPos, OrderedNeg}
           end
         end 
-    end).
+    end,
+  assert_valid(Z),
+  Z.
                
 
 push_down(TopAtom, Pos, Neg) -> 
@@ -343,7 +345,6 @@ minimize_node_dnf(Dnf) ->
   O = maps:size(AllOutputs),
 
   % now for all variables assign an index
-  % TODO list comprehension zip?
   {_, VariableIndices, RevVariableIndices} = maps:fold(fun(K, V, {Index, Vars, RevVars}) -> {Index+1, Vars#{K => Index}, RevVars#{Index => K}} end, {1, AllVariables, #{}}, AllVariables),
 
   % convert all lines using the variable indices
@@ -376,10 +377,11 @@ minimize_node_dnf(Dnf) ->
   case Inn /= Out of
     true -> 
       % io:format(user,"Inn raw:~n~p~n", [Dnf]),
-      io:format(user,"Inn: ~p~n", [Inn]),
-      io:format(user,"Out: ~p~n", [Out]),
-      io:format(user,"~p ms~n", [os:system_time(millisecond) - T0]),
-      io:format(user,"All: ~p ms~n", [os:system_time(millisecond) - TAll]);
+      % io:format(user,"Inn: ~p~n", [Inn]),
+      % io:format(user,"Out: ~p~n", [Out]),
+      % io:format(user,"~p ms~n", [os:system_time(millisecond) - T0]),
+      % io:format(user,"All: ~p ms~n", [os:system_time(millisecond) - TAll]);
+      ok;
     _ -> 
       ok 
   end,
@@ -399,12 +401,10 @@ is_integer_start([C|_]) when C == $- -> true;
 is_integer_start([C|_]) when C >= $0, C =< $9 -> true;
 is_integer_start(_) -> false.
 
-
 convert_back_to_repr({[], Outputs}, IndexToTerms, IndexToOutput, CurrentIndex, Acc  = {P, N, to_replace}) -> 
   % assert only one "1" in outputs
   [First, Second] = string:split(Outputs, "1", all),
   Index = length(First) + 1,
-  % io:format(user,"Replace output: ~p~nWith: ~p @ ~p~n", [Acc, Outputs, maps:get(Index, IndexToOutput)]), 
   {P, N, maps:get(Index, IndexToOutput)};
 convert_back_to_repr({[$- | Rest], Outputs}, IndexToTerms, IndexToOutput, CurrentIndex, Acc) -> convert_back_to_repr({Rest, Outputs}, IndexToTerms, IndexToOutput, CurrentIndex + 1, Acc);
 convert_back_to_repr({[$1 | Rest], Outputs}, IndexToTerms, IndexToOutput, CurrentIndex, {Pos, Neg, to_replace}) -> convert_back_to_repr({Rest, Outputs}, IndexToTerms, IndexToOutput, CurrentIndex + 1, {Pos ++ [maps:get(CurrentIndex, IndexToTerms)], Neg, to_replace});

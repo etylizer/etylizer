@@ -135,9 +135,3 @@ fun_local_07_fail(X) ->
             end
         end,
     F(X).
-
-fun_local_08() ->
-    fun
-        Add(_) when 0 =:= 0 -> 0;
-        Add(X) -> Add(X)
-    end.

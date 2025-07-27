@@ -8,6 +8,10 @@
 % if we don't take care to ensure the correct ordering between all interactions of local_refs and nodes,
 % one very easily generates invalid BDDs
 % is there a more elegant solution providing the same guarantees with comparable efficiency?
+% 
+% TODO
+% the local first unification might bring in more complexity than efficiency
+% better to remove it, and only use global unification?
 
 % a mapping from to-parse terms to a shorter form of local temporary references
 -define(TERMREFS, ty_parser_term_references).
@@ -91,7 +95,7 @@ create_ref(Ref) ->
 
 -spec parse(ast_ty()) -> type().
 parse(RawTy) ->
-  % io:format(user,"Parse: ~w~n", [RawTy]),
+  % io:format(user,"~w,~n", [RawTy]),
   % first: rename such that mu-binders have no collisions
   % use DeBruijn indexes and then convert back to fresh named variables
   % this has to be done anytime a {named, ...} reference is unfolded, too
@@ -122,15 +126,19 @@ parse(RawTy) ->
       %         internal1    internal1    internal type representations
       %    replace all ref2 by ref1, so that no unecessary nodes are created
       {UnifiedRef, UnifiedResult} = unify(LocalRef, {NewR, NewT}),
-      % io:format(user,"Unified:~n~p~n", [UnifiedResult]),
+      % io:format(user,"Unified:~n~p~n", [{UnifiedRef, UnifiedResult}]),
 
       % 3. create new type references and replace temporary ones
       %    return result reference
-      % ReplaceRefs = maps:from_list([{Ref, ?NODE:new_ty_node()} || Ref <- lists:sort(maps:keys(UnifiedResult))]),
       ReplaceRefs = maps:from_list([{Ref, lookup_ref(Ref)} || Ref <- lists:sort(maps:keys(UnifiedResult))]),
-      {ReplacedRef, ReplacedResults} = utils:replace({UnifiedRef, UnifiedResult}, ReplaceRefs),
-      % io:format(user,"Replaced:~n~p~n", [ReplacedResults]),
       assert_replaced_refs_have_good_order(ReplaceRefs),
+      {ReplacedRef, ReplacedResultsRaw} = utils:replace({UnifiedRef, UnifiedResult}, ReplaceRefs),
+      % trigger a reorder
+      % might contain duplicate nodes (hash consed) and not reordered properly
+      % e.g. {node, {ty_tuple,1,[{local_ref,-1}]}, {leaf,1}, {node, {ty_tuple,1,[{local_ref,-1}]}, {leaf,1}, {leaf,0}}}}}
+      % where the second -1 ref was a -2 ref before, mapping to a same type
+      ReplacedResults = maps:map(fun(_, V) -> dnf_ty_variable:reorder(V) end, ReplacedResultsRaw),
+      % io:format(user,"Replaced:~n~p~n", [ReplacedResults]),
 
       % 4. define types
       % 4.1 create a graph, a reverse graph, a condensed graph, then topological sort, then define and replace if already consed
@@ -172,6 +180,7 @@ parse(RawTy) ->
                     % just a syntactical replacement is not valid here
                     % e.g. replacing {node, 80} by {node, 1} 
                     % might need to trigger a reorder of the BDD
+                    % also, remove duplicate nodes after local unification
                     Fin = utils:replace(Val, #{ToDefine => N}),
                     dnf_ty_variable:assert_valid(FinalReordered = dnf_ty_variable:reorder(Fin)),
                     Acc0#{E => FinalReordered} 
@@ -211,6 +220,7 @@ parse(RawTy) ->
     % Modifying the context is not needed
     % TODO refactor
     {FinalReplacedRef, FinalReplaceRefs, FinalReplacedResults, _FinalLocalDefinitions} = utils:fold_with_context(DefineAndReplace, {ReplacedRef, ReplaceRefs, ReplacedResults, _LocalDefinitions = #{}}, Define),
+    % io:format(user,"Final: ~p~n", [FinalReplacedResults]),
 
     % define the final results globally
     [?NODE:define(NodeRef, Record) || NodeRef := Record <- FinalReplacedResults, is_not_defined(NodeRef, Record)],

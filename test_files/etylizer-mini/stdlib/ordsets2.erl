@@ -183,7 +183,7 @@ intersection(_, []) ->
 intersection([S1,S2|Ss]) ->
     intersection1(intersection(S1, S2), Ss);
 intersection([S]) -> S.
-% intersection(_) -> error(bad_state). % list redundancy check not enough
+%intersection(_) -> error(bad_state). % list redundancy check not enough
 
 -spec intersection1(ordset(_), [ordset(_)]) -> ordset(_).
 intersection1(S1, [S2|Ss]) ->
