@@ -47,121 +47,66 @@
 -type bdd() :: leaf() | {node, _Atom :: ?ATOM:type(), _PositiveEdge :: bdd(), _NegativeEdge :: bdd()}.
 
 %% Reorders a potentially invalid BDD
+%% TODO refactor, ugly
 -spec reorder(bdd()) -> bdd().
 reorder({leaf, Value}) -> {leaf, ?LEAF:reorder(Value)};
 reorder(B = {node, Atom, Pos, Neg}) ->
-    % Recursively reorder children first
-    OrderedPos = reorder(Pos),
-    OrderedNeg = reorder(Neg),
+  % Recursively reorder children first
+  OrderedPos = reorder(Pos),
+  OrderedNeg = reorder(Neg),
     
-    % Get the top atoms of the children (if they exist)
-    PosAtom = case OrderedPos of
-        {node, PA, _, _} -> PA;
-        _ -> undefined
-    end,
-    NegAtom = case OrderedNeg of
-        {node, NA, _, _} -> NA;
-        _ -> undefined
-    end,
+  % Get the top atoms of the children (if they exist)
+  PosAtom = case OrderedPos of
+    {node, PA, _, _} -> PA;
+    _ -> undefined
+  end,
+  NegAtom = case OrderedNeg of
+    {node, NA, _, _} -> NA;
+    _ -> undefined
+  end,
     
-    % Determine if we need to push this node down
-    assert_valid(case {PosAtom, NegAtom} of
-        {undefined, undefined} ->
-            % Both children are leaves - ordering is correct
-            {node, Atom, OrderedPos, OrderedNeg};
-        _ ->
-          case PosAtom /= undefined andalso ?ATOM:compare(Atom, PosAtom) == gt of
-            true -> 
-              io:format(user,"Reordering:~n~p~nBecause: ~p > ~p~n", [B, Atom, PosAtom]),
-              % Positive child violates ordering - push down
-              push_down(Atom, OrderedPos, OrderedNeg);
-            _ ->
-            case NegAtom /= undefined andalso ?ATOM:compare(Atom, NegAtom) == gt of
-              true -> 
-                io:format(user,"Reordering:~n~p~nBecause: ~p > ~p~n", [B, Atom, NegAtom]),
-                io:format(user,"Push down: ~p~n ~w and ~w~n", [Atom, OrderedPos, OrderedNeg]),
-                % Negative child violates ordering - push down
-                Z = push_down(Atom, OrderedPos, OrderedNeg),
-                io:format(user,"Result:~n~p~n", [Z]),
-                Z;
-              _ ->
-              {node, Atom, OrderedPos, OrderedNeg}
-            end
+  % Determine if we need to push this node down
+  assert_valid(case {PosAtom, NegAtom} of
+    {undefined, undefined} -> {node, Atom, OrderedPos, OrderedNeg};
+    _ -> 
+      case PosAtom /= undefined andalso ?ATOM:compare(Atom, PosAtom) == gt of
+        true -> push_down(Atom, OrderedPos, OrderedNeg);
+        _ -> 
+          case NegAtom /= undefined andalso ?ATOM:compare(Atom, NegAtom) == gt of
+            true -> push_down(Atom, OrderedPos, OrderedNeg);
+             _ -> {node, Atom, OrderedPos, OrderedNeg}
           end
-                 end).
+        end 
+    end).
                
 
 push_down(TopAtom, Pos, Neg) -> 
-    union(
-      intersect(
-      singleton(TopAtom),
-      Pos
-    ),
-    intersect(
-      negate(singleton(TopAtom)),
-      Neg
-    )
-     ).
-
-% %% Pushes a node down when children violate ordering
-% -spec push_down(?ATOM:type(), bdd(), bdd()) -> bdd().
-% push_down(Atom, {node, ChildAtom, ChildPos, ChildNeg}, OtherBranch) ->
-%     % Equivalent to: (B ∧ (A ∧ BP)) ∨ (¬B ∧ (A ∧ BN)) ∨ Other
-%     % But optimized for the ordering fix case
-%     % Reconstruct the BDD to maintain ordering
-%     error(todo),
-%     case ?ATOM:compare(Atom, ChildAtom) of
-%         _ when OtherBranch =:= {leaf, false} ->
-%             % Special case: can optimize when other branch is false
-%             {node, ChildAtom, 
-%              {node, Atom, ChildPos, {leaf, false}},
-%              {node, Atom, ChildNeg, {leaf, false}}};
-%         _ ->
-%             % General case
-%             {node, ChildAtom,
-%              {node, Atom, ChildPos, copy_to_leaves(OtherBranch, ChildPos)},
-%              {node, Atom, ChildNeg, copy_to_leaves(OtherBranch, ChildNeg)}}
-%     end.
-
-%% Helper to copy a branch to all leaves of another BDD
--spec copy_to_leaves(bdd(), bdd()) -> bdd().
-copy_to_leaves(Branch, {leaf, _}) -> Branch;
-copy_to_leaves(Branch, {node, Atom, Pos, Neg}) ->
-    {node, Atom, 
-     copy_to_leaves(Branch, Pos),
-     copy_to_leaves(Branch, Neg)}.
-
-% substitute_internal_atom({leaf, T}, M) -> ?LEAF:substitute_internal_atom(T, M);
-% substitute_internal_atom({node, Atom, L, R}, M) -> 
-%   case ?ATOM:substitute_internal_atom(Atom, M) of
-%     {substitute, NewAtom} -> error(todo);
-%     _ -> 
-%       {node, Atom, substitute
-%   ?LEAF:substitute_internal_atom(T);
-
+  union( 
+    intersect(singleton(TopAtom), Pos),
+    intersect(negate(singleton(TopAtom)), Neg)
+  ).
 
 assert_valid(Bdd) -> is_ordered(Bdd).
 
 -spec is_ordered(bdd()) -> boolean().
 is_ordered(Bdd = {leaf, T}) -> ?LEAF:assert_valid(T), Bdd;
 is_ordered(Bdd = {node, Atom, PositiveEdge, NegativeEdge}) ->
-  % io:format(user,"Checking ~p~n", [Bdd]),
-    % Check that all atoms in positive and negative edges are smaller than current atom
-    check_branch(Atom, PositiveEdge),
-    check_branch(Atom, NegativeEdge),
-    % Recursively check the subtrees
-    is_ordered(PositiveEdge),
-    is_ordered(NegativeEdge),
-    Bdd.
+  % Check that all atoms in positive and negative edges are smaller than current atom
+  check_branch(Atom, PositiveEdge),
+  check_branch(Atom, NegativeEdge),
+  % check the subtrees
+  is_ordered(PositiveEdge),
+  is_ordered(NegativeEdge),
+  Bdd.
 
 -spec check_branch(?ATOM:type(), bdd()) -> _.
 check_branch(_ParentAtom, Bdd = {leaf, _}) -> ok;
 check_branch(ParentAtom, Bdd = {node, ChildAtom, Left, Right}) ->
-    case ?ATOM:compare(ParentAtom, ChildAtom) of
-        lt -> check_branch(ParentAtom, Left), check_branch(ParentAtom, Right);
-        eq -> error({eq, ParentAtom, ChildAtom, Bdd}); % Shouldn't have equal atoms in proper BDD
-        gt -> error({gt, ParentAtom, ChildAtom, Bdd})  % Child is greater than parent - invalid
-    end.
+  case ?ATOM:compare(ParentAtom, ChildAtom) of
+    lt -> check_branch(ParentAtom, Left), check_branch(ParentAtom, Right);
+    eq -> error({eq, ParentAtom, ChildAtom, Bdd}); % shouldn't have equal atoms in proper BDD
+    gt -> error({gt, ParentAtom, ChildAtom, Bdd})  % order violation
+  end.
 
 -spec any() -> bdd().
 any() -> {leaf, ?LEAF:any()}.
@@ -199,17 +144,8 @@ compare({node, A1, P1, N1}, {node, A2, P2, N2}) ->
   end.
 
 -spec negate(bdd()) -> bdd().
-negate(Bdd1 = {leaf, A}) -> 
-  is_ordered(Bdd1),
-  Z = {leaf, ?LEAF:negate(A)},
-  % io:format(user,"Doing OP: ~p on~n~n~p~nResult:~p~n", [negate, Bdd1, Z]),
-  is_ordered(Z);
-negate(Bdd1 = {node, Atom, Pos, Neg}) -> 
-  is_ordered(Bdd1),
-  Z = {node, Atom, negate(Pos), negate(Neg)},
-  % io:format(user,"Doing OP: ~p on~n~n~p~nResult:~p~n", [negate, Bdd1, Z]),
-  is_ordered(Z).
-
+negate(Bdd1 = {leaf, A}) -> {leaf, ?LEAF:negate(A)};
+negate(Bdd1 = {node, Atom, Pos, Neg}) -> {node, Atom, negate(Pos), negate(Neg)}.
 
 % simplification for BDDs
 % implements a simple form of structural subsumption

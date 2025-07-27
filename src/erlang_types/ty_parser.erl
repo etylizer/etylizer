@@ -91,7 +91,6 @@ create_ref(Ref) ->
 
 -spec parse(ast_ty()) -> type().
 parse(RawTy) ->
-  io:format(user,"Phase 0 start~n", []),
   % io:format(user,"Parse: ~w~n", [RawTy]),
   % first: rename such that mu-binders have no collisions
   % use DeBruijn indexes and then convert back to fresh named variables
@@ -100,24 +99,20 @@ parse(RawTy) ->
 
   % create a reference, check if it is inside the cache
   LocalRef = new_local_ref(Ty),
-  io:format(user,"Phase 0.5 refs~n", []),
 
   FinalResult = 
   case ets:lookup(?CACHE, LocalRef) of
     [{LocalRef, Node}] -> 
-  io:format(user,"Phase done: cache~n", []),
       Node;
     _ ->
       % 1. Convert to temporary local representation
       %    Create a temporary type equation with a first entrypoint LocalRef = ...
       %    and parse the type layer by layer
       %    use local type references stored in a local map
-      io:format(user,"Phase 1 convert...~n", []),
       ({{NewR, NewTUnsorted}, _NewCache}) = convert(queue:from_list([{LocalRef, Ty}]), {_RefToTy = #{}, _TyToRef = #{}}, #{}),
       % can have duplicates, e.g. TODO explain
       NewT = #{K => lists:usort(V) || K := V <- NewTUnsorted},
       % io:format(user,"Result of Converting:~n~p~n~p~n", [NewR, NewT]),
-      io:format(user,"Phase 1 done~n", []),
 
       % 2. (Locally) unify the results
       %    There can be many duplicate type references;
@@ -128,16 +123,13 @@ parse(RawTy) ->
       %    replace all ref2 by ref1, so that no unecessary nodes are created
       {UnifiedRef, UnifiedResult} = unify(LocalRef, {NewR, NewT}),
       % io:format(user,"Unified:~n~p~n", [UnifiedResult]),
-      io:format(user,"Phase 2 done~n", []),
 
       % 3. create new type references and replace temporary ones
       %    return result reference
-      io:format(user,"UnifiedResult:~n~p~n", [UnifiedResult]),
       % ReplaceRefs = maps:from_list([{Ref, ?NODE:new_ty_node()} || Ref <- lists:sort(maps:keys(UnifiedResult))]),
       ReplaceRefs = maps:from_list([{Ref, lookup_ref(Ref)} || Ref <- lists:sort(maps:keys(UnifiedResult))]),
       {ReplacedRef, ReplacedResults} = utils:replace({UnifiedRef, UnifiedResult}, ReplaceRefs),
       % io:format(user,"Replaced:~n~p~n", [ReplacedResults]),
-      io:format(user,"Phase 3 done~n", []),
       assert_replaced_refs_have_good_order(ReplaceRefs),
 
       % 4. define types
@@ -157,7 +149,6 @@ parse(RawTy) ->
 
       DefineAndReplace = fun({{ReplacedRef1, RefMapping, ResultMapping, LocalDefinitions}, Def, Rest}) -> 
         {NewReplacedRef, NewRef, NewRes, NewLocalDefinitions, NewRest} = lists:foldl(fun(DefineOrReplace, Acc = {ReplacedRef0, Refmapping, ResultMapping0, LocalDefinitions0, Rest0}) ->
-          io:format(user,"Is defined?? ~p: ~p~n", [DefineOrReplace, ?NODE:is_defined(DefineOrReplace)]),
           case ?NODE:is_defined(DefineOrReplace) of
             true -> % from previous parsing runs
               Acc;
@@ -180,10 +171,8 @@ parse(RawTy) ->
 
                     % just a syntactical replacement is not valid here
                     % e.g. replacing {node, 80} by {node, 1} 
-                    % needs to trigger a reorder of the BDD
+                    % might need to trigger a reorder of the BDD
                     Fin = utils:replace(Val, #{ToDefine => N}),
-                    io:format(user,"REPLACE ~p -> ~p~n", [ToDefine, N]),
-                    io:format(user,"Inside ~p~n", [Val]),
                     dnf_ty_variable:assert_valid(FinalReordered = dnf_ty_variable:reorder(Fin)),
                     Acc0#{E => FinalReordered} 
                   end, SmallerResultMapping, NodeContainedIn),
@@ -221,12 +210,9 @@ parse(RawTy) ->
 
     % Modifying the context is not needed
     % TODO refactor
-    io:format(user,"Replace to define results...~n~p~n~p~n", [Define, ReplaceRefs]),
     {FinalReplacedRef, FinalReplaceRefs, FinalReplacedResults, _FinalLocalDefinitions} = utils:fold_with_context(DefineAndReplace, {ReplacedRef, ReplaceRefs, ReplacedResults, _LocalDefinitions = #{}}, Define),
-    io:format(user,"Phase 4 done~n", []),
 
     % define the final results globally
-    io:format(user,"Defining types...~n~p~n", [FinalReplacedResults]),
     [?NODE:define(NodeRef, Record) || NodeRef := Record <- FinalReplacedResults, is_not_defined(NodeRef, Record)],
 
     % 5. update global cache, there are now old entries to overwrite
@@ -248,7 +234,6 @@ parse(RawTy) ->
     FinalReplacedRef
   end,
   
-  io:format(user,"Phase 5: Generating reverse mapping...~n", []),
   % generate the reverse named mapping at the end
   InQueue = ets:tab2list(?UNPARSE_NAMED_QUEUE),
   lists:foreach(
@@ -271,14 +256,12 @@ parse(RawTy) ->
       end 
     end, InQueue),
 
-  io:format(user,"Phase finished...~n", []),
-  
   FinalResult.
 
 is_not_defined(Node, Rec) ->
   case ets:lookup(ty_node_system, Node) of
     [] -> true;
-    [{Node, Rec}] -> false; % filter this FIXME why does this happen?
+    [{Node, Rec}] -> false; % filter this FIXME how can a node be defined before with the same record???
     _ -> error(sanity) % this should not happen
   end.
 
@@ -597,7 +580,6 @@ do_convert({{tuple, Comps}, R}, Q, Cache) ->
     end, {[], Q}, Comps),
     
   T = ty_tuples:singleton(length(Comps), dnf_ty_tuple:singleton(ty_tuple:tuple(ParsedComponents))),
-  io:format(user,"Tuples: ~p~n", [T]),
   {?TY:tuples(T), Q0, R, Cache};
 
 % lists
@@ -622,7 +604,6 @@ queue_if_new(Element, Queue) ->
       {Id, queue:in({Id, Element}, Queue)};
     % if already known, don't process and return a real reference
     [{Id, Node}] -> 
-      io:format(user,"Got Node: ~p~n", [{Id, Node}]),
       {Node, Queue}
   end.
 
@@ -668,20 +649,20 @@ unparse(Node) ->
 
 -spec debruijn(ast_ty()) -> ast_ty().
 debruijn(Type) ->
-    debruijn(Type, []).
+  debruijn(Type, []).
 
 -type var_env() :: [ast:ty_varname()].
 %% helper with variable name environment stack
 -spec debruijn(ast_ty(), var_env()) -> ast_ty().
 % local recursion
 debruijn({mu, {mu_var, Name}, Body}, Env) ->
-    NewEnv = [Name | Env],
-    {mu, {mu_var, nameless}, debruijn(Body, NewEnv)}; % add mu_var anyway to still be a ast_ty()
+  NewEnv = [Name | Env],
+  {mu, {mu_var, nameless}, debruijn(Body, NewEnv)}; % add mu_var anyway to still be a ast_ty()
 debruijn({mu_var, Name}, Env) ->
-    case index_of(Name, Env) of
-        {ok, Index} -> {mu_var, list_to_atom(integer_to_list(Index))};
-        not_found -> error({unbound_variable, Name})
-    end;
+  case index_of(Name, Env) of
+    {ok, Index} -> {mu_var, list_to_atom(integer_to_list(Index))};
+    not_found -> error({unbound_variable, Name})
+  end;
 % other cases
 debruijn({singleton, _} = T, _Env) -> T;
 debruijn({bitstring}, _Env) -> {bitstring};
@@ -689,23 +670,23 @@ debruijn({empty_list}, _Env) -> {empty_list};
 debruijn({list, U}, Env) -> {list, debruijn(U, Env)};
 debruijn({nonempty_list, U}, Env) -> {nonempty_list, debruijn(U, Env)};
 debruijn({improper_list, U, V}, Env) -> 
-    {improper_list, debruijn(U, Env), debruijn(V, Env)};
+  {improper_list, debruijn(U, Env), debruijn(V, Env)};
 debruijn({nonempty_improper_list, U, V}, Env) -> 
-    {nonempty_improper_list, debruijn(U, Env), debruijn(V, Env)};
+  {nonempty_improper_list, debruijn(U, Env), debruijn(V, Env)};
 debruijn({fun_simple}, _Env) -> {fun_simple};
 debruijn({fun_any_arg, U}, Env) -> {fun_any_arg, debruijn(U, Env)};
 debruijn({fun_full, Args, U}, Env) -> 
-    {fun_full, debruijn_list(Args, Env), debruijn(U, Env)};
+  {fun_full, debruijn_list(Args, Env), debruijn(U, Env)};
 debruijn({range, Min, Max}, _Env) -> {range, Min, Max};
 debruijn({map_any}, _Env) -> {map_any};
 debruijn({map, Assocs}, Env) ->
-    {map, lists:map(fun({Kind, U, V}) -> 
-        {Kind, debruijn(U, Env), debruijn(V, Env)} 
-    end, Assocs)};
+  {map, lists:map(fun({Kind, U, V}) -> 
+    {Kind, debruijn(U, Env), debruijn(V, Env)} 
+  end, Assocs)};
 debruijn({predef, Name}, _Env) -> {predef, Name};
 debruijn({predef_alias, Name}, _Env) -> {predef_alias, Name};
 debruijn({named, Loc, Ref, Args}, Env) ->
-    {named, Loc, Ref, debruijn_list(Args, Env)};
+  {named, Loc, Ref, debruijn_list(Args, Env)};
 debruijn({tuple_any}, _Env) -> {tuple_any};
 debruijn({tuple, Args}, Env) -> {tuple, debruijn_list(Args, Env)};
 debruijn({var, Alpha}, _Env) -> {var, Alpha};
@@ -717,12 +698,12 @@ debruijn({negation, U}, Env) -> {negation, debruijn(U, Env)}.
 
 -spec debruijn_list([ast_ty()], var_env()) -> [ast_ty()].
 debruijn_list(Types, Env) ->
-    [debruijn(T, Env) || T <- Types].
+  [debruijn(T, Env) || T <- Types].
 
 %% Helper to find the index of a name in the environment
 -spec index_of(ast:ty_varname(), var_env()) -> {ok, non_neg_integer()} | not_found.
 index_of(Name, Env) ->
-    index_of(Name, Env, 0).
+  index_of(Name, Env, 0).
 
 -spec index_of(ast:ty_varname(), var_env(), non_neg_integer()) -> {ok, non_neg_integer()} | not_found.
 index_of(Name, [Name|_], Index) -> {ok, Index};
@@ -733,104 +714,102 @@ index_of(_, [], _) -> not_found.
 %% Conversion back to named variables with fresh names
 -spec convert_back(ast_ty()) -> ast_ty().
 convert_back(Type) ->
-    {Result, _} = convert_back(Type, [], 0),
-    Result.
+  {Result, _} = convert_back(Type, [], 0),
+  Result.
 
 -spec convert_back(ast_ty(), var_env(), non_neg_integer()) -> {ast_ty(), non_neg_integer()}.
 convert_back({mu, _, Body}, Env, Counter) ->
-    Name = make_fresh_name(Counter),
-    NewEnv = [Name | Env],
-    {ConvertedBody, NewCounter} = convert_back(Body, NewEnv, Counter + 1),
-    {{mu, {mu_var, Name}, ConvertedBody}, NewCounter};
+  Name = make_fresh_name(Counter),
+  NewEnv = [Name | Env],
+  {ConvertedBody, NewCounter} = convert_back(Body, NewEnv, Counter + 1),
+  {{mu, {mu_var, Name}, ConvertedBody}, NewCounter};
 convert_back({mu_var, Index}, Env, Counter) ->
-    case lists:nth(list_to_integer(atom_to_list(Index)) + 1, Env) of
-        Name -> {{mu_var, Name}, Counter}
-    end;
+  Name = lists:nth(list_to_integer(atom_to_list(Index)) + 1, Env),
+  {{mu_var, Name}, Counter};
 convert_back({var, Name}, _Env, Counter) ->
-    {{var, Name}, Counter};
+  {{var, Name}, Counter};
 convert_back({tuple, Args}, Env, Counter) ->
-    {ConvertedArgs, NewCounter} = convert_back_list(Args, Env, Counter),
-    {{tuple, ConvertedArgs}, NewCounter};
+  {ConvertedArgs, NewCounter} = convert_back_list(Args, Env, Counter),
+  {{tuple, ConvertedArgs}, NewCounter};
 convert_back({union, Args}, Env, Counter) ->
-    {ConvertedArgs, NewCounter} = convert_back_list(Args, Env, Counter),
-    {{union, ConvertedArgs}, NewCounter};
+  {ConvertedArgs, NewCounter} = convert_back_list(Args, Env, Counter),
+  {{union, ConvertedArgs}, NewCounter};
 convert_back({intersection, Args}, Env, Counter) ->
-    {ConvertedArgs, NewCounter} = convert_back_list(Args, Env, Counter),
-    {{intersection, ConvertedArgs}, NewCounter};
+  {ConvertedArgs, NewCounter} = convert_back_list(Args, Env, Counter),
+  {{intersection, ConvertedArgs}, NewCounter};
 %% Handle all other type constructors similarly
 convert_back(Type, Env, Counter) when is_tuple(Type) ->
-    case element(1, Type) of
-        Constructor when Constructor =:= list; 
-                         Constructor =:= nonempty_list ->
-            [Constructor, Arg] = tuple_to_list(Type),
-            {ConvertedArg, NewCounter} = convert_back(Arg, Env, Counter),
-            {list_to_tuple([Constructor, ConvertedArg]), NewCounter};
-        Constructor when Constructor =:= improper_list;
-                         Constructor =:= nonempty_improper_list ->
-            [Constructor, Arg, Arg2] = tuple_to_list(Type),
-            {ConvertedArg, NewCounter} = convert_back(Arg, Env, Counter),
-            {ConvertedArg2, NewCounter2} = convert_back(Arg2, Env, NewCounter),
-            {list_to_tuple([Constructor, ConvertedArg, ConvertedArg2]), NewCounter2};
-        Constructor when Constructor =:= fun_any_arg;
-                         Constructor =:= negation ->
-            [Constructor, Arg] = tuple_to_list(Type),
-            {ConvertedArg, NewCounter} = convert_back(Arg, Env, Counter),
-            {list_to_tuple([Constructor, ConvertedArg]), NewCounter};
-        fun_full ->
-            [fun_full, Args, Ret] = tuple_to_list(Type),
-            {ConvertedArgs, Counter1} = convert_back_list(Args, Env, Counter),
-            {ConvertedRet, NewCounter} = convert_back(Ret, Env, Counter1),
-            {{fun_full, ConvertedArgs, ConvertedRet}, NewCounter};
-        map ->
-            [map, Assocs] = tuple_to_list(Type),
-            {ConvertedAssocs, NewCounter} = convert_back_assocs(Assocs, Env, Counter),
-            {{map, ConvertedAssocs}, NewCounter};
-        named ->
-            [named, Loc, Ref, Args] = tuple_to_list(Type),
-            {ConvertedArgs, NewCounter} = convert_back_list(Args, Env, Counter),
-            {{named, Loc, Ref, ConvertedArgs}, NewCounter};
-        _ ->
-            {Type, Counter} % For atomic types
-    end;
+  case element(1, Type) of
+    Constructor when Constructor =:= list; 
+                     Constructor =:= nonempty_list ->
+      [Constructor, Arg] = tuple_to_list(Type),
+      {ConvertedArg, NewCounter} = convert_back(Arg, Env, Counter),
+      {list_to_tuple([Constructor, ConvertedArg]), NewCounter};
+    Constructor when Constructor =:= improper_list;
+                     Constructor =:= nonempty_improper_list ->
+      [Constructor, Arg, Arg2] = tuple_to_list(Type),
+      {ConvertedArg, NewCounter} = convert_back(Arg, Env, Counter),
+      {ConvertedArg2, NewCounter2} = convert_back(Arg2, Env, NewCounter),
+      {list_to_tuple([Constructor, ConvertedArg, ConvertedArg2]), NewCounter2};
+    Constructor when Constructor =:= fun_any_arg;
+                     Constructor =:= negation ->
+      [Constructor, Arg] = tuple_to_list(Type),
+      {ConvertedArg, NewCounter} = convert_back(Arg, Env, Counter),
+      {list_to_tuple([Constructor, ConvertedArg]), NewCounter};
+    fun_full ->
+      [fun_full, Args, Ret] = tuple_to_list(Type),
+      {ConvertedArgs, Counter1} = convert_back_list(Args, Env, Counter),
+      {ConvertedRet, NewCounter} = convert_back(Ret, Env, Counter1),
+      {{fun_full, ConvertedArgs, ConvertedRet}, NewCounter};
+    map ->
+      [map, Assocs] = tuple_to_list(Type),
+      {ConvertedAssocs, NewCounter} = convert_back_assocs(Assocs, Env, Counter),
+      {{map, ConvertedAssocs}, NewCounter};
+    named ->
+      [named, Loc, Ref, Args] = tuple_to_list(Type),
+      {ConvertedArgs, NewCounter} = convert_back_list(Args, Env, Counter),
+      {{named, Loc, Ref, ConvertedArgs}, NewCounter};
+    _ ->
+      {Type, Counter} % For atomic types
+  end;
 convert_back(Type, _Env, Counter) ->
-    {Type, Counter}. % For non-tuple types
+  {Type, Counter}. % For non-tuple types
 
 -spec convert_back_list([ast_ty()], var_env(), non_neg_integer()) -> {[ast_ty()], non_neg_integer()}.
 convert_back_list([], _Env, Counter) -> {[], Counter};
 convert_back_list([Type|Rest], Env, Counter) ->
-    {Converted, Counter1} = convert_back(Type, Env, Counter),
-    {ConvertedRest, NewCounter} = convert_back_list(Rest, Env, Counter1),
-    {[Converted|ConvertedRest], NewCounter}.
+  {Converted, Counter1} = convert_back(Type, Env, Counter),
+  {ConvertedRest, NewCounter} = convert_back_list(Rest, Env, Counter1),
+  {[Converted|ConvertedRest], NewCounter}.
 
 -spec convert_back_assocs([ast:ty_map_assoc()], var_env(), non_neg_integer()) -> {[ast:ty_map_assoc()], non_neg_integer()}.
 convert_back_assocs([], _, Counter) -> {[], Counter};
 convert_back_assocs([{Kind, K, V}|Rest], Env, Counter) ->
-    {ConvertedK, Counter1} = convert_back(K, Env, Counter),
-    {ConvertedV, Counter2} = convert_back(V, Env, Counter1),
-    {ConvertedRest, NewCounter} = convert_back_assocs(Rest, Env, Counter2),
-    {[{Kind, ConvertedK, ConvertedV}|ConvertedRest], NewCounter}.
+  {ConvertedK, Counter1} = convert_back(K, Env, Counter),
+  {ConvertedV, Counter2} = convert_back(V, Env, Counter1),
+  {ConvertedRest, NewCounter} = convert_back_assocs(Rest, Env, Counter2),
+  {[{Kind, ConvertedK, ConvertedV}|ConvertedRest], NewCounter}.
 
 -spec make_fresh_name(non_neg_integer()) -> ast:ty_varname().
 make_fresh_name(Counter) ->
-    list_to_atom("$var_" ++ integer_to_list(Counter)).
+  list_to_atom("$var_" ++ integer_to_list(Counter)).
 
 assert_replaced_refs_have_good_order(Refs) ->
-  io:format(user,"Validating temporary -> node replacement order~n~p~n", [Refs]),
   validate_map(Refs),
   ok.
 
 validate_map(Map) ->
-    Pairs = lists:keysort(1, maps:to_list(Map)),
-    check_pairs(Pairs).
+  Pairs = lists:keysort(1, maps:to_list(Map)),
+  check_pairs(Pairs).
 
 check_pairs([]) -> true;
 check_pairs([_]) -> true;
 check_pairs([{K1, {node, N1}}, {K2, {node, N2}} | Rest]) ->
-    case K1 < K2 of
-        true when N1 < N2 -> check_pairs([{K2, {node, N2}} | Rest]);
-        true -> false;  % K1 < K2 but N1 >= N2
-        false -> check_pairs([{K2, {node, N2}} | Rest])  % K1 >= K2, no requirement
-    end;
+  case K1 < K2 of
+    true when N1 < N2 -> check_pairs([{K2, {node, N2}} | Rest]);
+    true -> false;  % K1 < K2 but N1 >= N2
+    false -> check_pairs([{K2, {node, N2}} | Rest])  % K1 >= K2, no requirement
+  end;
 check_pairs(_) -> false.  % invalid value format
 
 replace_locs(Term) ->
