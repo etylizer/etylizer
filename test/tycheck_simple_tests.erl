@@ -160,12 +160,8 @@ simple_test_() ->
   ],
 
   NoInfer = [
-    % slow, see #62
-    "foo3",
-    % TODO see #164
-    "match_13",
-    % TODO slow
-    "fun_local_03", "fun_local_04", "match_01", "match_11", "user_07"
+    % TODO BUG
+    % "fun_local_08"
   ],
 
   %What = ["atom_03_fail"],

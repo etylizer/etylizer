@@ -73,7 +73,7 @@ maps_norm_opt_5_test() ->
     tmap_field_opt(v(beta), u(tatom(), tint()))
   ]),
 
-  test_tally([{L, R}], solutions(1)).
+  test_tally([{L, R}], solutions(3)).
 
 maps_norm_opt_6_test() ->
   % #{a => β} ≤ #{atom() => int()}
@@ -91,7 +91,7 @@ maps_norm_opt_7_test() ->
   R = tmap([
     tmap_field_opt(v(beta), tany())
   ]),
-  test_tally([{L, R}], solutions(1)).
+  test_tally([{L, R}], solutions(2)).
 
 maps_norm_opt_8_test() ->
   % #{}  ≤  #{a => β}
@@ -140,7 +140,7 @@ maps_norm_opt_11_test() ->
     tmap_field_opt(v(gamma), v(delta)),
     tmap_field_opt(tany(), tany())
   ]),
-  test_tally([{L, R}], solutions(4)).
+  test_tally([{L, R}], solutions(8)).
 
 maps_norm_opt_12_test() ->
   % #{int() => atom(), atom() => int()}  ≤  #{int() => a, atom() => β, γ              => δ}

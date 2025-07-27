@@ -201,7 +201,7 @@ tally_10_test() ->
        {i([V0, ttuple1(A), TupleAny]), ttuple1(V5)},
        {A, V2},
        {i([V0, ttuple1(A), TupleAny]), ttuple1(V4)}],
-      [{#{}, #{}}]).
+      solutions(2)).
 
 % debug tallying ([] [] [('a1 -> 'a2, 'a0) ('a4, 'a2) (42, 'a4) ('a3 & Int, 'a4) ('a3 & Int, 'a5) (Any -> Bool, 'a5 -> 'a6) ('a6, Bool) ('a1, 'a3)]);;
 %[DEBUG:tallying]
@@ -262,7 +262,7 @@ tally_issue_14_test() ->
       {i([V0, ttuple1(A), TupleAny]), ttuple1(V5)},
       {A, V2},
       {i([V0, ttuple1(A), TupleAny]), ttuple1(V4)}],
-    solutions(1)).
+    solutions(2)).
 
 
 % constraints:
@@ -341,7 +341,8 @@ tally_foo2_test() ->
       {
         #{'$0' => ttuple([b(a), b(tag)])                             , '$2' => b(a)           , '$3' => b(a)  , '$4' => b(a) },
         #{'$0' => u([ttuple([b(a), b(tag)]), ttuple([b(b), b(tag)])]), '$2' => u([b(a), b(b)]), '$3' => tany(), '$4' => tany()}
-      }
+      },
+      {#{}, #{}}
     ]).
 
 tally_fun_cons_test() ->

@@ -9,6 +9,8 @@
 % AST helper functions
 -include_lib("test/erlang_types/erlang_types_test_utils.hrl").
 
+% test solution amount depends on variable ordering
+
 sol_number_test() ->
   % changing variable order produces a different number of solutions
 
@@ -26,8 +28,8 @@ sol_number_test() ->
   % both tally results are equivalent
 
   % variable order determines if a variable is used as a lower or upper bound for another variable
-  test_tally( [ C2 ], solutions(1)),
-  test_tally( [ C1 ], solutions(2)).
+  test_tally( [ C2 ], solutions(2)),
+  test_tally( [ C1 ], solutions(1)).
 
 good_variable_order_tuples_test() ->
   % tuples: if variables on the left side of a constraint are lower order, number of solutions decreases
@@ -51,8 +53,8 @@ good_variable_order_tuples_test() ->
          ])
        },
 
-  test_tally( [ C1 ], solutions(1)),
-  test_tally( [ C2 ], solutions(2)), % was 5 before
+  test_tally( [ C1 ], solutions(2)),
+  test_tally( [ C2 ], solutions(1)), % was 5 before
   ok.
 
 % if we don't have minimization, the variable order creates a different evaluation of the BDD where sometimes 
@@ -67,6 +69,6 @@ bdd_order_matters_test() ->
   C2 = { ttuple([v('$5')]), i([ ttuple([v('$1')]), ttuple([v('$2')]) ]) },
 
   % before the DNF minimization of a BDD -> DNF call, this call created 3 solutions
-  test_tally( [ C1 ], solutions(2)),
-  test_tally( [ C2 ], solutions(2)),
+  test_tally( [ C1 ], solutions(1)),
+  test_tally( [ C2 ], solutions(1)),
   ok.
