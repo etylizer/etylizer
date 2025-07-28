@@ -1,0 +1,162 @@
+[0;32m===> Verifying dependencies...
+[0m[0;32m===> Analyzing applications...
+[0m[0;32m===> Compiling etylizer
+[0m[0;32m===> Performing EUnit tests...
+[0m
+
+=== Step 1: Normalize 12 constraints
+[{{node,1},{node,2}},
+ {{node,3},{node,4}},
+ {{node,6},{node,7}},
+ {{node,9},{node,10}},
+ {{node,11},{node,13}},
+ {{node,13},{node,14}},
+ {{node,17},{node,18}},
+ {{node,17},{node,19}},
+ {{node,17},{node,21}},
+ {{node,17},{node,22}},
+ {{node,24},{node,12}},
+ {{node,10},{node,24}}]
+#{}
+===
+constraints
+
+{{node,1},#{{node,1} => {leaf,{ty,<<0:5>>,{{1,{foo,nil,nil}},finite},[],{leaf,0},0,{{leaf,0},#{}},{{leaf,0},#{}},{leaf,0}}}}}
+<:
+{{node,2},#{{node,2} => {node,{var,name,'$9'},{leaf,any},{leaf,empty}}}}
+
+{{node,3},#{{node,3} => {node,{var,name,'$6'},{leaf,any},{leaf,empty}}}}
+<:
+{{node,4},#{{node,4} => {leaf,{ty,<<0:5>>,{{0,nil},finite},[],{leaf,0},0,{{leaf,0},#{1 => {node,{ty_tuple,1,[{node,5}]},{leaf,1},{leaf,0}}}},{{leaf,0},#{}},{leaf,0}}},{node,5} => {node,{var,name,'$7'},{leaf,any},{leaf,empty}}}}
+
+{{node,6},#{{node,6} => {node,{var,name,'$3'},{leaf,any},{leaf,empty}}}}
+<:
+{{node,7},#{{node,7} => {leaf,{ty,<<0:5>>,{{0,nil},finite},[],{leaf,0},0,{{leaf,0},#{1 => {node,{ty_tuple,1,[{node,8}]},{leaf,1},{leaf,0}}}},{{leaf,0},#{}},{leaf,0}}},{node,8} => {node,{var,name,'$4'},{leaf,any},{leaf,empty}}}}
+
+{{node,9},#{{node,2} => {node,{var,name,'$9'},{leaf,any},{leaf,empty}},{node,9} => {leaf,{ty,<<0:5>>,{{0,nil},finite},[],{leaf,0},0,{{leaf,0},#{1 => {node,{ty_tuple,1,[{node,2}]},{leaf,1},{leaf,0}}}},{{leaf,0},#{}},{leaf,0}}}}}
+<:
+{{node,10},#{{node,10} => {node,{var,name,'$8'},{leaf,any},{leaf,empty}}}}
+
+{{node,11},#{{node,11} => {leaf,{ty,<<0:5>>,{{0,nil},finite},[],{leaf,0},0,{{leaf,0},#{1 => {node,{ty_tuple,1,[{node,12}]},{leaf,1},{leaf,0}}}},{{leaf,0},#{}},{leaf,0}}},{node,12} => {node,{var,name,'$1'},{leaf,any},{leaf,empty}}}}
+<:
+{{node,13},#{{node,13} => {node,{var,name,'$0'},{leaf,any},{leaf,empty}}}}
+
+{{node,13},#{{node,13} => {node,{var,name,'$0'},{leaf,any},{leaf,empty}}}}
+<:
+{{node,14},#{{node,14} => {leaf,{ty,<<0:5>>,{{0,nil},finite},[],{leaf,0},0,{{leaf,0},#{1 => {node,{ty_tuple,1,[{node,15}]},{node,{ty_tuple,1,[{node,16}]},{leaf,1},{leaf,0}},{leaf,0}}}},{{leaf,0},#{}},{leaf,0}}},{node,15} => {leaf,{ty,<<0:5>>,{{0,nil},finite},[],{leaf,0},0,{{leaf,0},#{1 => {node,{ty_tuple,1,[{node,16}]},{leaf,1},{leaf,0}}}},{{leaf,0},#{}},{leaf,0}}},{node,16} => {leaf,any}}}
+
+{{node,17},#{{node,15} => {leaf,{ty,<<0:5>>,{{0,nil},finite},[],{leaf,0},0,{{leaf,0},#{1 => {node,{ty_tuple,1,[{node,16}]},{leaf,1},{leaf,0}}}},{{leaf,0},#{}},{leaf,0}}},{node,16} => {leaf,any},{node,17} => {node,{var,name,'$0'},{leaf,{ty,<<0:5>>,{{0,nil},finite},[],{leaf,0},0,{{leaf,0},#{1 => {node,{ty_tuple,1,[{node,15}]},{node,{ty_tuple,1,[{node,16}]},{leaf,1},{leaf,0}},{leaf,0}}}},{{leaf,0},#{}},{leaf,0}}},{leaf,empty}}}}
+<:
+{{node,18},#{{node,3} => {node,{var,name,'$6'},{leaf,any},{leaf,empty}},{node,18} => {leaf,{ty,<<0:5>>,{{0,nil},finite},[],{leaf,0},0,{{leaf,0},#{1 => {node,{ty_tuple,1,[{node,3}]},{leaf,1},{leaf,0}}}},{{leaf,0},#{}},{leaf,0}}}}}
+
+{{node,17},#{{node,15} => {leaf,{ty,<<0:5>>,{{0,nil},finite},[],{leaf,0},0,{{leaf,0},#{1 => {node,{ty_tuple,1,[{node,16}]},{leaf,1},{leaf,0}}}},{{leaf,0},#{}},{leaf,0}}},{node,16} => {leaf,any},{node,17} => {node,{var,name,'$0'},{leaf,{ty,<<0:5>>,{{0,nil},finite},[],{leaf,0},0,{{leaf,0},#{1 => {node,{ty_tuple,1,[{node,15}]},{node,{ty_tuple,1,[{node,16}]},{leaf,1},{leaf,0}},{leaf,0}}}},{{leaf,0},#{}},{leaf,0}}},{leaf,empty}}}}
+<:
+{{node,19},#{{node,19} => {leaf,{ty,<<0:5>>,{{0,nil},finite},[],{leaf,0},0,{{leaf,0},#{1 => {node,{ty_tuple,1,[{node,20}]},{leaf,1},{leaf,0}}}},{{leaf,0},#{}},{leaf,0}}},{node,20} => {node,{var,name,'$5'},{leaf,any},{leaf,empty}}}}
+
+{{node,17},#{{node,15} => {leaf,{ty,<<0:5>>,{{0,nil},finite},[],{leaf,0},0,{{leaf,0},#{1 => {node,{ty_tuple,1,[{node,16}]},{leaf,1},{leaf,0}}}},{{leaf,0},#{}},{leaf,0}}},{node,16} => {leaf,any},{node,17} => {node,{var,name,'$0'},{leaf,{ty,<<0:5>>,{{0,nil},finite},[],{leaf,0},0,{{leaf,0},#{1 => {node,{ty_tuple,1,[{node,15}]},{node,{ty_tuple,1,[{node,16}]},{leaf,1},{leaf,0}},{leaf,0}}}},{{leaf,0},#{}},{leaf,0}}},{leaf,empty}}}}
+<:
+{{node,21},#{{node,6} => {node,{var,name,'$3'},{leaf,any},{leaf,empty}},{node,21} => {leaf,{ty,<<0:5>>,{{0,nil},finite},[],{leaf,0},0,{{leaf,0},#{1 => {node,{ty_tuple,1,[{node,6}]},{leaf,1},{leaf,0}}}},{{leaf,0},#{}},{leaf,0}}}}}
+
+{{node,17},#{{node,15} => {leaf,{ty,<<0:5>>,{{0,nil},finite},[],{leaf,0},0,{{leaf,0},#{1 => {node,{ty_tuple,1,[{node,16}]},{leaf,1},{leaf,0}}}},{{leaf,0},#{}},{leaf,0}}},{node,16} => {leaf,any},{node,17} => {node,{var,name,'$0'},{leaf,{ty,<<0:5>>,{{0,nil},finite},[],{leaf,0},0,{{leaf,0},#{1 => {node,{ty_tuple,1,[{node,15}]},{node,{ty_tuple,1,[{node,16}]},{leaf,1},{leaf,0}},{leaf,0}}}},{{leaf,0},#{}},{leaf,0}}},{leaf,empty}}}}
+<:
+{{node,22},#{{node,22} => {leaf,{ty,<<0:5>>,{{0,nil},finite},[],{leaf,0},0,{{leaf,0},#{1 => {node,{ty_tuple,1,[{node,23}]},{leaf,1},{leaf,0}}}},{{leaf,0},#{}},{leaf,0}}},{node,23} => {node,{var,name,'$2'},{leaf,any},{leaf,empty}}}}
+
+{{node,24},#{{node,1} => {leaf,{ty,<<0:5>>,{{1,{foo,nil,nil}},finite},[],{leaf,0},0,{{leaf,0},#{}},{{leaf,0},#{}},{leaf,0}}},{node,24} => {leaf,{ty,<<0:5>>,{{0,nil},finite},[],{leaf,0},0,{{leaf,0},#{1 => {node,{ty_tuple,1,[{node,1}]},{leaf,1},{node,{ty_tuple,1,[{node,24}]},{leaf,1},{leaf,0}}}}},{{leaf,0},#{}},{leaf,0}}}}}
+<:
+{{node,12},#{{node,12} => {node,{var,name,'$1'},{leaf,any},{leaf,empty}}}}
+
+{{node,10},#{{node,10} => {node,{var,name,'$8'},{leaf,any},{leaf,empty}}}}
+<:
+{{node,24},#{{node,1} => {leaf,{ty,<<0:5>>,{{1,{foo,nil,nil}},finite},[],{leaf,0},0,{{leaf,0},#{}},{{leaf,0},#{}},{leaf,0}}},{node,24} => {leaf,{ty,<<0:5>>,{{0,nil},finite},[],{leaf,0},0,{{leaf,0},#{1 => {node,{ty_tuple,1,[{node,1}]},{leaf,1},{node,{ty_tuple,1,[{node,24}]},{leaf,1},{leaf,0}}}}},{{leaf,0},#{}},{leaf,0}}}}}
+
+Normalize in 7 ms
+
+=== Step 2: Saturate
+1 sets of constraint sets
+Saturate true in 28 ms
+
+
+=== Step 1: Normalize 14 constraints
+[{{node,1},{node,2}},
+ {{node,3},{node,4}},
+ {{node,6},{node,7}},
+ {{node,9},{node,10}},
+ {{node,11},{node,13}},
+ {{node,13},{node,14}},
+ {{node,71},{node,73}},
+ {{node,17},{node,18}},
+ {{node,17},{node,19}},
+ {{node,17},{node,21}},
+ {{node,17},{node,22}},
+ {{node,24},{node,72}},
+ {{node,24},{node,12}},
+ {{node,10},{node,24}}]
+#{}
+===
+constraints
+
+{{node,1},#{{node,1} => {leaf,{ty,<<0:5>>,{{1,{foo,nil,nil}},finite},[],{leaf,0},0,{{leaf,0},#{}},{{leaf,0},#{}},{leaf,0}}}}}
+<:
+{{node,2},#{{node,2} => {node,{var,name,'$9'},{leaf,any},{leaf,empty}}}}
+
+{{node,3},#{{node,3} => {node,{var,name,'$6'},{leaf,any},{leaf,empty}}}}
+<:
+{{node,4},#{{node,4} => {leaf,{ty,<<0:5>>,{{0,nil},finite},[],{leaf,0},0,{{leaf,0},#{1 => {node,{ty_tuple,1,[{node,5}]},{leaf,1},{leaf,0}}}},{{leaf,0},#{}},{leaf,0}}},{node,5} => {node,{var,name,'$7'},{leaf,any},{leaf,empty}}}}
+
+{{node,6},#{{node,6} => {node,{var,name,'$3'},{leaf,any},{leaf,empty}}}}
+<:
+{{node,7},#{{node,7} => {leaf,{ty,<<0:5>>,{{0,nil},finite},[],{leaf,0},0,{{leaf,0},#{1 => {node,{ty_tuple,1,[{node,8}]},{leaf,1},{leaf,0}}}},{{leaf,0},#{}},{leaf,0}}},{node,8} => {node,{var,name,'$4'},{leaf,any},{leaf,empty}}}}
+
+{{node,9},#{{node,2} => {node,{var,name,'$9'},{leaf,any},{leaf,empty}},{node,9} => {leaf,{ty,<<0:5>>,{{0,nil},finite},[],{leaf,0},0,{{leaf,0},#{1 => {node,{ty_tuple,1,[{node,2}]},{leaf,1},{leaf,0}}}},{{leaf,0},#{}},{leaf,0}}}}}
+<:
+{{node,10},#{{node,10} => {node,{var,name,'$8'},{leaf,any},{leaf,empty}}}}
+
+{{node,11},#{{node,11} => {leaf,{ty,<<0:5>>,{{0,nil},finite},[],{leaf,0},0,{{leaf,0},#{1 => {node,{ty_tuple,1,[{node,12}]},{leaf,1},{leaf,0}}}},{{leaf,0},#{}},{leaf,0}}},{node,12} => {node,{var,name,'$1'},{leaf,any},{leaf,empty}}}}
+<:
+{{node,13},#{{node,13} => {node,{var,name,'$0'},{leaf,any},{leaf,empty}}}}
+
+{{node,13},#{{node,13} => {node,{var,name,'$0'},{leaf,any},{leaf,empty}}}}
+<:
+{{node,14},#{{node,14} => {leaf,{ty,<<0:5>>,{{0,nil},finite},[],{leaf,0},0,{{leaf,0},#{1 => {node,{ty_tuple,1,[{node,15}]},{node,{ty_tuple,1,[{node,16}]},{leaf,1},{leaf,0}},{leaf,0}}}},{{leaf,0},#{}},{leaf,0}}},{node,15} => {leaf,{ty,<<0:5>>,{{0,nil},finite},[],{leaf,0},0,{{leaf,0},#{1 => {node,{ty_tuple,1,[{node,16}]},{leaf,1},{leaf,0}}}},{{leaf,0},#{}},{leaf,0}}},{node,16} => {leaf,any}}}
+
+{{node,71},#{{node,71} => {leaf,{ty,<<0:5>>,{{0,nil},finite},[],{leaf,0},0,{{leaf,0},#{1 => {node,{ty_tuple,1,[{node,72}]},{leaf,1},{leaf,0}}}},{{leaf,0},#{}},{leaf,0}}},{node,72} => {node,{var,name,'$10'},{leaf,any},{leaf,empty}}}}
+<:
+{{node,73},#{{node,15} => {leaf,{ty,<<0:5>>,{{0,nil},finite},[],{leaf,0},0,{{leaf,0},#{1 => {node,{ty_tuple,1,[{node,16}]},{leaf,1},{leaf,0}}}},{{leaf,0},#{}},{leaf,0}}},{node,16} => {leaf,any},{node,73} => {leaf,{ty,<<31:5>>,{{0,nil},cofinite},[any_int],{leaf,1},1,{{leaf,1},#{1 => {node,{ty_tuple,1,[{node,15}]},{node,{ty_tuple,1,[{node,16}]},{leaf,0},{leaf,1}},{leaf,1}}}},{{leaf,1},#{}},{leaf,1}}}}}
+
+{{node,17},#{{node,15} => {leaf,{ty,<<0:5>>,{{0,nil},finite},[],{leaf,0},0,{{leaf,0},#{1 => {node,{ty_tuple,1,[{node,16}]},{leaf,1},{leaf,0}}}},{{leaf,0},#{}},{leaf,0}}},{node,16} => {leaf,any},{node,17} => {node,{var,name,'$0'},{leaf,{ty,<<0:5>>,{{0,nil},finite},[],{leaf,0},0,{{leaf,0},#{1 => {node,{ty_tuple,1,[{node,15}]},{node,{ty_tuple,1,[{node,16}]},{leaf,1},{leaf,0}},{leaf,0}}}},{{leaf,0},#{}},{leaf,0}}},{leaf,empty}}}}
+<:
+{{node,18},#{{node,3} => {node,{var,name,'$6'},{leaf,any},{leaf,empty}},{node,18} => {leaf,{ty,<<0:5>>,{{0,nil},finite},[],{leaf,0},0,{{leaf,0},#{1 => {node,{ty_tuple,1,[{node,3}]},{leaf,1},{leaf,0}}}},{{leaf,0},#{}},{leaf,0}}}}}
+
+{{node,17},#{{node,15} => {leaf,{ty,<<0:5>>,{{0,nil},finite},[],{leaf,0},0,{{leaf,0},#{1 => {node,{ty_tuple,1,[{node,16}]},{leaf,1},{leaf,0}}}},{{leaf,0},#{}},{leaf,0}}},{node,16} => {leaf,any},{node,17} => {node,{var,name,'$0'},{leaf,{ty,<<0:5>>,{{0,nil},finite},[],{leaf,0},0,{{leaf,0},#{1 => {node,{ty_tuple,1,[{node,15}]},{node,{ty_tuple,1,[{node,16}]},{leaf,1},{leaf,0}},{leaf,0}}}},{{leaf,0},#{}},{leaf,0}}},{leaf,empty}}}}
+<:
+{{node,19},#{{node,19} => {leaf,{ty,<<0:5>>,{{0,nil},finite},[],{leaf,0},0,{{leaf,0},#{1 => {node,{ty_tuple,1,[{node,20}]},{leaf,1},{leaf,0}}}},{{leaf,0},#{}},{leaf,0}}},{node,20} => {node,{var,name,'$5'},{leaf,any},{leaf,empty}}}}
+
+{{node,17},#{{node,15} => {leaf,{ty,<<0:5>>,{{0,nil},finite},[],{leaf,0},0,{{leaf,0},#{1 => {node,{ty_tuple,1,[{node,16}]},{leaf,1},{leaf,0}}}},{{leaf,0},#{}},{leaf,0}}},{node,16} => {leaf,any},{node,17} => {node,{var,name,'$0'},{leaf,{ty,<<0:5>>,{{0,nil},finite},[],{leaf,0},0,{{leaf,0},#{1 => {node,{ty_tuple,1,[{node,15}]},{node,{ty_tuple,1,[{node,16}]},{leaf,1},{leaf,0}},{leaf,0}}}},{{leaf,0},#{}},{leaf,0}}},{leaf,empty}}}}
+<:
+{{node,21},#{{node,6} => {node,{var,name,'$3'},{leaf,any},{leaf,empty}},{node,21} => {leaf,{ty,<<0:5>>,{{0,nil},finite},[],{leaf,0},0,{{leaf,0},#{1 => {node,{ty_tuple,1,[{node,6}]},{leaf,1},{leaf,0}}}},{{leaf,0},#{}},{leaf,0}}}}}
+
+{{node,17},#{{node,15} => {leaf,{ty,<<0:5>>,{{0,nil},finite},[],{leaf,0},0,{{leaf,0},#{1 => {node,{ty_tuple,1,[{node,16}]},{leaf,1},{leaf,0}}}},{{leaf,0},#{}},{leaf,0}}},{node,16} => {leaf,any},{node,17} => {node,{var,name,'$0'},{leaf,{ty,<<0:5>>,{{0,nil},finite},[],{leaf,0},0,{{leaf,0},#{1 => {node,{ty_tuple,1,[{node,15}]},{node,{ty_tuple,1,[{node,16}]},{leaf,1},{leaf,0}},{leaf,0}}}},{{leaf,0},#{}},{leaf,0}}},{leaf,empty}}}}
+<:
+{{node,22},#{{node,22} => {leaf,{ty,<<0:5>>,{{0,nil},finite},[],{leaf,0},0,{{leaf,0},#{1 => {node,{ty_tuple,1,[{node,23}]},{leaf,1},{leaf,0}}}},{{leaf,0},#{}},{leaf,0}}},{node,23} => {node,{var,name,'$2'},{leaf,any},{leaf,empty}}}}
+
+{{node,24},#{{node,1} => {leaf,{ty,<<0:5>>,{{1,{foo,nil,nil}},finite},[],{leaf,0},0,{{leaf,0},#{}},{{leaf,0},#{}},{leaf,0}}},{node,24} => {leaf,{ty,<<0:5>>,{{0,nil},finite},[],{leaf,0},0,{{leaf,0},#{1 => {node,{ty_tuple,1,[{node,1}]},{leaf,1},{node,{ty_tuple,1,[{node,24}]},{leaf,1},{leaf,0}}}}},{{leaf,0},#{}},{leaf,0}}}}}
+<:
+{{node,72},#{{node,72} => {node,{var,name,'$10'},{leaf,any},{leaf,empty}}}}
+
+{{node,24},#{{node,1} => {leaf,{ty,<<0:5>>,{{1,{foo,nil,nil}},finite},[],{leaf,0},0,{{leaf,0},#{}},{{leaf,0},#{}},{leaf,0}}},{node,24} => {leaf,{ty,<<0:5>>,{{0,nil},finite},[],{leaf,0},0,{{leaf,0},#{1 => {node,{ty_tuple,1,[{node,1}]},{leaf,1},{node,{ty_tuple,1,[{node,24}]},{leaf,1},{leaf,0}}}}},{{leaf,0},#{}},{leaf,0}}}}}
+<:
+{{node,12},#{{node,12} => {node,{var,name,'$1'},{leaf,any},{leaf,empty}}}}
+
+{{node,10},#{{node,10} => {node,{var,name,'$8'},{leaf,any},{leaf,empty}}}}
+<:
+{{node,24},#{{node,1} => {leaf,{ty,<<0:5>>,{{1,{foo,nil,nil}},finite},[],{leaf,0},0,{{leaf,0},#{}},{{leaf,0},#{}},{leaf,0}}},{node,24} => {leaf,{ty,<<0:5>>,{{0,nil},finite},[],{leaf,0},0,{{leaf,0},#{1 => {node,{ty_tuple,1,[{node,1}]},{leaf,1},{node,{ty_tuple,1,[{node,24}]},{leaf,1},{leaf,0}}}}},{{leaf,0},#{}},{leaf,0}}}}}
+
+Normalize in 0 ms
+
+=== Step 2: Saturate
+1 sets of constraint sets
+Saturate false in 14 ms
+[0;32m.[0m
+Finished in 0.138 seconds
+[0;32m1 tests, 0 failures
+[0m

@@ -1,0 +1,7 @@
+#{
+  {ty_key,ast_neg,ty,0} =>
+   {ty_scheme,[],
+    {union,
+     [{tuple,[{named,{loc,"src/ast_neg.erl",5,16},{ty_ref,ast_neg,ty,0},[]}]},
+      {tuple,[{singleton,foo}]}]}}
+}.

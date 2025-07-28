@@ -1,0 +1,2 @@
+~/etylizer/etylizer ~/etylizer/etylizer/test_files/etylizer-mini
+rebar3 escriptize

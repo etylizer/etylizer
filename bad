@@ -1,0 +1,209 @@
+~/etylizer/etylizer ~/etylizer/etylizer/test_files/etylizer-mini
+rebar3 escriptize
+[0;32m===> Verifying dependencies...
+[0m[0;32m===> Analyzing applications...
+[0m[0;32m===> Compiling etylizer
+[0m[0;32m===> Building escript for etylizer...
+[0m~/etylizer/etylizer/test_files/etylizer-mini
+[INFO 2025-07-28 11:33:39.788 etylizer_main.erl:174] Parsed commandline options as {opts,debug,false,false,false,false,true,false,true,[],[],empty,".",[],
+                                                                                         ["src"],
+                                                                                         [],[],[],
+                                                                                         ["src/ast_neg.erl"],
+                                                                                         "overlay.erl",prod_mode}
+[INFO 2025-07-28 11:33:39.827 etylizer_main.erl:129] Initializing ETS tables
+[INFO 2025-07-28 11:33:39.834 paths.erl:172] Only using explicitly specified input files: ["src/ast_neg.erl"]
+[NOTE 2025-07-28 11:33:39.878 etylizer_main.erl:162] Performing type checking
+[INFO 2025-07-28 11:33:39.884 cm_index.erl:56] Loading index from "./_etylizer/index"
+[INFO 2025-07-28 11:33:39.885 cm_check.erl:26] All sources: ["src/ast_neg.erl"]
+[INFO 2025-07-28 11:33:39.885 cm_check.erl:35] Forced to recheck everything
+[NOTE 2025-07-28 11:33:39.885 cm_check.erl:44] Need to check 1 of 1 files: ["src/ast_neg.erl"]
+[NOTE 2025-07-28 11:33:39.885 cm_check.erl:134] Using overlays from overlay.erl
+/usr/lib/erlang/lib/erts-16.0.2/src/erlang.erl:10334:2: Warning: can't find doc file "../../doc/src/erlang_system_info.md"
+% 10334| -doc {file,"../../doc/src/erlang_system_info.md"}.
+%      |  ^
+
+/usr/lib/erlang/lib/erts-16.0.2/src/erlang.erl:12143:2: Warning: can't find doc file "../../doc/src/erlang_port_info.md"
+% 12143| -doc {file, "../../doc/src/erlang_port_info.md"}.
+%      |  ^
+
+[NOTE 2025-07-28 11:33:40.473 symtab.erl:160] Building symtab for overlay file ...
+[NOTE 2025-07-28 11:33:40.474 symtab.erl:143] Building symtab for standard library ...
+/usr/lib/erlang/lib/erts-16.0.2/src/erlang.erl:10334:2: Warning: can't find doc file "../../doc/src/erlang_system_info.md"
+% 10334| -doc {file,"../../doc/src/erlang_system_info.md"}.
+%      |  ^
+
+/usr/lib/erlang/lib/erts-16.0.2/src/erlang.erl:12143:2: Warning: can't find doc file "../../doc/src/erlang_port_info.md"
+% 12143| -doc {file, "../../doc/src/erlang_port_info.md"}.
+%      |  ^
+
+[INFO 2025-07-28 11:33:40.905 symtab.erl:217] Overlay found for erlang:element/2
+[INFO 2025-07-28 11:33:41.296 symtab.erl:217] Overlay found for lists:keyfind/3
+[INFO 2025-07-28 11:33:41.296 symtab.erl:217] Overlay found for lists:map/2
+[INFO 2025-07-28 11:33:41.296 symtab.erl:217] Overlay found for lists:foldl/3
+[INFO 2025-07-28 11:33:41.737 symtab.erl:217] Overlay found for maps:from_list/1
+[NOTE 2025-07-28 11:33:42.795 symtab.erl:155] Done building symtab for standard library
+[NOTE 2025-07-28 11:33:42.795 cm_check.erl:87] Checking src/ast_neg.erl
+[INFO 2025-07-28 11:33:42.807 typing.erl:76] Checking 1 functions in src/ast_neg.erl against their specs (1 environments)
+[INFO 2025-07-28 11:33:42.811 typing_check.erl:22] Checking 1 functions in src/ast_neg.erl against their specs
+[INFO 2025-07-28 11:33:42.822 typing_check.erl:61] Type checking mk_negation/1 at src/ast_neg.erl:8:1 against type fun((ty()) -> ty())
+[INFO 2025-07-28 11:33:42.835 typing_check.erl:111] Checking function mk_negation/1 at src/ast_neg.erl:8:1 against type fun((ty()) -> ty())
+
+
+=== Step 1: Normalize 12 constraints
+[{{node,1},{node,2}},
+ {{node,3},{node,4}},
+ {{node,5},{node,6}},
+ {{node,8},{node,9}},
+ {{node,11},{node,13}},
+ {{node,13},{node,14}},
+ {{node,17},{node,18}},
+ {{node,17},{node,19}},
+ {{node,17},{node,21}},
+ {{node,17},{node,22}},
+ {{node,4},{node,24}},
+ {{node,24},{node,12}}]
+#{}
+===
+constraints
+
+{{node,1},#{{node,1} => {leaf,{ty,<<0:5>>,{{1,{foo,nil,nil}},finite},[],{leaf,0},0,{{leaf,0},#{}},{{leaf,0},#{}},{leaf,0}}}}}
+<:
+{{node,2},#{{node,2} => {node,{var,name,'$9'},{leaf,any},{leaf,empty}}}}
+
+{{node,3},#{{node,2} => {node,{var,name,'$9'},{leaf,any},{leaf,empty}},{node,3} => {leaf,{ty,<<0:5>>,{{0,nil},finite},[],{leaf,0},0,{{leaf,0},#{1 => {node,{ty_tuple,1,[{node,2}]},{leaf,1},{leaf,0}}}},{{leaf,0},#{}},{leaf,0}}}}}
+<:
+{{node,4},#{{node,4} => {node,{var,name,'$8'},{leaf,any},{leaf,empty}}}}
+
+{{node,5},#{{node,5} => {node,{var,name,'$6'},{leaf,any},{leaf,empty}}}}
+<:
+{{node,6},#{{node,6} => {leaf,{ty,<<0:5>>,{{0,nil},finite},[],{leaf,0},0,{{leaf,0},#{1 => {node,{ty_tuple,1,[{node,7}]},{leaf,1},{leaf,0}}}},{{leaf,0},#{}},{leaf,0}}},{node,7} => {node,{var,name,'$7'},{leaf,any},{leaf,empty}}}}
+
+{{node,8},#{{node,8} => {node,{var,name,'$3'},{leaf,any},{leaf,empty}}}}
+<:
+{{node,9},#{{node,9} => {leaf,{ty,<<0:5>>,{{0,nil},finite},[],{leaf,0},0,{{leaf,0},#{1 => {node,{ty_tuple,1,[{node,10}]},{leaf,1},{leaf,0}}}},{{leaf,0},#{}},{leaf,0}}},{node,10} => {node,{var,name,'$4'},{leaf,any},{leaf,empty}}}}
+
+{{node,11},#{{node,11} => {leaf,{ty,<<0:5>>,{{0,nil},finite},[],{leaf,0},0,{{leaf,0},#{1 => {node,{ty_tuple,1,[{node,12}]},{leaf,1},{leaf,0}}}},{{leaf,0},#{}},{leaf,0}}},{node,12} => {node,{var,name,'$1'},{leaf,any},{leaf,empty}}}}
+<:
+{{node,13},#{{node,13} => {node,{var,name,'$0'},{leaf,any},{leaf,empty}}}}
+
+{{node,13},#{{node,13} => {node,{var,name,'$0'},{leaf,any},{leaf,empty}}}}
+<:
+{{node,14},#{{node,14} => {leaf,{ty,<<0:5>>,{{0,nil},finite},[],{leaf,0},0,{{leaf,0},#{1 => {node,{ty_tuple,1,[{node,15}]},{node,{ty_tuple,1,[{node,16}]},{leaf,1},{leaf,0}},{leaf,0}}}},{{leaf,0},#{}},{leaf,0}}},{node,15} => {leaf,{ty,<<0:5>>,{{0,nil},finite},[],{leaf,0},0,{{leaf,0},#{1 => {node,{ty_tuple,1,[{node,16}]},{leaf,1},{leaf,0}}}},{{leaf,0},#{}},{leaf,0}}},{node,16} => {leaf,any}}}
+
+{{node,17},#{{node,15} => {leaf,{ty,<<0:5>>,{{0,nil},finite},[],{leaf,0},0,{{leaf,0},#{1 => {node,{ty_tuple,1,[{node,16}]},{leaf,1},{leaf,0}}}},{{leaf,0},#{}},{leaf,0}}},{node,16} => {leaf,any},{node,17} => {node,{var,name,'$0'},{leaf,{ty,<<0:5>>,{{0,nil},finite},[],{leaf,0},0,{{leaf,0},#{1 => {node,{ty_tuple,1,[{node,15}]},{node,{ty_tuple,1,[{node,16}]},{leaf,1},{leaf,0}},{leaf,0}}}},{{leaf,0},#{}},{leaf,0}}},{leaf,empty}}}}
+<:
+{{node,18},#{{node,5} => {node,{var,name,'$6'},{leaf,any},{leaf,empty}},{node,18} => {leaf,{ty,<<0:5>>,{{0,nil},finite},[],{leaf,0},0,{{leaf,0},#{1 => {node,{ty_tuple,1,[{node,5}]},{leaf,1},{leaf,0}}}},{{leaf,0},#{}},{leaf,0}}}}}
+
+{{node,17},#{{node,15} => {leaf,{ty,<<0:5>>,{{0,nil},finite},[],{leaf,0},0,{{leaf,0},#{1 => {node,{ty_tuple,1,[{node,16}]},{leaf,1},{leaf,0}}}},{{leaf,0},#{}},{leaf,0}}},{node,16} => {leaf,any},{node,17} => {node,{var,name,'$0'},{leaf,{ty,<<0:5>>,{{0,nil},finite},[],{leaf,0},0,{{leaf,0},#{1 => {node,{ty_tuple,1,[{node,15}]},{node,{ty_tuple,1,[{node,16}]},{leaf,1},{leaf,0}},{leaf,0}}}},{{leaf,0},#{}},{leaf,0}}},{leaf,empty}}}}
+<:
+{{node,19},#{{node,19} => {leaf,{ty,<<0:5>>,{{0,nil},finite},[],{leaf,0},0,{{leaf,0},#{1 => {node,{ty_tuple,1,[{node,20}]},{leaf,1},{leaf,0}}}},{{leaf,0},#{}},{leaf,0}}},{node,20} => {node,{var,name,'$5'},{leaf,any},{leaf,empty}}}}
+
+{{node,17},#{{node,15} => {leaf,{ty,<<0:5>>,{{0,nil},finite},[],{leaf,0},0,{{leaf,0},#{1 => {node,{ty_tuple,1,[{node,16}]},{leaf,1},{leaf,0}}}},{{leaf,0},#{}},{leaf,0}}},{node,16} => {leaf,any},{node,17} => {node,{var,name,'$0'},{leaf,{ty,<<0:5>>,{{0,nil},finite},[],{leaf,0},0,{{leaf,0},#{1 => {node,{ty_tuple,1,[{node,15}]},{node,{ty_tuple,1,[{node,16}]},{leaf,1},{leaf,0}},{leaf,0}}}},{{leaf,0},#{}},{leaf,0}}},{leaf,empty}}}}
+<:
+{{node,21},#{{node,8} => {node,{var,name,'$3'},{leaf,any},{leaf,empty}},{node,21} => {leaf,{ty,<<0:5>>,{{0,nil},finite},[],{leaf,0},0,{{leaf,0},#{1 => {node,{ty_tuple,1,[{node,8}]},{leaf,1},{leaf,0}}}},{{leaf,0},#{}},{leaf,0}}}}}
+
+{{node,17},#{{node,15} => {leaf,{ty,<<0:5>>,{{0,nil},finite},[],{leaf,0},0,{{leaf,0},#{1 => {node,{ty_tuple,1,[{node,16}]},{leaf,1},{leaf,0}}}},{{leaf,0},#{}},{leaf,0}}},{node,16} => {leaf,any},{node,17} => {node,{var,name,'$0'},{leaf,{ty,<<0:5>>,{{0,nil},finite},[],{leaf,0},0,{{leaf,0},#{1 => {node,{ty_tuple,1,[{node,15}]},{node,{ty_tuple,1,[{node,16}]},{leaf,1},{leaf,0}},{leaf,0}}}},{{leaf,0},#{}},{leaf,0}}},{leaf,empty}}}}
+<:
+{{node,22},#{{node,22} => {leaf,{ty,<<0:5>>,{{0,nil},finite},[],{leaf,0},0,{{leaf,0},#{1 => {node,{ty_tuple,1,[{node,23}]},{leaf,1},{leaf,0}}}},{{leaf,0},#{}},{leaf,0}}},{node,23} => {node,{var,name,'$2'},{leaf,any},{leaf,empty}}}}
+
+{{node,4},#{{node,4} => {node,{var,name,'$8'},{leaf,any},{leaf,empty}}}}
+<:
+{{node,24},#{{node,1} => {leaf,{ty,<<0:5>>,{{1,{foo,nil,nil}},finite},[],{leaf,0},0,{{leaf,0},#{}},{{leaf,0},#{}},{leaf,0}}},{node,24} => {leaf,{ty,<<0:5>>,{{0,nil},finite},[],{leaf,0},0,{{leaf,0},#{1 => {node,{ty_tuple,1,[{node,1}]},{leaf,1},{node,{ty_tuple,1,[{node,24}]},{leaf,1},{leaf,0}}}}},{{leaf,0},#{}},{leaf,0}}}}}
+
+{{node,24},#{{node,1} => {leaf,{ty,<<0:5>>,{{1,{foo,nil,nil}},finite},[],{leaf,0},0,{{leaf,0},#{}},{{leaf,0},#{}},{leaf,0}}},{node,24} => {leaf,{ty,<<0:5>>,{{0,nil},finite},[],{leaf,0},0,{{leaf,0},#{1 => {node,{ty_tuple,1,[{node,1}]},{leaf,1},{node,{ty_tuple,1,[{node,24}]},{leaf,1},{leaf,0}}}}},{{leaf,0},#{}},{leaf,0}}}}}
+<:
+{{node,12},#{{node,12} => {node,{var,name,'$1'},{leaf,any},{leaf,empty}}}}
+
+Normalize in 13 ms
+
+=== Step 2: Saturate
+1 sets of constraint sets
+Saturate true in 7 ms
+
+
+=== Step 1: Normalize 14 constraints
+[{{node,1},{node,2}},
+ {{node,3},{node,4}},
+ {{node,5},{node,6}},
+ {{node,8},{node,9}},
+ {{node,11},{node,13}},
+ {{node,13},{node,14}},
+ {{node,54},{node,56}},
+ {{node,17},{node,18}},
+ {{node,17},{node,19}},
+ {{node,17},{node,21}},
+ {{node,17},{node,22}},
+ {{node,4},{node,24}},
+ {{node,24},{node,55}},
+ {{node,24},{node,12}}]
+#{}
+===
+constraints
+
+{{node,1},#{{node,1} => {leaf,{ty,<<0:5>>,{{1,{foo,nil,nil}},finite},[],{leaf,0},0,{{leaf,0},#{}},{{leaf,0},#{}},{leaf,0}}}}}
+<:
+{{node,2},#{{node,2} => {node,{var,name,'$9'},{leaf,any},{leaf,empty}}}}
+
+{{node,3},#{{node,2} => {node,{var,name,'$9'},{leaf,any},{leaf,empty}},{node,3} => {leaf,{ty,<<0:5>>,{{0,nil},finite},[],{leaf,0},0,{{leaf,0},#{1 => {node,{ty_tuple,1,[{node,2}]},{leaf,1},{leaf,0}}}},{{leaf,0},#{}},{leaf,0}}}}}
+<:
+{{node,4},#{{node,4} => {node,{var,name,'$8'},{leaf,any},{leaf,empty}}}}
+
+{{node,5},#{{node,5} => {node,{var,name,'$6'},{leaf,any},{leaf,empty}}}}
+<:
+{{node,6},#{{node,6} => {leaf,{ty,<<0:5>>,{{0,nil},finite},[],{leaf,0},0,{{leaf,0},#{1 => {node,{ty_tuple,1,[{node,7}]},{leaf,1},{leaf,0}}}},{{leaf,0},#{}},{leaf,0}}},{node,7} => {node,{var,name,'$7'},{leaf,any},{leaf,empty}}}}
+
+{{node,8},#{{node,8} => {node,{var,name,'$3'},{leaf,any},{leaf,empty}}}}
+<:
+{{node,9},#{{node,9} => {leaf,{ty,<<0:5>>,{{0,nil},finite},[],{leaf,0},0,{{leaf,0},#{1 => {node,{ty_tuple,1,[{node,10}]},{leaf,1},{leaf,0}}}},{{leaf,0},#{}},{leaf,0}}},{node,10} => {node,{var,name,'$4'},{leaf,any},{leaf,empty}}}}
+
+{{node,11},#{{node,11} => {leaf,{ty,<<0:5>>,{{0,nil},finite},[],{leaf,0},0,{{leaf,0},#{1 => {node,{ty_tuple,1,[{node,12}]},{leaf,1},{leaf,0}}}},{{leaf,0},#{}},{leaf,0}}},{node,12} => {node,{var,name,'$1'},{leaf,any},{leaf,empty}}}}
+<:
+{{node,13},#{{node,13} => {node,{var,name,'$0'},{leaf,any},{leaf,empty}}}}
+
+{{node,13},#{{node,13} => {node,{var,name,'$0'},{leaf,any},{leaf,empty}}}}
+<:
+{{node,14},#{{node,14} => {leaf,{ty,<<0:5>>,{{0,nil},finite},[],{leaf,0},0,{{leaf,0},#{1 => {node,{ty_tuple,1,[{node,15}]},{node,{ty_tuple,1,[{node,16}]},{leaf,1},{leaf,0}},{leaf,0}}}},{{leaf,0},#{}},{leaf,0}}},{node,15} => {leaf,{ty,<<0:5>>,{{0,nil},finite},[],{leaf,0},0,{{leaf,0},#{1 => {node,{ty_tuple,1,[{node,16}]},{leaf,1},{leaf,0}}}},{{leaf,0},#{}},{leaf,0}}},{node,16} => {leaf,any}}}
+
+{{node,54},#{{node,54} => {leaf,{ty,<<0:5>>,{{0,nil},finite},[],{leaf,0},0,{{leaf,0},#{1 => {node,{ty_tuple,1,[{node,55}]},{leaf,1},{leaf,0}}}},{{leaf,0},#{}},{leaf,0}}},{node,55} => {node,{var,name,'$10'},{leaf,any},{leaf,empty}}}}
+<:
+{{node,56},#{{node,15} => {leaf,{ty,<<0:5>>,{{0,nil},finite},[],{leaf,0},0,{{leaf,0},#{1 => {node,{ty_tuple,1,[{node,16}]},{leaf,1},{leaf,0}}}},{{leaf,0},#{}},{leaf,0}}},{node,16} => {leaf,any},{node,56} => {leaf,{ty,<<31:5>>,{{0,nil},cofinite},[any_int],{leaf,1},1,{{leaf,1},#{1 => {node,{ty_tuple,1,[{node,15}]},{node,{ty_tuple,1,[{node,16}]},{leaf,0},{leaf,1}},{leaf,1}}}},{{leaf,1},#{}},{leaf,1}}}}}
+
+{{node,17},#{{node,15} => {leaf,{ty,<<0:5>>,{{0,nil},finite},[],{leaf,0},0,{{leaf,0},#{1 => {node,{ty_tuple,1,[{node,16}]},{leaf,1},{leaf,0}}}},{{leaf,0},#{}},{leaf,0}}},{node,16} => {leaf,any},{node,17} => {node,{var,name,'$0'},{leaf,{ty,<<0:5>>,{{0,nil},finite},[],{leaf,0},0,{{leaf,0},#{1 => {node,{ty_tuple,1,[{node,15}]},{node,{ty_tuple,1,[{node,16}]},{leaf,1},{leaf,0}},{leaf,0}}}},{{leaf,0},#{}},{leaf,0}}},{leaf,empty}}}}
+<:
+{{node,18},#{{node,5} => {node,{var,name,'$6'},{leaf,any},{leaf,empty}},{node,18} => {leaf,{ty,<<0:5>>,{{0,nil},finite},[],{leaf,0},0,{{leaf,0},#{1 => {node,{ty_tuple,1,[{node,5}]},{leaf,1},{leaf,0}}}},{{leaf,0},#{}},{leaf,0}}}}}
+
+{{node,17},#{{node,15} => {leaf,{ty,<<0:5>>,{{0,nil},finite},[],{leaf,0},0,{{leaf,0},#{1 => {node,{ty_tuple,1,[{node,16}]},{leaf,1},{leaf,0}}}},{{leaf,0},#{}},{leaf,0}}},{node,16} => {leaf,any},{node,17} => {node,{var,name,'$0'},{leaf,{ty,<<0:5>>,{{0,nil},finite},[],{leaf,0},0,{{leaf,0},#{1 => {node,{ty_tuple,1,[{node,15}]},{node,{ty_tuple,1,[{node,16}]},{leaf,1},{leaf,0}},{leaf,0}}}},{{leaf,0},#{}},{leaf,0}}},{leaf,empty}}}}
+<:
+{{node,19},#{{node,19} => {leaf,{ty,<<0:5>>,{{0,nil},finite},[],{leaf,0},0,{{leaf,0},#{1 => {node,{ty_tuple,1,[{node,20}]},{leaf,1},{leaf,0}}}},{{leaf,0},#{}},{leaf,0}}},{node,20} => {node,{var,name,'$5'},{leaf,any},{leaf,empty}}}}
+
+{{node,17},#{{node,15} => {leaf,{ty,<<0:5>>,{{0,nil},finite},[],{leaf,0},0,{{leaf,0},#{1 => {node,{ty_tuple,1,[{node,16}]},{leaf,1},{leaf,0}}}},{{leaf,0},#{}},{leaf,0}}},{node,16} => {leaf,any},{node,17} => {node,{var,name,'$0'},{leaf,{ty,<<0:5>>,{{0,nil},finite},[],{leaf,0},0,{{leaf,0},#{1 => {node,{ty_tuple,1,[{node,15}]},{node,{ty_tuple,1,[{node,16}]},{leaf,1},{leaf,0}},{leaf,0}}}},{{leaf,0},#{}},{leaf,0}}},{leaf,empty}}}}
+<:
+{{node,21},#{{node,8} => {node,{var,name,'$3'},{leaf,any},{leaf,empty}},{node,21} => {leaf,{ty,<<0:5>>,{{0,nil},finite},[],{leaf,0},0,{{leaf,0},#{1 => {node,{ty_tuple,1,[{node,8}]},{leaf,1},{leaf,0}}}},{{leaf,0},#{}},{leaf,0}}}}}
+
+{{node,17},#{{node,15} => {leaf,{ty,<<0:5>>,{{0,nil},finite},[],{leaf,0},0,{{leaf,0},#{1 => {node,{ty_tuple,1,[{node,16}]},{leaf,1},{leaf,0}}}},{{leaf,0},#{}},{leaf,0}}},{node,16} => {leaf,any},{node,17} => {node,{var,name,'$0'},{leaf,{ty,<<0:5>>,{{0,nil},finite},[],{leaf,0},0,{{leaf,0},#{1 => {node,{ty_tuple,1,[{node,15}]},{node,{ty_tuple,1,[{node,16}]},{leaf,1},{leaf,0}},{leaf,0}}}},{{leaf,0},#{}},{leaf,0}}},{leaf,empty}}}}
+<:
+{{node,22},#{{node,22} => {leaf,{ty,<<0:5>>,{{0,nil},finite},[],{leaf,0},0,{{leaf,0},#{1 => {node,{ty_tuple,1,[{node,23}]},{leaf,1},{leaf,0}}}},{{leaf,0},#{}},{leaf,0}}},{node,23} => {node,{var,name,'$2'},{leaf,any},{leaf,empty}}}}
+
+{{node,4},#{{node,4} => {node,{var,name,'$8'},{leaf,any},{leaf,empty}}}}
+<:
+{{node,24},#{{node,1} => {leaf,{ty,<<0:5>>,{{1,{foo,nil,nil}},finite},[],{leaf,0},0,{{leaf,0},#{}},{{leaf,0},#{}},{leaf,0}}},{node,24} => {leaf,{ty,<<0:5>>,{{0,nil},finite},[],{leaf,0},0,{{leaf,0},#{1 => {node,{ty_tuple,1,[{node,1}]},{leaf,1},{node,{ty_tuple,1,[{node,24}]},{leaf,1},{leaf,0}}}}},{{leaf,0},#{}},{leaf,0}}}}}
+
+{{node,24},#{{node,1} => {leaf,{ty,<<0:5>>,{{1,{foo,nil,nil}},finite},[],{leaf,0},0,{{leaf,0},#{}},{{leaf,0},#{}},{leaf,0}}},{node,24} => {leaf,{ty,<<0:5>>,{{0,nil},finite},[],{leaf,0},0,{{leaf,0},#{1 => {node,{ty_tuple,1,[{node,1}]},{leaf,1},{node,{ty_tuple,1,[{node,24}]},{leaf,1},{leaf,0}}}}},{{leaf,0},#{}},{leaf,0}}}}}
+<:
+{{node,55},#{{node,55} => {node,{var,name,'$10'},{leaf,any},{leaf,empty}}}}
+
+{{node,24},#{{node,1} => {leaf,{ty,<<0:5>>,{{1,{foo,nil,nil}},finite},[],{leaf,0},0,{{leaf,0},#{}},{{leaf,0},#{}},{leaf,0}}},{node,24} => {leaf,{ty,<<0:5>>,{{0,nil},finite},[],{leaf,0},0,{{leaf,0},#{1 => {node,{ty_tuple,1,[{node,1}]},{leaf,1},{node,{ty_tuple,1,[{node,24}]},{leaf,1},{leaf,0}}}}},{{leaf,0},#{}},{leaf,0}}}}}
+<:
+{{node,12},#{{node,12} => {node,{var,name,'$1'},{leaf,any},{leaf,empty}}}}
+
+Normalize in 0 ms
+
+=== Step 2: Saturate
+1 sets of constraint sets
+Saturate true in 7 ms
+[NOTE 2025-07-28 11:33:42.994 typing_check.erl:34] Checking failed: src/ast_neg.erl:8:1: Type error: in mk_negation/1, this branch never matches
+%    8| mk_negation({_}) -> {foo}.
+%     | ^
+src/ast_neg.erl:8:1: Type error: in mk_negation/1, this branch never matches
+%    8| mk_negation({_}) -> {foo}.
+%     | ^

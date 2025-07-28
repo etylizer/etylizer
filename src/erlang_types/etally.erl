@@ -27,13 +27,14 @@
 is_tally_satisfiable(Constraints, MonomorphicVariables) ->
   % io:format(user,"TALLY~n~s~n", [set_of_constraint_sets:print(Constraints)]),
   % Normalized = ?TIME(tally_normalize, tally_normalize(Constraints, MonomorphicVariables)),
-  % io:format(user,"=== Step 1: Normalize~n~p~n~p~n===~n", [Constraints, MonomorphicVariables]),
+  io:format(user,"~n~n=== Step 1: Normalize ~p constraints~n~p~n~p~n===~n", [length(Constraints), Constraints, MonomorphicVariables]),
+  io:format(user,"constraints~n~s~n", [print(Constraints)]),
   T0 = os:system_time(millisecond),
   Normalized = tally_normalize(Constraints, MonomorphicVariables),
   % io:format(user,"Normalize in ~p ms: ~p~n~p~n", [os:system_time(millisecond)-T0, length(Normalized), Normalized]),
-  % io:format(user,"Normalize in ~p ms~n", [(T1 = os:system_time(millisecond))-T0]),
+  io:format(user,"Normalize in ~p ms~n", [(T1 = os:system_time(millisecond))-T0]),
   % io:format(user,"Result~n~p~n", [Normalized]),
-  % [Set] = Normalized,
+  [Set] = Normalized,
   % [begin 
   %   io:format(user, "~n~n~p~n", [V]),
   %   % io:format(user, "~p~n", [ty_node:dumpp(L)])
@@ -41,12 +42,12 @@ is_tally_satisfiable(Constraints, MonomorphicVariables) ->
   %  end|| {V, L, R} <- Set],
   % error(todo),
 
-  % io:format(user,"~n=== Step 2: Saturate~n~p sets of constraint sets~n", [length(Normalized)]),
-  % io:format(user,"~p~n", [Normalized]),
+  io:format(user,"~p~n", [Set]),
+  io:format(user,"constraints~n~s~n", [print(Set)]),
+  io:format(user,"~n=== Step 2: Saturate~n~p sets of constraint sets~n", [length(Normalized)]),
   % Saturated = ?TIME(tally_is_satisfiable, tally_saturate_until_satisfiable(Normalized, MonomorphicVariables)),
   Saturated = tally_saturate_until_satisfiable(Normalized, MonomorphicVariables),
-  % io:format(user,"Saturate in ~p ms~n", [(os:system_time(millisecond))-T1]),
-  % io:format(user,"SAT~n~p~n", [Saturated]),
+  io:format(user,"Saturate ~p in ~p ms~n", [Saturated ,(os:system_time(millisecond))-T1]),
 
   % sanity against full tally calculation
   % ?SANITY(tally_satisfiable_sound, case {tally_saturate(Normalized, MonomorphicVariables), Saturated} of {[], false} -> ok; {[_ | _], true} -> ok end),
@@ -85,7 +86,7 @@ tally_normalize(Constraints, MonomorphicVariables) ->
       % io:format(user,"[Tally I] Normalize ~p and ~p:~n~p~nand~n~p~n", [S, T, ty_node:dump(S), ty_node:dump(T)]),
       SnT = ?TY:difference(S, T),
       % io:format(user,"[Tally I] Normalize the difference ~p:~n~p~n", [SnT, ty_node:dump(SnT)]),
-      Normalized = ?TY:normalize(SnT, MonomorphicVariables),
+      Normalized = ty_node:normalize(SnT, MonomorphicVariables),
       %io:format(user,"Meeting:~n~p~nand~n~p~n", [A, Normalized]),
       constraint_set:meet(A, Normalized, MonomorphicVariables)
               end, [[]], Constraints).
@@ -179,3 +180,8 @@ apply_substitution(Ty, Substitutions) ->
              end,
   lists:foldl(SubstFun, Ty, Substitutions).
 
+print([]) -> "";
+print([{{var, name, Name}, Left, Right} | Rest]) -> 
+  io_lib:format("~s <:~p <: ~s~n~s", [pretty:render_ty(ty_parser:unparse(Left)), Name, pretty:render_ty(ty_parser:unparse(Right)), print(Rest)]);
+print([{Left, Right} | Rest]) -> 
+  io_lib:format("~s <: ~s~n~s", [pretty:render_ty(ty_parser:unparse(Left)), pretty:render_ty(ty_parser:unparse(Right)), print(Rest)]).
