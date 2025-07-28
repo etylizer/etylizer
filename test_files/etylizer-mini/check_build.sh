@@ -9,7 +9,7 @@ if [ ! -z "$ETYLIZER_CASE_STUDY_LOGLEVEL" ]; then
 fi
 
 function run_ety() {
-    ../../ety --build --type-overlay $OVERLAY --force -l $LOGLEVEL -P . -I src --no-deps "$@" || exit 1
+    ../../ety --build --type-overlay $OVERLAY --force  -P . -I src --no-deps "$@" || exit 1
 }
 
 run_ety src/ast_neg.erl 

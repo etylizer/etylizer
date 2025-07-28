@@ -99,7 +99,7 @@ traverse_and_check([CurrentFile | RemainingFiles], Symtab, OverlaySymtab, Search
     Ctx = typing:new_ctx(ExpandedSymtab, OverlaySymtab, Sanity),
     case Opts#opts.no_type_checking of
         true ->
-            ?LOG_NOTE("Not type checking ~p as requested", CurrentFile);
+            ?LOG_INFO("Not type checking ~p as requested", CurrentFile);
         false ->
             typing:check_forms(Ctx, CurrentFile, Forms, Only, Ignore)
     end,

@@ -294,7 +294,7 @@ do_dump([Ty | T], Res) ->
 % TODO backtrack-free algorithm, see subtyping comment
 -spec normalize(type(), monomorphic_variables()) -> set_of_constraint_sets().
 normalize(TyNode, FixedVariables) ->
-  case ets:lookup(?NORMCACHE, {TyNode, FixedVariables}) of
+  Z = case ets:lookup(?NORMCACHE, {TyNode, FixedVariables}) of
     [{_, Result}] -> Result;
     [] ->
       % T0 = os:system_time(millisecond),
@@ -308,7 +308,8 @@ normalize(TyNode, FixedVariables) ->
       % end,
       % io:format(user,"Normalize ~p in ~p ms~n", [TyNode, os:system_time(millisecond)-T0]),
       Result
-  end.
+  end,
+  Z.
 
 -spec normalize(type(), monomorphic_variables(), ST) -> {set_of_constraint_sets(), ST} when ST :: normalize_cache().
 normalize(TyNode, FixedVariables, Cache) ->

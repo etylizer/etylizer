@@ -66,7 +66,7 @@ phi(BigS, [Ty | N], ST) ->
 
 
 -spec normalize_line({[T], [T], ?LEAF:type()}, monomorphic_variables(), S) -> {set_of_constraint_sets(), S} when T :: ?ATOM:type().
-normalize_line({[], [], _T}, _Fixed, _ST) -> error(_T);
+normalize_line({[], [], _T}, _Fixed, ST) -> {[], ST}; % test case for this branch: utils:set_add_many/2
 normalize_line({[], Neg = [TNeg | _], T}, Fixed, ST) -> 
   error(todo),
   Dim = length(ty_tuple:components(TNeg)),

@@ -101,7 +101,7 @@ saturate(C, FixedVariables, Cache) ->
       T0 = os:system_time(millisecond), 
       % io:format(user, "Difference~n", []),
       SnT = ty:difference(S, T),
-      % io:format(user,"picked var var: ~p~n", [{_Var, SnT}]),
+      % io:format(user,"picked var: ~p~nDump:~n~p~n", [{_Var, SnT}, ty_node:dumpp(SnT)]),
       %     io:format(user,"vars: ~p~n", [FixedVariables]),
       % io:format(user,"~p~n", [ty_node:dumpp(SnT)]),
 

@@ -47,7 +47,7 @@ check_forms(Ctx, FileName, Forms, Only, Ignore) ->
                             if
                                 Check -> {[{Form, Ty} | With], Without, [X | Knowns]};
                                 true ->
-                                    ?LOG_NOTE("~s: not type checking function ~s as requested",
+                                    ?LOG_INFO("~s: not type checking function ~s as requested",
                                                ast:format_loc(Loc), RefStr),
                                     {With, Without, [X | Knowns]}
                             end
@@ -67,7 +67,7 @@ check_forms(Ctx, FileName, Forms, Only, Ignore) ->
     case sets:is_empty(Unknowns) of
         true -> ok;
         false ->
-            ?LOG_WARN("Unknown functions in only: ~200p", sets:to_list(Unknowns))
+            ?LOG_INFO("Unknown functions in only: ~200p", sets:to_list(Unknowns))
     end,
     % infer types of functions without spec
     InferredTyEnvs = typing_infer:infer_all(ExtCtx, FileName, FunsWithoutSpec),

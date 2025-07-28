@@ -133,6 +133,7 @@ normalize({Default, All}, Fixed, ST) ->
       {constraint_set:meet(Acc, Res, Fixed), ST1}
               end, {[[]], ST}, All),
 
+  % TODO this bothers me a bit
   % {DF, ST2} = ?MULTIARITY:normalize({default, maps:keys(All)}, Default, Fixed, ST2),
   {DF, ST2} = ?MULTIARITY:normalize(Default, Fixed, ST2),
 

@@ -65,7 +65,6 @@ is_empty_line({AllPos, Neg, T}, ST) ->
 normalize_line({[], [], TyRec}, Fixed, ST) ->
   ty_rec:normalize(TyRec, Fixed, ST);
 normalize_line({PVar, NVar, TyRec}, Fixed, ST) ->
-  %io:format(user, "Normalizing ~p~n", [Line]),
   SmallestVar = smallest(PVar, NVar, Fixed),
   %io:format(user, "Got smallest var ~p~n", [SmallestVar]),
   case SmallestVar of

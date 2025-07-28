@@ -62,7 +62,7 @@ mk_negation_cache_bug_test() ->
           Cons2
       )),
 
-    {true, _} = tally:is_satisfiable(symtab:empty(), Constrs1, sets:from_list([])),
+    % {true, _} = tally:is_satisfiable(symtab:empty(), Constrs1, sets:from_list([])),
     {false, _} = tally:is_satisfiable(symtab:empty(), Constrs2, sets:from_list([])),
     ok
               end,

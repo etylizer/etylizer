@@ -232,9 +232,6 @@ is_empty(Ty, ST) ->
 -spec normalize(type(), monomorphic_variables(), S) -> {set_of_constraint_sets(), S}.
 normalize(Dnf, Fixed, ST) ->
   DD = dnf(Dnf),
-  % ?INSIDE(dnf_ty_tuple, 
-  %         io:format(user,"Current: ~p~n", [Dnf])
-  %                  ),
   D = minimize_dnf(DD),
 
   case D of
@@ -245,9 +242,6 @@ normalize(Dnf, Fixed, ST) ->
         (Line, {CurrentConstr, ST0}) -> 
                       {Time, {ResConstr, ST1}} = timer:tc(fun() -> normalize_line(Line, Fixed, ST0) end, millisecond),
           Final = constraint_set:meet(CurrentConstr, ResConstr, Fixed),
-          % ?INSIDE(dnf_ty_tuple, 
-          %         io:format(user,"Line: ~p~nResult: ~p~n", [Line, ResConstr])
-          %                  ),
           % ?INSIDE(dnf_ty_tuple, 
           %         io:format(user,"Final: ~p~n", [Final])
           %                  ),
@@ -293,31 +287,6 @@ all_variables(Dnf, Cache) ->
 
 minimize_dnf(Dnf) ->
   minimize_node_dnf(Dnf).
-  % case ?MODULE of
-  %   dnf_ty_variable -> minimize_node_dnf(Dnf);
-  %   dnf_ty_tuple -> minimize_node_dnf(Dnf);
-  %   dnf_ty_function -> minimize_node_dnf(Dnf);
-  %   _ -> Dnf
-  % end.
-
-% minimize function for first layer BDDs (variables)
-minimize_var_dnf([]) -> [];
-minimize_var_dnf([X]) -> [X];
-minimize_var_dnf(Dnf) ->
-  AllVariables = lists:foldl(fun({Pos, Neg, _}, Env) -> 
-    lists:foldl(fun(Term, Env2) -> Env2#{Term => []} end, Env, Pos ++ Neg)
-                  end, #{}, Dnf),
-  % .i length(AllVariables)
-  I = maps:size(AllVariables),
-
-  AllOutputs = lists:foldl(fun({_, _, T}, Env) -> 
-                               Env#{T => []}
-                  end, #{}, Dnf),
-  % .o length(AllOutputs)
-  O = maps:size(AllOutputs),
-
-  error({Dnf, AllVariables, AllOutputs}),
-  Dnf.
 
 % minimize function for second layer BDDs
 minimize_node_dnf([]) -> [];
@@ -368,6 +337,7 @@ minimize_node_dnf(Dnf) ->
   
   file:write_file("espresso_input.pla", StrInput),
   T0 = os:system_time(millisecond),
+  % TODO IMPORTANT how to use binary! wasted 2 hours searching for a non-issue
   Result = os:cmd("./espresso < espresso_input.pla"),
   % io:format(user,"~p ms~n", [os:system_time(millisecond) - T0]),
   OnlyResultLines = extract_integer_lines(Result, I + 1 + O),
