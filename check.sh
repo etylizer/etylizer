@@ -12,16 +12,14 @@ function run_ety() {
     ./etylizer --type-overlay $OVERLAY --force -l $LOGLEVEL -P . -I src --no-deps "$@" || exit 1
 }
 
-run_ety src/ast_neg.erl 
-
 # 9/10
 # type error: 1
 #   to_loc/2 (#238)
-# run_ety \
-#     --ignore to_loc/2 \
-#     src/ast.erl
+run_ety \
+    --ignore to_loc/2 \
+    src/ast.erl
 
-# 2/2
+# # 2/2
 # run_ety src/ast_erl.erl
 
 # 1/8

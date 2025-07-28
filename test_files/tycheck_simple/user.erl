@@ -72,3 +72,8 @@ user_08(Forms) -> user_08(Forms).
 -type user_t_09() :: {{user_t_09()} | b}.
 -spec user_09_fail() -> user_t_09().
 user_09_fail() -> ok.
+
+-type user_t_10() :: {foo} | {user_t_10()}.
+-spec user_10(user_t_10()) -> user_t_10().
+user_10({foo}) -> {foo};
+user_10(T) -> T.

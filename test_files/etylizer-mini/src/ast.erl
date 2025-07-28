@@ -140,7 +140,7 @@
 ]).
 
 -export([
-    % format_loc/1, 
+    format_loc/1, 
     loc_auto/0, min_loc/2, leq_loc/2, is_predef_name/1, is_predef_alias_name/1,
     local_varname_from_any_ref/1, get_fun_name/1, loc_exp/1
 ]).
@@ -164,9 +164,9 @@ local_varname_from_any_ref(Ref) ->
 -type local_ref_bind() :: local_ref() | local_bind().
 -type loc() :: {loc, string(), integer(), integer()}. % file, line, column
 
-% -spec format_loc(loc()) -> string().
-% format_loc({loc, "AUTO", -1, -1}) -> "auto";
-% format_loc({loc, Path, Line, Col}) -> utils:sformat("~s:~w:~w", [Path, Line, Col]).
+-spec format_loc(loc()) -> string().
+format_loc({loc, "AUTO", -1, -1}) -> "auto";
+format_loc({loc, Path, Line, Col}) -> utils:sformat("~s:~w:~w", [Path, Line, Col]).
 
 -spec to_loc(string(), ast_erl:anno()) -> loc().
 to_loc(Path, Anno) ->
