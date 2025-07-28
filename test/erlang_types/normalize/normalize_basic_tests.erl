@@ -30,8 +30,7 @@ basic_test() ->
 mk_diff_test() ->
   with_type(
     fun(Type) -> 
-      [] = ty:normalize(Type, #{}),
-      ok
+      [] = ty:normalize(Type, #{})
     end, system("test_files/erlang_types/normalize/mk_diff_bad.config")).
 
 queue_slow1_test() ->

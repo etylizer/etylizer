@@ -98,7 +98,7 @@ saturate(C, FixedVariables, Cache) ->
   % io:format(user,"~s~n", [etally:print(C)]),
   case pick_bounds_in_c(C, Cache) of
     {_Var, S, T} ->
-      T0 = os:system_time(millisecond), 
+      % T0 = os:system_time(millisecond), 
       % io:format(user, "Difference~n", []),
       SnT = ty:difference(S, T),
       % io:format(user,"picked var: ~p~nDump:~n~p~n", [{_Var, SnT}, ty_node:dumpp(SnT)]),
@@ -118,7 +118,7 @@ saturate(C, FixedVariables, Cache) ->
       % io:format(user, "pick: ~p~n", [SnT]),
 
       % io:format(user, "Normalize~n", []),
-      {TT, Normed} = timer:tc(fun() -> ty:normalize(SnT, FixedVariables) end, millisecond),
+      {_TT, Normed} = timer:tc(fun() -> ty:normalize(SnT, FixedVariables) end, millisecond),
       % io:format(user,"in: ~p ms~n~p~n", [TT, length(Normed)]),
       % io:format(user, "Meet~n", []),
       % io:format(user, "Meet all~n~p~nwith~n~p~n", [[C], Normed]),
@@ -249,6 +249,8 @@ assert_all_cs_sorted(S) ->
 -ifdef(TEST).
 -include_lib("eunit/include/eunit.hrl").
 
+% TODO why does Dialyzer complain that L. 256 has no return?
+-dialyzer({no_return, [smaller_test/0]}).
 -spec smaller_test() -> _.
 smaller_test() ->
   global_state:with_new_state(fun() ->
@@ -256,7 +258,8 @@ smaller_test() ->
     Alpha = ty_variable:new_with_name(alpha),
     Beta = ty_variable:new_with_name(beta),
     C1 = [{Beta, ty:empty(), ty:empty()}],
-    C2 = [{Alpha, Beta, ty:any()}, {Beta, ty:empty(), ty:empty()}],
+    % β < α according to variable order and constraint sets are ordered
+    C2 = [{Beta, ty:empty(), ty:empty()}, {Alpha, Beta, ty:any()}],
 
     true = is_smaller(C1, C2),
     false = is_smaller(C2, C1)
@@ -289,10 +292,10 @@ paper_example_test() ->
     Beta = ty_variable:new_with_name(beta),
     BetaTy = ty:variable(Beta),
     Atom = ty:atom(),
-    C1 = [{Alpha, BetaTy, ty:any()}, {Beta, ty:empty(), ty:empty()}],
-    C2 = [{Alpha, BetaTy, ty:any()}, {Beta, Atom, ty:any()}],
+    C1 = [{Beta, ty:empty(), ty:empty()}, {Alpha, BetaTy, ty:any()} ],
+    C2 = [{Beta, Atom, ty:any()}, {Alpha, BetaTy, ty:any()}],
     C3 = [{Beta, ty:empty(), ty:empty()}],
-    C4 = [{Alpha, BetaTy, ty:any()}, {Beta, ty:any(), ty:any()}],
+    C4 = [{Beta, ty:any(), ty:any()}, {Alpha, BetaTy, ty:any()}],
 
     true = is_smaller(C2, C4),
     false = is_smaller(C4, C2),

@@ -30,7 +30,7 @@ is_tally_satisfiable(Constraints, MonomorphicVariables) ->
   % Normalized = ?TIME(tally_normalize, tally_normalize(Constraints, MonomorphicVariables)),
   % io:format(user,"~n~n=== Step 1: Normalize ~p constraints~n~p~n~p~n===~n", [length(Constraints), Constraints, MonomorphicVariables]),
   % io:format(user,"constraints~n~s~n", [print(Constraints)]),
-  T0 = os:system_time(millisecond),
+  % T0 = os:system_time(millisecond),
   Normalized = tally_normalize(Constraints, MonomorphicVariables),
   % io:format(user,"Normalize in ~p ms: ~p~n~p~n", [os:system_time(millisecond)-T0, length(Normalized), Normalized]),
   % io:format(user,"Normalize in ~p ms~n", [(T1 = os:system_time(millisecond))-T0]),

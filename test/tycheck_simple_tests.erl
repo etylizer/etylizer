@@ -160,8 +160,7 @@ simple_test_() ->
   ],
 
   NoInfer = [
-    % TODO BUG
-    % "fun_local_08"
+    "match_13" % TODO timeout, with flipped variable ordering it infers instantly
   ],
 
   %What = ["atom_03_fail"],

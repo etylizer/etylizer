@@ -4,7 +4,7 @@ cd $(dirname $0)
 
 # type errors:
 #  intersection/1 exhaustiveness needed
-./etylizer --no-deps -f -l debug stdlib/ordsets2.erl -i intersection/1
+../../ety --build --no-deps -f -l debug stdlib/ordsets2.erl -i intersection/1
 
 # slow:
 #  join/2 (25s)
@@ -27,7 +27,7 @@ cd $(dirname $0)
 #  delete_front unknown
 #  r2f + operation
 #  f2r + operation
-./etylizer --no-deps -f -l debug stdlib/queue2.erl \
+../../ety --build --no-deps -f -l debug stdlib/queue2.erl \
   -i out \
   -i out_r \
   -i get/2 \

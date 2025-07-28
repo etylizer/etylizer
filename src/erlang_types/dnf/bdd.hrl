@@ -42,7 +42,8 @@
 -type variable() :: ty_variable:type().
 -type cache() :: term(). %TODO
 -type type() :: bdd().
--type dnf() :: [{[?ATOM:type()], [?ATOM:type()], ?LEAF:type()}].
+-type line() :: {[?ATOM:type()], [?ATOM:type()], ?LEAF:type()}.
+-type dnf() :: [line()].
 -type leaf() :: {leaf, ?LEAF:type()}.
 -type bdd() :: leaf() | {node, _Atom :: ?ATOM:type(), _PositiveEdge :: bdd(), _NegativeEdge :: bdd()}.
 
@@ -50,7 +51,7 @@
 %% TODO refactor, ugly
 -spec reorder(bdd()) -> bdd().
 reorder({leaf, Value}) -> {leaf, ?LEAF:reorder(Value)};
-reorder(B = {node, Atom, Pos, Neg}) ->
+reorder({node, Atom, Pos, Neg}) ->
   % Recursively reorder children first
   OrderedPos = reorder(Pos),
   OrderedNeg = reorder(Neg),
@@ -80,20 +81,21 @@ reorder(B = {node, Atom, Pos, Neg}) ->
     end,
   assert_valid(Z),
   Z.
-               
 
+-spec push_down(?ATOM:type(), bdd(), bdd()) -> bdd().
 push_down(TopAtom, Pos, Neg) -> 
   union( 
     intersect(singleton(TopAtom), Pos),
     intersect(negate(singleton(TopAtom)), Neg)
   ).
 
+-spec assert_valid(bdd()) -> bdd().
 assert_valid(Bdd) -> is_ordered(Bdd).
 
--spec is_ordered(bdd()) -> boolean().
-is_ordered(Bdd = {leaf, T}) -> ?LEAF:assert_valid(T), Bdd;
+-spec is_ordered(bdd()) -> bdd().
+is_ordered(Bdd = {leaf, T}) -> ?LEAF:assert_valid(T), Bdd; % also descend into leafs
 is_ordered(Bdd = {node, Atom, PositiveEdge, NegativeEdge}) ->
-  % Check that all atoms in positive and negative edges are smaller than current atom
+  % check that all atoms in positive and negative edges are smaller than current atom
   check_branch(Atom, PositiveEdge),
   check_branch(Atom, NegativeEdge),
   % check the subtrees
@@ -102,7 +104,7 @@ is_ordered(Bdd = {node, Atom, PositiveEdge, NegativeEdge}) ->
   Bdd.
 
 -spec check_branch(?ATOM:type(), bdd()) -> _.
-check_branch(_ParentAtom, Bdd = {leaf, _}) -> ok;
+check_branch(_ParentAtom, {leaf, _}) -> ok;
 check_branch(ParentAtom, Bdd = {node, ChildAtom, Left, Right}) ->
   case ?ATOM:compare(ParentAtom, ChildAtom) of
     lt -> check_branch(ParentAtom, Left), check_branch(ParentAtom, Right);
@@ -146,8 +148,8 @@ compare({node, A1, P1, N1}, {node, A2, P2, N2}) ->
   end.
 
 -spec negate(bdd()) -> bdd().
-negate(Bdd1 = {leaf, A}) -> {leaf, ?LEAF:negate(A)};
-negate(Bdd1 = {node, Atom, Pos, Neg}) -> {node, Atom, negate(Pos), negate(Neg)}.
+negate({leaf, A}) -> {leaf, ?LEAF:negate(A)};
+negate({node, Atom, Pos, Neg}) -> {node, Atom, negate(Pos), negate(Neg)}.
 
 % simplification for BDDs
 % implements a simple form of structural subsumption
@@ -174,22 +176,15 @@ op(LeafOperation, Bdd1, Bdd2) ->
       {{node, A, P, N}, {leaf, L}} -> 
         {node, A, ROp(P, {leaf, L}), ROp(N, {leaf, L})};
       {{node, A1, P1, N1}, {node, A2, P2, N2}} ->
-        % io:format(user,"Compare: ~w and ~w: ~p~n", [A1, A2, ?ATOM:compare(A1, A2)]),
         case ?ATOM:compare(A1, A2) of
-          lt ->
-            % io:format(user,"A1 is less than, putting A1 first:~w < ~w~n", [A1, A2]),
-            {node, A1, ROp(P1, T2), ROp(N1, T2)};
-          gt ->
-            % io:format(user,"A2 is greater than, putting A2 first~n", []),
-            {node, A2, ROp(T1, P2), ROp(T1, N2)};
-          eq ->
-            {node, A1, ROp(P1, P2), ROp(N1, N2)}
+          lt -> {node, A1, ROp(P1, T2), ROp(N1, T2)};
+          gt -> {node, A2, ROp(T1, P2), ROp(T1, N2)};
+          eq -> {node, A1, ROp(P1, P2), ROp(N1, N2)}
         end
     end,
     normalize(Res)
   end,
   Z = Op(Bdd1, Bdd2),
-  % io:format(user,"Doing OP: ~p on~n~p~n~p~nResult:~p~n", [LeafOperation, Bdd1, Bdd2, Z]),
   is_ordered(Z).
 
 -spec union(bdd(), bdd()) -> bdd().
@@ -198,7 +193,6 @@ union(T1, T2) ->
 
 -spec intersect(bdd(), bdd()) -> bdd().
 intersect(T1, T2) -> 
-  % io:format(user,"~p~n",[{T1, T2}]),
   op(fun ?LEAF:intersect/2, T1, T2).
 
 -spec difference(bdd(), bdd()) -> bdd().
@@ -215,10 +209,10 @@ dnf_acc(Acc, Ps, Ns, {leaf, T}) ->
     _ -> [{Ps, Ns, T} | Acc]
   end;
 dnf_acc(Acc, Ps, Ns, {node, A, P, N}) ->
-  % TODO small heuristic add
+  % We could add heuristics here to avoid adding some redundant atoms
+  % but espresso is so cheap, we don't need to do that
   Acc0 = dnf_acc(Acc, [A | Ps], Ns, P),
   dnf_acc(Acc0, Ps, [A | Ns], N).
-
 
 -spec is_empty(type(), S) -> {boolean(), S}.
 is_empty(Ty, ST) ->
@@ -240,19 +234,8 @@ normalize(Dnf, Fixed, ST) ->
       lists:foldl(fun
         (_Line, {[], ST0}) -> {[], ST0};
         (Line, {CurrentConstr, ST0}) -> 
-                      {Time, {ResConstr, ST1}} = timer:tc(fun() -> normalize_line(Line, Fixed, ST0) end, millisecond),
+          {ResConstr, ST1} = normalize_line(Line, Fixed, ST0),
           Final = constraint_set:meet(CurrentConstr, ResConstr, Fixed),
-          % ?INSIDE(dnf_ty_tuple, 
-          %         io:format(user,"Final: ~p~n", [Final])
-          %                  ),
-          % case ResConstr of
-          %   [[]] -> ok;
-          %   _ -> 
-          %     ok
-          %     % io:format(user,"Current: ~p~n", [length(ResConstr)]),
-          %     % io:format(user,"Current -> Next: ~p -> ~p~n", [length(CurrentConstr), length(Final)])
-          %     % io:format(user,"~nCurrent -> Next: ~p -> ~p~n(~p ms) ~w~n", [length(CurrentConstr), length(Final), Time, (ResConstr)])
-          % end),
           {Final, ST1}
       end, {[[]], ST}, (D))
   end.
@@ -285,15 +268,16 @@ all_variables(Dnf, Cache) ->
     sets:union([Atoms, all_variables_line(P, N, Leaf, Cache)]) 
   end, sets:new(), AllLines).
 
+-spec minimize_dnf(dnf()) -> dnf().
 minimize_dnf(Dnf) ->
   minimize_node_dnf(Dnf).
 
-% minimize function for second layer BDDs
+-spec minimize_node_dnf(dnf()) -> dnf().
 minimize_node_dnf([]) -> [];
 minimize_node_dnf([X]) -> [X];
 % only minimize dnfs with more than one line
 minimize_node_dnf(Dnf) ->
-  TAll = os:system_time(millisecond),
+  % TAll = os:system_time(millisecond),
   % using espresso names
   AllVariables = lists:foldl(fun({Pos, Neg, _}, Env) -> 
     lists:foldl(fun(Term, Env2) -> Env2#{Term => []} end, Env, Pos ++ Neg)
@@ -301,7 +285,7 @@ minimize_node_dnf(Dnf) ->
   % .i length(AllVariables)
   I = maps:size(AllVariables),
 
-  % we have only 0/1 leafs, so we look only at '1' outputs
+  % when we have only 0/1 leafs, we look only at a single '1' output
   % with algebraic bdds, the amount of output functions 
   % is the amount of syntactically different leafs which are not 0
   {AllOutputs, ReverseAllOutputs, _} = lists:foldl(fun({_, _, T}, {Env, RevEnv, Index}) -> 
@@ -314,68 +298,68 @@ minimize_node_dnf(Dnf) ->
   O = maps:size(AllOutputs),
 
   % now for all variables assign an index
-  {_, VariableIndices, RevVariableIndices} = maps:fold(fun(K, V, {Index, Vars, RevVars}) -> {Index+1, Vars#{K => Index}, RevVars#{Index => K}} end, {1, AllVariables, #{}}, AllVariables),
+  {_, VariableIndices, RevVariableIndices} = maps:fold(fun(K, _V, {Index, Vars, RevVars}) -> {Index+1, Vars#{K => Index}, RevVars#{Index => K}} end, {1, AllVariables, #{}}, AllVariables),
 
   % convert all lines using the variable indices
   AllLines = lists:foldl(fun({Pos, Neg, T}, All) -> 
-                             % variables
-                             MinTerm = list_to_tuple(lists:duplicate(I, "-")),
-                             NewMinTerm0 = lists:foldl(fun(P, Min) -> replace_index("1", P, Min, VariableIndices) end, MinTerm, Pos),
-                             NewMinTerm1 = lists:foldl(fun(N, Min) -> replace_index("0", N, Min, VariableIndices) end, NewMinTerm0, Neg),
+     % variables
+     MinTerm = list_to_tuple(lists:duplicate(I, "-")),
+     NewMinTerm0 = lists:foldl(fun(P, Min) -> replace_index("1", P, Min, VariableIndices) end, MinTerm, Pos),
+     NewMinTerm1 = lists:foldl(fun(N, Min) -> replace_index("0", N, Min, VariableIndices) end, NewMinTerm0, Neg),
 
-                             % replace a single output with 1
-                             MinTermOutputs = list_to_tuple(lists:duplicate(O, "0")),
-                             MinTermOutputsFin = erlang:setelement(maps:get(T, AllOutputs), MinTermOutputs, "1"),
+     % replace a single output with 1
+     MinTermOutputs = list_to_tuple(lists:duplicate(O, "0")),
+     MinTermOutputsFin = erlang:setelement(maps:get(T, AllOutputs), MinTermOutputs, "1"),
 
-                             NewTWithoutOutputs = tuple_to_list(NewMinTerm1),
-                             Outputs = tuple_to_list(MinTermOutputsFin),
-                             [lists:flatten(NewTWithoutOutputs ++ " " ++ Outputs)] ++ All
+     NewTWithoutOutputs = tuple_to_list(NewMinTerm1),
+     Outputs = tuple_to_list(MinTermOutputsFin),
+     [lists:flatten(NewTWithoutOutputs ++ " " ++ Outputs)] ++ All
                          end, [], Dnf),
 
   StrInput = ".i " ++ integer_to_list(I) ++ "\n.o " ++ integer_to_list(O) ++ "\n" ++ lists:flatten(lists:join("\n", AllLines)),
-
   
+  % TODO IMPORTANT make sure binary is available! wasted 2 hours searching for a non-issue
+  % How to include C binary in project?
+  {ok, _} = file:read_file_info("espresso"),
   file:write_file("espresso_input.pla", StrInput),
-  T0 = os:system_time(millisecond),
-  % TODO IMPORTANT how to use binary! wasted 2 hours searching for a non-issue
+  % T0 = os:system_time(millisecond),
   Result = os:cmd("./espresso < espresso_input.pla"),
+  file:delete("espresso_input.pla"),
+
   % io:format(user,"~p ms~n", [os:system_time(millisecond) - T0]),
   OnlyResultLines = extract_integer_lines(Result, I + 1 + O),
-  Inn = [string:slice(L, 0, I + 1 + O) || L <- AllLines],
-  Out = extract_integer_lines(Result, I + 1 + O),
+  % Inn = [string:slice(L, 0, I + 1 + O) || L <- AllLines],
+  % Out = extract_integer_lines(Result, I + 1 + O),
   E = [convert_back_to_repr(list_to_tuple(string:split(Line, " ")), RevVariableIndices, ReverseAllOutputs, 1, {[], [], to_replace}) || Line <- OnlyResultLines],
-  case Inn /= Out of
-    true -> 
-      % io:format(user,"Inn raw:~n~p~n", [Dnf]),
-      % io:format(user,"Inn: ~p~n", [Inn]),
-      % io:format(user,"Out: ~p~n", [Out]),
-      % io:format(user,"~p ms~n", [os:system_time(millisecond) - T0]),
-      % io:format(user,"All: ~p ms~n", [os:system_time(millisecond) - TAll]);
-      ok;
-    _ -> 
-      ok 
-  end,
   E.
 
-append_outputs(Variables, Leaf) ->
-  error(Leaf).
-
+-spec replace_index(string(), [A], Line, #{A => integer()}) -> Line.
 replace_index(Val, Term, CurrentLine, VariableIndices) ->
   erlang:setelement(maps:get(Term, VariableIndices), CurrentLine, Val).
 
+-spec extract_integer_lines(string(), integer()) -> [string()].
 extract_integer_lines(Str, Max) ->
     Lines = string:split(Str, "\n", all),
     [string:slice(Line,0, Max) || Line <- Lines, is_integer_start(Line)].
 
+-spec is_integer_start(string()) -> boolean().
 is_integer_start([C|_]) when C == $- -> true;
 is_integer_start([C|_]) when C >= $0, C =< $9 -> true;
 is_integer_start(_) -> false.
 
-convert_back_to_repr({[], Outputs}, IndexToTerms, IndexToOutput, CurrentIndex, Acc  = {P, N, to_replace}) -> 
+-spec convert_back_to_repr({string(), string()}, 
+                           #{integer() => ?ATOM:type()}, 
+                           #{integer() => ?LEAF:type()}, 
+                           integer(), 
+                           {[?ATOM:type()], [?ATOM:type()], ?LEAF:type() | to_replace}) -> line().
+convert_back_to_repr({[], Outputs}, _IndexToTerms, IndexToOutput, _CurrentIndex, {P, N, to_replace}) -> 
   % assert only one "1" in outputs
-  [First, Second] = string:split(Outputs, "1", all),
+  [First, _Second] = string:split(Outputs, "1", all),
   Index = length(First) + 1,
   {P, N, maps:get(Index, IndexToOutput)};
-convert_back_to_repr({[$- | Rest], Outputs}, IndexToTerms, IndexToOutput, CurrentIndex, Acc) -> convert_back_to_repr({Rest, Outputs}, IndexToTerms, IndexToOutput, CurrentIndex + 1, Acc);
-convert_back_to_repr({[$1 | Rest], Outputs}, IndexToTerms, IndexToOutput, CurrentIndex, {Pos, Neg, to_replace}) -> convert_back_to_repr({Rest, Outputs}, IndexToTerms, IndexToOutput, CurrentIndex + 1, {Pos ++ [maps:get(CurrentIndex, IndexToTerms)], Neg, to_replace});
-convert_back_to_repr({[$0 | Rest], Outputs}, IndexToTerms, IndexToOutput, CurrentIndex, {Pos, Neg, to_replace}) -> convert_back_to_repr({Rest, Outputs}, IndexToTerms, IndexToOutput, CurrentIndex + 1, {Pos, Neg ++ [maps:get(CurrentIndex, IndexToTerms)], to_replace}).
+convert_back_to_repr({[$- | Rest], Outputs}, IndexToTerms, IndexToOutput, CurrentIndex, Acc) -> 
+  convert_back_to_repr({Rest, Outputs}, IndexToTerms, IndexToOutput, CurrentIndex + 1, Acc);
+convert_back_to_repr({[$1 | Rest], Outputs}, IndexToTerms, IndexToOutput, CurrentIndex, {Pos, Neg, to_replace}) -> 
+  convert_back_to_repr({Rest, Outputs}, IndexToTerms, IndexToOutput, CurrentIndex + 1, {Pos ++ [maps:get(CurrentIndex, IndexToTerms)], Neg, to_replace});
+convert_back_to_repr({[$0 | Rest], Outputs}, IndexToTerms, IndexToOutput, CurrentIndex, {Pos, Neg, to_replace}) -> 
+  convert_back_to_repr({Rest, Outputs}, IndexToTerms, IndexToOutput, CurrentIndex + 1, {Pos, Neg ++ [maps:get(CurrentIndex, IndexToTerms)], to_replace}).

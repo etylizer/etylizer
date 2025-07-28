@@ -72,13 +72,11 @@ normalize_line({[], Neg = [TNeg | _], T}, Fixed, ST) ->
   Dim = length(ty_tuple:components(TNeg)),
   PosAny = ty_tuple:any(Dim),
   normalize_line({[PosAny], Neg, T}, Fixed, ST);
-normalize_line(L = {Pos, Neg, T}, Fixed, ST) -> 
+normalize_line({Pos, Neg, T}, Fixed, ST) -> 
   % {Res, _} = is_empty_line(L, #{}),
   T = ?LEAF:any(), % sanity
   BigS = ty_tuple:big_intersect(Pos),
-  {Time, {Z, ZZ}} = timer:tc(fun() -> phi_norm(ty_tuple:components(BigS), Neg, Fixed, ST) end, millisecond),
-  {Z, ZZ}.
-
+  phi_norm(ty_tuple:components(BigS), Neg, Fixed, ST).
 
 -spec phi_norm([ty_node:type()], [T], monomorphic_variables(), S) -> {set_of_constraint_sets(), S} when T :: ?ATOM:type().
 phi_norm(BigS, [], Fixed, ST) ->
@@ -89,7 +87,7 @@ phi_norm(BigS, [], Fixed, ST) ->
     end, 
     {[], ST}, 
     BigS);
-phi_norm(BigS, Z = [Ty | N], Fixed, ST) ->
+phi_norm(BigS, [Ty | N], Fixed, ST) ->
   Solve = fun({Index, {_PComponent, NComponent}}, {Result, ST00}) -> % FIXME shortcut
     % TODO can be implemented easier with new Erlang list zipper &&
     % remove pi_Index(NegativeComponents) from pi_Index(PComponents) and continue searching
