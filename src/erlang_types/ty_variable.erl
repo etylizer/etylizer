@@ -48,16 +48,35 @@ equal(Var1, Var2) -> compare(Var1, Var2) =:= eq.
 
 -spec compare(type(), type()) -> lt | eq | gt.
 compare(#var{id = name, name = N1}, #var{id = name, name = N2}) ->
-  case {N1 > N2, N1 < N2} of
-    {false, false} -> eq;
-    {true, _} -> lt;
-    {_, true} -> gt
+  % natural order for $ variables
+  case {id_of(N1), id_of(N2)} of
+    {{id, Id1}, {id, Id2}} -> 
+      compare(#var{id = Id1}, #var{id = Id2});
+    _ ->
+      case {N1 > N2, N1 < N2} of
+        {false, false} -> eq;
+        {true, _} -> lt;
+        {_, true} -> gt
+      end 
   end;
 compare(#var{id = name}, #var{}) -> gt;
 compare(#var{}, #var{id = name}) -> lt;
 compare(#var{id = Id1}, #var{id = Id2}) when Id1 < Id2 -> gt;
 compare(#var{id = Id1}, #var{id = Id2}) when Id1 > Id2 -> lt;
 compare(_, _) -> eq.
+
+id_of(Name) when is_atom(Name) ->
+  case atom_to_list(Name) of
+    [$$ | Rest] ->
+      try list_to_integer(Rest) of
+        Int -> {id, Int}
+      catch
+        error:badarg -> none
+      end;
+    _ -> 
+      none
+  end;
+id_of(_) -> none.
 
 -spec leq(type(), type()) -> boolean().
 leq(V1, V2) -> 

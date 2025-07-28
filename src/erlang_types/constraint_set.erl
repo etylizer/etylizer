@@ -94,7 +94,8 @@ join(S1, S2, Fixed) ->
 % step 1. happens by construction automatically
 -spec saturate(constraint_set(), monomorphic_variables(), cache()) -> set_of_constraint_sets().
 saturate(C, FixedVariables, Cache) ->
-  % io:format(user,"PICK: ~p~n", [C]),
+  % io:format(user,"PICK (~p): ~p~n", [erlang:phash2(C), C]),
+  % io:format(user,"~s~n", [etally:print(C)]),
   case pick_bounds_in_c(C, Cache) of
     {_Var, S, T} ->
       T0 = os:system_time(millisecond), 
