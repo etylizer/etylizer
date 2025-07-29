@@ -319,7 +319,6 @@ minimize_node_dnf(Dnf) ->
   StrInput = ".i " ++ integer_to_list(I) ++ "\n.o " ++ integer_to_list(O) ++ "\n" ++ lists:flatten(lists:join("\n", AllLines)),
   
   % TODO IMPORTANT make sure binary is available! wasted 2 hours searching for a non-issue
-  % How to include C binary in project?
   file:make_dir("/tmp/etylizer"),
   ok = file:write_file("/tmp/etylizer/espresso_input.pla", StrInput),
   % T0 = os:system_time(millisecond),

@@ -3,8 +3,8 @@
 -define(LAZY(Term), fun() -> Term end).
 
 -export([
-  meet/3, meet_lazy/3,
-  join/3, join_lazy/3,
+  meet/3,
+  join/3,
   saturate/3
 ]).
 
@@ -20,18 +20,6 @@
 -type constraint() :: {ty_variable:type(), ty:type(), ty:type()}.
 -type cache() :: #{ty:type() => []}.
 
-meet_lazy(S1, S2, Fixed) ->
-  Res = S1(),
-  case Res of
-    [] -> [];
-    _ -> meet(Res, S2(), Fixed)
-  end.
-join_lazy(S1, S2, Fixed) ->
-  Res = S1(),
-  case Res of
-    [[]] -> [[]];
-    _ -> join(Res, S2(), Fixed)
-  end.
 
 -spec meet(S, S, monomorphic_variables()) -> S when S :: set_of_constraint_sets().
 meet([], _, _) -> [];
@@ -43,9 +31,7 @@ meet(S1, S2, Fixed) ->
   % this in turn could mean the whole constraint set can become unsatisfiable
   % it is appararently faster to join everything together, 
   % then minimizing the meet result by using join
-  % io:format(user,"1- meet result~n", []),
   MeetResult = [[join_constraint_sets(C1, C2, Fixed) || C2 <- S2] || C1 <- S1],
-  % io:format(user,"2- Join result~n", []),
   R = lists:foldl(fun(S, Acc) -> join(S, Acc, Fixed) end, [], MeetResult),
   assert_all_cs_sorted(minimize(R)).
 
@@ -94,41 +80,14 @@ join(S1, S2, Fixed) ->
 % step 1. happens by construction automatically
 -spec saturate(constraint_set(), monomorphic_variables(), cache()) -> set_of_constraint_sets().
 saturate(C, FixedVariables, Cache) ->
-  % io:format(user,"PICK (~p): ~p~n", [erlang:phash2(C), C]),
-  % io:format(user,"~s~n", [etally:print(C)]),
   case pick_bounds_in_c(C, Cache) of
     {_Var, S, T} ->
-      % T0 = os:system_time(millisecond), 
-      % io:format(user, "Difference~n", []),
       SnT = ty:difference(S, T),
-      % io:format(user,"picked var: ~p~nDump:~n~p~n", [{_Var, SnT}, ty_node:dumpp(SnT)]),
-      %     io:format(user,"vars: ~p~n", [FixedVariables]),
-      % io:format(user,"~p~n", [ty_node:dumpp(SnT)]),
-
-      % case _Var of
-      %   {var, name, '$6'} -> 
-      %     io:format(user,"var: ~p~n", [{_Var, SnT}]),
-      %     % io:format(user,"ty:~n~p~n", [ty_node:dump(SnT)]),
-      %     Tx = os:system_time(microsecond),
-      %     NNormed = ty:normalize(SnT, FixedVariables),
-      %     io:format(user,"~p~n", [os:system_time(microsecond)-Tx]),
-      %     ok;
-      %   _ -> ok 
-      % end,
-      % io:format(user, "pick: ~p~n", [SnT]),
-
-      % io:format(user, "Normalize~n", []),
-      {_TT, Normed} = timer:tc(fun() -> ty:normalize(SnT, FixedVariables) end, millisecond),
-      % io:format(user,"in: ~p ms~n~p~n", [TT, length(Normed)]),
-      % io:format(user, "Meet~n", []),
-      % io:format(user, "Meet all~n~p~nwith~n~p~n", [[C], Normed]),
+      Normed = ty:normalize(SnT, FixedVariables),
       NewS = meet([C], Normed, FixedVariables),
-      
-      % io:format(user,"pick: ~p ms,  ~p~n", [os:system_time(millisecond)-T0, {_Var, SnT}]),
-      % io:format(user,"pick: ~p ms,  ~p~n", [os:system_time(millisecond)-T0, SnT]),
       Z = lists:foldl(fun(NewC, AllS) ->
-        NewMerged = ?LAZY(saturate(NewC, FixedVariables, Cache#{SnT => []})),
-        join_lazy(?LAZY(AllS), NewMerged, FixedVariables)
+        NewMerged = saturate(NewC, FixedVariables, Cache#{SnT => []}),
+        join(AllS, NewMerged, FixedVariables)
                   end, [], NewS),
       Z;
     none -> 

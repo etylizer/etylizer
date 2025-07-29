@@ -99,13 +99,10 @@ find_subst(X = [{Low, High} | OtherTests], [TallySubst | Others], AllTally) ->
   Valid = lists:any(
     fun({{Var, LowerBound}, {Var, UpperBound}}) ->
         TyOther = maps:get(Var, Subst, {var, Var}),
-        % io:format(user,"Unparsed:~n~p~n", [TyOther]),
         V = ty_parser:parse(TyOther),
         L = ty_parser:parse(LowerBound),
         U = ty_parser:parse(UpperBound),
         not (ty_node:leq(L, V) andalso ty_node:leq(V, U))
-        % not (subty:is_subty(symtab:empty(), LowerBound, TyOther) andalso
-        %   subty:is_subty(symtab:empty(), TyOther, UpperBound))
 
     end, lists:zip(lists:sort(maps:to_list(Low)), lists:sort(maps:to_list(High)))),
   case Valid of

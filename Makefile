@@ -1,16 +1,19 @@
-.PHONY: release build test check all clean gradualize check_ast_trans_ty \
+.PHONY: espresso release build test check all clean gradualize check_ast_trans_ty \
 	check_syntax_antidote check_ast_trans_antidote check_types_antidote \
 	check_syntax_riak check_ast_trans_riak check_types_riak
 
 REBAR = rebar3
 
-release:
-	$(REBAR) as prod escriptize
-	cp priv/bin/espresso _build/prod/bin/espresso
+espresso:
+	cd c_src/espresso && make
 
-build:
+release: espresso
+	$(REBAR) as prod escriptize
+	cp _build/espresso _build/prod/bin/espresso
+
+build: espresso
 	$(REBAR) escriptize
-	cp priv/bin/espresso _build/default/bin/espresso
+	cp _build/espresso _build/default/bin/espresso
 
 clean:
 	$(REBAR) clean

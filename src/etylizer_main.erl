@@ -184,7 +184,7 @@ doWork(Opts) ->
 % different path for testing environment
 -ifdef(TEST).
 get_espresso_binary() ->
-    Path = "priv/bin/espresso",
+    Path = "_build/espresso",
     {ok, _} = file:read_file_info(Path),
     Path.
 -else.
