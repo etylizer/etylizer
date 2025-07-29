@@ -1,9 +1,6 @@
 -module(pretty_tests).
 -include_lib("eunit/include/eunit.hrl").
 
--import(stdtypes, [tvar/1, ttuple_any/0, tnegate/1, tatom/0, tatom/1, tfun_full/2, trange/2, tunion/1, tintersect/1, trange_any/0, ttuple/1, tany/0, tnone/0]).
--import(test_utils, [is_subtype/2, is_equiv/2]).
-
 % TODO simplifications
 % the heuristic in gen_bdd:do_dnf already handles these cases, but it's only a heuristic
 % S1: distribution over multiple coclauses
@@ -11,32 +8,38 @@
 % S2: redundant negations on the monomorphic DNF level
 % {a5 /\ b, int} | {a, int} /\ not({a5 /\ b, int}) => {a5 /\ b, int} | {a, int}
 
-% TODO pretty-printing/semantic unparsing
+% AST helper functions
+-include_lib("etylizer/test/erlang_types/erlang_types_test_utils.hrl").
+
+id(Type) ->
+  ty_parser:unparse(ty_parser:parse(Type)).
+
+% TODO semantic pretty printing for tuples
 % empty_tuple_test() ->
-%   ecache:reset_all(),
-%   A = ast_lib:erlang_ty_to_ast(ast_lib:ast_to_erlang_ty(stdtypes:ttuple2(stdtypes:tint(), tnone()), symtab:empty()), #{}),
-%   A = tnone(),
-%   ok.
-%
-% any_empty_test() ->
-%   ecache:reset_all(),
-%   % syntactically same none and any representations
-%   A = stdtypes:tnone(),
-%   A = ast_lib:erlang_ty_to_ast(ast_lib:ast_to_erlang_ty(A, symtab:empty()), #{}),
-%
-%   B = stdtypes:tany(),
-%   B = ast_lib:erlang_ty_to_ast(ast_lib:ast_to_erlang_ty(B, symtab:empty()), #{}),
-%   ok.
-%
-% simple_singleton_test() ->
-%   ecache:reset_all(),
-%   A = tatom(foo),
-%   B = ast_lib:ast_to_erlang_ty(A, symtab:empty()),
-%   Pretty = ast_lib:erlang_ty_to_ast(B, #{}),
-%   true = subty:is_equivalent(symtab:empty(), A, Pretty),
-%   ?assertEqual("foo", pretty:render_ty(Pretty)),
-%   ok.
-%
+%   global_state:with_new_state(fun() -> 
+%     A = ttuple([tint(), tnone()]),
+%     A = id(A)
+%   end).
+
+any_empty_test() ->
+  % syntactically same none and any representations
+  global_state:with_new_state(fun() -> 
+    A = tnone(),
+    A = id(A)
+  end),
+  global_state:with_new_state(fun() -> 
+    A = tany(),
+    A = id(A)
+  end).
+
+simple_singleton_test() ->
+  global_state:with_new_state(fun() -> 
+    A = tatom(foo),
+    B = id(A),
+    true = subty:is_equivalent(symtab:empty(), A, B),
+    ?assertEqual("foo", pretty:render_ty(B))
+  end).
+
 % variable_union_test() ->
 %   ecache:reset_all(),
 %   A = tunion([tvar(a), tatom(foo)]),

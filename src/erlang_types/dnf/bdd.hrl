@@ -15,6 +15,7 @@
   intersect/2,
   difference/2,
   dnf/1,
+  minimize_dnf/1,
   is_empty/2,
   normalize/3,
   unparse/2,
@@ -323,7 +324,7 @@ minimize_node_dnf(Dnf) ->
   ok = file:write_file("/tmp/etylizer/espresso_input.pla", StrInput),
   % T0 = os:system_time(millisecond),
   Result = os:cmd(etylizer_main:get_espresso_binary() ++ " < /tmp/etylizer/espresso_input.pla"),
-  file:delete("/tmp/etylizer/espresso_input.pla"),
+  % file:delete("/tmp/etylizer/espresso_input.pla"),
 
   % io:format(user,"~p ms~n", [os:system_time(millisecond) - T0]),
   OnlyResultLines = extract_integer_lines(Result, I + 1 + O),

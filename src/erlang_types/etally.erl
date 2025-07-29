@@ -42,12 +42,16 @@ tally(Constraints) -> tally(Constraints, #{}).
 
 -spec tally(input_constraints(), monomorphic_variables()) -> {error, []} | tally_solutions().
 tally(Constraints, MonomorphicVariables) ->
+  % io:format(user,"~n~n=== Step 1: Normalize ~p constraints~n~s~nFixed variables: ~p~n===~n", [length(Constraints), print(Constraints), MonomorphicVariables]),
   Normalized = ?TIME(tally_normalize, tally_normalize(Constraints, MonomorphicVariables)),
+  % io:format(user,"~n~n=== Step 2: Saturate ~p sets~n~s~nFixed variables: ~p~n===~n", [length(Constraints), print(Normalized), MonomorphicVariables]),
   Saturated = ?TIME(tally_saturate, tally_saturate(Normalized, MonomorphicVariables)),
+  % io:format(user,"~n~n=== Step 3: Solve ~p sets~n~s~nFixed variables: ~p~n===~n", [length(Constraints), print(Saturated), MonomorphicVariables]),
   Solved = ?TIME(tally_solve, tally_solve(Saturated, MonomorphicVariables)),
+  % io:format(user,"~n~n=== Step 4: Solved~n~p~n===~n", [Solved]),
 
-  % sanity: every substitution satisfies all given constraints, if no error
-  ?SANITY(substitutions_solve_input_constraints, case Solved of {error, _} -> ok; _ -> [ true = is_valid_substitution(Constraints, Subst) || Subst <- Solved] end),
+  % sanity: every substitution satisfies all given constraints (by polymorphic subtyping), if no error
+  ?SANITY(substitutions_solve_input_constraints, case Solved of {error, _} -> ok; _ -> [ true = is_valid_substitution(Constraints, Subst, MonomorphicVariables) || Subst <- Solved] end),
  
   Solved.
 
@@ -98,8 +102,8 @@ solve_single([{SmallestVar, Left, Right} | Cons], Equations, Fix) ->
   % constraints are already sorted by variable ordering
   % smallest variable first
   % reuse variable
-  FreshTyVar = ty_node:make(dnf_ty_variable:singleton(ty_variable:fresh_from(SmallestVar))), 
-  % FreshTyVar = ty_node:make(dnf_ty_variable:singleton(SmallestVar)),
+  % FreshTyVar = ty_node:make(dnf_ty_variable:singleton(ty_variable:fresh_from(SmallestVar))), 
+  FreshTyVar = ty_node:make(dnf_ty_variable:singleton(SmallestVar)),
 
   Result = ty_node:intersect(ty_node:union(Left, FreshTyVar), Right),
   NewEq = Equations ++ [{eq, SmallestVar, Result}],
@@ -146,7 +150,9 @@ apply_substitution(Ty, Substitutions) ->
   lists:foldl(SubstFun, Ty, Substitutions).
 
 % print([]) -> "";
+% print([X | Xs]) when is_list(X) -> 
+%   io_lib:format(">>~n~s~n~s", [print(X), print(Xs)]);
 % print([{{var, name, Name}, Left, Right} | Rest]) -> 
-%   io_lib:format("~s <:~p <: ~s~n~s", [pretty:render_ty(ty_parser:unparse(Left)), Name, pretty:render_ty(ty_parser:unparse(Right)), print(Rest)]);
+%   io_lib:format("~s <: ~p <: ~s~n~s", [pretty:render_ty(ty_parser:unparse(Left)), Name, pretty:render_ty(ty_parser:unparse(Right)), print(Rest)]);
 % print([{Left, Right} | Rest]) -> 
 %   io_lib:format("~s <: ~s~n~s", [pretty:render_ty(ty_parser:unparse(Left)), pretty:render_ty(ty_parser:unparse(Right)), print(Rest)]).

@@ -134,31 +134,28 @@ condense(Graph) ->
   % 1. Collecting all edges between different SCCs
   % 2. Avoiding duplicate edges
   CondensedGraph = maps:fold(
-      fun(Node, Neighbors, Acc) ->
-          Root = maps:get(Node, Roots),
-          lists:foldl(
-              fun(Neighbor, InnerAcc) ->
-                  NeighborRoot = maps:get(Neighbor, Roots),
-                  case Root =/= NeighborRoot of
-                      true ->
-                          % Add edge from Root to NeighborRoot if not already present
-                          CurrentEdges = maps:get(Root, InnerAcc),
-                          case lists:member(NeighborRoot, CurrentEdges) of
-                              false ->
-                                  maps:put(Root, [NeighborRoot | CurrentEdges], InnerAcc);
-                              true ->
-                                  InnerAcc
-                          end;
-                      false ->
-                          InnerAcc
-                  end
-              end,
-              Acc,
-              Neighbors
-          )
-      end,
-      BaseGraph,  % Start with all roots already included
-      Graph
+    fun(Node, Neighbors, Acc) ->
+      Root = maps:get(Node, Roots),
+      lists:foldl( 
+        fun(Neighbor, InnerAcc) -> 
+          NeighborRoot = maps:get(Neighbor, Roots), 
+          case Root =/= NeighborRoot of 
+            true -> 
+              % Add edge from Root to NeighborRoot if not already present
+              CurrentEdges = maps:get(Root, InnerAcc),
+              case lists:member(NeighborRoot, CurrentEdges) of
+                false -> maps:put(Root, [NeighborRoot | CurrentEdges], InnerAcc);
+                true -> InnerAcc
+              end; 
+            false ->
+              InnerAcc
+          end
+        end,
+        Acc,
+        Neighbors)
+    end,
+    BaseGraph,  % Start with all roots already included
+    Graph
   ),
   
   {Roots, CondensedGraph}.
@@ -166,63 +163,61 @@ condense(Graph) ->
 
 -spec dfs(Graph :: #{Node => [Node]}) -> [Node] when Node :: term().
 dfs(Graph) ->
-    Nodes = maps:keys(Graph),
-    Visited = sets:new(),
-    {Order, _} = lists:foldl(
-        fun(Node, {Acc, VisitedSet}) ->
-            case sets:is_element(Node, VisitedSet) of
-                false ->
-                    {NewAcc, NewVisited} = dfs_visit(Graph, Node, Acc, VisitedSet),
-                    {NewAcc, NewVisited};
-                true ->
-                    {Acc, VisitedSet}
-            end
-        end,
-        {[], Visited},
-        Nodes
-    ),
-    lists:reverse(Order).
+  Nodes = maps:keys(Graph),
+  Visited = sets:new(),
+  {Order, _} = lists:foldl(
+    fun(Node, {Acc, VisitedSet}) ->
+      case sets:is_element(Node, VisitedSet) of
+        false ->
+          {NewAcc, NewVisited} = dfs_visit(Graph, Node, Acc, VisitedSet),
+          {NewAcc, NewVisited};
+        true ->
+          {Acc, VisitedSet}
+      end
+    end,
+    {[], Visited},
+    Nodes
+  ),
+  lists:reverse(Order).
 
 
 -spec dfs_visit(Graph :: #{Node => [Node]}, Node :: term(), Acc :: [Node], VisitedSet :: sets:set(Node)) -> 
     {[Node], sets:set(Node)} when Node :: term().
 dfs_visit(Graph, Node, Acc, VisitedSet) ->
-    NewVisited = sets:add_element(Node, VisitedSet),
-    Neighbors = maps:get(Node, Graph, []),
-    {NewAcc, FinalVisited} = lists:foldl(
-        fun(Neighbor, {CurrentAcc, CurrentVisited}) ->
-            case sets:is_element(Neighbor, CurrentVisited) of
-                false ->
-                    dfs_visit(Graph, Neighbor, CurrentAcc, CurrentVisited);
-                true ->
-                    {CurrentAcc, CurrentVisited}
-            end
-        end,
-        {Acc, NewVisited},
-        Neighbors
-    ),
-    {[Node | NewAcc], FinalVisited}.
+  NewVisited = sets:add_element(Node, VisitedSet),
+  Neighbors = maps:get(Node, Graph, []),
+  {NewAcc, FinalVisited} = lists:foldl(
+    fun(Neighbor, {CurrentAcc, CurrentVisited}) ->
+      case sets:is_element(Neighbor, CurrentVisited) of
+        false -> dfs_visit(Graph, Neighbor, CurrentAcc, CurrentVisited);
+        true -> {CurrentAcc, CurrentVisited}
+      end
+    end,
+    {Acc, NewVisited},
+    Neighbors
+  ),
+  {[Node | NewAcc], FinalVisited}.
 
 
 -spec reverse_graph(Graph :: #{Node => [Node]}) -> #{Node => [Node]} when Node :: term().
 reverse_graph(Graph) ->
-    Keys = maps:keys(Graph),
-    lists:foldl(
-        fun(Key, Acc) ->
-            case maps:get(Key, Graph) of
-                [] -> Acc;  % No need to process nodes with no edges
-                Values -> 
-                    lists:foldl(
-                        fun(Value, InnerAcc) ->
-                            case maps:get(Value, InnerAcc, []) of
-                                Existing -> InnerAcc#{Value => [Key | Existing]}
-                            end
-                        end,
-                        Acc,
-                        Values
-                    )
-            end
-        end,
-        #{K => [] || K <- Keys},  % Initialize with all keys pointing to empty lists
-        Keys
-    ).
+  Keys = maps:keys(Graph),
+  lists:foldl(
+    fun(Key, Acc) ->
+      case maps:get(Key, Graph) of
+        [] -> Acc;  % No need to process nodes with no edges
+        Values -> 
+          lists:foldl(
+            fun(Value, InnerAcc) ->
+              case maps:get(Value, InnerAcc, []) of
+                Existing -> InnerAcc#{Value => [Key | Existing]}
+              end
+            end,
+            Acc,
+            Values
+          )
+      end
+    end,
+    #{K => [] || K <- Keys},  % Initialize with all keys pointing to empty lists
+    Keys
+  ).

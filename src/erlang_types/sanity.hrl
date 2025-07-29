@@ -34,22 +34,23 @@ sanity_substitution({Var, _To}, Ty, TyAfter) ->
 
 
 %substitution_check sanity check
--compile({nowarn_unused_function, is_valid_substitution/2}).
-is_valid_substitution([], _) -> true;
-is_valid_substitution([{Left, Right} | Cs], Substitution) ->
+-compile({nowarn_unused_function, is_valid_substitution/3}).
+is_valid_substitution([], _, _) -> true;
+is_valid_substitution([{Left, Right} | Cs], Substitution, MonomorphicVariables) ->
+
   SubstitutedLeft = ty_node:substitute(Left, Substitution),
   SubstitutedRight = ty_node:substitute(Right, Substitution),
-  Res = ty_node:leq(SubstitutedLeft, SubstitutedRight),
-  P = fun(Ty) -> pretty:render_ty(ty_parser:unparse(Ty)) end,
+  Res = etally:is_tally_satisfiable([{SubstitutedLeft, SubstitutedRight}], MonomorphicVariables),
   case Res of
     false ->
+      P = fun(Ty) -> pretty:render_ty(ty_parser:unparse(Ty)) end,
       io:format(user, "Subst:~n~p~n", [Substitution]),
       io:format(user, "Left:~n~s~n->~n~s~n", [P(Left), P(SubstitutedLeft)]),
       io:format(user, "Right:~n~s~n->~n~s~n", [P(Right), P(SubstitutedRight)]);
     _ -> ok
   end,
   Res andalso
-    is_valid_substitution(Cs, Substitution).
+    is_valid_substitution(Cs, Substitution, MonomorphicVariables).
 
 -endif.
 

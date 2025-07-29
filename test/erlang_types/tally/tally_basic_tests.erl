@@ -7,7 +7,7 @@
 -include_lib("eunit/include/eunit.hrl").
 
 % AST helper functions
--include_lib("test/erlang_types/erlang_types_test_utils.hrl").
+-include_lib("etylizer/test/erlang_types/erlang_types_test_utils.hrl").
 
 tally_01_test() ->
   test_tally(
@@ -185,6 +185,20 @@ tally_09_test() ->
     ).
 
 tally_10_test() ->
+    V0 = v(v1),
+    V7 = v(v2),
+    B = b(foo),
+    T = b(tag),
+    test_tally(
+      [
+       {
+        i([V0, ttuple([B])]), 
+        ttuple([V7])
+       }
+      ],
+      solutions(1)).
+
+tally_x10_test() ->
     V0 = v(v0), V2 = v(v2), V3 = v(v3),
     V4 = v(v4), V5 = v(v5), V6 = v(v6),
     V7 = v(v7), V8 = v(v8),

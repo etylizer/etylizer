@@ -164,7 +164,6 @@ force_load(Reference = {node, Id}, Node) ->
   CurrentId = ets:update_counter(?ID, id, 0),
   case CurrentId < Id of
     true -> 
-      % io:format(user,"Current counter:~p -> ~p~n", [CurrentId, CurrentId + 1 + (Id - CurrentId)]),
       ets:update_counter(?ID, id, (Id - CurrentId + 1));
     _ -> ok
   end,
@@ -359,7 +358,7 @@ unparse(Node = {node, Id}, Cache) ->
 
           % load and continue
           Ty = ty_node:load(Node),
-          {R, C0} = ?TY:unparse(Ty, NewCache),
+          {R, C0} = dnf_ty_variable:unparse(Ty, NewCache),
 
           % make type equation (if needed)
           Vars = ast_utils:referenced_recursive_variables(R),
@@ -399,9 +398,7 @@ all_variables(Ty, Cache) ->
       dnf_ty_variable:all_variables(load(Ty), Cache#{Ty => []})
   end.
 
-
 % helper functions
-
 -spec opcache(term(), fun(() -> A)) -> A.
 opcache(Key, F) ->
   % process dict faster but we can't erase just parts of it, only everything

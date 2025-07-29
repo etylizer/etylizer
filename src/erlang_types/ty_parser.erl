@@ -81,6 +81,10 @@ clean() ->
   end,
   logger:debug("~p state cleaned", [?MODULE]).
 
+set_symtab(SymTab) ->
+  Types = symtab:get_types(SymTab),
+  maps:foreach(fun(K, V) -> ty_parser:extend_symtab(K, V) end, Types).
+
 lookup_ref(Ref) ->
   % we have already created the node beforehand, it needs to exist
   [{Ref, Node}] = ets:lookup(?LOCAL_TO_NODE_MAPPING, Ref),
@@ -379,7 +383,7 @@ extend_symtab({_, Namespace, Type, ArgsCount}, RawTyScheme) ->
   % replace all locs 
   TyScheme = replace_locs(RawTyScheme),
   % io:format(user,"Extending symtab by ~p~n With scheme: ~p~n", [Ref, TyScheme]),
-  ets:insert(?SYMTAB, {Ref, TyScheme}).
+  ets:insert_new(?SYMTAB, {Ref, TyScheme}).
 
 -spec lookup_ty(ety_ref()) -> ety_ty_scheme().
 lookup_ty({ty_qref, A, B, C}) ->

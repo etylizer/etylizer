@@ -21,15 +21,35 @@ equal(A, B) -> compare(A, B) == eq.
 -spec map(N, N) -> type() when N :: ty_node:type().
 map(TupPart, FunPart) -> ty_tuple:tuple([TupPart, FunPart]).
 
+-dialyzer(no_opaque).
 -spec unparse(type(), T) -> {ast_ty(), T}.
 unparse({ty_tuple, 2, [TupPart, FunPart]}, ST0) ->
-  % MandatoryAndOptional = ast_lib:erlang_ty_to_ast(Tup),
-  % this is a bit messy
+  % FIXME this is messy and hacky
   % the map representation depends on a synactical representation of tuples and functions
   % but unparsing returns a semantical unparsed representation with simplifications
-  {MandatoryAndOptional, ST1} = ty_node:unparse(TupPart, ST0),
-  % Mandatory = ast_lib:erlang_ty_to_ast(Funs),
-  {Mandatory, ST2} = ty_node:unparse(FunPart, ST1),
+  % manually unfold the type and hope for the best
+  {leaf, TyTupPart} = ty_node:load(TupPart),
+  {MandatoryAndOptional, ST1} = case TyTupPart of
+    empty -> {{predef, none}, ST0};
+    _ -> 
+      {_, #{2 := TuplesDnf}} = ty_rec:pi(TyTupPart, ty_tuples),
+      TDnf = dnf_ty_tuple:minimize_dnf(dnf_ty_tuple:dnf(TuplesDnf)),
+
+      % negative part should be empty always, and only a single positive tuple remaining
+      ToUnparse = [PosTup || {[PosTup], [], 1} <- TDnf], 
+      {Z, ZZ} = lists:foldl(fun(T, {Tuples, ST00}) -> {Tp, ST01} = ty_tuple:unparse(T, ST00), {Tuples ++ [Tp], ST01} end, {[], ST0}, ToUnparse),
+      {{union, Z}, ZZ}
+  end,
+
+  {leaf, TyFunPart} = ty_node:load(FunPart),
+  TyFuns = ty_rec:pi(TyFunPart, ty_functions),
+  {Mandatory, ST2} = case TyFuns of
+    {{leaf, 1}, #{}} -> {{fun_simple}, ST1};
+    {_, #{1 := FunsDnf}} -> 
+      [{AllFuns, [], 1}] = dnf_ty_function:minimize_dnf(dnf_ty_function:dnf(FunsDnf)),
+      {Conv, ST3} = lists:foldl(fun(F, {Funs, ST00}) -> {Fp, ST01} = ty_function:unparse(F, ST00), {Funs ++ [Fp], ST01} end, {[], ST1}, AllFuns),
+      {{intersection, Conv}, ST3}
+  end,
   {{map, split_into_associations(Mandatory, MandatoryAndOptional)}, ST2}.
 
 % depends on ast:ty() internals
@@ -39,13 +59,13 @@ split_into_associations({fun_simple}, OnlyOptional) ->
     case OnlyOptional of
         {predef, none} ->
             [];
-        {tuple, [X, Y]} -> 
-            [{map_field_opt, X, Y}];
+        % {tuple, [X, Y]} -> 
+        %     [{map_field_opt, X, Y}];
         {union, Tuples} -> 
-            [{map_field_opt, X, Y} || {tuple, [X, Y]} <- Tuples];
-        Got -> 
-            io:format(user,"~nGot:~p~n", [Got]),
-            errors:bug("Internal map representation error")
+            [{map_field_opt, X, Y} || {tuple, [X, Y]} <- Tuples]
+        % Got -> 
+        %     io:format(user,"~nGot:~p~n", [Got]),
+        %     errors:bug("Internal map representation error")
     end;
 split_into_associations({intersection, Funs}, {union, Tups}) ->
     RawFun = [{A, B} || {fun_full, [A], B} <- Funs],
@@ -54,8 +74,8 @@ split_into_associations({intersection, Funs}, {union, Tups}) ->
     [{map_field_req, A, B} || {A, B} <- RawFun] 
         ++ 
     [{map_field_opt, A, B} || {A, B} <- RawTuple];
-split_into_associations(F = {fun_full, [_], _}, T = {tuple, [_, _]}) ->
-    split_into_associations({intersection, [F]}, {union, [T]});
+% split_into_associations(F = {fun_full, [_], _}, T = {tuple, [_, _]}) ->
+%     split_into_associations({intersection, [F]}, {union, [T]});
 split_into_associations(Mandatory, MandatoryAndOptional) ->
     io:format(user,"Mandatory: ~p~n", [Mandatory]),
     io:format(user,"Mandatory and opt: ~p~n", [MandatoryAndOptional]),

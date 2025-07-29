@@ -37,25 +37,19 @@ tally(SymTab, Constraints, FixedVars, Mode) ->
   % uncomment to extract a tally test case config file
   %io:format(user, "~s~n", [utils:format_tally_config(sets:to_list(Constraints), FixedVars, SymTab)]),
   
-  % FIXME hack
-  Types = symtab:get_types(SymTab),
-  % io:format(user,"~w~n", [Types]),
-  maps:foreach(fun(K, V) -> ty_parser:extend_symtab(K, V) end, Types),
+  % erlang_types has a global symtab
+  ty_parser:set_symtab(SymTab),
 
   InternalConstraints = 
-  lists:map( fun ({scsubty, _, S, T}) -> {ty_parser:parse(S), ty_parser:parse(T)} end,
-    lists:sort( fun ({scsubty, _, S, T}, {scsubty, _, X, Y}) -> (erts_debug:size({S, T})) < erts_debug:size(({X, Y})) end,
-      sets:to_list(Constraints))
-  ),
-  %io:format(user,"Mono variables: ~w~n", [FixedVars]),
+    lists:map( fun ({scsubty, _, S, T}) -> {ty_parser:parse(S), ty_parser:parse(T)} end,
+      lists:sort( fun ({scsubty, _, S, T}, {scsubty, _, X, Y}) -> (erts_debug:size({S, T})) < erts_debug:size(({X, Y})) end,
+        sets:to_list(Constraints))
+    ),
   MonomorphicTallyVariables = maps:from_list([{ty_variable:new_with_name(Var), []} || Var <- sets:to_list(FixedVars)]),
-  %io:format(user,"Fixed variables: ~w~n", [MonomorphicTallyVariables]),
 
   case Mode of
     solve ->
-      % implemented but not tested yet
       InternalResult = etally:tally(InternalConstraints, MonomorphicTallyVariables),
-      % io:format(user, "Got Constraints ~n~s~n~p~n", [print(InternalConstraints), InternalResult]),
 
       Free = tyutils:free_in_subty_constrs(Constraints),
       case InternalResult of
@@ -63,7 +57,6 @@ tally(SymTab, Constraints, FixedVars, Mode) ->
               {error, []};
             _ ->
               % transform to subst:t()
-              % TODO sanity variable Id == variable name
               [subst:mk_tally_subst(
                 sets:union(FixedVars, Free),
                 maps:from_list([{VarName, ty_parser:unparse(Ty)}
@@ -78,5 +71,3 @@ tally(SymTab, Constraints, FixedVars, Mode) ->
         true -> {true, subst:empty()}
       end
   end.
-% print(Cs) ->
-%   "<<" ++ string:join([ty_rec:print(S) ++ " < " ++ ty_rec:print(T) || {S, T} <- Cs], ",\n") ++ ">>".
