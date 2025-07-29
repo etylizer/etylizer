@@ -9,4 +9,4 @@ if [ "$1" == "--build" ]; then
     popd
 fi
 
-$D/_build/default/bin/etylizer "$@"
+$D/_build/prod/bin/etylizer "$@"

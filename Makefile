@@ -4,6 +4,8 @@
 
 REBAR = rebar3
 
+all: build check test
+
 espresso:
 	cd c_src/espresso && make
 
@@ -35,8 +37,6 @@ testtest:
 
 check:
 	$(REBAR) as test dialyzer
-
-all: build check test
 
 gradualize:
 	cd src && gradualizer --fmt_location brief *.erl
