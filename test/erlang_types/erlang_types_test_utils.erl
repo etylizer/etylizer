@@ -19,7 +19,7 @@ solutions(Number) ->
 
 -spec test_tally(list({ast:ty(), ast:ty()}), list(expected_subst())) -> _.
 test_tally(ConstrList, ExpectedSubst) ->
-    test_tally(ConstrList, ExpectedSubst, []).
+  test_tally(ConstrList, ExpectedSubst, []).
 
 % -spec test_tally(list({ast:ty(), ast:ty()}), list(expected_subst()), [ast:ty_varname()]) -> _.
 test_tally(ConstrList, ExpectedSubst, FixedVars) ->

@@ -1,5 +1,8 @@
 -module(etylizer_main).
--export([main/1]).
+-export([
+    get_espresso_binary/0,
+    main/1
+]).
 
 -ifdef(TEST).
 -export([
@@ -26,6 +29,9 @@ parse_define(S) ->
 parse_args(Args) ->
     OptSpecList =
         [
+         {espresso_root, $E,    "espresso-root",  string,
+             "Path to the root of the espresso binary. Etylizer executes that binary as " ++
+             "$ESPRESSO_DIR/espresso. Default root is the escript folder."},
          {project_root, $P,    "project-root",  string,
              "Path to the root of the project. Etylizer stores persistent information in " ++
              "$PROJECT_DIR/_etylizer."},
@@ -88,6 +94,7 @@ parse_args(Args) ->
                         {load_end, S} ->
                             Opts#opts{ load_end = Opts#opts.load_end ++ [S] };
                         {check_ast, S} -> Opts#opts{ ast_file = S };
+                        {espresso_root, S} -> Opts#opts{ espresso_root = S };
                         {project_root, S} -> Opts#opts{ project_root = S };
                         {src_path, F} -> Opts#opts{ src_paths = Opts#opts.src_paths ++ [F]};
                         {include, F} -> Opts#opts{ includes = Opts#opts.includes ++ [F]};
@@ -125,7 +132,14 @@ fix_load_path(Opts) ->
 
 -spec doWork(#opts{}) -> [file:filename()].
 doWork(Opts) ->
+    % erlang_types needs to know the path of espresso
+    % save that in persistent_term
+    persistent_term:put(espresso_root, Opts#opts.espresso_root),
+
     global_state:with_new_state(fun() ->
+      ?LOG_TRACE("Check if espresso executable is available"),
+      {ok, _} = file:read_file_info(get_espresso_binary()),
+
       ?LOG_INFO("Initializing ETS tables"),
       parse_cache:init(Opts),
       stdtypes:init(),
@@ -166,6 +180,23 @@ doWork(Opts) ->
           stdtypes:cleanup()
       end
                                 end).
+
+% different path for testing environment
+-ifdef(TEST).
+get_espresso_binary() ->
+    Path = "priv/bin/espresso",
+    {ok, _} = file:read_file_info(Path),
+    Path.
+-else.
+get_espresso_binary() ->
+    Path = case (catch persistent_term:get(espresso_root)) of
+        {_, _} -> filename:join([filename:dirname(escript:script_name()), "espresso"]); % default
+        empty -> filename:join([filename:dirname(escript:script_name()), "espresso"]); % default
+        Root -> filename:join([Root, "espresso"])
+    end,
+    {ok, _} = file:read_file_info(Path),
+    Path.
+-endif.
 
 -spec main([string()]) -> ok.
 main(Args) ->

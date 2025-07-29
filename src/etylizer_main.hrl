@@ -12,6 +12,7 @@
                type_check_ignore = [] :: [string()],
                ast_file = empty :: empty | string(),
                project_root = empty :: empty | string(),
+               espresso_root = empty :: empty | string(),
                src_paths = [] :: [string()],
                includes = [] :: [string()],
                defines = [] :: [{atom(), string()}],

@@ -176,7 +176,7 @@ file_changes_test_() ->
         #{1 => ["foo.erl", "main.erl"], 2 => ["foo.erl"], 3 => []}))),
      ?_timeout(?_test(test_recompile("type_error",
         #{1 => ["foo.erl", "main.erl"], 2 => type_error, 3 => type_error}))),
-     % FIXME: the following tests use the _dont_tycheck alternative because of some subtype bug
+      % FIXME: the following tests use the _dont_tycheck alternative because of some subtype bug
      ?_timeout(?_test(test_recompile_dont_tycheck("change_tydef",
         #{1 => ["bar.erl", "foo.erl", "main.erl"], 2 => ["main.erl", "foo.erl"]}))),
      ?_timeout(?_test(test_recompile_dont_tycheck("change_local_tydef",

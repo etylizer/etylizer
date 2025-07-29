@@ -6,9 +6,11 @@ REBAR = rebar3
 
 release:
 	$(REBAR) as prod escriptize
+	cp priv/bin/espresso _build/prod/bin/espresso
 
 build:
 	$(REBAR) escriptize
+	cp priv/bin/espresso _build/default/bin/espresso
 
 clean:
 	$(REBAR) clean

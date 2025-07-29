@@ -320,11 +320,11 @@ minimize_node_dnf(Dnf) ->
   
   % TODO IMPORTANT make sure binary is available! wasted 2 hours searching for a non-issue
   % How to include C binary in project?
-  {ok, _} = file:read_file_info("espresso"),
-  file:write_file("espresso_input.pla", StrInput),
+  file:make_dir("/tmp/etylizer"),
+  ok = file:write_file("/tmp/etylizer/espresso_input.pla", StrInput),
   % T0 = os:system_time(millisecond),
-  Result = os:cmd("./espresso < espresso_input.pla"),
-  file:delete("espresso_input.pla"),
+  Result = os:cmd(etylizer_main:get_espresso_binary() ++ " < /tmp/etylizer/espresso_input.pla"),
+  file:delete("/tmp/etylizer/espresso_input.pla"),
 
   % io:format(user,"~p ms~n", [os:system_time(millisecond) - T0]),
   OnlyResultLines = extract_integer_lines(Result, I + 1 + O),
