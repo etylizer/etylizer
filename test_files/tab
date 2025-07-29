@@ -1,6 +1,0 @@
-~/etylizer/etylizer ~/etylizer/etylizer/test_files
-rebar3 escriptize
-[0;32m===> Verifying dependencies...
-[0m[0;32m===> Analyzing applications...
-[0m[0;32m===> Compiling etylizer
-[0m
