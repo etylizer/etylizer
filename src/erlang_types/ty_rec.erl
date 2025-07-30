@@ -233,10 +233,20 @@ normalize(TyRec, Fixed, ST) ->
 % ===
 % Unparse
 % ===
--spec unparse(type(), ST) -> {ast_ty(), ST}.
-unparse(any, Cache) -> {{predef, any}, Cache};
-unparse(empty, Cache) -> {{predef, none}, Cache};
-unparse(Ty, ST) ->
+
+unparse(T, ST) ->
+  {Positive, ST0_A} = unparse_h(T, ST),
+  {Negative, ST0_B} = unparse_h(negate(T), ST),
+
+  case size(term_to_binary(Positive)) < size(term_to_binary(Negative)) of
+    true -> {Positive, ST0_A};
+    false -> {{negation, Negative}, ST0_B}
+  end.
+
+-spec unparse_h(type(), ST) -> {ast_ty(), ST}.
+unparse_h(any, Cache) -> {{predef, any}, Cache};
+unparse_h(empty, Cache) -> {{predef, none}, Cache};
+unparse_h(Ty, ST) ->
   {Z, ST2} = 
   fold(fun 
          (Module, Value, {Acc, ST0}) -> 
@@ -253,8 +263,13 @@ unparse_any(dnf_ty_predefined, Result) ->
   ast_lib:mk_intersection(
    [{union, [{empty_list}, {predef, float}, {predef, pid}, {predef, port}, {predef, reference}]}, 
     ast_lib:mk_union(Result)]);
+unparse_any(dnf_ty_atom, {predef, none}) -> {predef, none};
+unparse_any(dnf_ty_atom, {predef, any}) -> {predef, atom};
 unparse_any(dnf_ty_atom, Result) -> 
-  ast_lib:mk_intersection([{predef, atom}, Result]);
+  case subty:is_subty(symtab:empty(), Result, {predef,atom}) of
+    true -> Result;
+    false -> ast_lib:mk_intersection([{predef, atom}, Result])
+  end;
 unparse_any(dnf_ty_interval, Result) -> 
   ast_lib:mk_intersection([{predef, integer}, Result]);
 unparse_any(dnf_ty_list, Result) -> 

@@ -40,6 +40,15 @@ simple_singleton_test() ->
     ?assertEqual("foo", pretty:render_ty(B))
   end).
 
+simple_singleton_negation_test() ->
+  global_state:with_new_state(fun() -> 
+    A = n(tatom(foo)),
+    B = id(A),
+    true = subty:is_equivalent(symtab:empty(), A, B),
+    ?assertEqual("not(foo)", pretty:render_ty(B))
+  end).
+
+% TODO cont
 % variable_union_test() ->
 %   ecache:reset_all(),
 %   A = tunion([tvar(a), tatom(foo)]),
