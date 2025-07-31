@@ -29,6 +29,8 @@ test: build testtest
 	@echo "Running case study ..."
 	ETYLIZER_CASE_STUDY_LOGLEVEL=warn test_files/etylizer-mini/check-std.sh
 	ETYLIZER_CASE_STUDY_LOGLEVEL=warn test_files/etylizer-mini/check.sh
+	@echo "Running property-based tests ..."
+	$(REBAR) proper
 
 testtest:
 	@echo "Running unit tests for tests ..."

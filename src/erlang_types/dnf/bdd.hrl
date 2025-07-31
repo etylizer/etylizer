@@ -245,11 +245,13 @@ normalize(Dnf, Fixed, ST) ->
 % Unparse
 % =============
 -spec unparse(type(), T) -> {ast_ty(), T}.
+unparse({leaf, 0}, ST) -> {{predef, none}, ST};
+unparse({leaf, 1}, ST) -> {{predef, any}, ST};
 unparse(Dnf, ST) ->
   {ToUnion, ST2} = lists:foldl(
                      fun(Line, {Acc, ST0}) -> {Ele, ST1} = unparse_line(Line, ST0), {Acc ++ [Ele], ST1} end, 
                      {[], ST}, 
-                     dnf(Dnf)
+                     minimize_dnf(dnf(Dnf))
                     ),
   {ast_lib:mk_union(ToUnion), ST2}.
 

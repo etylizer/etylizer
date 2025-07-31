@@ -85,6 +85,13 @@ impossible_branch_f6(X) ->
       _ -> 2
     end.
 
+-spec foo([T]) -> [T].
+foo(L) ->
+    case L of
+        [] -> [];
+        [_X|XS] -> XS
+    end.
+
 -spec foo2_case(a) -> 1; (b) -> 2.
 foo2_case(X) ->
     case X of
