@@ -19,7 +19,8 @@
   is_empty/2,
   normalize/3,
   unparse/2,
-  all_variables/2
+  all_variables/2,
+  has_negative_only_line/1
 ]).
 
 -export_type([type/0]).
@@ -365,3 +366,8 @@ convert_back_to_repr({[$1 | Rest], Outputs}, IndexToTerms, IndexToOutput, Curren
   convert_back_to_repr({Rest, Outputs}, IndexToTerms, IndexToOutput, CurrentIndex + 1, {Pos ++ [maps:get(CurrentIndex, IndexToTerms)], Neg, to_replace});
 convert_back_to_repr({[$0 | Rest], Outputs}, IndexToTerms, IndexToOutput, CurrentIndex, {Pos, Neg, to_replace}) -> 
   convert_back_to_repr({Rest, Outputs}, IndexToTerms, IndexToOutput, CurrentIndex + 1, {Pos, Neg ++ [maps:get(CurrentIndex, IndexToTerms)], to_replace}).
+
+-spec has_negative_only_line(type()) -> boolean().
+has_negative_only_line(T) -> 
+  D = minimize_dnf(dnf(T)),
+  lists:any(fun({[], [_|_], _}) -> true; (_) -> false end, D).

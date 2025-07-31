@@ -160,8 +160,7 @@ simple_test_() ->
   ],
 
   NoInfer = [
-    "match_13", % TODO timeout, with flipped variable ordering it infers instantly
-    "user_08" % TODO FIXME ty_parser bug because of unparsing heuristic
+    "match_13" % TODO timeout, with flipped variable ordering it infers instantly
   ],
 
   %What = ["atom_03_fail"],

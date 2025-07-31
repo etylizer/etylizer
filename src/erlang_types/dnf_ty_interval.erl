@@ -18,7 +18,8 @@
   negate/1,
   normalize/3,
   unparse/2,
-  all_variables/2
+  all_variables/2,
+  has_negative_only_line/1
 ]).
 
 -export_type([type/0]).
@@ -173,3 +174,5 @@ unparse_single({right, R}) when R < 1 ->
 -spec all_variables(type(), _) -> sets:set().
 all_variables(_, _) -> sets:new().
 
+-spec has_negative_only_line(type()) -> boolean().
+has_negative_only_line(_) -> false.

@@ -4,6 +4,11 @@
 -define(LEAF, ty_bool).
 -define(NODE, ty_node).
 
+-export([
+  unparse_any/0,
+  unparse_any/1
+]).
+
 -include("dnf/bdd.hrl").
 
 -spec is_empty_line({[T], [T], ?LEAF:type()}, T) -> {boolean(), T} when T :: ?ATOM:type().
@@ -125,3 +130,7 @@ all_variables_line(P, N, Leaf, Cache) ->
      [ty_function:all_variables(F, Cache) || F <- P]
   ++ [ty_function:all_variables(F, Cache) || F <- N]
   ).
+
+unparse_any() -> {fun_simple}.
+unparse_any(Size) ->
+  {fun_full, [{predef, empty} || _ <- lists:seq(1, Size)], {predef, any}}.

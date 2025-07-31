@@ -343,7 +343,8 @@ normalize(TyNode, FixedVariables, Cache) ->
 -spec unparse(type(), ST) -> {ast_ty(), ST} when ST :: #{type() => ast_mu_var()}.
 unparse(Node = {node, Id}, Cache) -> 
   case ty_parser:unparse_mapping(Node) of
-    {hit, Result} -> {Result, Cache};
+    {hit, Result} -> 
+      {Result, Cache};
     _ ->
       case Cache of
         #{Node := RecVar} -> 

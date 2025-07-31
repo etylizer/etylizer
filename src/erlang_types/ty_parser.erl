@@ -99,7 +99,7 @@ create_ref(Ref) ->
 
 -spec parse(ast_ty()) -> type().
 parse(RawTy) ->
-  % io:format(user,"~w,~n", [RawTy]),
+  % io:format(user,"Parsing: ~w,~n", [RawTy]),
   % first: rename such that mu-binders have no collisions
   % use DeBruijn indexes and then convert back to fresh named variables
   % this has to be done anytime a {named, ...} reference is unfolded, too
@@ -646,7 +646,7 @@ unify(Ref, {IdToTy, TyToIds}) ->
 
 -spec unparse(type()) -> ast_ty().
 unparse(Node) ->
-  case ets:lookup(?UNPARSE_CACHE, Node) of
+  Z = case ets:lookup(?UNPARSE_CACHE, Node) of
     [{_, Ref}] -> 
       persistent_term:get(Ref);
     _ ->
@@ -658,7 +658,8 @@ unparse(Node) ->
       true = ets:insert_new(?UNPARSE_CACHE, {Node, Ref}),
       
       R
-  end.
+  end,
+  Z.
 
 
 -spec debruijn(ast_ty()) -> ast_ty().

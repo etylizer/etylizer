@@ -25,7 +25,8 @@
   is_empty/2,
   normalize/3,
   unparse/2,
-  all_variables/2
+  all_variables/2,
+  has_negative_only_line/1
 ]).
 
 reorder({D, M}) ->
@@ -141,7 +142,11 @@ normalize({Default, All}, Fixed, ST) ->
 
 -spec unparse(type(), T) -> {ast_ty(), T}.
 unparse({Default, T}, ST0) ->
-  {X1, ST1} = ?MULTIARITY:unparse(Default, ST0),
+  {X1, ST1} = 
+  case ?MULTIARITY:unparse(Default, ST0) of
+    {{predef, any}, S} -> {?MULTIARITY:unparse_any(), S};
+    Z -> Z
+  end,
 
   {Xs, ST2} =
   lists:foldl(fun({_Size, TT}, {Cs, ST00}) -> 
@@ -151,13 +156,17 @@ unparse({Default, T}, ST0) ->
     end
   end, {[], ST1}, maps:to_list(T)),
 
-  {ast_lib:mk_union([ 
-    ast_lib:mk_diff( 
-      X1, 
+  Defined = [?MULTIARITY:unparse_any(Size) || Size <- maps:keys(T)],
+  % default without the defined arities ANY U defined arities
+  R = ast_lib:mk_union([ 
+      ast_lib:mk_diff( 
+        X1, 
+        ast_lib:mk_union(Defined)
+      ), 
       ast_lib:mk_union(Xs)
-    ), 
-    ast_lib:mk_union(Xs)
-  ]), ST2}.
+    ]),
+
+  {R, ST2}.
 
 -spec all_variables(type(), all_variables_cache()) -> sets:set(variable()).
 all_variables({Default, All}, Cache) ->
@@ -169,3 +178,8 @@ all_variables({Default, All}, Cache) ->
               end, sets:new(), All),
   sets:union(V1, ResVars).
 
+-spec has_negative_only_line(type()) -> boolean().
+has_negative_only_line({Default, All}) -> 
+  ?MULTIARITY:has_negative_only_line(Default) 
+  orelse
+  lists:any(fun({_, M}) -> ?MULTIARITY:has_negative_only_line(M) end, maps:to_list(All)).

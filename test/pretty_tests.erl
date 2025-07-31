@@ -5,7 +5,9 @@
 -include_lib("etylizer/test/erlang_types/erlang_types_test_utils.hrl").
 
 id(Type) ->
-  ty_parser:unparse(ty_parser:parse(Type)).
+  Parsed = ty_parser:parse(Type),
+  Unparsed = ty_parser:unparse(Parsed),
+  Unparsed.
 
 % TODO semantic pretty printing for tuples
 % empty_tuple_test() ->
@@ -195,17 +197,26 @@ var_condition_test() ->
     ?assertEqual("not(b) /\\ not(c) | c /\\ not(a)", pretty:render_ty(B))
   end).
 
-% TODO FIXME ty_parser bug
-% recursive_test() ->
-%   global_state:with_new_state(fun() -> 
-%     X = tvar_mu(x),
-%     L = u([
-%       b(nil),
-%       ttuple([v(alpha), X])
-%     ]),
-%     A = {mu, X, L},
-%     B = id(A),
-%     true = subty:is_equivalent(symtab:empty(), A, B),
-%     ?assertEqual("mu X . nil | {alpha, mu X}", pretty:render_ty(B))
-%   end).
-%
+recursive_test() ->
+  global_state:with_new_state(fun() -> 
+    X = tvar_mu(x),
+    L = ttuple([X]),
+    A = {mu, X, L},
+    B = id(A),
+    true = subty:is_equivalent(symtab:empty(), A, B),
+    ?assertEqual("mu $node_1.{mu $node_1}", pretty:render_ty(B))
+  end).
+
+recursive_2_test() ->
+  global_state:with_new_state(fun() -> 
+    X = tvar_mu(x),
+    L = u([
+      b(nil),
+      ttuple([v(alpha), X])
+    ]),
+    A = {mu, X, L},
+    B = id(A),
+    true = subty:is_equivalent(symtab:empty(), A, B),
+    ?assertEqual("mu $node_1.nil | {alpha, mu $node_1}", pretty:render_ty(B))
+  end).
+

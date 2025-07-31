@@ -239,7 +239,7 @@ ty(Prec, T) ->
                   Fields),
             beside(text("#" ++ atom_to_list(Name)), brackets(comma_sep(FieldsP)));
         {mu, Var, Ty} ->
-            beside(text("mu "), ty(Var), text("."), ty(Ty));
+            beside(ty(Var), text("."), ty(Ty));
         {named, _Loc, Ref, Args} ->
             RefP =
                 case Ref of
@@ -252,6 +252,8 @@ ty(Prec, T) ->
             text("tuple()");
         {tuple, Args} ->
             brackets(comma_sep(lists:map(fun ty/1, Args)));
+        {mu_var, Name} ->
+            beside(text("mu "), atom(Name));
         {var, Name} ->
             atom(Name);
         {union, []} ->

@@ -10,7 +10,9 @@
   normalize_line/3,
   all_variables_line/4,
   phi/3,
-  phi_norm/4
+  phi_norm/4,
+  unparse_any/1,
+  unparse_any/0
 ]).
 
 -include("dnf/bdd.hrl").
@@ -126,4 +128,8 @@ all_variables_line(P, N, Leaf, Cache) ->
      [ty_tuple:all_variables(F, Cache) || F <- P]
   ++ [ty_tuple:all_variables(F, Cache) || F <- N]
   ).
+
+unparse_any() -> {tuple_any}.
+unparse_any(Size) ->
+  {tuple, [{predef, any} || _ <- lists:seq(1, Size)]}.
 

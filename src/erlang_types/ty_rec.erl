@@ -251,48 +251,33 @@ unparse_h(Ty, ST) ->
   fold(fun 
          (Module, Value, {Acc, ST0}) -> 
            {P, ST1} = Module:unparse(Value, ST0), 
-           {Acc ++ [unparse_any(Module, P)], ST1}
+           {Acc ++ [unparse_any(Module:has_negative_only_line(Value), Module, P)], ST1}
        end, 
        {[], ST}, 
        Ty),
   {ast_lib:mk_union(Z), ST2}.
 
-% TODO only intersect if needed
--spec unparse_any(type_module(), ast_ty()) -> ast_ty().
-unparse_any(_, {predef, none}) -> {predef, none};
-unparse_any(dnf_ty_predefined, Result) -> 
-  ast_lib:mk_intersection(
-   [{union, [{empty_list}, {predef, float}, {predef, pid}, {predef, port}, {predef, reference}]}, 
-    ast_lib:mk_union(Result)]);
-unparse_any(dnf_ty_atom, {predef, any}) -> {predef, atom};
-unparse_any(dnf_ty_atom, Result) -> 
-  case subty:is_subty(symtab:empty(), Result, {predef,atom}) of
-    true -> Result;
-    false -> ast_lib:mk_intersection([{predef, atom}, Result])
-  end;
-unparse_any(dnf_ty_interval, {predef, any}) -> {predef, integer};
-unparse_any(dnf_ty_interval, Result) -> 
-  case subty:is_subty(symtab:empty(), Result, {predef, integer}) of
-    true -> Result;
-    false -> ast_lib:mk_intersection([{predef, integer}, Result])
-  end;
-unparse_any(dnf_ty_list, Result) -> 
-  ast_lib:mk_intersection([{improper_list, {predef, any}, {predef, any}}, Result]);
-unparse_any(dnf_ty_bitstring, Result) -> 
-  ast_lib:mk_intersection([{bitstring}, Result]);
-unparse_any(ty_tuples, Result = {tuple, _}) -> Result;
-unparse_any(ty_tuples, {predef, any}) -> {tuple_any};
-unparse_any(ty_tuples, Result) -> 
-  case subty:is_subty(symtab:empty(), Result, {tuple_any}) of
-    true -> Result;
-    false -> ast_lib:mk_intersection([{tuple_any}, Result])
-  end;
-unparse_any(ty_functions, Result = {fun_full, _, _}) -> Result;
-unparse_any(ty_functions, Result) -> 
-  ast_lib:mk_intersection([{fun_simple}, Result]);
-unparse_any(dnf_ty_map, Result) -> 
-  ast_lib:mk_intersection([{map_any}, Result]);
-unparse_any(Module, _) -> 
+-spec unparse_any(boolean(), type_module(), ast_ty()) -> ast_ty().
+unparse_any(_, _, {predef, none}) -> {predef, none};
+unparse_any(false, dnf_ty_predefined, Result) -> ast_lib:mk_union(Result);
+unparse_any(false, _, Result) when Result /= {predef, any} -> Result;
+unparse_any(_, dnf_ty_predefined, {predef, any}) -> {union, [{empty_list}, {predef, float}, {predef, pid}, {predef, port}, {predef, reference}]};
+unparse_any(_, dnf_ty_predefined, Result) -> ast_lib:mk_union(Result);
+unparse_any(_, dnf_ty_atom, {predef, any}) -> {predef, atom};
+unparse_any(_, dnf_ty_atom, Result) -> ast_lib:mk_intersection([{predef, atom}, Result]);
+unparse_any(_, dnf_ty_interval, {predef, any}) -> {predef, integer};
+unparse_any(_, dnf_ty_interval, Result) -> ast_lib:mk_intersection([{predef, integer}, Result]);
+unparse_any(_, dnf_ty_list, {predef, any}) -> {improper_list, {predef, any}, {predef, any}}; % TODO double-check
+unparse_any(_, dnf_ty_list, Result) -> ast_lib:mk_intersection([{improper_list, {predef, any}, {predef, any}}, Result]);
+unparse_any(_, dnf_ty_bitstring, {predef, any}) -> {bitstring};
+unparse_any(_, dnf_ty_bitstring, Result) -> ast_lib:mk_intersection([{bitstring}, Result]);
+unparse_any(_, ty_tuples, {predef, any}) -> {tuple_any};
+unparse_any(_, ty_tuples, Result) -> ast_lib:mk_intersection([{tuple_any}, Result]);
+unparse_any(_, ty_functions, {predef_any}) -> {fun_simple};
+unparse_any(_, ty_functions, Result) -> ast_lib:mk_intersection([{fun_simple}, Result]);
+unparse_any(_, dnf_ty_map, {predef, any}) -> {map_any};
+unparse_any(_, dnf_ty_map, Result) -> ast_lib:mk_intersection([{map_any}, Result]);
+unparse_any(_, Module, _) -> 
   error({no_unparse_implemented, Module}).
 
 
