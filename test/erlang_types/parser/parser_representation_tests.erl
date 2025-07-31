@@ -202,3 +202,65 @@ parse_bug2_test() ->
     [ty_parser:parse(RawTy) || RawTy <- ListToParse],
     ok
                  end).
+
+dnf_explosion_test_() ->
+  {timeout, 45, fun() ->
+  % extract the DNF for the map part of a type
+  Dnf = fun(Tyy) -> 
+    {leaf, Ty} = ty_node:load(Tyy),
+    Z = ty_rec:pi(Ty, dnf_ty_map), 
+    _DnfList = dnf_ty_map:dnf(Z)
+        end,
+  Print = fun(R) -> 
+    {TT, T} = timer:tc(fun() -> ty_parser:parse(R) end), 
+    % unparsing & pretty printing is very slow, but pretty
+    % {TT2, T2} = timer:tc(fun() -> ty_parser:unparse(T) end),
+    % io:format(user,"~p us~n", [TT2]),
+    % io:format(user,"~n~s~n", [pretty:render_ty(T2)])
+    % io:format(user,"Dnf clauses: ~p~n", [(Dnf(T))]),
+    % io:format(user,"Dnf clauses: ~p~n", [(dnf_ty_tuple:minimize_dnf(Dnf(T)))]),
+    Filtered = lists:filter(fun(Line = {P, [], 1}) -> 
+                      {Empty, _} = dnf_ty_tuple:is_empty_line(Line, #{}),
+                      % io:format(user,"~p~n~p~n", [P, Empty]),
+                      not Empty
+                  end, dnf_ty_tuple:minimize_dnf(Dnf(T))),
+    io:format(user,"Dnf clauses: ~p~n", [length(Filtered)]),
+    ok
+          end,
+  global_state:with_new_state(fun() ->
+    R0 = tmap([tmap_field_opt(b(a), tint()), tmap_field_opt(tany(), tany())]), % R0 = { a : Int .. }
+    Print(R0),
+
+    % Rn+1 = Rn & ( { bn : Int} | { cn: Int ..})
+    FRi = fun(Ri, Bi1, Ci1) -> 
+      i([
+        Ri,
+        u([
+           tmap([tmap_field_opt(b(Bi1), tint())]),
+           tmap([tmap_field_opt(b(Ci1), tint()), tmap_field_opt(tany(), tany())])
+          ])
+       ])
+          end,
+
+    R1 = FRi(R0, b1, c1),
+    Print(R1),
+
+    R2 = FRi(R1, b2, c2),
+    Print(R2),
+
+    R3 = FRi(R2, b3, c3),
+    Print(R3),
+
+    R4 = FRi(R3, b4, c4),
+    Print(R4),
+
+    R5 = FRi(R4, b5, c5),
+    R6 = FRi(R5, b6, c6),
+    R7 = FRi(R6, b7, c7),
+    R8 = FRi(R7, b8, c8),
+    R9 = FRi(R8, b9, c9),
+    R10 = FRi(R9, b10, c10),
+    Print(R10),
+
+    ok
+  end) end}.

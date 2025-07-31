@@ -331,8 +331,9 @@ minimize_node_dnf(Dnf) ->
 
   % io:format(user,"~p ms~n", [os:system_time(millisecond) - T0]),
   OnlyResultLines = extract_integer_lines(Result, I + 1 + O),
-  % Inn = [string:slice(L, 0, I + 1 + O) || L <- AllLines],
-  % Out = extract_integer_lines(Result, I + 1 + O),
+  Inn = [string:slice(L, 0, I + 1 + O) || L <- AllLines],
+  Out = extract_integer_lines(Result, I + 1 + O),
+  io:format(user,"~p~n~p~n", [Inn, Out]),
   E = [convert_back_to_repr(list_to_tuple(string:split(Line, " ")), RevVariableIndices, ReverseAllOutputs, 1, {[], [], to_replace}) || Line <- OnlyResultLines],
   E.
 
