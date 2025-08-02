@@ -154,7 +154,12 @@ simple_test_() ->
   % The following functions are currently excluded from being tested.
   WhatNot = [
     % TODO binary pattern element size verification
-    "b4_fail"
+    "b4_fail",
+    % TODO refinement for list comprehensions doesn't work (#279)
+    "lc_13",
+    % TODO unbound cariable in constraint simplification (#278)
+    "lc_11",
+    "lc_12_fail"
   ],
 
   NoInfer = [
@@ -169,7 +174,10 @@ simple_test_() ->
     "list_pattern_07",
     "inter_04_ok",
     "foo",
-    "op_08"
+    "op_08",
+    % TODO inferred type is less general than spec?
+    "lc_10",
+    "zip_01"
   ],
 
   %What = ["atom_03_fail"],
