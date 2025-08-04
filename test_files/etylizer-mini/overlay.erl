@@ -26,11 +26,24 @@
 -spec 'lists:foldl'(fun((T, Acc) -> Acc), Acc, [T]) -> Acc.
 'lists:foldl'(_, _, _) -> error(overlay).
 
+-spec 'lists:foldr'(fun((T, Acc) -> Acc), Acc, [T]) -> Acc.
+'lists:foldr'(_, _, _) -> error(overlay).
+
 -spec 'lists:keyfind'(Key :: term(), N :: pos_integer(), [Tuple]) -> Tuple | false.
 'lists:keyfind'(_, _, _) -> error(overlay).
 
--spec 'maps:from_list'([{Key, Value}]) -> #{Key => Value}.
+-spec 'lists:ukeysort'(1, [{K, V}]) -> [{K, V}].
+'lists:ukeysort'(1, _) -> error(overlay).
+
+-spec 'maps:from_list'
+(list()) -> map();
+(list({Key, Value})) -> #{Key => Value}.
 'maps:from_list'(_) -> error(overlay).
+
+-spec 'maps:to_list'
+(map()) -> list() ;
+(#{Key => Value}) -> [{Key, Value}].
+'maps:to_list'(_) -> error(overlay).
 
 % -type deepList(A) :: [A | deepList(A)].
 % -spec 'lists:flatten'(deepList(A)) -> [A].

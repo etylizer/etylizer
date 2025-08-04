@@ -56,23 +56,31 @@ trans(Path, Forms, Mode, FunEnv) ->
             ),
     lists:reverse(RevNewForms).
 
+-spec assert_funs(term()) -> [ast_erl:fun_with_arity()].
+assert_funs([]) -> [];
+assert_funs([{A, I} | Xs]) when is_atom(A) andalso is_integer(I) -> [{A, I} | assert_funs(Xs)];
+assert_funs(_) -> error(cast_error).
+
 -spec build_funenv(file:filename(), [ast_erl:form()]) -> funenv().
 build_funenv(Path, Forms) ->
-    Env1 = lists:foldl(
+    Env1 = 
+    lists:foldl(
       fun(Form, E) ->
           case Form of
-              {attribute, Anno, import, {ModName, Funs}} ->
+              % change: we have to "help" the type system with the types of the Variables
+              {attribute, Anno, import, {ModName, Funs}} when is_atom(ModName) andalso is_list(Funs) -> % change
+                  Funss = assert_funs(Funs), % change: why is this needed?
                   lists:foldl(
-                    fun(FunArity, E0) ->
-                        varenv:insert(ast:to_loc(Path, Anno), FunArity, {extern, ModName}, E0)
+                    fun(F, E0) ->
+                        varenv:insert(ast:to_loc(Path, Anno), F, {extern, ModName}, E0)
                     end,
-                    E, Funs);
+                    E, Funss);
               {function, Anno, Name, Arity, _Clauses} ->
                   varenv:insert(ast:to_loc(Path, Anno), {Name, Arity}, intern, E);
               _ -> E
             end
       end,
-      varenv:empty("function"),
+      varenv:empty_fun(), % change
       Forms),
     lists:foldl(
         fun({Name, Arity, _}, E) ->
@@ -789,8 +797,8 @@ trans_fun_clause(Ctx, Env, C) ->
             {Qs, QEnv} = trans_pats(Ctx, Env, Ps, shadow),
             NewGuards = trans_guards(Ctx, QEnv, Guards),
             NewBody = trans_exp_seq_noenv(Ctx, QEnv, Body),
-            {fun_clause, to_loc(Ctx, Anno), Qs, NewGuards, NewBody};
-        X -> errors:uncovered_case(?FILE, ?LINE, X)
+            {fun_clause, to_loc(Ctx, Anno), Qs, NewGuards, NewBody}
+        % X -> errors:uncovered_case(?FILE, ?LINE, X)
     end.
 
 -spec trans_if_clauses(ctx(), varenv_local:t(), [ast_erl:if_clause()])
@@ -808,8 +816,8 @@ trans_if_clause(Ctx, Env, C) ->
         {clause, Anno, [], Guards, Body} ->
             NewGuards = trans_guards(Ctx, Env, Guards),
             {NewBody, NewEnv} = trans_exp_seq(Ctx, Env, Body),
-            {{if_clause, to_loc(Ctx, Anno), NewGuards, NewBody}, NewEnv};
-        X -> errors:uncovered_case(?FILE, ?LINE, X)
+            {{if_clause, to_loc(Ctx, Anno), NewGuards, NewBody}, NewEnv}
+        % X -> errors:uncovered_case(?FILE, ?LINE, X)
     end.
 
 -spec trans_qualifiers(ctx(), varenv_local:t(), [ast_erl:qualifier()])
@@ -871,8 +879,8 @@ trans_record_field(Ctx, TyEnv, Field) ->
             {record_field, to_loc(Ctx, Anno), Name, untyped, no_default};
         {record_field, Anno, {'atom', _, Name}, DefaultExp} ->
             {record_field, to_loc(Ctx, Anno), Name, untyped,
-             trans_exp_noenv(Ctx, varenv_local:empty(), DefaultExp)};
-        X -> errors:uncovered_case(?FILE, ?LINE, X)
+             trans_exp_noenv(Ctx, varenv_local:empty(), DefaultExp)}
+        % X -> errors:uncovered_case(?FILE, ?LINE, X)
     end.
 
 -spec arity(ast:loc(), [any()]) -> arity().

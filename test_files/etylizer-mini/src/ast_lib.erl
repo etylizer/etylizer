@@ -46,7 +46,7 @@ mk_intersection(Tys) ->
                 lists:filter(
                     fun(T) ->
                         case T of
-                            [] -> false;
+                            % [] -> false; % can't happen
                             {predef, any} -> false;
                             {negation, {predef, none}} -> false;
                             _ -> true
@@ -87,7 +87,7 @@ mk_union(Tys) ->
                     fun(T) ->
                         case T of
                             {predef, none} -> false;
-                            [] -> error(Tys);
+                            % [] -> error(Tys); # this branch can really not happen
                             _ -> true
                         end
                     end,
