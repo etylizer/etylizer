@@ -789,8 +789,8 @@ trans_fun_clause(Ctx, Env, C) ->
             {Qs, QEnv} = trans_pats(Ctx, Env, Ps, shadow),
             NewGuards = trans_guards(Ctx, QEnv, Guards),
             NewBody = trans_exp_seq_noenv(Ctx, QEnv, Body),
-            {fun_clause, to_loc(Ctx, Anno), Qs, NewGuards, NewBody};
-        X -> errors:uncovered_case(?FILE, ?LINE, X)
+            {fun_clause, to_loc(Ctx, Anno), Qs, NewGuards, NewBody}
+        % X -> errors:uncovered_case(?FILE, ?LINE, X)
     end.
 
 -spec trans_if_clauses(ctx(), varenv_local:t(), [ast_erl:if_clause()])
@@ -808,8 +808,8 @@ trans_if_clause(Ctx, Env, C) ->
         {clause, Anno, [], Guards, Body} ->
             NewGuards = trans_guards(Ctx, Env, Guards),
             {NewBody, NewEnv} = trans_exp_seq(Ctx, Env, Body),
-            {{if_clause, to_loc(Ctx, Anno), NewGuards, NewBody}, NewEnv};
-        X -> errors:uncovered_case(?FILE, ?LINE, X)
+            {{if_clause, to_loc(Ctx, Anno), NewGuards, NewBody}, NewEnv}
+        % X -> errors:uncovered_case(?FILE, ?LINE, X)
     end.
 
 -spec trans_qualifiers(ctx(), varenv_local:t(), [ast_erl:qualifier()])
@@ -871,8 +871,8 @@ trans_record_field(Ctx, TyEnv, Field) ->
             {record_field, to_loc(Ctx, Anno), Name, untyped, no_default};
         {record_field, Anno, {'atom', _, Name}, DefaultExp} ->
             {record_field, to_loc(Ctx, Anno), Name, untyped,
-             trans_exp_noenv(Ctx, varenv_local:empty(), DefaultExp)};
-        X -> errors:uncovered_case(?FILE, ?LINE, X)
+             trans_exp_noenv(Ctx, varenv_local:empty(), DefaultExp)}
+        % X -> errors:uncovered_case(?FILE, ?LINE, X)
     end.
 
 -spec arity(ast:loc(), [any()]) -> arity().

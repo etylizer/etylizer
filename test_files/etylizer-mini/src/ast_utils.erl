@@ -29,9 +29,9 @@ referenced_modules(Forms) ->
     Modules = utils:everything(
                 fun(T) ->
                         case T of
-                            {attribute, _, import, {ModuleName, _}} -> {ok, ModuleName};
-                            {qref, ModuleName, _, _} -> {ok, ModuleName};
-                            {ty_qref, ModuleName, _, _} -> {ok, ModuleName};
+                            {attribute, _, import, {ModuleName, _}} when is_atom(ModuleName) -> {ok, ModuleName};
+                            {qref, ModuleName, _, _} when is_atom(ModuleName) -> {ok, ModuleName};
+                            {ty_qref, ModuleName, _, _} when is_atom(ModuleName) -> {ok, ModuleName};
                             _ -> error
                         end
                 end, Forms),
@@ -42,7 +42,7 @@ referenced_variables(Forms) ->
     Modules = utils:everything(
                 fun(T) ->
                         case T of
-                            {var, Name} -> {ok, {var, Name}};
+                            {var, Name} when is_atom(Name) -> {ok, {var, Name}};
                             _ -> error
                         end
                 end, Forms),

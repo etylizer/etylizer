@@ -363,18 +363,27 @@ builtin_funs() ->
         Y -> ?ABORT("Unexpected entry in stdtypes_table: ~p", Y)
     end.
 
+-spec i_guard_funs
+(T) -> {ok, T} when T :: [ast_erl:fun_with_arity()];
+                  (_) -> _.
+i_guard_funs(_) -> error(todo).
 -spec mk_builtin_funs(file:filename()) -> fun_types().
 mk_builtin_funs(Path) ->
     ?LOG_DEBUG("Creating types for builtin functions"),
     RawForms = parse:parse_file_or_die(Path, #parse_opts{
+                                                includes = [],
+                                                defines = [],
                                                 verbose = false
                                                }),
     {Exports, RawSpecs} =
         lists:foldl(
           fun (Form, Acc = {Exports, Specs}) ->
                   case Form of
-                      {attribute, _, export, Funs} ->
-                          {utils:set_add_many(Funs, Exports), Specs};
+                      {attribute, _, export, Funs} -> 
+                        case i_guard_funs(Funs) of
+                          {ok, Fs} when is_list(Fs) -> {utils:set_add_many(Fs, Exports), Specs};
+                          _ -> Acc
+                        end;
                       {attribute, _, spec, _} ->
                           {Exports, [Form | Specs]};
                       _ -> Acc
