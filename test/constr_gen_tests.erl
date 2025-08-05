@@ -1,6 +1,7 @@
 -module(constr_gen_tests).
 
 -include("log.hrl").
+-include_lib("test/erlang_types/erlang_types_test_utils.hrl").
 -include_lib("eunit/include/eunit.hrl").
 
 -spec pat_guard_lower_upper_test() -> ok.
@@ -15,10 +16,9 @@ pat_guard_lower_upper_test() ->
     ?LOG_WARN("Upper: ~w, Lower: ~w", Upper, Lower),
     % Upper and Lower should be equiv to any()
     Any = {predef, any},
-    ?assertEqual(true, test_utils:is_equiv(Upper, Any)),
-    ?assertEqual(true, test_utils:is_equiv(Lower, Any)).
+    ?assertEqual(true, is_equiv(Upper, Any)),
+    ?assertEqual(true, is_equiv(Lower, Any)).
 
--spec assert_ty_of_pat(ast:pat(), ast:ty(), ast:ty()) -> ok.
 assert_ty_of_pat(P, Upper, Lower) ->
     Symtab = symtab:empty(),
     Env = #{},
@@ -26,8 +26,8 @@ assert_ty_of_pat(P, Upper, Lower) ->
     GivenLower = constr_gen:ty_of_pat(Symtab, Env, P, lower),
     ?LOG_WARN("ty_of_pat, P=~200p, Upper=~w, GivenUpper=~w, Lower=~w, GivenLower=~w",
         P, Upper, GivenUpper, Lower, GivenLower),
-    ?assertEqual(true, test_utils:is_equiv(Upper, GivenUpper)),
-    ?assertEqual(true, test_utils:is_equiv(Lower, GivenLower)).
+    ?assertEqual(true, is_equiv(Upper, GivenUpper)),
+    ?assertEqual(true, is_equiv(Lower, GivenLower)).
 
 
 -spec ty_of_pat_list_test() -> ok.

@@ -1,177 +1,131 @@
 -module(subtype_user_tests).
 -include_lib("eunit/include/eunit.hrl").
-
--import(stdtypes, [tyscm/2, tmu/2, tvar/1, ttuple_any/0, tnegate/1, tatom/0, tatom/1, tfun_full/2, trange/2, tint/1, tunion/1, tintersect/1, trange_any/0, tint/0, ttuple/1, tany/0, tnone/0, tmap/1, tmap_any/0, tmap_field_req/2, tmap_field_opt/2]).
--import(test_utils, [is_subtype/2, is_equiv/2, named/2]).
+-include_lib("test/erlang_types/erlang_types_test_utils.hrl").
 
 simple_named_test() ->
-  test_utils:reset_ets(),
-  Sym = test_utils:extend_symtab(mynamed, tyscm([a], tfun_full([tvar(a), tvar(a)], tatom(ok)))),
+  S = tnamed(mynamed, [tint()]),
+  T = tnamed(mynamed, [b(ok)]),
 
-  S = named(mynamed, [{predef, integer}]),
-  T = named(mynamed, [tatom(ok)]),
+  with_symtab(fun() ->
+    true = is_subtype_stateful(S, S) and is_subtype_stateful(T, T),
+    false = is_subtype_stateful(S, T),
+    false = is_subtype_stateful(T, S)
 
-  true = subty:is_subty(Sym, S, S) and subty:is_subty(Sym, T, T),
-  false = subty:is_subty(Sym, S, T),
-  false = subty:is_subty(Sym, T, S),
-  ok.
+    end,
+    [{test_key(mynamed, 1), tyscm([a], f([v(a), v(a)], b(ok)))}]
+  ).
+
+simple_named2_test() ->
+  S = tnamed(mynamed, [b(helloworld)]),
+  T = b(helloworld),
+  with_symtab(
+    fun() -> 
+      true = is_subtype_stateful(S, T),
+      true = is_subtype_stateful(T, S)
+    end, 
+    [ 
+     {test_key(mynamed2, 1), tyscm([a], b(helloworld))}, 
+     {test_key(mynamed, 1), tyscm([a], tnamed(mynamed2, [v(a)]))} 
+    ]).
+
+simple_recursive_test() ->
+  S = tnamed(ty, []),
+  with_symtab(fun() ->
+    true = is_subtype_stateful(S, S)
+    end,
+    [ {test_key(ty), tyscm([], ttuple([ b(tuple), tlist(S)])) } ]
+  ).
+
+simple_recursive2_test() ->
+  with_symtab(
+    fun() -> 
+        S = tnamed(mylist, [b(myints)]), 
+        T = b(helloworld), 
+        false = is_subtype_stateful(S, T)
+    end,
+    [{test_key(mylist, 1), tyscm([a], u([b(emptylist), ttuple([v(a), tnamed(mylist, [v(a)])])]))}]
+  ).
+
+funs_test() ->
+  S = tnamed(exp),
+  with_symtab(fun() ->
+    true = is_subtype_stateful(S, S)
+    end,
+    [ {test_key(exp), tyscm([], f([u([b(a), S])], b(b))) } ]
+  ).
 
 % #182
 mu_test() ->
-  test_utils:reset_ets(),
-  S = tmu(tvar(exp), ttuple([tunion([tatom(a), tvar(exp)])])),
-  true = subty:is_subty(symtab:empty(), S, S),
-  ok.
+  S = tmu(tvar_mu(exp), ttuple([u([b(a), tvar_mu(exp)])])),
+  true = is_subtype(S, S).
 
 % #182
 exp_test() ->
-  test_utils:reset_ets(),
-  Sym = test_utils:extend_symtab(exp, tyscm([], ttuple([tunion([tatom(a), named(exp, [])])]))),
-  S = named(exp, []),
-  true = subty:is_subty(Sym, S, S),
-  ok.
+  S = tnamed(exp),
+  with_symtab(fun() ->
+    true = is_subtype_stateful(S, S)
+    end,
+    [ {test_key(exp), tyscm([], ttuple([u([b(a), S])])) } ]
+  ).
 
-funs_test() ->
-  test_utils:reset_ets(),
-  Sym = test_utils:extend_symtab(exp, tyscm([], tfun_full([tunion([tatom(a), named(exp, [])])], tatom(b)))),
-  S = named(exp, []),
-  true = subty:is_subty(Sym, S, S),
-  ok.
+simple_basic_ulist_test() ->
+  with_symtab(
+    fun() ->
+      S = tnamed(ulist, [tint()]),
+      T = tnamed(ulist, [b(float)]),
+      true = is_subtype_stateful(S, S),
+      false = is_subtype_stateful(S, T),
+      false = is_subtype_stateful(T, S)
+    end,
+    system("test_files/erlang_types/subtype/system_lists")
+  ).
 
-maps_test() ->
-  test_utils:reset_ets(),
-  Map = tmap([
-    tmap_field_req(tint(1), tatom(a)),
-    tmap_field_opt(tint(2), named(exp, []))
-  ]),
-  Sym = test_utils:extend_symtab(exp, tyscm([], ttuple([Map, named(exp, [])]))),
-  S = named(exp, []),
-  true = subty:is_subty(Sym, S, S),
-  ok.
+% µx.(α×(α×x)) ∨ nil  ≤ µx.(α×x)     ∨ nil
+% µx.(α×x)     ∨ nil !≤ µx.(α×(α×x)) ∨ nil
+even_lists_contained_in_lists_test() ->
+  with_symtab(
+    fun() ->
+      S = tnamed(even_ulist, [v(alpha)]),
+      T = tnamed(ulist, [v(alpha)]),
+      true = is_subtype_stateful(S, T),
+      false = is_subtype_stateful(T, S)
+    end,
+    system("test_files/erlang_types/subtype/system_lists")
+  ).
 
-% TODO rewrite 
-%%simple_named2_test() ->
-%%  Scheme2 = stdtypes:tyscm([a], stdtypes:tatom(helloworld)),
-%%  TyDef2 = {mynamed2, Scheme2},
-%%  Form2 = {attribute, noloc(), type, transparent, TyDef2},
-%%
-%%  Scheme = stdtypes:tyscm([a], {named, noloc(), {ref, mynamed2, 1}, [{var, a}]}),
-%%  TyDef = {mynamed, Scheme},
-%%  Form = {attribute, noloc(), type, transparent, TyDef},
-%%
-%%
-%%  M = symtab:extend_symtab([Form], symtab:empty()),
-%%  Sym = symtab:extend_symtab([Form2], M),
-%%
-%%  S = {named, noloc(), {ref, mynamed, 1}, [stdtypes:tatom(helloworld)]},
-%%  T = stdtypes:tatom(helloworld),
-%%
-%%  true = subty:is_subty(Sym, S, T),
-%%  ok.
-%%
-%%simple_recursive_test() ->
-%%  Scheme = stdtypes:tyscm([a],
-%%    stdtypes:tunion([stdtypes:tatom(emptylist), stdtypes:ttuple([stdtypes:tvar(a), {named, noloc(), {ref, mylist, 1}, [stdtypes:tvar(a)]}])])
-%%  ),
-%%  TyDef = {mylist, Scheme},
-%%  Form = {attribute, noloc(), type, transparent, TyDef},
-%%
-%%  Sym = symtab:extend_symtab([Form], symtab:empty()),
-%%
-%%  S = named(mylist, [stdtypes:tatom(myints)]),
-%%  T = stdtypes:tatom(helloworld),
-%%
-%%  false = subty:is_subty(Sym, S, T),
-%%  ok.
-%%
-%%simple_basic_ulist_test() ->
-%%  SymbolTable = predefSymbolicTable(),
-%%
-%%  S = named(ulist, [{predef, integer}]),
-%%  T = named(ulist, [stdtypes:tatom(float)]),
-%%
-%%  true = subty:is_subty(SymbolTable, S, S),
-%%  false = subty:is_subty(SymbolTable, S, T),
-%%  false = subty:is_subty(SymbolTable, T, S),
-%%
-%%  ok.
-%%
-%%% µx.(α×(α×x)) ∨ nil  ≤ µx.(α×x)     ∨ nil
-%%% µx.(α×x)     ∨ nil !≤ µx.(α×(α×x)) ∨ nil
-%%even_lists_contained_in_lists_test() ->
-%%  S = named(even_ulist, [tvar(alpha)]),
-%%  T = named(ulist, [tvar(alpha)]),
-%%  true  = subty:is_subty(predefSymbolicTable(), S, T),
-%%  false = subty:is_subty(predefSymbolicTable(), T, S),
-%%  ok.
-%%
-%%% µx.(α×(α×x)) ∨ (α×nil)  ≤ µx.(α×x)     ∨ nil
-%%% µx.(α×x)     ∨ (α×nil) !≤ µx.(α×(α×x)) ∨ nil
-%%uneven_lists_contained_in_lists_test() ->
-%%  S = named(uneven_ulist, [tvar(alpha)]),
-%%  T = named(ulist, [tvar(alpha)]),
-%%  true  = subty:is_subty(predefSymbolicTable(), S, T),
-%%  false = subty:is_subty(predefSymbolicTable(), T, S),
-%%  ok.
-%%
-%%% µx.(α×x) ∨ nil ∼ (µx.(α×(α×x))∨nil) ∨ (µx.(α×(α×x))∨(α×nil))
-%%uneven_even_lists_contained_in_lists_test() ->
-%%  S = tunion([
-%%    named(uneven_ulist, [tvar(alpha)]),
-%%    named(even_ulist, [tvar(alpha)])
-%%  ]),
-%%  T = named(ulist, [tvar(alpha)]),
-%%
-%%  true  = subty:is_subty(predefSymbolicTable(), S, T),
-%%  true = subty:is_subty(predefSymbolicTable(), T, S),
-%%  ok.
-%%
-%%% (µx.(α×(α×x))∨nil) <!> (µx.(α×(α×x))∨(α×nil))
-%%uneven_even_lists_not_comparable_test() ->
-%%  S = named(uneven_ulist, [tvar(alpha)]),
-%%  T = named(even_ulist, [tvar(alpha)]),
-%%
-%%  false  = subty:is_subty(predefSymbolicTable(), S, T),
-%%  false = subty:is_subty(predefSymbolicTable(), T, S),
-%%  ok.
-%%
-%%
+% µx.(α×(α×x)) ∨ (α×nil)  ≤ µx.(α×x)     ∨ nil
+% µx.(α×x)     ∨ (α×nil) !≤ µx.(α×(α×x)) ∨ nil
+uneven_lists_contained_in_lists_test() ->
+  with_symtab(
+    fun() ->
+      S = tnamed(uneven_ulist, [v(alpha)]),
+      T = tnamed(ulist, [v(alpha)]),
+      true = is_subtype_stateful(S, T),
+      false = is_subtype_stateful(T, S)
+    end,
+    system("test_files/erlang_types/subtype/system_lists")
+  ).
 
-%%
-%%
-%%
-%%
-%%
-%%predefSymbolicTable() ->
-%%  Scheme = stdtypes:tyscm([a],
-%%    tunion([
-%%      tatom('[]'),
-%%      ttuple([tvar(a), named(ulist, [tvar(a)])])
-%%    ])
-%%  ),
-%%  List = {attribute, noloc(), type, transparent, {ulist, Scheme}},
-%%
-%%  UnevenScheme = stdtypes:tyscm([a],
-%%    tunion([
-%%      ttuple([tvar(a), tatom('[]')]),
-%%      ttuple([tvar(a), ttuple([tvar(a), named(uneven_ulist, [tvar(a)])])])
-%%    ])
-%%  ),
-%%  UnevenList = {attribute, noloc(), type, transparent, {uneven_ulist, UnevenScheme}},
-%%
-%%  EvenScheme = stdtypes:tyscm([a],
-%%    tunion([
-%%      tatom('[]'),
-%%      ttuple([tvar(a), ttuple([tvar(a), named(even_ulist, [tvar(a)])])])
-%%    ])
-%%  ),
-%%  EvenList = {attribute, noloc(), type, transparent, {even_ulist, EvenScheme}},
-%%
-%%  % user-defined list :: µx.(α×x) ∨ nil
-%%  % user-defined even list :: µx.(α×(α×x)) ∨ nil
-%%  % user-defined uneven list :: µx.(α×(α×x)) ∨ (α×nil)
-%%  symtab:extend_symtab([List, EvenList, UnevenList], symtab:empty()).
+% µx.(α×x) ∨ nil ∼ (µx.(α×(α×x))∨nil) ∨ (µx.(α×(α×x))∨(α×nil))
+uneven_even_lists_contained_in_lists_test() ->
+  with_symtab(
+    fun() -> 
+      S = u([tnamed(uneven_ulist, [v(alpha)]), tnamed(even_ulist, [v(alpha)])]), 
+      T = tnamed(ulist, [v(alpha)]),
+      true = is_subtype_stateful(S, T),
+      true = is_subtype_stateful(T, S)
+    end,
+    system("test_files/erlang_types/subtype/system_lists")
+  ).
 
-
-
-
+% (µx.(α×(α×x))∨nil) <!> (µx.(α×(α×x))∨(α×nil))
+uneven_even_lists_not_comparable_test() -> 
+  with_symtab(
+    fun() -> 
+      S = tnamed(uneven_ulist, [v(alpha)]),
+      T = tnamed(even_ulist, [v(alpha)]),
+      false = is_subtype_stateful(S, T),
+      false = is_subtype_stateful(T, S)
+    end,
+    system("test_files/erlang_types/subtype/system_lists")
+  ).

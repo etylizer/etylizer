@@ -5,7 +5,7 @@
     remove_locs/1,
     referenced_modules/1,
     referenced_modules_via_types/1,
-    referenced_variables/1
+    referenced_recursive_variables/1
 ]).
 
 -spec modname_from_path(file:filename()) -> ast:mod_name().
@@ -50,12 +50,12 @@ referenced_modules(Forms) ->
                 end, Forms),
     lists:uniq(Modules).
 
--spec referenced_variables(ast:ty()) -> [ast:ty_var()].
-referenced_variables(Forms) ->
+-spec referenced_recursive_variables(ast:ty()) -> [ast:ty_mu_var()].
+referenced_recursive_variables(Forms) ->
     Modules = utils:everything(
                 fun(T) ->
                         case T of
-                            {var, Name} -> {ok, {var, Name}};
+                            {mu_var, Name} -> {ok, {mu_var, Name}};
                             _ -> error
                         end
                 end, Forms),

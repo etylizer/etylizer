@@ -1,125 +1,150 @@
 -module(tally_basic_tests).
 
+-compile([nowarn_unused_function]). % ignore unused helper functions
+
+-import(erlang_types_test_utils, [test_tally/2, test_tally/3, solutions/1]).
+
 -include_lib("eunit/include/eunit.hrl").
--include("log.hrl").
 
--import(stdtypes, [tvar/1, ttuple_any/0, tnegate/1, tatom/0, tatom/1, tfun_full/2, tfun1/2, trange/2,
-                   tunion/1, tunion/2, tintersect/1, trange_any/0, ttuple/1, tany/0, tnone/0,
-                   tint/0, tint/1, ttuple1/1, tinter/1, tinter/2, tlist/1, tempty_list/0,
-                   tfloat/0, tfun2/3, tnot/1, tbool/0,
-                   tmap/1, tmap_any/0, tmap_field_opt/2, tmap_field_req/2
-                  ]).
-
-
+% AST helper functions
+-include_lib("etylizer/test/erlang_types/erlang_types_test_utils.hrl").
 
 tally_01_test() ->
-    test_utils:test_tally(
-      [{tvar(alpha), tint()}],
-      [{
-        #{ alpha => tnone()},
-        #{ alpha => tint()}
-      }]
-    ).
+  test_tally(
+    [{v(alpha), tint()}],
+    [{
+      #{alpha => tnone()},
+      #{alpha => tint()}
+    }]
+  ).
+
+tally_01n_test() ->
+  test_tally(
+    [{b(), v(alpha)}, {v(alpha), tint()}],
+    solutions(0)
+  ).
 
 tally_02_test() ->
-    test_utils:test_tally(
-      [{tint(), tvar(alpha)}],
-      [{
-        #{ alpha => tint()},
-        #{ alpha => tany()}
-      }]
-    ).
+  test_tally(
+    [{tint(), v(alpha)}],
+    [{
+      #{alpha => tint()},
+      #{alpha => tany()}
+    }]
+  ).
 
 tally_03_test() ->
-  test_utils:test_tally(
+  test_tally(
     [
-    {ttuple([]), tvar(zero)},
-    {tvar(zero), ttuple([])}
-  ],
+      {ttuple([]), v(zero)},
+      {v(zero), ttuple([])}
+    ],
     [{
-      #{ zero => ttuple([])},
-      #{ zero => ttuple([])}
+      #{zero => ttuple([])},
+      #{zero => ttuple([])}
     }]
   ).
 
 tally_04_test() ->
-    Alpha = tvar(alpha),
-    Beta = tvar(beta),
-    test_utils:test_tally(
-      [
-      {Alpha, ttuple1(tany())},
-      {ttuple1(Beta), Alpha},
+  Alpha = v(alpha),
+  Beta = v(beta),
+  test_tally(
+    [
+      {Alpha, ttuple([tany()])},
+      {ttuple([Beta]), Alpha},
       {tint(), Beta}
     ],
-      [{
-        #{ alpha => ttuple([tint()]), beta => tint()},
-        #{ alpha => ttuple([tany()]), beta => tany()}
-      }]
-    ).
+    [{
+      #{alpha => ttuple([tint()]), beta => tint()},
+      #{alpha => ttuple([tany()]), beta => tany()}
+    }]
+  ).
+
 
 tally_05_test() ->
-    Alpha = tvar(alpha),
-    Beta = tvar(beta),
-    test_utils:test_tally(
-      [
-      {tlist(Beta), Alpha}
-    ],
-      [{
-        #{ alpha => tlist(Beta)},
-        #{ alpha => tany() }
-      }]
-    ).
+  Alpha = v(alpha),
+  Beta = v(beta),
+  test_tally(
+    [
+    {ttuple([Beta, {empty_list}]), Alpha}
+  ],
+    [{
+      #{alpha => ttuple([Beta, {empty_list}])},
+      #{alpha => tany() }
+    }]
+  ).
 
-% debug tallying (['b] [ ('b, 'a2) ]);;
-% result:[{'a2:='b}]
-tally_06_test() ->
-    Alpha = tvar(alpha),
-    Beta = tvar(beta),
-    test_utils:test_tally(
-      [{Beta, Alpha}],
-      [{
-        #{ alpha => Beta },
-        #{ alpha => tany() }
-      }],
-      [beta]).
-
-% debug tallying (['b] [ (['b*], 'a2) ]);;
-% result:[{'a2:=[ 'b* ]}]
-tally_07_test() ->
-  Alpha = tvar(alpha),
-  Beta = tvar(beta),
-  test_utils:test_tally(
+tally_05l_test() ->
+  Alpha = v(alpha),
+  Beta = v(beta),
+  test_tally(
     [
     {tlist(Beta), Alpha}
   ],
     [{
-      #{ alpha => tlist(Beta)},
-      #{ alpha => tany() }
-    }],
-    [beta]
+      #{alpha => tlist(Beta)},
+      #{alpha => tany() }
+    }]
   ).
+
+% debug tallying (['b] [ ('b, 'a2) ]);;
+% result:[{'a2:='b}]
+tally_06_test() ->
+  Alpha = v(alpha),
+  Beta = v(beta),
+  test_tally(
+    [{Beta, Alpha}],
+    [{
+      #{alpha => Beta},
+      #{alpha => tany()}
+    }],
+    [beta]).
+
+% debug tallying (['b] [ (['b*], 'a2) ]);;
+% result:[{'a2:=[ 'b* ]}]
+tally_07_test() ->
+  Alpha = v(alpha),
+  Beta = v(beta),
+  test_tally(
+    [
+    {tlist(Beta), Alpha}
+  ],
+    [{
+      #{alpha => tlist(Beta)},
+      #{alpha => tany() }
+    }],
+    [beta]).
 
 % see #36
 % # debug tallying ([] [(1|2, 'alpha) ( (Int -> Int) & ((1|2) -> (1|2)), 'alpha -> 'beta) ('beta, 1|2)]);;
 % [DEBUG:tallying]
 % Result:[{'beta:=1--2 | 1--2 & 'a6a6; 'alpha:=1--2 | 1--2 & 'a6a6}]
 tally_08_test() ->
-  Alpha = tvar(alpha),
-  Beta = tvar(beta),
-  OneOrTwo = tunion(tint(1), tint(2)),
-  OneOrTwoRange = trange(1, 2),
-  test_utils:test_tally(
+  Alpha = v(alpha),
+  Beta = v(beta),
+  OneOrTwo = u(tint(1), tint(2)),
+  OneOrTwoRange = tint(1, 2),
+  test_tally(
     [
       {OneOrTwo, Alpha},
       {Beta, OneOrTwo},
-      {tinter(tfun1(tint(), tint()), tfun1(OneOrTwo, OneOrTwo)), tfun1(Alpha, Beta)}
+      {i(f([tint()], tint()), f([OneOrTwo], OneOrTwo)), f([Alpha], Beta)}
     ],
     [{
-      #{ alpha => OneOrTwoRange, beta => OneOrTwoRange },
-      #{ alpha => OneOrTwoRange, beta => OneOrTwoRange }
+      #{alpha => OneOrTwoRange, beta => OneOrTwoRange},
+      #{alpha => OneOrTwoRange, beta => OneOrTwoRange}
     }]).
 
-% Also see #36
+tally_08a_test() ->
+  Alpha = v(alpha),
+  test_tally(
+    [
+      {tint(1), Alpha},
+      {f([tint()], tint()), f([Alpha], tint())}
+    ],
+    solutions(1)).
+
+% Also see #36 (pl-git)
 % #debug tallying ([] [( ((Int, Int) -> Int) & ((Int, Float) -> Float) & ((Float, Int) -> Float) & ((Float, Float) -> Float), ('alpha, 'beta) -> 'gamma ) (Int \ (1--2), 'alpha) (1, 'beta) (1, 'delta) (2, 'delta) ('delta, Int) ('gamma, 'delta)]);;
 % [DEBUG:tallying]
 % Result:[{
@@ -129,18 +154,18 @@ tally_08_test() ->
 %  'alpha:=*--0 | 3--* | Int & 'alphaalpha
 % }]
 tally_09_test() ->
-    Alpha = tvar(alpha),
-    Beta = tvar(beta),
-    Gamma = tvar(gamma),
-    Delta = tvar(delta),
+    Alpha = v(alpha),
+    Beta = v(beta),
+    Gamma = v(gamma),
+    Delta = v(delta),
     One = tint(1),
     Two = tint(2),
-    OneOrTwo = tunion(One, Two),
+    OneOrTwo = u(One, Two),
     I = tint(),
     F = tfloat(),
-    test_utils:test_tally(
-      [{tinter([tfun2(I, I, I), tfun2(I, F, F), tfun2(F, I, F), tfun2(F, F, F)]), tfun2(Alpha, Beta, Gamma)},
-       {tinter(I, tnot(OneOrTwo)), Alpha},
+    test_tally(
+      [{i([f([I, I], I), f([I, F], F), f([F, I], F), f([F, F], F)]), f([Alpha, Beta], Gamma)},
+       {i(I, n(OneOrTwo)), Alpha},
        {One, Beta},
        {One, Delta},
        {Two, Delta},
@@ -148,11 +173,11 @@ tally_09_test() ->
        {Gamma, Delta}],
 
       [{
-        #{ alpha => tunion(tunion([trange(3, '*')]), tunion([trange('*', 0)])),
-          beta => trange(1, 1),
+        #{alpha => u(u([tint(3, '*')]), u([tint('*', 0)])),
+          beta => tint(1, 1),
           gamma => I,
           delta => I },
-        #{ alpha => tint(),
+        #{alpha => tint(),
           beta => tint(),
           gamma => I,
           delta => I }
@@ -160,29 +185,37 @@ tally_09_test() ->
     ).
 
 tally_10_test() ->
-    V0 = tvar(v0),
-    V2 = tvar(v2),
-    V3 = tvar(v3),
-    V4 = tvar(v4),
-    V5 = tvar(v5),
-    V6 = tvar(v6),
-    V7 = tvar(v7),
-    V8 = tvar(v8),
-    A = tatom(a),
-    B = tatom(b),
-    TupleAny = ttuple1(tany()),
-    LargeInter = tinter([V0, tnot(tinter([ttuple1(A), TupleAny])), ttuple1(B), TupleAny]),
-    test_utils:test_tally(
-      [{tinter([V0, ttuple1(A), TupleAny]), ttuple1(V3)},
-       {tunion([tinter([ttuple1(A), TupleAny]), tinter([ttuple1(B), TupleAny])]), ttuple1(V8)},
+    V0 = v(v1),
+    V7 = v(v2),
+    B = b(foo),
+    T = b(tag),
+    test_tally(
+      [
+       {
+        i([V0, ttuple([B])]), 
+        ttuple([V7])
+       }
+      ],
+      solutions(1)).
+
+tally_x10_test() ->
+    V0 = v(v0), V2 = v(v2), V3 = v(v3),
+    V4 = v(v4), V5 = v(v5), V6 = v(v6),
+    V7 = v(v7), V8 = v(v8),
+    A = b(a), B = b(b),
+    TupleAny = ttuple([tany()]),
+    LargeInter = i([V0, n(i([ttuple([A]), TupleAny])), ttuple([B]), TupleAny]),
+    test_tally(
+      [{i([V0, ttuple1(A), TupleAny]), ttuple1(V3)},
+       {u([i([ttuple1(A), TupleAny]), i([ttuple1(B), TupleAny])]), ttuple1(V8)},
        {ttuple1(V2), V0},
        {LargeInter, ttuple1(V8)},
        {LargeInter, ttuple1(V7)},
        {LargeInter, ttuple1(V6)},
-       {tinter([V0, ttuple1(A), TupleAny]), ttuple1(V5)},
+       {i([V0, ttuple1(A), TupleAny]), ttuple1(V5)},
        {A, V2},
-       {tinter([V0, ttuple1(A), TupleAny]), ttuple1(V4)}],
-      [{#{}, #{}}]).
+       {i([V0, ttuple1(A), TupleAny]), ttuple1(V4)}],
+      solutions(2)).
 
 % debug tallying ([] [] [('a1 -> 'a2, 'a0) ('a4, 'a2) (42, 'a4) ('a3 & Int, 'a4) ('a3 & Int, 'a5) (Any -> Bool, 'a5 -> 'a6) ('a6, Bool) ('a1, 'a3)]);;
 %[DEBUG:tallying]
@@ -204,15 +237,15 @@ tally_10_test() ->
 %      'a0:=(Int & 'a5 & 'a1a1 & 'a3a3 & 'a4a4 & 'a2a2 | 42 & 'a5 & 'a1a1 & 'a3a3 | ('a1a1 & 'a3a3) \ Int -> 42 | 'a2a2) | 'a0a0
 %   }]
 tally_issue_8_test() ->
-  A0 = tvar(alpha0), A1 = tvar(alpha1), A2 = tvar(alpha2), A3 = tvar(alpha3), A4 = tvar(alpha4), A5 = tvar(alpha5), A6 = tvar(alpha6),
-  test_utils:test_tally(
+  A0 = v(alpha0), A1 = v(alpha1), A2 = v(alpha2), A3 = v(alpha3), A4 = v(alpha4), A5 = v(alpha5), A6 = v(alpha6),
+  test_tally(
     [
-      {tfun_full([A1], A2), A0},
+      {f([A1], A2), A0},
       {A4, A2},
       {tint(42), A4},
-      {tintersect([A3, tint()]), A4},
-      {tintersect([A3, tint()]), A5},
-      {tfun_full([tany()], tbool()), tfun_full([A5], A6)},
+      {i([A3, tint()]), A4},
+      {i([A3, tint()]), A5},
+      {f([tany()], tbool()), f([A5], A6)},
       {A6, tbool()},
       {A1, A3}
     ],
@@ -222,36 +255,28 @@ tally_issue_8_test() ->
         #{ alpha2 => tany(), alpha1 => tany(), alpha3 => tany(), alpha6 => tbool(), alpha4 => tany() }
       },
       {
-        #{ alpha0 => tfun_full([tany()], tint(42)), alpha5 => tnone(), alpha2 => tint(42), alpha1 => tnone(), alpha3 => tnone(), alpha6 => tnone(), alpha4 => tnone() },
-        #{ alpha0 => tany(), alpha5 => tnone(), alpha2 => tany(), alpha1 => tinter([tany(), tnegate(tint())]), alpha3 => tinter([tany(), tnegate(tint())]), alpha6 => tbool(), alpha4 => tany() }
+        #{ alpha0 => f([tany()], tint(42)), alpha5 => tnone(), alpha2 => tint(42), alpha1 => tnone(), alpha3 => tnone(), alpha6 => tnone(), alpha4 => tnone() },
+        #{ alpha0 => tany(), alpha5 => tnone(), alpha2 => tany(), alpha1 => i([tany(), n(tint())]), alpha3 => i([tany(), n(tint())]), alpha6 => tbool(), alpha4 => tany() }
       }
     ]).
 
 
 tally_issue_14_test() ->
-  V0 = tvar(v0),
-  V2 = tvar(v2),
-  V3 = tvar(v3),
-  V4 = tvar(v4),
-  V5 = tvar(v5),
-  V6 = tvar(v6),
-  V7 = tvar(v7),
-  V8 = tvar(v8),
-  A = tatom(a),
-  B = tatom(b),
+  V0 = v(v0), V2 = v(v2), V3 = v(v3), V4 = v(v4), V5 = v(v5),
+  V6 = v(v6), V7 = v(v7), V8 = v(v8), A = b(a), B = b(b),
   TupleAny = ttuple1(tany()),
-  LargeInter = tinter([V0, tnot(tinter([ttuple1(A), TupleAny])), ttuple1(B), TupleAny]),
-  test_utils:test_tally(
-    [{tinter([V0, ttuple1(A), TupleAny]), ttuple1(V3)},
-      {tunion([tinter([ttuple1(A), TupleAny]), tinter([ttuple1(B), TupleAny])]), ttuple1(V8)},
+  LargeInter = i([V0, n(i([ttuple1(A), TupleAny])), ttuple1(B), TupleAny]),
+  test_tally(
+    [{i([V0, ttuple1(A), TupleAny]), ttuple1(V3)},
+      {u([i([ttuple1(A), TupleAny]), i([ttuple1(B), TupleAny])]), ttuple1(V8)},
       {ttuple1(V2), V0},
       {LargeInter, ttuple1(V8)},
       {LargeInter, ttuple1(V7)},
       {LargeInter, ttuple1(V6)},
-      {tinter([V0, ttuple1(A), TupleAny]), ttuple1(V5)},
+      {i([V0, ttuple1(A), TupleAny]), ttuple1(V5)},
       {A, V2},
-      {tinter([V0, ttuple1(A), TupleAny]), ttuple1(V4)}],
-    [{#{}, #{}}]).
+      {i([V0, ttuple1(A), TupleAny]), ttuple1(V4)}],
+    solutions(2)).
 
 
 % constraints:
@@ -322,38 +347,33 @@ tally_foo2_test() ->
     {tuple,[{var,'$5'}, {singleton, tag}]}
   },
 
-  test_utils:test_tally(
+  test_tally(
     [
       C1, C2, C3, C4, C5, C6, C7
     ],
     [
       {
-        #{'$0' => ttuple([tatom(a), tatom(tag)])                                          , '$2' => tatom(a),                     '$3' => tatom(a), '$4' => tatom(a) },
-        #{'$0' => tunion([ttuple([tatom(a), tatom(tag)]), ttuple([tatom(b), tatom(tag)])]), '$2' => tunion([tatom(a), tatom(b)]), '$3' => tany(),   '$4' => tany() }
-      }
+        #{'$0' => ttuple([b(a), b(tag)])                             , '$2' => b(a)           , '$3' => b(a)  , '$4' => b(a) },
+        #{'$0' => u([ttuple([b(a), b(tag)]), ttuple([b(b), b(tag)])]), '$2' => u([b(a), b(b)]), '$3' => tany(), '$4' => tany()}
+      },
+      {#{}, #{}}
     ]).
 
 tally_fun_cons_test() ->
-  A1 = tvar(a1),
-  A2 = tvar(a2),
-  A3 = tvar(a3),
-  A4 = tvar(a4),
+  A1 = v(a1), A2 = v(a2),
+  A3 = v(a3), A4 = v(a4),
 
-  test_utils:test_tally(
+  test_tally(
     [
       {tempty_list(), A1},
       {tempty_list(), A2},
-      {A3, stdtypes:tlist(tint())},
-      {tfun2(A4, A4, A4), tfun2(A1, A2, A3)}
+      {A3, tlist(tint())},
+      {f([A4, A4], A4), f([A1, A2], A3)}
     ],
-    [{
-      #{ },
-      #{ }
-    }]).
+    solutions(1)).
 
 tally_fun_cons3_test() ->
-
-  test_utils:test_tally(
+  test_tally(
     [
       {{empty_list},{var,'$3'}},
       {{var,'$0'},{intersection,[{tuple,[]},{tuple,[]}]}},
@@ -368,20 +388,15 @@ tally_fun_cons3_test() ->
         {tuple,[]}},
       {{tuple,[]},{var,'$0'}}
     ],
-    [{
-      #{ },
-      #{ }
-    }]).
+    solutions(1)).
 
 pretty_printing_bug_test() ->
-  V0 = tvar(v1),
-  V6 = tvar(v2),
-  A = tatom(a),
-  B = tatom(b),
-  test_utils:test_tally(
+  V0 = v(v1), V6 = v(v2),
+  A = b(a), B = b(b),
+  test_tally(
     [{
-      tinter([V0, tnot(ttuple1(A)), ttuple1(B)]),
+      i([V0, n(ttuple1(A)), ttuple1(B)]),
       V6
     }],
-    [{#{}, #{}}]).
+    solutions(1)).
   

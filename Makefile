@@ -1,14 +1,21 @@
-.PHONY: release build test check all clean gradualize check_ast_trans_ty \
+.PHONY: espresso release build test check all clean gradualize check_ast_trans_ty \
 	check_syntax_antidote check_ast_trans_antidote check_types_antidote \
 	check_syntax_riak check_ast_trans_riak check_types_riak
 
 REBAR = rebar3
 
-release:
-	$(REBAR) as prod escriptize
+all: build check test
 
-build:
+espresso:
+	cd c_src/espresso && make
+
+release: espresso
+	$(REBAR) as prod escriptize
+	cp _build/espresso _build/prod/bin/espresso
+
+build: espresso
 	$(REBAR) escriptize
+	cp _build/espresso _build/default/bin/espresso
 
 clean:
 	$(REBAR) clean
@@ -22,6 +29,8 @@ test: build testtest
 	@echo "Running case study ..."
 	ETYLIZER_CASE_STUDY_LOGLEVEL=warn test_files/etylizer-mini/check-std.sh
 	ETYLIZER_CASE_STUDY_LOGLEVEL=warn test_files/etylizer-mini/check.sh
+	@echo "Running property-based tests ..."
+	$(REBAR) proper
 
 testtest:
 	@echo "Running unit tests for tests ..."
@@ -30,8 +39,6 @@ testtest:
 
 check:
 	$(REBAR) as test dialyzer
-
-all: build check test
 
 gradualize:
 	cd src && gradualizer --fmt_location brief *.erl

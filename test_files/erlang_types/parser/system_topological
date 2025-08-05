@@ -1,0 +1,15 @@
+#{
+{ty_key,'.',c,0} =>
+    {ty_scheme,[],
+       {tuple, [{named,noloc,{ty_ref,'.',e,0}, []}]}
+       },
+
+{ty_key,'.',e,0} =>
+    {ty_scheme,[],
+       {tuple, [
+          {named,noloc,{ty_ref,'.',c,0}, []},
+          {named,noloc,{ty_ref,'.',e,0}, []},
+          {singleton, foo}
+        ]}
+       }
+}.

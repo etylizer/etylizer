@@ -139,6 +139,12 @@
     predef_alias_name/0
 ]).
 
+% extension of the Erlang AST
+-export_type([
+    ty_mu/0,
+    ty_mu_var/0
+]).
+
 -export([
     format_loc/1, to_loc/2, loc_auto/0, min_loc/2, leq_loc/2, is_predef_name/1, is_predef_alias_name/1,
     local_varname_from_any_ref/1, get_fun_name/1, loc_exp/1
@@ -494,7 +500,8 @@ is_predef_alias_name(N) ->
 -type ty_named() :: {named, loc(), Name::ty_ref(), Args::[ty()]}.
 
 % recursive type
--type ty_mu() :: {mu, RecursiveVariable::ty_var(), MaybeRecursiveType::ty()}.
+-type ty_mu() :: {mu, RecursiveVariable::ty_mu_var(), MaybeRecursiveType::ty()}.
+-type ty_mu_var() :: {mu_var, ty_varname()}.
 
 -type ty_tuple_any() :: {tuple_any}.
 -type ty_tuple() :: {tuple, [ty()]}.
@@ -507,7 +514,7 @@ is_predef_alias_name(N) ->
 % We do not have an explicit type for records. We encode them as tuples instead.
 -type ty() :: ty_singleton() | ty_bitstring() | ty_some_list()
     | ty_fun() | ty_integer_range() | ty_map_any() | ty_map() | ty_predef() | ty_predef_alias()
-    | ty_named() | ty_tuple_any() | ty_tuple() | ty_var() | ty_mu()
+    | ty_named() | ty_tuple_any() | ty_tuple() | ty_var() | ty_mu_var() | ty_mu()
     | ty_union() | ty_intersection() | ty_negation().
 
 -type ty_constraint() :: {subty_constraint, loc(), ty_varname(), ty()}.

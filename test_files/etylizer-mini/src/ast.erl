@@ -140,9 +140,17 @@
 ]).
 
 -export([
-    format_loc/1, to_loc/2, loc_auto/0, min_loc/2, leq_loc/2, is_predef_name/1, is_predef_alias_name/1,
+    format_loc/1, 
+    loc_auto/0, min_loc/2, leq_loc/2, is_predef_name/1, is_predef_alias_name/1,
     local_varname_from_any_ref/1, get_fun_name/1, loc_exp/1
 ]).
+
+-spec local_varname_from_any_ref(any_ref()) -> {true, local_varname()} | false.
+local_varname_from_any_ref(Ref) ->
+    case Ref of
+        {local_ref, V} -> {true, V};
+        _ -> false
+    end.
 
 % General
 -type global_ref() :: {ref, atom(), arity()} | {qref, atom(), atom(), arity()}.
@@ -190,12 +198,6 @@ min_loc(L1, L2) ->
         false -> L2
     end.
 
--spec local_varname_from_any_ref(any_ref()) -> {true, local_varname()} | false.
-local_varname_from_any_ref(Ref) ->
-    case Ref of
-        {local_ref, V} -> {true, V};
-        _ -> false
-    end.
 
 % 8.1  Module Declarations and Forms
 -type fun_with_arity() :: {atom(), arity()}.

@@ -1,39 +1,29 @@
 -module(ty_list).
 
--export([compare/2, equal/2]).
--export([list/2, pi1/1, pi2/1, has_ref/2, raw_transform/2, transform/2, big_intersect/1, all_variables/2, substitute/3]).
+-export([
+  equal/2,
+  compare/2,
+  unparse/2,
+  list/1
+]).
 
-compare(A, B) when A < B -> -1;
-compare(A, B) when A > B -> 1;
-compare(_, _) -> 0.
+-export_type([type/0]).
 
-equal(P1, P2) -> compare(P1, P2) =:= 0.
+-type type() :: ty_tuple:type().
+-type ast_ty() :: ast:ty().
 
-list(Ref1, Ref2) -> {ty_list, Ref1, Ref2}.
+-spec list([ty_node:type()]) -> type().
+list(Refs) -> ty_tuple:tuple(Refs).
 
-pi1({ty_list, Ref, _}) -> Ref.
-pi2({ty_list, _, Ref}) -> Ref.
+-spec compare(type(), type()) -> eq | lt | gt.
+compare(A, B) -> ty_tuple:compare(A, B).
 
-has_ref({ty_list, Ref, _}, Ref) -> true;
-has_ref({ty_list, _, Ref}, Ref) -> true;
-has_ref({ty_list, _, _}, _Ref) -> false.
+-spec equal(type(), type()) -> boolean().
+equal(P1, P2) -> ty_tuple:equal(P1, P2).
 
-raw_transform(T, Op) -> transform(T, Op).
+-spec unparse(type(), T) -> {ast_ty(), T}.
+unparse({ty_tuple, 2, [List, Termination]}, ST0) ->
+  {L1, ST1} = ty_node:unparse(List, ST0),
+  {L2, ST2} = ty_node:unparse(Termination, ST1),
+  {{improper_list, L1, L2}, ST2}.
 
-transform({ty_list, A, B}, #{to_list := ToList}) ->
-  ToList(A, B).
-
-big_intersect(All) ->
-  lists:foldl(fun({ty_list, S, T}, {ty_list, A, B}) ->
-    {ty_list, ty_rec:intersect(S, A), ty_rec:intersect(T, B)}
-              end, {ty_list, ty_rec:any(), ty_rec:any()}, All).
-
-substitute({ty_list, A, B}, Map, Memo) ->
-  {ty_list,
-    ty_rec:substitute(A, Map, Memo),
-    ty_rec:substitute(B, Map, Memo)
-  }.
-
-all_variables({ty_list, A, B}, M) ->
-  ty_rec:all_variables(A, M) ++
-  ty_rec:all_variables(B, M).

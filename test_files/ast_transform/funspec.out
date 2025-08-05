@@ -1,4 +1,4 @@
-[{attribute,{loc,[],0,0},module,funcall},
+[{attribute,{loc,[],0,0},module,funspec},
  {attribute,{loc,[],0,0},
             spec,foo,1,
             {ty_scheme,[{'Y',{predef_alias,number}},{'_X',{predef,atom}}],

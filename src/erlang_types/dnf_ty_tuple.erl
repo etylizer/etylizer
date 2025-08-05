@@ -1,122 +1,135 @@
 -module(dnf_ty_tuple).
 
--define(ELEMENT, ty_tuple).
--define(TERMINAL, ty_bool).
--define(F(Z), fun() -> Z end).
+-define(ATOM, ty_tuple).
+-define(LEAF, ty_bool).
+-define(NODE, ty_node).
 
--export([is_empty_corec/2, normalize_corec/6, substitute/4, apply_to_node/3]).
--export([tuple/1, phi_corec/3, phi_norm_corec/5]).
+-export([
+  % exported because other types are encoded via tuples
+  is_empty_line/2,
+  normalize_line/3,
+  all_variables_line/4,
+  phi/3,
+  phi_norm/4,
+  unparse_any/1,
+  unparse_any/0
+]).
 
--include("dnf/bdd_node.hrl").
+-include("dnf/bdd.hrl").
 
-tuple(TyTuple) -> node(TyTuple).
+-spec is_empty_line({[T], [T], ?LEAF:type()}, S) -> {boolean(), S} when T :: ?ATOM:type().
+is_empty_line({[], [], _T}, ST) -> {false, ST};
+is_empty_line({[], Neg = [TNeg | _], T}, ST) ->
+  % if there are only negative tuples 
+  % it can still be the case that the line can be empty
+  % intersect with tuple_any and continue
+  Dim = length(ty_tuple:components(TNeg)),
+  PosAny = ty_tuple:any(Dim),
+  is_empty_line({[PosAny], Neg, T}, ST);
+is_empty_line({Pos, Neg, T}, ST) ->
+  T = ?LEAF:any(), % sanity
+  BigS = ty_tuple:big_intersect(Pos),
+  phi(ty_tuple:components(BigS), Neg, ST).
 
-is_empty_corec(TyBDD, M) ->
-  dnf(TyBDD, {fun(P, N, T) -> is_empty_coclause_corec(P, N, T, M) end, fun is_empty_union/2}).
 
-is_empty_coclause_corec(Pos, Neg, T, M) ->
-  case {Pos, Neg, ty_bool:empty()} of
-    {_, _, T} -> true;
-    {[], [], _} -> false;
-    {[], [TNeg | _], _} ->
-      Dim = length(ty_tuple:components(TNeg)),
-      PosAny = ty_tuple:any(Dim),
-      BigS = ty_tuple:big_intersect([PosAny]),
-      phi_corec(ty_tuple:components(BigS), Neg, M);
-    {Pos, Neg, _} ->
-      BigS = ty_tuple:big_intersect(Pos),
-      phi_corec(ty_tuple:components(BigS), Neg, M)
-  end.
-
-phi_corec(BigS, [], M) ->
-  lists:foldl(fun(S, Res) -> Res orelse ty_rec:is_empty_corec(S, M) end, false, BigS);
-phi_corec(BigS, [Ty | N], M) ->
-  Solve = fun({Index, {_PComponent, NComponent}}, Result) ->
-    Result
-      andalso
+-spec phi([ty_node:type()], [T], S) -> {boolean(), S} when T :: ?ATOM:type().
+phi(BigS, [], ST) ->
+  % TODO how big of a performance hit is non-shortcut behavior of the true branch?
+  lists:foldl(
+    fun(_, {true, ST0}) -> {true, ST0};
+       (S, {false, ST0}) -> ?NODE:is_empty(S, ST0) 
+    end, 
+    {false, ST}, 
+  BigS);
+phi(BigS, [Ty | N], ST) ->
+  Solve = fun
+    (_, {false, ST2}) -> {false, ST2};
+    ({Index, {_PComponent, NComponent}}, {true, ST2}) ->
       begin
       % remove pi_Index(NegativeComponents) from pi_Index(PComponents) and continue searching
         DoDiff = fun({IIndex, PComp}) ->
           case IIndex of
-            Index -> ty_rec:diff(PComp, NComponent);
+            Index -> ?NODE:difference(PComp, NComponent);
             _ -> PComp
           end
                  end,
         NewBigS = lists:map(DoDiff, lists:zip(lists:seq(1, length(BigS)), BigS)),
-        phi_corec(NewBigS, N, M)
+        phi(NewBigS, N, ST2)
       end
           end,
 
+  maybe
+    {false, ST1} ?= lists:foldl(fun(_S, {true, ST0}) -> {true, ST0}; (S, {false, ST0}) -> ?NODE:is_empty(S, ST0) end, {false, ST}, BigS),
+    lists:foldl(
+      Solve, 
+      {true, ST1}, 
+      lists:zip(lists:seq(1, length(ty_tuple:components(Ty))), lists:zip(BigS, ty_tuple:components(Ty))))
+  end.
 
-  lists:foldl(fun(S, Res) -> Res orelse ty_rec:is_empty_corec(S, M) end, false, BigS)
-    orelse
-      lists:foldl(Solve, true, lists:zip(lists:seq(1, length(ty_tuple:components(Ty))), lists:zip(BigS, ty_tuple:components(Ty)))).
 
-normalize_corec(Size, Ty, [], [], Fixed, M) ->
-  dnf(Ty, {
-    fun
-      ([], [], T) ->
-        case ty_bool:empty() of T -> [[]]; _ -> [] end;
-      ([], Neg = [TNeg | _], T) ->
-        case ty_bool:empty() of
-          T -> [[]];
-          _ ->
-            Dim = length(ty_tuple:components(TNeg)),
-            PosAny = ty_tuple:any(Dim),
-            BigS = ty_tuple:big_intersect([PosAny]),
-            phi_norm_corec(Size, ty_tuple:components(BigS), Neg, Fixed, M)
-        end;
-      (Pos, Neg, T) ->
-        case ty_bool:empty() of
-          T -> [[]];
-          _ ->
-            BigS = ty_tuple:big_intersect(Pos),
-            phi_norm_corec(Size, ty_tuple:components(BigS), Neg, Fixed, M)
+-spec normalize_line({[T], [T], ?LEAF:type()}, monomorphic_variables(), S) -> {set_of_constraint_sets(), S} when T :: ?ATOM:type().
+normalize_line({[], [], _T}, _Fixed, ST) -> {[], ST}; % test case for this branch: utils:set_add_many/2
+normalize_line({[], Neg = [TNeg | _], T}, Fixed, ST) -> 
+  error(todo),
+  Dim = length(ty_tuple:components(TNeg)),
+  PosAny = ty_tuple:any(Dim),
+  normalize_line({[PosAny], Neg, T}, Fixed, ST);
+normalize_line({Pos, Neg, T}, Fixed, ST) -> 
+  % {Res, _} = is_empty_line(L, #{}),
+  T = ?LEAF:any(), % sanity
+  BigS = ty_tuple:big_intersect(Pos),
+  phi_norm(ty_tuple:components(BigS), Neg, Fixed, ST).
+
+-spec phi_norm([ty_node:type()], [T], monomorphic_variables(), S) -> {set_of_constraint_sets(), S} when T :: ?ATOM:type().
+phi_norm(BigS, [], Fixed, ST) ->
+  lists:foldl( % FIXME shortcut
+    fun(S, {Res, ST0}) -> 
+      {R, ST1} = ty_node:normalize(S, Fixed, ST0),
+      {constraint_set:join(Res, R, Fixed), ST1} 
+    end, 
+    {[], ST}, 
+    BigS);
+phi_norm(BigS, [Ty | N], Fixed, ST) ->
+  Solve = fun({Index, {_PComponent, NComponent}}, {Result, ST00}) -> % FIXME shortcut
+    % TODO can be implemented easier with new Erlang list zipper &&
+    % remove pi_Index(NegativeComponents) from pi_Index(PComponents) and continue searching
+    DoDiff = 
+      fun({IIndex, PComp}) -> 
+        case IIndex of 
+          Index -> ty_node:difference(PComp, NComponent); 
+          _ -> PComp 
         end
-    end,
-    fun constraint_set:meet/2
-  });
-normalize_corec(Size, DnfTy, PVar, NVar, Fixed, M) ->
-  Ty = ty_rec:tuple(Size, dnf_var_ty_tuple:tuple(DnfTy)),
-  % ntlv rule
-  ty_variable:normalize_corec(Ty, PVar, NVar, Fixed, fun(Var) -> ty_rec:tuple(Size, dnf_var_ty_tuple:var(Var)) end, M).
-
-phi_norm_corec(_Size, BigS, [], Fixed, M) ->
-  lists:foldl(fun(S, Res) -> constraint_set:join(?F(Res), ?F(ty_rec:normalize_corec(S, Fixed, M))) end, [], BigS);
-phi_norm_corec(Size, BigS, [Ty | N], Fixed, M) ->
-  Solve = fun({Index, {_PComponent, NComponent}}, Result) ->
-    constraint_set:meet(
-      ?F(Result),
-      ?F(begin
-      % remove pi_Index(NegativeComponents) from pi_Index(PComponents) and continue searching
-        DoDiff = fun({IIndex, PComp}) ->
-          case IIndex of
-            Index ->
-              ty_rec:diff(PComp, NComponent);
-            _ -> PComp
-          end
-                 end,
-        NewBigS = lists:map(DoDiff, lists:zip(lists:seq(1, length(BigS)), BigS)),
-        phi_norm_corec(Size, NewBigS, N, Fixed, M)
-      end)
-    )
+      end,
+    NewBigS = lists:map(DoDiff, lists:zip(lists:seq(1, length(BigS)), BigS)),
+    {Res01, ST01} = phi_norm(NewBigS, N, Fixed, ST00),
+    {constraint_set:meet(Result, Res01, Fixed), ST01}
           end,
 
-  constraint_set:join(
-    ?F(lists:foldl(fun(S, Res) -> constraint_set:join(?F(Res), ?F(ty_rec:normalize_corec(S, Fixed, M))) end, [], BigS)),
-    ?F(lists:foldl(Solve, [[]], lists:zip(lists:seq(1, length(ty_tuple:components(Ty))), lists:zip(BigS, ty_tuple:components(Ty)))))
+  {R1, ST0} = lists:foldl(
+    fun(S, {R2, ST2}) -> 
+      {R3, ST3} = ty_node:normalize(S, Fixed, ST2),
+      {constraint_set:join(R2, R3, Fixed), ST3}
+    end, 
+    {[], ST}, 
+    BigS),
+
+  {R4, ST4} = lists:foldl(
+    Solve, 
+    {[[]], ST0}, 
+    lists:zip(lists:seq(1, length(ty_tuple:components(Ty))), lists:zip(BigS, ty_tuple:components(Ty)))
+  ),
+
+  {constraint_set:join(R1, R4, Fixed), ST4}.
+
+-spec all_variables_line([T], [T], ?LEAF:type(), cache()) -> sets:set(variable()) when T :: ?ATOM:type().
+all_variables_line(P, N, Leaf, Cache) ->
+  Leaf = ty_bool:any(),
+  sets:union(
+     [ty_tuple:all_variables(F, Cache) || F <- P]
+  ++ [ty_tuple:all_variables(F, Cache) || F <- N]
   ).
 
+unparse_any() -> {tuple_any}.
+unparse_any(Size) ->
+  {tuple, [{predef, any} || _ <- lists:seq(1, Size)]}.
 
-apply_to_node(Node, Map, Memo) ->
-  substitute(Node, Map, Memo, fun(N, S, M) -> ty_tuple:substitute(N, S, M) end).
-
--ifdef(TEST).
--include_lib("eunit/include/eunit.hrl").
-
-empty_0tuple_test() ->
-  Tuple = {node,{ty_tuple,0,[]},{terminal,0},{terminal,1}},
-  true = is_empty_corec(Tuple, #{}),
-  ok.
-
--endif.

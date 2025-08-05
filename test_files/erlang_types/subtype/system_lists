@@ -1,0 +1,24 @@
+#{
+{ty_key,'.',ulist,1} => % user-defined list :: µx.(α×x) ∨ nil
+    {ty_scheme,[{a, {predef, any}}],
+     {union,
+      [
+       {singleton, '[]'},
+       {tuple, [{var, a}, {named,{loc,"AUTO",-1,-1},{ty_ref,'.',ulist,1},[{var, a}]}]}
+       ]}},
+{ty_key,'.',even_ulist,1} => % user-defined even list :: µx.(α×(α×x)) ∨ nil
+    {ty_scheme,[{a, {predef, any}}],
+     {union,
+      [
+       {singleton, '[]'},
+       {tuple, [{var, a}, {tuple, [{var, a}, {named,{loc,"AUTO",-1,-1},{ty_ref,'.',even_ulist,1},[{var, a}]}]}]}
+       ]}},
+
+{ty_key,'.',uneven_ulist,1} => % user-defined uneven list :: µx.(α×(α×x)) ∨ (α×nil)
+    {ty_scheme,[{a, {predef, any}}],
+     {union,
+      [
+       {tuple, [{var, a}, {singleton, '[]'}]},
+       {tuple, [{var, a}, {tuple, [{var, a}, {named,{loc,"AUTO",-1,-1},{ty_ref,'.',uneven_ulist,1},[{var, a}]}]}]}
+       ]}}
+}.

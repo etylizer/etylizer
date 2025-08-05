@@ -1,4 +1,4 @@
-[{attribute,{loc,[],0,0},module,scope_receive},
+[{attribute,{loc,[],0,0},module,scope_try},
  {function,{loc,[],0,0},use,1,[{fun_clause,{loc,[],0,0},[{var,{loc,[],0,0},{local_bind,{'_X',0}}}],[],[{atom,{loc,[],0,0},ok}]}]},
  {function,{loc,[],0,0},
            foo,1,
