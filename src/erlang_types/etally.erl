@@ -121,6 +121,7 @@ unify(EquationList) ->
 
   E_ = 
   [ begin
+      % io:format(user,"Substitute: ~p~n~p~n", [ty_node:dumpp(TAA), NewMap]),
       {eq, XA, ty_node:substitute(TAA, NewMap)} 
     end
         ||

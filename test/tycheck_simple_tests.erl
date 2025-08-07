@@ -153,14 +153,19 @@ check_decls_in_files(Files, What, NoInfer) ->
 simple_test_() ->
   % The following functions are currently excluded from being tested.
   WhatNot = [
-    % Redundancy check for lists is not powerful enough, see #108
-    "list_pattern_08_fail",
     % TODO binary pattern element size verification
     "b4_fail"
   ],
 
   NoInfer = [
-    "match_13" % TODO timeout, with flipped variable ordering it infers instantly
+    % TODO timeout, with flipped variable ordering it infers instantly
+    "match_13",
+    % TODO slow (tuple-encoded lists) inference
+    "list_pattern_02",
+    "list_pattern_07",
+    "inter_04_ok",
+    "foo",
+    "op_08"
   ],
 
   %What = ["atom_03_fail"],

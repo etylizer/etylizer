@@ -82,14 +82,19 @@ join(S1, S2, Fixed) ->
 saturate(C, FixedVariables, Cache) ->
   case pick_bounds_in_c(C, Cache) of
     {_Var, S, T} ->
-      SnT = ty:difference(S, T),
-      Normed = ty:normalize(SnT, FixedVariables),
-      NewS = meet([C], Normed, FixedVariables),
-      Z = lists:foldl(fun(NewC, AllS) ->
-        NewMerged = saturate(NewC, FixedVariables, Cache#{SnT => []}),
-        join(AllS, NewMerged, FixedVariables)
-                  end, [], NewS),
-      Z;
+      case get({opcache, erlang:phash2({C, _Var, S, T})}) of
+        undefined ->
+          SnT = ty:difference(S, T),
+          Normed = ty:normalize(SnT, FixedVariables),
+          NewS = meet([C], Normed, FixedVariables),
+          Z = lists:foldl(fun(NewC, AllS) ->
+            NewMerged = saturate(NewC, FixedVariables, Cache#{SnT => []}),
+            join(AllS, NewMerged, FixedVariables)
+                      end, [], NewS),
+          % put({opcache, erlang:phash2({C, _Var, S, T})}, Z),
+          Z;
+        Hit -> Hit
+      end;
     none -> 
       [C]
   end.

@@ -109,13 +109,37 @@ list_pattern_07(L) ->
         [_X | _] -> 3
     end.
 
-% The redundant branch is not detected atm because our types for lists are too simplistic.
-% See #108
 -spec list_pattern_08_fail(list(integer())) -> integer().
 list_pattern_08_fail(L) ->
     case L of
-        [] -> 1;
         [1 | _] -> 2;
         [1, 2 | _] -> 3; % redundant
         _ -> 4
     end.
+
+-spec list_pattern_09_fail(nonempty_list(integer())) -> integer().
+list_pattern_09_fail(L) ->
+    case L of
+        [_] -> 2;
+        [_ | A] -> 
+          case A of
+            [] -> 3; % redundant, can't be [] because of [_] branch
+            _ -> 4 
+          end
+    end.
+
+% -spec rreverse
+% ([]) -> [];
+% (nonempty_list(T)) -> nonempty_list(T).
+% rreverse(_) ->
+%     erlang:error(undef).
+%
+% -doc(#{group => <<"Original API">>}).
+% -spec out(nonempty_list(integer())) -> ok.
+% % out({[],[]}=Q) ->
+% %     {empty,Q};
+% out([_V]) -> ok;
+% out([_Y | In]) ->
+%     [_V | _Out] = rreverse(In),
+%     ok;
+% out(_) -> error(todo).

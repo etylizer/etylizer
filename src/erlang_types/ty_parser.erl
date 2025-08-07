@@ -99,7 +99,7 @@ create_ref(Ref) ->
 
 -spec parse(ast_ty()) -> type().
 parse(RawTy) ->
-  % io:format(user,"Parsing: ~w,~n", [RawTy]),
+  % io:format(user,"Parsing:~n~p,~n", [RawTy]),
   % first: rename such that mu-binders have no collisions
   % use DeBruijn indexes and then convert back to fresh named variables
   % this has to be done anytime a {named, ...} reference is unfolded, too
@@ -463,12 +463,12 @@ do_convert({AstTy = {mu, RecVar = {mu_var, Name}, Ty}, R}, Q, Cache) ->
 do_convert({AstTy = {mu_var, Name}, R = {IdTy, _}}, Q, Cache) ->
   true = is_atom(Name),
 
-
   #{AstTy := Ref} = Cache,
   % We are allowed to load the memoized ref
   % because the second occurrence of the mu variable
   % is below a type constructor, 
   % i.e. the memoized reference is fully defined
+  % io:format(user,"Lookup Memoized ~p with ref ~p~n", [AstTy, Ref]),
   #{Ref := Ty} = IdTy,
   {Ty, Q, R, Cache};
  
@@ -539,15 +539,12 @@ do_convert({{var, A}, R}, Q, Cache) ->
 
 % === term rewrites
 do_convert({{nonempty_list, Ty}, R}, Q, Cache) ->
-  do_convert({{nonempty_improper_list, Ty, {empty_list}}, R}, Q, Cache);
+  do_convert({{cons, Ty, {list, Ty}} , R}, Q, Cache);
 do_convert({{nonempty_improper_list, Ty, Term}, R}, Q, Cache) ->
+  error(todo),
   do_convert({{intersection, [{list, Ty}, {negation, Term}]} , R}, Q, Cache);
 do_convert({{list, Ty}, R}, Q, Cache) ->
-  do_convert({
-  {union, [
-    {improper_list, Ty, {empty_list}}, 
-    {empty_list}
-  ]}, R}, Q, Cache);
+  do_convert({{improper_list, Ty, {empty_list}}, R}, Q, Cache);
 
 % rewrite maps into {Tuple, Function} tuples
 do_convert({{map, AssocList}, R}, Q, Cache) ->
@@ -597,10 +594,14 @@ do_convert({{tuple, Comps}, R}, Q, Cache) ->
   {?TY:tuples(T), Q0, R, Cache};
 
 % lists
-do_convert({{improper_list, A, B}, R}, Q, Cache) ->
+do_convert({T = {improper_list, A, B}, R}, Q, Cache) ->
+  RVar = {mu_var, list_to_atom(integer_to_list(erlang:unique_integer()))},
+  NewTerm = {mu, RVar, {union, [B, {cons, A, RVar}]}},
+  % io:format(user, "Converting with var ~p:~n~p~n~p~n", [RVar, T, NewTerm]),
+  do_convert({NewTerm, R}, Q, Cache);
+do_convert({{cons, A, B}, R}, Q, Cache) ->
   {T1, Q0} = queue_if_new(A, Q),
   {T2, Q1} = queue_if_new(B, Q0),
-    
   {?TY:list(dnf_ty_list:singleton(ty_list:list([T1, T2]))), Q1, R, Cache};
 
 % maps 
@@ -682,6 +683,7 @@ debruijn({mu_var, Name}, Env) ->
 debruijn({singleton, _} = T, _Env) -> T;
 debruijn({bitstring}, _Env) -> {bitstring};
 debruijn({empty_list}, _Env) -> {empty_list};
+debruijn({cons, U, L}, Env) -> {cons, debruijn(U, Env), debruijn(L, Env)};
 debruijn({list, U}, Env) -> {list, debruijn(U, Env)};
 debruijn({nonempty_list, U}, Env) -> {nonempty_list, debruijn(U, Env)};
 debruijn({improper_list, U, V}, Env) -> 
@@ -760,7 +762,8 @@ convert_back(Type, Env, Counter) when is_tuple(Type) ->
       [Constructor, Arg] = tuple_to_list(Type),
       {ConvertedArg, NewCounter} = convert_back(Arg, Env, Counter),
       {list_to_tuple([Constructor, ConvertedArg]), NewCounter};
-    Constructor when Constructor =:= improper_list;
+    Constructor when Constructor =:= cons;
+                     Constructor =:= improper_list;
                      Constructor =:= nonempty_improper_list ->
       [Constructor, Arg, Arg2] = tuple_to_list(Type),
       {ConvertedArg, NewCounter} = convert_back(Arg, Env, Counter),

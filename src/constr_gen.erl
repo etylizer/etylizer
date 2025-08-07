@@ -161,13 +161,24 @@ exp_constrs(Ctx, E, T) ->
             sets:add_element({csubty, mk_locs("result of catch", L), Top, T}, Cs);
         {cons, L, Head, Tail} ->
             Alpha = fresh_tyvar(Ctx),
-            CsHead = exp_constrs(Ctx, Head, Alpha),
+            C1 = exp_constrs(Ctx, Head, Alpha),
             Beta = fresh_tyvar(Ctx),
-            TyTail = stdtypes:tlist(Beta),
-            CsTail = exp_constrs(Ctx, Tail, TyTail),
-            TyResult = stdtypes:tnonempty_list(stdtypes:tunion([Alpha, Beta])),
-            sets:add_element({csubty, mk_locs("result of cons", L), TyResult, T},
-                             sets:union(CsHead, CsTail));
+            C2 = exp_constrs(Ctx, Tail, Beta),
+            Cs = sets:union(C1, C2),
+            ListC = {csubty, mk_locs("cons constructor", L), {cons, Alpha, Beta}, T},
+            sets:add_element(ListC, Cs);
+        {tuple, L, Args} ->
+            {Tys, Cs} =
+                lists:foldr(
+                  fun(Arg, {Tys, Cs}) ->
+                          Alpha = fresh_tyvar(Ctx),
+                          ThisCs = exp_constrs(Ctx, Arg, Alpha),
+                          {[Alpha | Tys], sets:union(Cs, ThisCs)}
+                  end,
+                  {[], sets:new()},
+                  Args),
+            TupleC = {csubty, mk_locs("tuple constructor", L), {tuple, Tys}, T},
+            sets:add_element(TupleC, Cs);
         {fun_ref, L, GlobalRef} ->
             utils:single({cvar, mk_locs("function ref", L), GlobalRef, T});
         {'fun', L, RecName, FunClauses} ->
@@ -642,15 +653,18 @@ bound_vars_pat(P) ->
 % With list patterns, this is no longer true.
 %
 % Example 1: pattern [1 | _].
+% Type 1: {1, any}_L
+%
 % For the => direction above, consider an expression e that matches
-% this pattern. From this, all we know is that e must have type nonempty_list(any()).
+% this pattern. From this, all we know is that e must have type {1, any}_L
 % (e could be any of the following expressions: [1,2,3] or [1, "foo"] or [1]).
-% For the <= direction, e must have type nonempty_list(1) if we want to make sure
+% For the <= direction, e must have type {1, any}_L if we want to make sure
 % that the pattern definitely matches.
 % Example 2: pattern [_ | _ | _].
+% Type 2: {any, {any, list(any)}_L}_L
 % For the => direction, consider an expression e that matches the pattern.
 % From this, all we know is that e has type nonempy_list() because there is no
-% type for lists with at least length two.
+% type for lists with at least length two.~~ {any, {any, list()}_L}_L
 % For the <= direction, no type except none() guarantees that e matches the pattern.
 %
 % Hence, we introduce a mode for ty_of_pat, which can be either upper or lower.
@@ -678,36 +692,39 @@ ty_of_pat(Symtab, Env, P, Mode) ->
             ast_lib:mk_intersection([ty_of_pat(Symtab, Env, P1, Mode), ty_of_pat(Symtab, Env, P2, Mode)]);
         {nil, _L} -> {empty_list};
         {cons, _L, P1, P2} ->
-            Res =
-                case Mode of
-                    upper ->
-                        T1 = ty_of_pat(Symtab, Env, P1, Mode),
-                        T2 = ty_of_pat(Symtab, Env, P2, Mode),
-                        ?LOG_DEBUG("T1=~s, T2=~s", pretty:render_ty(T1), pretty:render_ty(T2)),
-                        case subty:is_subty(Symtab, T2, stdtypes:tempty_list()) of
-                            true -> stdtypes:tnonempty_list(T1);
-                            false ->
-                                case subty:is_subty(Symtab, T2, stdtypes:tnonempty_list()) of
-                                    true -> ast_lib:mk_union([stdtypes:tnonempty_list(T1), T2]);
-                                    false ->
-                                        case subty:is_any(T2, Symtab) of
-                                            true -> stdtypes:tnonempty_list();
-                                            false -> stdtypes:tnonempty_improper_list(T1, T2)
-                                        end
-                                end
-                        end;
-                    lower ->
-                        T1 = {nonempty_list, ty_of_pat(Symtab, Env, P1, Mode)},
-                        T2 = ty_of_pat(Symtab, Env, P2, Mode),
-                        ?LOG_DEBUG("T1=~s, T2=~s", pretty:render_ty(T1), pretty:render_ty(T2)),
-                        % FIXME: can we encode this choice as a type?
-                        case subty:is_any(T2, Symtab) of
-                            true -> T1;
-                            false -> stdtypes:empty()
-                        end
-                end,
-            ?LOG_DEBUG("Type of list pattern ~200p in mode ~w: ~s", P, Mode, pretty:render_ty(Res)),
+            T1 = ty_of_pat(Symtab, Env, P1, Mode),
+            T2 = ty_of_pat(Symtab, Env, P2, Mode),
+            Res = {cons, T1, T2},
+            ?LOG_INFO("~p~nType of list pattern~n~200p~nin mode ~w:~n~s", Env, P, Mode, pretty:render_ty(Res)),
             Res;
+            %     case Mode of
+            %         upper ->
+            %             T1 = ty_of_pat(Symtab, Env, P1, Mode),
+            %             T2 = ty_of_pat(Symtab, Env, P2, Mode),
+            %             ?LOG_DEBUG("T1=~s, T2=~s", pretty:render_ty(T1), pretty:render_ty(T2)),
+            %             case subty:is_subty(Symtab, T2, stdtypes:tempty_list()) of
+            %                 true -> stdtypes:tnonempty_list(T1);
+            %                 false ->
+            %                     case subty:is_subty(Symtab, T2, stdtypes:tnonempty_list()) of
+            %                         true -> ast_lib:mk_union([stdtypes:tnonempty_list(T1), T2]);
+            %                         false ->
+            %                             case subty:is_any(T2, Symtab) of
+            %                                 true -> stdtypes:tnonempty_list();
+            %                                 false -> stdtypes:tnonempty_improper_list(T1, T2)
+            %                             end
+            %                     end
+            %             end;
+            %         lower ->
+            %             T1 = {nonempty_list, ty_of_pat(Symtab, Env, P1, Mode)},
+            %             T2 = ty_of_pat(Symtab, Env, P2, Mode),
+            %             ?LOG_DEBUG("T1=~s, T2=~s", pretty:render_ty(T1), pretty:render_ty(T2)),
+            %             % FIXME: can we encode this choice as a type?
+            %             case subty:is_any(T2, Symtab) of
+            %                 true -> T1;
+            %                 false -> stdtypes:empty()
+            %             end
+            %     end,
+            % Res;
         {op, _, '++', [P1, P2]} ->
             ast_lib:mk_intersection([ty_of_pat(Symtab, Env, P1, Mode), ty_of_pat(Symtab, Env, P2, Mode),
                                  {predef_alias, string}]);
@@ -837,14 +854,31 @@ pat_env(Ctx, OuterL, T, P) ->
             Empty;
         {cons, _L, P1, P2} ->
             Alpha1 = fresh_tyvar(Ctx),
-            Alpha2 = fresh_tyvar(Ctx),
             {Cs1, Env1} = pat_env(Ctx, OuterL, Alpha1, P1),
+            
+            Alpha2 = fresh_tyvar(Ctx),
             {Cs2, Env2} = pat_env(Ctx, OuterL, Alpha2, P2),
-            C1 = {csubty, mk_locs("t // [_ | _]", OuterL), T, {list, Alpha1}},
-            C2 = {csubty, mk_locs("t // [_ | _]", OuterL),
-                    ast_lib:mk_union([T, stdtypes:tempty_list()]), Alpha2},
-            {sets:add_element(C1, sets:add_element(C2, sets:union(Cs1, Cs2))),
-             intersect_envs(Env1, Env2)};
+
+            NewEnv = intersect_envs(Env1, Env2),
+            NewCs = sets:union(Cs1, Cs2),
+
+            C = {csubty, mk_locs("t // [_ | _]", OuterL), T, {improper_list, Alpha1, Alpha2}},
+
+            {sets:add_element(C, NewCs), NewEnv};
+        {tuple, _L, Ps} ->
+            {Alphas, Cs, Env} =
+                lists:foldl(
+                  fun (P, {Alphas, Cs, Env}) ->
+                          Alpha = fresh_tyvar(Ctx),
+                          {ThisCs, ThisEnv} = pat_env(Ctx, OuterL, Alpha, P),
+                          {Alphas ++ [Alpha],
+                           sets:union(Cs, ThisCs),
+                           intersect_envs(Env, ThisEnv)}
+                  end,
+                  {[], sets:new(), #{}},
+                  Ps),
+            C = {csubty, mk_locs("t // {...}", OuterL), T, {tuple, Alphas}},
+            {sets:add_element(C, Cs), Env};
         {op, _L, '++', [P1, P2]} ->
             {Cs1, Env1} = pat_env(Ctx, OuterL, T, P1),
             {Cs2, Env2} = pat_env(Ctx, OuterL, T, P2),
@@ -893,20 +927,6 @@ pat_env(Ctx, OuterL, T, P) ->
             C = {csubty, mk_locs("t // #Record{...}", OuterL), T, RecTupleTy},
             {sets:add_element(C, Cs), Env};
         {record_index, _L, _Name, _Field} -> Empty;
-        {tuple, _L, Ps} ->
-            {Alphas, Cs, Env} =
-                lists:foldl(
-                  fun (P, {Alphas, Cs, Env}) ->
-                          Alpha = fresh_tyvar(Ctx),
-                          {ThisCs, ThisEnv} = pat_env(Ctx, OuterL, Alpha, P),
-                          {Alphas ++ [Alpha],
-                           sets:union(Cs, ThisCs),
-                           intersect_envs(Env, ThisEnv)}
-                  end,
-                  {[], sets:new([{version, 2}]), #{}},
-                  Ps),
-            C = {csubty, mk_locs("t // {...}", OuterL), T, {tuple, Alphas}},
-            {sets:add_element(C, Cs), Env};
         {wildcard, _L} ->
             Empty;
         {var, _L, {local_bind, V}} ->
@@ -1186,3 +1206,4 @@ sanity_check(Cs, Spec) ->
         false ->
             ?ABORT("Sanity check failed: ~s", "invalid constraint generated")
     end.
+

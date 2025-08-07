@@ -1,0 +1,16 @@
+[
+  {mu,{mu_var,'$var_0'},
+    {mu, {mu_var, '$var_r'}, 
+      {union, [
+        {mu_var,'$var_0'}, 
+        {cons, {predef, any}, {mu_var, '$var_r'}}
+      ]}
+    }
+  }
+].
+%  {mu,{mu_var,'$var_0'},
+%    {improper_list, 
+%      {predef, any}, 
+%      {mu_var,'$var_0'}
+%    }
+%  }

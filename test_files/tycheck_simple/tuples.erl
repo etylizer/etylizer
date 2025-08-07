@@ -29,3 +29,25 @@ tuple_05_fail(X) ->
     case X of
         {A, _} -> A
     end.
+
+-type tlist(E) :: nil | {E, tlist(E)}.
+-type tnonempty_list(E) :: {E, tlist(E)}.
+-spec list_as_tuple_01_fail(tnonempty_list(integer())) -> integer().
+list_as_tuple_01_fail(L) ->
+    case L of
+        {_, nil} -> 2; % [_] :: single-element list
+        {_, A} ->      % [_ | A] ::  rest
+          case A of
+            nil -> 3; % redundant, already checked for nil
+            _   -> 4 
+          end
+    end.
+
+% inference test
+-spec list_as_tuple_02() -> tlist(integer()).
+list_as_tuple_02() ->
+    {1, nil}.
+
+-spec list_as_tuple_03_fail() -> tlist(integer()).
+list_as_tuple_03_fail() ->
+    {1, 1}.

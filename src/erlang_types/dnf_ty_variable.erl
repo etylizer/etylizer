@@ -7,6 +7,7 @@
   functions/1,
   tuples/1,
   list/1,
+  any_list/0,
   predefined/1,
   bitstring/1,
   map/1
@@ -32,6 +33,8 @@ functions(DnfTyFunctions) -> leaf(ty_rec:functions(DnfTyFunctions)).
 tuples(DnfTyTuples) -> leaf(ty_rec:tuples(DnfTyTuples)).
 -spec list(dnf_ty_list:type()) -> bdd().
 list(DnfTyList) -> leaf(ty_rec:list(DnfTyList)).
+-spec any_list() -> bdd().
+any_list() -> leaf(ty_rec:any_list()).
 -spec predefined(dnf_ty_predefined:type()) -> bdd().
 predefined(DnfTyPredef) -> leaf(ty_rec:predefined(DnfTyPredef)).
 -spec bitstring(dnf_ty_bitstring:type()) -> bdd().

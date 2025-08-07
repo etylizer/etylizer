@@ -15,6 +15,10 @@
 
 -type eqwalizer_dynamic() :: term().
 
+-type queue() :: definition.
+
+-spec 't:ok'() -> queue().
+'t:ok'() -> error(todo).
 % -include_lib("public_key/include/public_key.hrl").
 
 %% -------- application --------
