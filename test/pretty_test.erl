@@ -11,4 +11,4 @@ pretty_ty_test() ->
                            {named, {loc, "file.erl", 13, 9}, {ty_ref, file, doc, 0}, []}}]}]},
     Doc = pretty:ty(T),
     S = pretty:render(Doc),
-    ?assertEqual("{integer(), 4, #{key => term()} | fun((string(), [T]) -> doc())}", S).
+    ?assertEqual("{integer(),\n 4,\n #{key => term()} | fun((string(), list(T)) -> doc())}", S).

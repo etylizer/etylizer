@@ -109,8 +109,6 @@ list_pattern_07(L) ->
         [_X | _] -> 3
     end.
 
-% The redundant branch is not detected atm because our types for lists are too simplistic.
-% See #108
 -spec list_pattern_08_fail(list(integer())) -> integer().
 list_pattern_08_fail(L) ->
     case L of
@@ -118,4 +116,32 @@ list_pattern_08_fail(L) ->
         [1 | _] -> 2;
         [1, 2 | _] -> 3; % redundant
         _ -> 4
+    end.
+
+-spec list_pattern_09_fail(nonempty_list(integer())) -> integer().
+list_pattern_09_fail(L) ->
+    case L of
+        [_] -> 2;
+        [_ | A] -> 
+          case A of
+            [] -> 3; % redundant, can't be [] because of [_] branch
+            _ -> 4 
+          end
+    end.
+
+-spec list_pattern_10_fail_h(nonempty_list(_)) -> integer().
+list_pattern_10_fail_h([_ | _]) -> 42.
+
+-spec list_pattern_10_fail() -> integer().
+list_pattern_10_fail() -> 
+  Fun = fun _F([_ | Vs]) -> list_pattern_10_fail_h(Vs) end,
+  Fun([x | []]).
+
+-spec list_pattern_11(list(V)) -> {ok, V} | error.
+list_pattern_11([]) -> error;
+list_pattern_11([V | []]) -> {ok, V};
+list_pattern_11([_ | Rest]) ->
+    case list_pattern_11(Rest) of
+        {ok, _} -> error;
+        _ -> error
     end.

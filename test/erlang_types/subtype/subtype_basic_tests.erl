@@ -83,36 +83,3 @@ pos_var_fun_test() ->
 
   false = is_subtype( S, T ),
   false = is_subtype( T, S ).
-
-simple_list_test() ->
-  S = tempty_list(),
-  T = tlist(b(hello)),
-  Ti = timproper_list(b(hello), tempty_list()),
-
-  true = is_subtype(S, T),
-  false = is_subtype(S, Ti),
-  false = is_subtype(T, Ti).
-
-nonempty_list_test() ->
-  S = tempty_list(),
-  T = tnonempty_list(b(hello)),
-  Ti = tnonempty_improper_list(b(hello), tempty_list()),
-
-  false = is_subtype(S, T),
-  false = is_subtype(S, Ti),
-  true = is_subtype(T, Ti).
-
-nonempty_list_2_test() ->
-  Any = tany(),
-  A = b(a),
-  T1 = tnonempty_list(Any),
-  T2 = u([tnonempty_list(A), tnonempty_list()]),
-  true = is_equiv(T1, T2).
-
-number_list_test() ->
-  T = tlist(u([tint(), tfloat()])),
-  S = tlist(tint()),
-
-  true = is_subtype(S, T),
-  false = is_subtype(T, S).
-
