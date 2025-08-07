@@ -14,6 +14,7 @@
     tnonempty_improper_list/2,
     tnonempty_list/0,
     tnonempty_list/1,
+    tcons_list/2,
     builtin_ops/0, builtin_funs/0,
     tatom/0, tatom/1,
     tintersect/1, tunion/1, tnegate/1,
@@ -230,6 +231,9 @@ tnonempty_list(Arg) -> {nonempty_list, Arg}.
 
 -spec tnonempty_list() -> ast:ty().
 tnonempty_list() -> {predef_alias, nonempty_list}.
+
+-spec tcons_list(ast:ty(), ast:ty()) -> ast:ty().
+tcons_list(H, T) -> {cons, H, T}.
 
 -spec tbool() -> ast:ty().
 tbool() -> {predef_alias, boolean}.

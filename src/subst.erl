@@ -76,6 +76,7 @@ apply_base(S, T) ->
         {bitstring} -> T;
         % {binary, _, _} -> T;
         {empty_list} -> T;
+        {cons, A, B} -> {cons, apply_base(S, A), apply_base(S, B)};
         {list, U} -> {list, apply_base(S, U)};
         {mu, V, U} -> {mu, V, apply_base(S, U)};
         {nonempty_list, U} -> {nonempty_list, apply_base(S, U)};
@@ -180,6 +181,10 @@ collect_vars({named, _, _, _}, _CPos, Pos, _Fix) -> Pos; % skip user types
 collect_vars({mu, _MuVar, A}, CPos, Pos, Fix) -> % skip recursion variables
     collect_vars(A, CPos, Pos, Fix); 
 collect_vars({Map, A, B}, CPos, Pos, Fix) when Map == map_field_opt; Map == map_field_req ->
+    M1 = collect_vars(A, CPos, Pos, Fix),
+    M2 = collect_vars(B, CPos, Pos, Fix),
+    maps:merge_with(fun combine_vars/3, M1, M2);
+collect_vars({cons, A, B}, CPos, Pos, Fix) ->
     M1 = collect_vars(A, CPos, Pos, Fix),
     M2 = collect_vars(B, CPos, Pos, Fix),
     maps:merge_with(fun combine_vars/3, M1, M2);
