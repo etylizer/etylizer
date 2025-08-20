@@ -64,3 +64,10 @@ list_as_tuple_06_fail({E, Es}) -> list_as_tuple_05(Es, E); % list_as_tuple_05 is
 list_as_tuple_06_fail({}) -> true;
 list_as_tuple_06_fail(_) -> false.
 
+-spec f2r(list(Item)) -> {list(Item), list(Item)}.
+f2r([]) -> {[],[]};
+f2r([_]=F) -> {F,[]};
+f2r([X,Y]) -> {[Y],[X]};
+f2r(List) ->
+    {FF,RR} = lists:split(length(List) div 2, List),
+    {lists:reverse(RR, []),FF}.

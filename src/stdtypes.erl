@@ -303,11 +303,13 @@ builtin_ops() ->
         tfun([tint()], tint()),
         tfun([tfloat()], tfloat())
     ])),
+    DivOpTy = tyscm(tinter([tfun([tint(), tint()], tint()), tfun([tnon_neg_int(), tint()], tint())])),
     IntOpTy = tyscm(tfun([tint(), tint()], tint())),
     BoolOpTy = tyscm(tfun([tbool(), tbool()], tbool())),
     AndShortcutOpTy = tyscm(tinter([tfun([tatom(false), tany()], tatom(false)), tfun([tatom(true), tvar(a)], tvar(a))])),
     OrShortcutOpTy = tyscm(tinter([tfun([tatom(true), tany()], tatom(true)), tfun([tatom(false), tvar(b)], tvar(b))])),
     PolyOpTy = tyscm(tfun([tvar(aa), tvar(aa)], tbool())),
+    erlang:'div'(1,2),
     [
         {'+', 2, NumOpTy},
         {'-', 2, NumOpTy},
@@ -318,7 +320,7 @@ builtin_ops() ->
             tfun([tint(), tfloat()], tfloat()),
             tfun([tfloat(), tint()], tfloat()),
             tfun([tfloat(), tfloat()], tfloat())]))},
-        {'div', 2, IntOpTy},
+        {'div', 2, DivOpTy},
         {'rem', 2, IntOpTy},
         {'band', 2, IntOpTy},
         {'bor', 2, IntOpTy},

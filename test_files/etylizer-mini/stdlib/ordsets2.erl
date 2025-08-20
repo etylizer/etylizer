@@ -43,6 +43,7 @@ new() -> [].
 -spec is_set(Ordset) -> boolean() when
       Ordset :: term().
 
+% this is positive: crashes on input ordsets:is_set([1 | 1])
 is_set([E|Es]) when is_list(Es) -> is_set(Es, E); % TODO necessary change! -> paper example
 is_set([]) -> true;
 is_set(_) -> false.
