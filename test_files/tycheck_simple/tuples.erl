@@ -51,3 +51,16 @@ list_as_tuple_02() ->
 -spec list_as_tuple_03_fail() -> tlist(integer()).
 list_as_tuple_03_fail() ->
     {1, 1}.
+
+% example from ordsets
+% is_set
+-spec list_as_tuple_05(tlist(term()), term()) -> boolean().
+list_as_tuple_05({E2, Es}, E1) when E1 < E2 -> list_as_tuple_05(Es, E2);
+list_as_tuple_05({_, _}, _) -> false;
+list_as_tuple_05(nil, _) -> true.
+
+-spec list_as_tuple_06_fail(term()) -> boolean().
+list_as_tuple_06_fail({E, Es}) -> list_as_tuple_05(Es, E); % list_as_tuple_05 is not defined for improper lists
+list_as_tuple_06_fail({}) -> true;
+list_as_tuple_06_fail(_) -> false.
+
