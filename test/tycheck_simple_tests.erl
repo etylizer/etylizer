@@ -161,6 +161,8 @@ simple_test_() ->
     % TODO timeout, with flipped variable ordering it infers instantly
     "match_13",
     % TODO slow (tuple-encoded lists) inference
+    % reason: recursive types parsing and unparsing in solving step (missing proper substitution implementation)
+    "list_pattern_10_fail_h",
     "list_pattern_02",
     "list_pattern_07",
     "inter_04_ok",

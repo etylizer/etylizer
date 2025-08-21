@@ -147,7 +147,6 @@ new_ty_node() ->
 
 -spec define(T, type_descriptor()) -> T when T :: type().
 define(Reference, Node) ->
-  % io:format(user,"  +++++++++++++~nStore: ~p~n~p~n  +++++++++++++~n", [Reference, Node]),
   dnf_ty_variable:assert_valid(Node),
   [] = ets:lookup(?SYSTEM, Reference),
   [] = ets:lookup(?UNIQUETABLE, {Node, Reference}),

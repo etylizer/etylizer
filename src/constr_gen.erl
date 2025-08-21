@@ -167,18 +167,6 @@ exp_constrs(Ctx, E, T) ->
             Cs = sets:union(C1, C2),
             ListC = {csubty, mk_locs("cons constructor", L), {cons, Alpha, Beta}, T},
             sets:add_element(ListC, Cs);
-        {tuple, L, Args} ->
-            {Tys, Cs} =
-                lists:foldr(
-                  fun(Arg, {Tys, Cs}) ->
-                          Alpha = fresh_tyvar(Ctx),
-                          ThisCs = exp_constrs(Ctx, Arg, Alpha),
-                          {[Alpha | Tys], sets:union(Cs, ThisCs)}
-                  end,
-                  {[], sets:new()},
-                  Args),
-            TupleC = {csubty, mk_locs("tuple constructor", L), {tuple, Tys}, T},
-            sets:add_element(TupleC, Cs);
         {fun_ref, L, GlobalRef} ->
             utils:single({cvar, mk_locs("function ref", L), GlobalRef, T});
         {'fun', L, RecName, FunClauses} ->
@@ -832,7 +820,7 @@ pat_env(Ctx, OuterL, T, P) ->
             NewEnv = intersect_envs(Env1, Env2),
             NewCs = sets:union(Cs1, Cs2),
 
-            C = {csubty, mk_locs("t // [_ | _]", OuterL), T, {improper_list, Alpha1, Alpha2}},
+            C = {csubty, mk_locs("t // [_ | _]", OuterL), T, {nonempty_improper_list, Alpha1, Alpha2}},
 
             {sets:add_element(C, NewCs), NewEnv};
         {tuple, _L, Ps} ->

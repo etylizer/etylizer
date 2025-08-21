@@ -1,6 +1,0 @@
-
-Fixed: Item, Q1, Q2
-[DEBUG 2025-08-08 07:44:38.762 constr_solve.erl:183] Tally time (satisfiability check): 442322ms, tally successful.
-[DEBUG 2025-08-08 07:44:38.762 constr_solve.erl:71] Constraints are satisfiable, now checking 8 branches for redundancy
-[DEBUG 2025-08-08 07:44:38.792 constr_solve.erl:179] Tally time (redundancy check): 29ms, tally finished with errors.
-[DEBUG 2025-08-08 07:44:38.792 constr_solve.erl:86] Branch at stdlib/queue4.erl:279:1 is not redundant. Constraints that were added to the constraint above: [{scsubty,

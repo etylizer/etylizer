@@ -541,8 +541,7 @@ do_convert({{var, A}, R}, Q, Cache) ->
 do_convert({{nonempty_list, Ty}, R}, Q, Cache) ->
   do_convert({{cons, Ty, {list, Ty}} , R}, Q, Cache);
 do_convert({{nonempty_improper_list, Ty, Term}, R}, Q, Cache) ->
-  error(todo),
-  do_convert({{intersection, [{list, Ty}, {negation, Term}]} , R}, Q, Cache);
+  do_convert({{cons, Ty, {improper_list, Ty, Term}} , R}, Q, Cache);
 do_convert({{list, Ty}, R}, Q, Cache) ->
   do_convert({{improper_list, Ty, {empty_list}}, R}, Q, Cache);
 
@@ -594,10 +593,9 @@ do_convert({{tuple, Comps}, R}, Q, Cache) ->
   {?TY:tuples(T), Q0, R, Cache};
 
 % lists
-do_convert({T = {improper_list, A, B}, R}, Q, Cache) ->
+do_convert({{improper_list, A, B}, R}, Q, Cache) ->
   RVar = {mu_var, list_to_atom(integer_to_list(erlang:unique_integer()))},
   NewTerm = {mu, RVar, {union, [B, {cons, A, RVar}]}},
-  % io:format(user, "Converting with var ~p:~n~p~n~p~n", [RVar, T, NewTerm]),
   do_convert({NewTerm, R}, Q, Cache);
 do_convert({{cons, A, B}, R}, Q, Cache) ->
   {T1, Q0} = queue_if_new(A, Q),

@@ -128,6 +128,14 @@ list_pattern_09_fail(L) ->
           end
     end.
 
+-spec list_pattern_10_fail_h(nonempty_list(_)) -> integer().
+list_pattern_10_fail_h([_ | _]) -> 42.
+
+-spec list_pattern_10_fail() -> integer().
+list_pattern_10_fail() -> 
+  Fun = fun _F([_ | Vs]) -> list_pattern_10_fail_h(Vs) end,
+  Fun([x | []]).
+
 % -spec rreverse
 % ([]) -> [];
 % (nonempty_list(T)) -> nonempty_list(T).

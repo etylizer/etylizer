@@ -7,13 +7,15 @@
 -export([
     tspecial_any/0,
     tempty_list/0,
-    tint/0, tint/1,
+    tint/0, tint/1, 
+    tnon_neg_int/0,
     tbitstring/0,
     tlist_any/0,
     tlist_improper/2,
     tnonempty_improper_list/2,
     tnonempty_list/0,
     tnonempty_list/1,
+    tcons_list/2,
     builtin_ops/0, builtin_funs/0,
     tatom/0, tatom/1,
     tintersect/1, tunion/1, tnegate/1,
@@ -92,6 +94,9 @@ tatom(A) -> {singleton, A}.
 
 -spec tint() -> ast:ty().
 tint() -> {predef, integer}.
+
+-spec tnon_neg_int() -> ast:ty().
+tnon_neg_int() -> {predef_alias, non_neg_integer}.
 
 -spec tbitstring() -> ast:ty().
 tbitstring() -> {bitstring}.
@@ -231,6 +236,9 @@ tnonempty_list(Arg) -> {nonempty_list, Arg}.
 -spec tnonempty_list() -> ast:ty().
 tnonempty_list() -> {predef_alias, nonempty_list}.
 
+-spec tcons_list(ast:ty(), ast:ty()) -> ast:ty().
+tcons_list(H, T) -> {cons, H, T}.
+
 -spec tbool() -> ast:ty().
 tbool() -> {predef_alias, boolean}.
 
@@ -303,13 +311,12 @@ builtin_ops() ->
         tfun([tint()], tint()),
         tfun([tfloat()], tfloat())
     ])),
-    DivOpTy = tyscm(tinter([tfun([tint(), tint()], tint()), tfun([tnon_neg_int(), tint()], tint())])),
+    DivOpTy = tyscm(tinter([tfun([tint(), tint()], tint()), tfun([tnon_neg_int(), tnon_neg_int()], tnon_neg_int())])),
     IntOpTy = tyscm(tfun([tint(), tint()], tint())),
     BoolOpTy = tyscm(tfun([tbool(), tbool()], tbool())),
     AndShortcutOpTy = tyscm(tinter([tfun([tatom(false), tany()], tatom(false)), tfun([tatom(true), tvar(a)], tvar(a))])),
     OrShortcutOpTy = tyscm(tinter([tfun([tatom(true), tany()], tatom(true)), tfun([tatom(false), tvar(b)], tvar(b))])),
     PolyOpTy = tyscm(tfun([tvar(aa), tvar(aa)], tbool())),
-    erlang:'div'(1,2),
     [
         {'+', 2, NumOpTy},
         {'-', 2, NumOpTy},
