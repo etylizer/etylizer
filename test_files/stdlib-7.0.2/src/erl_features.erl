@@ -543,7 +543,7 @@ test_features() ->
                 "Test feature in experimental state. "
             "It is disabled by default, but can be enabled.",
             status => experimental,
-            experimental => 25,
+            experimental => 25,:
             keywords => ['while', 'until'],
             type => extension},
       approved_ftr_1 =>

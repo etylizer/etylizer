@@ -1,0 +1,72 @@
+
+%     |                         ^
+%     |       ^
+%   79| parse_single_file(File, BehaviorToSpecMethods) ->
+%   83|       ImplementedBehaviors = get_behaviors(Forms),
+%   85|       Specced = get_specced(Forms),
+Dependencies: []
+../../../erlang-checksrc/check.erl:79:25: Warning: variable 'BehaviorToSpecMethods' is unused
+../../../erlang-checksrc/check.erl:83:7: Warning: variable 'ImplementedBehaviors' is unused
+../../../erlang-checksrc/check.erl:85:7: Warning: variable 'Specced' is unused
+Exported: 87
+Missing spec: 87
+QF=$QF" -o balance/1"
+QF=$QF" -o balance/2"
+QF=$QF" -o balance_list_1/2"
+QF=$QF" -o balance_list/2"
+QF=$QF" -o count/1"
+QF=$QF" -o delete_1/2"
+QF=$QF" -o delete/2"
+QF=$QF" -o delete_any/2"
+QF=$QF" -o empty/0"
+QF=$QF" -o enter/3"
+QF=$QF" -o from_orddict/1"
+QF=$QF" -o get_1/2"
+QF=$QF" -o get/2"
+QF=$QF" -o insert_1/4"
+QF=$QF" -o insert/3"
+QF=$QF" -o is_defined_1/2"
+QF=$QF" -o is_defined/2"
+QF=$QF" -o is_empty/1"
+QF=$QF" -o iterator/1"
+QF=$QF" -o iterator_1/2"
+QF=$QF" -o iterator/2"
+QF=$QF" -o iterator_from_1/3"
+QF=$QF" -o iterator_from/2"
+QF=$QF" -o iterator_from/3"
+QF=$QF" -o iterator_from_r/3"
+QF=$QF" -o iterator_r/2"
+QF=$QF" -o keys/1"
+QF=$QF" -o keys/2"
+QF=$QF" -o larger_1/2"
+QF=$QF" -o larger/2"
+QF=$QF" -o largest/1"
+QF=$QF" -o largest_1/1"
+QF=$QF" -o lookup_1/2"
+QF=$QF" -o lookup/2"
+QF=$QF" -o map_1/2"
+QF=$QF" -o map/2"
+QF=$QF" -o merge/2"
+QF=$QF" -o next/1"
+QF=$QF" -o size/1"
+QF=$QF" -o smaller_1/2"
+QF=$QF" -o smaller/2"
+QF=$QF" -o smallest/1"
+QF=$QF" -o smallest_1/1"
+QF=$QF" -o take_1/2"
+QF=$QF" -o take/2"
+QF=$QF" -o take_any/2"
+QF=$QF" -o take_largest/1"
+QF=$QF" -o take_largest1/1"
+QF=$QF" -o take_smallest/1"
+QF=$QF" -o take_smallest1/1"
+QF=$QF" -o to_list/1"
+QF=$QF" -o to_list_1/1"
+QF=$QF" -o to_list/2"
+QF=$QF" -o update_1/3"
+QF=$QF" -o update/3"
+QF=$QF" -o values/1"
+QF=$QF" -o values/2"
+Sources: [stdlib]
+"{src, stdlib}."
+Unspecced in "stdlib/gb_trees2.erl":

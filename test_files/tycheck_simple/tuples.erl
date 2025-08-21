@@ -72,16 +72,6 @@ list_as_tuple_07_fail() ->
   Fun = fun _F({_, Vs}) -> list_as_tuple_07_h(Vs) end,
   Fun({x, nil}).
 
-
--spec lreverse
-(nonempty_list(T)) -> nonempty_list(T);
-(list(T)) -> list(T).
-lreverse(_) -> error(ok).
-
--spec drop({[Item], [Item]}) -> {[Item], [Item]}.
-drop({[_], []}) -> error(branch_1);
-drop({[Y|R],[]}) ->
-    [_|F] = lreverse(R),
-    {[Y],F};
-drop(_) ->
-    error(todo).
+-spec match(_, _) -> ok | nok.
+match(X, X) -> ok;
+match(_, _) -> nok.

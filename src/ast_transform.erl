@@ -736,7 +736,7 @@ trans_pat_bin_elem(Ctx, Env, Elem, BindMode) ->
 
 -spec trans_case_clauses(ctx(), varenv_local:t(), [ast_erl:case_clause()])
                         -> {[ast:case_clause()], varenv_local:t()}.
-trans_case_clauses(_Ctx, Env, []) -> {[], Env};
+trans_case_clauses(_Ctx, Env, [])-> {[], Env};
 trans_case_clauses(Ctx, Env, Cs) ->
     {NewClauses, NewEnvs} =
         lists:unzip(lists:map(fun(C) -> trans_case_clause(Ctx, Env, C) end, Cs)),
@@ -789,7 +789,16 @@ trans_fun_clauses(Ctx, Env, Cs) -> lists:map(fun(C) -> trans_fun_clause(Ctx, Env
 trans_fun_clause(Ctx, Env, C) ->
     case C of
         {clause, Anno, Ps, Guards, Body} ->
-            {Qs, QEnv} = trans_pats(Ctx, Env, Ps, shadow),
+            % shadow variables from outer context, 
+            % but don't bind multiple variables inside this pattern
+            % mode shadow and using Env does not work for X = ..., fun(X, X) -> ...
+            % as it would create X1= ..., fun(X2, X3) -> ...
+            % whereas it should be X1= ..., fun(X2, X2) -> ...
+            % -> use a new local context with bind_fresh, 
+            % but remember numbering of Variables in Env
+            % merge afterwards, where QEnv0 takes precedence
+            {Qs, QEnv0} = trans_pats(Ctx, varenv_local:empty(Env), Ps, bind_fresh),
+            QEnv = varenv_local:merge(Env, QEnv0),
             NewGuards = trans_guards(Ctx, QEnv, Guards),
             NewBody = trans_exp_seq_noenv(Ctx, QEnv, Body),
             {fun_clause, to_loc(Ctx, Anno), Qs, NewGuards, NewBody};

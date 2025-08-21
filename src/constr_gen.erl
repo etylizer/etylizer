@@ -638,34 +638,15 @@ bound_vars_pat(P) ->
 % In the paper, the type t of a pattern p has the following semantics:
 %     Expression e matches p if, and only if, e has type t
 %
-% With list patterns, this is no longer true.
-%
-% Example 1: pattern [1 | _].
-% Type 1: {1, any}_L
-%
-% For the => direction above, consider an expression e that matches
-% this pattern. From this, all we know is that e must have type {1, any}_L
-% (e could be any of the following expressions: [1,2,3] or [1, "foo"] or [1]).
-% For the <= direction, e must have type {1, any}_L if we want to make sure
-% that the pattern definitely matches.
-% Example 2: pattern [_ | _ | _].
-% Type 2: {any, {any, list(any)}_L}_L
-% For the => direction, consider an expression e that matches the pattern.
-% From this, all we know is that e has type nonempy_list() because there is no
-% type for lists with at least length two.~~ {any, {any, list()}_L}_L
-% For the <= direction, no type except none() guarantees that e matches the pattern.
+% For existing variables, this is no longer true.
 %
 % Hence, we introduce a mode for ty_of_pat, which can be either upper or lower.
 %
 % - Mode upper deals with the potential type. Any expression matching p must
 %   be of this type.
-%   Example 1: the potential type is nonempty_list(any()).
-%   Example 2: the potential type is nonempty_list(any()).
 %
 % - Mode lower deals with the accepting type. If e has this type, then p definitely
 %   matches.
-%   Example 1: the accepting type is nonempty_list(1).
-%   Example 2: the accepting type is none()
 -spec ty_of_pat(symtab:t(), constr:constr_env(), ast:pat(), upper | lower) -> ast:ty().
 ty_of_pat(Symtab, Env, P, Mode) ->
     case P of
