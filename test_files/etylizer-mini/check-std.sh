@@ -7,6 +7,7 @@ cd $(dirname $0)
 # 1) redundant branch at top-level 
 # 2) imprecise spec
 # 3) exhaustiveness at top-level
+# 4) overlay for lists:reverse to add the nonempty_list -> nonempty_list case
 # ?) unknown type error
 QF=""
 # QF=$QF" -o new/0"
@@ -25,8 +26,8 @@ QF=""
 # QF=$QF" -o get_r/1" # 1)
 # QF=$QF" -o peek/1" # 1)
 # QF=$QF" -o peek_r/1" # 1)
-QF=$QF" -o drop/1" # 1) TODO ?)
-# QF=$QF" -o drop_r/1" # 1) TODO ?)
+# QF=$QF" -o drop/1" # 4) 
+# QF=$QF" -o drop_r/1" # 4)
 # QF=$QF" -o reverse/1" # 1)
 # QF=$QF" -o join/2" # 1) 10s
 # QF=$QF" -o split/2" # timeout
@@ -61,4 +62,4 @@ QF=$QF" -o drop/1" # 1) TODO ?)
 # QF=$QF" -o f2r/1" # TODO ?)
 
 
-../../ety --build --no-deps -f -l debug stdlib/queue2.erl $QF
+../../ety --build --type-overlay overlay_queue.erl --no-deps -f -l debug stdlib/queue2.erl $QF

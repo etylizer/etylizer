@@ -490,10 +490,8 @@ drop({[_],[]}) ->
 drop({[Y|R],[]}) ->
     [_|F] = lists:reverse(R, []),
     {[Y],F};
-drop({R, [_]}) when is_list(R) ->
-    r2f(R);
-drop({R, [_|F]}) when is_list(R) ->
-    {R,F}.
+drop(_) ->
+    error(todo).
 % drop(Q) ->
 %     erlang:error(badarg, [Q]).
 
