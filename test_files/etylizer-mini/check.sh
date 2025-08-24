@@ -93,6 +93,7 @@ QF=$QF" -i trans_spec_ty/3" # to)
 QF=$QF" -i trans_ty/3" # 4)
 QF=$QF" -i trans_pat/4" # 4)
 QF=$QF" -i trans_exp/3" # to)
+QF=$QF" -i trans/4" # to) tally v1 is faster check why
 QF=$QF" -i trans_catch_clause/3" # 3)
 # QF=$QF" -i build_funenv/2" # 5) implemented assert fun
 # QF=$QF" -i mk_builtin_funs/2" # 5) implemented assert fun
