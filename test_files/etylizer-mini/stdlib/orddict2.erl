@@ -63,6 +63,8 @@ dictionary, otherwise function [`find/2`](`find/2`).
 `m:dict`, `m:gb_trees`
 """.
 -disable_exhaustiveness([fetch/2, update/3]).
+-spec take_1(Key, orddict(Key, Value), [{Key, Value}]) -> error | {Value, orddict(Key, Value)}.
+-spec reverse_pairs([{Key, Value}], [{Key, Value}]) -> [{Key, Value}].
 
 %% Standard interface.
 -export([new/0,is_key/2,to_list/1,from_list/1,size/1,is_empty/1]).
@@ -243,7 +245,6 @@ error
 take(Key, Dict) ->
     take_1(Key, Dict, []).
 
--spec take_1(Key, orddict(Key, Value), [{Key, Value}]) -> error | {Value, orddict(Key, Value)}.
 take_1(Key, [{K,_}|_], _Acc) when Key < K ->
     error;
 take_1(Key, [{K,_}=P|D], Acc) when Key > K ->
@@ -311,8 +312,8 @@ _Example 2:_
 ```
 """.
 -spec append(Key, Value, Orddict1) -> Orddict2 when
-      Orddict1 :: orddict(Key, [Value]),
-      Orddict2 :: orddict(Key, [Value]).
+      Orddict1 :: orddict(Key, Value),
+      Orddict2 :: orddict(Key, Value).
 
 append(Key, New, [{K,_}|_]=Dict) when Key < K ->
     [{Key,[New]}|Dict];
@@ -341,9 +342,9 @@ _Example:_
 ```
 """.
 -spec append_list(Key, ValList, Orddict1) -> Orddict2 when
-      ValList :: [_Value],
-      Orddict1 :: orddict(Key, ValList),
-      Orddict2 :: orddict(Key, ValList).
+      ValList :: [Value],
+      Orddict1 :: orddict(Key, Value),
+      Orddict2 :: orddict(Key, Value).
 
 append_list(Key, NewList, [{K,_}|_]=Dict) when Key < K ->
     [{Key,NewList}|Dict];
@@ -376,7 +377,6 @@ update(Key, Fun, [{K,_}=E|Dict]) when Key > K ->
     [E|update(Key, Fun, Dict)];
 update(Key, Fun, [{K,Val}|Dict]) when Key == K ->
     [{Key,Fun(Val)}|Dict].
-
 
 -doc """
 Updates a value in a dictionary by calling `Fun` on the value to get a new
@@ -435,8 +435,8 @@ update_counter(Key, Incr, D) ->
 ```
 """.
 -spec update_counter(Key, Increment, Orddict1) -> Orddict2 when
-      Orddict1 :: orddict(Key, number()),
-      Orddict2 :: orddict(Key, number()),
+      Orddict1 :: orddict(Key, Value),
+      Orddict2 :: orddict(Key, Value),
       Increment :: number().
 
 update_counter(Key, Incr, [{K,_}|_]=Dict) when Key < K ->
@@ -563,7 +563,6 @@ merge(F, [{K1,V1}|D1], [{_K2,V2}|D2]) ->	%K1 == K2
 merge(F, [], D2) when is_function(F, 3) -> D2;
 merge(F, D1, []) when is_function(F, 3) -> D1.
 
--spec reverse_pairs([{Key, Value}], [{Key, Value}]) -> [{Key, Value}].
 reverse_pairs([{_,_}=H|T], Acc) ->
     reverse_pairs(T, [H|Acc]);
 reverse_pairs([], Acc) -> Acc.

@@ -321,6 +321,7 @@ builtin_ops() ->
 
 %% Types for builtin functions
 
+-type fun_types() :: [{atom(), arity(), ast:ty_scheme()}].
 
 -spec extra_funs() -> fun_types().
 extra_funs() ->
@@ -343,7 +344,6 @@ cleanup() ->
     ets:delete(?TABLE),
     ok.
 
--type fun_types() :: [{atom(), arity(), ast:ty_scheme()}].
 
 -spec builtin_funs() -> fun_types().
 builtin_funs() ->

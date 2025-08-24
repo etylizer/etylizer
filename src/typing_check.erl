@@ -40,7 +40,9 @@ check_all_report(Ctx, FileName, Env, Decls) ->
                 throw:{etylizer, unsupported, Msg} -> 
                     io:format(user,"Unsupported: ~s:~w/~w~n  ~s~n", [F(FileName), Name, Arity, Msg]);
                 throw:{etylizer, Type, _Msg} -> 
-                    io:format(user,"Error: (~p) ~s:~w/~w (~p ms)~n", [Type, F(FileName), Name, Arity, ?TIME(T0)])
+                    io:format(user,"Error: (~p) ~s:~w/~w (~p ms)~n", [Type, F(FileName), Name, Arity, ?TIME(T0)]);
+                _:T -> 
+                    io:format(user,"Other: (~p) ~s:~w/~w (~p ms)~n", [{T}, F(FileName), Name, Arity, ?TIME(T0)])
             end
         end,
         Decls
