@@ -50,6 +50,7 @@
 % 'lists:flatten'(_) -> error(overlay).
 
 -spec 'erlang:element'
+    (1, {A, _B}) -> A;
     (2, {_A, B}) -> B;
     (2, {_A, B, _C}) -> B;
     (2, {_A, B, _C, _D}) -> B;
@@ -57,7 +58,8 @@
     (2, {_A, B, _C, _D, _E, _F}) -> B;
     (2, {_A, B, _C, _D, _E, _F, _G}) -> B;
     (2, {_A, B, _C, _D, _E, _F, _G, _H}) -> B.
-'erlang:element'(_, {_A, B}) -> B;
+'erlang:element'(1, {A, _B}) -> A;
+'erlang:element'(2, {_A, B}) -> B;
 'erlang:element'(_, {_A, B, _C}) -> B;
 'erlang:element'(_, {_A, B, _C, _D}) -> B;
 'erlang:element'(_, {_A, B, _C, _D, _E}) -> B;
