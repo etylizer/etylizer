@@ -76,6 +76,18 @@ some with more readable but perhaps less understandable aliases.
 -disable_exhaustiveness_toplevel([split_f1_to_r2/5, split_r1_to_f2/5]).
 -disable_exhaustiveness([split/2]).
 
+-spec f2r([Item]) -> queue(Item).
+-spec r2f([Item]) -> queue(Item).
+-spec delete_with_rear(Pred, R1) -> false | R2 when Pred :: fun((Item) -> boolean()), R1 :: [Item], R2 :: [Item], Item :: term().
+-spec delete_with_front(Pred, Q1) -> false | Q2 when Pred :: fun((Item) -> boolean()), Q1 :: [Item], Q2 :: [Item], Item :: term().
+-spec delete_rear(Item, [Item]) -> false | [Item].
+-spec delete_front(Item, [Item]) -> false | [Item].
+-spec filtermap_r(Fun, Q1) -> Q2 when Fun :: fun((Item) -> boolean() | {'true', Value}), Q1 :: list(Item), Q2 :: list(Item | Value), Item :: term(), Value :: term().
+-spec filter_r(Fun, Q1 :: list(Item)) -> Q2 :: list(Item) when Fun :: fun((Item) -> boolean() | list(Item)).
+-spec filter_f(Fun, Q1 :: list(Item)) -> Q2 :: list(Item) when Fun :: fun((Item) -> boolean() | list(Item)).
+-spec split_r1_to_f2(integer(), [Item], [Item], [Item],[Item]) -> {queue(Item), queue(Item)}.
+-spec split_f1_to_r2(integer(), [Item], [Item], [Item], [Item]) -> {queue(Item), queue(Item)}.
+
 %% Creation, inspection and conversion
 -export([new/0,is_queue/1,is_empty/1,len/1,to_list/1,from_list/1,member/2]).
 %% Original style API
@@ -542,9 +554,9 @@ drop_r(Q) ->
 -doc(#{group => <<"Original API">>}).
 -spec reverse(Q1 :: queue(Item)) -> Q2 :: queue(Item).
 reverse({R,F}) when is_list(R), is_list(F) ->
-    {F,R}.
-% reverse(Q) ->
-%     erlang:error(badarg, [Q]).
+    {F,R};
+reverse(Q) ->
+    erlang:error(badarg, [Q]).
 
 %% Join two queues
 %%
@@ -572,9 +584,9 @@ join({R,F}=Q, {[],[]}) when is_list(R), is_list(F) ->
 join({[],[]}, {R,F}=Q) when is_list(R), is_list(F) ->
     Q;
 join({R1,F1}, {R2,F2}) when is_list(R1), is_list(F1), is_list(R2), is_list(F2) ->
-    {R2,F1++lists:reverse(R1,F2)}.
-% join(Q1, Q2) ->
-%     erlang:error(badarg, [Q1,Q2]).
+    {R2,F1++lists:reverse(R1,F2)};
+join(Q1, Q2) ->
+    erlang:error(badarg, [Q1,Q2]).
 
 %% Split a queue in two
 %%
@@ -608,14 +620,12 @@ split(N, {R,F}=Q) when is_integer(N), N >= 1, is_list(R), is_list(F) ->
 split(N, Q) ->
     erlang:error(badarg, [N,Q]).
 
--spec split_f1_to_r2(integer(), [Item], [Item], [Item], [Item]) -> {queue(Item), queue(Item)}.
 %% Move N elements from F1 to R2
 split_f1_to_r2(0, R1, F1, R2, F2) ->
     {{R2,F2},{R1,F1}};
 split_f1_to_r2(N, R1, [X|F1], R2, F2) ->
     split_f1_to_r2(N-1, R1, F1, [X|R2], F2).
 
--spec split_r1_to_f2(integer(), [Item], [Item], [Item],[Item]) -> {queue(Item), queue(Item)}.
 %% Move N elements from R1 to F2
 split_r1_to_f2(0, R1, F1, R2, F2) ->
     {{R1,F1},{R2,F2}};
@@ -673,11 +683,9 @@ filter(Fun, {R0,F0}) when is_function(Fun, 1), is_list(R0), is_list(F0) ->
        true ->
 	    {R,F}
     end;
-filter(Fun, Q) -> 
+filter(Fun, Q) ->
     erlang:error(badarg, [Fun,Q]).
 
--spec filter_f(Fun, Q1 :: list(Item)) -> Q2 :: list(Item) when
-      Fun :: fun((Item) -> boolean() | list(Item)).
 %% Call Fun in head to tail order
 filter_f(_, []) ->
     [];
@@ -695,8 +703,6 @@ filter_f(Fun, [X|F]) ->
 	    L++filter_f(Fun, F)
     end.
 
--spec filter_r(Fun, Q1 :: list(Item)) -> Q2 :: list(Item) when
-      Fun :: fun((Item) -> boolean() | list(Item)).
 %% Call Fun in reverse order, i.e tail to head
 %% and reverse list result from fun to match queue order
 filter_r(_, []) ->
@@ -762,12 +768,6 @@ filtermap(Fun, {R0, F0}) when is_function(Fun, 1), is_list(R0), is_list(F0) ->
 filtermap(Fun, Q) ->
     erlang:error(badarg, [Fun,Q]).
 
--spec filtermap_r(Fun, Q1) -> Q2 when
-      Fun :: fun((Item) -> boolean() | {'true', Value}),
-      Q1 :: list(Item),
-      Q2 :: list(Item | Value),
-      Item :: term(),
-      Value :: term().
 %% Call Fun in reverse order, i.e tail to head
 filtermap_r(_, []) ->
     [];
@@ -937,7 +937,6 @@ delete_r(Item, {R0, F0}) when is_list(R0), is_list(F0) ->
 delete_r(Item, Q) ->
     erlang:error(badarg, [Item, Q]).
 
--spec delete_front(Item, [Item]) -> false | [Item].
 delete_front(Item, [Item|Rest]) ->
     Rest;
 delete_front(Item, [X|Rest]) ->
@@ -948,8 +947,6 @@ delete_front(Item, [X|Rest]) ->
 delete_front(_, []) ->
     false.
 
-
--spec delete_rear(Item, [Item]) -> false | [Item].
 delete_rear(Item, [X|Rest]) ->
     case delete_rear(Item, Rest) of
         false when X=:=Item ->
@@ -1033,11 +1030,6 @@ delete_with_r(Pred, {R0, F0}) when is_function(Pred, 1), is_list(R0), is_list(F0
 delete_with_r(Pred, Q) ->
     erlang:error(badarg, [Pred, Q]).
 
--spec delete_with_front(Pred, Q1) -> false | Q2 when
-      Pred :: fun((Item) -> boolean()),
-      Q1 :: [Item],
-      Q2 :: [Item],
-      Item :: term().
 delete_with_front(Pred, [X|Rest]) ->
     case Pred(X) of
 	true ->
@@ -1053,11 +1045,6 @@ delete_with_front(Pred, [X|Rest]) ->
 delete_with_front(_, []) ->
     false.
 
--spec delete_with_rear(Pred, R1) -> false | R2 when
-      Pred :: fun((Item) -> boolean()),
-      R1 :: [Item],
-      R2 :: [Item],
-      Item :: term().
 delete_with_rear(Pred, [X|Rest]) ->
     case delete_with_rear(Pred, Rest) of
 	false ->
@@ -1266,7 +1253,6 @@ init(Q) -> drop_r(Q).
 
 -compile({inline, [{r2f,1},{f2r,1}]}).
 
--spec r2f([Item]) -> queue(Item).
 %% Move half of elements from R to F, if there are at least three
 r2f([]) ->
     {[],[]};
@@ -1279,7 +1265,6 @@ r2f(List) ->
     {RR,lists:reverse(FF, [])}.
 
 %% Move half of elements from F to R, if there are enough
--spec f2r([Item]) -> queue(Item).
 f2r([]) ->
     {[],[]};
 f2r([_]=F) ->
