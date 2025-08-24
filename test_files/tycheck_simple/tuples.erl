@@ -29,3 +29,6 @@ tuple_05_fail(X) ->
     case X of
         {A, _} -> A
     end.
+-spec match(_, _) -> ok | nok.
+match(X, X) -> ok;
+match(_, _) -> nok.
