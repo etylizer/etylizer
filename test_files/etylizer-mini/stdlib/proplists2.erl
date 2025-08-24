@@ -670,7 +670,6 @@ returns:
       Rest :: [term()].
 
 split(List, Keys) ->
-    {Store, Rest} = error(mc), % split(List, #{K => [] || K <- Keys}, []),
     {Store, Rest} = split(List, #{K => [] || K <- Keys}, []),
     {[lists:reverse(map_get(K, Store)) || K <- Keys],
      lists:reverse(Rest)}.

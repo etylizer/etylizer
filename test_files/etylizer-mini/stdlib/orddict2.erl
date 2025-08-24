@@ -550,11 +550,9 @@ _Example:_
 [{a,1},{b,14},{c,8}]
 ```
 """.
--spec merge(Fun, Orddict1, Orddict2) -> Orddict3 when
-      Fun :: fun((Key, Value1, Value2) -> Value),
-      Orddict1 :: orddict(Key, Value1),
-      Orddict2 :: orddict(Key, Value2),
-      Orddict3 :: orddict(Key, Value).
+-spec merge(Fun, Orddict, Orddict) -> Orddict when
+      Fun :: fun((Key, Value, Value) -> Value),
+      Orddict :: orddict(Key, Value).
 
 merge(F, [{K1,_}=E1|D1], [{K2,_}=E2|D2]) when K1 < K2 ->
     [E1|merge(F, D1, [E2|D2])];
