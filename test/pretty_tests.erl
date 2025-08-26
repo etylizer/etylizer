@@ -220,3 +220,11 @@ recursive_2_test() ->
     ?assertEqual("mu $node_1.nil | {alpha, mu $node_1}", pretty:render_ty(B))
   end).
 
+empty_map_test() ->
+  global_state:with_new_state(fun() -> 
+    A = stdtypes:tmap([]),
+    B = id(A),
+    true = subty:is_equivalent(symtab:empty(), A, B),
+    ?assertEqual("#{}", pretty:render_ty(B))
+  end).
+
