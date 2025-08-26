@@ -1045,7 +1045,7 @@ var_test_env(FunExp, X, RestArgs) ->
                             is_pid -> {#{XRef => {predef, pid}}, safe};
                             is_port -> {#{XRef => {predef, port}}, safe};
                             is_reference -> {#{XRef => {predef, reference}}, safe};
-                            is_tuple -> #{XRef => {tuple_any}};
+                            is_tuple -> {#{XRef => {tuple_any}}, safe};
                             _ ->
                                 case string:prefix(atom_to_list(Name), "is_") of
                                     nomatch -> ok;

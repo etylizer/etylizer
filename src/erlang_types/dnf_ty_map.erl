@@ -6,7 +6,7 @@
 -include("dnf/bdd.hrl").
 
 -spec is_empty_line({[T], [T], ?LEAF:type()}, S) -> {boolean(), S} when T :: ?ATOM:type().
-is_empty_line({[], [], _T}, _ST) -> error(todo);
+is_empty_line({[], [], T}, ST) -> ?LEAF:is_empty(T, ST);
 is_empty_line({[], Neg = [_ | _], T}, ST) ->
   % this is the special case on why we can't use is_empty_line of dnf_ty_tuple directly
   % the 'any' representation is different
