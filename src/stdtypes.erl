@@ -257,7 +257,7 @@ expand_predef_alias(iodata) -> {union, [expand_predef_alias(iolist), expand_pred
 expand_predef_alias(iolist) ->
     % TODO fix variable IDs
     RecVarID = erlang:unique_integer(),
-    Var = {var, erlang:list_to_atom("mu" ++ integer_to_list(RecVarID))},
+    Var = {mu_var, erlang:list_to_atom("mu" ++ integer_to_list(RecVarID))},
     RecType = {improper_list, {union, [expand_predef_alias(byte), expand_predef_alias(binary), Var]}, {union, [expand_predef_alias(binary), tempty_list()]}},
     {mu, Var, RecType};
 expand_predef_alias(map) -> {map, [{map_field_opt, {predef, any}, {predef, any}}]};
