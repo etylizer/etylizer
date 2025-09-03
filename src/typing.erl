@@ -1,16 +1,17 @@
+
 -module(typing).
 
 -export([
     check_forms/6,
-    new_ctx/3
+    new_ctx/4
 ]).
 
--include("log.hrl").
 -include("typing.hrl").
+-include("log.hrl").
 
--spec new_ctx(symtab:t(), symtab:t(), t:opt(ast_check:ty_map())) -> ctx().
-new_ctx(Tab, Overlay, Sanity) ->
-    Ctx = #ctx{ symtab = Tab, overlay_symtab = Overlay, sanity = Sanity },
+-spec new_ctx(symtab:t(), symtab:t(), t:opt(ast_check:ty_map()), infer | dynamic) -> ctx().
+new_ctx(Tab, Overlay, Sanity, GradualTypingMode) ->
+    Ctx = #ctx{ symtab = Tab, overlay_symtab = Overlay, sanity = Sanity, gradual_typing_mode = GradualTypingMode },
     Ctx.
 
 % Checks all forms of a module
@@ -76,8 +77,15 @@ check_forms(Ctx, FileName, Forms, Only, Ignore, CheckExports) ->
         false ->
             ?LOG_WARN("Unknown functions in only: ~200p", sets:to_list(Unknowns))
     end,
-    % infer types of functions without spec
-    InferredTyEnvs = typing_infer:infer_all(ExtCtx, FileName, FunsWithoutSpec),
+    % infer types of functions without spec, or assign dynamic type if requested
+    InferredTyEnvs =
+        case Ctx#ctx.gradual_typing_mode of
+            dynamic ->
+                % Assign all untyped functions the type (dynamic(),...,dynamic()) -> dynamic()
+                [typing_utils:make_dynamic_fun_env(FunsWithoutSpec)];
+            infer ->
+                typing_infer:infer_all(ExtCtx, FileName, FunsWithoutSpec)
+        end,
     % Typechecks the functions with a type spec. We need to check against all InferredTyEnvs,
     % we can stop on the first success.
     ?LOG_INFO("Checking ~w functions in ~s against their specs (~w environments)",
@@ -107,7 +115,24 @@ check_forms(Ctx, FileName, Forms, Only, Ignore, CheckExports) ->
                                 errors:ty_error(Msg)
                         end;
                     [E | RestEnvs] ->
-                        case typing_check:check_all(ExtCtx, FileName, E, FunsWithSpec) of
+                        FunsToCheck = 
+                            case Ctx#ctx.gradual_typing_mode of
+                                dynamic -> 
+                                    Test =
+                                    lists:map(
+                                        fun(FunDecl = {function, _, Name, Arity, _}) ->
+                                            Ref = {ref, Name, Arity},
+                                            % We know that Ref is in E, because it was added recently
+                                            {ok, Ty} = maps:find(Ref, E),
+                                            {FunDecl, Ty}
+                                        end,
+                                        FunsWithoutSpec
+                                    ),
+                                    ?LOG_DEBUG("Test funs without spec: ~200p", Test),
+                                    FunsWithSpec ++ Test;
+                                infer -> FunsWithSpec 
+                            end,
+                        case typing_check:check_all(ExtCtx, FileName, E, FunsToCheck) of
                             ok -> ok; % we are done
                             {error, Msg} -> Loop(RestEnvs, [{E, Msg} | Errs])
                         end

@@ -414,7 +414,7 @@ loc_exp(X) -> element(2, X).
 % Predefined types, including any() and none(). It's guaranteed that the predefined type
 % is valid. Predefined types do not include tuples and lists, these types have their
 % own representation.
--type predef_name() :: any | none | pid | port | reference | float | integer | atom.
+-type predef_name() :: any | none | pid | port | reference | float | integer | atom | dynamic.
 -type ty_predef() :: {predef, predef_name()}.
 
 -spec is_predef_name(atom()) -> boolean().
@@ -428,6 +428,7 @@ is_predef_name(N) ->
         float -> true;
         integer -> true;
         atom -> true;
+        dynamic -> true;
         _ -> false
     end.
 
@@ -505,6 +506,7 @@ is_predef_alias_name(N) ->
 -type ty_negation() :: {negation, ty()}.
 
 % We do not have an explicit type for records. We encode them as tuples instead.
+
 -type ty() :: ty_singleton() | ty_bitstring() | ty_some_list()
     | ty_fun() | ty_integer_range() | ty_map_any() | ty_map() | ty_predef() | ty_predef_alias()
     | ty_named() | ty_tuple_any() | ty_tuple() | ty_var() | ty_mu()

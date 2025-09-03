@@ -171,6 +171,7 @@ ty(T) -> ty(1, T).
 -spec ty(integer(), ast:ty()) -> doc().
 ty(Prec, T) ->
     case T of
+        {dynamic} -> text("dynamic()");
         {singleton, A} ->
             case A of
                 _ when is_atom(A) -> atom(A);

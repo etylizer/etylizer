@@ -68,8 +68,10 @@ parse_args(Args) ->
             "Minimal log level (trace2,trace,debug,info,note,warn)"},
          {type_overlay, undefined, "type-overlay", string,
             "Overlays for fun and type specs"},
-         {check_exports, undefined, "check-exports", undefined,
-            "Check that all exported functions have a type spec."}
+        {check_exports, undefined, "check-exports", undefined,
+            "Check that all exported functions have a type spec."},
+        {gradual_typing, undefined, "gradual-typing", string,
+            "Gradual typing mode: 'infer' (default, use type inference for untyped) or 'dynamic' (default all untyped to dynamic)"}
         ],
     Opts = case getopt:parse(OptSpecList, Args) of
         {error, {Reason, Data}} ->
@@ -78,6 +80,12 @@ parse_args(Args) ->
             lists:foldl(
                 fun(O, Opts) ->
                     case O of
+                        {gradual_typing, S} ->
+                            Mode = case string:to_lower(S) of
+                                "dynamic" -> dynamic;
+                                _ -> infer
+                            end,
+                            Opts#opts{gradual_typing_mode = Mode};
                         {log_level, S} ->
                             case log:parse_level(S) of
                                 bad_log_level -> utils:quit(1, "Invalid log level: " ++ S ++ "~n");

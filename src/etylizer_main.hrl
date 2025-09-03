@@ -1,5 +1,6 @@
 -type opts_mode() :: prod_mode | test_mode.
 
+% gradual_typing_mode: 'infer' (default) or 'dynamic' (default all untyped to dynamic)
 -record(opts, {log_level = default :: log:log_level() | default,
                help = false :: boolean(),
                dump_raw = false :: boolean(),
@@ -20,8 +21,8 @@
                load_end = [] :: [string()],
                files = [] :: [string()],
                type_overlay = [] :: string(),
-               mode = prod_mode :: opts_mode() % only used internally
-
+               mode = prod_mode :: opts_mode(), % only used internally
+               gradual_typing_mode = infer :: infer | dynamic
             }).
 
 -type cmd_opts() :: #opts{}.

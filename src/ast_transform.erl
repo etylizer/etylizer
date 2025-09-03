@@ -320,7 +320,7 @@ trans_ty(Ctx, Env, Ty) ->
                                 _ ->
                                     case {Name, NewArgTys} of
                                         {bool, []} -> {predef_alias, boolean};
-                                        {dynamic, []} -> {predef, any}; % FIXME: for now (2023-08-14), we treat dynamic as any. This is wrong and must be fixed
+                                        {dynamic, []} -> {predef, dynamic}; 
                                         _ ->
                                             errors:bug("~s: Unhandled builtin type: ~w",
                                                        [ast:format_loc(Loc), Ty])
