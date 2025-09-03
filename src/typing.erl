@@ -128,7 +128,6 @@ check_forms(Ctx, FileName, Forms, Only, Ignore, CheckExports) ->
                                         end,
                                         FunsWithoutSpec
                                     ),
-                                    ?LOG_DEBUG("Test funs without spec: ~200p", Test),
                                     FunsWithSpec ++ Test;
                                 infer -> FunsWithSpec 
                             end,

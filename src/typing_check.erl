@@ -23,7 +23,6 @@ check_all(Ctx, FileName, Env, Decls) ->
     ?LOG_DEBUG("Environment: ~s", pretty:render_fun_env(Env)),
     ExtSymtab = symtab:extend_symtab_with_fun_env(Env, Ctx#ctx.symtab),
     ExtCtx = Ctx#ctx { symtab = ExtSymtab },
-    ?LOG_DEBUG("Decls: ~200p", Decls),
     try
         lists:foreach(
           fun({Decl, Ty}) -> check(ExtCtx, Decl, Ty) end,
