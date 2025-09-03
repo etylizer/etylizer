@@ -21,37 +21,40 @@
 -type input_constraints() :: [input_constraint()].
 -type tally_solutions() :: [#{variable() => ty:type()}].
 
+-define(Always_Monomorphic, begin ty_variable:new_with_name('⊥') end).
 
 % early return if constraints are found to be satisfiable
 % does not solve the equations
 -spec is_tally_satisfiable(input_constraints(), monomorphic_variables()) -> boolean().
 is_tally_satisfiable(Constraints, MonomorphicVariables) ->
-  % io:format(user,"~n~n=== Step 1: Normalize ~p constraints~n~s~nFixed variables: ~p~n===~n", [length(Constraints), print(Constraints), MonomorphicVariables]),
-  Normalized = ?TIME(tally_sat_normalize, tally_normalize(Constraints, MonomorphicVariables)),
+  MonomorphicVariables2 = MonomorphicVariables#{?Always_Monomorphic => []},
+  % io:format(user,"~n~n=== Step 1: Normalize ~p constraints~n~ts~nFixed variables: ~p~n===~n", [length(Constraints), print(Constraints), MonomorphicVariables]),
+  Normalized = ?TIME(tally_sat_normalize, tally_normalize(Constraints, MonomorphicVariables2)),
 
   % io:format(user,"~n=== Step 2: Saturate~n~p sets of constraint sets~n", [length(Normalized)]),
-  Saturated = ?TIME(tally_sat_saturate, tally_saturate_until_satisfiable(Normalized, MonomorphicVariables)),
+  Saturated = ?TIME(tally_sat_saturate, tally_saturate_until_satisfiable(Normalized, MonomorphicVariables2)),
 
   % sanity against full tally calculation
-  ?SANITY(tally_satisfiable_sound, case {tally_saturate(Normalized, MonomorphicVariables), Saturated} of {[], false} -> ok; {[_ | _], true} -> ok end),
+  ?SANITY(tally_satisfiable_sound, case {tally_saturate(Normalized, MonomorphicVariables2), Saturated} of {[], false} -> ok; {[_ | _], true} -> ok end),
    
   Saturated.
 
 -spec tally(input_constraints()) -> {error, []} | tally_solutions().
-tally(Constraints) -> tally(Constraints, #{}).
+tally(Constraints) -> tally(Constraints, #{?Always_Monomorphic => []}).
 
 -spec tally(input_constraints(), monomorphic_variables()) -> {error, []} | tally_solutions().
 tally(Constraints, MonomorphicVariables) ->
-  % io:format(user,"~n~n=== Step 1: Normalize ~p constraints~n~s~nFixed variables: ~p~n===~n", [length(Constraints), print(Constraints), MonomorphicVariables]),
-  Normalized = ?TIME(tally_normalize, tally_normalize(Constraints, MonomorphicVariables)),
-  % io:format(user,"~n~n=== Step 2: Saturate ~p sets~n~s~nFixed variables: ~p~n===~n", [length(Constraints), print(Normalized), MonomorphicVariables]),
-  Saturated = ?TIME(tally_saturate, tally_saturate(Normalized, MonomorphicVariables)),
-  % io:format(user,"~n~n=== Step 3: Solve ~p sets~n~s~nFixed variables: ~p~n===~n", [length(Constraints), print(Saturated), MonomorphicVariables]),
-  Solved = ?TIME(tally_solve, tally_solve(Saturated, MonomorphicVariables)),
+  MonomorphicVariables2 = MonomorphicVariables#{?Always_Monomorphic => []},
+  % io:format(user,"~n~n=== Step 1: Normalize ~p constraints~n~ts~nFixed variables: ~p~n===~n", [length(Constraints), print(Constraints), MonomorphicVariables]),
+  Normalized = ?TIME(tally_normalize, tally_normalize(Constraints, MonomorphicVariables2)),
+  % io:format(user,"~n~n=== Step 2: Saturate ~p sets~n~ts~nFixed variables: ~p~n===~n", [length(Constraints), print(Normalized), MonomorphicVariables]),
+  Saturated = ?TIME(tally_saturate, tally_saturate(Normalized, MonomorphicVariables2)),
+  % io:format(user,"~n~n=== Step 3: Solve ~p sets~n~ts~nFixed variables: ~p~n===~n", [length(Constraints), print(Saturated), MonomorphicVariables]),
+  Solved = ?TIME(tally_solve, tally_solve(Saturated, MonomorphicVariables2)),
   % io:format(user,"~n~n=== Step 4: Solved~n~p~n===~n", [Solved]),
 
   % sanity: every substitution satisfies all given constraints (by polymorphic subtyping), if no error
-  ?SANITY(substitutions_solve_input_constraints, case Solved of {error, _} -> ok; _ -> [ true = is_valid_substitution(Constraints, Subst, MonomorphicVariables) || Subst <- Solved] end),
+  ?SANITY(substitutions_solve_input_constraints, case Solved of {error, _} -> ok; _ -> [ true = is_valid_substitution(Constraints, Subst, MonomorphicVariables2) || Subst <- Solved] end),
  
   Solved.
 
@@ -150,9 +153,9 @@ apply_substitution(Ty, Substitutions) ->
   lists:foldl(SubstFun, Ty, Substitutions).
 
 % print([]) -> "";
-% print([X | Xs]) when is_list(X) -> 
-%   io_lib:format(">>~n~s~n~s", [print(X), print(Xs)]);
-% print([{{var, name, Name}, Left, Right} | Rest]) -> 
-%   io_lib:format("~s <: ~p <: ~s~n~s", [pretty:render_ty(ty_parser:unparse(Left)), Name, pretty:render_ty(ty_parser:unparse(Right)), print(Rest)]);
-% print([{Left, Right} | Rest]) -> 
-%   io_lib:format("~s <: ~s~n~s", [pretty:render_ty(ty_parser:unparse(Left)), pretty:render_ty(ty_parser:unparse(Right)), print(Rest)]).
+% print([X | Xs]) when is_list(X) ->
+%   io_lib:format(">>~n~ts~n~ts", [print(X), print(Xs)]);
+% print([{{var, name, Name}, Left, Right} | Rest]) ->
+%   io_lib:format("~ts <: ~p <: ~ts~n~ts", [pretty:render_ty(ty_parser:unparse(Left)), Name, pretty:render_ty(ty_parser:unparse(Right)), print(Rest)]);
+% print([{Left, Right} | Rest]) ->
+%   io_lib:format("~ts <: ~ts~n~ts", [pretty:render_ty(ty_parser:unparse(Left)), pretty:render_ty(ty_parser:unparse(Right)), print(Rest)]).

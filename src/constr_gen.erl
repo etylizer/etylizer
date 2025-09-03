@@ -718,21 +718,19 @@ ty_of_pat(Symtab, Env, P, Mode) ->
             Any = stdtypes:tany(),
             stdtypes:tmap(Any, Any);
         {map, _L, Assocs} ->
-            {KeyTs, ValTs} =
+            {KeyValTs, _KeyTs} =
                 lists:foldl(
-                    fun({map_field_req, _, KeyP, ValP}, {KeyTs, ValTs}) ->
+                    fun({map_field_req, _, KeyP, ValP}, {KeyValTs, KeyTs}) ->
                         K = ty_of_pat(Symtab, Env, KeyP, Mode),
                         V = ty_of_pat(Symtab, Env, ValP, Mode),
-                        {[K | KeyTs], [V | ValTs]}
+                        {[{K, V} || KeyValTs], [K | KeyTs]}
                     end,
                     {[], []},
                     Assocs),
-            F =
-                case Mode of
-                    upper -> fun ast_lib:mk_union/1;
-                    lower -> fun ast_lib:mk_intersection/1
-                end,
-            stdtypes:tmap_req(F(KeyTs), F(ValTs));
+%%            RestKeyVal = {stdtypes:tnegate(ast_lib:mk_union(KeyTs)), stdtypes:any()},
+            TMap = stdtypes:tmap([stdtypes:tmap_field_opt(K, V) || {K, V} <- KeyValTs]),
+            TMapEmpty = stdtypes:tmap([stdtypes:tmap_field_opt(stdtypes:any(), stdtypes:empty())]),
+            ast_lib:mk_diff(TMap, TMapEmpty);
         {record, L, RecName, FieldPats} ->
             {_, RecFields} = symtab:lookup_record(RecName, L, Symtab),
             FieldMap =

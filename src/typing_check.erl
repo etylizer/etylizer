@@ -37,7 +37,7 @@ check_all(Ctx, FileName, Env, Decls) ->
 
 % Ensures that a mono type used as a spec is supported. Throws a ty_error if not.
 -spec ensure_type_supported(ast:loc(), ast:ty()) -> ok.
-ensure_type_supported(Loc, T) ->
+ensure_type_supported(_Loc, T) ->
     utils:everywhere(
         fun(InnerT) ->
             % The return value error means: check recursively, no error here
@@ -45,9 +45,11 @@ ensure_type_supported(Loc, T) ->
                 {map, []} -> error;
                 {map, [{map_field_opt, _, _}]} -> error;
                 {map, [{map_field_req, _, _}]} ->
-                    errors:ty_error(Loc, "map types with mandatory associations are not supported");
+                    % errors:ty_error(Loc, "map types with mandatory associations are not supported");
+                    error;
                 {map, _} ->
-                    errors:ty_error(Loc, "map types with more than one association are not supported");
+                    % errors:ty_error(Loc, "map types with more than one association are not supported");
+                    error;
                 _ -> error
             end
         end,

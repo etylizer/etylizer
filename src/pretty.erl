@@ -211,7 +211,7 @@ ty(Prec, T) ->
         {range, I, J} ->
             text(utils:sformat("~w..~w", I, J));
         {map_any} ->
-            text("#{}");
+            text("map()");
         {map, Assocs} ->
             AssocsP =
                 lists:map(

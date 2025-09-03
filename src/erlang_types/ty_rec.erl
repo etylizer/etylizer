@@ -27,7 +27,6 @@
   bitstring/1,
   map/1,
 
-  tuple_to_map/1,
   is_literal_empty/1
 ]).
 
@@ -194,13 +193,6 @@ bitstring(A) -> (empty0())#ty{dnf_ty_bitstring = A}.
 -spec map(dnf_ty_map:type()) -> type().
 map(A) -> (empty0())#ty{dnf_ty_map = A}.
 
-% Converter used by ty_parser
-% to convert from a map encoded in the 2-arity tuple part to the map part
--spec tuple_to_map(type()) -> type().
-tuple_to_map(#ty{ty_tuples = {_, #{2 := TupleDnf}}}) ->
-  [{[T], [], _}] = dnf_ty_tuple:dnf(TupleDnf),
-  DnfMap = dnf_ty_map:singleton(T),
-  map(DnfMap).
 
 -spec all_variables(type(), all_variables_cache()) -> sets:set(variable()).
 all_variables(any, _Cache) -> sets:new();

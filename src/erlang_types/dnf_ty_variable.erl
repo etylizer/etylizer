@@ -12,10 +12,6 @@
   map/1
 ]).
 
--export([
-  tuple_to_map/1
-]).
-
 -define(ATOM, ty_variable).
 -define(LEAF, ty_rec).
 
@@ -40,8 +36,6 @@ bitstring(Dnf) -> leaf(ty_rec:bitstring(Dnf)).
 map(Dnf) -> leaf(ty_rec:map(Dnf)).
 
 % encoded map has to be a leaf during parsing
--spec tuple_to_map(leaf()) -> leaf().
-tuple_to_map({leaf, Internal}) -> {leaf, ty_rec:tuple_to_map(Internal)}.
 
 % =============
 % Subtyping

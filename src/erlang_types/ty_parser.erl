@@ -549,26 +549,6 @@ do_convert({{list, Ty}, R}, Q, Cache) ->
     {empty_list}
   ]}, R}, Q, Cache);
 
-% rewrite maps into {Tuple, Function} tuples
-do_convert({{map, AssocList}, R}, Q, Cache) ->
-  {_, TupPart, FunPart} = lists:foldl(
-    fun({Association, Key, Val}, {PrecedenceDomain, Tuples, Functions}) ->
-      case Association of
-        map_field_opt ->
-          % tuples only
-          Tup = {tuple, [{intersection, [Key, {negation, PrecedenceDomain}]}, Val]},
-          {{union, [PrecedenceDomain, Key]}, {union, [Tuples, Tup]}, Functions};
-        map_field_req ->
-          % tuples & functions
-          Tup = {tuple, [{intersection, [Key, {negation, PrecedenceDomain}]}, Val]},
-          Fun = {fun_full, [{intersection, [Key, {negation, PrecedenceDomain}]}], Val},
-          {{union, [PrecedenceDomain, Key]}, {union, [Tuples, Tup]}, {intersection, [Functions, Fun]}}
-      end
-    end, {{predef, none}, {predef, none}, {fun_simple}}, AssocList),
-  MapTuple = {tuple, [TupPart, FunPart]},
-  {Recc, Q0, R0, C0} = do_convert({MapTuple, R}, Q, Cache),
-  {?TY:tuple_to_map(Recc), Q0, R0, C0};
-
 % === nested data structures 
 % === these can potentially create temporary references and can extend the queue
  
@@ -603,7 +583,29 @@ do_convert({{improper_list, A, B}, R}, Q, Cache) ->
     
   {?TY:list(dnf_ty_list:singleton(ty_list:list([T1, T2]))), Q1, R, Cache};
 
-% maps 
+% maps
+do_convert({{map, []}, R}, Q, Cache) -> do_convert({{map, [{map_field_opt, {predef, any}, {predef, none}}]}, R}, Q, Cache);
+do_convert({{map, AssocList}, R}, Q, Cache) ->
+  % 1. Add _ => none association
+  Keys = [Key || {_, Key, _} <- AssocList],
+  Rest = ast_lib:mk_negation(ast_lib:mk_union(Keys)),
+  AssocList2 = [{map_field_opt, Rest, {predef, none}} | AssocList],
+  % 2. Each k := v becomes k := v\⊥ and each k => v becomes k => v U ⊥
+  TyVarBot = {var, '⊥'}, % denotes non-existence
+  AssocListRaw = lists:map(fun({map_field_req, Key, Val}) -> {Key, ast_lib:mk_intersection([Val, ast_lib:mk_negation(TyVarBot)])};
+                              ({map_field_opt, Key, Val}) -> {Key, ast_lib:mk_union([Val, TyVarBot])}
+                           end, AssocList2),
+  % 3. convert
+  {ParsedFields, Q0} = lists:foldr(
+    fun({Key, Val}, {Fields, OldQ}) ->
+      {KeyIdOrNode, QQ} = queue_if_new(Key, OldQ),
+      {ValIdOrNode, QQQ} = queue_if_new(Val, QQ),
+      Field = {KeyIdOrNode, ValIdOrNode},
+      {[Field | Fields], QQQ}
+    end, {[], Q}, AssocListRaw),
+
+  T = dnf_ty_map:singleton(ty_map:map(ParsedFields)),
+  {?TY:map(T), Q0, R, Cache};
 
 do_convert(T, _Q, _) ->
   % io:format(user,"~p~n", [T]),
