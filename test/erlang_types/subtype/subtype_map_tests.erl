@@ -8,6 +8,8 @@
 % =====
 
 maps_any_empty_test() ->
+  % none()
+  RealEmpty = tnone(),
   % #{}
   Empty = tmap([]),
   % map()
@@ -16,6 +18,7 @@ maps_any_empty_test() ->
   Any2 = tmap([tmap_field_opt(tany(), tany())]),
   Any3 = i([Any1, Any2]),
 
+  false = is_subtype(Empty, RealEmpty),
   true = is_subtype(Empty, Any1),
   true = is_equiv(Any1, Any2),
   true = is_equiv(Any2, Any3),

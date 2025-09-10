@@ -196,6 +196,8 @@ exp_constrs(Ctx, E, T) ->
             errors:unsupported(L, "list comprehension: ~200p", [E]);
         {mc, L, _E, _Qs} ->
             errors:unsupported(L, "map comprehension: ~200p", [E]);
+        {map_create, L, []} ->
+            utils:single({csubty, mk_locs("empty map", L), {map, []}, T});
         {map_create, L, Assocs} ->
             KeyAlpha = fresh_tyvar(Ctx),
             ValAlpha = fresh_tyvar(Ctx),

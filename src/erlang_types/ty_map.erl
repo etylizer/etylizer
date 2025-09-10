@@ -28,7 +28,9 @@ unparse({ty_tuple, 2, [TupPart, FunPart]}, ST0) ->
   % the map representation depends on a synactical representation of tuples and functions
   % but unparsing returns a semantical unparsed representation with simplifications
   % manually unfold the type and hope for the best
-  {leaf, TyTupPart} = ty_node:load(TupPart),
+  {leaf, TyTupPart0} = ty_node:load(TupPart),
+  % remove the part that makes the tuple part always non-empty
+  TyTupPart = ty_rec:difference(TyTupPart0, ty_rec:atom(dnf_ty_atom:finite(['empty_map']))),
   {MandatoryAndOptional, ST1} = case TyTupPart of
     empty -> {{predef, none}, ST0};
     _ -> 

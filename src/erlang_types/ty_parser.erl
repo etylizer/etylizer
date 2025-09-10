@@ -564,7 +564,12 @@ do_convert({{map, AssocList}, R}, Q, Cache) ->
           Fun = {fun_full, [{intersection, [Key, {negation, PrecedenceDomain}]}], Val},
           {{union, [PrecedenceDomain, Key]}, {union, [Tuples, Tup]}, {intersection, [Functions, Fun]}}
       end
-    end, {{predef, none}, {predef, none}, {fun_simple}}, AssocList),
+    end, 
+    % a map type is never empty
+    % contrary to tuples, we can construct an empty map value: #{}
+    % since empty tuples are the empty type, we add an atom 'empty_map' to the tuple part
+    % so that the encoding is never empty
+    {{predef, none}, {singleton, empty_map}, {fun_simple}}, AssocList), 
   MapTuple = {tuple, [TupPart, FunPart]},
   {Recc, Q0, R0, C0} = do_convert({MapTuple, R}, Q, Cache),
   {?TY:tuple_to_map(Recc), Q0, R0, C0};
