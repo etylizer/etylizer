@@ -140,7 +140,7 @@ empty() -> #tab { funs = #{}, ops = #{}, types = #{}, records = #{}, modules = #
 
 -spec std_symtab(paths:search_path(), t()) -> t().
 std_symtab(SearchPath, OverlaySymtab) ->
-    ?LOG_NOTE("Building symtab for standard library ..."),
+    ?LOG_DEBUG("Building symtab for standard library ..."),
     Funs =
         lists:foldl(fun({Name, Arity, T}, Map) ->
             maps:put({qref, erlang, Name, Arity}, T, Map) end,
@@ -152,12 +152,12 @@ std_symtab(SearchPath, OverlaySymtab) ->
                     stdtypes:builtin_ops()),
     Tab = #tab { funs = Funs, ops = Ops, types = #{}, records = #{}, modules = #{} },
     ExtTab = extend_symtab_with_module_list(Tab, SearchPath, [erlang], OverlaySymtab),
-    ?LOG_NOTE("Done building symtab for standard library"),
+    ?LOG_DEBUG("Done building symtab for standard library"),
     ExtTab.
 
 -spec overlay_symtab([ast:form()]) -> t().
 overlay_symtab(OverlayForms) ->
-    ?LOG_NOTE("Building symtab for overlay file ..."),
+    ?LOG_DEBUG("Building symtab for overlay file ..."),
     lists:foldl(fun(Form, Tab) ->
         case Form of
             {attribute, _, spec, Name, Arity, T, _} ->

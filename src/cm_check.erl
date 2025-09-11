@@ -39,9 +39,9 @@ perform_type_checks(SearchPath, SourceList, DepGraph, Opts) ->
                 create_check_list(SourceList, NewIndex1, DepGraph)
         end,
     case CheckList of
-        [] -> ?LOG_NOTE("Need to check 0 of ~p files", length(CheckList));
+        [] -> ?LOG_INFO("Need to check 0 of ~p files", length(CheckList));
         _ ->
-            ?LOG_NOTE("Need to check ~p of ~p files: ~p",
+            ?LOG_INFO("Need to check ~p of ~p files: ~p",
                 length(CheckList), length(SourceList), CheckList)
     end,
     OverlaySymtab = overlay_symtab(Opts),
@@ -128,10 +128,10 @@ perform_sanity_check(CurrentFile, Forms, DoCheck) ->
 overlay_symtab(Opts) ->
     OverlayForms = case Opts#opts.type_overlay of
         [] ->
-            ?LOG_NOTE("Not using any overlays"),
+            ?LOG_INFO("Not using any overlays"),
             [];
         OverlayFile ->
-            ?LOG_NOTE("Using overlays from ~s", OverlayFile),
+            ?LOG_INFO("Using overlays from ~s", OverlayFile),
             parse_cache:parse(intern, OverlayFile)
     end,
     symtab:overlay_symtab(OverlayForms).

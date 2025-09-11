@@ -10,3 +10,14 @@ Document all changes necessary to get the source code working
 - Logging: two parameters instead of all in one list. See commit ff9c856c8db724682237c4f99265d3f21f7eee37
 - Replace list comprehension with lists:map
 - removed reference for self module 
+- need to add guards when using utils:everywhere to refine a variable type (ast_utils)
+- A = B = C not supported yet
+- need to define all record fields (stdtypes.erl)
+- trans_fun_clause, trans_if_clause, trans_record_field has redundant branch
+- src/ast_lib mk_union mk_intersection branch removed
+- records.erl branch does not match, removed
+- fixed utils:quit specs
+- varenv added instantiation of empty varenv
+- build_funenv needs held with type guards, needs varenv instantiation
+- removed diff_terms/3, unused and buggy
+- mk_builtin_funs needs additional is_list guard and needs precise filtermap spec

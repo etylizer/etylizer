@@ -4,6 +4,7 @@
 % The env is used for type variables and global functions.
 
 -export([empty/1,
+         empty_fun/0,
          insert/4,
          insert_if_absent/3,
          lookup/3,
@@ -23,6 +24,10 @@
 % Constructs a new, empty varenv.
 -spec empty(string()) -> t(_K, _V).
 empty(What) -> {What, #{}}.
+
+-type funenv() :: t({atom(), arity()}, intern | {extern, ModName::atom()}).
+-spec empty_fun() -> funenv().
+empty_fun() -> {"function", #{}}.
 
 % Inserts a new binding, an error is thrown if there already exists a binding.
 -spec insert(ast:loc(), K, V, t(K, V)) -> t(K, V).

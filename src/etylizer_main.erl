@@ -173,7 +173,7 @@ doWork(Opts) ->
                       ?LOG_DEBUG("Reverse dependency graph: ~p", cm_depgraph:pretty_depgraph(G)),
                       G
               end,
-          ?LOG_NOTE("Performing type checking"),
+          ?LOG_INFO("Performing type checking"),
           cm_check:perform_type_checks(SearchPath, cm_depgraph:all_sources(DepGraph), DepGraph, Opts)
       after
           parse_cache:cleanup(),

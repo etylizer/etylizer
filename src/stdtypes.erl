@@ -7,7 +7,8 @@
 -export([
     tspecial_any/0,
     tempty_list/0,
-    tint/0, tint/1,
+    tint/0, tint/1, 
+    tnon_neg_int/0,
     tbitstring/0,
     tlist_any/0,
     tlist_improper/2,
@@ -93,6 +94,9 @@ tatom(A) -> {singleton, A}.
 
 -spec tint() -> ast:ty().
 tint() -> {predef, integer}.
+
+-spec tnon_neg_int() -> ast:ty().
+tnon_neg_int() -> {predef_alias, non_neg_integer}.
 
 -spec tbitstring() -> ast:ty().
 tbitstring() -> {bitstring}.
@@ -307,6 +311,7 @@ builtin_ops() ->
         tfun([tint()], tint()),
         tfun([tfloat()], tfloat())
     ])),
+    DivOpTy = tyscm(tinter([tfun([tint(), tint()], tint()), tfun([tnon_neg_int(), tnon_neg_int()], tnon_neg_int())])),
     IntOpTy = tyscm(tfun([tint(), tint()], tint())),
     BoolOpTy = tyscm(tfun([tbool(), tbool()], tbool())),
     AndShortcutOpTy = tyscm(tinter([tfun([tatom(false), tany()], tatom(false)), tfun([tatom(true), tvar(a)], tvar(a))])),
@@ -322,7 +327,7 @@ builtin_ops() ->
             tfun([tint(), tfloat()], tfloat()),
             tfun([tfloat(), tint()], tfloat()),
             tfun([tfloat(), tfloat()], tfloat())]))},
-        {'div', 2, IntOpTy},
+        {'div', 2, DivOpTy},
         {'rem', 2, IntOpTy},
         {'band', 2, IntOpTy},
         {'bor', 2, IntOpTy},
