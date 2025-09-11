@@ -184,8 +184,10 @@ ty(Prec, T) ->
         %     text(utils:sformat("<<_:~w, _:_*~w>>", I, J));
         {empty_list} ->
             text("[]");
+        {cons, A, B} ->
+            beside(text("["), ty(A), text(" @ "), ty(B), text("]"));
         {list, U} ->
-            beside(text("["), ty(U), text("]"));
+            beside(text("list("), ty(U), text(")"));
         {nonempty_list, U} ->
             beside(text("nonempty_list"), parens(ty(U)));
         {improper_list, U, V} ->

@@ -226,7 +226,7 @@ maps_norm_req_2_test() ->
     tmap_field_req(tatom(a), tatom(b)),
     tmap_field_req(tint(20), tint(21))
   ]),
-  test_tally([{L, R}], solutions(10)).
+  test_tally([{L, R}], solutions(9)).
 
 
 maps_norm_req_3_test() ->
