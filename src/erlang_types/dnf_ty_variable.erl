@@ -13,27 +13,27 @@
 ]).
 
 -define(ATOM, ty_variable).
--define(LEAF, ty_rec).
+-define(LEAF, ty_unique).
 
 -include("dnf/bdd.hrl").
 
 % helper constructors (used by ty_parser)
 -spec atom(dnf_ty_atom:type()) -> bdd().
-atom(DnfTyAtom) -> leaf(ty_rec:atom(DnfTyAtom)).
+atom(DnfTyAtom) -> leaf(?LEAF:atom(DnfTyAtom)).
 -spec interval(dnf_ty_interval:type()) -> bdd().
-interval(DnfTyInterval) -> leaf(ty_rec:interval(DnfTyInterval)).
+interval(DnfTyInterval) -> leaf(?LEAF:interval(DnfTyInterval)).
 -spec functions(ty_functions:type()) -> bdd().
-functions(DnfTyFunctions) -> leaf(ty_rec:functions(DnfTyFunctions)).
+functions(DnfTyFunctions) -> leaf(?LEAF:functions(DnfTyFunctions)).
 -spec tuples(ty_tuples:type()) -> bdd().
-tuples(DnfTyTuples) -> leaf(ty_rec:tuples(DnfTyTuples)).
+tuples(DnfTyTuples) -> leaf(?LEAF:tuples(DnfTyTuples)).
 -spec list(dnf_ty_list:type()) -> bdd().
-list(DnfTyList) -> leaf(ty_rec:list(DnfTyList)).
+list(DnfTyList) -> leaf(?LEAF:list(DnfTyList)).
 -spec predefined(dnf_ty_predefined:type()) -> bdd().
-predefined(DnfTyPredef) -> leaf(ty_rec:predefined(DnfTyPredef)).
+predefined(DnfTyPredef) -> leaf(?LEAF:predefined(DnfTyPredef)).
 -spec bitstring(dnf_ty_bitstring:type()) -> bdd().
-bitstring(Dnf) -> leaf(ty_rec:bitstring(Dnf)).
+bitstring(Dnf) -> leaf(?LEAF:bitstring(Dnf)).
 -spec map(dnf_ty_map:type()) -> bdd().
-map(Dnf) -> leaf(ty_rec:map(Dnf)).
+map(Dnf) -> leaf(?LEAF:map(Dnf)).
 
 % encoded map has to be a leaf during parsing
 
@@ -57,7 +57,7 @@ is_empty_line({AllPos, Neg, T}, ST) ->
 % (NTLV rule)
 -spec normalize_line({[T], [T], ?LEAF:type()}, monomorphic_variables(), S) -> {set_of_constraint_sets(), S} when T :: ?ATOM:type().
 normalize_line({[], [], TyRec}, Fixed, ST) ->
-  ty_rec:normalize(TyRec, Fixed, ST);
+  ?LEAF:normalize(TyRec, Fixed, ST);
 normalize_line({PVar, NVar, TyRec}, Fixed, ST) ->
   SmallestVar = smallest(PVar, NVar, Fixed),
   %io:format(user, "Got smallest var ~p~n", [SmallestVar]),
@@ -72,7 +72,7 @@ normalize_line({PVar, NVar, TyRec}, Fixed, ST) ->
       {[[{Var, ty_node:make(Singled), ty_node:any()}]], ST};
     {{{delta, _}, _}, _} ->
       % part 1 paper Lemma C.3 and C.11 all fixed variables can be eliminated
-      ty_rec:normalize(TyRec, Fixed, ST)
+      ?LEAF:normalize(TyRec, Fixed, ST)
   end.
 
 % assumption: PVars U NVars is not empty
@@ -116,5 +116,5 @@ single(Pol, VPos, VNeg, Ty) ->
 all_variables_line(P, N, Leaf, Cache) ->
   sets:union([sets:from_list(P),
               sets:from_list(N),
-              ty_rec:all_variables(Leaf, Cache)
+              ?LEAF:all_variables(Leaf, Cache)
              ]).
