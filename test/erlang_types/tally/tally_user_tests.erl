@@ -53,3 +53,21 @@ issue_226_test() ->
     Sym
   ).
   
+list_cons_infer_test() ->
+  test_tally(
+    [ 
+     {tcons(tany(), b(foo)), v(a1)},
+     {tany(), v(a2)}
+    ],
+    solutions(1)
+  ).
+  
+tuple_cons_infer_test() ->
+  test_tally(
+    [ 
+     {ttuple([tany(), b(foo)]), v(a1)},
+     {tany(), v(a2)}
+    ],
+    solutions(1)
+  ).
+  

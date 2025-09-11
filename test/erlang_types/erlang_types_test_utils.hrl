@@ -30,6 +30,7 @@ tbool() -> u(b(true), b(false)).
 tnone() -> {predef, none}.
 tany() -> {predef, any}.
 tempty_list() -> {empty_list}.
+tcons(A, B) -> {cons, A, B}.
 tlist(T) -> {list, T}.
 timproper_list(H, T) -> {improper_list, H, T}.
 tnonempty_list(T) -> {nonempty_list, T}.

@@ -396,10 +396,11 @@ loc_exp(X) -> element(2, X).
 
 -type ty_empty_list() :: {empty_list}.
 -type ty_list() :: {list, ty()}.
+-type ty_cons() :: {cons, ty(), ty()}. % fine-grained type for [_ | _]
 -type ty_nonempty_list() :: {nonempty_list, ty()}.
 -type ty_improper_list() :: {improper_list, ty(), ty()}.
 -type ty_nonempty_improper_list() :: {nonempty_improper_list, ty(), ty()}.
--type ty_some_list() :: ty_empty_list() | ty_list() | ty_nonempty_list() | ty_improper_list()
+-type ty_some_list() :: ty_empty_list() | ty_cons() | ty_list() | ty_nonempty_list() | ty_improper_list()
                       | ty_nonempty_improper_list().
 
 -type ty_simple_fun() :: {fun_simple}. % fun(): we just know it's a function
