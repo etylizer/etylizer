@@ -34,6 +34,10 @@ tuple_05_fail(X) ->
 tuple_06(X, X) -> ok;
 tuple_06(_, _) -> nok.
 
+% #260
+-spec tuple_07(tuple()) -> ok.
+tuple_07(T) when is_tuple(T) -> ok.
+
 -type tlist(E) :: nil | {E, tlist(E)}.
 -type tnonempty_list(E) :: {E, tlist(E)}.
 -spec list_as_tuple_01_fail(tnonempty_list(integer())) -> integer().
