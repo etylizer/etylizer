@@ -12,30 +12,33 @@
   map/1
 ]).
 
+-export([unique/1]).
+
 -define(ATOM, ty_variable).
--define(LEAF, ty_unique).
+-define(LEAF, ty_unit).
 
 -include("dnf/bdd.hrl").
 
 % helper constructors (used by ty_parser)
 -spec atom(dnf_ty_atom:type()) -> bdd().
-atom(DnfTyAtom) -> leaf(?LEAF:atom(DnfTyAtom)).
+atom(DnfTyAtom) -> leaf(?LEAF:unit(ty_rec:atom(DnfTyAtom))).
 -spec interval(dnf_ty_interval:type()) -> bdd().
-interval(DnfTyInterval) -> leaf(?LEAF:interval(DnfTyInterval)).
+interval(DnfTyInterval) -> leaf(?LEAF:unit(ty_rec:interval(DnfTyInterval))).
 -spec functions(ty_functions:type()) -> bdd().
-functions(DnfTyFunctions) -> leaf(?LEAF:functions(DnfTyFunctions)).
+functions(DnfTyFunctions) -> leaf(?LEAF:unit(ty_rec:functions(DnfTyFunctions))).
 -spec tuples(ty_tuples:type()) -> bdd().
-tuples(DnfTyTuples) -> leaf(?LEAF:tuples(DnfTyTuples)).
+tuples(DnfTyTuples) -> leaf(?LEAF:unit(ty_rec:tuples(DnfTyTuples))).
 -spec list(dnf_ty_list:type()) -> bdd().
-list(DnfTyList) -> leaf(?LEAF:list(DnfTyList)).
+list(DnfTyList) -> leaf(?LEAF:unit(ty_rec:list(DnfTyList))).
 -spec predefined(dnf_ty_predefined:type()) -> bdd().
-predefined(DnfTyPredef) -> leaf(?LEAF:predefined(DnfTyPredef)).
+predefined(DnfTyPredef) -> leaf(?LEAF:unit(ty_rec:predefined(DnfTyPredef))).
 -spec bitstring(dnf_ty_bitstring:type()) -> bdd().
-bitstring(Dnf) -> leaf(?LEAF:bitstring(Dnf)).
+bitstring(Dnf) -> leaf(?LEAF:unit(ty_rec:bitstring(Dnf))).
 -spec map(dnf_ty_map:type()) -> bdd().
-map(Dnf) -> leaf(?LEAF:map(Dnf)).
+map(Dnf) -> leaf(?LEAF:unit(ty_rec:map(Dnf))).
 
-% encoded map has to be a leaf during parsing
+-spec unique(?ATOM:type()) -> bdd().
+unique(TyVar) -> leaf(?LEAF:unit(TyVar, ty_rec:any())).
 
 % =============
 % Subtyping
@@ -56,23 +59,23 @@ is_empty_line({AllPos, Neg, T}, ST) ->
 
 % (NTLV rule)
 -spec normalize_line({[T], [T], ?LEAF:type()}, monomorphic_variables(), S) -> {set_of_constraint_sets(), S} when T :: ?ATOM:type().
-normalize_line({[], [], TyRec}, Fixed, ST) ->
-  ?LEAF:normalize(TyRec, Fixed, ST);
-normalize_line({PVar, NVar, TyRec}, Fixed, ST) ->
+normalize_line({[], [], TyUnit}, Fixed, ST) ->
+  ?LEAF:normalize(TyUnit, Fixed, ST);
+normalize_line({PVar, NVar, TyUnit}, Fixed, ST) ->
   SmallestVar = smallest(PVar, NVar, Fixed),
   %io:format(user, "Got smallest var ~p~n", [SmallestVar]),
   case SmallestVar of
     {{pos, Var}, _Others} ->
-      Singled = single(true, PVar -- [Var], NVar, TyRec ),
+      Singled = single(true, PVar -- [Var], NVar, TyUnit),
       %io:format(user, "Singled ~p~n", [Singled]),
       {[[{Var, ty_node:empty(), ty_node:make(Singled)}]], ST};
     {{neg, Var}, _Others} ->
-      Singled = single(false, PVar, NVar -- [Var], TyRec),
+      Singled = single(false, PVar, NVar -- [Var], TyUnit),
       %io:format(user, "Singled ~p~n", [Singled]),
       {[[{Var, ty_node:make(Singled), ty_node:any()}]], ST};
     {{{delta, _}, _}, _} ->
       % part 1 paper Lemma C.3 and C.11 all fixed variables can be eliminated
-      ?LEAF:normalize(TyRec, Fixed, ST)
+      ?LEAF:normalize(TyUnit, Fixed, ST)
   end.
 
 % assumption: PVars U NVars is not empty
@@ -95,11 +98,11 @@ smallest(PositiveVariables, NegativeVariables, FixedVariables) ->
   {X, Z}.
 
 -spec single(boolean(), [T], [T], ?LEAF:type()) -> bdd().
-single(Pol, VPos, VNeg, Ty) ->
-  AccP = lists:foldl(fun(Var, TTy) -> 
+single(Pol, VPos, VNeg, TyUnit) ->
+  AccP = lists:foldl(fun(Var, Unit) ->
     VVar = dnf_ty_variable:singleton(Var),
-    intersect(TTy, VVar) 
-  end, leaf(Ty), VPos),
+    intersect(Unit, VVar)
+  end, leaf(TyUnit), VPos),
 
   AccN = lists:foldl(fun(Var, TTy) -> 
     VVar = dnf_ty_variable:singleton(Var),

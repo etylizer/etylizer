@@ -50,6 +50,7 @@
 -define(ALL_ETS, [?CACHE, ?SYMTAB, ?TERMREFS, ?UNIFY, ?UNPARSE_CACHE, ?UNPARSE_NAMED_QUEUE, ?UNPARSE_NAMED_FINISHED, ?UNPARSE_NAMED_MAPPING, ?LOCAL_TO_NODE_MAPPING]).
 
 -define(TY, dnf_ty_variable).
+-define(UNIT, ty_unit).
 -define(NODE, ty_node).
 
 -type temporary_ref() :: {local_ref, integer()}. % type references created for the queue
@@ -526,15 +527,24 @@ do_convert({{negation, Ty}, R}, Q, Cache) ->
 
 % variables
 do_convert({{var, A}, R}, Q, Cache) ->
-  % if this is a special $ety_integer()_name() variable, convert to that representation
-  case string:prefix(atom_to_list(A), "$ety_") of 
-    nomatch -> 
-      {?TY:singleton(ty_variable:new_with_name(A)), Q, R, Cache};
-    IdName -> 
+  % if special $ety_unique_integer()_name() variable
+  case string:prefix(atom_to_list(A), "$ety_unique_") of
+    nomatch ->
+      % if this is a special $ety_integer()_name() variable, convert to that representation
+      case string:prefix(atom_to_list(A), "$ety_") of
+        nomatch ->
+          {?TY:singleton(ty_variable:new_with_name(A)), Q, R, Cache};
+        IdName ->
+          % TODO test case for this branch
+          % assumption: erlang types generates variables only in this pattern: $ety_integer()_name()
+          [Id, Name] = string:split(IdName, "_"),
+          {?TY:singleton(ty_variable:with_name_and_id(list_to_integer(Id), list_to_atom(Name))), Q, R, Cache}
+      end;
+    IdName ->
       % TODO test case for this branch
-      % assumption: erlang types generates variables only in this pattern: $ety_integer()_name()
+      % assumption: erlang types generates tag-variables only in this pattern: $ety_unique_integer()_name()
       [Id, Name] = string:split(IdName, "_"),
-      {?TY:singleton(ty_variable:with_name_and_id(list_to_integer(Id), list_to_atom(Name))), Q, R, Cache}
+      {?TY:unique(ty_variable:with_name_and_id_unique(list_to_integer(Id), list_to_atom(Name))), Q, R, Cache}
   end;
 
 % === term rewrites

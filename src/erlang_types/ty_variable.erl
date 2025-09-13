@@ -13,9 +13,11 @@
   compare/2,
   leq/2,
   fresh_from/1,
+  new_unique/1,
   new_with_name/1,
   unparse/2,
-  with_name_and_id/2
+  with_name_and_id/2,
+  with_name_and_id_unique/2
 ]).
 
 -export_type([type/0]).
@@ -41,7 +43,7 @@ clean() ->
 % variables have either their name as their ID (coming from a ast_lib conversion)
 % or a unique ID (usually generated inside the erlang_types library)
 -record(var, {id, name}).
--opaque type() :: #var{id :: integer() | name, name :: atom()}.
+-opaque type() :: #var{id :: integer() | {unique, integer()} | name, name :: atom()}.
 
 -spec equal(type(), type()) -> boolean().
 equal(Var1, Var2) -> compare(Var1, Var2) =:= eq.
@@ -94,6 +96,12 @@ new(Name) when is_atom(Name) ->
   NewId = ets:update_counter(?VAR_ETS, variable_id, {2,1}),
   #var{id = NewId, name = Name}.
 
+% to facilitate unique types in constr_gen
+-spec new_unique(atom()) -> type().
+new_unique(Name) when is_atom(Name) ->
+  NewId = ets:update_counter(?VAR_ETS, variable_id, {2,1}),
+  #var{id = {unique, NewId}, name = Name}.
+
 -spec new_with_name(atom()) -> type().
 new_with_name(Name) when is_atom(Name) ->
   #var{id = name, name = Name}.
@@ -103,6 +111,11 @@ new_with_name(Name) when is_atom(Name) ->
 with_name_and_id(Id, Name) when is_atom(Name) ->
   #var{id = Id, name = Name}.
 
+% used in ty_parser to convert already known unique variables
+-spec with_name_and_id_unique(integer(), atom()) -> type().
+with_name_and_id_unique(Id, Name) when is_atom(Name) ->
+  #var{id = {unique, Id}, name = Name}.
+
 -spec get_new_id() -> non_neg_integer().
 get_new_id() ->
   ets:update_counter(?VAR_ETS, variable_id, {2,1}).
@@ -110,6 +123,8 @@ get_new_id() ->
 -spec unparse(type(), ST) -> {ast:ty(), ST}.
 unparse(#var{id = name, name = Name}, C) ->
   {{var, Name}, C};
+unparse(#var{id = {unique, Id}, name = Name}, C) ->
+  {{var, list_to_atom("$ety_unique_" ++ integer_to_list(Id) ++ "_" ++ atom_to_list(Name))}, C};
 unparse(#var{id = Id, name = Name}, C) ->
   {{var, list_to_atom("$ety_" ++ integer_to_list(Id) ++ "_" ++ atom_to_list(Name))}, C}.
 

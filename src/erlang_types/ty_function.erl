@@ -40,7 +40,7 @@ function(Refs, Ref2) when is_list(Refs) ->
 % domain is returned as a type, not as a list of types!
 -spec domain(type()) -> ?NODE:type().
 domain({ty_function, Domains, _}) ->
-  D = dnf_ty_variable:leaf(ty_rec:tuples(ty_tuples:singleton(length(Domains), dnf_ty_tuple:singleton(ty_tuple:tuple(Domains))))),
+  D = dnf_ty_variable:tuples(ty_tuples:singleton(length(Domains), dnf_ty_tuple:singleton(ty_tuple:tuple(Domains)))),
   ty_node:make(D).
 
 -spec codomain(type()) -> ?NODE:type().

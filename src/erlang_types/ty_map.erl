@@ -73,7 +73,7 @@ unparse_to_map([_ | _] = Tups) ->
         ({tuple, [Key, Val]}, Acc) ->
           ValStr = io_lib:format("~p", [Val]),
           case string:find(ValStr, Existence) of
-            'nomatch' ->
+            nomatch ->
               [{map_field_opt, Key, Val} | Acc];
             _ ->
               [{map_field_req, Key, Val} | Acc]
