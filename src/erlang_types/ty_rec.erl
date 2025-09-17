@@ -57,23 +57,36 @@
 -type set_of_constraint_sets() :: constraint_set:set_of_constraint_sets().
 -type monomorphic_variables() :: etally:monomorphic_variables().
 
+-spec reorder(X) -> X when X :: type().
 reorder(any) -> any;
 reorder(empty) -> empty;
 reorder(Ty) ->
   simpl_to_repr(map(fun(Module, Value) -> Module:reorder(Value) end, Ty)).
 
-% TODO
+-spec assert_valid(type()) -> _.
 assert_valid(any) -> ok;
 assert_valid(empty) -> ok;
 assert_valid(#ty{ty_tuples = T}) ->
   ty_tuples:assert_valid(T),
   ok.
 
+-spec find_atom_index(atom(), list()) -> pos_integer() | not_found.
 find_atom_index(Atom, List) ->
     case lists:keyfind(Atom, 1, lists:zip(List, lists:seq(1, length(List)))) of
         {Atom, Index} -> Index;
         false -> not_found
     end.
+
+% -spec pi(type(), type_module()) -> type_module:type(). 
+-spec pi
+  (type(), dnf_ty_predefined) -> dnf_ty_predefined:type();
+  (type(), dnf_ty_atom) -> dnf_ty_atom:type();
+  (type(), dnf_ty_interval) -> dnf_ty_interval:type();
+  (type(), dnf_ty_list) -> dnf_ty_list:type();
+  (type(), dnf_ty_bitstring) -> dnf_ty_bitstring:type();
+  (type(), ty_tuples) -> ty_tuples:type();
+  (type(), ty_functions) -> ty_functions:type();
+  (type(), dnf_ty_map) -> dnf_ty_map:type().
 pi(Ty, Mod) ->
   Fields = record_info(fields, ty),
   Ind = find_atom_index(Mod, Fields),
@@ -234,6 +247,7 @@ normalize(TyRec, Fixed, ST) ->
 % Unparse
 % ===
 
+-spec unparse(type(), ST) -> {ast_ty(), ST}.
 unparse(T, ST) ->
   {Positive, ST0_A} = unparse_h(T, ST),
   {Negative, ST0_B} = unparse_h(negate(T), ST),

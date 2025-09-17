@@ -494,7 +494,7 @@ trans_exp(Ctx, Env, Exp) ->
             {NewQ, NewEnv} = trans_qualifiers(Ctx, Env, Qualifiers),
             % keep the old Env, comprehension opens a new scope
             {{bc, to_loc(Ctx, Anno), trans_exp_noenv(Ctx, NewEnv, E), NewQ}, Env};
-        {mc, Anno, {map_field_assoc, Anno, K, V}, Qualifiers} ->
+        {mc, Anno, {map_field_assoc, _Anno2, K, V}, Qualifiers} ->
             {NewQ, NewEnv} = trans_qualifiers(Ctx, Env, Qualifiers),
             % keep the old Env, map comprehension opens a new scope
             NewK = trans_exp_noenv(Ctx, NewEnv, K),
@@ -596,7 +596,9 @@ trans_exp(Ctx, Env, Exp) ->
         {var, Anno, Name} ->
             Loc = to_loc(Ctx, Anno),
             {{var, Loc, {local_ref, varenv_local:lookup(Loc, Name, Env)}}, Env};
-        X -> errors:uncovered_case(?FILE, ?LINE, Ctx#ctx.path, X)
+        X -> 
+        io:format(user,"~p~n", [X]),
+        errors:uncovered_case(?FILE, ?LINE, Ctx#ctx.path, X)
     end.
 
 -spec trans_exp_bin_elem(ctx(), varenv_local:t(), ast_erl:exp_bitstring_elem()) ->
@@ -833,10 +835,13 @@ trans_qualifiers(Ctx, Env, Qs) ->
     -> {ast:qualifier(), varenv_local:t()}.
 trans_qualifier(Ctx, Env, Q) ->
     case Q of
-        {K, Anno, Pat, Exp} when (K == generate orelse K == b_generate) -> % generator "Pat <- Exp"
+        {K, Anno, Pat, Exp} when (K == generate_strict orelse K == generate orelse K == b_generate) -> % generator "Pat <- Exp"
             NewExp = trans_exp_noenv(Ctx, Env, Exp),
             {NewPat, NewEnv} = trans_pat(Ctx, Env, Pat, shadow),
             {{K, to_loc(Ctx, Anno), NewPat, NewExp}, NewEnv};
+        {zip, Anno, Qs} -> 
+            {NewQ, NewEnv} = trans_qualifiers(Ctx, Env, Qs),
+            {{zip, to_loc(Ctx, Anno), NewQ}, NewEnv};
         {m_generate, Anno, {map_field_exact, _Anno2, K, V}, Exp} ->
             NewExp = trans_exp_noenv(Ctx, Env, Exp),
             {NewK, NewEnv1} = trans_pat(Ctx, Env, K, shadow),
