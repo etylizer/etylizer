@@ -33,8 +33,8 @@
 -define(LOG_NOTE(A,B,C),?DO_LOG(note,A,[B,C])).
 -define(LOG_NOTE(A,B,C,D),?DO_LOG(note,A,[B,C,D])).
 -define(LOG_NOTE(A,B,C,D,E),?DO_LOG(note,A,[B,C,D,E])).
--define(LOG_NOTE(A,B,C,D,E,F),?DO_LOG(NOTE,A,[B,C,D,E,F])).
--define(LOG_NOTE(A,B,C,D,E,F,G),?DO_LOG(NOTE,A,[B,C,D,E,F,G])).
+-define(LOG_NOTE(A,B,C,D,E,F),?DO_LOG(note,A,[B,C,D,E,F])).
+-define(LOG_NOTE(A,B,C,D,E,F,G),?DO_LOG(note,A,[B,C,D,E,F,G])).
 -define(LOG_NOTE(A,B,C,D,E,F,G,H),?DO_LOG(note,A,[B,C,D,E,F,G,H])).
 -define(LOG_NOTE(A,B,C,D,E,F,G,H,I),?DO_LOG(note,A,[B,C,D,E,F,G,H,I])).
 -define(LOG_NOTE(A,B,C,D,E,F,G,H,I,J),?DO_LOG(note,A,[B,C,D,E,F,G,H,I,J])).

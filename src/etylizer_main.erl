@@ -62,6 +62,12 @@ parse_args(Args) ->
             "Perform sanity checks"},
          {no_type_checking, undefined, "no-type-checking", undefined,
             "Do not perform type cecking at all"},
+         {report_mode, undefined, "report-mode", string,
+            "Choose a different mode of error reporting. The default 'early-exit' stops on the first type error encountered, " ++
+            "the 'report' mode continues and prints all results at the end to the console (early-exit, report)"},
+         {report_timeout, undefined, "report-timeout", string,
+            "Define a timeout in milliseconds for type checking a function in report_mode 'report'." ++
+            "Default timeout is 5000 milliseconds."},
          {only, $o, "only", string,
             "Only type check these functions (given as module:name/arity or name/arity or just the name)"},
          {ignore, $i, "ignore", string,
@@ -84,7 +90,7 @@ parse_args(Args) ->
                     case O of
                         {log_level, S} ->
                             case log:parse_level(S) of
-                                bad_log_level -> utils:quit(1, "Invalid log level: " ++ S ++ "~n");
+                                bad_log_level -> utils:quit(2, "Invalid log level: " ++ S ++ "~n");
                                 L -> Opts#opts{ log_level = L }
                             end;
                         {define, S} ->
@@ -105,6 +111,10 @@ parse_args(Args) ->
                         sanity -> Opts#opts{ sanity = true };
                         force -> Opts#opts{ force = true };
                         no_type_checking -> Opts#opts{ no_type_checking = true };
+                        {report_mode, "early-exit"} -> Opts#opts{ report_mode = early_exit };
+                        {report_mode, "report"} -> Opts#opts{ report_mode = report };
+                        {report_mode, M} -> utils:quit(2, "Invalid report mode: " ++ M ++ "~n");
+                        {report_timeout, T} -> Parsed = list_to_integer(T), true = Parsed > 0, Opts#opts{ report_timeout = Parsed };
                         no_deps -> Opts#opts{ no_deps = true };
                         {type_overlay, S} -> Opts#opts{ type_overlay = S };
                         help -> Opts#opts{ help = true }
@@ -114,7 +124,7 @@ parse_args(Args) ->
     if
         Opts#opts.help ->
             getopt:usage(OptSpecList, "etylizer", "[FILES ...]"),
-            utils:quit(1, "Aborting~n");
+            utils:quit(2, "Aborting~n");
         true -> ok
     end,
     Opts.

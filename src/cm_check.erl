@@ -93,7 +93,9 @@ traverse_and_check([CurrentFile | RemainingFiles], Symtab, OverlaySymtab, Search
     Only = sets:from_list(Opts#opts.type_check_only, [{version, 2}]),
     Ignore = sets:from_list(Opts#opts.type_check_ignore,[{version, 2}]),
     Sanity = perform_sanity_check(CurrentFile, Forms, Opts#opts.sanity),
-    Ctx = typing:new_ctx(ExpandedSymtab, OverlaySymtab, Sanity),
+    ReportMode = Opts#opts.report_mode,
+    ReportTimeout = Opts#opts.report_timeout,
+    Ctx = typing:new_ctx(ExpandedSymtab, OverlaySymtab, Sanity, ReportMode, ReportTimeout),
     case Opts#opts.no_type_checking of
         true ->
             ?LOG_INFO("Not type checking ~p as requested", CurrentFile);
