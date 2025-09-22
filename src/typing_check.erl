@@ -1,7 +1,8 @@
 -module(typing_check).
 
 -export([
-    check_all/4
+    check_all/4,
+    check_all_report/4
 ]).
 
 -ifdef(TEST).
@@ -10,9 +11,81 @@
    ]).
 -endif.
 
+-define(TIME(T), begin erlang:system_time(millisecond) - T end).
 
 -include("log.hrl").
 -include("typing.hrl").
+
+% Checks all functions against their specs, only print a report.
+-spec check_all_report(
+        ctx(), string(), symtab:fun_env(), [{ast:fun_decl(), ast:ty_scheme()}]
+       ) -> ok.
+check_all_report(Ctx, FileName, Env, Decls) ->
+    ?LOG_NOTE("Checking ~w functions in ~s against their specs", length(Decls), FileName),
+    ExtSymtab = symtab:extend_symtab_with_fun_env(Env, Ctx#ctx.symtab),
+    ExtCtx = Ctx#ctx { symtab = ExtSymtab },
+    F = fun(FN) -> filename:basename(filename:rootname(FN)) end,
+    lists:foreach(
+        fun({Decl, Ty}) -> 
+            {function, _, Name, Arity, _} = Decl,
+            T0 = erlang:system_time(millisecond),
+            try check_report(ExtCtx, Decl, Ty) of
+                success -> 
+                    io:format(user,"Ok: ~s:~w/~w (~p ms)~n", [F(FileName), Name, Arity, ?TIME(T0)]);
+                timeout -> 
+                    io:format(user,"Timeout: ~s:~w/~w (~p ms)~n", [F(FileName), Name, Arity, ?TIME(T0)])
+            catch 
+                throw:{etylizer, ty_error, Msg} -> 
+                    io:format(user,"Error: ~s:~w/~w (~p ms)~n  ~s~n", [F(FileName), Name, Arity, ?TIME(T0), Msg]);
+                throw:{etylizer, unsupported, Msg} -> 
+                    io:format(user,"Unsupported: ~s:~w/~w~n  ~s~n", [F(FileName), Name, Arity, Msg]);
+                throw:{etylizer, Type, _Msg} -> 
+                    io:format(user,"Error: (~p) ~s:~w/~w (~p ms)~n", [Type, F(FileName), Name, Arity, ?TIME(T0)])
+            end
+        end,
+        Decls
+    ),
+    ok.
+
+% Checks a function against its spec, skips timeouts and does not report errors.
+-spec check_report(ctx(), ast:fun_decl(), ast:ty_scheme()) -> success | timeout.
+check_report(Ctx, Decl = {function, Loc, Name, Arity, _}, PolyTy) ->
+    ?LOG_INFO("Type checking ~w/~w at ~s against type ~s",
+              Name, Arity, ast:format_loc(Loc), pretty:render_tyscheme(PolyTy)),
+    Timeout = Ctx#ctx.report_timeout,
+    TimeoutRes = utils:timeout(
+        Timeout,
+        fun () -> 
+            FunStr = utils:sformat("~w/~w", Name, Arity),
+            {MonoTy, Fixed, _} = typing_common:mono_ty(Loc, PolyTy),
+            ensure_type_supported(Loc, MonoTy),
+            AltTys = case MonoTy of {intersection, L} -> L; _ -> [MonoTy] end,
+            BranchMode =
+                case AltTys of
+                    [_] -> unmatched_branch_fail;
+                    [] -> errors:ty_error(Loc, "Invalid spec for ~w/~w: ~w", [Name, Arity, PolyTy]);
+                    _ -> unmatched_branch_ignore
+                end,
+            UnmatchedList = lists:map(
+              fun(Ty) ->
+                    case Ty of
+                        {fun_full, _, _} ->
+                            {ok, Unmatched} = check_alt(Ctx, Decl, Ty, BranchMode, Fixed),
+                            Unmatched;
+                        _ -> errors:ty_error(Loc, "Invalid spec for ~w/~w: ~w", [Name, Arity, PolyTy])
+                    end
+              end,
+              AltTys),
+            UnmatchedEverywhere = sets:intersection(UnmatchedList),
+            case sets:to_list(UnmatchedEverywhere) of
+                [] -> success;
+                [First | _Rest] -> report_tyerror(FunStr, redundant_branch, First, "")
+            end
+        end),
+    case TimeoutRes of
+        timeout -> timeout;
+        {ok, success} -> success
+    end.
 
 % Checks all functions against their specs.
 -spec check_all(
@@ -28,7 +101,7 @@ check_all(Ctx, FileName, Env, Decls) ->
           fun({Decl, Ty}) -> check(ExtCtx, Decl, Ty) end,
           Decls
          ),
-        ?LOG_NOTE("Successfully checked ~p functions in ~s against their specs", length(Decls), FileName),
+        ?LOG_NOTE("Successfully checked functions in ~s against their specs", FileName),
         ok
     catch throw:{etylizer, ty_error, Msg} ->
             ?LOG_NOTE("Checking failed: ~s", Msg),
@@ -60,7 +133,6 @@ ensure_type_supported(Loc, T) ->
 check(Ctx, Decl = {function, Loc, Name, Arity, _}, PolyTy) ->
     ?LOG_INFO("Type checking ~w/~w at ~s against type ~s",
               Name, Arity, ast:format_loc(Loc), pretty:render_tyscheme(PolyTy)),
-    T0 = erlang:system_time(millisecond),
     FunStr = utils:sformat("~w/~w", Name, Arity),
     {MonoTy, Fixed, _} = typing_common:mono_ty(Loc, PolyTy),
     ensure_type_supported(Loc, MonoTy),
@@ -93,7 +165,7 @@ check(Ctx, Decl = {function, Loc, Name, Arity, _}, PolyTy) ->
     UnmatchedEverywhere = sets:intersection(UnmatchedList),
     case sets:to_list(UnmatchedEverywhere) of
         [] ->
-            ?LOG_NOTE("Type ok for ~w/~w at ~s (~p ms)", Name, Arity, ast:format_loc(Loc), (erlang:system_time(millisecond) - T0)),
+            ?LOG_INFO("Type ok for ~w/~w at ~s", Name, Arity, ast:format_loc(Loc)),
             ok;
         [First | _Rest] ->
             report_tyerror(FunStr, redundant_branch, First, "")

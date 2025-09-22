@@ -7,6 +7,8 @@
                sanity = false :: boolean(),
                force = false :: boolean(),
                no_type_checking = false :: boolean(),
+               report_mode = early_exit :: feature_flags:report_mode(),
+               report_timeout = 5000 :: pos_integer(),
                no_deps = false :: boolean(),
                type_check_only = [] :: [string()],
                type_check_ignore = [] :: [string()],

@@ -2,7 +2,8 @@
 
 -export([
     check_forms/5,
-    new_ctx/3
+    new_ctx/3,
+    new_ctx/5
 ]).
 
 -include("log.hrl").
@@ -10,7 +11,11 @@
 
 -spec new_ctx(symtab:t(), symtab:t(), t:opt(ast_check:ty_map())) -> ctx().
 new_ctx(Tab, Overlay, Sanity) ->
-    Ctx = #ctx{ symtab = Tab, overlay_symtab = Overlay, sanity = Sanity },
+    new_ctx(Tab, Overlay, Sanity, early_exit, 5000).
+
+-spec new_ctx(symtab:t(), symtab:t(), t:opt(ast_check:ty_map()), feature_flags:report_mode(), pos_integer()) -> ctx().
+new_ctx(Tab, Overlay, Sanity, ReportMode, ReportTimeout) ->
+    Ctx = #ctx{ symtab = Tab, overlay_symtab = Overlay, sanity = Sanity, report_mode = ReportMode, report_timeout = ReportTimeout },
     Ctx.
 
 % Checks all forms of a module
@@ -75,6 +80,9 @@ check_forms(Ctx, FileName, Forms, Only, Ignore) ->
     % we can stop on the first success.
     ?LOG_INFO("Checking ~w functions in ~s against their specs (~w environments)",
               length(FunsWithSpec), FileName, length(InferredTyEnvs)),
+
+    % if in report mode, continue type checking
+    ReportMode = Ctx#ctx.report_mode,
     Loop =
         fun Loop(Envs, Errs) ->
                 case Envs of
@@ -100,9 +108,14 @@ check_forms(Ctx, FileName, Forms, Only, Ignore) ->
                                 errors:ty_error(Msg)
                         end;
                     [E | RestEnvs] ->
-                        case typing_check:check_all(ExtCtx, FileName, E, FunsWithSpec) of
-                            ok -> ok; % we are done
-                            {error, Msg} -> Loop(RestEnvs, [{E, Msg} | Errs])
+                        case ReportMode of
+                            early_exit -> 
+                                case typing_check:check_all(ExtCtx, FileName, E, FunsWithSpec) of
+                                    ok -> ok; % we are done
+                                    {error, Msg} -> Loop(RestEnvs, [{E, Msg} | Errs])
+                                end;
+                            report -> 
+                                typing_check:check_all_report(ExtCtx, FileName, E, FunsWithSpec)
                         end
                 end
         end,
