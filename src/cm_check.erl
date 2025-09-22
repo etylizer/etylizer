@@ -83,10 +83,7 @@ traverse_and_check([], _, _, _, _, Index) ->
     Index;
 
 traverse_and_check([CurrentFile | RemainingFiles], Symtab, OverlaySymtab, SearchPath, Opts, Index) ->
-    case log:allow(note) of
-        true -> ?LOG_NOTE("Checking ~s", CurrentFile);
-        false -> io:format("Checking ~s~n", [CurrentFile])
-    end,
+    ?LOG_INFO("Checking ~s", CurrentFile),
     Forms = parse_cache:parse(intern, CurrentFile),
     ModName = ast_utils:modname_from_path(CurrentFile),
     Referenced = lists:filter(fun (M) -> M =/= ModName end, ast_utils:referenced_modules(Forms)),
