@@ -43,6 +43,7 @@ simp_constrs_to_blocks(Ds) ->
 simp_constr_to_blocks(D) ->
     case D of
         {scsubty, L, _, _} -> [{tyerror, L, "subty", utils:single(D)}];
+        {scmater, _L, _T, _Alpha} -> [];
         {sccase, {_LocScrut, DsScrut}, {LocExhaus, DsExhaust}, Branches} ->
             BranchBlocks =
                 utils:concat_map(Branches,

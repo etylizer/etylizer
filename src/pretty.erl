@@ -383,6 +383,11 @@ constr(X) ->
                                        locs(Locs),
                                        ref(Ref),
                                        ty(T)]));
+               {cvarmater, Locs, Ref, Alpha} ->
+                   brackets(comma_sep([text("cvarmater"),
+                                       locs(Locs),
+                                       ref(Ref),
+                                       text(atom_to_list(Alpha))]));
                {cop, Locs, Name, Arity, T} ->
                    brackets(comma_sep([text("cop"),
                                        locs(Locs),
@@ -406,6 +411,12 @@ constr(X) ->
                                        kv("exhaustLoc", loc(LocExhaust)),
                                        kv("exhaust", constr(CsExhaust)),
                                        sconstr_bodies(Bodies)]))
+               ;
+               {scmater, Loc, T, Alpha} ->
+                   brackets(comma_sep([text("scmater"),
+                                       loc(Loc),
+                                       ty(T),
+                                       text(atom_to_list(Alpha))]))
            end
    end.
 

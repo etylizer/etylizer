@@ -51,6 +51,23 @@ simp_constr(Ctx, C) ->
                         end
                 end,
             utils:single({scsubty, loc(Locs), fresh_ty_scheme(Ctx, PolyTy), T});
+        {cvarmater, Locs, X, Alpha} ->
+            PolyTy =
+                case maps:find(X, Ctx#ctx.env) of
+                    {ok, U} -> U;
+                    error ->
+                        case X of
+                            {local_ref, Y} ->
+                                errors:bug("Unbound variable in materialization constraint simplification ~w: ~p",
+                                     [Y, Ctx#ctx.env]);
+                            GlobalX ->
+                                symtab:lookup_fun(GlobalX, loc(Locs), Ctx#ctx.symtab)
+                        end
+                end,
+            Loc = loc(Locs),
+            sets:from_list([
+                {scmater, Loc, fresh_ty_scheme(Ctx, PolyTy), Alpha}
+            ], [{version,2}]);
         {cop, Locs, OpName, OpArity, T} ->
             PolyTy = symtab:lookup_op(OpName, OpArity, loc(Locs), Ctx#ctx.symtab),
             utils:single({scsubty, loc(Locs), fresh_ty_scheme(Ctx, PolyTy), T});
