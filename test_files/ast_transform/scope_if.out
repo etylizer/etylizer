@@ -1,4 +1,4 @@
-[{attribute,{loc,[],0,0},module,scope_case},
+[{attribute,{loc,[],0,0},module,scope_if},
  {function,{loc,[],0,0},
            foo,1,
            [{fun_clause,{loc,[],0,0},

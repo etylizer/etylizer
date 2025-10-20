@@ -110,3 +110,7 @@ pin(L) ->
         [X | _] -> falsee;
         _ -> false
     end.
+
+-spec case_14(_, _) -> ok | nok.
+case_14(X, X) -> ok;
+case_14(_, _) -> nok.

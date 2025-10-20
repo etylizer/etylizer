@@ -43,7 +43,8 @@ new() -> [].
 -spec is_set(Ordset) -> boolean() when
       Ordset :: term().
 
-is_set([E|Es]) -> is_set(Es, E);
+% this is positive without is_list(Es): crashes on input ordsets:is_set([1 | 1])
+is_set([E|Es]) when is_list(Es) -> is_set(Es, E); % TODO necessary change! -> paper example
 is_set([]) -> true;
 is_set(_) -> false.
 
@@ -183,7 +184,6 @@ intersection(_, []) ->
 intersection([S1,S2|Ss]) ->
     intersection1(intersection(S1, S2), Ss);
 intersection([S]) -> S.
-% intersection(_) -> error(bad_state). % list redundancy check not enough
 
 -spec intersection1(ordset(_), [ordset(_)]) -> ordset(_).
 intersection1(S1, [S2|Ss]) ->

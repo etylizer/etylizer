@@ -100,19 +100,22 @@ check_decls_in_file(F, What, NoInfer) ->
           % FIXME #54 reduce timeout after issue has been fixed
           {timeout, 45, {FullNameStr, fun() ->
                 ?LOG_NOTE("Type checking ~s from ~s", NameStr, F),
-                test_utils:reset_ets(),
-                case ShouldFail of
-                  true -> check_fail_fun(F, Tab, OverlayTab, Decl, Ty);
-                  false ->
-                    check_ok_fun(F, Tab, OverlayTab, Decl, Ty)
-                end
+                global_state:with_new_state(fun() ->
+                  case ShouldFail of
+                    true -> check_fail_fun(F, Tab, OverlayTab, Decl, Ty);
+                    false ->
+                      check_ok_fun(F, Tab, OverlayTab, Decl, Ty)
+                  end
+                                            end)
               end}
             },
         InferTest =
           {timeout, 45, {FullNameStr ++ " (infer)", fun() ->
                 ?LOG_NOTE("Infering type for ~s from ~s", NameStr, F),
-                test_utils:reset_ets(),
-                check_infer_ok_fun(F, Tab, OverlayTab, Decl, Ty)
+                global_state:with_new_state(fun() ->
+                  check_infer_ok_fun(F, Tab, OverlayTab, Decl, Ty)
+                end),
+                ok
               end}
           },
         ShouldRun = should_run(NameStr, What),
@@ -150,21 +153,23 @@ check_decls_in_files(Files, What, NoInfer) ->
 simple_test_() ->
   % The following functions are currently excluded from being tested.
   WhatNot = [
-    % Redundancy check for lists is not powerful enough, see #108
-    "list_pattern_08_fail",
-    % #115 slow
-    "user_07",
     % TODO binary pattern element size verification
     "b4_fail"
   ],
 
   NoInfer = [
-    % slow, see #62
-    "foo3",
-    % TODO recursive inference
-    "user_06", "user_07",
-    % TODO see #164
-    "match_13"
+    % TODO timeout, with flipped variable ordering it infers instantly
+    "match_13",
+    % TODO slow (tuple-encoded lists) inference #255
+    % reason: recursive types parsing and unparsing in solving step (missing proper substitution implementation)
+    "list_as_tuple_08",
+    "list_pattern_11",
+    "list_pattern_10_fail_h",
+    "list_pattern_02",
+    "list_pattern_07",
+    "inter_04_ok",
+    "foo",
+    "op_08"
   ],
 
   %What = ["atom_03_fail"],

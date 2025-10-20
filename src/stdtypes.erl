@@ -7,13 +7,15 @@
 -export([
     tspecial_any/0,
     tempty_list/0,
-    tint/0, tint/1,
+    tint/0, tint/1, 
+    tnon_neg_int/0,
     tbitstring/0,
     tlist_any/0,
     tlist_improper/2,
     tnonempty_improper_list/2,
     tnonempty_list/0,
     tnonempty_list/1,
+    tcons_list/2,
     builtin_ops/0, builtin_funs/0,
     tatom/0, tatom/1,
     tintersect/1, tunion/1, tnegate/1,
@@ -92,6 +94,9 @@ tatom(A) -> {singleton, A}.
 
 -spec tint() -> ast:ty().
 tint() -> {predef, integer}.
+
+-spec tnon_neg_int() -> ast:ty().
+tnon_neg_int() -> {predef_alias, non_neg_integer}.
 
 -spec tbitstring() -> ast:ty().
 tbitstring() -> {bitstring}.
@@ -231,6 +236,9 @@ tnonempty_list(Arg) -> {nonempty_list, Arg}.
 -spec tnonempty_list() -> ast:ty().
 tnonempty_list() -> {predef_alias, nonempty_list}.
 
+-spec tcons_list(ast:ty(), ast:ty()) -> ast:ty().
+tcons_list(H, T) -> {cons, H, T}.
+
 -spec tbool() -> ast:ty().
 tbool() -> {predef_alias, boolean}.
 
@@ -257,7 +265,7 @@ expand_predef_alias(iodata) -> {union, [expand_predef_alias(iolist), expand_pred
 expand_predef_alias(iolist) ->
     % TODO fix variable IDs
     RecVarID = erlang:unique_integer(),
-    Var = {var, erlang:list_to_atom("mu" ++ integer_to_list(RecVarID))},
+    Var = {mu_var, erlang:list_to_atom("mu" ++ integer_to_list(RecVarID))},
     RecType = {improper_list, {union, [expand_predef_alias(byte), expand_predef_alias(binary), Var]}, {union, [expand_predef_alias(binary), tempty_list()]}},
     {mu, Var, RecType};
 expand_predef_alias(map) -> {map, [{map_field_opt, {predef, any}, {predef, any}}]};
@@ -303,6 +311,7 @@ builtin_ops() ->
         tfun([tint()], tint()),
         tfun([tfloat()], tfloat())
     ])),
+    DivOpTy = tyscm(tinter([tfun([tint(), tint()], tint()), tfun([tnon_neg_int(), tnon_neg_int()], tnon_neg_int())])),
     IntOpTy = tyscm(tfun([tint(), tint()], tint())),
     BoolOpTy = tyscm(tfun([tbool(), tbool()], tbool())),
     AndShortcutOpTy = tyscm(tinter([tfun([tatom(false), tany()], tatom(false)), tfun([tatom(true), tvar(a)], tvar(a))])),
@@ -318,7 +327,7 @@ builtin_ops() ->
             tfun([tint(), tfloat()], tfloat()),
             tfun([tfloat(), tint()], tfloat()),
             tfun([tfloat(), tfloat()], tfloat())]))},
-        {'div', 2, IntOpTy},
+        {'div', 2, DivOpTy},
         {'rem', 2, IntOpTy},
         {'band', 2, IntOpTy},
         {'bor', 2, IntOpTy},

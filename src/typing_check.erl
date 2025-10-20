@@ -28,7 +28,7 @@ check_all(Ctx, FileName, Env, Decls) ->
           fun({Decl, Ty}) -> check(ExtCtx, Decl, Ty) end,
           Decls
          ),
-        ?LOG_NOTE("Successfully checked functions in ~s against their specs", FileName),
+        ?LOG_NOTE("Successfully checked ~p functions in ~s against their specs", length(Decls), FileName),
         ok
     catch throw:{etylizer, ty_error, Msg} ->
             ?LOG_NOTE("Checking failed: ~s", Msg),
@@ -60,6 +60,7 @@ ensure_type_supported(Loc, T) ->
 check(Ctx, Decl = {function, Loc, Name, Arity, _}, PolyTy) ->
     ?LOG_INFO("Type checking ~w/~w at ~s against type ~s",
               Name, Arity, ast:format_loc(Loc), pretty:render_tyscheme(PolyTy)),
+    T0 = erlang:system_time(millisecond),
     FunStr = utils:sformat("~w/~w", Name, Arity),
     {MonoTy, Fixed, _} = typing_common:mono_ty(Loc, PolyTy),
     ensure_type_supported(Loc, MonoTy),
@@ -92,7 +93,7 @@ check(Ctx, Decl = {function, Loc, Name, Arity, _}, PolyTy) ->
     UnmatchedEverywhere = sets:intersection(UnmatchedList),
     case sets:to_list(UnmatchedEverywhere) of
         [] ->
-            ?LOG_INFO("Type ok for ~w/~w at ~s", Name, Arity, ast:format_loc(Loc)),
+            ?LOG_NOTE("Type ok for ~w/~w at ~s (~p ms)", Name, Arity, ast:format_loc(Loc), (erlang:system_time(millisecond) - T0)),
             ok;
         [First | _Rest] ->
             report_tyerror(FunStr, redundant_branch, First, "")

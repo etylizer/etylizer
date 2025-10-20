@@ -1,73 +1,180 @@
 -module(constraint_set).
 
-%% API
--export([set_of_constraint_sets/1, constraint_set/1, constraint/3, constraint/1, is_smaller/2]).
--export([merge_and_meet/2, merge_and_join/2, has_smaller_constraint_w/2, has_smaller_constraint/2]).
--export([meet/2, join/2, minimize/1]).
--export([saturate/3]).
+-define(LAZY(Term), fun() -> Term end).
+
+-export([
+  meet/3,
+  join/3,
+  saturate/3
+]).
+
+-export_type([
+  set_of_constraint_sets/0, 
+  constraint_set/0
+]).
+
+% not opaque: we match on unsatisfiable and satisfiable constraint sets [] and [[]]
+-type set_of_constraint_sets() :: [constraint_set()].
+-type monomorphic_variables() :: etally:monomorphic_variables().
+-type constraint_set() :: [constraint()].
+-type constraint() :: {ty_variable:type(), ty:type(), ty:type()}.
+-type cache() :: #{ty:type() => []}.
+
+
+-spec meet(S, S, monomorphic_variables()) -> S when S :: set_of_constraint_sets().
+meet([], _, _) -> [];
+meet(_, [], _) -> [];
+meet([[]], Set2, _) -> Set2;
+meet(Set1, [[]], _) -> Set1;
+meet(S1, S2, Fixed) -> 
+  % when a constraint set is combined, the lower and upper bounds for a variable might change
+  % this in turn could mean the whole constraint set can become unsatisfiable
+  % it is appararently faster to join everything together, 
+  % then minimizing the meet result by using join
+  MeetResult = [[join_constraint_sets(C1, C2, Fixed) || C2 <- S2] || C1 <- S1],
+  R = lists:foldl(fun(S, Acc) -> join(S, Acc, Fixed) end, [], MeetResult),
+  assert_all_cs_sorted(minimize(R)).
+
+% TODO this implementation creates smaller result set of constraint sets, investigate
+% meet(S1, S2, Fixed) -> 
+%   AllCombinations = [{C1, C2} || C1 <- S1, C2 <- S2],
+%   % meet in such a way that bigger constraint sets get filtered out
+%   lists:foldl(
+%     fun({Cs1, Cs2}, Acc) ->
+%       % when a constraint set is combined, the lower and upper bounds for a variable might change
+%       % this in turn could mean the whole constraint set can become unsatisfiable
+%       % TODO investigate why for user_04 keeping the constraint sets minimal increases time by a lot
+%       %      -> change join_constraint_sets to return unsatisfiable again
+%       NewCs = join_constraint_sets(Cs1, Cs2, Fixed),
+%       case NewCs of
+%         unsatisfiable -> Acc;
+%         _ ->
+%           case lists:any(fun(Cs) -> is_smaller(Cs, NewCs) end, Acc) of
+%             true -> 
+%               % Acc contains a constraint set that is smaller than NewCs
+%               % We can skip adding NewCs to the Acc
+%               Acc;
+%             false -> 
+%               % Remove any existing constraints that NewCs subsumes
+%               FilteredAcc = [C || C <- Acc, not is_smaller(NewCs, C)],
+%               [NewCs | FilteredAcc]
+%           end
+%       end
+%     end,
+%     [],
+%     AllCombinations
+%   ).
+
+-spec join(S, S, monomorphic_variables()) -> S when S :: set_of_constraint_sets().
+join([[]], _Set2, _Fixed) -> [[]];
+join(_Set1, [[]], _Fixed) -> [[]];
+join([], Set, _Fixed) -> Set;
+join(Set, [], _Fixed) -> Set;
+join(S1, S2, Fixed) ->
+  MayAdd = fun (S, Con) -> (not is_unsatisfiable(Con, Fixed)) andalso (not (has_smaller_constraint(Con, S))) end,
+  S22 = lists:filter(fun(C) -> MayAdd(S1, C) end, S2),
+  S11 = lists:filter(fun(C) -> MayAdd(S22, C) end, S1),
+  assert_all_cs_sorted((lists:usort(S11 ++ S22))).
 
 % step 2. from merge phase
 % step 1. happens by construction automatically
-saturate(C, FixedVariables, Memo) ->
-  case pick_bounds_in_c(C, Memo) of
+-spec saturate(constraint_set(), monomorphic_variables(), cache()) -> set_of_constraint_sets().
+saturate(C, FixedVariables, Cache) ->
+  case pick_bounds_in_c(C, Cache) of
     {_Var, S, T} ->
-      SnT = ty_rec:intersect(S, ty_rec:negate(T)),
-      Normed = fun() -> ty_rec:normalize_start(SnT, FixedVariables) end,
-      NewS = meet(fun() -> [C] end, Normed),
-      lists:foldl(fun(NewC, AllS) ->
-        NewMerged = fun() -> saturate(NewC, FixedVariables, sets:union(Memo, sets:from_list([SnT], [{version, 2}]))) end,
-        join(fun() -> AllS end, NewMerged)
-                  end, [], NewS);
-    _ -> [C]
+      SnT = ty:difference(S, T),
+      Normed = ty:normalize(SnT, FixedVariables),
+      NewS = meet([C], Normed, FixedVariables),
+      Z = lists:foldl(fun(NewC, AllS) ->
+        NewMerged = saturate(NewC, FixedVariables, Cache#{SnT => []}),
+        join(AllS, NewMerged, FixedVariables)
+                  end, [], NewS),
+      Z;
+    none -> 
+      [C]
   end.
 
+% helper functions
+-spec join_constraint_sets(Cs, Cs, monomorphic_variables()) -> unsatisfiable | Cs when Cs :: constraint_set().
+join_constraint_sets([], L, _) -> L;
+join_constraint_sets(L, [], _) -> L;
+join_constraint_sets(LeftAll = [NextLeft = {V1, T1, T2} | C1], RightAll = [NextRight = {V2, S1, S2} | C2], Fixed) ->
+  ReturnIfUnsat = fun (_Cs, unsatisfiable) -> unsatisfiable; (Cs, Other) -> Cs ++ Other end,
+  case ty_variable:compare(V1, V2) of
+    eq ->
+      Lower = ty:union(T1, S1),
+      Upper = ty:intersect(T2, S2),
+      ReturnIfUnsat([{V1, Lower, Upper}], join_constraint_sets(C1, C2, Fixed));
+      % TODO user_04 is much slower because a lot of ty:normalize checks are used, investigate
+      % if the new lower bound is not subtype of the new upper bound, 
+      % the whole constraint set is unsatisfiable
+      % we can't use a subtype check here, as we need to consider polymorphic variables properly
+      % case ty:normalize(ty:difference(Lower, Upper), Fixed) of
+      %   [] -> unsatisfiable;
+      %   _ -> ReturnIfUnsat([{V1, Lower, Upper}], join_constraint_sets(C1, C2, Fixed))
+      % end;
+    lt ->
+      ReturnIfUnsat([NextLeft], join_constraint_sets(C1, RightAll, Fixed));
+    gt ->
+      ReturnIfUnsat([NextRight], join_constraint_sets(C2, LeftAll, Fixed))
+  end.
+
+-spec is_unsatisfiable
+  (constraint(), monomorphic_variables()) -> boolean();
+  (constraint_set(), monomorphic_variables()) -> boolean().
+is_unsatisfiable({_Var, L, R}, Fixed) -> 
+  case ty_node:normalize(ty_node:difference(L, R), Fixed) of 
+    [] -> true; 
+    _ -> false 
+  end;
+is_unsatisfiable(Con, Fixed) -> 
+  lists:any(fun(C) -> is_unsatisfiable(C, Fixed) end, Con).
+
+-spec has_smaller_constraint(constraint_set(), set_of_constraint_sets()) -> boolean().
+has_smaller_constraint(_Con, []) -> false;
+has_smaller_constraint(Con, [C | S]) ->
+  case is_smaller(C, Con) of
+    true -> true;
+    _ -> has_smaller_constraint(Con, S)
+  end.
+
+% C1 and C2 are sorted by variable order
+-spec is_smaller(constraint_set(), constraint_set()) -> boolean().
+is_smaller([], _C2) -> true;
+is_smaller(_C1, []) -> false;
+is_smaller(All = [{V1, T1, T2} | C1], [{V2, S1, S2} | C2]) ->
+  case ty_variable:compare(V1, V2) of
+    eq ->
+      case ty_node:leq(T1, S1) andalso ty_node:leq(S2, T2) of
+        true -> is_smaller(C1, C2);
+        _ -> false
+      end;
+    lt ->
+      % V1 is not in the other set
+      % not smaller
+      false;
+    gt ->
+      is_smaller(All, C2)
+  end.
+
+-spec pick_bounds_in_c(constraint_set(), cache()) -> none | constraint().
 pick_bounds_in_c([], _) -> none;
 pick_bounds_in_c([{Var, S, T} | Cs], Memo) ->
-  case (ty_rec:is_empty(S) orelse ty_rec:is_subtype(ty_rec:any(), T)) of
+  case (ty_node:is_empty(S) orelse ty_node:leq(ty_node:any(), T)) of
     true ->
       pick_bounds_in_c(Cs, Memo);
     false ->
-      SnT = ty_rec:intersect(S, ty_rec:negate(T)),
-      case sets:is_element(SnT, Memo) of
-        true ->
+      SnT = ty_node:intersect(S, ty_node:negate(T)),
+      case Memo of
+        #{SnT := []} ->
           pick_bounds_in_c(Cs, Memo);
         _ ->
           {Var, S, T}
       end
-  end
-.
-
-set_of_constraint_sets(S) -> S.
-constraint_set(Cs) when is_list(Cs) -> Cs.
-constraint(Var, Ty1, Ty2) -> {Var, Ty1, Ty2}.
-constraint({Var, Ty1, Ty2}) -> {Var, Ty1, Ty2}.
-
-meet(S1, S2) ->
-  Res = S1(),
-  case Res of
-    [] -> [];
-    _ -> merge_and_meet(Res, S2())
-  end.
-join(S1, S2) ->
-  Res = S1(),
-  case Res of
-    [[]] -> [[]];
-    _ -> merge_and_join(Res, S2())
   end.
 
-merge_and_meet([], _Set2) -> [];
-merge_and_meet(_Set1, []) -> [];
-merge_and_meet([[]], Set2) -> Set2;
-merge_and_meet(Set1, [[]]) -> Set1;
-merge_and_meet(La, Lb) ->
-  R = lists:map(fun(E) -> unionlist(Lb, E) end, La),
-  R2 = lists:foldl(fun(NewS, All) -> merge_and_join(NewS, All) end, [], R),
-  minimize(R2).
-
-unionlist(L, A) -> lists:map(fun(E) -> nunion(A, E) end, L).
-
+-spec minimize(S) -> S when S :: set_of_constraint_sets().
 minimize(S) -> minimize(S, S).
-
 minimize([], Result) -> Result;
 minimize([Cs | Others], All) ->
   NewS = All -- [Cs],
@@ -78,118 +185,87 @@ minimize([Cs | Others], All) ->
     _ -> minimize(Others, All)
   end.
 
-
-nunion([], L) -> L;
-nunion(L, []) -> L;
-nunion([{V1, T1, T2} | C1], [{V2, S1, S2} | C2]) when V1 == V2 ->
-  Lower = ty_rec:union(T1, S1),
-  Upper = ty_rec:intersect(T2, S2),
-
-  [{V1, Lower, Upper}] ++ nunion(C1, C2);
-nunion([Z = {V1, _, _} | C1], S = [{V2, _, _} | _C2]) when V1 < V2 ->
-  [Z] ++ nunion(C1, S);
-nunion(S = [{_, _, _} | _C1], [Z = {_, _, _} | C2]) ->
-  [Z] ++ nunion(C2, S).
-
-
-merge_and_join([[]], _Set2) -> [[]];
-merge_and_join(_Set1, [[]]) -> [[]];
-merge_and_join([], Set) -> Set;
-merge_and_join(Set, []) -> Set;
-merge_and_join(S1, S2) ->
-  MayAdd = fun (S, Con) -> (not (has_smaller_constraint(Con, S))) end,
-  S22 = lists:filter(fun(C) -> MayAdd(S1, C) end, S2),
-  S11 = lists:filter(fun(C) -> MayAdd(S22, C) end, S1),
-  lists:map(fun lists:usort/1, lists:usort(S11 ++ S22)).
-
-
-has_smaller_constraint(_Con, []) -> false;
-has_smaller_constraint(Con, [C | S]) ->
-  case is_smaller(C, Con) of
-    true -> true;
-    _ -> has_smaller_constraint(Con, S)
-  end.
-
-has_smaller_constraint_w(_Con, []) -> false;
-has_smaller_constraint_w(Con, [C | S]) ->
-  case is_smaller(C, Con) of
-    true -> {true, C};
-    _ -> has_smaller_constraint(Con, S)
-  end.
-
-% C1 and C2 are sorted by variable order
-is_smaller([], _C2) -> true;
-is_smaller(_C1, []) -> false;
-is_smaller([{V1, T1, T2} | C1], [{V2, S1, S2} | C2]) when V1 == V2 ->
-  case ty_rec:is_subtype(T1, S1) andalso ty_rec:is_subtype(S2, T2) of
-    true -> is_smaller(C1, C2);
-    _ -> false
-  end;
-is_smaller([{V1, _, _} | _C1], [{V2, _, _} | _C2]) when V1 < V2 ->
-  % V1 is not in the other set
-  % not smaller
-  false;
-is_smaller(C1, [{_V2, _, _} | C2]) ->
-  is_smaller(C1, C2).
-
+assert_all_cs_sorted(S) ->
+    % Verify all constraint sets are sorted by sorting them and checking for equality
+    lists:foreach(fun(ConstraintSet) ->
+        Sorted = lists:sort(
+            fun({Var1, _, _}, {Var2, _, _}) ->
+                case ty_variable:compare(Var1, Var2) of
+                    lt -> true;
+                    eq -> true;
+                    gt -> false
+                end
+            end,
+            ConstraintSet
+        ),
+        case ConstraintSet =:= Sorted of
+            true -> ok;
+            false -> error({unsorted_constraint_set, ConstraintSet, Sorted})
+        end
+    end, S),
+    S.
 
 -ifdef(TEST).
 -include_lib("eunit/include/eunit.hrl").
 
+% TODO why does Dialyzer complain that L. 256 has no return?
+-dialyzer({no_return, [smaller_test/0]}).
+-spec smaller_test() -> _.
 smaller_test() ->
-  test_utils:reset_ets(),
-  % {(β≤0)} <: {(β≤0) (β≤α)}
-  Alpha = ty_variable:new(alpha),
-  Beta = ty_variable:new(beta),
-  C1 = [{Beta, ty_rec:empty(), ty_rec:empty()}],
-  C2 = [{Alpha, Beta, ty_rec:any()}, {Beta, ty_rec:empty(), ty_rec:empty()}],
+  global_state:with_new_state(fun() ->
+    % {(β≤0)} <: {(β≤0) (β≤α)}
+    Alpha = ty_variable:new_with_name(alpha),
+    Beta = ty_variable:new_with_name(beta),
+    C1 = [{Beta, ty:empty(), ty:empty()}],
+    % β < α according to variable order and constraint sets are ordered
+    C2 = [{Beta, ty:empty(), ty:empty()}, {Alpha, Beta, ty:any()}],
 
-  true = is_smaller(C1, C2),
-  false = is_smaller(C2, C1),
-  ok.
+    true = is_smaller(C1, C2),
+    false = is_smaller(C2, C1)
+  end).
 
+-spec smaller2_test() -> _.
 smaller2_test() ->
-  test_utils:reset_ets(),
-  % C1 :: {(atom≤β≤1)}
-  % C2 :: {(   1≤β≤1)}
-  Beta = ty_variable:new(beta),
-  Atom = ty_rec:atom(dnf_var_ty_atom:any()), % replacement for bool
-  C1 = [{Beta, Atom,         ty_rec:any()}],
-  C2 = [{Beta, ty_rec:any(), ty_rec:any()}],
+  global_state:with_new_state(fun() ->
+    % C1 :: {(atom≤β≤1)}
+    % C2 :: {(   1≤β≤1)}
+    Beta = ty_variable:new_with_name(beta),
+    Atom = ty:atom(), % replacement for bool
+    C1 = [{Beta, Atom,     ty:any()}],
+    C2 = [{Beta, ty:any(), ty:any()}],
 
-  % C1 =< C2 iff
-  %        (beta, >=, atom) in C1
-  %     => (beta, >=, 1)    in C2 such that 1 >= atom (true)
-  true = is_smaller(C1, C2),
-  ok.
+    % C1 =< C2 iff
+    %        (beta, >=, atom) in C1
+    %     => (beta, >=, 1)    in C2 such that 1 >= atom (true)
+    true = is_smaller(C1, C2)
+  end).
 
+-spec paper_example_test() -> _.
 paper_example_test() ->
-  test_utils:reset_ets(),
-  % C1 :: {(β≤α≤1)    (0≤β≤0)} :: {(β≤α)    (β≤0)}
-  % C2 :: {(β≤α≤1) (atom≤β≤1)} :: {(atom≤β) (β≤α)}
-  % C3 :: {           (0≤β≤0)} :: {(0≤β)         }
-  % C4 :: {(β≤α≤1)    (1≤β≤1)} :: {(1≤β)    (β≤α)}
-  Alpha = ty_variable:new(alpha),
-  Beta = ty_variable:new(beta),
-  BetaTy = ty_rec:variable(Beta),
-  Atom = ty_rec:atom(dnf_var_ty_atom:any()),
-  C1 = [{Alpha, BetaTy, ty_rec:any()}, {Beta, ty_rec:empty(), ty_rec:empty()}],
-  C2 = [{Alpha, BetaTy, ty_rec:any()}, {Beta, Atom, ty_rec:any()}],
-  C3 = [{Beta, ty_rec:empty(), ty_rec:empty()}],
-  C4 = [{Alpha, BetaTy, ty_rec:any()}, {Beta, ty_rec:any(), ty_rec:any()}],
+  global_state:with_new_state(fun() ->
+    % C1 :: {(β≤α≤1)    (0≤β≤0)} :: {(β≤α)    (β≤0)}
+    % C2 :: {(β≤α≤1) (atom≤β≤1)} :: {(atom≤β) (β≤α)}
+    % C3 :: {           (0≤β≤0)} :: {(0≤β)         }
+    % C4 :: {(β≤α≤1)    (1≤β≤1)} :: {(1≤β)    (β≤α)}
+    Alpha = ty_variable:new_with_name(alpha),
+    Beta = ty_variable:new_with_name(beta),
+    BetaTy = ty:variable(Beta),
+    Atom = ty:atom(),
+    C1 = [{Beta, ty:empty(), ty:empty()}, {Alpha, BetaTy, ty:any()} ],
+    C2 = [{Beta, Atom, ty:any()}, {Alpha, BetaTy, ty:any()}],
+    C3 = [{Beta, ty:empty(), ty:empty()}],
+    C4 = [{Beta, ty:any(), ty:any()}, {Alpha, BetaTy, ty:any()}],
 
-  true = is_smaller(C2, C4),
-  false = is_smaller(C4, C2),
+    true = is_smaller(C2, C4),
+    false = is_smaller(C4, C2),
 
-  true = is_smaller(C3, C1),
-  false = is_smaller(C1, C3),
+    true = is_smaller(C3, C1),
+    false = is_smaller(C1, C3),
 
-  % proper reduce test, C4 is redundant
-  S = [C2, C4, C1],
-  Min = minimize(S),
-  true = length(Min) =:= 2,
-
-  ok.
-
+    % proper reduce test, C4 is redundant
+    S = [C2, C4, C1],
+    Min = minimize(S),
+    true = length(Min) =:= 2
+  end).
 
 -endif.

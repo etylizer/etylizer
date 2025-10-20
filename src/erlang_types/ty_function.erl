@@ -1,49 +1,64 @@
 -module(ty_function).
 
-%% domain -> co-domain function representation
--export([compare/2, equal/2, all_variables/2, substitute/3]).
--export([function/2, domains/1, codomain/1, codomains_intersect/1, has_ref/2, transform/2, raw_transform/2]).
+-ifndef(NODE).
+-define(NODE, ty_node).
+-endif.
 
-compare(A, B) when A < B -> -1;
-compare(A, B) when A > B -> 1;
-compare(_, _) -> 0.
+-export([
+  equal/2,
+  compare/2,
+  function/2,
+  domain/1,
+  codomain/1,
+  unparse/2,
+  all_variables/2
+]).
 
-equal(P1, P2) -> compare(P1, P2) =:= 0.
+-export_type([type/0]).
+-type type() :: {ty_function, [?NODE:type()], ?NODE:type()}.
+-type ast_ty() :: ast:ty().
+-type all_variables_cache() :: ?NODE:all_variables_cache().
+-type variable() :: ty_variable:type().
 
-function(Refs, Ref2) ->
-    case Refs of
-        _ when not is_list(Refs) -> error(Refs);
-        _ -> ok
-    end,
-    true = is_list(Refs),
-    {ty_function, Refs, Ref2}.
+-spec compare(type(), type()) -> lt | gt | eq.
+compare({ty_function, Domains1, Codomain1}, {ty_function, Domains2, Codomain2}) ->
+  true = length(Domains1) =:= length(Domains2),
+  utils:compare(
+    fun(Node1, Node2) -> 
+      ?NODE:compare(Node1, Node2) end,
+    Domains1 ++ [Codomain1], 
+    Domains2 ++ [Codomain2]
+  ).
 
-domains({ty_function, Refs, _}) ->
-    true = is_list(Refs),
-    Refs.
-codomain({ty_function, _, Ref}) -> Ref.
+-spec equal(type(), type()) -> boolean().
+equal(A, B) -> compare(A, B) == eq.
 
-codomains_intersect([]) -> ty_rec:any();
-codomains_intersect([Fun]) -> ty_function:codomain(Fun);
-codomains_intersect([Fun | Funs]) -> ty_rec:intersect(ty_function:codomain(Fun), codomains_intersect(Funs)).
+-spec function([N], N) -> type() when N :: ?NODE:type().
+function(Refs, Ref2) when is_list(Refs) ->
+  {ty_function, Refs, Ref2}.
 
-has_ref({ty_function, _, Ref}, Ref) -> true;
-has_ref({ty_function, Refs, _}, Ref) -> lists:member(Ref, Refs).
+% domain is returned as a type, not as a list of types!
+-spec domain(type()) -> ?NODE:type().
+domain({ty_function, Domains, _}) ->
+  D = dnf_ty_variable:leaf(ty_rec:tuples(ty_tuples:singleton(length(Domains), dnf_ty_tuple:singleton(ty_tuple:tuple(Domains))))),
+  ty_node:make(D).
 
-transform({ty_function, Ref1, Ref2}, #{to_fun := Fun}) ->
-    Fun(Ref1, Ref2).
+-spec codomain(type()) -> ?NODE:type().
+codomain({ty_function, _, Codomain}) when not is_list(Codomain) -> Codomain.
 
-raw_transform(T, Op) -> transform(T, Op).
+-spec unparse(type(), T) -> {ast_ty(), T}.
+unparse({ty_function, Refs, Codomain}, ST0) ->
+  {All, ST3} = lists:foldl(
+                 fun(R, {Cs, ST1}) -> {C, ST2} = ty_node:unparse(R, ST1), {Cs ++ [C], ST2} end, 
+                 {[], ST0}, 
+                 Refs
+                ),
+  {Cod, ST4} = ty_node:unparse(Codomain, ST3),
+  {{fun_full, All, Cod}, ST4}.
 
-substitute({ty_function, Refs, B}, Map, Memo) ->
-    {ty_function,
-        lists:map(fun(C) -> ty_rec:substitute(C, Map, Memo) end, Refs),
-        ty_rec:substitute(B, Map, Memo)
-    }.
-
-all_variables({ty_function, Domain, Codomain}, M) ->
-  ty_rec:all_variables(domains_to_tuple(Domain), M)
-    ++ ty_rec:all_variables(Codomain, M).
-
-domains_to_tuple(Domains) ->
-    ty_rec:tuple(length(Domains), dnf_var_ty_tuple:tuple(dnf_ty_tuple:tuple(ty_tuple:tuple(Domains)))).
+-spec all_variables(type(), all_variables_cache()) -> sets:set(variable()).
+all_variables({ty_function, Domains, Codomain}, Cache) ->
+  sets:union(
+     [ty_node:all_variables(F, Cache) || F <- Domains]
+  ++ [ty_node:all_variables(Codomain, Cache)]
+  ).

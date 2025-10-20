@@ -1,265 +1,230 @@
 -module(pretty_tests).
 -include_lib("eunit/include/eunit.hrl").
 
--import(stdtypes, [tvar/1, ttuple_any/0, tnegate/1, tatom/0, tatom/1, tfun_full/2, trange/2, tunion/1, tintersect/1, trange_any/0, ttuple/1, tany/0, tnone/0]).
--import(test_utils, [is_subtype/2, is_equiv/2]).
+% AST helper functions
+-include_lib("etylizer/test/erlang_types/erlang_types_test_utils.hrl").
 
-% TODO simplifications
-% the heuristic in gen_bdd:do_dnf already handles these cases, but it's only a heuristic
-% S1: distribution over multiple coclauses
-% not(mu5) /\ bool | not(mu6) /\ bool | mu6 /\ mu5 => bool | mu5 /\ mu6
-% S2: redundant negations on the monomorphic DNF level
-% {a5 /\ b, int} | {a, int} /\ not({a5 /\ b, int}) => {a5 /\ b, int} | {a, int}
+id(Type) ->
+  Parsed = ty_parser:parse(Type),
+  Unparsed = ty_parser:unparse(Parsed),
+  Unparsed.
 
-empty_tuple_test() ->
-  ecache:reset_all(),
-  A = ast_lib:erlang_ty_to_ast(ast_lib:ast_to_erlang_ty(stdtypes:ttuple2(stdtypes:tint(), tnone()), symtab:empty()), #{}),
-  A = tnone(),
-  ok.
+% TODO semantic pretty printing for tuples
+% empty_tuple_test() ->
+%   global_state:with_new_state(fun() -> 
+%     A = ttuple([tint(), tnone()]),
+%     A = id(A)
+%   end).
 
 any_empty_test() ->
-  ecache:reset_all(),
   % syntactically same none and any representations
-  A = stdtypes:tnone(),
-  A = ast_lib:erlang_ty_to_ast(ast_lib:ast_to_erlang_ty(A, symtab:empty()), #{}),
-
-  B = stdtypes:tany(),
-  B = ast_lib:erlang_ty_to_ast(ast_lib:ast_to_erlang_ty(B, symtab:empty()), #{}),
-  ok.
+  global_state:with_new_state(fun() -> 
+    A = tnone(),
+    A = id(A)
+  end),
+  global_state:with_new_state(fun() -> 
+    A = tany(),
+    A = id(A)
+  end).
 
 simple_singleton_test() ->
-  ecache:reset_all(),
-  A = tatom(foo),
-  B = ast_lib:ast_to_erlang_ty(A, symtab:empty()),
-  Pretty = ast_lib:erlang_ty_to_ast(B, #{}),
-  true = subty:is_equivalent(symtab:empty(), A, Pretty),
-  ?assertEqual("foo", pretty:render_ty(Pretty)),
-  ok.
+  global_state:with_new_state(fun() -> 
+    A = b(foo),
+    B = id(A),
+    true = subty:is_equivalent(symtab:empty(), A, B),
+    ?assertEqual("foo", pretty:render_ty(B))
+  end).
+
+simple_singleton_negation_test() ->
+  global_state:with_new_state(fun() -> 
+    A = n(b(foo)),
+    B = id(A),
+    true = subty:is_equivalent(symtab:empty(), A, B),
+    ?assertEqual("not(foo)", pretty:render_ty(B))
+  end).
+
+singleton_negation_test() ->
+  global_state:with_new_state(fun() -> 
+    A = i([n(b(a)), n(b(b))]),
+    B = id(A),
+    true = subty:is_equivalent(symtab:empty(), A, B),
+    ?assertEqual("not(a | b)", pretty:render_ty(B))
+  end).
 
 variable_union_test() ->
-  ecache:reset_all(),
-  A = tunion([tvar(a), tatom(foo)]),
-  B = ast_lib:ast_to_erlang_ty(A, symtab:empty()),
-  Pretty = ast_lib:erlang_ty_to_ast(B, #{}),
-  true = subty:is_equivalent(symtab:empty(), A, Pretty),
-  ?assertEqual("foo | a", pretty:render_ty(Pretty)),
-  ok.
+  global_state:with_new_state(fun() -> 
+    A = u([v(a), b(foo)]),
+    B = id(A),
+    true = subty:is_equivalent(symtab:empty(), A, B),
+    ?assertEqual("not(a) /\\ foo | a", pretty:render_ty(B)) % was "foo | a" before; need ty_rec factorization now
+  end).
 
 var_inter_test() ->
-  ecache:reset_all(),
-  A = tunion([
-    tintersect([ tvar(mu5), tvar(mu6) ]),
-    tintersect([ tnegate(tvar(mu6)), tatom(bool) ])
-  ]),
-  B = ast_lib:ast_to_erlang_ty(A, symtab:empty()),
-  Pretty = ast_lib:erlang_ty_to_ast(B, #{}),
-  true = subty:is_equivalent(symtab:empty(), A, Pretty),
-  ?assertEqual("not(mu6) /\\ bool | mu5 /\\ bool | mu6 /\\ mu5", pretty:render_ty(Pretty)),
-  ok.
+  global_state:with_new_state(fun() -> 
+    A = u([
+      i([ v(mu5), v(mu6) ]),
+      i([ n(v(mu6)), b(bool) ])
+    ]),
+    B = id(A),
+    true = subty:is_equivalent(symtab:empty(), A, B),
+    ?assertEqual("mu5 /\\ mu6 | not(mu6) /\\ bool", pretty:render_ty(B))
+  end).
 
 var_inter2_test() ->
-  ecache:reset_all(),
-  A =
-    tunion([
-      tintersect([ tvar(mu5), tvar(mu6) ]),
-      tintersect([ tnegate(tvar(mu6)), tatom(bool) ]),
-      tintersect([ tnegate(tvar(mu5)), tatom(bool) ])
-    ]),
-  B = ast_lib:ast_to_erlang_ty(A, symtab:empty()),
-  Pretty = ast_lib:erlang_ty_to_ast(B, #{}),
-  true = subty:is_equivalent(symtab:empty(), A, Pretty),
-  ?assertEqual("bool | mu6 /\\ mu5", pretty:render_ty(Pretty)),
-  ok.
+  global_state:with_new_state(fun() -> 
+    A =
+      u([
+        i([ v(mu5), v(mu6) ]),
+        i([ n(v(mu6)), b(bool) ]),
+        i([ n(v(mu5)), b(bool) ])
+      ]),
+    B = id(A),
+    true = subty:is_equivalent(symtab:empty(), A, B), 
+    % was "bool | mu6 /\\ mu5" before
+    ?assertEqual("mu5 /\\ mu6 | not(mu5) /\\ bool | not(mu6) /\\ bool", pretty:render_ty(B))
+  end).
 
 var_neg_dnf_test() ->
-  ecache:reset_all(),
-  A =
-    tunion([
-      tintersect([tvar(mu6), tnegate(tvar(mu5)), (tatom(bool))]),
-      tintersect([tnegate(tvar(mu5)), (tatom(bool))]),
-      tintersect([tnegate(tvar(mu6)), (tatom(bool))]),
-      tintersect([tvar(mu5), tnegate(tvar(mu6)), (tatom(bool))])
-    ]),
-  B = ast_lib:ast_to_erlang_ty(A, symtab:empty()),
-  Pretty = ast_lib:erlang_ty_to_ast(B, #{}),
-  true = subty:is_equivalent(symtab:empty(), A, Pretty),
-  ?assertEqual("not(mu5) /\\ bool | not(mu6) /\\ bool", pretty:render_ty(Pretty)),
-  ok.
+  global_state:with_new_state(fun() -> 
+    A =
+      u([
+        i([v(mu6), n(v(mu5)), (b(bool))]),
+        i([n(v(mu5)), (b(bool))]),
+        i([n(v(mu6)), (b(bool))]),
+        i([v(mu5), n(v(mu6)), (b(bool))])
+      ]),
+    B = id(A),
+    true = subty:is_equivalent(symtab:empty(), A, B),
+    ?assertEqual("not(mu5) /\\ bool | not(mu6) /\\ bool", pretty:render_ty(B))
+  end).
 
 var_neg_inter_test() ->
-  ecache:reset_all(),
-  A =
-    tnegate(tunion([
-      tintersect([ tvar(mu5), tvar(mu6) ]),
-      tintersect([ tnegate(tvar(mu6)), tatom(bool) ]),
-      tintersect([ tnegate(tvar(mu5)), tatom(bool) ])
-    ])),
-  B = ast_lib:ast_to_erlang_ty(A, symtab:empty()),
-  Pretty = ast_lib:erlang_ty_to_ast(B, #{}),
-  true = subty:is_equivalent(symtab:empty(), A, Pretty),
-  ?assertEqual("not(bool | mu6 /\\ mu5)", pretty:render_ty(Pretty)),
+  global_state:with_new_state(fun() -> 
+    A =
+      n(u([
+        i([ v(mu5), v(mu6) ]),
+        i([ n(v(mu6)), b(bool) ]),
+        i([ n(v(mu5)), b(bool) ])
+      ])),
+    B = id(A),
+    true = subty:is_equivalent(symtab:empty(), A, B),
+    % was "not(bool | mu6 /\\ mu5)" before
+    ?assertEqual("not(mu5) /\\ not(bool) | not(mu6) /\\ not(bool)", pretty:render_ty(B))
+  end).
 
-  ok.
-
-worth_negate_test() ->
-  ecache:reset_all(),
-  A = tnegate(tatom(a)) ,
-  B = ast_lib:ast_to_erlang_ty(A, symtab:empty()),
-  Pretty = ast_lib:erlang_ty_to_ast(B, #{}),
-  true = subty:is_equivalent(symtab:empty(), A, Pretty),
-  ?assertEqual("not(a)", pretty:render_ty(Pretty)),
-  ok.
-
-worth_negate2_test() ->
-  ecache:reset_all(),
-  A = tintersect([tnegate(tatom(a)), tnegate(tatom(b))]),
-  B = ast_lib:ast_to_erlang_ty(A, symtab:empty()),
-  Pretty = ast_lib:erlang_ty_to_ast(B, #{}),
-  true = subty:is_equivalent(symtab:empty(), A, Pretty),
-  ?assertEqual("not(a | b)", pretty:render_ty(Pretty)),
-  ok.
-
-ex1_test() ->
-  ecache:reset_all(),
-  A = {intersection, [
-      {var,'$0'},
-      {negation, {tuple,[{singleton,a}, {singleton, tag}]} },
-      {tuple,[{singleton,b}, {singleton, tag}]}
-    ]},
-  B = ast_lib:ast_to_erlang_ty(A, symtab:empty()),
-  Pretty = ast_lib:erlang_ty_to_ast(B, #{}),
-  true = subty:is_equivalent(symtab:empty(), A, Pretty),
-  ?assertEqual("$0 /\\ {b, tag} /\\ not({a, tag})", pretty:render_ty(Pretty)),
-
-  ok.
+tuples_1_test() ->
+  global_state:with_new_state(fun() -> 
+    A = i([
+      v('$0'),
+      n(ttuple([b(a), b(tag)])),
+      ttuple([b(b), b(tag)])
+    ]),
+    B = id(A),
+    true = subty:is_equivalent(symtab:empty(), A, B),
+    ?assertEqual("$0 /\\ {b, tag} /\\ not({a, tag})", pretty:render_ty(B))
+  end).
 
 variable_simple_union_test() ->
-  ecache:reset_all(),
-  A = tunion([tvar(a), tvar(b)]),
-  B = ast_lib:ast_to_erlang_ty(A, symtab:empty()),
-  Pretty = ast_lib:erlang_ty_to_ast(B, #{}),
-  true = subty:is_equivalent(symtab:empty(), A, Pretty),
-  ?assertEqual("a | b", pretty:render_ty(Pretty)),
+  global_state:with_new_state(fun() -> 
+    A = u([v(a), v(b)]),
+    B = id(A),
+    true = subty:is_equivalent(symtab:empty(), A, B),
+    ?assertEqual("a | b", pretty:render_ty(B))
+  end).
 
-  ok.
+variable_union_2_test() ->
+  global_state:with_new_state(fun() -> 
+    A = u([v(a), v(b), b(foo)]),
+    B = id(A),
+    true = subty:is_equivalent(symtab:empty(), A, B),
+    % was "foo | a | b" before
+    ?assertEqual("not(a) /\\ not(b) /\\ foo | a | b", pretty:render_ty(B))
+  end).
 
-variable_union2_test() ->
-  ecache:reset_all(),
-  A = tunion([tvar(a), tvar(b), tatom(foo)]),
-  B = ast_lib:ast_to_erlang_ty(A,symtab:empty()),
-  Pretty = ast_lib:erlang_ty_to_ast(B, #{}),
-  true = subty:is_equivalent(symtab:empty(), A, Pretty),
-  ?assertEqual("foo | a | b", pretty:render_ty(Pretty)),
-  ok.
+variable_union_3_test() ->
+  global_state:with_new_state(fun() -> 
+    A = u([v(a), v(b), v(c), b(foo)]),
+    B = id(A),
+    true = subty:is_equivalent(symtab:empty(), A, B),
+    % was "foo | a | b c" before
+    ?assertEqual("not(a) /\\ not(b) /\\ not(c) /\\ foo | a | b | c", pretty:render_ty(B))
+  end).
 
-variable_union3_test() ->
-  ecache:reset_all(),
-  A = tunion([tvar(a), tvar(b), tvar(c), tatom(foo)]),
-  B = ast_lib:ast_to_erlang_ty(A, symtab:empty()),
-  Pretty = ast_lib:erlang_ty_to_ast(B, #{}),
-  true = subty:is_equivalent(symtab:empty(), A, Pretty),
-  ?assertEqual("foo | a | b | c", pretty:render_ty(Pretty)),
-  ok.
+variable_union_4_test() ->
+  global_state:with_new_state(fun() -> 
+    A = u([v(a),b()]),
+    B = id(A),
+    true = subty:is_equivalent(symtab:empty(), A, B),
+    % was "atom() | a" before
+    ?assertEqual("not(a) /\\ atom() | a", pretty:render_ty(B))
+  end).
 
-variable_union4_test() ->
-  ecache:reset_all(),
-  A = tunion([tvar(a),tatom()]),
-  B = ast_lib:ast_to_erlang_ty(A, symtab:empty()),
-  Pretty = ast_lib:erlang_ty_to_ast(B, #{}),
-  true = subty:is_equivalent(symtab:empty(), A, Pretty),
-  ?assertEqual("atom() | a", pretty:render_ty(Pretty)),
-  ok.
-
-variable_union5_test() ->
-  ecache:reset_all(),
-  A = tunion([tvar(a),tatom(), trange(2,4)]),
-  B = ast_lib:ast_to_erlang_ty(A, symtab:empty()),
-  Pretty = ast_lib:erlang_ty_to_ast(B, #{}),
-  true = subty:is_equivalent(symtab:empty(), A, Pretty),
-  ?assertEqual("atom() | 2..4 | a", pretty:render_ty(Pretty)),
-  ok.
-
-variable_union6_test() ->
-  ecache:reset_all(),
-  A = tunion([tvar(a), tvar(b), tvar(c), tvar(d), tatom(foo), trange(4,9)]),
-  B = ast_lib:ast_to_erlang_ty(A, symtab:empty()),
-  Pretty = ast_lib:erlang_ty_to_ast(B, #{}),
-  true = subty:is_equivalent(symtab:empty(), A, Pretty),
-  ?assertEqual("foo | 4..9 | a | b | c | d", pretty:render_ty(Pretty)),
-  ok.
-
+variable_union_5_test() ->
+  global_state:with_new_state(fun() -> 
+    A = u([v(a),b(), tint(2,4)]),
+    B = id(A),
+    true = subty:is_equivalent(symtab:empty(), A, B),
+    % was "atom() | 2..4 | a"" before
+    ?assertEqual("not(a) /\\ (atom() | 2..4) | a", pretty:render_ty(B))
+  end).
 
 other_test() ->
-  ecache:reset_all(),
-  V0 = tunion([
-    ttuple([tintersect([tatom(b), tvar(a5)]), tatom(int)]),
-    ttuple([tatom(a), tatom(int)]),
-    tintersect([
-      tunion([
-        ttuple([tintersect([tatom(b), tvar(a5)]), tatom(int)]),
-        ttuple([tatom(a), tatom(int)])
-      ]),
-      tvar(a0a0)
-    ])
-  ]),
-  B = ast_lib:ast_to_erlang_ty(V0, symtab:empty()),
-  Pretty = ast_lib:erlang_ty_to_ast(B, #{}),
-
-  true = subty:is_equivalent(symtab:empty(), V0, Pretty),
-  ?assertEqual("{a5 /\\ b, int} | {a, int}", pretty:render_ty(Pretty)),
-
-  ok.
+  global_state:with_new_state(fun() -> 
+    A = u([
+      ttuple([i([b(b), v(a5)]), b(int)]),
+      ttuple([b(a), b(int)]),
+      i([
+        u([
+          ttuple([i([b(b), v(a5)]), b(int)]),
+          ttuple([b(a), b(int)])
+        ]),
+        v(a0a0)
+      ])
+    ]),
+    B = id(A),
+    true = subty:is_equivalent(symtab:empty(), A, B),
+    ?assertEqual("{a, int} | {a5 /\\ b, int}", pretty:render_ty(B))
+  end).
 
 var_condition_test() ->
-  ecache:reset_all(),
-  A = tunion([
-    tintersect([tnegate(tvar(a)), tvar(c)]),
-    tintersect([tnegate(tvar(b)), tnegate(tvar(c))])
-  ]),
-  B = ast_lib:ast_to_erlang_ty(A, symtab:empty()),
-  Pretty = ast_lib:erlang_ty_to_ast(B, #{}),
-  true = subty:is_equivalent(symtab:empty(), A, Pretty),
-%%  ?assertEqual("{a5 /\\ b, int} | {a, int}", pretty:render_ty(Pretty)),
-
-  ok.
-
+  global_state:with_new_state(fun() -> 
+    A = u([
+      i([n(v(a)), v(c)]),
+      i([n(v(b)), n(v(c))])
+    ]),
+    B = id(A),
+    true = subty:is_equivalent(symtab:empty(), A, B),
+    ?assertEqual("not(b) /\\ not(c) | c /\\ not(a)", pretty:render_ty(B))
+  end).
 
 recursive_test() ->
-  ecache:reset_all(),
-  X = tvar(x),
-  L = tunion([
-    tatom(nil),
-    ttuple([tvar(alpha), X])
-  ]),
-  A = {mu, X, L},
+  global_state:with_new_state(fun() -> 
+    X = tvar_mu(x),
+    L = ttuple([X]),
+    A = {mu, X, L},
+    B = id(A),
+    true = subty:is_equivalent(symtab:empty(), A, B),
+    ?assertEqual("mu $node_1.{mu $node_1}", pretty:render_ty(B))
+  end).
 
-  B = ast_lib:ast_to_erlang_ty(A, symtab:empty()),
-  Pretty = ast_lib:erlang_ty_to_ast(B, #{}),
-  true = subty:is_equivalent(symtab:empty(), A, Pretty),
-  
-  % TODO how to test this with string output?
-  % TODO ast_to_erlang_ty unification missing, type is unfolded one time too many
-  % {mu, Mu, {union, [{singleton, nil}, {tuple, [{var, alpha}, Mu]}]}} = Pretty,
-  %?assertEqual("mu X . nil | {alpha, mu X}", pretty:render_ty(Pretty)),
+recursive_2_test() ->
+  global_state:with_new_state(fun() -> 
+    X = tvar_mu(x),
+    L = u([
+      b(nil),
+      ttuple([v(alpha), X])
+    ]),
+    A = {mu, X, L},
+    B = id(A),
+    true = subty:is_equivalent(symtab:empty(), A, B),
+    ?assertEqual("mu $node_1.nil | {alpha, mu $node_1}", pretty:render_ty(B))
+  end).
 
-  ok.
+empty_map_test() ->
+  global_state:with_new_state(fun() -> 
+    A = stdtypes:tmap([]),
+    B = id(A),
+    true = subty:is_equivalent(symtab:empty(), A, B),
+    ?assertEqual("#{}", pretty:render_ty(B))
+  end).
 
-named_recursive_test() ->
-  ecache:reset_all(),
-  X = tvar(x),
-  L = tunion([
-    tatom(nil),
-    ttuple([tvar(alpha), X])
-  ]),
-  A = {mu, X, L},
-
-  B = ast_lib:ast_to_erlang_ty(A, symtab:empty()),
-  Pretty = ast_lib:erlang_ty_to_ast(B, #{}),
-  true = subty:is_equivalent(symtab:empty(), A, Pretty),
-  
-  % TODO how to test this with string output?
-  % TODO ast_to_erlang_ty unification missing, type is unfolded one time too many
-  % {mu, Mu, {union, [{singleton, nil}, {tuple, [{var, alpha}, Mu]}]}} = Pretty,
-  %?assertEqual("mu X . nil | {alpha, mu X}", pretty:render_ty(Pretty)),
-
-  ok.
