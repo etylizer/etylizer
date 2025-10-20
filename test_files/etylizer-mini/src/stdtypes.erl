@@ -321,7 +321,6 @@ builtin_ops() ->
 
 %% Types for builtin functions
 
--type fun_types() :: [{atom(), arity(), ast:ty_scheme()}].
 
 -spec extra_funs() -> fun_types().
 extra_funs() ->
@@ -344,46 +343,67 @@ cleanup() ->
     ets:delete(?TABLE),
     ok.
 
+-type fun_types() :: [{atom(), arity(), ast:ty_scheme()}].
+-spec assert_is_funtypes(term()) -> fun_types().
+assert_is_funtypes([]) -> [];
+assert_is_funtypes([E | Xs]) ->
+    case E of
+      {X, Z, {ty_scheme, L, _Ty}} when is_atom(X) andalso is_integer(Z) andalso is_list(L) ->
+        % TODO continue
+        error(todo);
+      _ -> error(type_error)
+    end;
+assert_is_funtypes(_) -> error(type_error).
+
+
 -spec builtin_funs() -> fun_types().
 builtin_funs() ->
     Key = stdtypes,
-    case ets:whereis(?TABLE) of
+    case ets:whereis(table) of
         undefined -> init();
         _ -> ok
     end,
     Dir = utils:assert_no_error(code:lib_dir(erts)),
-    Path = filename:join([Dir, "src", "erlang.erl"]),
+    Path = "ok",
     Hash = utils:hash_file(Path),
     case ets:lookup(?TABLE, Key) of
-        [{_, {StoredHash, Result}}] when Hash =:= StoredHash -> Result;
+        [{_, {StoredHash, Result}}] when Hash =:= StoredHash -> 
+            assert_is_funtypes(Result);
         [] ->
             X = mk_builtin_funs(Path),
             true = ets:insert(?TABLE, {Key, {Hash, X}}),
             X;
-        Y -> ?ABORT("Unexpected entry in stdtypes_table: ~p", Y)
+        Y -> erlang:error(todo)
     end.
+
+-spec my_filtermap(fun((T) -> boolean()), [T]) -> [T]
+                ; (fun((T) -> {true, U} | false), [T]) -> [U]
+                ; (fun((T) -> {true, U} | boolean()), [T]) -> [T | U].
+my_filtermap(_, _) -> error(todo).
 
 -spec mk_builtin_funs(file:filename()) -> fun_types().
 mk_builtin_funs(Path) ->
     ?LOG_DEBUG("Creating types for builtin functions"),
     RawForms = parse:parse_file_or_die(Path, #parse_opts{
+                                                includes = [],
+                                                defines = [],
                                                 verbose = false
                                                }),
     {Exports, RawSpecs} =
         lists:foldl(
           fun (Form, Acc = {Exports, Specs}) ->
                   case Form of
-                      {attribute, _, export, Funs} ->
+                      {attribute, _, export, Funs} when is_list(Funs) -> % CHANGE
                           {utils:set_add_many(Funs, Exports), Specs};
                       {attribute, _, spec, _} ->
                           {Exports, [Form | Specs]};
                       _ -> Acc
                   end
           end,
-          {sets:new([{version, 2}]), []}, RawForms),
-    AllSpecs = ast_transform:trans(Path, lists:reverse(RawSpecs), flat, varenv:empty("function")),
+          {sets:new(), []}, RawForms), % ast_erl:forms()
+    AllSpecs = ast_transform:trans(Path, lists:reverse(RawSpecs), flat, varenv:empty_fun()),
     Result =
-        lists:filtermap(
+        my_filtermap( % CHANGE
           fun (Spec) ->
                   case Spec of
                       {attribute, _, spec, Name, Arity, Ty, without_mod} ->

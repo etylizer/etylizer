@@ -4,6 +4,8 @@
 -include("etylizer_main.hrl").
 -include("log.hrl").
 
+-define(_timeout(E), {timeout, 45, E}).
+
 % Parse a string such as "1+2" to return {ok, sets:from_list([1,2])}
 -spec parse_versions(string()) -> {ok, sets:set(integer())} | error.
 parse_versions(S) ->
@@ -157,32 +159,35 @@ test_rebar_changes() ->
         end).
 
 file_changes_test_() ->
-    [?_test(test_recompile("simple", #{1 => ["main.erl"], 2 => []})),
-     ?_test(test_recompile("file_changes",
-        #{1 => ["bar.erl", "foo.erl", "main.erl"], 2 => ["foo.erl"]})),
-     ?_test(test_recompile("file_changes2",
-        #{1 => ["bar.erl", "foo.erl", "main.erl"], 2 => ["foo.erl"]})),
+    [ 
+     % TODO building the std_symtab takes longer than 5 seconds and causes timeouts;
+     % why is symtab rebuilt everytime?
+     ?_timeout(?_test(test_recompile("simple", #{1 => ["main.erl"], 2 => []}))),
+     ?_timeout(?_test(test_recompile("file_changes",
+        #{1 => ["bar.erl", "foo.erl", "main.erl"], 2 => ["foo.erl"]}))),
+     ?_timeout(?_test(test_recompile("file_changes2",
+        #{1 => ["bar.erl", "foo.erl", "main.erl"], 2 => ["foo.erl"]}))),
       % FIXME: substitution of tally variables causes a timeout
-     ?_test(test_recompile_dont_tycheck("change_tyspec",
-        #{1 => ["bar.erl", "foo.erl", "main.erl"], 2 => ["main.erl", "foo.erl"]})),
-     ?_test(test_recompile("change_local_tyspec",
-        #{1 => ["bar.erl", "foo.erl", "main.erl"], 2 => ["foo.erl"]})),
-     ?_test(test_recompile("no_type_error",
-        #{1 => ["foo.erl", "main.erl"], 2 => ["foo.erl"], 3 => []})),
-     ?_test(test_recompile("type_error",
-        #{1 => ["foo.erl", "main.erl"], 2 => type_error, 3 => type_error})),
-     % FIXME: the following tests use the _dont_tycheck alternative because of some subtype bug
-     ?_test(test_recompile_dont_tycheck("change_tydef",
-        #{1 => ["bar.erl", "foo.erl", "main.erl"], 2 => ["main.erl", "foo.erl"]})),
-     ?_test(test_recompile_dont_tycheck("change_local_tydef",
-        #{1 => ["bar.erl", "foo.erl", "main.erl"], 2 => ["foo.erl"]})),
-     ?_test(test_recompile_dont_tycheck("change_local_but_reachable_tydef",
-        #{1 => ["bar.erl", "foo.erl", "main.erl"], 2 => ["main.erl", "foo.erl"]})),
-     ?_test(test_recompile_dont_tycheck("cycle",
-        #{1 => ["m1.erl", "m2.erl", "main.erl"], 2 => ["m1.erl", "m2.erl"]})),
-     ?_test(test_recompile("transitive-reference",
+     ?_timeout(?_test(test_recompile_dont_tycheck("change_tyspec",
+        #{1 => ["bar.erl", "foo.erl", "main.erl"], 2 => ["main.erl", "foo.erl"]}))),
+     ?_timeout(?_test(test_recompile("change_local_tyspec",
+        #{1 => ["bar.erl", "foo.erl", "main.erl"], 2 => ["foo.erl"]}))),
+     ?_timeout(?_test(test_recompile("no_type_error",
+        #{1 => ["foo.erl", "main.erl"], 2 => ["foo.erl"], 3 => []}))),
+     ?_timeout(?_test(test_recompile("type_error",
+        #{1 => ["foo.erl", "main.erl"], 2 => type_error, 3 => type_error}))),
+      % FIXME: the following tests use the _dont_tycheck alternative because of some subtype bug
+     ?_timeout(?_test(test_recompile_dont_tycheck("change_tydef",
+        #{1 => ["bar.erl", "foo.erl", "main.erl"], 2 => ["main.erl", "foo.erl"]}))),
+     ?_timeout(?_test(test_recompile_dont_tycheck("change_local_tydef",
+        #{1 => ["bar.erl", "foo.erl", "main.erl"], 2 => ["foo.erl"]}))),
+     ?_timeout(?_test(test_recompile_dont_tycheck("change_local_but_reachable_tydef",
+        #{1 => ["bar.erl", "foo.erl", "main.erl"], 2 => ["main.erl", "foo.erl"]}))),
+     ?_timeout(?_test(test_recompile_dont_tycheck("cycle",
+        #{1 => ["m1.erl", "m2.erl", "main.erl"], 2 => ["m1.erl", "m2.erl"]}))),
+     ?_timeout(?_test(test_recompile("transitive-reference",
         #{1 => ["main.erl", "m2.erl", "m3.erl", "m4.erl"],
-          2 => ["main.erl", "m2.erl", "m3.erl", "m4.erl"]})),
-     ?_test(test_rebar_changes())
+          2 => ["main.erl", "m2.erl", "m3.erl", "m4.erl"]}))),
+     ?_timeout(?_test(test_rebar_changes()))
     ].
 

@@ -1,23 +1,23 @@
 -module(tally_varorder_tests).
 
+-compile([nowarn_unused_function]). % ignore unused helper functions
+
+-import(erlang_types_test_utils, [test_tally/2, test_tally/3, solutions/1]).
+
 -include_lib("eunit/include/eunit.hrl").
--include("log.hrl").
 
--import(stdtypes, [tvar/1, ttuple_any/0, tnegate/1, tatom/0, tatom/1, tfun_full/2, tfun1/2, trange/2,
-                   tunion/1, tunion/2, tintersect/1, trange_any/0, ttuple/1, tany/0, tnone/0,
-                   tint/0, tint/1, ttuple1/1, tinter/1, tinter/2, tlist/1, tempty_list/0,
-                   tfloat/0, tfun2/3, tnot/1, tbool/0,
-                   tmap/1, tmap_any/0, tmap_field_opt/2, tmap_field_req/2
-                  ]).
+% AST helper functions
+-include_lib("test/erlang_types/erlang_types_test_utils.hrl").
 
+% test solution amount depends on variable ordering
 
 sol_number_test() ->
   % changing variable order produces a different number of solutions
 
   % ('a2, 42) <=  ('a1, 42)
-  C1 = { {tuple,[{var,'$2'}, {singleton, tag}]}, {tuple,[{var,'$1'}, {singleton, tag}]}},
+  C1 = { ttuple([v('$2'), b(tag)]), ttuple([v('$1'), b(tag)])},
   % ('a1, 42) <=  ('a2, 42)
-  C2 = { {tuple,[{var,'$1'}, {singleton, tag}]}, {tuple,[{var,'$2'}, {singleton, tag}]}},
+  C2 = { ttuple([v('$1'), b(tag)]), ttuple([v('$2'), b(tag)])},
 
   % single solution variable order says
   % 'a2 is replaced by 'a1 & 'mu1
@@ -28,5 +28,47 @@ sol_number_test() ->
   % both tally results are equivalent
 
   % variable order determines if a variable is used as a lower or upper bound for another variable
-  test_utils:test_tally( [ C2 ], test_utils:solutions(1)),
-  test_utils:test_tally( [ C1 ], test_utils:solutions(2)).
+  test_tally( [ C2 ], solutions(2)),
+  test_tally( [ C1 ], solutions(1)).
+
+good_variable_order_tuples_test() ->
+  % tuples: if variables on the left side of a constraint are lower order, number of solutions decreases
+  C1 = { ttuple([v('$0')]), 
+         i([
+          ttuple([v('$4')]),
+          ttuple([v('$3')]),
+          ttuple([v('$2')]),
+          ttuple([v('$1')])
+         ])
+       },
+
+  % if bigger, then solutions amount increases. 
+  % The more variables there are on the right side, the more solutions, if no DNF minimization is implemented
+  C2 = { ttuple([v('$5')]), 
+         i([
+          ttuple([v('$4')]),
+          ttuple([v('$3')]),
+          ttuple([v('$2')]),
+          ttuple([v('$1')])
+         ])
+       },
+
+  test_tally( [ C1 ], solutions(2)),
+  test_tally( [ C2 ], solutions(1)), % was 5 before
+  ok.
+
+% if we don't have minimization, the variable order creates a different evaluation of the BDD where sometimes 
+% more solutions are calculated than necessary
+% example:          v5 & ~v2      | v5 &  v2 & ~v1 
+% is equivalent to: v5 & ~v2 & v1 | v5       & ~v1
+% if there are more terms in a line than necessary (which might contain more variable), 
+% this bloats the normalization result with unecessary variables
+% and non-subsumable constraint sets
+bdd_order_matters_test() ->
+  C1 = { ttuple([v('$5')]), i([ ttuple([v('$2')]), ttuple([v('$1')]) ]) },
+  C2 = { ttuple([v('$5')]), i([ ttuple([v('$1')]), ttuple([v('$2')]) ]) },
+
+  % before the DNF minimization of a BDD -> DNF call, this call created 3 solutions
+  test_tally( [ C1 ], solutions(1)),
+  test_tally( [ C2 ], solutions(1)),
+  ok.

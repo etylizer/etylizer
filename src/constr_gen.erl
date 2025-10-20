@@ -163,13 +163,12 @@ exp_constrs(Ctx, Env, E, T) ->
             sets:add_element({csubty, mk_locs("result of catch", L), Top, T}, Cs);
         {cons, L, Head, Tail} ->
             Alpha = fresh_tyvar(Ctx),
-            CsHead = exp_constrs(Ctx, Env, Head, Alpha),
+            C1 = exp_constrs(Ctx, Head, Alpha),
             Beta = fresh_tyvar(Ctx),
-            TyTail = stdtypes:tlist(Beta),
-            CsTail = exp_constrs(Ctx, Env, Tail, TyTail),
-            TyResult = stdtypes:tnonempty_list(stdtypes:tunion([Alpha, Beta])),
-            sets:add_element({csubty, mk_locs("result of cons", L), TyResult, T},
-                             sets:union(CsHead, CsTail));
+            C2 = exp_constrs(Ctx, Tail, Beta),
+            Cs = sets:union(C1, C2),
+            ListC = {csubty, mk_locs("cons constructor", L), {cons, Alpha, Beta}, T},
+            sets:add_element(ListC, Cs);
         {fun_ref, L, GlobalRef} ->
             utils:single({cvar, mk_locs("function ref", L), GlobalRef, T});
         {'fun', L, RecName, FunClauses} ->
@@ -198,7 +197,9 @@ exp_constrs(Ctx, Env, E, T) ->
             errors:unsupported(L, "list comprehension: ~200p", [E]);
         {mc, L, _E, _Qs} ->
             errors:unsupported(L, "map comprehension: ~200p", [E]);
-    {map_create, L, Assocs} ->
+        {map_create, L, []} ->
+            utils:single({csubty, mk_locs("empty map", L), {map, []}, T});
+        {map_create, L, Assocs} ->
             KeyAlpha = fresh_tyvar(Ctx),
             ValAlpha = fresh_tyvar(Ctx),
             MapTy = {map, [{map_field_opt, KeyAlpha, ValAlpha}]},
@@ -680,31 +681,15 @@ bound_vars_pat(P) ->
 % In the paper, the type t of a pattern p has the following semantics:
 %     Expression e matches p if, and only if, e has type t
 %
-% With list patterns, this is no longer true.
-%
-% Example 1: pattern [1 | _].
-% For the => direction above, consider an expression e that matches
-% this pattern. From this, all we know is that e must have type nonempty_list(any()).
-% (e could be any of the following expressions: [1,2,3] or [1, "foo"] or [1]).
-% For the <= direction, e must have type nonempty_list(1) if we want to make sure
-% that the pattern definitely matches.
-% Example 2: pattern [_ | _ | _].
-% For the => direction, consider an expression e that matches the pattern.
-% From this, all we know is that e has type nonempy_list() because there is no
-% type for lists with at least length two.
-% For the <= direction, no type except none() guarantees that e matches the pattern.
+% For existing variables, this is no longer true.
 %
 % Hence, we introduce a mode for ty_of_pat, which can be either upper or lower.
 %
 % - Mode upper deals with the potential type. Any expression matching p must
 %   be of this type.
-%   Example 1: the potential type is nonempty_list(any()).
-%   Example 2: the potential type is nonempty_list(any()).
 %
 % - Mode lower deals with the accepting type. If e has this type, then p definitely
 %   matches.
-%   Example 1: the accepting type is nonempty_list(1).
-%   Example 2: the accepting type is none()
 -spec ty_of_pat(symtab:t(), constr:constr_env(), ast:pat(), upper | lower) -> ast:ty().
 ty_of_pat(Symtab, Env, P, Mode) ->
     case P of
@@ -712,43 +697,19 @@ ty_of_pat(Symtab, Env, P, Mode) ->
         {'char', _L, C} -> {singleton, C};
         {'integer', _L, I} -> {singleton, I};
         {'float', _L, _F} -> {predef, float};
-        {'string', _L, _S} -> {predef_alias, string};
+        {'string', _L, []} -> {empty_list};
+        {'string', _L, Z} -> 
+            [X|Xs] = lists:reverse(Z),
+            lists:foldl(fun(E, Acc) -> {cons, {singleton, E}, Acc} end, {cons, {singleton, X}, {empty_list}}, Xs);
         % TODO correct binary patterns
         {bin, _L, _Elems} -> {bitstring};
         {match, _L, P1, P2} ->
             ast_lib:mk_intersection([ty_of_pat(Symtab, Env, P1, Mode), ty_of_pat(Symtab, Env, P2, Mode)]);
         {nil, _L} -> {empty_list};
         {cons, _L, P1, P2} ->
-            Res =
-                case Mode of
-                    upper ->
-                        T1 = ty_of_pat(Symtab, Env, P1, Mode),
-                        T2 = ty_of_pat(Symtab, Env, P2, Mode),
-                        ?LOG_DEBUG("T1=~s, T2=~s", pretty:render_ty(T1), pretty:render_ty(T2)),
-                        case subty:is_subty(Symtab, T2, stdtypes:tempty_list()) of
-                            true -> stdtypes:tnonempty_list(T1);
-                            false ->
-                                case subty:is_subty(Symtab, T2, stdtypes:tnonempty_list()) of
-                                    true -> ast_lib:mk_union([stdtypes:tnonempty_list(T1), T2]);
-                                    false ->
-                                        case subty:is_any(T2, Symtab) of
-                                            true -> stdtypes:tnonempty_list();
-                                            false -> stdtypes:tnonempty_improper_list(T1, T2)
-                                        end
-                                end
-                        end;
-                    lower ->
-                        T1 = {nonempty_list, ty_of_pat(Symtab, Env, P1, Mode)},
-                        T2 = ty_of_pat(Symtab, Env, P2, Mode),
-                        ?LOG_DEBUG("T1=~s, T2=~s", pretty:render_ty(T1), pretty:render_ty(T2)),
-                        % FIXME: can we encode this choice as a type?
-                        case subty:is_any(T2, Symtab) of
-                            true -> T1;
-                            false -> stdtypes:empty()
-                        end
-                end,
-            ?LOG_DEBUG("Type of list pattern ~200p in mode ~w: ~s", P, Mode, pretty:render_ty(Res)),
-            Res;
+            T1 = ty_of_pat(Symtab, Env, P1, Mode),
+            T2 = ty_of_pat(Symtab, Env, P2, Mode),
+            {cons, T1, T2};
         {op, _, '++', [P1, P2]} ->
             ast_lib:mk_intersection([ty_of_pat(Symtab, Env, P1, Mode), ty_of_pat(Symtab, Env, P2, Mode),
                                  {predef_alias, string}]);
@@ -876,16 +837,19 @@ pat_env(Ctx, OuterL, T, P) ->
             {sets:union(Cs1, Cs2), intersect_envs(Env1, Env2)};
         {nil, _L} ->
             Empty;
-        {cons, _L, P1, P2} ->
+        {cons, L, P1, P2} ->
             Alpha1 = fresh_tyvar(Ctx),
+            {Cs1, Env1} = pat_env(Ctx, L, Alpha1, P1),
+            
             Alpha2 = fresh_tyvar(Ctx),
-            {Cs1, Env1} = pat_env(Ctx, OuterL, Alpha1, P1),
-            {Cs2, Env2} = pat_env(Ctx, OuterL, Alpha2, P2),
-            C1 = {csubty, mk_locs("t // [_ | _]", OuterL), T, {list, Alpha1}},
-            C2 = {csubty, mk_locs("t // [_ | _]", OuterL),
-                    ast_lib:mk_union([T, stdtypes:tempty_list()]), Alpha2},
-            {sets:add_element(C1, sets:add_element(C2, sets:union(Cs1, Cs2))),
-             intersect_envs(Env1, Env2)};
+            {Cs2, Env2} = pat_env(Ctx, L, Alpha2, P2),
+
+            NewEnv = intersect_envs(Env1, Env2),
+            NewCs = sets:union(Cs1, Cs2),
+
+            C = {csubty, mk_locs("t // [_ | _]", L), T, {cons, Alpha1, Alpha2}},
+
+            {sets:add_element(C, NewCs), NewEnv};
         {op, _L, '++', [P1, P2]} ->
             {Cs1, Env1} = pat_env(Ctx, OuterL, T, P1),
             {Cs2, Env2} = pat_env(Ctx, OuterL, T, P2),
@@ -1122,7 +1086,7 @@ var_test_env(FunExp, X, RestArgs) ->
                             is_pid -> {#{XRef => {predef, pid}}, safe};
                             is_port -> {#{XRef => {predef, port}}, safe};
                             is_reference -> {#{XRef => {predef, reference}}, safe};
-                            is_tuple -> #{XRef => {tuple_any}};
+                            is_tuple -> {#{XRef => {tuple_any}}, safe};
                             _ ->
                                 case string:prefix(atom_to_list(Name), "is_") of
                                     nomatch -> ok;

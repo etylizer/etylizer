@@ -16,10 +16,12 @@ is_equivalent(SymTab, S, T) -> is_subty(SymTab, S,T) andalso is_subty(SymTab, T,
 
 -spec is_subty(symtab:t(), ast:ty(), ast:ty()) -> boolean().
 is_subty(Symtab, T1, T2) ->
-  H1 = ast_lib:ast_to_erlang_ty(T1, Symtab),
-  H2 = ast_lib:ast_to_erlang_ty(T2, Symtab),
+  % erlang_types has a global symtab
+  ty_parser:set_symtab(Symtab),
+  H1 = ty_parser:parse(T1),
+  H2 = ty_parser:parse(T2),
 
-  ty_rec:is_subtype(H1, H2).
+  ty_node:leq(H1, H2).
 
 
 is_any(T, Sym) ->

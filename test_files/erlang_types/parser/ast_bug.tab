@@ -1,0 +1,13 @@
+#{
+{ty_key,ast,guard,0} => {ty_scheme,[], {list, {named, {loc,"AUTO",-1,-1}, {ty_ref,ast,guard_test,0}, []} }},
+
+
+{ty_key,ast,guard_test,0} =>
+ {ty_scheme,[],
+  {tuple,
+   [
+    {list, {named, {loc,"AUTO",-2,-1}, {ty_ref,ast,guard_test,0}, []}},
+    {list, {named, {loc,"AUTO",-3,-1}, {ty_ref,ast,guard,0}, []}},
+    {list, {named, {loc,"AUTO",-4,-1}, {ty_ref,ast,guard,0}, []}}
+   ]}}
+}.

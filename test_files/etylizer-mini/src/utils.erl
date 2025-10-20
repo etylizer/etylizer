@@ -10,7 +10,7 @@
     quit/3, quit/2, undefined/0, everywhere/2, everything/2, error/1, error/2,
     is_string/1, is_char/1,
     sformat_raw/2, sformat/2, sformat1/2, sformat/3, sformat/4, sformat/5, sformat/6, sformat/7,
-    diff_terms/3, if_true/2,
+    if_true/2,
     file_get_lines/1, set_add_many/2, assert_no_error/1,
     replicate/2, unconsult/2,
     string_ends_with/2, shorten/2,
@@ -42,16 +42,16 @@ map_opt(F, L) ->
 
 % quit exits the erlang program with the given exit code. No stack trace is produced,
 % so don't use this function for aborting because of a bug.
--spec quit(non_neg_integer(), string(), [_]) -> ok.
+% -spec quit(non_neg_integer(), string(), [_]) -> ok.
 % this is the correct spec
-% -spec quit(non_neg_integer(), string(), [_]) -> _.
+-spec quit(non_neg_integer(), string(), [_]) -> _.
 quit(Code, Msg, L) ->
     io:format(Msg, L),
     halt(Code).
 
 % thats the correct spec
-% -spec quit(non_neg_integer(), string()) -> no_return().
--spec quit(integer(), string()) -> ok.
+-spec quit(non_neg_integer(), string()) -> no_return().
+% -spec quit(integer(), string()) -> ok.
 quit(Code, Msg) ->
     io:format(Msg),
     halt(Code).
@@ -60,7 +60,7 @@ quit(Code, Msg) ->
 undefined() -> erlang:error("undefined").
 
 % hack for type overlay + type spec
--type deepList(A) :: [A | deepList(A)].
+-type deepList(A) :: [etylizer:without(A, list()) | deepList(A)].
 -spec fl(deepList(A)) -> [A].
 fl(L) -> lists:flatten(L).
 
@@ -123,7 +123,8 @@ is_char(X) -> is_string([X]).
 % - If the function given returns {rec, X}, then the term is replaced
 %   by X, and recursive traversal is done.
 % - If the funtion returns error, then everywhere traverses the term recursively.
--spec everywhere(fun((term()) -> t:opt(term())), T) -> T.
+% -spec everywhere(fun((term()) -> t:opt(T)), term()) -> T.
+-spec everywhere(fun((term()) -> {rec, term()} | t:opt(term())), term()) -> term().
 everywhere(F, T) ->
     TransList = fun(L) -> lists:map(fun(X) -> everywhere(F, X) end, L) end,
     case F(T) of
@@ -154,22 +155,6 @@ everything(F, T) ->
             end;
         {ok, X} -> [X]
     end.
-
--spec diff_terms(term(), term(), delete | dont_delete) -> equal | {diff, string()}.
-diff_terms(T1, T2, _) when T1 == T2 -> equal;
-diff_terms(T1, T2, Del) ->
-    P = "terms_",
-    S = ".erl",
-    tmp:with_tmp_file(P ++ "1_", S, Del, fun (F1, P1) ->
-        tmp:with_tmp_file(P ++ "2_", S, Del, fun (F2, P2) ->
-            io:format(F1, "~200p", [T1]),
-            io:format(F2, "~200p", [T2]),
-            file:close(F1),
-            file:close(F2),
-            Out = os:cmd(utils:sformat("diff -u ~s ~s", P1, P2)),
-            {diff, Out}
-        end)
-    end).
 
 -spec if_true(boolean(), fun(() -> _T)) -> ok.
 if_true(B, Action) ->

@@ -48,13 +48,6 @@ inter_04_fail(L) ->
         [_X | XS] -> XS + 1
     end.
 
--spec foo([T]) -> [T].
-foo(L) ->
-    case L of
-        [] -> [];
-        [_X|XS] -> XS
-    end.
-
 % See #36
 -spec impossible_branch_f1(a) -> 1; (b) -> 2.
 impossible_branch_f1(a) -> 1;
@@ -90,6 +83,13 @@ impossible_branch_f6(X) ->
     case X of
       2 -> X;
       _ -> 2
+    end.
+
+-spec foo([T]) -> [T].
+foo(L) ->
+    case L of
+        [] -> [];
+        [_X|XS] -> XS
     end.
 
 -spec foo2_case(a) -> 1; (b) -> 2.

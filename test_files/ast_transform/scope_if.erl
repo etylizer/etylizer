@@ -1,4 +1,4 @@
--module(scope_case).
+-module(scope_if).
 
 -compile(export_all).
 -compile([nowarn_export_all, nowarn_shadow_vars]).

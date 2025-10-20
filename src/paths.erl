@@ -138,22 +138,27 @@ find_otp_paths() ->
 
 -spec find_dependency_roots(file:filename(), [file:filename()]) -> {search_path(), [file:filename()]}.
 find_dependency_roots(ProjectDir, OtpIncDirs) ->
-    ProjectBuildDir = filename:join([ProjectDir, "_build"]),
-    ProjectLibDir = filename:join([ProjectBuildDir, "default/lib"]),
-    RebarConfig = filename:join([ProjectDir, "rebar.config"]),
-    case filelib:is_dir(ProjectBuildDir) of
-        true ->
-            {ok, PathList} = file:list_dir(ProjectLibDir),
-            IncDirs = find_include_dirs(ProjectLibDir, PathList) ++ OtpIncDirs,
-            Sp = lists:flatmap(fun(Path) -> standard_path_entries(dep, ProjectLibDir, Path, IncDirs) end, PathList),
-            {Sp, IncDirs};
-        false ->
-            case filelib:is_file(RebarConfig) of
-                true ->
-                    ?ABORT("rebar.config found but no _build/ directory. The project needs to be build at least once before etylizer can run.");
-                false ->
-                    {[], []}
-            end
+    try
+        ProjectBuildDir = filename:join([ProjectDir, "_build"]),
+        ProjectLibDir = filename:join([ProjectBuildDir, "default/lib"]),
+        RebarConfig = filename:join([ProjectDir, "rebar.config"]),
+        case filelib:is_dir(ProjectBuildDir) of
+            true ->
+                {ok, PathList} = file:list_dir(ProjectLibDir),
+                IncDirs = find_include_dirs(ProjectLibDir, PathList) ++ OtpIncDirs,
+                Sp = lists:flatmap(fun(Path) -> standard_path_entries(dep, ProjectLibDir, Path, IncDirs) end, PathList),
+                {Sp, IncDirs};
+            false ->
+                case filelib:is_file(RebarConfig) of
+                    true ->
+                        ?ABORT("rebar.config found but no _build/ directory. The project needs to be build at least once before etylizer can run.");
+                    false ->
+                        {[], []}
+                end
+        end
+        catch _:_:_ -> 
+            ?LOG_WARN("Could not find dependency roots. Assuming no dependencies."),
+            {[], []}
     end.
 
 -spec generate_input_file_list(cmd_opts()) -> [file:filename()].

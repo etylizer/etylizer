@@ -13,6 +13,7 @@ my_filtermap(F, [X|XS]) ->
         {true, Y} -> [Y | my_filtermap(F, XS)]
     end.
 
+
 my_test() ->
     [2, 4] = my_filtermap(fun (X) -> X rem 2 == 0 end, [1,2,3,4]),
     [4, 8] = my_filtermap(fun (X) ->

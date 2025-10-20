@@ -23,17 +23,22 @@
     single/1,
     assocs_find/2, assocs_find_index/2,
     timeout/2, is_same_file/2, file_exists/1,
-    normalize_path/1
+    normalize_path/1,
+    replace/2,
+    fold_with_context/3,
+    compare/3,
+    update_ets_from_map/2,
+    format_tally_config/3
 ]).
 
 % quit exits the erlang program with the given exit code. No stack trace is produced,
 % so don't use this function for aborting because of a bug.
--spec quit(non_neg_integer(), string(), [_]) -> _.
+-spec quit(non_neg_integer(), string(), [_]) -> no_return().
 quit(Code, Msg, L) ->
     io:format(Msg, L),
     halt(Code).
 
--spec quit(non_neg_integer(), string()) -> _.
+-spec quit(non_neg_integer(), string()) -> no_return().
 quit(Code, Msg) ->
     io:format(Msg),
     halt(Code).
@@ -261,8 +266,10 @@ timeout(Millis, Fun) ->
           try
               X = Fun(),
               Self ! {ok, X}
-          catch
+          catch % TODO at least include the stack in the error, otherwise its impossible to debug FIXME ast_transform bug for stacktrace
+              % error:Reason:_Stack -> Self ! {error, Reason};
               error:Reason -> Self ! {error, Reason};
+              %exit:_Reason:_ -> ok;
               exit:_Reason -> ok;
               throw:Reason -> Self ! {throw, Reason}
           end
@@ -277,6 +284,7 @@ timeout(Millis, Fun) ->
           timeout
     end.
 
+-spec is_same_file(file:filename(), file:filename()) -> boolean().
 is_same_file(Path1, Path2) ->
     case {file:read_file_info(Path1), file:read_file_info(Path2)} of
         {{ok, Info1}, {ok, Info2}} ->
@@ -302,3 +310,93 @@ normalize_path(P) ->
         [ $. , $/ | Rest ] -> Rest;
         S -> S
     end.
+
+-spec compare (fun((T, T) -> lt | gt | eq), [T], [T]) -> lt | gt | eq.
+compare(_Cmp, [], []) -> eq;
+compare(Cmp, [T1 | Ts1], [T2 | Ts2]) ->
+  case Cmp(T1, T2) of
+    eq -> compare(Cmp, Ts1, Ts2);
+    R -> R
+  end.
+
+% -spec equal (fun((T, T) -> boolean()), [T], [T]) -> boolean().
+% equal(_Eq, [], []) -> eg;
+% equal(Eq, [T1 | Ts1], [T2 | Ts2]) ->
+%   case Eq(T1, T2) of
+%     true -> equal(Eq, Ts1, Ts2);
+%     false -> false
+%   end.
+
+-spec replace(A, #{term() => term()}) -> A.
+replace(Term, Mapping) ->
+    replace_term(Term, Mapping).
+
+-spec replace_term(A, #{term() => term()}) -> A.
+replace_term({node, _} = Ref, Mapping) ->
+    case maps:find(Ref, Mapping) of
+        {ok, NewTerm} -> NewTerm;
+        error -> Ref
+    end;
+replace_term({local_ref, _} = Ref, Mapping) ->
+    case maps:find(Ref, Mapping) of
+        {ok, NewTerm} -> NewTerm;
+        error -> Ref
+    end;
+replace_term(Tuple, Mapping) when is_tuple(Tuple) ->
+    list_to_tuple([replace_term(Element, Mapping) || Element <- tuple_to_list(Tuple)]);
+replace_term([H|T], Mapping) ->
+    [replace_term(H, Mapping) | replace_term(T, Mapping)];
+replace_term(Map, Mapping) when is_map(Map) ->
+    maps:from_list([{replace_term(K, Mapping), replace_term(V, Mapping)} || {K, V} <- maps:to_list(Map)]);
+replace_term(Term, _Mapping) ->
+    Term.
+
+
+-spec update_ets_from_map(term(), #{term() => term()}) -> _.
+update_ets_from_map(EtsTable, LocalMap) ->
+  % Filter LocalMap to only new/changed entries
+  ChangedEntries = maps:fold(
+      fun(K, V, Acc) ->
+          case ets:lookup(EtsTable, K) of
+              [{K, V}] -> Acc;
+              _ -> [{K, V} | Acc]
+          end
+      end,
+      [],
+      LocalMap
+  ),
+  
+  % Bulk-insert changes
+  ets:insert(EtsTable, ChangedEntries).
+
+% map_with_context(Fun, List) ->
+%     map_with_context(Fun, List, []).
+%
+% map_with_context(_Fun, [], Acc) ->
+%     lists:reverse(Acc);
+% map_with_context(Fun, [H|T], Acc) ->
+%     {Result, NewT} = Fun({H, T}),
+%     map_with_context(Fun, NewT, [Result|Acc]).
+
+-spec fold_with_context(Fun, Acc, List) -> Acc when
+    Fun :: fun(({Acc, H, T}) -> {NewAcc, NewT}),
+    Acc :: term(),
+    List :: [H],
+    H :: term(),
+    T :: [H],
+    NewAcc :: term(),
+    NewT :: [H].
+fold_with_context(_Fun, Acc, []) ->
+    Acc;
+fold_with_context(Fun, Acc, [H|T]) ->
+    {NewAcc, NewT} = Fun({Acc, H, T}),
+    fold_with_context(Fun, NewAcc, NewT).
+
+% transforms a tally:tally constraints to a config file which can be loaded in the tally_tests.erl tests
+% TODO free variables #74
+format_tally_config(Constraints, FixedVars, Symtab) ->
+    "[" ++ lists:join(",", [io_lib:format("{~p, ~p}", [S, T]) || {_, _, S, T} <- Constraints]) ++ "]." 
+    ++ "\n" 
+    ++ io_lib:format("~p.", [symtab:get_types(Symtab)])
+    ++ "\n" 
+    ++ io_lib:format("~p.", [FixedVars]).

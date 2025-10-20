@@ -1,0 +1,5 @@
+#{
+  {ty_key,ast,left,0} => {ty_scheme,[], {tuple, [{var, '$0'}]}}
+
+
+}.
