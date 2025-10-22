@@ -97,7 +97,7 @@ tally(SymTab, Constraints, FixedVars, Mode) ->
               Sigmas = [subst:mk_tally_subst(
                 sets:union(FixedVars, Free),
                 maps:from_list([{VarName, ty_parser:unparse(Ty)}
-                              || {{var, _, VarName}, Ty} <- maps:to_list(Subst)]))
+                              || {{var, _, VarName, _}, Ty} <- maps:to_list(Subst)])) % FIXME depends on internal ty_variable representation
               || Subst <- InternalResult],
               ?LOG_DEBUG("Got Sigma: ~s", pretty:render_substs(Sigmas)),
               

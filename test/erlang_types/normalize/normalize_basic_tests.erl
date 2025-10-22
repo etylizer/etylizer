@@ -36,14 +36,14 @@ mk_diff_test() ->
 queue_slow1_test() ->
   with_type(
     fun(Type) -> 
-      FixedVariables = #{{var,name,'Item'} => [],{var,name,'Q1'} => [],{var,name,'Q2'} => []},
+      FixedVariables = #{ty_variable:new_with_name('Item') => [], ty_variable:new_with_name('Q1') => [], ty_variable:new_with_name('Q1') => []},
       V = ty:normalize(Type, FixedVariables),
       4 = length(V) % was 19 before minimization
     end, system("test_files/erlang_types/normalize/queue19.config")),
 
   with_type(
     fun(Type) -> 
-      FixedVariables = #{{var,name,'Item'} => [],{var,name,'Q1'} => [],{var,name,'Q2'} => []},
+      FixedVariables = #{ty_variable:new_with_name('Item') => [], ty_variable:new_with_name('Q1') => [], ty_variable:new_with_name('Q1') => []},
       V = ty:normalize(Type, FixedVariables),
       4 = length(V) % was 10 before 
     end, system("test_files/erlang_types/normalize/queue10.config")).
