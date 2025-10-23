@@ -122,8 +122,8 @@ get_new_id() ->
   ets:update_counter(?VAR_ETS, variable_id, {2,1}).
 
 -spec unparse(type(), ST) -> {ast:ty(), ST}.
-unparse(#var{id = name, name = _Name, type = frame}, _C) ->
-  error(implement_unparse_here_todo); % TODO return dynamic here
+unparse(#var{id = _Id, name = _Name, type = frame}, C) ->
+  {{predef, dynamic}, C};
 unparse(#var{id = name, name = Name}, C) ->
   {{var, Name}, C};
 unparse(#var{id = Id, name = Name}, C) ->
