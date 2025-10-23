@@ -375,46 +375,17 @@ exp_constrs(Ctx, Env, E, T) ->
             errors:unsupported(L, "try: ~200p", [E]);
         {var, L, AnyRef} ->
             Msg = utils:sformat("var ~s", pretty:render(pretty:ref(AnyRef))),
-            case maps:find(AnyRef, Env) of
-                {ok, Ty0} ->
-                    case is_gradual_type(Ty0) of
-                        true ->
-                            AlphaName = fresh_ty_varname(Ctx),
-                            Locs = mk_locs(Msg, L),
-                            Mater = {cvarmater, Locs, AnyRef, AlphaName},
-                            Link = {csubty, Locs, {var, AlphaName}, T},
-                            sets:from_list([Mater, Link], [{version,2}]);
-                        false -> utils:single({cvar, mk_locs(Msg, L), AnyRef, T})
-                    end;
-                error -> utils:single({cvar, mk_locs(Msg, L), AnyRef, T})
-            end;
+            AlphaName = fresh_ty_varname(Ctx),
+            Locs = mk_locs(Msg, L),
+            Mater = {cvarmater, Locs, AnyRef, AlphaName},
+            Link = {csubty, Locs, {var, AlphaName}, T},
+            sets:from_list([Mater, Link], [{version,2}]);
         X -> errors:uncovered_case(?FILE, ?LINE, X)
     end.
 
 -spec exp_constrs(ctx(), ast:exp(), ast:ty()) -> constr:constrs().
 exp_constrs(Ctx, E, T) -> exp_constrs(Ctx, #{}, E, T).
 
-% Detect whether a type is gradual (contains dynamic anywhere)
--spec is_gradual_type(ast:ty()) -> boolean().
-is_gradual_type(T) ->
-    case T of
-        {predef, dynamic} -> true;
-        {fun_full, Args, Res} -> lists:any(fun is_gradual_type/1, Args) orelse is_gradual_type(Res);
-        {union, Ts} -> lists:any(fun is_gradual_type/1, Ts);
-        {intersection, Ts} -> lists:any(fun is_gradual_type/1, Ts);
-        {tuple, Ts} -> lists:any(fun is_gradual_type/1, Ts);
-        {map, Fields} ->
-            lists:any(fun(F) ->
-                              case F of {map_field_opt, K, V} -> is_gradual_type(K) orelse is_gradual_type(V); {map_field_req, K, V} -> is_gradual_type(K) orelse is_gradual_type(V) end
-                      end, Fields);
-        {nonempty_list, T1} -> is_gradual_type(T1);
-        {list, T1} -> is_gradual_type(T1);
-        {nonempty_improper_list, H, T1} -> is_gradual_type(H) orelse is_gradual_type(T1);
-        {map_field_opt, K, V} -> is_gradual_type(K) orelse is_gradual_type(V);
-        {map_field_req, K, V} -> is_gradual_type(K) orelse is_gradual_type(V);
-        {record, _, Fields} -> lists:any(fun({_N, Ty}) -> is_gradual_type(Ty) end, Fields);
-        _ -> false
-    end.
 
 -spec gen_funcall_constrs(ctx(), ast:loc(), ast:exp(), [ast:exp()], ast:ty()) -> constr:constrs().
 gen_funcall_constrs_env(Ctx, Env, L, FunExp, Args, T) ->
@@ -467,6 +438,10 @@ funcall_constrs_with_tyscm(Ctx, L, Var, TyScm, Args, T) ->
                     T},
             Res = lists:foldr(
                 fun({Arg, Ty}, Cs) ->
+                    % FreshAlpha = fresh_ty_varname(Ctx),
+                    % ThisCs = exp_constrs(Ctx, Arg, {var, FreshAlpha}),
+                    % MaterConstr = {cmater, mk_locs(utils:sformat("argument ~p of calling ~s", Arg, FunName), L), Ty, FreshAlpha},
+                    % sets:union(sets:add_element(MaterConstr, Cs), ThisCs)
                     ThisCs = exp_constrs(Ctx, Arg, Ty),
                     sets:union(Cs, ThisCs)
                 end,
