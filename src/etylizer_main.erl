@@ -1,13 +1,9 @@
 -module(etylizer_main).
 -export([
-    main/1
-]).
-
--ifdef(TEST).
--export([
+    main/1,
     doWork/1
 ]).
--endif.
+
 
 
 % @doc This is the main module of etylizer. It parses commandline arguments and orchestrates
