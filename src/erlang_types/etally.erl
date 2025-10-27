@@ -105,7 +105,7 @@ is_satisfiable_v3(Constraints, MonomorphicVariables) ->
                 _ ->
                   % io:format("Got ~p complex~n", [length(All2)]),
                   % io:format("~n~p~n", [All2]),
-                  {T2, ComplexSat} = 
+                  {_T2, ComplexSat} = 
                   timer:tc(fun() -> lists:foldl(fun(E, E2) -> 
                                                     % io:format(user,".~p", [length(E2)]), 
                                                     tally_saturate(constraint_set:meet(E, E2, MonomorphicVariables), MonomorphicVariables) end, SimpleSat, All2) end),
