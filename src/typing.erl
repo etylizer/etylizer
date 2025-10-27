@@ -58,7 +58,10 @@ check_forms(Ctx, FileName, Forms, Only, Ignore) ->
                         error ->
                             if
                               Check ->
-                                  {With, [Form | Without], [X | Knowns]};
+                                 % can't ignore functions without type specs
+                                  errors:some_error(
+                                      "~s: Cannot ignore function without type spec: ~s", [FileName, RefStr]
+                                  );
                               true ->
                                   errors:some_error(
                                       "~s: Cannot ignore function without type spec: ~s", [FileName, RefStr]
