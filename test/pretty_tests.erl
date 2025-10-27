@@ -186,6 +186,28 @@ other_test() ->
     ?assertEqual("{a, int} | {a5 /\\ b, int}", pretty:render_ty(B))
   end).
 
+tuple_1_test() ->
+  global_state:with_new_state(fun() -> 
+    % access to global state
+     
+    % (myatom, integer()) | (myatom, 2) 
+    A = ttuple([
+      b(myatom),
+      tint()
+    ]),
+    B = ttuple([
+      b(myatom),
+      tint(2)
+    ]),
+
+    T = u(A, B), % erlang AST type
+    T2 = id(T), % convert it to and back erlang_types
+    % -> (myatom, integer())
+    true = subty:is_equivalent(symtab:empty(), T, T2),
+    ?assertEqual("{myatom, 2..2}", pretty:render_ty(B))
+  end).
+
+
 var_condition_test() ->
   global_state:with_new_state(fun() -> 
     A = u([

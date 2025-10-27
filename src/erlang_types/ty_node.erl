@@ -397,6 +397,8 @@ unparse(Node = {node, Id}, Cache) ->
 % FIXME hack: unparse, substitute, then parse again
 -spec substitute(type(), #{variable() => type()}) -> type().
 substitute(Node, Varmap) ->
+
+
   T1 = ty_parser:unparse(Node),
   Subst = #{begin {{var, Name}, _} = ty_variable:unparse(K, #{}), Name end => ty_parser:unparse(V) || K := V <- Varmap},
   Res = subst:apply(Subst, T1, no_clean),

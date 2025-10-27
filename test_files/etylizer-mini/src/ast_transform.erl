@@ -780,7 +780,13 @@ trans_catch_clause(Ctx, Env, C) ->
             end,
             NewGuards = trans_guards(Ctx, NewEnv, Guards),
             NewBody = trans_exp_seq_noenv(Ctx, NewEnv, Body),
-            {catch_clause, to_loc(Ctx, Anno), X, P, S, NewGuards, NewBody};
+            % where 
+            % -type pat() :: atomic_lit() | pat_bitstring() | pat_compound() | pat_nil() | pat_cons() | pat_map() | pat_op() | pat_record_fld_idx() | pat_record() | pat_tuple() 
+            %                         | pat_wildcard() | pat_var().
+            % -type stacktrace_pat() :: pat_wildcard() | pat_var().
+% actual :: {catch_clause, loc(),             pat(),          pat(), pat(),            Guards::[guard()], Body::exps()}.
+% wanted :: {catch_clause, loc(),             exc_type_pat(), pat(), stacktrace_pat(), Guards::[guard()], Body::exps()}.
+            {catch_clause, to_loc(Ctx, Anno), X,              P,     S, NewGuards, NewBody};
         Z -> errors:uncovered_case(?FILE, ?LINE, Z)
     end.
 
