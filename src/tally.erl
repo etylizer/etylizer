@@ -41,7 +41,7 @@ tally(SymTab, Constraints, FixedVars, Mode) ->
   ty_parser:set_symtab(SymTab),
 
   gradual_utils:init(),
-  {InlinedConstrs, SubtyConstrs, Maters} = gradual_utils:preprocess_constrs(Constraints),
+  {InlinedConstrs, SubtyConstrs, Maters, UnificationSubst} = gradual_utils:preprocess_constrs(Constraints),
   
   InternalConstraints = 
     lists:map( fun ({scsubty, _, S, T}) -> {ty_parser:parse(S), ty_parser:parse(T)} end,
@@ -67,8 +67,12 @@ tally(SymTab, Constraints, FixedVars, Mode) ->
               || Subst <- InternalResult],
               
               lists:map(
-                fun(Sigma) -> 
-                  gradual_utils:postprocess(Sigma, SubtyConstrs, Maters)
+                fun({tally_subst, S, Fixed}) ->
+                  MaterSubst = maps:fold(fun(Var, Ty, Acc) ->
+                      maps:put(Var, gradual_utils:subst_ty(Ty, S, no_discrimination), Acc)
+                    end,
+                    #{}, UnificationSubst),
+                  gradual_utils:postprocess({tally_subst, maps:merge(S, MaterSubst), Fixed}, SubtyConstrs, Maters)
                 end,
                 Sigmas
               )

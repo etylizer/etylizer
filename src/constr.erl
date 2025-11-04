@@ -23,7 +23,8 @@
      simp_constr_mater/0,
      simp_constr_case/0,
      simp_constr_case_branch/0,
-     subty_constrs/0
+     subty_constrs/0,
+     mater_constrs/0
  ]).
 
 -export([
@@ -48,6 +49,7 @@
 -type simp_constrs_loc() :: {ast:loc(), simp_constrs()}.
 -type simp_constr() :: simp_constr_subty() | simp_constr_mater() | simp_constr_case().
 -type subty_constrs() :: sets:set(constr:simp_constr_subty()).
+-type mater_constrs() :: sets:set(simp_constr_mater()).
 
 -type simp_constr_subty() :: {scsubty, ast:loc(), ast:ty(), ast:ty()}.
 -type simp_constr_mater() :: {scmater, ast:loc(), ast:ty(), ast:ty_varname()}.

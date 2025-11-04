@@ -1,11 +1,21 @@
 -module(gradual_utils).
 
+-include("log.hrl").
+
 -export([
     init/0,
     clean/0,
     preprocess_constrs/1,
-    postprocess/3
+    postprocess/3,
+    subst_ty/3
 ]).
+
+-ifdef(TEST).
+-export([
+  collect_pos_neg_tyvars/1,
+  replace_dynamic/1
+]).
+-endif.
 
 -define(VAR_ETS, framevariable_counter_ets_table).
 -define(ALL_ETS, [?VAR_ETS]).
@@ -35,6 +45,11 @@ fresh_typevar_name() ->
     S = utils:sformat("$post_%~w", NewId),
     list_to_atom(S).
 
+-spec fresh_typevar() -> ast:ty_var().
+fresh_typevar() ->
+    X = fresh_typevar_name(),
+    {var, X}.
+
 -spec fresh_framevar_name() -> ast:ty_varname().
 fresh_framevar_name() ->
     NewId = ets:update_counter(?VAR_ETS, variable_id, {2,1}),
@@ -49,64 +64,48 @@ fresh_framevar() ->
 
 % When we see a gradual type with {predef, dynamic}
 % we replace each dynamic with a fresh frame variable
--spec preprocess_constrs(constr:subty_constrs()) -> {constr:subty_constrs(), constr:subty_constrs()}.
+-spec preprocess_constrs(constr:subty_constrs()) -> {constr:subty_constrs(), constr:subty_constrs(), constr:mater_constrs(), subst:base_subst()}.
 preprocess_constrs(Constrs) ->
     {SubtyConstrs, Maters} = sets:fold(
         fun
             ({scsubty, Loc, T1, T2}, {Cs, Maters}) ->
               {sets:add_element({scsubty, Loc, replace_dynamic(T1), replace_dynamic(T2)}, Cs), Maters};
             ({scmater, Loc, T1, T2}, {Cs, Maters}) ->
-              {Cs, sets:add_element({scmater, Loc, replace_dynamic(T1), {var, T2}}, Maters)};
+              {Cs, sets:add_element({scmater, Loc, replace_dynamic(T1), T2}, Maters)};
             (Constr, {Cs, Maters}) ->
               {sets:add_element(Constr, Cs), Maters}
         end,
         {sets:new([{version,2}]), sets:new([{version,2}])},
         Constrs),
     
-    UnificationSubsts = maps:from_list(lists:map(fun({scmater, _, Tau, Alpha}) -> {Alpha, Tau} end, sets:to_list(Maters))),
+    UnificationSubst = maps:from_list(lists:map(fun({scmater, _, Tau, Alpha}) -> {Alpha, Tau} end, sets:to_list(Maters))),
     InlinedConstrs = sets:map(fun(Constr) -> 
-        case Constr of
-        {scsubty, _Loc, T1, T2} -> 
-            NewT1 = case maps:find(T1, UnificationSubsts) of
-            {ok, Tau} -> Tau;
-            error -> T1
-            end,
-            NewT2 = case maps:find(T2, UnificationSubsts) of
-            {ok, Tau2} -> Tau2;
-            error -> T2
-            end,
-            {scsubty, _Loc, NewT1, NewT2};
+      case Constr of
+        {scsubty, _Loc, T1, T2} -> {scsubty, _Loc, subst_ty(T1, UnificationSubst, no_discrimination), subst_ty(T2, UnificationSubst, no_discrimination)};
         Other -> Other
-        end
+      end
     end, SubtyConstrs),
-    {InlinedConstrs, SubtyConstrs, Maters}.
+    {InlinedConstrs, SubtyConstrs, Maters, UnificationSubst}.
 
 -spec replace_dynamic(ast:ty()) -> ast:ty().
-replace_dynamic({predef, dynamic}) -> fresh_framevar();
-replace_dynamic({var, Name}) -> {var, Name};
-replace_dynamic({union, Types}) -> {union, lists:map(fun(T) -> replace_dynamic(T) end, Types)};
-replace_dynamic({intersection, Types}) -> {intersection, lists:map(fun(T) -> replace_dynamic(T) end, Types)};
-replace_dynamic({fun_full, ArgTypes, RetType}) ->
-    {fun_full, lists:map(fun(T) -> replace_dynamic(T) end, ArgTypes), replace_dynamic(RetType)};
-replace_dynamic({list, Ty}) -> {list, replace_dynamic(Ty)};
-replace_dynamic(Ty) -> Ty.
+replace_dynamic(Ty) -> 
+  utils:everywhere(fun
+    ({predef, dynamic}) -> {ok, fresh_framevar()};
+    (_) -> error
+  end, Ty).
 
 % This postprocess step refers to the work of Petrucciani in his PhD thesis (chapter 10.4.2)
 -spec postprocess(subst:t(), constr:subty_constrs(), constr:subty_constrs()) -> subst:t().
 postprocess({tally_subst, S, Fixed}, Constrs, Maters) ->
+    ?LOG_DEBUG("Postprocessing tally substitution:~nSubstitution:~n~s~nConstraints:~n~s~nMaterialization constraints:~n~s",
+        pretty:render_subst(S),
+        pretty:render_constr(Constrs),
+        pretty:render_constr(Maters)),
     % Step 3b): find all type variables appearing in the gradual types in materialization constraints
     % and substitute them with the found tally solution 
     TypeVarsInMaters = sets:fold(
         fun({scmater, _, Tau, _}, Acc) ->
-          CollectFun = fun(X) -> case X of
-            {var, Alpha} -> case is_typevar(Alpha) of
-              true -> {ok, Alpha};
-              false -> error
-            end;
-            _ -> error
-            end
-          end,
-          TypeVars = utils:everything(CollectFun, Tau),
+          TypeVars = collect_tyvars(Tau),
           sets:union(Acc, sets:from_list(TypeVars, [{version, 2}]))
         end,
         sets:new([{version, 2}]),
@@ -115,15 +114,7 @@ postprocess({tally_subst, S, Fixed}, Constrs, Maters) ->
       fun(Alpha, Acc) ->
         case maps:find(Alpha, S) of
           {ok, Ty} ->
-            CollectFun = fun(X) -> case X of
-              {var, Beta} -> case is_typevar(Beta) of
-                true -> {ok, Beta};
-                false -> error
-              end;
-              _ -> error
-              end
-            end,
-            TypeVars = utils:everything(CollectFun, Ty),
+            TypeVars = collect_tyvars(Ty),
             sets:union(Acc, sets:from_list(TypeVars, [{version, 2}]));
           error -> Acc
         end
@@ -150,19 +141,10 @@ postprocess({tally_subst, S, Fixed}, Constrs, Maters) ->
 
     % Step 3d): Collect all type variables which are not fixed, in the domain of the substitution
     % or in A:  α = var(D)\(∆∪dom(σ0)∪A)
-    CollectFun = fun(Var) -> case Var of
-      {var, Alpha} -> 
-        case is_typevar(Alpha) of
-          true -> {ok, Alpha};
-          false -> error
-        end;
-      _ -> error
-      end
-    end,
     Var_D = sets:fold(
       fun({scsubty, _, T1, T2}, Acc) ->
         sets:union(
-          sets:from_list(utils:everything(CollectFun, T1) ++ utils:everything(CollectFun, T2), [{version, 2}]),
+          sets:from_list(collect_tyvars(T1) ++ collect_tyvars(T2), [{version, 2}]),
           Acc
         )
       end,
@@ -175,7 +157,7 @@ postprocess({tally_subst, S, Fixed}, Constrs, Maters) ->
     % Step 3e): Create fresh alpha and X
     X_Subst = sets:fold(
       fun(Framevar, Acc) ->
-        maps:put(Framevar, fresh_typevar_name(), Acc)
+        maps:put(Framevar, fresh_typevar(), Acc)
       end,
       #{},
       X
@@ -183,7 +165,7 @@ postprocess({tally_subst, S, Fixed}, Constrs, Maters) ->
 
     Alpha_Subst = sets:fold(
       fun(Typevar, Acc) ->
-        maps:put(Typevar, fresh_framevar_name(), Acc)
+        maps:put(Typevar, fresh_framevar(), Acc)
       end,
       #{},
       Alpha
@@ -210,24 +192,13 @@ collect_pos_neg_tyvars({var, Alpha}, NegCount) ->
     end;
 
 collect_pos_neg_tyvars({union, Types}, NegCount) ->
-    lists:foldl(
-      fun(T, {Evens, Odds}) ->
-              {E2, O2} = collect_pos_neg_tyvars(T, NegCount),
-              {Evens ++ E2, Odds ++ O2}
-      end,
-      {[], []},
-      Types
-    );
+    fold_types(Types, NegCount);
 
 collect_pos_neg_tyvars({intersection, Types}, NegCount) ->
-    lists:foldl(
-      fun(T, {Evens, Odds}) ->
-              {E2, O2} = collect_pos_neg_tyvars(T, NegCount),
-              {Evens ++ E2, Odds ++ O2}
-      end,
-      {[], []},
-      Types
-    );
+    fold_types(Types, NegCount);
+
+collect_pos_neg_tyvars({tuple, Types}, NegCount) ->
+    fold_types(Types, NegCount);
 
 collect_pos_neg_tyvars({fun_full, ArgTypes, RetType}, NegCount) ->
     {EArgs, OArgs} = fold_types(ArgTypes, NegCount),
@@ -253,46 +224,69 @@ fold_types(Types, NegCount) ->
       Types
     ).
 
--spec compose([subst:t()], #{ast:ty_varname() => ast:ty_varname()}) -> [subst:t()].
+-spec compose([subst:t()], subst:base_subst()) -> [subst:t()].
 compose({tally_subst, S, Fixed}, Sigma2) ->
         S1 = apply_subst(S, Sigma2),
         {tally_subst, S1, sets:union(Fixed, sets:from_list(maps:values(Sigma2), [{version, 2}]))}.
 
--spec apply_subst(subst:t(), #{ast:ty_varname() => ast:ty_varname()}) -> subst:t().
+-spec apply_subst(subst:t(), subst:base_subst()) -> subst:t().
 apply_subst(S, Sigma2) ->
     maps:fold(
         fun(Var, Ty, Acc) ->
             case is_framevar(Var) of
               true -> maps:remove(Var, Acc); % frame variables are removed from the substitution
-              false -> maps:put(Var, subst_ty(Ty, Sigma2), Acc)
+              false -> maps:put(Var, subst_ty(Ty, Sigma2, discriminate), Acc)
             end
         end,
         S,
         S).
 
--spec subst_ty(ast:ty(), #{ast:ty_varname() => ast:ty_varname()}) -> ast:ty().
-subst_ty(Ty, VarSubst) ->
-    case Ty of
-        {var, Name} ->
-            case maps:find(Name, VarSubst) of
-                {ok, NewName} -> 
-                  case is_framevar(NewName) of
-                    true -> {predef, dynamic}; % replace frame variables with dynamic (discrimination)
-                    false -> {var, NewName} % keep as type variable
-                  end;
-                error -> case is_framevar(Name) of
-                    true -> {predef, dynamic}; % replace frame variables with dynamic (discrimination)
-                    false -> Ty % keep as type variable
-                  end
+-spec subst_ty(ast:ty(), subst:base_subst(), atom()) -> ast:ty().
+subst_ty(Ty, VarSubst, Mode) -> 
+  utils:everywhere(fun
+    ({var, Name}) ->
+      NewTy = find_in_subst({var, Name}, VarSubst),
+      case Mode of
+        discriminate -> {ok, utils:everywhere(fun
+          ({var, N}) ->
+            case is_framevar(N) of
+              true -> {ok, {predef, dynamic}}; % replace frame variables with dynamic (discrimination)
+              false -> error % keep as type variable
             end;
-        {union, Args} -> {union, lists:map(fun(T) -> subst_ty(T, VarSubst) end, Args)};
-        {intersection, Args} -> {intersection, lists:map(fun(T) -> subst_ty(T, VarSubst) end, Args)};
-        {fun_full, Args, RetTy} -> {fun_full, lists:map(fun(T) -> subst_ty(T, VarSubst) end, Args), subst_ty(RetTy, VarSubst)};
-        _ -> Ty
+          (_) -> error
+        end, NewTy)};
+        _ -> {ok, NewTy}
+      end;
+    (_) -> error
+  end, Ty).
+
+-spec find_in_subst(ast:ty_var(), subst:base_subst()) -> ast:ty().
+find_in_subst({var, Name}, VarSubst) ->
+    case maps:find(Name, VarSubst) of
+        {ok, SubstTy} -> SubstTy;
+        error -> {var, Name}
     end.
 
--spec is_framevar(ast:ty_varname()) -> boolean().
-is_framevar(Name) -> starts_with(Name, "%").
+-spec collect_tyvars(ast:ty()) -> sets:set(ast:ty_varname()).
+collect_tyvars(Ty) ->
+    utils:everything(
+      fun
+        ({var, Name}) -> 
+          case is_typevar(Name) of
+            true -> {ok, Name};
+            false -> error
+          end;
+        (_) -> error
+      end,
+      Ty
+    ).
+
+-spec is_framevar
+  (ast:ty_varname()) -> boolean();
+  (ast:ty_var()) -> boolean().
+is_framevar(Name) when is_atom(Name) -> starts_with(Name, "%");
+is_framevar({var, Name}) -> starts_with(Name, "%");
+is_framevar(_) -> false.
 
 -spec is_typevar(ast:ty_varname()) -> boolean().
 is_typevar(Name) -> starts_with(Name, "$").
