@@ -91,6 +91,8 @@ collect_constr_all_combinations(D) ->
     case D of
         {scsubty, _, _, _} ->
             [{sets:new([{version, 2}]), utils:single(D)}];
+        {scmater, _, _, _} ->
+            [{sets:new([{version, 2}]), utils:single(D)}];
         {sccase, {_, DsScrut}, {_, DsExhaust}, Branches} ->
             ScrutCombs = collect_constrs_all_combinations(DsScrut),
             ExhaustCombs = collect_constrs_all_combinations(DsExhaust),

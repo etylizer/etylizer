@@ -22,8 +22,7 @@
                load_end = [] :: [string()],
                files = [] :: [string()],
                type_overlay = [] :: string(),
-               mode = prod_mode :: opts_mode(), % only used internally
-               gradual_typing_mode = infer :: infer | dynamic
+               mode = prod_mode :: opts_mode() % only used internally
             }).
 
 -type cmd_opts() :: #opts{}.

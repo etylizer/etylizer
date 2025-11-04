@@ -320,7 +320,6 @@ trans_ty(Ctx, Env, Ty) ->
                                 _ ->
                                     case {Name, NewArgTys} of
                                         {bool, []} -> {predef_alias, boolean};
-                                        {dynamic, []} -> {predef, dynamic}; 
                                         _ ->
                                             errors:bug("~s: Unhandled builtin type: ~w",
                                                        [ast:format_loc(Loc), Ty])
