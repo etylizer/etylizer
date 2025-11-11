@@ -1,0 +1,29 @@
+name: Testruns
+on:
+  push:
+    branches:
+      - 'main'
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    name: "Build ety"
+    container:
+      image: erlang:26
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build ety executable
+        run: make build
+      - name: Upload ety artifact
+        uses: actions/upload-artifact@v4
+        with:
+          path: '_build/default/bin/ety'
+          retention-days: 1
+          name: 'ety'
+
+  run-tests:
+    needs: build
+    uses: etylizer/testrunner/.github/workflows/run-tests.yaml@main
+    with:
+      debug_mode: false
+      etylizer_artifact_name: 'ety'
