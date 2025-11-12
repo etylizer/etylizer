@@ -2,6 +2,10 @@
 
 -compile([export_all, nowarn_export_all]).
 
+% exhaustiveness type error
+-spec exhaustive(pos_integer()) -> ok.
+exhaustive(N) when N > 0 -> ok.
+
 -spec fun0() -> integer().
 fun0() -> 2.
 
