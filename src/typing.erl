@@ -3,7 +3,7 @@
 -export([
     check_forms/5,
     new_ctx/3,
-    new_ctx/5
+    new_ctx/6
 ]).
 
 -include("log.hrl").
@@ -11,11 +11,11 @@
 
 -spec new_ctx(symtab:t(), symtab:t(), t:opt(ast_check:ty_map())) -> ctx().
 new_ctx(Tab, Overlay, Sanity) ->
-    new_ctx(Tab, Overlay, Sanity, early_exit, 5000).
+    new_ctx(Tab, Overlay, Sanity, early_exit, 5000, enabled).
 
--spec new_ctx(symtab:t(), symtab:t(), t:opt(ast_check:ty_map()), feature_flags:report_mode(), pos_integer()) -> ctx().
-new_ctx(Tab, Overlay, Sanity, ReportMode, ReportTimeout) ->
-    Ctx = #ctx{ symtab = Tab, overlay_symtab = Overlay, sanity = Sanity, report_mode = ReportMode, report_timeout = ReportTimeout },
+-spec new_ctx(symtab:t(), symtab:t(), t:opt(ast_check:ty_map()), feature_flags:report_mode(), pos_integer(), feature_flags:exhaustiveness_mode()) -> ctx().
+new_ctx(Tab, Overlay, Sanity, ReportMode, ReportTimeout, ExhaustivenessMode) ->
+    Ctx = #ctx{ symtab = Tab, overlay_symtab = Overlay, sanity = Sanity, report_mode = ReportMode, report_timeout = ReportTimeout, exhaustiveness_mode = ExhaustivenessMode },
     Ctx.
 
 % Checks all forms of a module

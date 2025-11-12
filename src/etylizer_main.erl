@@ -68,6 +68,10 @@ parse_args(Args) ->
          {report_timeout, undefined, "report-timeout", string,
             "Define a timeout in milliseconds for type checking a function in report_mode 'report'." ++
             "Default timeout is 5000 milliseconds."},
+         {exhaustiveness_mode, undefined, "exhaustiveness-mode", string,
+            "Change the mode of how to check for exhaustiveness. Currently, " ++
+            "the checker can either globally enable or disable exhaustiveness." ++
+            "Default: enabled (enabled, disabled)."},
          {only, $o, "only", string,
             "Only type check these functions (given as module:name/arity or name/arity or just the name)"},
          {ignore, $i, "ignore", string,
@@ -115,6 +119,9 @@ parse_args(Args) ->
                         {report_mode, "report"} -> Opts#opts{ report_mode = report };
                         {report_mode, M} -> utils:quit(2, "Invalid report mode: " ++ M ++ "~n");
                         {report_timeout, T} -> Parsed = list_to_integer(T), true = Parsed > 0, Opts#opts{ report_timeout = Parsed };
+                        {exhaustiveness_mode, "enabled"} -> Opts#opts{ exhaustiveness_mode = enabled };
+                        {exhaustiveness_mode, "disabled"} -> Opts#opts{ exhaustiveness_mode = disabled };
+                        {exhaustiveness_mode, M} -> utils:quit(2, "Invalid exhaustiveness mode: " ++ M ++ "~n");
                         no_deps -> Opts#opts{ no_deps = true };
                         {type_overlay, S} -> Opts#opts{ type_overlay = S };
                         help -> Opts#opts{ help = true }
