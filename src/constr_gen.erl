@@ -1027,7 +1027,7 @@ var_test_env(FunExp, X, RestArgs) ->
                         case RestArgs of
                             [{'integer', _, N}] ->
                                 % The top type for functions with arity N
-                                TopFunTy = {fun_full, utils:replicate(N, {predef, any}), {predef, none}},
+                                TopFunTy = {fun_full, utils:replicate(N, {predef, none}), {predef, any}},
                                 {#{XRef => TopFunTy}, safe};
                             _ -> Default
                         end;

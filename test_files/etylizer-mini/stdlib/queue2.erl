@@ -674,9 +674,9 @@ filter(Fun, {R0,F0}) when is_function(Fun, 1), is_list(R0), is_list(F0) ->
 	    r2f(R);
        true ->
 	    {R,F}
-    end;
-filter(Fun, Q) ->
-    erlang:error(badarg, [Fun,Q]).
+    end.
+% filter(Fun, Q) -> 
+%     erlang:error(badarg, [Fun,Q]). % redundant
 
 -spec filter_f(Fun, Q1 :: list(Item)) -> Q2 :: list(Item) when
       Fun :: fun((Item) -> boolean() | list(Item)).
@@ -760,9 +760,9 @@ filtermap(Fun, {R0, F0}) when is_function(Fun, 1), is_list(R0), is_list(F0) ->
 	    r2f(R);
        true ->
 	    {R,F}
-    end;
-filtermap(Fun, Q) ->
-    erlang:error(badarg, [Fun,Q]).
+    end.
+% filtermap(Fun, Q) ->
+%     erlang:error(badarg, [Fun,Q]).
 
 -spec filtermap_r(Fun, Q1) -> Q2 when
       Fun :: fun((Item) -> boolean() | {'true', Value}),
@@ -812,9 +812,9 @@ _Example:_
       AccOut :: term().
 fold(Fun, Acc0, {R, F}) when is_function(Fun, 2), is_list(R), is_list(F) ->
     Acc1 = lists:foldl(Fun, Acc0, F),
-    lists:foldr(Fun, Acc1, R);
-fold(Fun, Acc0, Q) ->
-    erlang:error(badarg, [Fun, Acc0, Q]).
+    lists:foldr(Fun, Acc1, R).
+% fold(Fun, Acc0, Q) ->
+%     erlang:error(badarg, [Fun, Acc0, Q]).
 
 %% Check if any item satisfies the predicate, traverse in queue order.
 %%
@@ -838,9 +838,9 @@ true
       Pred :: fun((Item) -> boolean()).
 any(Pred, {R, F}) when is_function(Pred, 1), is_list(R), is_list(F) ->
     lists:any(Pred, F) orelse
-    lists:any(Pred, R);
-any(Pred, Q) ->
-    erlang:error(badarg, [Pred, Q]).
+    lists:any(Pred, R).
+% any(Pred, Q) ->
+%     erlang:error(badarg, [Pred, Q]).
 
 %% Check if all items satisfy the predicate, traverse in queue order.
 %%
@@ -864,9 +864,9 @@ true
       Pred :: fun((Item) -> boolean()).
 all(Pred, {R, F}) when is_function(Pred, 1), is_list(R), is_list(F) ->
     lists:all(Pred, F) andalso
-    lists:all(Pred, R);
-all(Pred, Q) ->
-    erlang:error(badarg, [Pred, Q]).
+    lists:all(Pred, R).
+% all(Pred, Q) ->
+%     erlang:error(badarg, [Pred, Q]).
 
 %% Delete the first occurence of an item in the queue,
 %% according to queue order.
@@ -1002,9 +1002,9 @@ delete_with(Pred, {R0, F0} = Q) when is_function(Pred, 1), is_list(R0), is_list(
 	    r2f(R0);
 	F1 ->
 	    {R0, F1}
-    end;
-delete_with(Pred, Q) ->
-    erlang:error(badarg, [Pred, Q]).
+    end.
+% delete_with(Pred, Q) ->
+%     erlang:error(badarg, [Pred, Q]).
 
 %% Delete the last occurence of an item in the queue
 %% matching a predicate, according to queue order.
@@ -1031,9 +1031,9 @@ _Example:_
       Item :: term().
 delete_with_r(Pred, {R0, F0}) when is_function(Pred, 1), is_list(R0), is_list(F0) ->
     {F1, R1} = delete_with(Pred, {F0, R0}),
-    {R1, F1};
-delete_with_r(Pred, Q) ->
-    erlang:error(badarg, [Pred, Q]).
+    {R1, F1}.
+% delete_with_r(Pred, Q) ->
+%     erlang:error(badarg, [Pred, Q]).
 
 -spec delete_with_front(Pred, Q1) -> false | Q2 when
       Pred :: fun((Item) -> boolean()),
