@@ -20,7 +20,7 @@
 %% %CopyrightEnd%
 %%
 
--module(orddict2).
+-module(orddict2_fixed).
 -moduledoc """
 Key-value dictionary as ordered list.
 
@@ -243,6 +243,7 @@ error
 take(Key, Dict) ->
     take_1(Key, Dict, []).
 
+% -type orddict(Key, Value) :: [{Key, Value}].
 -spec take_1(Key, orddict(Key, Value), [{Key, Value}]) -> error | {Value, orddict(Key, Value)}.
 take_1(Key, [{K,_}|_], _Acc) when Key < K ->
     error;
@@ -311,8 +312,8 @@ _Example 2:_
 ```
 """.
 -spec append(Key, Value, Orddict1) -> Orddict2 when
-      Orddict1 :: orddict(Key, Value),
-      Orddict2 :: orddict(Key, Value).
+      Orddict1 :: orddict(Key, [Value]),
+      Orddict2 :: orddict(Key, [Value]).
 
 append(Key, New, [{K,_}|_]=Dict) when Key < K ->
     [{Key,[New]}|Dict];
@@ -341,9 +342,9 @@ _Example:_
 ```
 """.
 -spec append_list(Key, ValList, Orddict1) -> Orddict2 when
-      ValList :: [Value],
-      Orddict1 :: orddict(Key, Value),
-      Orddict2 :: orddict(Key, Value).
+      ValList :: [_Value],
+      Orddict1 :: orddict(Key, ValList),
+      Orddict2 :: orddict(Key, ValList).
 
 append_list(Key, NewList, [{K,_}|_]=Dict) when Key < K ->
     [{Key,NewList}|Dict];
@@ -377,6 +378,7 @@ update(Key, Fun, [{K,_}=E|Dict]) when Key > K ->
 update(Key, Fun, [{K,Val}|Dict]) when Key == K ->
     [{Key,Fun(Val)}|Dict];
 update(_Key, _Fun, _) -> error(exhaustiveness).
+
 
 -doc """
 Updates a value in a dictionary by calling `Fun` on the value to get a new
@@ -435,8 +437,8 @@ update_counter(Key, Incr, D) ->
 ```
 """.
 -spec update_counter(Key, Increment, Orddict1) -> Orddict2 when
-      Orddict1 :: orddict(Key, Value),
-      Orddict2 :: orddict(Key, Value),
+      Orddict1 :: orddict(Key, number()),
+      Orddict2 :: orddict(Key, number()),
       Increment :: number().
 
 update_counter(Key, Incr, [{K,_}|_]=Dict) when Key < K ->
@@ -471,7 +473,7 @@ _Example:_
 
 fold(F, Acc, [{Key,Val}|D]) ->
     fold(F, F(Key, Val, Acc), D);
-fold(F, Acc, []) when is_function(F, 3) -> Acc.
+fold(_F, Acc, []) -> Acc.
 
 -doc """
 Calls `Fun` on successive keys and values of `Orddict1` to return a new value
@@ -493,7 +495,7 @@ _Example:_
 
 map(F, [{Key,Val}|D]) ->
     [{Key,F(Key, Val)}|map(F, D)];
-map(F, []) when is_function(F, 2) -> [].
+map(_F, []) -> [].
 
 -doc """
 `Orddict2` is a dictionary of all keys and values in `Orddict1` for which
@@ -518,7 +520,7 @@ filter(F, [{Key,Val}=E|D]) ->
 	true -> [E|filter(F, D)]; 
 	false -> filter(F, D)
     end;
-filter(F, []) when is_function(F, 2) -> [].
+filter(_F, []) -> [].
 
 -doc """
 Merges two dictionaries, `Orddict1` and `Orddict2`, to create a new dictionary.
@@ -548,11 +550,9 @@ _Example:_
 [{a,1},{b,14},{c,8}]
 ```
 """.
--spec merge(Fun, Orddict1, Orddict2) -> Orddict3 when
-      Fun :: fun((Key, Value1, Value2) -> Value),
-      Orddict1 :: orddict(Key, Value1),
-      Orddict2 :: orddict(Key, Value2),
-      Orddict3 :: orddict(Key, Value).
+-spec merge(Fun, Orddict, Orddict) -> Orddict when
+      Fun :: fun((Key, Value, Value) -> Value),
+      Orddict :: orddict(Key, Value).
 
 merge(F, [{K1,_}=E1|D1], [{K2,_}=E2|D2]) when K1 < K2 ->
     [E1|merge(F, D1, [E2|D2])];
@@ -560,9 +560,8 @@ merge(F, [{K1,_}=E1|D1], [{K2,_}=E2|D2]) when K1 > K2 ->
     [E2|merge(F, [E1|D1], D2)];
 merge(F, [{K1,V1}|D1], [{_K2,V2}|D2]) ->	%K1 == K2
     [{K1,F(K1, V1, V2)}|merge(F, D1, D2)];
-merge(F, [], D2) when is_function(F, 3) -> D2;
-merge(F, D1, []) when is_function(F, 3) -> D1;
-merge(_, _, _) -> error(todo).
+merge(_F, [], D2) -> D2;
+merge(_F, D1, []) -> D1.
 
 -spec reverse_pairs([{Key, Value}], [{Key, Value}]) -> [{Key, Value}].
 reverse_pairs([{_,_}=H|T], Acc) ->
