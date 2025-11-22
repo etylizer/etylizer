@@ -21,7 +21,11 @@
           funenv :: funenv(),
           % The records seen so far. We need the record definitions to rewrite record types
           % into tuple types.
-          records :: #{ atom() => records:record_ty() }
+          records :: #{ atom() => records:record_ty() },
+          % functions for which exhaustiveness has been added at the function clause level
+          % via a -etylizer({disable_exhaustiveness_toplevel, [...]}) user-specified attribute
+          % depends on annotations being transformed before function definitions
+          nonexhaustive_funs = sets:new() :: sets:set({atom(), arity()})
         }).
 -type ctx() :: #ctx{}.
 
@@ -52,6 +56,7 @@ trans(Path, Forms, Mode, FunEnv) ->
             fun(F, {NewForms, Ctx}) ->
                 case trans_form(Ctx, F, Mode) of
                     error -> {NewForms, Ctx};
+                    {error, NewCtx} -> {NewForms, NewCtx};
                     {NewForm, NewCtx} -> {[NewForm | NewForms], NewCtx};
                     NewForm -> {[NewForm | NewForms], Ctx}
                 end
@@ -84,7 +89,7 @@ build_funenv(Path, Forms) ->
             varenv:insert_if_absent({Name, Arity}, {extern, erlang}, E)
         end, Env1, stdtypes:builtin_funs()).
 
--spec trans_form(ctx(), ast_erl:form(), trans_mode()) -> {ast:form(), ctx()} | ast:form() | error.
+-spec trans_form(ctx(), ast_erl:form(), trans_mode()) -> {ast:form(), ctx()} | ast:form() | error | {error, ctx()}.
 trans_form(Ctx, Form, Mode) ->
     R =
         case Form of
@@ -93,13 +98,24 @@ trans_form(Ctx, Form, Mode) ->
             {attribute, Anno, import, X} -> {attribute, to_loc(Ctx, Anno), import, X};
             {attribute, Anno, module, X} -> {attribute, to_loc(Ctx, Anno), module, X};
             {attribute, Anno, compile, X} -> {attribute, to_loc(Ctx, Anno), compile, X};
+            {attribute, Anno, etylizer, EtylizerOpt} ->
+                case EtylizerOpt of
+                    {disable_exhaustiveness_toplevel, ListOfFuns} ->
+                        % add functions where an exhaustive header are added in the transform phase
+                        {error, Ctx#ctx { nonexhaustive_funs = sets:union(Ctx#ctx.nonexhaustive_funs, sets:from_list(ListOfFuns)) }};
+                    {disable_exhaustiveness, ListOfFuns} ->
+                        {attribute, to_loc(Ctx, Anno), etylizer, {disable_exhaustiveness, ListOfFuns}};
+                    _ ->
+                        error
+                end;
             {attribute, _, file, _} -> error;
             {attribute, _, behaviour, _} -> error;
             {attribute, _, behavior, _} -> error;
             {function, Anno, Name, Arity, Clauses} ->
                 case Mode of
                     full ->
-                        {function, to_loc(Ctx, Anno), Name, Arity, trans_fun_clauses(Ctx, Clauses)};
+                        DisableExhaustive = sets:is_element({Name, Arity}, Ctx#ctx.nonexhaustive_funs),
+                        {function, to_loc(Ctx, Anno), Name, Arity, trans_fun_clauses(Ctx, Clauses, {DisableExhaustive, Arity})};
                     flat ->
                         error
                 end;
@@ -457,11 +473,11 @@ trans_exp(Ctx, Env, Exp) ->
             {[NewModE, NewNameE, NewArityE], NewEnv} = trans_exps(Ctx, Env, [ModE, NameE, ArityE]),
             {{fun_ref_dyn, to_loc(Ctx, Anno), {qref_dyn, NewModE, NewNameE, NewArityE}}, NewEnv};
         {'fun', Anno, {clauses, FunClauses}} ->
-            {{'fun', to_loc(Ctx, Anno), no_name, trans_fun_clauses(Ctx, Env, FunClauses)}, Env};
+            {{'fun', to_loc(Ctx, Anno), no_name, trans_fun_clauses_no_exhaust(Ctx, Env, FunClauses)}, Env};
         {named_fun, Anno, Name, FunClauses} ->
             {NewName, NewEnv} = varenv_local:insert(Name, Env),
             {{'fun', to_loc(Ctx, Anno), {local_bind, NewName},
-              trans_fun_clauses(Ctx, NewEnv, FunClauses)}, Env};
+            trans_fun_clauses_no_exhaust(Ctx, NewEnv, FunClauses)}, Env};
         % annotate type
         {call, _, {'atom', _, '::'}, [Exp0, {string, Anno, TypeStr}]} -> 
             case parse_type(Ctx, TypeStr) of
@@ -878,11 +894,39 @@ trans_catch_clause(Ctx, Env, C) ->
         Z -> errors:uncovered_case(?FILE, ?LINE, Z)
     end.
 
--spec trans_fun_clauses(ctx(), [ast_erl:fun_clause()]) -> [ast:fun_clause()].
-trans_fun_clauses(Ctx, Cs) -> trans_fun_clauses(Ctx, varenv_local:empty(), Cs).
+-spec trans_fun_clauses(ctx(), [ast_erl:fun_clause()], {boolean(), arity()}) -> [ast:fun_clause()].
+trans_fun_clauses(Ctx, Cs, DisableExhaustiveCtx) -> trans_fun_clauses(Ctx, varenv_local:empty(), Cs, DisableExhaustiveCtx).
 
--spec trans_fun_clauses(ctx(), varenv_local:t(), [ast_erl:fun_clause()]) -> [ast:fun_clause()].
-trans_fun_clauses(Ctx, Env, Cs) -> lists:map(fun(C) -> trans_fun_clause(Ctx, Env, C) end, Cs).
+-spec trans_fun_clauses_no_exhaust(ctx(), varenv_local:t(), [ast_erl:fun_clause()]) -> [ast:fun_clause()].
+trans_fun_clauses_no_exhaust(Ctx, Env, Cs) -> 
+    trans_fun_clauses(Ctx, Env, Cs, {false, 0}).
+
+-spec trans_fun_clauses(ctx(), varenv_local:t(), [ast_erl:fun_clause()], {boolean(), arity()}) -> [ast:fun_clause()].
+trans_fun_clauses(Ctx, Env, Cs, {DisableExhaustive, Arity}) -> 
+    Clauses = lists:map(fun(C) -> trans_fun_clause(Ctx, Env, C) end, Cs),
+
+    FilteredClauses =  case Clauses of
+        [_] -> Clauses;
+        [_|_] -> 
+            {fun_clause, Loc, _, _, Body} = lists:nth(length(Clauses), Clauses),
+            case is_error_clause(Body) of 
+                true -> 
+                    ?LOG_DEBUG("Exhaustiveness heuristic triggered: removing last error clause at ~p", Loc),
+                    lists:sublist(Clauses, length(Clauses) - 1);
+                false -> Clauses
+            end
+    end,
+    FilteredClauses,
+
+    % if this function is marked as not exhaustive, 
+    % we add a dummy function header to that clause
+    % so that the type system does not complain
+    case DisableExhaustive of
+        true -> FilteredClauses ++ [add_exhaustive_clause(Ctx, Arity)];
+        false -> FilteredClauses 
+    end.
+
+
 
 -spec trans_fun_clause(ctx(), varenv_local:t(), ast_erl:fun_clause()) -> ast:fun_clause().
 trans_fun_clause(Ctx, Env, C) ->
@@ -1042,3 +1086,24 @@ parse_type_test() ->
     ok.
 
 -endif.
+
+% useful to check for erlang:error(_) function clauses
+-spec is_error_clause([ast:exp()]) -> boolean().
+is_error_clause(Body) ->
+    case Body of
+        [{'call', _, {var, _, {ref, error, 1}}, _}] -> true;
+        [{'call', _, {var, _, {ref, error, 2}}, _}] -> true;
+        [{'call', _, {var, _, {qref, erlang, error, 1}}, _}] -> true;
+        [{'call', _, {var, _, {qref, erlang, error, 2}}, _}] -> true;
+        _ -> false
+    end.
+
+% transform a function to be exhaustive by construction (user-specified flag)
+-spec add_exhaustive_clause(ctx(), arity()) -> ast:fun_clause().
+add_exhaustive_clause(Ctx, Arity) ->
+    Loc = {loc, Ctx#ctx.path, 0, 0}, % dummy location TODO loc?
+    ErrorCall = {'call', Loc, {var, Loc, {qref, erlang, error, 1}}, 
+                [{'atom', Loc, exhaustive}]},
+    {fun_clause, Loc, [{wildcard, Loc} || _ <- lists:seq(1, Arity)], 
+        [], 
+        [ErrorCall]}.

@@ -240,8 +240,8 @@ extend_symtab_internal(Filename, Forms, RefType, Tab, OverlaySymtab) ->
                     AccTab
             end
         end,
-        Tab#tab { modules = maps:put(ModuleName, Filename, Tab#tab.modules) },
-        Forms).
+Tab#tab { modules = maps:put(ModuleName, Filename, Tab#tab.modules) },
+Forms).
 
 -spec extend_symtab_with_fun_env(fun_env(), t()) -> t().
 extend_symtab_with_fun_env(Env, Tab) -> Tab#tab { funs = maps:merge(Tab#tab.funs, Env) }.
@@ -307,4 +307,3 @@ retrieve_forms_for_source({Kind, Src, Includes}) ->
 from_types(Types) when is_list(Types) -> (empty())#tab{types = maps:from_list(Types)};
 from_types(Types) when is_map(Types) -> (empty())#tab{types = Types}.
 -endif.
-
