@@ -3,7 +3,7 @@
 -include("log.hrl").
 
 -export([
-         gen_constrs_fun_group/2, gen_constrs_annotated_fun/3,
+         gen_constrs_fun_group/3, gen_constrs_annotated_fun/4,
          sanity_check/2
         ]).
 
@@ -18,14 +18,15 @@
 
 -record(ctx,
         { var_counter :: counters:counters_ref(),
-          symtab :: symtab:t()
+          symtab :: symtab:t(),
+          exhaustiveness_mode :: feature_flags:exhaustiveness_mode()
         }).
 -type ctx() :: #ctx{}.
 
--spec new_ctx(symtab:t()) -> ctx().
-new_ctx(Symtab) ->
+-spec new_ctx(symtab:t(), feature_flags:exhaustiveness_mode()) -> ctx().
+new_ctx(Symtab, ExhaustivenessMode) ->
     Counter = counters:new(2, []),
-    Ctx = #ctx{ var_counter = Counter, symtab = Symtab },
+    Ctx = #ctx{ var_counter = Counter, symtab = Symtab, exhaustiveness_mode = ExhaustivenessMode },
     Ctx.
 
 -spec fresh_ty_varname(ctx()) -> ast:ty_varname().
@@ -60,9 +61,9 @@ fresh_vars(Ctx, N) ->
 mk_locs(Label, X) -> {Label, utils:single(X)}.
 
 % Inference for a group of mutually recursive functions without type annotations.
--spec gen_constrs_fun_group(symtab:t(), [ast:fun_decl()]) -> {constr:constrs(), constr:constr_env()}.
-gen_constrs_fun_group(Symtab, Decls) ->
-    Ctx = new_ctx(Symtab),
+-spec gen_constrs_fun_group(feature_flags:exhaustiveness_mode(), symtab:t(), [ast:fun_decl()]) -> {constr:constrs(), constr:constr_env()}.
+gen_constrs_fun_group(ExhaustivenessMode, Symtab, Decls) ->
+    Ctx = new_ctx(Symtab, ExhaustivenessMode),
     lists:foldl(
       fun({function, L, Name, Arity, FunClauses}, {Cs, Env}) ->
               Exp = {'fun', L, no_name, FunClauses},
@@ -76,9 +77,9 @@ gen_constrs_fun_group(Symtab, Decls) ->
 % This function is invoked for each branch of the intersection type in the type spec.
 % The idea is that we can give better error messages by pointing out which part of the
 % intersection did not type check.
--spec gen_constrs_annotated_fun(symtab:t(), ast:ty_full_fun(), ast:fun_decl()) -> constr:constrs().
-gen_constrs_annotated_fun(Symtab, {fun_full, ArgTys, ResTy}, {function, L, Name, Arity, FunClauses}) ->
-    Ctx = new_ctx(Symtab),
+-spec gen_constrs_annotated_fun(feature_flags:exhaustiveness_mode(), symtab:t(), ast:ty_full_fun(), ast:fun_decl()) -> constr:constrs().
+gen_constrs_annotated_fun(ExhaustivenessMode ,Symtab, {fun_full, ArgTys, ResTy}, {function, L, Name, Arity, FunClauses}) ->
+    Ctx = new_ctx(Symtab, ExhaustivenessMode),
     {Args, Body} = fun_clauses_to_exp(Ctx, L, FunClauses),
     if length(Args) =/= length(ArgTys) orelse length(Args) =/= Arity ->
             errors:ty_error(L, "Arity mismatch for function ~w", Name);
@@ -150,8 +151,12 @@ exp_constrs(Ctx, E, T) ->
                             {[], [], [], sets:new([{version, 2}])},
                             Clauses),
             CsScrut = sets:union(Cs0, CsCases),
-            Exhaust = utils:single(
-                {csubty, mk_locs("case exhaustiveness", L), Alpha, ast_lib:mk_union(Lowers)}),
+            Exhaust = 
+            case Ctx#ctx.exhaustiveness_mode of
+                enabled -> utils:single( 
+                              {csubty, mk_locs("case exhaustiveness", L), Alpha, ast_lib:mk_union(Lowers)});
+                disabled -> sets:new()
+            end,
             sets:from_list([
                 {ccase, mk_locs("case", L), CsScrut, Exhaust, BodyList}
             ], [{version, 2}]);
@@ -192,9 +197,9 @@ exp_constrs(Ctx, E, T) ->
         ({'if', _, _} = IfExp) ->
             exp_constrs(Ctx, if_exp_to_case_exp(IfExp), T);
         {lc, L, _E, _Qs} ->
-            errors:unsupported(L, "list comprehension: ~200p", [E]);
+            errors:unsupported(L, "list comprehension", []);
         {mc, L, _E, _Qs} ->
-            errors:unsupported(L, "map comprehension: ~200p", [E]);
+            errors:unsupported(L, "map comprehension", []);
         {map_create, L, []} ->
             utils:single({csubty, mk_locs("empty map", L), {map, []}, T});
         {map_create, L, Assocs} ->
@@ -258,9 +263,9 @@ exp_constrs(Ctx, E, T) ->
                       {csubty, mk_locs(MsgRes, L), Beta, T}], [{version, 2}]),
             sets:union(ArgCs, OpCs);
         {'receive', L, _CaseClauses} ->
-            errors:unsupported(L, "receive: ~200p", [E]);
+            errors:unsupported(L, "receive expression", []);
         {receive_after, L, _CauseClauses, _TimeoutExp, _Body} ->
-            errors:unsupported(L, "receive_after: ~200p", [E]);
+            errors:unsupported(L, "receive_after expression", []);
         {record_create, L, Name, GivenFields} ->
             {_, DefFields} = symtab:lookup_record(Name, L, Ctx#ctx.symtab),
             VarFields =
@@ -370,7 +375,7 @@ exp_constrs(Ctx, E, T) ->
             TupleC = {csubty, mk_locs("tuple constructor", L), {tuple, Tys}, T},
             sets:add_element(TupleC, Cs);
         {'try', L, _Exps, _CaseClauses, _CatchClauses, _AfterBody} ->
-            errors:unsupported(L, "try: ~200p", [E]);
+            errors:unsupported(L, "try expression", []);
         {var, L, AnyRef} ->
             Msg = utils:sformat("var ~s", pretty:render(pretty:ref(AnyRef))),
             utils:single({cvar, mk_locs(Msg, L), AnyRef, T});
