@@ -192,9 +192,9 @@ exp_constrs(Ctx, E, T) ->
         ({'if', _, _} = IfExp) ->
             exp_constrs(Ctx, if_exp_to_case_exp(IfExp), T);
         {lc, L, _E, _Qs} ->
-            errors:unsupported(L, "list comprehension: ~200p", [E]);
+            errors:unsupported(L, "list comprehension", []);
         {mc, L, _E, _Qs} ->
-            errors:unsupported(L, "map comprehension: ~200p", [E]);
+            errors:unsupported(L, "map comprehension", []);
         {map_create, L, []} ->
             utils:single({csubty, mk_locs("empty map", L), {map, []}, T});
         {map_create, L, Assocs} ->
@@ -258,9 +258,9 @@ exp_constrs(Ctx, E, T) ->
                       {csubty, mk_locs(MsgRes, L), Beta, T}], [{version, 2}]),
             sets:union(ArgCs, OpCs);
         {'receive', L, _CaseClauses} ->
-            errors:unsupported(L, "receive: ~200p", [E]);
+            errors:unsupported(L, "receive expression", []);
         {receive_after, L, _CauseClauses, _TimeoutExp, _Body} ->
-            errors:unsupported(L, "receive_after: ~200p", [E]);
+            errors:unsupported(L, "receive_after expression", []);
         {record_create, L, Name, GivenFields} ->
             {_, DefFields} = symtab:lookup_record(Name, L, Ctx#ctx.symtab),
             VarFields =
@@ -370,7 +370,7 @@ exp_constrs(Ctx, E, T) ->
             TupleC = {csubty, mk_locs("tuple constructor", L), {tuple, Tys}, T},
             sets:add_element(TupleC, Cs);
         {'try', L, _Exps, _CaseClauses, _CatchClauses, _AfterBody} ->
-            errors:unsupported(L, "try: ~200p", [E]);
+            errors:unsupported(L, "try expression", []);
         {var, L, AnyRef} ->
             Msg = utils:sformat("var ~s", pretty:render(pretty:ref(AnyRef))),
             utils:single({cvar, mk_locs(Msg, L), AnyRef, T});
