@@ -10,6 +10,7 @@
 
   dump/1, 
   dumpp/1,
+  dump_list/1,
 
   compare/2,
   make/1,
@@ -283,6 +284,20 @@ do_dump([Ty | T], Res) ->
       ),
       do_dump(T ++ MoreTys, Res#{Ty => Rec})
   end.
+
+-spec dump_list([{type(), type()}]) -> [#{type() => type_descriptor()}].
+dump_list(List) ->
+  lists:map(fun dump/1, 
+    sets:to_list(
+      lists:foldl(
+        fun({A, B}, Acc) -> 
+          sets:add_element(A, sets:add_element(B, Acc))
+        end,
+        sets:new(),
+        List
+      )
+    )
+  ).
 
 
 % =============

@@ -3,7 +3,7 @@
 -include("log.hrl").
 
 -export([
-         gen_constrs_fun_group/2, gen_constrs_annotated_fun/3,
+         gen_constrs_fun_group/3, gen_constrs_annotated_fun/4,
          sanity_check/2
         ]).
 
@@ -18,14 +18,15 @@
 
 -record(ctx,
         { var_counter :: counters:counters_ref(),
-          symtab :: symtab:t()
+          symtab :: symtab:t(),
+          exhaustiveness_mode :: feature_flags:exhaustiveness_mode()
         }).
 -type ctx() :: #ctx{}.
 
--spec new_ctx(symtab:t()) -> ctx().
-new_ctx(Symtab) ->
+-spec new_ctx(symtab:t(), feature_flags:exhaustiveness_mode()) -> ctx().
+new_ctx(Symtab, ExhaustivenessMode) ->
     Counter = counters:new(2, []),
-    Ctx = #ctx{ var_counter = Counter, symtab = Symtab },
+    Ctx = #ctx{ var_counter = Counter, symtab = Symtab, exhaustiveness_mode = ExhaustivenessMode },
     Ctx.
 
 -spec fresh_ty_varname(ctx()) -> ast:ty_varname().
@@ -60,9 +61,9 @@ fresh_vars(Ctx, N) ->
 mk_locs(Label, X) -> {Label, utils:single(X)}.
 
 % Inference for a group of mutually recursive functions without type annotations.
--spec gen_constrs_fun_group(symtab:t(), [ast:fun_decl()]) -> {constr:constrs(), constr:constr_env()}.
-gen_constrs_fun_group(Symtab, Decls) ->
-    Ctx = new_ctx(Symtab),
+-spec gen_constrs_fun_group(feature_flags:exhaustiveness_mode(), symtab:t(), [ast:fun_decl()]) -> {constr:constrs(), constr:constr_env()}.
+gen_constrs_fun_group(ExhaustivenessMode, Symtab, Decls) ->
+    Ctx = new_ctx(Symtab, ExhaustivenessMode),
     lists:foldl(
       fun({function, L, Name, Arity, FunClauses}, {Cs, Env}) ->
               Exp = {'fun', L, no_name, FunClauses},
@@ -76,9 +77,9 @@ gen_constrs_fun_group(Symtab, Decls) ->
 % This function is invoked for each branch of the intersection type in the type spec.
 % The idea is that we can give better error messages by pointing out which part of the
 % intersection did not type check.
--spec gen_constrs_annotated_fun(symtab:t(), ast:ty_full_fun(), ast:fun_decl()) -> constr:constrs().
-gen_constrs_annotated_fun(Symtab, {fun_full, ArgTys, ResTy}, {function, L, Name, Arity, FunClauses}) ->
-    Ctx = new_ctx(Symtab),
+-spec gen_constrs_annotated_fun(feature_flags:exhaustiveness_mode(), symtab:t(), ast:ty_full_fun(), ast:fun_decl()) -> constr:constrs().
+gen_constrs_annotated_fun(ExhaustivenessMode ,Symtab, {fun_full, ArgTys, ResTy}, {function, L, Name, Arity, FunClauses}) ->
+    Ctx = new_ctx(Symtab, ExhaustivenessMode),
     {Args, Body} = fun_clauses_to_exp(Ctx, L, FunClauses),
     if length(Args) =/= length(ArgTys) orelse length(Args) =/= Arity ->
             errors:ty_error(L, "Arity mismatch for function ~w", Name);
@@ -150,8 +151,12 @@ exp_constrs(Ctx, E, T) ->
                             {[], [], [], sets:new([{version, 2}])},
                             Clauses),
             CsScrut = sets:union(Cs0, CsCases),
-            Exhaust = utils:single(
-                {csubty, mk_locs("case exhaustiveness", L), Alpha, ast_lib:mk_union(Lowers)}),
+            Exhaust = 
+            case Ctx#ctx.exhaustiveness_mode of
+                enabled -> utils:single( 
+                              {csubty, mk_locs("case exhaustiveness", L), Alpha, ast_lib:mk_union(Lowers)});
+                disabled -> sets:new()
+            end,
             sets:from_list([
                 {ccase, mk_locs("case", L), CsScrut, Exhaust, BodyList}
             ], [{version, 2}]);
@@ -191,10 +196,37 @@ exp_constrs(Ctx, E, T) ->
             errors:unsupported(L, "function calls with dynamically computed modules");
         ({'if', _, _} = IfExp) ->
             exp_constrs(Ctx, if_exp_to_case_exp(IfExp), T);
-        {lc, L, _E, _Qs} ->
-            errors:unsupported(L, "list comprehension: ~200p", [E]);
-        {mc, L, _E, _Qs} ->
-            errors:unsupported(L, "map comprehension: ~200p", [E]);
+        {lc, L, Exp, Qs} ->
+            {Env, Cs0} = process_qualifiers(Ctx, L, Qs, #{}, sets:new()),
+            Beta = fresh_tyvar(Ctx), % element result
+            % generate constraints for body expression in qualifier environment
+            BodyCs = sets:from_list([{cdef, mk_locs("list comprehension body", L), Env, 
+                                     exps_constrs(Ctx, L, [Exp], Beta)}], []),
+            % comprehension result is list of body type
+            ListTy = stdtypes:tlist(Beta),
+            Cs1 = sets:add_element({csubty, mk_locs("list comprehension result", L), ListTy, T}, BodyCs),
+            sets:union(Cs0, Cs1);
+        {mc, L, K, V, Qs} ->
+            {Env, Cs0} = process_qualifiers(Ctx, L, Qs, #{}, sets:new()),
+            
+            % key and value types
+            KeyAlpha = fresh_tyvar(Ctx),
+            ValAlpha = fresh_tyvar(Ctx),
+            KeyCs = exps_constrs(Ctx, L, [K], KeyAlpha),
+            ValCs = exps_constrs(Ctx, L, [V], ValAlpha),
+            
+            BodyCs = sets:from_list([
+                {cdef, mk_locs("map comprehension key", L), Env, KeyCs},
+                {cdef, mk_locs("map comprehension value", L), Env, ValCs}
+            ], []),
+            
+            % comprehension result is map of key/value types
+            MapTy = stdtypes:tmap(KeyAlpha, ValAlpha),
+            Cs1 = sets:add_element(
+                {csubty, mk_locs("map comprehension result", L), MapTy, T},
+                BodyCs
+            ),
+            sets:union(Cs0, Cs1);
         {map_create, L, []} ->
             utils:single({csubty, mk_locs("empty map", L), {map, []}, T});
         {map_create, L, Assocs} ->
@@ -258,9 +290,9 @@ exp_constrs(Ctx, E, T) ->
                       {csubty, mk_locs(MsgRes, L), Beta, T}], [{version, 2}]),
             sets:union(ArgCs, OpCs);
         {'receive', L, _CaseClauses} ->
-            errors:unsupported(L, "receive: ~200p", [E]);
+            errors:unsupported(L, "receive expression", []);
         {receive_after, L, _CauseClauses, _TimeoutExp, _Body} ->
-            errors:unsupported(L, "receive_after: ~200p", [E]);
+            errors:unsupported(L, "receive_after expression", []);
         {record_create, L, Name, GivenFields} ->
             {_, DefFields} = symtab:lookup_record(Name, L, Ctx#ctx.symtab),
             VarFields =
@@ -370,11 +402,45 @@ exp_constrs(Ctx, E, T) ->
             TupleC = {csubty, mk_locs("tuple constructor", L), {tuple, Tys}, T},
             sets:add_element(TupleC, Cs);
         {'try', L, _Exps, _CaseClauses, _CatchClauses, _AfterBody} ->
-            errors:unsupported(L, "try: ~200p", [E]);
+            errors:unsupported(L, "try expression", []);
         {var, L, AnyRef} ->
             Msg = utils:sformat("var ~s", pretty:render(pretty:ref(AnyRef))),
             utils:single({cvar, mk_locs(Msg, L), AnyRef, T});
         X -> errors:uncovered_case(?FILE, ?LINE, X)
+    end.
+
+-spec process_qualifiers(ctx(), ast:loc(), [ast:qualifier()], constr:constr_env(), constr:constrs()) ->
+          {constr:constr_env(), constr:constrs()}.
+process_qualifiers(_Ctx, _Loc, [], Env, Cs) -> {Env, Cs};
+process_qualifiers(Ctx, Loc, [Q | Qs], Env, Cs) ->
+    case Q of
+        % strict list generator: Pat <:- Exp
+        {generate_strict, LGen, Pat, Exp} ->
+            Alpha = fresh_tyvar(Ctx),
+            ExpCs = exp_constrs(Ctx, Exp, stdtypes:tlist(Alpha)),
+            {PatCs, PatEnv} = pat_env(Ctx, LGen, Alpha, Pat),
+            NewEnv = intersect_envs(Env, PatEnv),
+            process_qualifiers(Ctx, Loc, Qs, NewEnv, sets:union([Cs, ExpCs, PatCs]));
+        % list generator: Pat <- Exp
+        % FIXME we treat relaxed generators as strict currently
+        {generate, LGen, Pat, Exp} ->
+            process_qualifiers(Ctx, Loc, [{generate_strict, LGen, Pat, Exp} | Qs], Env, Cs);
+        {zip, LGen, NestedQualifiers} ->
+            {NewEnv, NewCs} = process_qualifiers(Ctx, LGen, NestedQualifiers, Env, Cs),
+            process_qualifiers(Ctx, Loc, Qs, NewEnv, NewCs);
+        {b_generate, _, _, _} ->
+            errors:unsupported(Loc, "generator ~w", Q);
+        {m_generate, _, _, _} ->
+            errors:unsupported(Loc, "generator ~w", Q);
+        % Filter expression
+        % be careful here, 
+        % the catch-all will handle cases that are not supposed to be filters
+        % this can happen when a new feature is introduced (e.g. zip, strict_generate)
+        Filter ->
+            % apply current environment to filter expression
+            FilterCs = sets:from_list([{cdef, mk_locs("filter", Loc), Env, 
+                                      exps_constrs(Ctx, Loc, [Filter], stdtypes:tbool())}]),
+            process_qualifiers(Ctx, Loc, Qs, Env, sets:union(Cs, FilterCs))
     end.
 
 -spec gen_funcall_constrs(ctx(), ast:loc(), ast:exp(), [ast:exp()], ast:ty()) -> constr:constrs().

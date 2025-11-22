@@ -40,7 +40,7 @@ infer(Ctx, Decls) ->
         case Decls of
             [{function, L, _, _, _} | _] -> L
         end,
-    {Cs, Env} = constr_gen:gen_constrs_fun_group(Ctx#ctx.symtab, Decls),
+    {Cs, Env} = constr_gen:gen_constrs_fun_group(Ctx#ctx.exhaustiveness_mode, Ctx#ctx.symtab, Decls),
     case Ctx#ctx.sanity of
         {ok, TyMap} -> constr_gen:sanity_check(Cs, TyMap);
         error -> ok

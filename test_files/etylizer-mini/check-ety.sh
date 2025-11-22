@@ -1,22 +1,26 @@
 #!/bin/bash
+set -e
 
 cd $(dirname $0)
 OVERLAY=overlay.erl
-LOGLEVEL=info
+LOGLEVEL=error
 
 if [ ! -z "$ETYLIZER_CASE_STUDY_LOGLEVEL" ]; then
     LOGLEVEL="$ETYLIZER_CASE_STUDY_LOGLEVEL"
 fi
 
 function run_ety() {
-    ../../ety --build --type-overlay $OVERLAY --force -l $LOGLEVEL -P . -I src $QF --no-deps "$@" || exit 1
+    ../../ety --type-overlay $OVERLAY --force -l $LOGLEVEL -P . -I src $QF --no-deps "$@" || exit 1
 }
 
-# to) timeout
+# bugs:
 # 1) impl: try & catch
+# 4) impl: nominal types not supported
+#
+# type errors and timeouts:
+# to) timeout
 # 2) rank-2 types needed: Scrap your boilerplate PLDI'03
 # 3) design: exhaustiveness with A = B #12
-# 4) impl: nominal types not supported
 # 5) possible (passes type check), but needs a term() -> fun_types() function to verify the data returned 
 #    by the ets call or when types are lost with nested higher order functions
 
@@ -47,15 +51,15 @@ run_ety src/log.erl
 
 QF=""
 QF=$QF" -i parse_file/2" # 4)
-QF=$QF" -i parse_transform/2" # 3)
+QF=$QF" -i parse_transform/2" # 1) 3)
 run_ety src/parse.erl
 
 QF="" run_ety src/records.erl
 
 QF=""
-QF=$QF" -i expand_predef_alias/1" # to)
-QF=$QF" -i builtin_ops/0" # to)
-# QF=$QF" -i mk_builtin_funs/1" # 5) 
+QF=$QF" -i expand_predef_alias/1" # to) so large, that only a single solution grows too big (need to reduce variable count)
+QF=$QF" -i builtin_ops/0" # to) so large, that only a single solution grows too big (need to reduce variable count)
+QF=$QF" -i mk_builtin_funs/1" # 5) 
 QF=$QF" -i builtin_funs/0" # 4)
 run_ety src/stdtypes.erl
 
@@ -73,7 +77,6 @@ QF="" run_ety src/ast_erl.erl
 QF="" run_ety src/t.erl
 
 QF="" 
-QF=$QF" -i is_same_file/2" # to) unoptimized andalso chaining
 QF=$QF" -i unconsult/2" # 3)
 QF=$QF" -i mkdirs/1" # 3)
 QF=$QF" -i timeout/2" # 1)
@@ -85,15 +88,23 @@ run_ety src/utils.erl
 QF="" 
 QF=$QF" -i resolve_ety_ty/3" # 80s
 QF=$QF" -i eval_const_ty/2" # 1)
-QF=$QF" -i shallow_remove_match/1" # to)
-QF=$QF" -i trans_guards/3" # to)
-QF=$QF" -i trans_qualifier/3" # to)
-QF=$QF" -i trans_form/3" # to)
-QF=$QF" -i trans_spec_ty/3" # to)
+QF=$QF" -i shallow_remove_match/1" # TODO type error
+QF=$QF" -i trans_guards/3" # to) a single top-level constraint explodes when saturated
+QF=$QF" -i trans_qualifier/3" # to) a single top-level constraint explodes when saturated
+QF=$QF" -i trans_form/3" # to) a single top-level constraint explodes when saturated
+QF=$QF" -i trans_spec_ty/3" # to) too many solutions
 QF=$QF" -i trans_ty/3" # 4)
 QF=$QF" -i trans_pat/4" # 4)
-QF=$QF" -i trans_exp/3" # to)
+QF=$QF" -i trans_exp/3" # to) so large, single solution grows too big
+QF=$QF" -i trans/4" # to) tally v1 is faster check why
 QF=$QF" -i trans_catch_clause/3" # 3)
-# QF=$QF" -i build_funenv/2" # 5) implemented assert fun
-# QF=$QF" -i mk_builtin_funs/2" # 5) implemented assert fun
+QF=$QF" -i build_funenv/2" # 5) implemented assert fun
+QF=$QF" -i mk_builtin_funs/2" # 5) implemented assert fun
 run_ety src/ast_transform.erl
+
+QF=" -i to_loc/2" # 4)
+QF=$QF" -i parse_file/2" # 4)
+QF=$QF" -i builtin_funs/0" # 4)
+QF=$QF" -i trans_ty/3" # 4)
+QF=$QF" -i trans_pat/4" # 4)
+../../ety --build --report-mode report --report-timeout 3000 --type-overlay overlay.erl --no-deps -f -l error -P . -S src $QF

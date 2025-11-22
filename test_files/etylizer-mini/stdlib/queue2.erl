@@ -289,9 +289,9 @@ out({[Y|In],[]}) ->
 out({In,[V]}) when is_list(In) ->
     {{value,V},r2f(In)};
 out({In,[V|Out]}) when is_list(In) ->
-    {{value,V},{In,Out}};
-out(Q) ->
-    erlang:error(badarg, [Q]).
+    {{value,V},{In,Out}}.
+% out(Q) ->
+%     erlang:error(badarg, [Q]).
 
 %% Take from tail/rear
 %%
@@ -326,9 +326,9 @@ out_r({[],[Y|Out]}) ->
 out_r({[V],Out}) when is_list(Out) ->
     {{value,V},f2r(Out)};
 out_r({[V|In],Out}) when is_list(Out) ->
-    {{value,V},{In,Out}};
-out_r(Q) ->
-    erlang:error(badarg, [Q]).
+    {{value,V},{In,Out}}.
+% out_r(Q) ->
+%     erlang:error(badarg, [Q]).
 
 %%--------------------------------------------------------------------------
 %% Less garbage style API.

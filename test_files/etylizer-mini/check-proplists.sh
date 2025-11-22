@@ -1,4 +1,5 @@
 #!/bin/bash
+set -e
 
 cd $(dirname $0)
 
@@ -16,7 +17,7 @@ QF=$QF" -i normalize/2" # 2)
 QF=$QF" -i to_map/2" # 3)
 QF=$QF" -i lookup/2" # 3)
 QF=$QF" -i lookup_all/2" # 3)
-QF=$QF" -i is_defined/2" # 3)
+QF=$QF" -i is_defined/3" # 3)
 QF=$QF" -i get_all_value/2" # 3)
 QF=$QF" -i append_values/2" # 3)
 QF=$QF" -i get_bool/2" # 3)
@@ -33,4 +34,6 @@ QF=$QF" -i get_value/3" # 3)
 QF=$QF" -i get_all_values/2" # 3)
 QF=$QF" -i split/3" # 3)
 QF=$QF" -i to_map/1" # 3)
-../../ety --build --type-overlay overlay.erl --no-deps -f -l debug stdlib/proplists2.erl $QF
+../../ety --type-overlay overlay.erl --no-deps -f -l info stdlib/proplists2.erl $QF
+
+../../ety --report-mode report --report-timeout 1000 --type-overlay overlay.erl --no-deps -f stdlib/proplists2.erl

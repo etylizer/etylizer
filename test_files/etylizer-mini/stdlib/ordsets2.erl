@@ -44,7 +44,8 @@ new() -> [].
       Ordset :: term().
 
 % this is positive without is_list(Es): crashes on input ordsets:is_set([1 | 1])
-is_set([E|Es]) when is_list(Es) -> is_set(Es, E); % TODO necessary change! -> paper example
+%is_set([E|Es]) when is_list(Es) -> is_set(Es, E); % TODO necessary change! -> paper example
+is_set([E|Es]) -> is_set(Es, E);
 is_set([]) -> true;
 is_set(_) -> false.
 
