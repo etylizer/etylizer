@@ -22,7 +22,11 @@
   has_negative_only_line/1
 ]).
 
+% invariants
+-etylizer({disable_exhaustiveness_toplevel, [negate_start_with/2, compare/2]}).
+
 -include("erlang_types.hrl").
+
 
 -export_type([type/0]).
 
@@ -61,8 +65,7 @@ compare([{right, A} | _], [{right, B} | _]) when A /= B -> compare_int(A, B);
 compare([{right, _} | Xs], [{right, _} | Ys]) -> compare(Xs, Ys);
 compare([{right, _} | _], _) -> lt;
 compare(_, [{right, _} | _]) -> gt;
-compare([any_int], [any_int]) -> eq;
-compare(_, _) -> error(invariant).
+compare([any_int], [any_int]) -> eq.
 
 
 -spec interval(integer() | '*', integer() | '*') -> type().
@@ -92,11 +95,11 @@ negate([{left, X} | Xs]) -> negate_start_with(X + 1, Xs);
 negate([{right, X} | _Xs]) -> [{left, X - 1}];
 negate([{range, A, B} | Xs]) -> [{left, A - 1}] ++ negate_start_with(B + 1, Xs).
 
+
 -spec negate_start_with(integer(), T) -> T when T :: type().
 negate_start_with(Start, []) -> [{right, Start}];
 negate_start_with(Start, [{range, A, B} | Xs]) -> [{range, Start, A-1}] ++ negate_start_with(B+1, Xs);
-negate_start_with(Start, [{right, X} | _Xs]) -> [{range, Start, X - 1}];
-negate_start_with(_, _) -> error(invariant).
+negate_start_with(Start, [{right, X} | _Xs]) -> [{range, Start, X - 1}].
 
 -spec union(T, T) -> T when T :: type().
 union(I1, I2) ->

@@ -3,7 +3,7 @@
 -include("log.hrl").
 
 -export([
-         gen_constrs_fun_group/3, gen_constrs_annotated_fun/4,
+         gen_constrs_fun_group/4, gen_constrs_annotated_fun/5,
          sanity_check/2
         ]).
 
@@ -19,14 +19,17 @@
 -record(ctx,
         { var_counter :: counters:counters_ref(),
           symtab :: symtab:t(),
-          exhaustiveness_mode :: feature_flags:exhaustiveness_mode()
+          exhaustiveness_mode :: feature_flags:exhaustiveness_mode(),
+          % functions where exhaustiveness is disabled at the constraint generation level
+          disable_exhaustiveness = sets:new() :: sets:set({atom(), arity()})
         }).
 -type ctx() :: #ctx{}.
 
--spec new_ctx(symtab:t(), feature_flags:exhaustiveness_mode()) -> ctx().
-new_ctx(Symtab, ExhaustivenessMode) ->
+-spec new_ctx(symtab:t(), feature_flags:exhaustiveness_mode(), sets:set({atom(), arity()})) -> ctx().
+new_ctx(Symtab, ExhaustivenessMode, DisableExhaustiveness) ->
     Counter = counters:new(2, []),
-    Ctx = #ctx{ var_counter = Counter, symtab = Symtab, exhaustiveness_mode = ExhaustivenessMode },
+    Ctx = #ctx{ var_counter = Counter, symtab = Symtab, exhaustiveness_mode = ExhaustivenessMode,
+                disable_exhaustiveness = DisableExhaustiveness },
     Ctx.
 
 -spec fresh_ty_varname(ctx()) -> ast:ty_varname().
@@ -61,11 +64,11 @@ fresh_vars(Ctx, N) ->
 mk_locs(Label, X) -> {Label, utils:single(X)}.
 
 % Inference for a group of mutually recursive functions without type annotations.
--spec gen_constrs_fun_group(feature_flags:exhaustiveness_mode(), symtab:t(), [ast:fun_decl()]) -> {constr:constrs(), constr:constr_env()}.
-gen_constrs_fun_group(ExhaustivenessMode, Symtab, Decls) ->
-    Ctx = new_ctx(Symtab, ExhaustivenessMode),
+-spec gen_constrs_fun_group(feature_flags:exhaustiveness_mode(), symtab:t(), sets:set({atom(), arity()}), [ast:fun_decl()]) -> {constr:constrs(), constr:constr_env()}.
+gen_constrs_fun_group(ExhaustivenessMode, Symtab, DisableExhaustiveness, Decls) ->
     lists:foldl(
       fun({function, L, Name, Arity, FunClauses}, {Cs, Env}) ->
+              Ctx = new_ctx(Symtab, is_exhaustiveness_disabled_for_fun(Name, Arity, ExhaustivenessMode, DisableExhaustiveness), DisableExhaustiveness),
               Exp = {'fun', L, no_name, FunClauses},
               Alpha = fresh_tyvar(Ctx),
               {ThisCs, _ThisEnv} = exp_constrs(Ctx, Exp, Alpha),
@@ -77,9 +80,9 @@ gen_constrs_fun_group(ExhaustivenessMode, Symtab, Decls) ->
 % This function is invoked for each branch of the intersection type in the type spec.
 % The idea is that we can give better error messages by pointing out which part of the
 % intersection did not type check.
--spec gen_constrs_annotated_fun(feature_flags:exhaustiveness_mode(), symtab:t(), ast:ty_full_fun(), ast:fun_decl()) -> constr:constrs().
-gen_constrs_annotated_fun(ExhaustivenessMode ,Symtab, {fun_full, ArgTys, ResTy}, {function, L, Name, Arity, FunClauses}) ->
-    Ctx = new_ctx(Symtab, ExhaustivenessMode),
+-spec gen_constrs_annotated_fun(feature_flags:exhaustiveness_mode(), symtab:t(), sets:set({atom(), arity()}), ast:ty_full_fun(), ast:fun_decl()) -> constr:constrs().
+gen_constrs_annotated_fun(ExhaustivenessMode, Symtab, DisableExhaustiveness, {fun_full, ArgTys, ResTy}, {function, L, Name, Arity, FunClauses}) ->
+    Ctx = new_ctx(Symtab, is_exhaustiveness_disabled_for_fun(Name, Arity, ExhaustivenessMode, DisableExhaustiveness), DisableExhaustiveness),
     {Args, Body} = fun_clauses_to_exp(Ctx, L, FunClauses),
     if length(Args) =/= length(ArgTys) orelse length(Args) =/= Arity ->
             errors:ty_error(L, "Arity mismatch for function ~w", Name);
@@ -1018,6 +1021,8 @@ ty_of_pat(Symtab, Env, P, Mode) ->
         {op, _, '++', [P1, P2]} ->
             ast_lib:mk_intersection([ty_of_pat(Symtab, Env, P1, Mode), ty_of_pat(Symtab, Env, P2, Mode),
                                  {predef_alias, string}]);
+        {op, _, '-', [{integer, _L2, I}]} ->
+            {singleton, -I};
         {op, _, '-', [SubP]} ->
             ast_lib:mk_intersection([ty_of_pat(Symtab, Env, SubP, Mode), {predef_alias, number}]);
         {op, L, Op, _} -> errors:unsupported(L, "operator ~w in patterns", Op);
@@ -1456,6 +1461,7 @@ ty_of_const_exp(E) ->
         {'atom', _, A} -> {ok, {singleton, A}};
         {'integer', _, I} -> {ok, {singleton, I}};
         {'char', _, C} -> {ok, {singleton, C}};
+        {op, _, '-', {'integer', _, I}} -> {ok, {singleton, -I}};
         {tuple, _, Elems} ->
             TysOpt = lists:map(fun ty_of_const_exp/1, Elems),
             case lists:all(fun(R) -> R =/= error end, TysOpt) of
@@ -1622,4 +1628,11 @@ sanity_check(Cs, Spec) ->
             ok;
         false ->
             ?ABORT("Sanity check failed: ~s", "invalid constraint generated")
+    end.
+
+-spec is_exhaustiveness_disabled_for_fun(atom(), arity(), feature_flags:exhaustiveness_mode(), sets:set({atom(), arity()})) -> feature_flags:exhaustiveness_mode().
+is_exhaustiveness_disabled_for_fun(Name, Arity, ExhaustivenessMode, DisableExhaustiveness) ->
+    case sets:is_element({Name, Arity}, DisableExhaustiveness) of
+        true -> disabled;
+        _ -> ExhaustivenessMode
     end.
