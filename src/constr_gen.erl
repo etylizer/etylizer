@@ -63,9 +63,9 @@ mk_locs(Label, X) -> {Label, utils:single(X)}.
 % Inference for a group of mutually recursive functions without type annotations.
 -spec gen_constrs_fun_group(feature_flags:exhaustiveness_mode(), symtab:t(), [ast:fun_decl()]) -> {constr:constrs(), constr:constr_env()}.
 gen_constrs_fun_group(ExhaustivenessMode, Symtab, Decls) ->
-    Ctx = new_ctx(Symtab, ExhaustivenessMode),
     lists:foldl(
       fun({function, L, Name, Arity, FunClauses}, {Cs, Env}) ->
+              Ctx = new_ctx(Symtab, is_exhaustiveness_disabled_for_fun(Name, Arity, ExhaustivenessMode, Symtab)),
               Exp = {'fun', L, no_name, FunClauses},
               Alpha = fresh_tyvar(Ctx),
               ThisCs = exp_constrs(Ctx, Exp, Alpha),
@@ -78,8 +78,8 @@ gen_constrs_fun_group(ExhaustivenessMode, Symtab, Decls) ->
 % The idea is that we can give better error messages by pointing out which part of the
 % intersection did not type check.
 -spec gen_constrs_annotated_fun(feature_flags:exhaustiveness_mode(), symtab:t(), ast:ty_full_fun(), ast:fun_decl()) -> constr:constrs().
-gen_constrs_annotated_fun(ExhaustivenessMode ,Symtab, {fun_full, ArgTys, ResTy}, {function, L, Name, Arity, FunClauses}) ->
-    Ctx = new_ctx(Symtab, ExhaustivenessMode),
+gen_constrs_annotated_fun(ExhaustivenessMode, Symtab, {fun_full, ArgTys, ResTy}, {function, L, Name, Arity, FunClauses}) ->
+    Ctx = new_ctx(Symtab, is_exhaustiveness_disabled_for_fun(Name, Arity, ExhaustivenessMode, Symtab)),
     {Args, Body} = fun_clauses_to_exp(Ctx, L, FunClauses),
     if length(Args) =/= length(ArgTys) orelse length(Args) =/= Arity ->
             errors:ty_error(L, "Arity mismatch for function ~w", Name);
@@ -1215,4 +1215,11 @@ sanity_check(Cs, Spec) ->
             ok;
         false ->
             ?ABORT("Sanity check failed: ~s", "invalid constraint generated")
+    end.
+
+-spec is_exhaustiveness_disabled_for_fun(atom(), arity(), feature_flags:exhaustiveness_mode(), symtab:t()) -> _.
+is_exhaustiveness_disabled_for_fun(Name, Arity, ExhaustivenessMode, Symtab) ->
+    case symtab:is_exhaustiveness_disabled(Name, Arity, Symtab) of
+        true -> disabled;
+        _ -> ExhaustivenessMode
     end.

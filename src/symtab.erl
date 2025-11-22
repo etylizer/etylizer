@@ -26,7 +26,8 @@
     empty/0,
     extend_symtab_with_module_list/4,
     dump_symtab/2, overlay_symtab/1,
-    get_types/1
+    get_types/1,
+    is_exhaustiveness_disabled/3
 ]).
 
 -ifdef(TEST). % for tally tests
@@ -46,7 +47,9 @@
               ops :: op_env(),
               types :: ty_env(),
               records :: record_env(),
-              modules :: mod_env()
+              modules :: mod_env(),
+              % functions where exhaustiveness is disabled at the constraint generation level
+              disable_exhaustiveness = sets:new() :: sets:set({atom(), arity()})
 }).
 
 -opaque t() :: #tab{}.
@@ -229,6 +232,8 @@ extend_symtab_internal(Filename, Forms, RefType, Tab, OverlaySymtab) ->
                             {attribute, _, record, {RecordName, Fields}} ->
                                 RecordTy = records:record_ty_from_decl(RecordName, Fields),
                                 Tab#tab { records = maps:put(RecordName, RecordTy, Tab#tab.records) };
+                            {attribute, _, disable_exhaustiveness, ListOfFuns} ->
+                                Tab#tab { disable_exhaustiveness = sets:union(Tab#tab.disable_exhaustiveness, sets:from_list(ListOfFuns)) };
                             _ ->
                                 Tab
                         end
@@ -286,9 +291,12 @@ retrieve_forms_for_source({Kind, Src, Includes}) ->
         _ -> parse_cache:parse({extern, Includes}, Src)
     end.
 
+-spec is_exhaustiveness_disabled(atom(), arity(), t()) -> boolean().
+is_exhaustiveness_disabled(Name, Arity, Tab) ->
+    sets:is_element({Name, Arity}, Tab#tab.disable_exhaustiveness).
+
 -ifdef(TEST).
 -spec from_types(any()) -> t().
 from_types(Types) when is_list(Types) -> (empty())#tab{types = maps:from_list(Types)};
 from_types(Types) when is_map(Types) -> (empty())#tab{types = Types}.
 -endif.
-
