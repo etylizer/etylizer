@@ -56,10 +56,6 @@ trans(Path, Forms, Mode, FunEnv) ->
             ),
     lists:reverse(RevNewForms).
 
--spec assert_funs(term()) -> [ast_erl:fun_with_arity()].
-assert_funs([]) -> [];
-assert_funs([{A, I} | Xs]) when is_atom(A) andalso is_integer(I) -> [{A, I} | assert_funs(Xs)];
-assert_funs(_) -> error(cast_error).
 
 -spec build_funenv(file:filename(), [ast_erl:form()]) -> funenv().
 build_funenv(Path, Forms) ->
@@ -67,14 +63,13 @@ build_funenv(Path, Forms) ->
     lists:foldl(
       fun(Form, E) ->
           case Form of
-              % change: we have to "help" the type system with the types of the Variables
-              {attribute, Anno, import, {ModName, Funs}} when is_atom(ModName) andalso is_list(Funs) -> % change
-                  Funss = assert_funs(Funs), % change: why is this needed?
+              % overlap type error
+              {attribute, Anno, import, {ModName, Funs}} ->
                   lists:foldl(
                     fun(F, E0) ->
                         varenv:insert(ast:to_loc(Path, Anno), F, {extern, ModName}, E0)
                     end,
-                    E, Funss);
+                    E, Funs);
               {function, Anno, Name, Arity, _Clauses} ->
                   varenv:insert(ast:to_loc(Path, Anno), {Name, Arity}, intern, E);
               _ -> E
