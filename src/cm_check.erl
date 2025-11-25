@@ -101,7 +101,7 @@ traverse_and_check([CurrentFile | RemainingFiles], Symtab, OverlaySymtab, Search
         true ->
             ?LOG_INFO("Not type checking ~p as requested", CurrentFile);
         false ->
-            typing:check_forms(Ctx, CurrentFile, Forms, Only, Ignore)
+            typing:check_forms(Ctx, CurrentFile, Forms, Only, Ignore, Opts#opts.check_exports)
     end,
     NewIndex = cm_index:insert(CurrentFile, Forms, Index),
     traverse_and_check(RemainingFiles, Symtab, OverlaySymtab, SearchPath, Opts, NewIndex).
@@ -135,3 +135,4 @@ overlay_symtab(Opts) ->
             parse_cache:parse(intern, OverlayFile)
     end,
     symtab:overlay_symtab(OverlayForms).
+

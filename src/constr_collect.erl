@@ -30,6 +30,7 @@ collect_constrs_no_matching_cond(Ds, OuterAcc) ->
         fun (D, InnerAcc1) ->
             case D of
                 {scsubty, _, _, _} -> sets:add_element(D, InnerAcc1);
+                {scmater, _, _, _} -> sets:add_element(D, InnerAcc1);
                 {sccase, {_, DsScrut}, {_, DsExhaust}, Branches} ->
                     lists:foldl(
                         fun ({sccase_branch, {_, Guards}, _Cond, {_, Body}, {_, Result}}, InnerAcc2) ->
@@ -56,6 +57,7 @@ collect_matching_cond_constrs(Ds, OuterAcc) ->
         fun (D, InnerAcc1) ->
             case D of
                 {scsubty, _, _, _} -> InnerAcc1;
+                {scmater, _, _, _} -> InnerAcc1;
                 {sccase, {_, DsScrut}, {_, DsExhaust}, Branches} ->
                     lists:foldl(
                         fun ({sccase_branch, {_, Guards}, Cond, {_, Body}, {_, Result}}, InnerAcc2) ->
@@ -88,6 +90,8 @@ collect_constrs_all_combinations(Ds) ->
 collect_constr_all_combinations(D) ->
     case D of
         {scsubty, _, _, _} ->
+            [{sets:new([{version, 2}]), utils:single(D)}];
+        {scmater, _, _, _} ->
             [{sets:new([{version, 2}]), utils:single(D)}];
         {sccase, {_, DsScrut}, {_, DsExhaust}, Branches} ->
             ScrutCombs = collect_constrs_all_combinations(DsScrut),

@@ -12,8 +12,10 @@
   equal/2,
   compare/2,
   leq/2,
+  is_frame/1,
   fresh_from/1,
   new_with_name/1,
+  new_as_frame/0,
   unparse/2,
   with_name_and_id/2
 ]).
@@ -38,14 +40,17 @@ clean() ->
         [ets:delete(T) || T <- ?ALL_ETS]
   end.
 
-% variables have either their name as their ID (coming from a ast_lib conversion)
-% or a unique ID (usually generated inside the erlang_types library)
--record(var, {id, name}).
--opaque type() :: #var{id :: integer() | name, name :: atom()}.
+% variables have either 
+%   * their name as their ID (coming from a ast_lib conversion)
+%   * a unique ID (usually generated inside the erlang_types library)
+%   * are frame variables (which unparse to dynamic())
+-record(var, {id, name, type = default}).
+-opaque type() :: #var{id :: integer() | name, name :: atom(), type :: default | frame}.
 
 -spec equal(type(), type()) -> boolean().
 equal(Var1, Var2) -> compare(Var1, Var2) =:= eq.
 
+% compare ignores type field
 -spec compare(type(), type()) -> lt | eq | gt.
 compare(#var{id = name, name = N1}, #var{id = name, name = N2}) ->
   % natural order for $ variables
@@ -98,6 +103,15 @@ new(Name) when is_atom(Name) ->
 new_with_name(Name) when is_atom(Name) ->
   #var{id = name, name = Name}.
 
+-spec new_as_frame() -> type().
+new_as_frame() ->
+  NewId = ets:update_counter(?VAR_ETS, variable_id, {2,1}),
+  #var{id = NewId, name = frame, type = frame}.
+
+-spec is_frame(type()) -> boolean().
+is_frame(#var{type = default}) -> false;
+is_frame(#var{type = frame}) -> true.
+
 % used in ty_parser to convert already known variables
 -spec with_name_and_id(integer(), atom()) -> type().
 with_name_and_id(Id, Name) when is_atom(Name) ->
@@ -108,6 +122,8 @@ get_new_id() ->
   ets:update_counter(?VAR_ETS, variable_id, {2,1}).
 
 -spec unparse(type(), ST) -> {ast:ty(), ST}.
+unparse(#var{id = _Id, name = _Name, type = frame}, C) ->
+  {{predef, dynamic}, C};
 unparse(#var{id = name, name = Name}, C) ->
   {{var, Name}, C};
 unparse(#var{id = Id, name = Name}, C) ->

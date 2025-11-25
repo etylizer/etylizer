@@ -4,7 +4,7 @@
   tally/2,
   is_satisfiable/3
 ]).
-
+ 
 -ifdef(TEST).
 -export([
   tally/3
@@ -40,34 +40,55 @@ tally(SymTab, Constraints, FixedVars, Mode) ->
   % erlang_types has a global symtab
   ty_parser:set_symtab(SymTab),
 
+  gradual_utils:init(),
+  {InlinedConstrs, SubtyConstrs, Maters, UnificationSubst} = gradual_utils:preprocess_constrs(Constraints),
+  
   InternalConstraints = 
     lists:map( fun ({scsubty, _, S, T}) -> {ty_parser:parse(S), ty_parser:parse(T)} end,
       lists:sort( fun ({scsubty, _, S, T}, {scsubty, _, X, Y}) -> (erts_debug:size({S, T})) < erts_debug:size(({X, Y})) end,
-        sets:to_list(Constraints))
+        sets:to_list(InlinedConstrs))
     ),
   MonomorphicTallyVariables = maps:from_list([{ty_variable:new_with_name(Var), []} || Var <- sets:to_list(FixedVars)]),
 
-  case Mode of
+  Res = case Mode of
     solve ->
       InternalResult = etally:tally(InternalConstraints, MonomorphicTallyVariables),
 
-      Free = tyutils:free_in_subty_constrs(Constraints),
+      Free = tyutils:free_in_subty_constrs(InlinedConstrs),
       case InternalResult of
             {error, []} ->
               {error, []};
             _ ->
               % transform to subst:t()
-              [subst:mk_tally_subst(
+              Sigmas = [subst:mk_tally_subst(
                 sets:union(FixedVars, Free),
                 maps:from_list([{VarName, ty_parser:unparse(Ty)}
-                              || {{var, _, VarName}, Ty} <- maps:to_list(Subst)]))
-              || Subst <- InternalResult]
+                              || {{var, _, VarName, _}, Ty} <- maps:to_list(Subst)])) % FIXME depends on internal ty_variable representation
+              || Subst <- InternalResult],
+              
+              lists:map(
+                fun({tally_subst, S, Fixed}) ->
+                  MaterSubst = maps:fold(fun(Var, Ty, Acc) ->
+                      maps:put(Var, gradual_utils:subst_ty(Ty, S, no_discrimination), Acc)
+                    end,
+                    #{}, UnificationSubst),
+                  gradual_utils:postprocess({tally_subst, maps:merge(S, MaterSubst), Fixed}, SubtyConstrs, Maters)
+                end,
+                Sigmas
+              )
       end;
     satisfiable ->
       InternalResult = etally:is_tally_satisfiable(InternalConstraints, MonomorphicTallyVariables),
-
+      
       case InternalResult of
         false -> {false, []};
         true -> {true, subst:empty()}
       end
-  end.
+  end,
+  gradual_utils:clean(),
+  Res.
+
+
+
+
+

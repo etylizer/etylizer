@@ -1,12 +1,13 @@
+
 -module(typing).
 
 -export([
-    check_forms/5,
+    check_forms/6,
     new_ctx/3
 ]).
 
--include("log.hrl").
 -include("typing.hrl").
+-include("log.hrl").
 
 -spec new_ctx(symtab:t(), symtab:t(), t:opt(ast_check:ty_map())) -> ctx().
 new_ctx(Tab, Overlay, Sanity) ->
@@ -14,8 +15,15 @@ new_ctx(Tab, Overlay, Sanity) ->
     Ctx.
 
 % Checks all forms of a module
--spec check_forms(ctx(), string(), ast:forms(), sets:set(string()), sets:set(string())) -> ok.
-check_forms(Ctx, FileName, Forms, Only, Ignore) ->
+-spec check_forms(ctx(), string(), ast:forms(), sets:set(string()), sets:set(string()), boolean()) -> ok.
+check_forms(Ctx, FileName, Forms, Only, Ignore, CheckExports) ->
+    case CheckExports of
+        true ->
+            ?LOG_INFO("Checking whether exported functions in ~s have a type spec", FileName),
+            check_exported_funs_specified(Forms);
+        false ->
+            ?LOG_INFO("Skipping check for exported functions in ~s", FileName)
+    end,
     ExtTab = symtab:extend_symtab(FileName, Forms, Ctx#ctx.symtab, Ctx#ctx.overlay_symtab),
     ExtCtx = Ctx#ctx { symtab = ExtTab },
     ?LOG_DEBUG("Only: ~200p", sets:to_list(Only)),
@@ -71,6 +79,7 @@ check_forms(Ctx, FileName, Forms, Only, Ignore) ->
     end,
     % infer types of functions without spec
     InferredTyEnvs = typing_infer:infer_all(ExtCtx, FileName, FunsWithoutSpec),
+       
     % Typechecks the functions with a type spec. We need to check against all InferredTyEnvs,
     % we can stop on the first success.
     ?LOG_INFO("Checking ~w functions in ~s against their specs (~w environments)",
@@ -121,4 +130,15 @@ should_check(QRefStr, RefStr, NameStr, Only, Ignore) ->
             sets:is_element(QRefStr, Only)
                 orelse sets:is_element(RefStr, Only)
                 orelse sets:is_element(NameStr, Only)
+    end.
+
+-spec check_exported_funs_specified(ast:forms()) -> ok | no_return().
+check_exported_funs_specified(Forms) ->
+    Exported = [Exp || {attribute, _, export, Exports} <- Forms, Exp <- Exports],
+    Speced = [{Fun, Arity} || {attribute, _, spec, Fun, Arity, _, _} <- Forms],
+    Missing = [ utils:sformat("~w/~w", Fun, Arity) || {Fun, Arity} <- Exported, not lists:member({Fun, Arity}, Speced) ],
+    case Missing of
+        [] -> ok;
+    _ ->
+        errors:ty_error(utils:sformat("The following exported functions are missing a type spec: ~s", [string:join(Missing, ", ")]))
     end.

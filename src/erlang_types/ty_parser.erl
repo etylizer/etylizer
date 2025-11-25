@@ -473,6 +473,7 @@ do_convert({AstTy = {mu_var, Name}, R = {IdTy, _}}, Q, Cache) ->
   {Ty, Q, R, Cache};
  
 % built-ins
+do_convert({{predef, dynamic}, R}, Q, Cache) -> {?TY:singleton(ty_variable:new_as_frame()), Q, R, Cache};
 do_convert({{predef, any}, R}, Q, Cache) -> {?TY:any(), Q, R, Cache};
 do_convert({{predef, none}, R}, Q, Cache) -> {?TY:empty(), Q, R, Cache};
 do_convert({{predef, atom}, R}, Q, Cache) -> {?TY:atom(dnf_ty_atom:any()), Q, R, Cache};
