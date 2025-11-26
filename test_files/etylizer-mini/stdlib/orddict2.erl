@@ -62,6 +62,7 @@ dictionary, otherwise function [`find/2`](`find/2`).
 
 `m:dict`, `m:gb_trees`
 """.
+-disable_exhaustiveness([fetch/2, update/3]).
 
 %% Standard interface.
 -export([new/0,is_key/2,to_list/1,from_list/1,size/1,is_empty/1]).
@@ -147,8 +148,7 @@ _Example:_
       Orddict :: orddict(Key, Value).
 
 fetch(Key, [{K,_}|D]) when Key > K -> fetch(Key, D);
-fetch(Key, [{K,Value}|_]) when Key == K -> Value;
-fetch(_Key, _) -> error(exhaustiveness).
+fetch(Key, [{K,Value}|_]) when Key == K -> Value.
 
 -doc """
 Searches for a key in a dictionary. Returns `{ok, Value}`, where `Value` is the
@@ -243,7 +243,6 @@ error
 take(Key, Dict) ->
     take_1(Key, Dict, []).
 
-% -type orddict(Key, Value) :: [{Key, Value}].
 -spec take_1(Key, orddict(Key, Value), [{Key, Value}]) -> error | {Value, orddict(Key, Value)}.
 take_1(Key, [{K,_}|_], _Acc) when Key < K ->
     error;
@@ -376,8 +375,7 @@ _Example:_
 update(Key, Fun, [{K,_}=E|Dict]) when Key > K ->
     [E|update(Key, Fun, Dict)];
 update(Key, Fun, [{K,Val}|Dict]) when Key == K ->
-    [{Key,Fun(Val)}|Dict];
-update(_Key, _Fun, _) -> error(exhaustiveness).
+    [{Key,Fun(Val)}|Dict].
 
 
 -doc """
@@ -473,7 +471,7 @@ _Example:_
 
 fold(F, Acc, [{Key,Val}|D]) ->
     fold(F, F(Key, Val, Acc), D);
-fold(_F, Acc, []) -> Acc.
+fold(F, Acc, []) when is_function(F, 3) -> Acc.
 
 -doc """
 Calls `Fun` on successive keys and values of `Orddict1` to return a new value
@@ -495,7 +493,7 @@ _Example:_
 
 map(F, [{Key,Val}|D]) ->
     [{Key,F(Key, Val)}|map(F, D)];
-map(_F, []) -> [].
+map(F, []) when is_function(F, 2) -> [].
 
 -doc """
 `Orddict2` is a dictionary of all keys and values in `Orddict1` for which
@@ -520,7 +518,7 @@ filter(F, [{Key,Val}=E|D]) ->
 	true -> [E|filter(F, D)]; 
 	false -> filter(F, D)
     end;
-filter(_F, []) -> [].
+filter(F, []) when is_function(F, 2) -> [].
 
 -doc """
 Merges two dictionaries, `Orddict1` and `Orddict2`, to create a new dictionary.
@@ -562,8 +560,8 @@ merge(F, [{K1,_}=E1|D1], [{K2,_}=E2|D2]) when K1 > K2 ->
     [E2|merge(F, [E1|D1], D2)];
 merge(F, [{K1,V1}|D1], [{_K2,V2}|D2]) ->	%K1 == K2
     [{K1,F(K1, V1, V2)}|merge(F, D1, D2)];
-merge(_F, [], D2) -> D2;
-merge(_F, D1, []) -> D1.
+merge(F, [], D2) when is_function(F, 3) -> D2;
+merge(F, D1, []) when is_function(F, 3) -> D1.
 
 -spec reverse_pairs([{Key, Value}], [{Key, Value}]) -> [{Key, Value}].
 reverse_pairs([{_,_}=H|T], Acc) ->
