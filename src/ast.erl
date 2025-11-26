@@ -332,10 +332,13 @@ get_fun_name({function, _Loc, Name, Arity, _}) -> utils:sformat("~w/~w", Name, A
 -spec loc_exp(exp()) -> loc().
 loc_exp(X) -> element(2, X).
 
+-type qual_zip_gen() ::  {zip, loc(), [generators()]}. 
+-type qual_list_strict_gen() ::  {generate_strict, loc(), pat(), exp()}.
 -type qual_list_gen() ::  {generate, loc(), pat(), exp()}.
 -type qual_bitstring_gen() ::  {b_generate, loc(), pat(), exp()}.
 -type qual_map_gen() ::  {m_generate, loc(), KeyPat::pat(), ValPath::pat(), exp()}.
--type qualifier() :: exp() | qual_list_gen() | qual_bitstring_gen() | qual_map_gen().
+-type generators() :: qual_zip_gen() | qual_list_strict_gen() | qual_list_gen() | qual_bitstring_gen() | qual_map_gen().
+-type qualifier() :: exp() | generators().
 
 -type bitstring_tyspec() :: atom() | {atom(), Value::integer()}.
 -type bitstring_tyspec_list() :: [bitstring_tyspec()].

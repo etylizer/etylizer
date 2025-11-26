@@ -196,10 +196,37 @@ exp_constrs(Ctx, E, T) ->
             errors:unsupported(L, "function calls with dynamically computed modules");
         ({'if', _, _} = IfExp) ->
             exp_constrs(Ctx, if_exp_to_case_exp(IfExp), T);
-        {lc, L, _E, _Qs} ->
-            errors:unsupported(L, "list comprehension", []);
-        {mc, L, _E, _Qs} ->
-            errors:unsupported(L, "map comprehension", []);
+        {lc, L, Exp, Qs} ->
+            {Env, Cs0} = process_qualifiers(Ctx, L, Qs, #{}, sets:new()),
+            Beta = fresh_tyvar(Ctx), % element result
+            % generate constraints for body expression in qualifier environment
+            BodyCs = sets:from_list([{cdef, mk_locs("list comprehension body", L), Env, 
+                                     exps_constrs(Ctx, L, [Exp], Beta)}], []),
+            % comprehension result is list of body type
+            ListTy = stdtypes:tlist(Beta),
+            Cs1 = sets:add_element({csubty, mk_locs("list comprehension result", L), ListTy, T}, BodyCs),
+            sets:union(Cs0, Cs1);
+        {mc, L, K, V, Qs} ->
+            {Env, Cs0} = process_qualifiers(Ctx, L, Qs, #{}, sets:new()),
+            
+            % key and value types
+            KeyAlpha = fresh_tyvar(Ctx),
+            ValAlpha = fresh_tyvar(Ctx),
+            KeyCs = exps_constrs(Ctx, L, [K], KeyAlpha),
+            ValCs = exps_constrs(Ctx, L, [V], ValAlpha),
+            
+            BodyCs = sets:from_list([
+                {cdef, mk_locs("map comprehension key", L), Env, KeyCs},
+                {cdef, mk_locs("map comprehension value", L), Env, ValCs}
+            ], []),
+            
+            % comprehension result is map of key/value types
+            MapTy = stdtypes:tmap(KeyAlpha, ValAlpha),
+            Cs1 = sets:add_element(
+                {csubty, mk_locs("map comprehension result", L), MapTy, T},
+                BodyCs
+            ),
+            sets:union(Cs0, Cs1);
         {map_create, L, []} ->
             utils:single({csubty, mk_locs("empty map", L), {map, []}, T});
         {map_create, L, Assocs} ->
@@ -380,6 +407,40 @@ exp_constrs(Ctx, E, T) ->
             Msg = utils:sformat("var ~s", pretty:render(pretty:ref(AnyRef))),
             utils:single({cvar, mk_locs(Msg, L), AnyRef, T});
         X -> errors:uncovered_case(?FILE, ?LINE, X)
+    end.
+
+-spec process_qualifiers(ctx(), ast:loc(), [ast:qualifier()], constr:constr_env(), constr:constrs()) ->
+          {constr:constr_env(), constr:constrs()}.
+process_qualifiers(_Ctx, _Loc, [], Env, Cs) -> {Env, Cs};
+process_qualifiers(Ctx, Loc, [Q | Qs], Env, Cs) ->
+    case Q of
+        % strict list generator: Pat <:- Exp
+        {generate_strict, LGen, Pat, Exp} ->
+            Alpha = fresh_tyvar(Ctx),
+            ExpCs = exp_constrs(Ctx, Exp, stdtypes:tlist(Alpha)),
+            {PatCs, PatEnv} = pat_env(Ctx, LGen, Alpha, Pat),
+            NewEnv = intersect_envs(Env, PatEnv),
+            process_qualifiers(Ctx, Loc, Qs, NewEnv, sets:union([Cs, ExpCs, PatCs]));
+        % list generator: Pat <- Exp
+        % FIXME we treat relaxed generators as strict currently
+        {generate, LGen, Pat, Exp} ->
+            process_qualifiers(Ctx, Loc, [{generate_strict, LGen, Pat, Exp} | Qs], Env, Cs);
+        {zip, LGen, NestedQualifiers} ->
+            {NewEnv, NewCs} = process_qualifiers(Ctx, LGen, NestedQualifiers, Env, Cs),
+            process_qualifiers(Ctx, Loc, Qs, NewEnv, NewCs);
+        {b_generate, _, _, _} ->
+            errors:unsupported(Loc, "generator ~w", Q);
+        {m_generate, _, _, _} ->
+            errors:unsupported(Loc, "generator ~w", Q);
+        % Filter expression
+        % be careful here, 
+        % the catch-all will handle cases that are not supposed to be filters
+        % this can happen when a new feature is introduced (e.g. zip, strict_generate)
+        Filter ->
+            % apply current environment to filter expression
+            FilterCs = sets:from_list([{cdef, mk_locs("filter", Loc), Env, 
+                                      exps_constrs(Ctx, Loc, [Filter], stdtypes:tbool())}]),
+            process_qualifiers(Ctx, Loc, Qs, Env, sets:union(Cs, FilterCs))
     end.
 
 -spec gen_funcall_constrs(ctx(), ast:loc(), ast:exp(), [ast:exp()], ast:ty()) -> constr:constrs().
