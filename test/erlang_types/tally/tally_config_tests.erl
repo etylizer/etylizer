@@ -49,7 +49,7 @@ mk_negation_cache_bug_test() ->
 
 
   with_symtab(fun() ->
-    Constrs1 = 
+    _Constrs1 = 
       sets:from_list(
         lists:map( 
           fun ({T, U}) -> {scsubty, sets:from_list([loc_auto()]), T, U} end,
@@ -62,8 +62,8 @@ mk_negation_cache_bug_test() ->
           Cons2
       )),
 
-    % {true, _} = tally:is_satisfiable(symtab:empty(), Constrs1, sets:from_list([])),
-    {false, _} = tally:is_satisfiable(symtab:empty(), Constrs2, sets:from_list([])),
+    % {true, _} = tally:is_satisfiable(symtab:from_types(Symtab), Constrs1, sets:from_list([])),
+    {false, _} = tally:is_satisfiable(symtab:from_types(Symtab), Constrs2, sets:from_list([])),
     ok
               end,
     Symtab).

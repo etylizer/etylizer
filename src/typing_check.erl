@@ -57,7 +57,7 @@ check_report(Ctx, Decl = {function, Loc, Name, Arity, _}, PolyTy) ->
         Timeout,
         fun () -> 
             FunStr = utils:sformat("~w/~w", Name, Arity),
-            {MonoTy, Fixed, _} = typing_common:mono_ty(Loc, PolyTy),
+            {MonoTy, Fixed, _} = typing_common:mono_ty(Loc, PolyTy, Ctx#ctx.symtab),
             ensure_type_supported(Loc, MonoTy),
             AltTys = case MonoTy of {intersection, L} -> L; _ -> [MonoTy] end,
             BranchMode =
@@ -134,7 +134,7 @@ check(Ctx, Decl = {function, Loc, Name, Arity, _}, PolyTy) ->
     ?LOG_INFO("Type checking ~w/~w at ~s against type ~s",
               Name, Arity, ast:format_loc(Loc), pretty:render_tyscheme(PolyTy)),
     FunStr = utils:sformat("~w/~w", Name, Arity),
-    {MonoTy, Fixed, _} = typing_common:mono_ty(Loc, PolyTy),
+    {MonoTy, Fixed, _} = typing_common:mono_ty(Loc, PolyTy, Ctx#ctx.symtab),
     ensure_type_supported(Loc, MonoTy),
     AltTys =
         case MonoTy of
