@@ -321,6 +321,7 @@ builtin_ops() ->
 
 %% Types for builtin functions
 
+-type fun_types() :: [{atom(), arity(), ast:ty_scheme()}].
 
 -spec extra_funs() -> fun_types().
 extra_funs() ->
@@ -343,18 +344,6 @@ cleanup() ->
     ets:delete(?TABLE),
     ok.
 
--type fun_types() :: [{atom(), arity(), ast:ty_scheme()}].
--spec assert_is_funtypes(term()) -> fun_types().
-assert_is_funtypes([]) -> [];
-assert_is_funtypes([E | Xs]) ->
-    case E of
-      {X, Z, {ty_scheme, L, _Ty}} when is_atom(X) andalso is_integer(Z) andalso is_list(L) ->
-        % TODO continue
-        error(todo);
-      _ -> error(type_error)
-    end;
-assert_is_funtypes(_) -> error(type_error).
-
 
 -spec builtin_funs() -> fun_types().
 builtin_funs() ->
@@ -363,17 +352,17 @@ builtin_funs() ->
         undefined -> init();
         _ -> ok
     end,
-    Dir = utils:assert_no_error(code:lib_dir(erts)),
+    _Dir = utils:assert_no_error(code:lib_dir(erts)),
     Path = "ok",
     Hash = utils:hash_file(Path),
     case ets:lookup(?TABLE, Key) of
-        [{_, {StoredHash, Result}}] when Hash =:= StoredHash -> 
-            assert_is_funtypes(Result);
+        [{_, {StoredHash, _Result}}] when Hash =:= StoredHash -> 
+            error(todo);
         [] ->
             X = mk_builtin_funs(Path),
             true = ets:insert(?TABLE, {Key, {Hash, X}}),
             X;
-        Y -> erlang:error(todo)
+        _Y -> erlang:error(todo)
     end.
 
 -spec my_filtermap(fun((T) -> boolean()), [T]) -> [T]

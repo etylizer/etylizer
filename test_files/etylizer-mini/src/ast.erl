@@ -140,6 +140,7 @@
 ]).
 
 -export([
+    to_loc/2,
     format_loc/1, 
     loc_auto/0, min_loc/2, leq_loc/2, is_predef_name/1, is_predef_alias_name/1,
     local_varname_from_any_ref/1, get_fun_name/1, loc_exp/1
