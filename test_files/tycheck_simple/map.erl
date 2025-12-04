@@ -23,10 +23,10 @@ empty_map() -> #{}.
 
 -type tlist(E) :: nil | {E, tlist(E)}.
 -spec foldl(fun((T, Acc) -> Acc), Acc, tlist(T)) -> Acc.
-foldl(_, _, _) -> error(err).
+foldl(_, _, _) -> impl, error(err).
 -spec empty_map_is_not_empty() -> ok.
 empty_map_is_not_empty() ->
-  foldl(fun(_, _) -> error(todo) end, #{}, {foo, nil}),
+  foldl(fun(_, _) -> impl, error(todo) end, #{}, {foo, nil}),
   ok.
 
 %% DISABLED because we only support maps as dictionaries
