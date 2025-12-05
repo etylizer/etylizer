@@ -1,4 +1,4 @@
-.PHONY: espresso release build test check all clean gradualize check_ast_trans_ty \
+.PHONY: espresso release build test unit-tests check all clean gradualize check_ast_trans_ty \
 	check_syntax_antidote check_ast_trans_antidote check_types_antidote \
 	check_syntax_riak check_ast_trans_riak check_types_riak
 
@@ -21,17 +21,19 @@ clean:
 	$(REBAR) clean
 	rm -rf _build _etylizer rebar.lock
 
-test: build testtest
+unit-tests: build
 	@echo "Running unit tests for type checker ..."
 	$(REBAR) eunit
+	@echo "Running property-based tests ..."
+	$(REBAR) proper
+
+test: unit-tests testtest
 	@echo "Checking syntax transformation for source code of type checker ..."
 	./_build/default/bin/etylizer --sanity --no-type-checking -I ./src ./src/*.erl
 	@echo "Running case study ..."
 	ETYLIZER_CASE_STUDY_LOGLEVEL=warn test_files/etylizer-mini/check-orddict.sh
 	ETYLIZER_CASE_STUDY_LOGLEVEL=warn test_files/etylizer-mini/check-std.sh
 	ETYLIZER_CASE_STUDY_LOGLEVEL=warn test_files/etylizer-mini/check.sh
-	@echo "Running property-based tests ..."
-	$(REBAR) proper
 
 testtest:
 	@echo "Running unit tests for tests ..."
