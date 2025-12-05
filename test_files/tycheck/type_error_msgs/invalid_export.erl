@@ -1,5 +1,5 @@
 % ERROR
-% The following exported functions are missing a type spec: foo/1
+% The following exported functions have no type specification: foo/1
 -module(invalid_export).
 -export([foo/1, bar/1]).
 

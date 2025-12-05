@@ -140,5 +140,5 @@ check_exported_funs_specified(Forms) ->
     case Missing of
         [] -> ok;
     _ ->
-        errors:ty_error(utils:sformat("The following exported functions are missing a type spec: ~s", [string:join(Missing, ", ")]))
+        errors:ty_error(utils:sformat("The following exported functions have no type specification: ~s", [string:join(Missing, ", ")]))
     end.
