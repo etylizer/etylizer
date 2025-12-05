@@ -2,7 +2,6 @@
 
 -export([main_fail/0]).
 
-
 -spec add(integer(), integer()) -> integer().
 add(X, Y) ->
     X + Y.
