@@ -546,27 +546,8 @@ do_convert({{list, Ty}, R}, Q, Cache) ->
   do_convert({{improper_list, Ty, {empty_list}}, R}, Q, Cache);
 
 % rewrite maps into {Tuple, Function} tuples
-do_convert({{map, AssocList}, R}, Q, Cache) ->
-  {_, TupPart, FunPart} = lists:foldl(
-    fun({Association, Key, Val}, {PrecedenceDomain, Tuples, Functions}) ->
-      case Association of
-        map_field_opt ->
-          % tuples only
-          Tup = {tuple, [{intersection, [Key, {negation, PrecedenceDomain}]}, Val]},
-          {{union, [PrecedenceDomain, Key]}, {union, [Tuples, Tup]}, Functions};
-        map_field_req ->
-          % tuples & functions
-          Tup = {tuple, [{intersection, [Key, {negation, PrecedenceDomain}]}, Val]},
-          Fun = {fun_full, [{intersection, [Key, {negation, PrecedenceDomain}]}], Val},
-          {{union, [PrecedenceDomain, Key]}, {union, [Tuples, Tup]}, {intersection, [Functions, Fun]}}
-      end
-    end, 
-    % a map type is never empty
-    % contrary to tuples, we can construct an empty map value: #{}
-    % since empty tuples are the empty type, we add an atom 'empty_map' to the tuple part
-    % so that the encoding is never empty
-    {{predef, none}, {singleton, empty_map}, {fun_simple}}, AssocList), 
-  MapTuple = {tuple, [TupPart, FunPart]},
+do_convert({M = {map, _}, R}, Q, Cache) ->
+  MapTuple = rewrite_map_to_representation(M),
   {Recc, Q0, R0, C0} = do_convert({MapTuple, R}, Q, Cache),
   {?TY:tuple_to_map(Recc), Q0, R0, C0};
 
@@ -840,3 +821,24 @@ replace_locs(Term) ->
     (_) -> error 
   end, Term).
 
+rewrite_map_to_representation({map, AssocList}) ->
+  {_, TupPart, FunPart} = lists:foldl(
+    fun({Association, Key, Val}, {PrecedenceDomain, Tuples, Functions}) ->
+      case Association of
+        map_field_opt ->
+          % tuples only
+          Tup = {tuple, [{intersection, [Key, {negation, PrecedenceDomain}]}, Val]},
+          {{union, [PrecedenceDomain, Key]}, {union, [Tuples, Tup]}, Functions};
+        map_field_req ->
+          % tuples & functions
+          Tup = {tuple, [{intersection, [Key, {negation, PrecedenceDomain}]}, Val]},
+          Fun = {fun_full, [{intersection, [Key, {negation, PrecedenceDomain}]}], Val},
+          {{union, [PrecedenceDomain, Key]}, {union, [Tuples, Tup]}, {intersection, [Functions, Fun]}}
+      end
+    end, 
+    % a map type is never empty
+    % contrary to tuples, we can construct an empty map value: #{}
+    % since empty tuples are the empty type, we add an atom 'empty_map' to the tuple part
+    % so that the encoding is never empty
+    {{predef, none}, {singleton, empty_map}, {fun_simple}}, AssocList),
+  {tuple, [TupPart, FunPart]}.

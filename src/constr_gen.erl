@@ -481,7 +481,7 @@ var_funcall_constrs(Ctx, L, Var, Args, T) ->
 
 -spec funcall_constrs_with_tyscm(ctx(), ast:loc(), ast:exp_var(), ast:ty_scheme(), [ast:exp()], ast:ty()) -> constr:constrs().
 funcall_constrs_with_tyscm(Ctx, L, Var, TyScm, Args, T) ->
-    {Mono, _, _} = typing_common:mono_ty(L, TyScm, none, fun(_, none) -> {fresh_ty_varname(Ctx), none} end),
+    {Mono, _, _} = typing_common:mono_ty(L, TyScm, none, fun(_, none) -> {fresh_ty_varname(Ctx), none} end, Ctx#ctx.symtab),
     case Mono of
         {fun_full, ArgTys, ResTy} when length(Args) =:= length(ArgTys) ->
             FunName = pretty:render_var(Var),

@@ -136,24 +136,24 @@ clean_test() ->
         % a is in covariant position
         A = stdtypes:tvar('a'),
         B = stdtypes:tvar('b'),
-        E = subst:clean(A, sets:new()),
+        E = subst:clean(A, sets:new(), symtab:empty()),
 
         % intersection: covariant
-        E = subst:clean(stdtypes:tinter(A, B), sets:new()),
+        E = subst:clean(stdtypes:tinter(A, B), sets:new(), symtab:empty()),
 
         % union: covariant
-        E = subst:clean(stdtypes:tunion(A, B), sets:new()),
+        E = subst:clean(stdtypes:tunion(A, B), sets:new(), symtab:empty()),
 
         % negation: flip
-        E = subst:clean(stdtypes:tnegate(A), sets:new()),
+        E = subst:clean(stdtypes:tnegate(A), sets:new(), symtab:empty()),
 
         % function type flips argument variable position
         Arr = stdtypes:tfun1(stdtypes:tany(), stdtypes:tnone()),
-        Arr = subst:clean(stdtypes:tfun1(A, B), sets:new()),
+        Arr = subst:clean(stdtypes:tfun1(A, B), sets:new(), symtab:empty()),
 
         % function double flip
         Arr2 = stdtypes:tfun1(stdtypes:tfun1(stdtypes:tnone(), stdtypes:tany()), stdtypes:tnone()),
-        Arr2 = subst:clean(stdtypes:tfun1(stdtypes:tfun1(A, B), stdtypes:tnone()), sets:new())
+        Arr2 = subst:clean(stdtypes:tfun1(stdtypes:tfun1(A, B), stdtypes:tnone()), sets:new(), symtab:empty())
     end).
 
 clean_negate_var_test() ->
@@ -162,9 +162,9 @@ clean_negate_var_test() ->
         E = stdtypes:tnone(),
 
         % negation is covariant position
-        E = subst:clean(stdtypes:tnegate(A), sets:new()),
+        E = subst:clean(stdtypes:tnegate(A), sets:new(), symtab:empty()),
         % test nnf
-        E = subst:clean(stdtypes:tnegate(stdtypes:tunion(A, stdtypes:tnegate(stdtypes:tatom()))), sets:new())
+        E = subst:clean(stdtypes:tnegate(stdtypes:tunion(A, stdtypes:tnegate(stdtypes:tatom()))), sets:new(), symtab:empty())
     end).
 
 % TODO: better unparsing to ensure that (int, Bottom) = Bottom

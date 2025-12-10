@@ -81,7 +81,7 @@ infer(Ctx, Decls) ->
                                                 errors:bug("Function ~w/~w not found in env",
                                                             [Name, Arity]);
                                             {ok, T} ->
-                                                {Ref, generalize(subst:apply(Subst, T))}
+                                                {Ref, generalize(subst:apply(Subst, T, {clean, Ctx#ctx.symtab}))}
                                         end
                                 end)),
                             ?LOG_DEBUG("Environment:~n~s", [pretty:render_fun_env(ResultEnv)]),
@@ -106,9 +106,9 @@ more_general(Loc, Ts1, Ts2, Tab) ->
     % Ts1 is more general than Ts2 iff for every instantiation Mono2 of Ts2, there
     % exists an instantition Mono1 of Ts1 such that Mono1 <= Mono2.
     % A flexible instantiation of Ts1 with type variables that can be further instantiated by tally
-    {Mono1, _, Next} = typing_common:mono_ty(Loc, Ts1, 0),
+    {Mono1, _, Next} = typing_common:mono_ty(Loc, Ts1, 0, Tab),
     % Arbitrary instantiation of Ts2, the type variables A2 are fix
-    {Mono2, A2, _} = typing_common:mono_ty(Loc, Ts2, Next),
+    {Mono2, A2, _} = typing_common:mono_ty(Loc, Ts2, Next, Tab),
     C = {scsubty, sets:new([{version, 2}]), Mono1, Mono2},
     {SatisfyRes, Delta} = utils:timing(fun() -> tally:is_satisfiable(Tab, sets:from_list([C], [{version, 2}]), A2) end),
     ?LOG_DEBUG("Tally time: ~pms", Delta),

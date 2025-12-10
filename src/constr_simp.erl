@@ -129,7 +129,7 @@ fresh_ty_scheme(Ctx, {ty_scheme, Tyvars, T}) ->
           Tyvars
          ),
     Subst = subst:from_list(L),
-    subst:apply(Subst, T).
+    subst:apply(Subst, T, {clean, Ctx#ctx.symtab}).
 
 -spec loc(constr:locs() | sets:set(ast:loc()) | constr:constrs()) -> ast:loc().
 loc(Locs) ->

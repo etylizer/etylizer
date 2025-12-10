@@ -29,6 +29,12 @@
     get_types/1
 ]).
 
+-ifdef(TEST). % for tally tests
+-export([
+    from_types/1
+]).
+-endif.
+
 -type fun_env() :: #{ ast:global_ref() => ast:ty_scheme() }.
 -type ty_key() :: {ty_key, Module::atom(), Name::atom(), Arity::arity()}.
 -type ty_env() :: #{ ty_key() => ast:ty_scheme() }.
@@ -279,3 +285,10 @@ retrieve_forms_for_source({Kind, Src, Includes}) ->
         local -> parse_cache:parse(intern, Src);
         _ -> parse_cache:parse({extern, Includes}, Src)
     end.
+
+-ifdef(TEST).
+-spec from_types(any()) -> t().
+from_types(Types) when is_list(Types) -> (empty())#tab{types = maps:from_list(Types)};
+from_types(Types) when is_map(Types) -> (empty())#tab{types = Types}.
+-endif.
+
