@@ -2,7 +2,7 @@
 
 -compile([nowarn_unused_function]). % ignore unused helper functions
 
--import(erlang_types_test_utils, [test_tally/3, test_tally/2, solutions/1]).
+-import(erlang_types_test_utils, [test_tally/3, test_tally/2, solutions/1, test_tally_satisfiable/4]).
 
 -include_lib("eunit/include/eunit.hrl").
 
@@ -282,3 +282,24 @@ maps_issue_201_test() ->
     % Fixed: K, V
     [k, v]
   ).
+
+maps_find2_test() ->
+  % #{Key => Value, any() => any()} <= #0
+  % $0 /\ #{any() := any()} <= #{$1 => $2}
+  % {ok, $2} <= {ok, Value} | error
+  C0L = tmap([ tmap_field_opt(v(key), v(value)), tmap_field_opt(tany(), tany()) ]),
+  C1L = i( v(alpha), tmap([ tmap_field_req(tany(), tany()) ])),
+  C1R = tmap([ tmap_field_opt(v(alpha1), v(alpha2)) ]),
+  C3 = {p(b(ok), v(alpha2)), u(b(error), p(b(ok), v(value)))},
+
+  test_tally_satisfiable(true, [ {C0L, v(alpha)}, {C1L, C1R}, C3 ], [key, value], #{}).
+% maps_find2_test() ->
+%   % #{Key => Value, any() => any()} <= #0
+%   % $0 /\ #{any() := any()} <= #{$1 => $2}
+%   % {ok, $2} <= {ok, Value} | error
+%   C0L = tmap([ tmap_field_opt(v(key), v(value)), tmap_field_opt(tany(), tany()) ]),
+%   C1L = i( v(alpha), tmap([ tmap_field_req(tany(), tany()) ])),
+%   C1R = tmap([ tmap_field_opt(v(alpha1), v(alpha2)) ]),
+%   C3 = {p(b(ok), v(alpha2)), u(b(error), p(b(ok), v(value)))},
+%
+%   test_tally_satisfiable(true, [ {C0L, v(alpha)}, {C1L, C1R}, C3 ], [key, value], #{}).

@@ -117,12 +117,12 @@ ensure_type_supported(Loc, T) ->
         fun(InnerT) ->
             % The return value error means: check recursively, no error here
             case InnerT of
-                {map, []} -> error;
-                {map, [{map_field_opt, _, _}]} -> error;
-                {map, [{map_field_req, _, _}]} ->
-                    errors:ty_error(Loc, "map types with mandatory associations are not supported");
-                {map, _} ->
-                    errors:ty_error(Loc, "map types with more than one association are not supported");
+                % {map, []} -> error;
+                % {map, [{map_field_opt, _, _}]} -> error;
+                % {map, [{map_field_req, _, _}]} ->
+                %     errors:ty_error(Loc, "map types with mandatory associations are not supported");
+                % {map, _} ->
+                %     errors:ty_error(Loc, "map types with more than one association are not supported");
                 _ -> error
             end
         end,
