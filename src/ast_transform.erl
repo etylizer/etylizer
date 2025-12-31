@@ -16,7 +16,9 @@
           funenv :: funenv(),
           % The records seen so far. We need the record definitions to rewrite record types
           % into tuple types.
-          records :: #{ atom() => records:record_ty() }
+          records :: #{ atom() => records:record_ty() },
+          % fresh variable counter currently used to create fresh variables for maybe clauses
+          fresh_var_counter :: non_neg_integer()
         }).
 -type ctx() :: #ctx{}.
 
@@ -51,7 +53,7 @@ trans(Path, Forms, Mode, FunEnv) ->
                     NewForm -> {[NewForm | NewForms], Ctx}
                 end
             end,
-            {[], #ctx{ path = Path, module_name = ModName, funenv = FunEnv, records = #{} }},
+            {[], #ctx{ path = Path, module_name = ModName, funenv = FunEnv, records = #{}, fresh_var_counter = 1 }},
             Forms
             ),
     lists:reverse(RevNewForms).
@@ -535,6 +537,10 @@ trans_exp(Ctx, Env, Exp) ->
         {op, Anno, Op, E} ->
             {NewE, NewEnv} = trans_exp(Ctx, Env, E),
             {{op, to_loc(Ctx, Anno), Op, NewE}, NewEnv};
+        {'maybe', _Anno, _Exps} ->
+            trans_maybe(Ctx, Env, Exp, none);
+        {'maybe', Anno, Exps, Else = {'else', _ElseAnno, _Cs0}} ->
+            trans_maybe(Ctx, Env, {'maybe', Anno, Exps}, Else);
         {'receive', Anno, CaseClauses} ->
             {NewClauses, NewEnv} = trans_case_clauses(Ctx, Env, CaseClauses),
             {{'receive', to_loc(Ctx, Anno), NewClauses}, NewEnv};
@@ -597,6 +603,62 @@ trans_exp(Ctx, Env, Exp) ->
             Loc = to_loc(Ctx, Anno),
             {{var, Loc, {local_ref, varenv_local:lookup(Loc, Name, Env)}}, Env};
         X -> errors:uncovered_case(?FILE, ?LINE, Ctx#ctx.path, X)
+    end.
+
+-spec mk_maybe_expr
+    (ast_erl:anno(), ast_erl:exps(), none) -> ast_erl:exp_maybe();
+    (ast_erl:anno(), ast_erl:exps(), {'else', ast_erl:anno(), [ast_erl:maybe_else_clause()]}) -> ast_erl:exp_maybe_else().
+mk_maybe_expr(A, M, none) -> {'maybe', A, M}; 
+mk_maybe_expr(A, M, Else) -> {'maybe', A, M, Else}.
+
+-spec trans_maybe(ctx(), varenv_local:t(), ast_erl:exp(), none | {'else', ast_erl:anno(), [ast_erl:maybe_else_clause()]}) -> {ast:exp(), varenv_local:t()}.
+trans_maybe(Ctx, Env, {'maybe', Anno, [Exp]}, Else) -> 
+    case Exp of
+        {'maybe_match', _L, P, E} -> 
+            case Else of 
+                none ->
+                    % maybe with only a maybe_match expression 
+                    % is the same as just the expression E by itself
+                    trans_exp(Ctx, Env, E);
+                {'else', _ElseAnno, Cs0} -> 
+                    SuccessClause = {clause, Anno, [P], [], [E]},
+                    Case = {'case', Anno, E, [SuccessClause | Cs0]},
+                    trans_exp(Ctx, Env, Case)
+            end;
+        _ -> 
+            case Else of 
+                none ->
+                    SuccessClause = {clause, Anno, [{var, Anno, '_'}], [], [Exp]},
+                    Case = {'case', Anno, Exp, [SuccessClause]},
+                    trans_exp(Ctx, Env, Case);
+                {'else', _ElseAnno, Cs0} -> 
+                    SuccessClause = {clause, Anno, [{var, Anno, '_'}], [], [Exp]},
+                    Case = {'case', Anno, Exp, [SuccessClause | Cs0]},
+                    trans_exp(Ctx, Env, Case)
+            end
+    end;
+trans_maybe(Ctx, Env, {'maybe', Anno, [Exp | Exps]}, Else) -> 
+    case Exp of
+        {'maybe_match', L, P, E} -> 
+            % pattern matches -> continue with remaining Exps
+            SuccessClause = {clause, L, [P], [], [mk_maybe_expr(Anno, Exps, Else)]},
+            
+            % pattern doesn't match -> return original E or do the else clauses
+            {FailClauses, NewCtx} = 
+            case Else of
+                % need to create a fresh variable to avoid binding variables by accident
+                none -> 
+                    {FreshVarName, ModifiedCtx} = get_fresh_var_name(Ctx),
+                    FreshVar = {var, L, FreshVarName},
+                    {[{clause, L, [FreshVar], [], [FreshVar]}], ModifiedCtx}; 
+                {'else', _ElseAnno, Cs0} -> {Cs0, Ctx}
+            end,
+            NewExp = {'case', L, E, [SuccessClause | FailClauses]},
+            trans_exp(NewCtx, Env, NewExp);
+        _ -> 
+            NewExp = {block, Anno, [Exp, mk_maybe_expr(Anno, Exps, Else)]},
+            % not a maybe match, then it's just a block
+            trans_exp(Ctx, Env, NewExp)
     end.
 
 -spec trans_exp_bin_elem(ctx(), varenv_local:t(), ast_erl:exp_bitstring_elem()) ->
@@ -896,3 +958,9 @@ arity(Loc, L) ->
     if Len < 256 -> Len;
        true -> errors:ty_error(Loc, "too many arguments: ~w", Len)
     end.
+
+-spec get_fresh_var_name(ctx()) -> {atom(), ctx()}.
+get_fresh_var_name(Ctx) ->
+    Counter = Ctx#ctx.fresh_var_counter,
+    FreshVar = list_to_atom("$maybe" ++ integer_to_list(Counter)),
+    {FreshVar, Ctx#ctx{ fresh_var_counter = Counter + 1 }}.

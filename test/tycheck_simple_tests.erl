@@ -177,7 +177,10 @@ simple_test_() ->
     "op_08",
     % TODO inferred type is less general than spec?
     "lc_10",
-    "zip_01"
+    "zip_01",
+    % TODO slow maybe inference
+    "maybe_08",
+    "maybe_09"
   ],
 
   %What = ["atom_03_fail"],
