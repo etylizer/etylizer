@@ -87,6 +87,7 @@ trans_form(Ctx, Form, Mode) ->
             {attribute, Anno, export_type, X} -> {attribute, to_loc(Ctx, Anno), export_type, X};
             {attribute, Anno, import, X} -> {attribute, to_loc(Ctx, Anno), import, X};
             {attribute, Anno, module, X} -> {attribute, to_loc(Ctx, Anno), module, X};
+            {attribute, Anno, compile, X} -> {attribute, to_loc(Ctx, Anno), compile, X};
             {attribute, _, file, _} -> error;
             {attribute, _, behaviour, _} -> error;
             {attribute, _, behavior, _} -> error;

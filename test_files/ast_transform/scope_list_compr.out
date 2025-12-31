@@ -1,4 +1,6 @@
 [{attribute,{loc,[],0,0},module,scope_list_compr},
+ {attribute,{loc,[],0,0},compile,export_all},
+ {attribute,{loc,[],0,0},compile,[nowarn_export_all,nowarn_shadow_vars]},
  {function,{loc,[],0,0},
            foo,1,
            [{fun_clause,{loc,[],0,0},

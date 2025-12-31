@@ -211,6 +211,7 @@ local_varname_from_any_ref(Ref) ->
 -type import_form() :: {attribute, loc(), import, {Mod::atom(),[fun_with_arity()]}}.
 -type mod_name() :: atom().
 -type mod_form() :: {attribute, loc(), module, mod_name()}.
+-type compile_form() :: {attribute, loc(), compile, term()}.
 -type fun_decl() :: {function, loc(), Name::atom(), Arity::arity(), [fun_clause()]}.
 
 -spec get_fun_name(fun_decl()) -> string().
@@ -230,8 +231,8 @@ get_fun_name({function, _Loc, Name, Arity, _}) -> utils:sformat("~w/~w", Name, A
 
 % Attribute "-file(File,Line)" ignored.
 % Wild attributes ignored.
--type form() :: export_form() | export_type_form() | import_form() | mod_form() | fun_decl()
-    | fun_spec() | record_decl() | type_decl().
+-type form() :: export_form() | export_type_form() | import_form() | mod_form() | compile_form()
+    | fun_decl() | fun_spec() | record_decl() | type_decl().
 -type forms() :: [form()].
 
 % 8.2  Atomic Literals
