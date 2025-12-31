@@ -74,6 +74,8 @@
     exp_tuple/0,
     exp_try/0,
     exp_var/0,
+    exp_annotate/0,
+    exp_assert/0,
     exp/0,
     exps/0,
     qual_list_gen/0,
@@ -211,6 +213,7 @@ local_varname_from_any_ref(Ref) ->
 -type import_form() :: {attribute, loc(), import, {Mod::atom(),[fun_with_arity()]}}.
 -type mod_name() :: atom().
 -type mod_form() :: {attribute, loc(), module, mod_name()}.
+-type compile_form() :: {attribute, loc(), compile, term()}.
 -type fun_decl() :: {function, loc(), Name::atom(), Arity::arity(), [fun_clause()]}.
 
 -spec get_fun_name(fun_decl()) -> string().
@@ -230,8 +233,8 @@ get_fun_name({function, _Loc, Name, Arity, _}) -> utils:sformat("~w/~w", Name, A
 
 % Attribute "-file(File,Line)" ignored.
 % Wild attributes ignored.
--type form() :: export_form() | export_type_form() | import_form() | mod_form() | fun_decl()
-    | fun_spec() | record_decl() | type_decl().
+-type form() :: export_form() | export_type_form() | import_form() | mod_form() | compile_form()
+    | fun_decl() | fun_spec() | record_decl() | type_decl().
 -type forms() :: [form()].
 
 % 8.2  Atomic Literals
@@ -318,6 +321,9 @@ get_fun_name({function, _Loc, Name, Arity, _}) -> utils:sformat("~w/~w", Name, A
 -type gen_var() :: {var, loc(), any_ref()}.
 -type exp_var() :: gen_var().
 
+-type exp_annotate() :: {annotate, loc(), exp(), ty()}.
+-type exp_assert() :: {assert, loc(), exp(), ty()}.
+
 % There is no match expression, because match expressions are represented as case expressions.
 -type exp() :: atomic_lit() | exp_bitstring_compr() | exp_bitstring_constr() | exp_block()
     | exp_case() | exp_catch() | exp_cons() | exp_fun_ref() | exp_fun_ref_dyn() | exp_fun()
@@ -325,7 +331,8 @@ get_fun_name({function, _Loc, Name, Arity, _}) -> utils:sformat("~w/~w", Name, A
     | exp_map_create() | exp_map_update() | exp_map_compr()
     | exp_nil() | exp_binop() | exp_unop() | exp_recv() | exp_recv_after() | exp_record_create()
     | exp_record_access() | exp_record_index() | exp_record_update() | exp_tuple() | exp_try()
-    | exp_var().
+    | exp_var()
+    | exp_annotate() | exp_assert().
 
 -type exps() :: [exp()].
 

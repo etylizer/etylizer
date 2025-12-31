@@ -1,4 +1,6 @@
 [{attribute,{loc,[],0,0},module,funspec},
+ {attribute,{loc,[],0,0},compile,export_all},
+ {attribute,{loc,[],0,0},compile,nowarn_export_all},
  {attribute,{loc,[],0,0},
             spec,foo,1,
             {ty_scheme,[{'Y',{predef_alias,number}},{'_X',{predef,atom}}],

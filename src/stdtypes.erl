@@ -348,7 +348,14 @@ builtin_ops() ->
         {'>', 2, PolyOpTy},
         {'=:=', 2, PolyOpTy},
         {'=/=', 2, PolyOpTy},
-        {'++', 2, tyscm([a], tfun([tlist(tvar(a)), tlist(tvar(a))], tlist(tvar(a))))},
+        {'++', 2, tyscm([a], 
+                        tinter([
+                          tfun([tlist(tvar(a)), tlist(tvar(a))], tlist(tvar(a))),
+                          tfun([tnonempty_list(tvar(a)), tlist(tvar(a))], tnonempty_list(tvar(a))),
+                          tfun([tlist(tvar(a)), tnonempty_list(tvar(a))], tnonempty_list(tvar(a))),
+                          tfun([tnonempty_list(tvar(a)), tnonempty_list(tvar(a))], tnonempty_list(tvar(a)))
+                               ])
+                       )},
         {'--', 2, tyscm([a], tfun([tlist(tvar(a)), tlist(tvar(a))], tlist(tvar(a))))}
         % {'!', 2,   FIXME
     ].

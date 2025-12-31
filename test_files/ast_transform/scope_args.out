@@ -1,4 +1,6 @@
 [{attribute,{loc,[],0,0},module,scope_args},
+ {attribute,{loc,[],0,0},compile,export_all},
+ {attribute,{loc,[],0,0},compile,[nowarn_export_all,nowarn_shadow_vars]},
  {function,{loc,[],0,0},bar,1,[{fun_clause,{loc,[],0,0},[{var,{loc,[],0,0},{local_bind,{'X',0}}}],[],[{op,{loc,[],0,0},'+',{var,{loc,[],0,0},{local_ref,{'X',0}}},{integer,{loc,[],0,0},1}}]}]},
  {function,{loc,[],0,0},
            foo,0,

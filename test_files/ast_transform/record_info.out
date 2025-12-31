@@ -1,4 +1,6 @@
 [{attribute,{loc,[],0,0},module,record_info},
+ {attribute,{loc,[],0,0},compile,export_all},
+ {attribute,{loc,[],0,0},compile,[nowarn_export_all,nowarn_shadow_vars]},
  {attribute,{loc,[],0,0},
             record,
             {parse_opts,[{record_field,{loc,[],0,0},includes,{list,{predef_alias,string}},{nil,{loc,[],0,0}}},

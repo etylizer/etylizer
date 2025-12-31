@@ -1,4 +1,6 @@
 [{attribute,{loc,[],0,0},module,funcall},
+ {attribute,{loc,[],0,0},compile,export_all},
+ {attribute,{loc,[],0,0},compile,nowarn_export_all},
  {function,{loc,[],0,0},
            bar,2,
            [{fun_clause,{loc,[],0,0},
