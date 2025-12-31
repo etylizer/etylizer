@@ -181,10 +181,10 @@ collect_vars(M = {map, _}, CPos, Pos, Fix, SymTab, Memo) ->
     collect_vars(ty_parser:rewrite_map_to_representation(M), CPos, Pos, Fix, SymTab, Memo);
 collect_vars({K, Components}, CPos, Pos, Fix, SymTab, Memo) when K == union; K == intersection; K == tuple ->
     VPos = lists:map(fun(Ty) -> collect_vars(Ty, CPos, Pos, Fix, SymTab, Memo) end, Components),
-    lists:foldl(fun(FPos, Current) -> maps:merge_with(fun combine_vars/3, FPos, Current) end, #{}, VPos);
+    lists:foldl(fun(FPos, Current) -> maps:merge_with(fun combine_vars/3, FPos, Current) end, Pos, VPos);
 collect_vars({fun_full, Components, Target}, CPos, Pos, Fix, SymTab, Memo) ->
     VPos = lists:map(fun(Ty) -> collect_vars(Ty, 1 - CPos, Pos, Fix, SymTab, Memo) end, Components),
-    M1 = lists:foldl(fun(FPos, Current) -> maps:merge_with(fun combine_vars/3, FPos, Current) end, #{}, VPos),
+    M1 = lists:foldl(fun(FPos, Current) -> maps:merge_with(fun combine_vars/3, FPos, Current) end, Pos, VPos),
     M2 = collect_vars(Target, CPos, Pos, Fix, SymTab, Memo),
     maps:merge_with(fun combine_vars/3, M1, M2);
 collect_vars({negation, Ty}, CPos, Pos, Fix, SymTab, Memo) -> collect_vars(Ty, 1 - CPos, Pos, Fix, SymTab, Memo);

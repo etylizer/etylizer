@@ -276,3 +276,9 @@ match_16_fail(M) ->
 -spec match_17_fail(#{a => integer()} | ok) -> ok.
 match_17_fail(#{a := _I}) -> ok;
 match_17_fail(V) -> V.
+
+
+% test case for dnf_ty_map:normalize_line/3 edge case
+-spec map_normalize_01_fail(T, fun(([]) -> map())) -> T when T :: any().
+map_normalize_01_fail({DefaultF1, _}, F) -> {DefaultF1, F([])};
+map_normalize_01_fail(_, _) -> error(todo).

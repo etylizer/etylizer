@@ -186,6 +186,16 @@ extend_symtab(Filename, Forms, Tab, OverlaySymtab) ->
 extend_symtab(Filename, Forms, Module, Tab, OverlaySymtab) ->
     extend_symtab_internal(Filename, Forms, {qref, Module}, Tab, OverlaySymtab).
 
+-spec is_exported(ast:forms(), atom(), arity()) -> boolean().
+is_exported(Forms, Name, Arity) ->
+    lists:any(fun(Form) ->
+            case Form of
+                {function, _, Name, Arity, _Clauses} -> true;
+                _ -> false
+            end
+        end, Forms).
+
+
 -spec extend_symtab_internal(file:filename(), [ast:form()], ref(), t(), t()) -> t().
 extend_symtab_internal(Filename, Forms, RefType, Tab, OverlaySymtab) ->
     case utils:file_exists(Filename) of
@@ -194,52 +204,48 @@ extend_symtab_internal(Filename, Forms, RefType, Tab, OverlaySymtab) ->
             errors:some_error("File ~s does not exist", [Filename])
     end,
     ModuleName = ast_utils:modname_from_path(Filename),
-    IsNew =
-        case maps:get(ModuleName, Tab#tab.modules, error) of
-            error -> true;
-            ModulePath ->
-                case utils:is_same_file(Filename, ModulePath) of
-                    true -> false;
-                    false ->
-                        errors:some_error("Projects contains two different files defining the same module ~w: ~s and ~s",
-                            [ModuleName, ModulePath, Filename])
-                end
+    lists:foldl(
+        fun(Form, Tab) ->
+            case Form of
+                {attribute, _, spec, Name, Arity, T, _} ->
+                    Ref = create_ref_tuple(RefType, Name, Arity),
+                    case find_fun(Ref, OverlaySymtab) of
+                        error ->
+                            ?LOG_TRACE("No Overlay found for ~w:~w/~p", ModuleName, Name, Arity),
+                            % if we are in local ref mode, 
+                            % we might need to extend the symtab with the global ref, too, 
+                            % if fun is exported
+                            maybe_add_qref(RefType, ModuleName, Name, Arity, T, Forms, Tab);
+                        {ok, OverlayT} ->
+                            ?LOG_INFO("Overlay found for ~w:~w/~p", ModuleName, Name, Arity),
+                            Tab#tab { funs = maps:put(create_ref_tuple(RefType, Name, Arity), OverlayT, Tab#tab.funs) }
+                    end;
+                {attribute, _, type, _, {Name, TyScm = {ty_scheme, TyVars, _}}} ->
+                    Arity = length(TyVars),
+                    Tab#tab { types = maps:put({ty_key, ModuleName, Name, Arity}, TyScm, Tab#tab.types) };
+                {attribute, _, record, {RecordName, Fields}} ->
+                    RecordTy = records:record_ty_from_decl(RecordName, Fields),
+                    Tab#tab { records = maps:put(RecordName, RecordTy, Tab#tab.records) };
+                _ ->
+                    Tab
+            end
         end,
-    case IsNew of
-        false ->
-            Tab;
-        true ->
-            NewTab =
-                lists:foldl(
-                    fun(Form, Tab) ->
-                        case Form of
-                            {attribute, _, spec, Name, Arity, T, _} ->
-                                Ref = create_ref_tuple({qref, ModuleName}, Name, Arity),
-                                case find_fun(Ref, OverlaySymtab) of
-                                    error ->
-                                        ?LOG_TRACE("No Overlay found for ~w:~w/~p", ModuleName, Name, Arity),
-                                        Tab#tab { funs = maps:put(create_ref_tuple(RefType, Name, Arity), T, Tab#tab.funs) };
-                                    {ok, OverlayT} ->
-                                        ?LOG_INFO("Overlay found for ~w:~w/~p", ModuleName, Name, Arity),
-                                        Tab#tab { funs = maps:put(create_ref_tuple(RefType, Name, Arity), OverlayT, Tab#tab.funs) }
-                                end;
-                            {attribute, _, type, _, {Name, TyScm = {ty_scheme, TyVars, _}}} ->
-                                Arity = length(TyVars),
-                                Tab#tab { types = maps:put({ty_key, ModuleName, Name, Arity}, TyScm, Tab#tab.types) };
-                            {attribute, _, record, {RecordName, Fields}} ->
-                                RecordTy = records:record_ty_from_decl(RecordName, Fields),
-                                Tab#tab { records = maps:put(RecordName, RecordTy, Tab#tab.records) };
-                            _ ->
-                                Tab
-                        end
-                    end,
-                    Tab#tab { modules = maps:put(ModuleName, Filename, Tab#tab.modules) },
-                    Forms),
-            NewTab
-    end.
+        Tab#tab { modules = maps:put(ModuleName, Filename, Tab#tab.modules) },
+        Forms).
 
 -spec extend_symtab_with_fun_env(fun_env(), t()) -> t().
 extend_symtab_with_fun_env(Env, Tab) -> Tab#tab { funs = maps:merge(Tab#tab.funs, Env) }.
+
+
+-spec maybe_add_qref(ref(), ast:mod_name(), atom(), arity(), ast:ty_scheme(), ast:forms(), t()) -> t().
+maybe_add_qref({qref, _}, Module, Name, Arity, Type, _, Tab) -> 
+    Tab#tab { funs = maps:put(create_ref_tuple({qref, Module}, Name, Arity), Type, Tab#tab.funs) };
+maybe_add_qref(ref, Module, Name, Arity, Type, Forms, Tab) -> 
+    NewTab = Tab#tab { funs = maps:put(create_ref_tuple(ref, Name, Arity), Type, Tab#tab.funs) },
+    case is_exported(Forms, Name, Arity) of
+        true -> NewTab#tab { funs = maps:put(create_ref_tuple({qref, Module}, Name, Arity), Type, NewTab#tab.funs) };
+        false -> NewTab 
+    end.
 
 -spec create_ref_tuple(ref(), atom(), arity()) -> tuple().
 create_ref_tuple(ref, Name, Arity) ->

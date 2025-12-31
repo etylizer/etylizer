@@ -38,6 +38,9 @@ fun_ref_02_fail() -> some_fun("foo", 42).
 -spec fun_ref_03_fail() -> string().
 fun_ref_03_fail() -> some_fun("foo", "42").
 
+-spec fun_ref_04() -> string().
+fun_ref_04() -> ?MODULE:some_fun("foo", 42).
+
 %%%%%%%%%%%%%%%%%%%%%%%% OPERATORS %%%%%%%%%%%%%%%%%%%%%%%
 
 -spec op_01() -> integer().
@@ -83,3 +86,6 @@ op_13_fail() -> true andalso no.
 
 -spec op_14_fail() -> boolean().
 op_14_fail() -> false orelse no.
+
+-spec op_15() -> nonempty_list(integer()).
+op_15() -> [1,2] ++ [3,4].

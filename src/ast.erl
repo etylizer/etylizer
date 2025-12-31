@@ -76,6 +76,8 @@
     exp_var/0,
     exp_maybe/0,
     exp_maybe_match/0,
+    exp_annotate/0,
+    exp_assert/0,
     exp/0,
     exps/0,
     qual_list_gen/0,
@@ -323,6 +325,9 @@ get_fun_name({function, _Loc, Name, Arity, _}) -> utils:sformat("~w/~w", Name, A
 -type exp_maybe() :: {'maybe', loc(), [exp()]}. 
 -type exp_maybe_match() :: {'maybe_match', loc(), exp(), pat()}.
 
+-type exp_annotate() :: {annotate, loc(), exp(), ty()}.
+-type exp_assert() :: {assert, loc(), exp(), ty()}.
+
 % There is no match expression, because match expressions are represented as case expressions.
 -type exp() :: atomic_lit() | exp_bitstring_compr() | exp_bitstring_constr() | exp_block()
     | exp_case() | exp_catch() | exp_cons() | exp_fun_ref() | exp_fun_ref_dyn() | exp_fun()
@@ -330,7 +335,8 @@ get_fun_name({function, _Loc, Name, Arity, _}) -> utils:sformat("~w/~w", Name, A
     | exp_map_create() | exp_map_update() | exp_map_compr()
     | exp_nil() | exp_binop() | exp_unop() | exp_recv() | exp_recv_after() | exp_record_create()
     | exp_record_access() | exp_record_index() | exp_record_update() | exp_tuple() | exp_try()
-    | exp_var() | exp_maybe() | exp_maybe_match().
+    | exp_var() | exp_maybe() | exp_maybe_match()
+    | exp_annotate() | exp_assert().
 
 -type exps() :: [exp()].
 
