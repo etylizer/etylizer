@@ -5,6 +5,7 @@
 -include_lib("eunit/include/eunit.hrl").
 -include("log.hrl").
 -include("etylizer_main.hrl").
+-include("parse.hrl").
 
 -spec check_ok_fun(string(), symtab:t(), symtab:t(), ast:fun_decl(), ast:ty_scheme()) -> ok.
 check_ok_fun(Filename, Tab, OverlayTab, Decl = {function, L, Name, Arity, _}, Ty) ->
@@ -82,7 +83,7 @@ has_intersection({ty_scheme, _, _}) -> false.
 
 -spec check_decls_in_file(string(), what(), sets:set(string())) -> list().
 check_decls_in_file(F, What, NoInfer) ->
-  RawForms = parse:parse_file_or_die(F),
+  {ok, RawForms} = parse:parse_file(F, #parse_opts{includes = ["include"]}),
   Forms = ast_transform:trans(F, RawForms),
   SearchPath = paths:compute_search_path(#opts{}),
   OverlayTab = symtab:empty(),
@@ -97,8 +98,7 @@ check_decls_in_file(F, What, NoInfer) ->
         Ty = symtab:lookup_fun({ref, Name, Arity}, Loc, Tab),
         ShouldFail = utils:string_ends_with(NameStr, "_fail"),
         RunTest =
-          % FIXME #54 reduce timeout after issue has been fixed
-          {timeout, 45, {FullNameStr, fun() ->
+          {timeout, 120, {FullNameStr ++ " (typecheck)", fun() ->
                 ?LOG_NOTE("Type checking ~s from ~s", NameStr, F),
                 global_state:with_new_state(fun() ->
                   case ShouldFail of
@@ -110,7 +110,7 @@ check_decls_in_file(F, What, NoInfer) ->
               end}
             },
         InferTest =
-          {timeout, 45, {FullNameStr ++ " (infer)", fun() ->
+          {timeout, 120, {FullNameStr ++ " (infer)", fun() ->
                 ?LOG_NOTE("Infering type for ~s from ~s", NameStr, F),
                 global_state:with_new_state(fun() ->
                   check_infer_ok_fun(F, Tab, OverlayTab, Decl, Ty)

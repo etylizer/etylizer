@@ -6,6 +6,11 @@
 
 -export_type([trans_mode/0]).
 
+-ifdef(TEST).
+-include_lib("eunit/include/eunit.hrl").
+-endif.
+
+
 -compile([nowarn_shadow_vars]).
 
 -include("log.hrl").
@@ -457,6 +462,22 @@ trans_exp(Ctx, Env, Exp) ->
             {NewName, NewEnv} = varenv_local:insert(Name, Env),
             {{'fun', to_loc(Ctx, Anno), {local_bind, NewName},
               trans_fun_clauses(Ctx, NewEnv, FunClauses)}, Env};
+        % annotate type
+        {call, _, {'atom', _, '::'}, [Exp0, {string, Anno, TypeStr}]} -> 
+            case parse_type(Ctx, TypeStr) of
+                error -> errors:ty_error(to_loc(Ctx, Anno), "Invalid type annotation");
+                {ok, TypeOfExp} -> 
+                    {NewExp, NewEnv} = trans_exp(Ctx, Env, Exp0), 
+                    {{annotate, to_loc(Ctx, Anno), NewExp, TypeOfExp}, NewEnv}
+            end;
+        % force type
+        {call, _, {'atom', _, ':::'}, [Exp0, {string, Anno, TypeStr}]} -> 
+            case parse_type(Ctx, TypeStr) of
+                error -> errors:ty_error(to_loc(Ctx, Anno), "Invalid type assert");
+                {ok, TypeOfExp} -> 
+                    {NewExp, NewEnv} = trans_exp(Ctx, Env, Exp0), 
+                    {{assert, to_loc(Ctx, Anno), NewExp, TypeOfExp}, NewEnv}
+            end;
         {call, Anno, {'atom', AnnoName, FunName}, Args} -> % special case
             LocName = to_loc(Ctx, AnnoName),
             {NewArgs, NewEnv} = trans_exps(Ctx, Env, Args),
@@ -960,3 +981,45 @@ arity(Loc, L) ->
        true -> errors:ty_error(Loc, "too many arguments: ~w", Len)
     end.
 
+% similar to what Gradualizer does
+% ctx used for locations
+-spec parse_type(ctx(), string()) -> error | {ok, ast:ty()}.
+parse_type(Ctx, Src) ->
+    AttrSrc = "-type t() :: " ++ Src ++ ".",
+    {ok, Tokens, _EndLocation} = erl_scan:string(AttrSrc),
+    % the variables in the outer function -type definition are not in scope in the annotation
+    % at some point, we could extend this like Haskell's ScopeTypeVariables, if there is any need
+    case erl_parse:parse_form(Tokens) of
+        {ok, {attribute, _, type, Def = {t, _Type, []}}} ->
+            {_, {ty_scheme, [], TyNew}} = trans_tydef(Ctx, Def),
+            {ok, TyNew};
+        _ -> error
+    end.
+
+
+-ifdef(TEST).
+
+test_ctx() ->
+    #ctx{ path = ".", module_name = ast_transform, funenv = varenv:empty("function"), records = #{} }.
+
+parse_type_test() ->
+    Ctx = test_ctx(),
+    {ok, {predef_alias, string}} = parse_type(Ctx, "string()"),
+    {ok, {singleton, a}} = parse_type(Ctx, "a"),
+
+    % user types are supported (no locations, though)
+    {ok, {named, _, _, [{named, _, _, _}]}} = parse_type(Ctx, "parser(command())"),
+
+    % type error
+    error = parse_type(Ctx, "not a type"),
+
+    % free type variables not supported
+    ?assertThrow({etylizer, name_error, _}, parse_type(Ctx, "A")),
+
+    % type variables are only bound in the -spec annotation
+    % therefore, no type variables are supported in annotations
+    ?assertThrow({etylizer, name_error, _}, parse_type(Ctx, "fun((A) -> A)")),
+
+    ok.
+
+-endif.

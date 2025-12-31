@@ -410,8 +410,25 @@ exp_constrs(Ctx, E, T) ->
             Mater = {cvarmater, Locs, AnyRef, AlphaName},
             Link = {csubty, Locs, {var, AlphaName}, T},
             sets:from_list([Mater, Link]);
+        {assert, Loc, Exp, TargetType} ->
+            % Γ ⊢ e : alpha   TargetType <: alpha   TargetType <: T
+            % --------------------------------------- constr-downcast
+            % Γ ⊢ (e ::: TargetType) : T
+            Alpha = fresh_tyvar(Ctx), 
+            Cons = exp_constrs(Ctx, Exp, Alpha),
+            DowncastConstr = {csubty, mk_locs("downcast", Loc), TargetType, Alpha},
+            SubsumConstr = {csubty, mk_locs("downcast result", Loc), TargetType, T},
+            sets:add_element(SubsumConstr, sets:add_element(DowncastConstr, Cons));
+        {annotate, L, Exp, Type} ->
+            % Γ ⊢ e : τ   τ <: T
+            % ------------------- constr-annot
+            % Γ ⊢ (e :: τ) : T
+            Cons = exp_constrs(Ctx, Exp, Type),
+            Annot = {csubty, mk_locs("type annotation", L), Type, T},
+            sets:add_element(Annot, Cons);
         X -> errors:uncovered_case(?FILE, ?LINE, X)
     end.
+
 
 -spec process_qualifiers(ctx(), ast:loc(), [ast:qualifier()], constr:constr_env(), constr:constrs()) ->
           {constr:constr_env(), constr:constrs()}.

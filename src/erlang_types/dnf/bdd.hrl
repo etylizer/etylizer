@@ -321,20 +321,28 @@ minimize_node_dnf(Dnf) ->
                          end, [], Dnf),
 
   StrInput = ".i " ++ integer_to_list(I) ++ "\n.o " ++ integer_to_list(O) ++ "\n" ++ lists:flatten(lists:join("\n", AllLines)),
-  
-  % TODO IMPORTANT make sure binary is available! wasted 2 hours searching for a non-issue
-  file:make_dir("/tmp/etylizer"),
-  ok = file:write_file("/tmp/etylizer/espresso_input.pla", StrInput),
-  % T0 = os:system_time(millisecond),
-  Result = os:cmd(etylizer_main:get_espresso_binary() ++ " < /tmp/etylizer/espresso_input.pla"),
-  % file:delete("/tmp/etylizer/espresso_input.pla"),
-
-  % io:format(user,"~p ms~n", [os:system_time(millisecond) - T0]),
+  Result = '_minimize_espresso'(StrInput),
   OnlyResultLines = extract_integer_lines(Result, I + 1 + O),
-  % Inn = [string:slice(L, 0, I + 1 + O) || L <- AllLines],
-  % Out = extract_integer_lines(Result, I + 1 + O),
-  E = [convert_back_to_repr(list_to_tuple(string:split(Line, " ")), RevVariableIndices, ReverseAllOutputs, 1, {[], [], to_replace}) || Line <- OnlyResultLines],
-  E.
+  [convert_back_to_repr(list_to_tuple(string:split(Line, " ")), RevVariableIndices, ReverseAllOutputs, 1, {[], [], to_replace}) || Line <- OnlyResultLines].
+
+-spec '_minimize_espresso'(string()) -> string().
+'_minimize_espresso'(StrInput) ->
+    Path = espresso_bin:get_path(),
+    Port = open_port({spawn_executable, Path}, [use_stdio, exit_status, stream, stderr_to_stdout]),
+    % Append .e marker so espresso stops reading without needing EOF on stdin
+    port_command(Port, [StrInput, "\n.e\n"]),
+    '_collect_port_output'(Port, []).
+
+-spec '_collect_port_output'(port(), iolist()) -> string().
+'_collect_port_output'(Port, Acc) ->
+    receive
+        {Port, {data, Data}} ->
+            '_collect_port_output'(Port, [Acc, Data]);
+        {Port, {exit_status, 0}} ->
+            lists:flatten(Acc);
+        {Port, {exit_status, Status}} ->
+            error({espresso_exit, Status})
+    end.
 
 -spec replace_index(string(), [A], Line, #{A => integer()}) -> Line.
 replace_index(Val, Term, CurrentLine, VariableIndices) ->
