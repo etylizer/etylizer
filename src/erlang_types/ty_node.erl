@@ -403,12 +403,12 @@ substitute(Node, Varmap) ->
   Subst =
    maps:fold(
     fun(K, V, Acc) ->
-        case ty_variable:is_frame(K) of
-            true -> Acc;
-            false ->
-                {{var, Name}, _} = ty_variable:unparse(K, #{}),
-                Acc#{Name => ty_parser:unparse(V)}
-        end
+            case ty_variable:is_frame(K) of
+                {true, _} -> Acc;
+                {false, NotFrame} ->
+                    {{var, Name}, _} = ty_variable:unparse(NotFrame, #{}),
+                    Acc#{Name => ty_parser:unparse(V)}
+            end
     end, #{}, Varmap),
   Res = subst:apply(Subst, T1, no_clean),
   ty_parser:parse(Res).
