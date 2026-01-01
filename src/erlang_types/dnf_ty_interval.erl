@@ -161,6 +161,7 @@ unp([any_int]) -> {predef, any};
 unp([Int | Others]) -> ast_lib:mk_union([unparse_single(Int), unp(Others)]).
 
 -spec unparse_single(component()) -> ast_ty().
+unparse_single(any_int) -> error(invariant); % removed in unp/1
 unparse_single({range, A, B}) -> {range, A, B};
 unparse_single({left, -1}) -> {predef_alias, neg_integer};
 unparse_single({right, 1}) -> {predef_alias, pos_integer};

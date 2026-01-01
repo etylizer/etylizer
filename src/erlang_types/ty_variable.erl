@@ -46,18 +46,20 @@ clean() ->
 %   * a unique ID (usually generated inside the erlang_types library)
 %   * are frame variables (which unparse to dynamic())
 -record(var, {id, name, type = default}).
--opaque type() :: #var{id :: integer() | name, name :: atom(), type :: default | frame}.
+-opaque type() :: frame_variable() | default_variable().
+-type frame_variable() :: #var{id :: integer() | name, name :: atom(), type :: frame}.
+-type default_variable() :: #var{id :: integer() | name, name :: atom(), type :: default}.
 
 -spec equal(type(), type()) -> boolean().
 equal(Var1, Var2) -> compare(Var1, Var2) =:= eq.
 
 % compare ignores type field
 -spec compare(type(), type()) -> lt | eq | gt.
-compare(#var{id = name, name = N1}, #var{id = name, name = N2}) ->
+compare(#var{id = name, name = N1, type = T1}, #var{id = name, name = N2, type = T2}) ->
   % natural order for $ variables
   case {id_of(N1), id_of(N2)} of
     {{id, Id1}, {id, Id2}} -> 
-      compare(#var{id = Id1, name = N1}, #var{id = Id2, name = N2});
+      compare(#var{id = Id1, name = N1, type = T1}, #var{id = Id2, name = N2, type = T2});
     _ ->
       case {N1 > N2, N1 < N2} of
         {false, false} -> eq;
@@ -105,32 +107,32 @@ leq(V1, V2) ->
 -spec fresh_from(type()) -> type().
 fresh_from(#var{id = name, name = Name}) ->
   Id = get_new_id(),
-  #var{id = Id, name = Name};
+  #var{id = Id, name = Name, type = default};
 fresh_from(#var{id = _Id, name = Name}) ->
   new(Name).
 
 -spec new(atom()) -> type().
 new(Name) when is_atom(Name) ->
   NewId = ets:update_counter(?VAR_ETS, variable_id, {2,1}),
-  #var{id = NewId, name = Name}.
+  #var{id = NewId, name = Name, type = default}.
 
 -spec new_with_name(atom()) -> type().
 new_with_name(Name) when is_atom(Name) ->
-  #var{id = name, name = Name}.
+  #var{id = name, name = Name, type = default}.
 
 -spec new_as_frame() -> type().
 new_as_frame() ->
   NewId = ets:update_counter(?VAR_ETS, variable_id, {2,1}),
   #var{id = NewId, name = frame, type = frame}.
 
--spec is_frame(type()) -> boolean().
-is_frame(#var{type = default}) -> false;
-is_frame(#var{type = frame}) -> true.
+-spec is_frame(type()) -> {false, default_variable()} | {true, frame_variable()}.
+is_frame(V = #var{type = default}) -> {false, V};
+is_frame(V = #var{type = frame}) -> {true, V}.
 
 % used in ty_parser to convert already known variables
 -spec with_name_and_id(integer(), atom()) -> type().
 with_name_and_id(Id, Name) when is_atom(Name) ->
-  #var{id = Id, name = Name}.
+  #var{id = Id, name = Name, type = default}.
 
 -spec get_new_id() -> non_neg_integer().
 get_new_id() ->
@@ -139,7 +141,9 @@ get_new_id() ->
     R -> ?assert_type(R, non_neg_integer())
   end.
 
--spec unparse(type(), ST) -> {ast:ty_var(), ST}.
+-spec unparse
+    (frame_variable(), ST) -> {{predef, dynamic}, ST};
+    (default_variable(), ST) -> {ast:ty_var(), ST}.
 unparse(#var{id = _Id, name = _Name, type = frame}, C) ->
   {{predef, dynamic}, C};
 unparse(#var{id = name, name = Name}, C) ->
