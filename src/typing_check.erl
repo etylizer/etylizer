@@ -49,7 +49,7 @@ check_all_report(Ctx, FileName, Env, Decls) ->
 
 % Checks a function against its spec, skips timeouts and does not report errors.
 -spec check_report(ctx(), ast:fun_decl(), ast:ty_scheme()) -> success | timeout.
-check_report(Ctx, Decl = {function, Loc, Name, Arity, _}, PolyTy) ->
+check_report(Ctx, Decl = {function, Loc, Name, Arity, Clauses}, PolyTy) ->
     ?LOG_INFO("Type checking ~w/~w at ~s against type ~s",
               Name, Arity, ast:format_loc(Loc), pretty:render_tyscheme(PolyTy)),
     Timeout = Ctx#ctx.report_timeout,
@@ -76,7 +76,8 @@ check_report(Ctx, Decl = {function, Loc, Name, Arity, _}, PolyTy) ->
                     end
               end,
               AltTys),
-            UnmatchedEverywhere = sets:intersection(UnmatchedList),
+
+            UnmatchedEverywhere = intersect_unmatched(Clauses, UnmatchedList),
             case sets:to_list(UnmatchedEverywhere) of
                 [] -> success;
                 [First | _Rest] -> report_tyerror(FunStr, redundant_branch, First, "")
@@ -109,7 +110,7 @@ check_all(Ctx, FileName, Env, Decls) ->
     end.
 
 % Ensures that a mono type used as a spec is supported. Throws a ty_error if not.
--spec ensure_type_supported(ast:loc(), ast:ty()) -> ok.
+-spec ensure_type_supported(ast:loc(), ast:ty()) -> _.
 ensure_type_supported(Loc, T) ->
     utils:everywhere(
         fun(InnerT) ->
@@ -130,7 +131,7 @@ ensure_type_supported(Loc, T) ->
 % The type scheme comes from a type annotation, that it has the form
 % FORALL A . T1 /\ ... /\/ Tn where the Ti are function types
 -spec check(ctx(), ast:fun_decl(), ast:ty_scheme()) -> ok.
-check(Ctx, Decl = {function, Loc, Name, Arity, _}, PolyTy) ->
+check(Ctx, Decl = {function, Loc, Name, Arity, Clauses}, PolyTy) ->
     ?LOG_INFO("Type checking ~w/~w at ~s against type ~s",
               Name, Arity, ast:format_loc(Loc), pretty:render_tyscheme(PolyTy)),
     FunStr = utils:sformat("~w/~w", Name, Arity),
@@ -162,7 +163,8 @@ check(Ctx, Decl = {function, Loc, Name, Arity, _}, PolyTy) ->
             end
       end,
       AltTys),
-    UnmatchedEverywhere = sets:intersection(UnmatchedList),
+
+    UnmatchedEverywhere = intersect_unmatched(Clauses, UnmatchedList),
     case sets:to_list(UnmatchedEverywhere) of
         [] ->
             ?LOG_INFO("Type ok for ~w/~w at ~s", Name, Arity, ast:format_loc(Loc)),
@@ -170,6 +172,7 @@ check(Ctx, Decl = {function, Loc, Name, Arity, _}, PolyTy) ->
         [First | _Rest] ->
             report_tyerror(FunStr, redundant_branch, First, "")
     end.
+
 
 -type unmatched_branch_mode() ::
     unmatched_branch_fail       % throw a type error if a branch never matches
@@ -250,3 +253,51 @@ report_tyerror(FunName, Kind, Loc, Hint) ->
         "" -> errors:ty_error(Loc, "in ~s, ~s~n~s", [FunName, tyerror_msg(Kind), SrcCtx]);
         _ -> errors:ty_error(Loc, "in ~s, ~s~n~s~n~n  ~s", [FunName, tyerror_msg(Kind), SrcCtx, Hint])
     end.
+
+-spec intersect_unmatched([ast:fun_clause()], [sets:set(ast:loc())]) -> sets:set(ast:loc()).
+intersect_unmatched(Clauses, UnmatchedList) ->
+    % sublocation map
+    SublocationMap = extract_loc(Clauses, #{}),
+    UnmatchedListTransitive = lists:map(
+      fun(UnmatchedSet) ->
+          sets:fold(fun(LLoc, Acc) ->
+              % add all sublocations for this location
+              Sublocs = sets:from_list(maps:get(LLoc, SublocationMap, [])),
+              sets:union(Acc, Sublocs)
+          end, UnmatchedSet, UnmatchedSet)
+      end,
+      UnmatchedList),
+
+     sets:intersection(UnmatchedListTransitive).
+
+-spec extract_loc 
+    (any(),  #{ast:loc() => [ast:loc()]}) -> #{ast:loc() => [ast:loc()]}.
+    % (ast:forms(), #{ast:loc() => [ast:loc()]}) -> #{ast:loc() => [ast:loc()]};
+    % (ast:form(),  #{ast:loc() => [ast:loc()]}) -> #{ast:loc() => [ast:loc()]}.
+extract_loc(TermList, Map) when is_list(TermList) ->
+    lists:foldl(fun(T, M) -> extract_loc(T, M) end, Map, TermList);
+extract_loc(Term, CurrentMap) ->
+    Res = 
+    % we only want locs that matter for branching
+    utils:everything(
+      fun(T) -> case T of
+        % fun_decl() not possible here
+        {'case', Loc, Expr, Clauses} -> {ok, {Loc, [Expr, Clauses]}};
+        {'fun', Loc, _, Clauses} -> {ok, {Loc, [Clauses]}};
+        {case_clause, Loc, Pat, _Guards, Body} -> {ok, {Loc, [Pat, Body]}};
+        {fun_clause, Loc, Pats, _Guards, Body} -> {ok, {Loc, [Pats, Body]}};
+        _ -> error
+                     end end, Term),
+
+    lists:foldl(fun({CurrentLoc, NextTarget}, AccMap) -> 
+            % compute all descendant locs reachable from NextTarget
+            Descendants = lists:usort(utils:everything(fun(L = {loc, _, _, _}) -> {ok, L}; (_) -> error end, NextTarget)),
+
+            % update CurrentLoc -> descendants (merge with any existing list)
+            Existing = maps:get(CurrentLoc, CurrentMap, []),
+            NewList = lists:usort(Existing ++ Descendants),
+            Map1 = maps:put(CurrentLoc, NewList, AccMap),
+
+            % continue traversal into subterms
+            extract_loc(NextTarget, Map1)
+                end, CurrentMap, Res).
