@@ -462,6 +462,22 @@ trans_exp(Ctx, Env, Exp) ->
             {NewName, NewEnv} = varenv_local:insert(Name, Env),
             {{'fun', to_loc(Ctx, Anno), {local_bind, NewName},
               trans_fun_clauses(Ctx, NewEnv, FunClauses)}, Env};
+        % annotate type
+        {call, _, {'atom', _, '::'}, [Exp0, {string, Anno, TypeStr}]} -> 
+            case parse_type(Ctx, TypeStr) of
+                error -> errors:ty_error(to_loc(Ctx, Anno), "Invalid type annotation");
+                {ok, TypeOfExp} -> 
+                    {NewExp, NewEnv} = trans_exp(Ctx, Env, Exp0), 
+                    {{annotate, to_loc(Ctx, Anno), NewExp, TypeOfExp}, NewEnv}
+            end;
+        % force type
+        {call, _, {'atom', _, ':::'}, [Exp0, {string, Anno, TypeStr}]} -> 
+            case parse_type(Ctx, TypeStr) of
+                error -> errors:ty_error(to_loc(Ctx, Anno), "Invalid type assert");
+                {ok, TypeOfExp} -> 
+                    {NewExp, NewEnv} = trans_exp(Ctx, Env, Exp0), 
+                    {{assert, to_loc(Ctx, Anno), NewExp, TypeOfExp}, NewEnv}
+            end;
         {call, Anno, {'atom', AnnoName, FunName}, Args} -> % special case
             LocName = to_loc(Ctx, AnnoName),
             {NewArgs, NewEnv} = trans_exps(Ctx, Env, Args),
