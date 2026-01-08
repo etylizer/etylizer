@@ -1,17 +1,17 @@
 %% Syntax elements for type annotations
 %%
 %% The macro ?annotate_type/2 can be used to annotate an expression with a type. 
-%% This is useful to speed up type checking. The specified type must be compatible 
-%% with the type detected by Etylizer. Otherwise a type error is reported.
+%% This is useful to speed up type checking or as an assert that an expression should have the specified type. 
+%% The specified type must be compatible with the type detected by Etylizer. Otherwise a type error is reported.
 %%
 %%     N = ?annotate_type( 10, non_neg_integer() )
 %%
-%% The macro ?assert_type/2 can be used to force an expression have a certain type.  
-%% Etylizer will not type check into the expression that is being annotated.
-%% For example, it is useful to assert types of expressions when fetching values
-%% from ETS tables, for example. 
+%% The macro ?assert_type/2 can be used to refine (downcast) a type propagated
+%% by Etylizer. For example, the programmer may know that values stored in an ETS table
+%% have a more precise type than term()
 %%
-%%     Arity = ?assert_type( length(Args), non_neg_integer() )
+%%     % MyETSValue :: term()
+%%     Arity = ?assert_type( MyETSValue, {ok, any()} )
 %%
 %% The functions '::'/2 and ':::'/2 can also be used directly if the type is
 %% quoted:
