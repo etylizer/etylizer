@@ -86,3 +86,6 @@ op_13_fail() -> true andalso no.
 
 -spec op_14_fail() -> boolean().
 op_14_fail() -> false orelse no.
+
+-spec op_15() -> nonempty_list(integer()).
+op_15() -> [1,2] ++ [3,4].
