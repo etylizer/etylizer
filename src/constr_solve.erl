@@ -179,9 +179,8 @@ is_satisfiable(Tab, Constrs, Fixed, What) ->
             ?LOG_DEBUG("Tally time (~s): ~pms, tally finished with errors.", What, Delta),
             ?LOG_TRACE("Tally errors: ~s", format_tally_error(ErrList)),
             false;
-        {true, S} ->
+        {true, _} ->
             ?LOG_DEBUG("Tally time (~s): ~pms, tally successful.", What, Delta),
-            ?LOG_TRACE("First substitution:~n~s", [pretty:render_subst(S)]),
             true
     end.
 
