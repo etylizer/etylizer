@@ -2,6 +2,20 @@
 
 -define(LAZY(Term), fun() -> Term end).
 
+% utility
+-export([
+    sat/0,
+    unsat/0,
+    singleton/1,
+    len/1,
+    map/2,
+    fold/3,
+    any/2,
+    all/2,
+    filter/2,
+    is_trivial_sat/1
+]).
+
 -export([
   meet/3,
   join/3,
@@ -13,13 +27,49 @@
   constraint_set/0
 ]).
 
-% not opaque: we match on unsatisfiable and satisfiable constraint sets [] and [[]]
--type set_of_constraint_sets() :: [constraint_set()].
--type monomorphic_variables() :: etally:monomorphic_variables().
--type constraint_set() :: [constraint()].
--type constraint() :: {ty_variable:type(), ty:type(), ty:type()}.
+% API
+-include("constraints.hrl").
 -type cache() :: #{ty:type() => []}.
 
+
+-spec is_trivial_sat(set_of_constraint_sets()) -> boolean().
+is_trivial_sat([[]]) -> true;
+is_trivial_sat(_) -> false.
+
+-spec sat() -> set_of_constraint_sets().
+sat() -> [[]].
+
+-spec unsat() -> set_of_constraint_sets().
+unsat() -> [].
+
+-spec singleton(constraint_set()) -> set_of_constraint_sets().
+singleton(Cs) -> [Cs].
+
+-spec len(set_of_constraint_sets()) -> non_neg_integer().
+len(Cs) -> length(Cs).
+
+-spec fold(fun((constraint_set(), Acc) -> Acc), Acc, S) -> Acc when S :: set_of_constraint_sets().
+fold(F, Accumulator, Socs) ->
+    lists:foldl(fun(Cs, Acc) -> F(Cs, Acc) end, Accumulator, Socs).
+
+-spec map(fun((constraint_set()) -> B), S) -> [B] when S :: set_of_constraint_sets().
+map(F, Socs) ->
+    lists:map(fun(Cs) -> F(Cs) end, Socs).
+
+-spec any(fun((constraint_set()) -> boolean()), set_of_constraint_sets()) -> boolean().
+any(Pred, Socs) ->
+    lists:any(Pred, Socs).
+
+-spec all(fun((constraint_set()) -> boolean()), set_of_constraint_sets()) -> boolean().
+all(Pred, Socs) ->
+    lists:all(Pred, Socs).
+
+-spec filter(fun((constraint_set()) -> boolean()), S) -> S when S :: set_of_constraint_sets().
+filter(Pred, Socs) ->
+    lists:filter(Pred, Socs).
+
+
+% sets of constraint sets
 
 -spec meet(S, S, monomorphic_variables()) -> S when S :: set_of_constraint_sets().
 meet([], _, _) -> [];
