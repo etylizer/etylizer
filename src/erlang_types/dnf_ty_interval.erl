@@ -22,13 +22,15 @@
   has_negative_only_line/1
 ]).
 
+-include("erlang_types.hrl").
+
 -export_type([type/0]).
 
 -type component() :: any_int | {range, integer(), integer()} | {left, integer()} | {right, integer()}.
 -opaque type() :: [component()].
 -type set_of_constraint_sets() :: constraint_set:set_of_constraint_sets().
--type ast_ty() :: ast:ty().
 
+-spec reorder(X) -> X when X :: type().
 reorder(X) -> X.
 
 -spec empty() -> type().
@@ -38,9 +40,9 @@ empty() -> [].
 any() -> [any_int].
 
 -spec compare_int(T, T) -> eq | lt | gt when T :: integer().
-compare_int(I1, I2) when I1 =:= I2 -> eq;
 compare_int(I1, I2) when I1 > I2 -> gt;
-compare_int(I1, I2) when I1 < I2 -> lt.
+compare_int(I1, I2) when I1 < I2 -> lt;
+compare_int(_, _) -> eq.
 
 -spec compare(T, T) -> eq | lt | gt when T :: type().
 compare([], []) -> eq;
@@ -59,7 +61,8 @@ compare([{right, A} | _], [{right, B} | _]) when A /= B -> compare_int(A, B);
 compare([{right, _} | Xs], [{right, _} | Ys]) -> compare(Xs, Ys);
 compare([{right, _} | _], _) -> lt;
 compare(_, [{right, _} | _]) -> gt;
-compare([any_int], [any_int]) -> eq.
+compare([any_int], [any_int]) -> eq;
+compare(_, _) -> error(invariant).
 
 
 -spec interval(integer() | '*', integer() | '*') -> type().
@@ -84,6 +87,7 @@ is_any(_) -> false.
 -spec negate(T) -> T when T :: type().
 negate([]) -> any();
 negate([any_int]) -> empty();
+negate([any_int | _Xs]) -> error(badarg); % invariant: [any_int] has no other elements
 negate([{left, X} | Xs]) -> negate_start_with(X + 1, Xs);
 negate([{right, X} | _Xs]) -> [{left, X - 1}];
 negate([{range, A, B} | Xs]) -> [{left, A - 1}] ++ negate_start_with(B + 1, Xs).
@@ -91,7 +95,8 @@ negate([{range, A, B} | Xs]) -> [{left, A - 1}] ++ negate_start_with(B + 1, Xs).
 -spec negate_start_with(integer(), T) -> T when T :: type().
 negate_start_with(Start, []) -> [{right, Start}];
 negate_start_with(Start, [{range, A, B} | Xs]) -> [{range, Start, A-1}] ++ negate_start_with(B+1, Xs);
-negate_start_with(Start, [{right, X} | _Xs]) -> [{range, Start, X - 1}].
+negate_start_with(Start, [{right, X} | _Xs]) -> [{range, Start, X - 1}];
+negate_start_with(_, _) -> error(invariant).
 
 -spec union(T, T) -> T when T :: type().
 union(I1, I2) ->
@@ -156,6 +161,7 @@ unp([any_int]) -> {predef, any};
 unp([Int | Others]) -> ast_lib:mk_union([unparse_single(Int), unp(Others)]).
 
 -spec unparse_single(component()) -> ast_ty().
+unparse_single(any_int) -> error(invariant); % removed in unp/1
 unparse_single({range, A, B}) -> {range, A, B};
 unparse_single({left, -1}) -> {predef_alias, neg_integer};
 unparse_single({right, 1}) -> {predef_alias, pos_integer};
@@ -171,7 +177,7 @@ unparse_single({right, R}) when R > 1 ->
 unparse_single({right, R}) when R < 1 ->
   ast_lib:mk_union([{predef_alias, pos_integer}, unparse_single({range, R, 1})]).
 
--spec all_variables(type(), _) -> sets:set().
+-spec all_variables(_, _) -> sets:set(variable()).
 all_variables(_, _) -> sets:new().
 
 -spec has_negative_only_line(type()) -> boolean().

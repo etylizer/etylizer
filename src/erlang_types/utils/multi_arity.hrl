@@ -2,14 +2,13 @@
 -define(MULTIARITY, dnf_ty_function).
 -endif.
 
+-include("erlang_types.hrl").
+
 -export_type([type/0]).
 
--opaque type() :: {?MULTIARITY:type(), #{non_neg_integer() => ?MULTIARITY:type()}}.
--type set_of_constraint_sets() :: constraint_set:set_of_constraint_sets().
--type monomorphic_variables() :: etally:monomorphic_variables().
--type ast_ty() :: ast:ty().
--type variable() :: ty_variable:type().
--type all_variables_cache() :: term(). % TODO
+-type type() :: {type_default(), type_map()}.
+-type type_default() :: ?MULTIARITY:type().
+-type type_map() :: #{non_neg_integer() => ?MULTIARITY:type()}.
 
 -export([
   reorder/1,
@@ -29,9 +28,11 @@
   has_negative_only_line/1
 ]).
 
+-spec reorder(X) -> X when X :: type().
 reorder({D, M}) ->
   {?MULTIARITY:reorder(D), maps:map(fun(_, V) -> ?MULTIARITY:reorder(V) end, M)}.
 
+-spec assert_valid(type()) -> _.
 assert_valid({D, M}) ->
   ?MULTIARITY:assert_valid(D),
   maps:foreach(fun(_, V) -> ?MULTIARITY:assert_valid(V) end, M).
@@ -64,7 +65,7 @@ empty() ->
 any() ->
   {?MULTIARITY:any(), #{}}.
 
--spec is_empty(type(), T) -> {boolean, T}.
+-spec is_empty(type(), T) -> {boolean(), T} when T :: is_empty_cache().
 is_empty({Default, All}, ST) ->
   maybe
     {true, ST1} ?= ?MULTIARITY:is_empty(Default, ST),
@@ -123,24 +124,24 @@ difference({DefaultF1, F1}, {DefaultF2, F2}) ->
 remove_redundant({Default, Others}) ->
   {
     Default,
-    #{Arity => TypeOfArity || Arity := TypeOfArity <- Others, TypeOfArity /= Default}
+    % #{Arity => TypeOfArity || Arity := TypeOfArity <- Others, TypeOfArity /= Default} FIXME does not type check
+    maps:filter(fun(_Arity, TypeOfArity) -> TypeOfArity /= Default end, Others)
   }.
 
--spec normalize(type(), monomorphic_variables(), T) -> {set_of_constraint_sets(), T}.
+-spec normalize(type(), monomorphic_variables(), T) -> {constraint_set:set_of_constraint_sets(), T} when T :: normalize_cache().
 normalize({Default, All}, Fixed, ST) ->
-  {Others, ST2} = 
-    maps:fold(fun(_Size, V, {Acc, ST0}) -> % FIXME shortcut behavior
-      {Res, ST1} = ?MULTIARITY:normalize(V, Fixed, ST0),
-      {constraint_set:meet(Acc, Res, Fixed), ST1}
-              end, {[[]], ST}, All),
+  {Others, ST2} = normalize_arities(All, Fixed, ST),
+  {DF, ST3} = ?MULTIARITY:normalize(Default, Fixed, ST2),
+  {constraint_set:meet(DF, Others, Fixed), ST3}.
 
-  % TODO this bothers me a bit
-  % {DF, ST2} = ?MULTIARITY:normalize({default, maps:keys(All)}, Default, Fixed, ST2),
-  {DF, ST2} = ?MULTIARITY:normalize(Default, Fixed, ST2),
+-spec normalize_arities(type_map(), monomorphic_variables(), S) -> {constraint_set:set_of_constraint_sets(), S} when S :: normalize_cache().
+normalize_arities(All, Fixed, ST) ->
+  maps:fold(fun(_Size, V, {Acc, ST0}) -> % FIXME shortcut behavior
+    {Res, ST1} = ?MULTIARITY:normalize(V, Fixed, ST0),
+    {constraint_set:meet(Acc, Res, Fixed), ST1}
+            end, {constraint_set:sat(), ST}, All).
 
-  {constraint_set:meet(DF, Others, Fixed), ST2}.
-
--spec unparse(type(), T) -> {ast_ty(), T}.
+-spec unparse(type(), T) -> {ast_ty(), T} when T :: unparse_cache().
 unparse({Default, T}, ST0) ->
   {X1, ST1} = 
   case ?MULTIARITY:unparse(Default, ST0) of

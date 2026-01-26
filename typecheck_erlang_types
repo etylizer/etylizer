@@ -1,0 +1,132 @@
+#!/bin/bash
+set -e
+TYPE_LIB="./src/erlang_types/"
+
+files=(
+    "constraint_set.erl"
+    "dnf_ty_atom.erl"
+    "dnf_ty_bitstring.erl"
+    "dnf_ty_function.erl"
+    "dnf_ty_interval.erl"
+    "dnf_ty_list.erl"
+    "dnf_ty_map.erl"
+    "dnf_ty_predefined.erl"
+    "dnf_ty_tuple.erl"
+    "dnf_ty_variable.erl"
+    "etally.erl"
+    "feature_flags.erl"
+    "global_state.erl"
+    "tarjan.erl"
+    "ty_bool.erl"
+    "ty.erl"
+    "ty_function.erl"
+    "ty_functions.erl"
+    "ty_list.erl"
+    "ty_map.erl"
+    "ty_node.erl"
+    "ty_rec.erl"
+    "ty_tuple.erl"
+    "ty_tuples.erl"
+    "ty_variable.erl"
+)
+
+
+# dnf_ty_predefined:is_empty/2 needs better bitstring types
+# dnf_ty_predefined:unparse/2 needs better bitstring types
+# ty_node:compare/2 needs integer refinement for guards
+# dnf_ty_interval:compare_int/2 needs integer refinement for guards
+# dnf_ty_interval:unparse_single/1 needs integer refinement for guards
+# dnf_ty_X:reorder_if_needed/5 needs comparison operator refinement
+# dnf_ty_X:replace_index/4 erlang:setelement use overlay?
+# dnf_ty_X:_minimize_all_lines_from_dnf/4 uses tuples as arrays
+
+# timeouts
+TO=""
+TO=$TO" -i ty_map:unparse_tuple_part_dnf/2 "
+TO=$TO" -i ty_map:unparse_tuple_part_dnf_unparse/2 "
+TO=$TO" -i ty_map:unparse_fun_part_dnf/2 "
+TO=$TO" -i etally:is_satisfiable_v3/2 "
+TO=$TO" -i dnf_ty_interval:add_right/2 "
+TO=$TO" -i dnf_ty_variable:op/3 "
+TO=$TO" -i dnf_ty_tuple:op/3 "
+TO=$TO" -i dnf_ty_function:op/3 "
+TO=$TO" -i dnf_ty_map:op/3 "
+TO=$TO" -i dnf_ty_list:op/3 "
+TO=$TO" -i dnf_ty_map:unparse_line/2 "
+TO=$TO" -i dnf_ty_atom:intersect/2 "
+TO=$TO" -i dnf_ty_function:unparse_line/2 "
+TO=$TO" -i dnf_ty_function:convert_back_to_repr/5 "
+TO=$TO" -i dnf_ty_interval:compare/2 "
+TO=$TO" -i dnf_ty_interval:add_left/2 "
+TO=$TO" -i dnf_ty_interval:add_range/3 "
+TO=$TO" -i dnf_ty_list:unparse_line/2 "
+TO=$TO" -i dnf_ty_list:convert_back_to_repr/5 "
+TO=$TO" -i dnf_ty_map:convert_back_to_repr/5 "
+TO=$TO" -i dnf_ty_tuple:unparse_line/2 "
+TO=$TO" -i dnf_ty_tuple:convert_back_to_repr/5 "
+TO=$TO" -i dnf_ty_tuple:phi/3 "
+TO=$TO" -i dnf_ty_tuple:phi_norm/4 "
+TO=$TO" -i dnf_ty_variable:unparse_line/2 "
+TO=$TO" -i dnf_ty_variable:convert_back_to_repr/5 "
+TO=$TO" -i tarjan:condense/1 "
+TO=$TO" -i tarjan:from_root/3 "
+TO=$TO" -i ty_functions:compare/2 "
+TO=$TO" -i ty_functions:is_empty/2 "
+TO=$TO" -i ty_functions:unparse/2 "
+TO=$TO" -i ty_rec:pi/2 "
+TO=$TO" -i ty_rec:compare/2 "
+TO=$TO" -i ty_rec:unparse_h/2 "
+TO=$TO" -i ty_rec:unparse_any/3 "
+TO=$TO" -i ty_tuples:compare/2 "
+TO=$TO" -i ty_tuples:is_empty/2 "
+TO=$TO" -i ty_tuples:unparse/2 "
+
+make build > /dev/null
+for file in "${files[@]}"; do
+    ./ety \
+        -P . \
+        -I ./include \
+        -I ./src \
+        -I ./erlang_types \
+        -I ./erlang_types/dnf \
+        -l error \
+        --type-overlay overlays/etylizer_overlay.erl \
+        -f \
+        --no-deps "$TYPE_LIB""$file" \
+        $TO \
+        -i 'ty_parser:convert/3' \
+        -i 'ty_parser:parse/1' \
+        -i 'ty_parser:unify/2' \
+        -i 'ty_parser:set_symtab/1' \
+        -i 'ty_parser:group/3' \
+        -i 'dnf_ty_predefined:is_empty/2' \
+        -i 'dnf_ty_predefined:unparse/2' \
+        -i 'ty_node:compare/2' \
+        -i 'dnf_ty_interval:compare_int/2' \
+        -i 'dnf_ty_interval:unparse_single/1' \
+        -i 'dnf_ty_tuple:reorder_if_needed/5' \
+        -i "dnf_ty_tuple:'_minimize_all_lines_from_dnf'/5" \
+        -i "dnf_ty_tuple:'_minimize_espresso'/1" \
+        -i "dnf_ty_tuple:'_collect_port_output'/2" \
+        -i "dnf_ty_tuple:replace_index/4" \
+        -i 'dnf_ty_function:reorder_if_needed/5' \
+        -i "dnf_ty_function:'_minimize_all_lines_from_dnf'/5" \
+        -i "dnf_ty_function:'_minimize_espresso'/1" \
+        -i "dnf_ty_function:'_collect_port_output'/2" \
+        -i "dnf_ty_function:replace_index/4" \
+        -i 'dnf_ty_list:reorder_if_needed/5' \
+        -i "dnf_ty_list:'_minimize_all_lines_from_dnf'/5" \
+        -i "dnf_ty_list:'_minimize_espresso'/1" \
+        -i "dnf_ty_list:'_collect_port_output'/2" \
+        -i "dnf_ty_list:replace_index/4" \
+        -i 'dnf_ty_map:reorder_if_needed/5' \
+        -i "dnf_ty_map:'_minimize_all_lines_from_dnf'/5" \
+        -i "dnf_ty_map:'_minimize_espresso'/1" \
+        -i "dnf_ty_map:'_collect_port_output'/2" \
+        -i "dnf_ty_map:replace_index/4" \
+        -i 'dnf_ty_variable:reorder_if_needed/5' \
+        -i "dnf_ty_variable:'_minimize_all_lines_from_dnf'/5" \
+        -i "dnf_ty_variable:'_minimize_espresso'/1" \
+        -i "dnf_ty_variable:'_collect_port_output'/2" \
+        -i "dnf_ty_variable:replace_index/4" "$@"
+done

@@ -55,6 +55,8 @@
 'lists:flatten'(_) -> error(overlay).
 
 % TODO bdd.hrl:espresso_split_line_into_elements_and_result/1: why is string() not compatible with [chardata()]?
+-spec 'string:to_upper'(string()) -> string(); (nonempty_string()) -> nonempty_string().
+'string:to_upper'(_) -> error(badarg).
 -spec 'string:split'(string(), string()) -> [string()].
 'string:split'(_, _) -> error(badarg).
 -spec 'string:split'(string(), string(), all) -> [string()].
