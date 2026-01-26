@@ -12,6 +12,8 @@
   components/1
 ]).
 
+-include("erlang_types.hrl").
+
 -export_type([type/0]).
 
 -ifndef(NODE).
@@ -20,8 +22,6 @@
 %% n-tuple representation
 
 -type type() :: {ty_tuple, non_neg_integer(), [?NODE:type()]}.
--type all_variables_cache() :: ?NODE:all_variables_cache().
--type ast_ty() :: ast:ty().
 
 -spec compare(type(), type()) -> lt | gt | eq.
 compare({ty_tuple, Dim, C}, {ty_tuple, Dim, C2}) ->
@@ -50,13 +50,13 @@ big_intersect([X | Y]) ->
         {ty_tuple, Dim, [?NODE:intersect(S, T) || {S, T} <- lists:zip(Refs, Refs2)]}
                 end, X, Y).
 
--spec all_variables(type(), all_variables_cache()) -> _.
+-spec all_variables(type(), all_variables_cache()) -> sets:set(variable()).
 all_variables({ty_tuple, _, Refs}, Cache) ->
   sets:union(
     [ty_node:all_variables(T, Cache) || T <- Refs]
   ).
 
--spec unparse(type(), T) -> {ast_ty(), T}.
+-spec unparse(type(), T) -> {ast_ty(), T} when T :: unparse_cache().
 unparse({ty_tuple, _, Refs}, ST0) ->
   {All, ST3} = lists:foldl(
                  fun(R, {Cs, ST1}) -> {C, ST2} = ty_node:unparse(R, ST1), {Cs ++ [C], ST2} end, 

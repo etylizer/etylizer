@@ -6,7 +6,7 @@
   with_new_state/1
 ]).
 
--callback init() -> ok.
+-callback init() -> _.
 
 -spec modules_with_global_state() -> [module()].
 modules_with_global_state() -> [ty_node, ty_parser, ty_variable].
