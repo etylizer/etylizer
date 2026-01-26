@@ -83,9 +83,10 @@ normalize_line({PVar, NVar, TyRec}, Fixed, ST) ->
 
 % assumption: PVars U NVars is not empty
 -type tagged_variable() :: {pos | neg | {delta, pos | neg}, ?ATOM:type()}.
--spec smallest([T], [T], monomorphic_variables()) -> {tagged_variable(), [tagged_variable()]}.
+-spec smallest([T], [T], monomorphic_variables()) -> 
+    {tagged_variable(), [tagged_variable()]} when T :: ?ATOM:type().
 smallest(PositiveVariables, NegativeVariables, FixedVariables) ->
-  true = (length(PositiveVariables) + length(NegativeVariables)) > 0,
+  ?assert_pattern(true, (length(PositiveVariables) + length(NegativeVariables)) > 0),
 
   % fixed variables are higher order than all non-fixed ones, will be picked last
   PositiveVariablesTagged = [{pos, V} || V <- PositiveVariables, not maps:is_key(V, FixedVariables)],
@@ -96,11 +97,15 @@ smallest(PositiveVariables, NegativeVariables, FixedVariables) ->
     [{{delta, pos}, V} || V <- PositiveVariables, maps:is_key(V, FixedVariables)],
 
   Sort = fun({_, V}, {_, V2}) -> ty_variable:leq(V, V2) end,
-  [X | Z] = lists:sort(Sort, PositiveVariablesTagged++NegativeVariablesTagged) ++ lists:sort(Sort, RestTagged),
+  [X | Z] = 
+  ?assert_pattern([_ | _], 
+                  __Y, % second assert pattern
+                  lists:sort(Sort, PositiveVariablesTagged++NegativeVariablesTagged) ++ 
+                  lists:sort(Sort, RestTagged)),
 
   {X, Z}.
 
--spec single(boolean(), [T], [T], ?LEAF:type()) -> bdd().
+-spec single(boolean(), [T], [T], ?LEAF:type()) -> bdd() when T :: ?ATOM:type().
 single(Pol, VPos, VNeg, Ty) ->
   AccP = lists:foldl(fun(Var, TTy) -> 
     VVar = dnf_ty_variable:singleton(Var),
@@ -118,7 +123,7 @@ single(Pol, VPos, VNeg, Ty) ->
     _ -> S
   end.
 
--spec all_variables_line([T], [T], ?LEAF:type(), cache()) -> sets:set(variable()) when T :: ?ATOM:type().
+-spec all_variables_line([T], [T], ?LEAF:type(), all_variables_cache()) -> sets:set(variable()) when T :: ?ATOM:type().
 all_variables_line(P, N, Leaf, Cache) ->
   sets:union([sets:from_list(P),
               sets:from_list(N),

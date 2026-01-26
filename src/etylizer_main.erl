@@ -199,6 +199,7 @@ doWork(Opts) ->
                                 end).
 
 % different path for testing environment
+-spec get_espresso_binary() -> string().
 -ifdef(TEST).
 get_espresso_binary() ->
     Path = "_build/espresso",

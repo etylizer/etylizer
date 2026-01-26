@@ -55,5 +55,7 @@ normalize(Dnf, _, ST) ->
     {true, _} -> {[[]], ST};
     {false, _} -> {[], ST}
   end.
+-spec assert_valid(_) -> _.
 assert_valid(_) -> ok.
+-spec reorder(X) -> X.
 reorder(X) -> X.
