@@ -48,24 +48,18 @@
 
 
 -export_type([
-  type/0, 
-  cache/0,
-  all_variables_cache/0
+  type/0
 ]).
 
--opaque type() :: {node, term()}.
--opaque cache() :: #{type() => boolean()}.
--opaque all_variables_cache() :: #{type() => _}.
--type normalize_cache() :: #{{type_descriptor(), monomorphic_variables()} => boolean()}.
--type type_descriptor() :: dnf_ty_variable:type().
+-behaviour(global_state).
+
+-include("erlang_types.hrl").
+-include("etylizer.hrl").
+
+-type type() :: {node, integer()}.
 -type temporary_type() :: {local_ref, term()}. % used in ty_parser
 -type set_of_constraint_sets() :: constraint_set:set_of_constraint_sets().
--type monomorphic_variables() :: etally:monomorphic_variables().
--type ast_mu_var() :: ast:ty_mu_var().
--type ast_ty() :: ast:ty().
--type variable() :: ty_variable:type().
 
--behaviour(global_state).
 
 -define(ID, ty_node_id).
 -define(SYSTEM, ty_node_system).
@@ -204,7 +198,7 @@ is_empty(TyNode) ->
 %   implement backtracking-free algorithm after finding a test case
 %   where caching *during* the recursive computation would benefit
 %   the time to solve
--spec is_empty(type(), cache()) -> {boolean(), cache()}.
+-spec is_empty(type(), S) -> {boolean(), S} when S :: is_empty_cache().
 is_empty(TyNode, LocalCache) ->
   Ty = load(TyNode),
 
@@ -325,7 +319,8 @@ normalize(TyNode, FixedVariables) ->
   end,
   Z.
 
--spec normalize(type(), monomorphic_variables(), ST) -> {set_of_constraint_sets(), ST} when ST :: normalize_cache().
+-spec normalize(type(), monomorphic_variables(), ST) -> 
+    {set_of_constraint_sets(), ST} when ST :: normalize_cache().
 normalize(TyNode, FixedVariables, Cache) ->
   Ty = load(TyNode),
 
