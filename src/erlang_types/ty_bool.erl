@@ -25,7 +25,7 @@
 -type set_of_constraint_sets() :: constraint_set:set_of_constraint_sets().
 
 -spec compare(T, T) -> eq | lt | gt when T :: type().
-compare(X, X) -> eq; compare(1, 0) -> gt; compare(0, 1) -> lt.
+compare(1, 0) -> gt; compare(0, 1) -> lt; compare(_, _) -> eq.
 -spec equal(T, T) -> boolean() when T :: type().
 equal(X, Y) -> X =:= Y.
 -spec empty() -> type().
