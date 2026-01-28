@@ -47,13 +47,13 @@ tuple_to_map({leaf, Internal}) -> {leaf, ty_rec:tuple_to_map(Internal)}.
 % Subtyping
 % =============
 
--spec is_empty_line({[T], [T], ?LEAF:type()}, S) -> {boolean(), S} when T :: ?ATOM:type().
+-spec is_empty_line({[T], [T], ?LEAF:type()}, S) -> {boolean(), S} when S :: is_empty_cache(), T :: ?ATOM:type().
 is_empty_line({AllPos, Neg, T}, ST) ->
-  case {AllPos, Neg, ?LEAF:is_literal_empty(T)} of
+  case {AllPos, Neg, ty_rec:is_literal_empty(T)} of
     {_, _, true} -> 
       {true, ST};
     {_PositiveVariables, _NegativeVariables, false} -> % ignore variables for emptiness
-      ?LEAF:is_empty(T, ST)
+      ty_rec:is_empty(T, ST)
   end.
 
 % =============
@@ -61,7 +61,8 @@ is_empty_line({AllPos, Neg, T}, ST) ->
 % =============
 
 % (NTLV rule)
--spec normalize_line({[T], [T], ?LEAF:type()}, monomorphic_variables(), S) -> {set_of_constraint_sets(), S} when T :: ?ATOM:type().
+-spec normalize_line({[T], [T], ?LEAF:type()}, monomorphic_variables(), S) -> 
+    {set_of_constraint_sets(), S} when S :: normalize_cache(),T :: ?ATOM:type().
 normalize_line({[], [], TyRec}, Fixed, ST) ->
   ty_rec:normalize(TyRec, Fixed, ST);
 normalize_line({PVar, NVar, TyRec}, Fixed, ST) ->

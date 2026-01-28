@@ -27,6 +27,7 @@
     replace/2,
     fold_with_context/3,
     compare/3,
+    compare_multiple/1,
     update_ets_from_map/2,
     format_tally_config/3,
     flatten/1
@@ -225,6 +226,14 @@ compare(I1, I2) ->
                 true -> greater;
                 false -> equal
             end
+    end.
+
+-spec compare_multiple([{fun((T, T) -> lt | gt | eq), T, T}]) -> lt | gt | eq.
+compare_multiple([]) -> eq;
+compare_multiple([{Cmp, V1, V2} | Rest]) ->
+    maybe 
+        eq ?= Cmp(V1, V2),
+        compare_multiple(Rest)
     end.
 
 -spec with_default(T | undefined, T) -> T.

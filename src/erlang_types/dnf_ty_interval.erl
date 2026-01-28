@@ -176,7 +176,7 @@ unparse_single({right, R}) when R > 1 ->
 unparse_single({right, R}) when R < 1 ->
   ast_lib:mk_union([{predef_alias, pos_integer}, unparse_single({range, R, 1})]).
 
--spec all_variables(type(), _) -> sets:set().
+-spec all_variables(_, _) -> sets:set(variable()).
 all_variables(_, _) -> sets:new().
 
 -spec has_negative_only_line(type()) -> boolean().
