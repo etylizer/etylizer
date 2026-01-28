@@ -12,19 +12,21 @@
   components/1
 ]).
 
--include("erlang_types.hrl").
-
 -export_type([type/0]).
+
+-include("erlang_types.hrl").
+-include("etylizer.hrl").
 
 -ifndef(NODE).
 -define(NODE, ty_node).
 -endif.
-%% n-tuple representation
 
+%% n-tuple representation
 -type type() :: {ty_tuple, non_neg_integer(), [?NODE:type()]}.
 
 -spec compare(type(), type()) -> lt | gt | eq.
-compare({ty_tuple, Dim, C}, {ty_tuple, Dim, C2}) ->
+compare({ty_tuple, Dim, C}, {ty_tuple, Dim2, C2}) ->
+  ?assert_pattern(true, Dim == Dim2),
   utils:compare(fun ?NODE:compare/2, C, C2).
 
 -spec equal(type(), type()) -> boolean().
@@ -46,7 +48,7 @@ components({ty_tuple, _, Refs}) -> Refs.
 big_intersect([X]) -> X;
 big_intersect([X | Y]) ->
     lists:foldl(fun({ty_tuple, _, Refs}, {ty_tuple, Dim, Refs2}) ->
-        true = length(Refs) == length(Refs2),
+        ?assert_pattern(true, length(Refs) == length(Refs2)),
         {ty_tuple, Dim, [?NODE:intersect(S, T) || {S, T} <- lists:zip(Refs, Refs2)]}
                 end, X, Y).
 
@@ -56,7 +58,7 @@ all_variables({ty_tuple, _, Refs}, Cache) ->
     [ty_node:all_variables(T, Cache) || T <- Refs]
   ).
 
--spec unparse(type(), T) -> {ast_ty(), T} when T :: unparse_cache().
+-spec unparse(type(), T) -> {ast:ty_tuple(), T} when T :: unparse_cache().
 unparse({ty_tuple, _, Refs}, ST0) ->
   {All, ST3} = lists:foldl(
                  fun(R, {Cs, ST1}) -> {C, ST2} = ty_node:unparse(R, ST1), {Cs ++ [C], ST2} end, 
