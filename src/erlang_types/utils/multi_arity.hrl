@@ -6,7 +6,7 @@
 
 -export_type([type/0]).
 
--opaque type() :: {type_default(), type_map()}.
+-type type() :: {type_default(), type_map()}.
 -type type_default() :: ?MULTIARITY:type().
 -type type_map() :: #{non_neg_integer() => ?MULTIARITY:type()}.
 

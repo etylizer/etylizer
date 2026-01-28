@@ -82,9 +82,9 @@ normalize(Dnf, _, ST) ->
     {false, _} -> {[], ST}
   end.
 
--spec unparse(type(), T) -> {[ast_ty()], T}.
+-spec unparse(type(), T) -> {ast_ty(), T}.
 unparse(<<Bitmask:?ELEMENTS>>, ST) ->
-  {lists:foldl(
+    RawList = lists:foldl(
         fun({Atom, Bit}, Acc) ->
             case Bit band Bitmask of
                 0 -> Acc;
@@ -97,9 +97,10 @@ unparse(<<Bitmask:?ELEMENTS>>, ST) ->
         end,
         [],
         [ {'[]', 1}, {float, 2}, {pid, 4}, {port, 8}, {reference, 16} ]
-    ), ST}.
+    ),
+  {ast_lib:mk_union(RawList), ST}.
 
--spec all_variables(type(), _) -> sets:set().
+-spec all_variables(_, _) -> sets:set(variable()).
 all_variables(_, _) -> sets:new().
 
 -spec has_negative_only_line(type()) -> boolean().

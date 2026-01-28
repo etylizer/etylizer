@@ -20,6 +20,7 @@
 
 -export_type([type/0]).
 
+-include("etylizer.hrl").
 
 -spec init() -> _.
 init() ->
@@ -51,7 +52,7 @@ compare(#var{id = name, name = N1}, #var{id = name, name = N2}) ->
   % natural order for $ variables
   case {id_of(N1), id_of(N2)} of
     {{id, Id1}, {id, Id2}} -> 
-      compare(#var{id = Id1}, #var{id = Id2});
+      compare(#var{id = Id1, name = N1}, #var{id = Id2, name = N2});
     _ ->
       case {N1 > N2, N1 < N2} of
         {false, false} -> eq;
@@ -65,18 +66,32 @@ compare(#var{id = Id1}, #var{id = Id2}) when Id1 < Id2 -> gt;
 compare(#var{id = Id1}, #var{id = Id2}) when Id1 > Id2 -> lt;
 compare(_, _) -> eq.
 
+-spec id_of(any()) -> none | {id, integer()}.
 id_of(Name) when is_atom(Name) ->
   case atom_to_list(Name) of
     [$$ | Rest] ->
-      try list_to_integer(Rest) of
-        Int -> {id, Int}
-      catch
-        error:badarg -> none
+      R = catch list_to_integer(Rest) ,
+      case R of
+          Int when is_integer(Int) -> {id, Int};
+          _ -> none
       end;
     _ -> 
       none
   end;
 id_of(_) -> none.
+% TODO re-enable once try-catch works
+% id_of(Name) when is_atom(Name) ->
+%   case atom_to_list(Name) of
+%     [$$ | Rest] ->
+%       try list_to_integer(Rest) of
+%         Int -> {id, Int}
+%       catch
+%         error:badarg -> none
+%       end;
+%     _ -> 
+%       none
+%   end;
+% id_of(_) -> none.
 
 -spec leq(type(), type()) -> boolean().
 leq(V1, V2) -> 
@@ -105,9 +120,12 @@ with_name_and_id(Id, Name) when is_atom(Name) ->
 
 -spec get_new_id() -> non_neg_integer().
 get_new_id() ->
-  ets:update_counter(?VAR_ETS, variable_id, {2,1}).
+  % monotonicity invariant upheld inside this module
+  case ets:update_counter(?VAR_ETS, variable_id, {2,1}) of
+    R -> ?assert_type(R, non_neg_integer())
+  end.
 
--spec unparse(type(), ST) -> {ast:ty(), ST}.
+-spec unparse(type(), ST) -> {ast:ty_var(), ST}.
 unparse(#var{id = name, name = Name}, C) ->
   {{var, Name}, C};
 unparse(#var{id = Id, name = Name}, C) ->
