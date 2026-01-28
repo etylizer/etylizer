@@ -19,12 +19,14 @@
   has_negative_only_line/1
 ]).
 
+-include("erlang_types.hrl").
+
 -export_type([type/0]).
 
--opaque type() :: {gb_sets:set(), finite | cofinite}.
+-opaque type() :: {gb_sets:set(atom()), finite | cofinite}.
 -type set_of_constraint_sets() :: constraint_set:set_of_constraint_sets().
--type ast_ty() :: ast:ty().
        
+-spec reorder(X) -> X when X :: type().
 reorder(X) -> X.
 
 -spec compare(T, T) -> eq | lt | gt when T :: type().

@@ -17,13 +17,14 @@
   has_negative_only_line/1
 ]).
 
+-include("erlang_types.hrl").
+
 -export_type([type/0]).
 
 -define(ELEMENTS, 5).
 
 -opaque type() :: <<_:?ELEMENTS>>.
 -type set_of_constraint_sets() :: constraint_set:set_of_constraint_sets().
--type ast_ty() :: ast:ty().
 
 % TODO benchmark how much faster the bit representation is (O(n) vs O(1))
 % predefined(Predef) -> [Predef].
@@ -36,6 +37,7 @@
 % intersect(P1, P2) -> [X || X <- P1, lists:member(X, P2)].
 % diff(I1, I2) -> intersect(I1, negate(I2)).
  
+-spec reorder(X) -> X when X :: type().
 reorder(X) -> X.
 
 -spec compare(T, T) -> eq | lt | gt when T :: type().
@@ -80,7 +82,7 @@ normalize(Dnf, _, ST) ->
     {false, _} -> {[], ST}
   end.
 
--spec unparse(type(), T) -> {ast_ty(), T}.
+-spec unparse(type(), T) -> {[ast_ty()], T}.
 unparse(<<Bitmask:?ELEMENTS>>, ST) ->
   {lists:foldl(
         fun({Atom, Bit}, Acc) ->
