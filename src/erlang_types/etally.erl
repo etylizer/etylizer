@@ -13,26 +13,23 @@
   is_satisfiable_v2/2
 ]).
 
+-include("etylizer.hrl").
 -include("sanity.hrl").
+-include("constraints.hrl").
 
 -define(TALLY_DEFAULT(), is_satisfiable_v4).
 
--type constraint_set() :: constraint_set:constraint_set().
--type set_of_constraint_sets() :: constraint_set:set_of_constraint_sets().
 -type normalized_set_of_constraint_sets() :: set_of_constraint_sets(). % normalized set of constraint sets
 -type solutions() :: set_of_constraint_sets(). % saturated set of constraint sets
--type monomorphic_variables() :: #{variable() => _}.
--type variable() :: ty_variable:type().
 -type input_constraint() :: {ty:type(), ty:type()}.
 -type input_constraints() :: [input_constraint()].
 -type tally_solutions() :: [#{variable() => ty:type()}].
-
 
 % early return if constraints are found to be satisfiable
 % does not solve the equations
 -spec is_tally_satisfiable(input_constraints(), monomorphic_variables()) -> boolean().
 is_tally_satisfiable(Constraints, MonomorphicVariables) ->
-  case os:getenv(string:to_upper("TALLY")) of
+  case os:getenv(?assert_type(string:to_upper("TALLY"), nonempty_string())) of
     "v1" -> is_satisfiable_v1(Constraints, MonomorphicVariables);
     "v2" -> is_satisfiable_v2(Constraints, MonomorphicVariables);
     "v3" -> is_satisfiable_v3(Constraints, MonomorphicVariables);
@@ -72,7 +69,7 @@ is_satisfiable_v2(Constraints, MonomorphicVariables) ->
   case lists:all(fun([[]]) -> true; (_) -> false end, Z) of
     true -> true;
     _ ->
-      [S | Ss] = Z,
+      [S | Ss] =  ?assert_pattern([_ | _], Z),
       Z2 = lists:foldl(fun(E, E2) -> tally_saturate(constraint_set:meet(E, E2, MonomorphicVariables), MonomorphicVariables) end, S, Ss),
       case Z2 of
         [] -> false;
@@ -105,10 +102,7 @@ is_satisfiable_v3(Constraints, MonomorphicVariables) ->
                 _ ->
                   % io:format("Got ~p complex~n", [length(All2)]),
                   % io:format("~n~p~n", [All2]),
-                  {_T2, ComplexSat} = 
-                  timer:tc(fun() -> lists:foldl(fun(E, E2) -> 
-                                                    % io:format(user,".~p", [length(E2)]), 
-                                                    tally_saturate(constraint_set:meet(E, E2, MonomorphicVariables), MonomorphicVariables) end, SimpleSat, All2) end),
+                  ComplexSat = lists:foldl(fun(E, E2) -> tally_saturate(constraint_set:meet(E, E2, MonomorphicVariables), MonomorphicVariables) end, SimpleSat, All2),
                   % io:format("Complex in ~p ms~n", [T2]),
 
                   case ComplexSat of
@@ -150,7 +144,7 @@ process_input_solutions(TodoSols, CurrentResult, MonoVars) ->
   end.
 
 %% Find the solution that increases solution count the least after saturation
--spec find_least_increasing_solutions(ToBeProcessed::[solutions()], CurrentResult::solutions(), monomorphic_variables()) -> {solutions(), solutions()}.
+-spec find_least_increasing_solutions(ToBeProcessed::[solutions(), ...], CurrentResult::solutions(), monomorphic_variables()) -> {solutions(), solutions()}.
 find_least_increasing_solutions([Sol | Rest], Acc, MonoVars) ->
   MeetResult = constraint_set:meet(Sol, Acc, MonoVars),
   FirstSaturatedResult = tally_saturate(MeetResult, MonoVars),
@@ -161,27 +155,55 @@ find_least_increasing_solutions([Sol | Rest], Acc, MonoVars) ->
       find_least_increasing_solutions(Rest, Acc, MonoVars, {Sol, FirstSaturatedResult})
   end.
 
--spec find_least_increasing_solutions(ToBeProcessed::[solutions()], CurrentResult::solutions(), monomorphic_variables(), {solutions(), solutions()}) -> {solutions(), solutions()}.
+-spec find_least_increasing_solutions(
+        ToBeProcessed::[solutions()], 
+        CurrentResult::solutions(), 
+        monomorphic_variables(), 
+        {solutions(), solutions()}) -> {solutions(), solutions()}.
 find_least_increasing_solutions(All, Acc, MonoVars, Current) ->
-  case lists:foldl(fun
-    (_, Z = {shortcut, _}) -> Z;
-    (S, {Cr, CurrentResult}) -> 
-      MeetResult = constraint_set:meet(S, Acc, MonoVars),
-      SaturatedResult = tally_saturate(MeetResult, MonoVars),
-      if
-        length(SaturatedResult) < length(CurrentResult) -> 
-          % io:format(user, "Found decreasing solution ~p (~p -> ~p)~n", [erlang:phash2(S), length(CurrentResult), length(SaturatedResult)]),
-          {shortcut, {S, SaturatedResult}}; % This is the better solution (decrease sol count)
-       length(CurrentResult) < 3 andalso length(SaturatedResult) == length(CurrentResult) -> 
-          % io:format(user, "Found good solution ~p (~p)~n", [erlang:phash2(S), length(CurrentResult)]),
-          {shortcut, {S, SaturatedResult}}; % This is a good solution (no increase and keeps sol count small)
-        true -> {Cr, CurrentResult}
-      end
-                   end, Current, All) 
-  of
+  case lists:foldl(fun(E,A) -> do_find(E, A, Acc, MonoVars) end,  Current, All) of
     {shortcut, Z} -> Z;
     Z -> Z
   end.
+
+-spec do_find(set_of_constraint_sets(), R, set_of_constraint_sets(), monomorphic_variables()) -> R when R :: {shortcut, {solutions(), solutions()}} | {solutions(), solutions()}.
+do_find(_, Z = {shortcut, _}, _, _) -> Z;
+do_find(S, {Cr, CurrentResult}, Acc, MonoVars) ->
+      MeetResult = constraint_set:meet(S, Acc, MonoVars),
+      SaturatedResult = tally_saturate(MeetResult, MonoVars),
+      SatLen = constraint_set:len(SaturatedResult),
+      CurLen = constraint_set:len(CurrentResult),
+      if
+        SatLen < CurLen -> 
+          % io:format(user, "Found decreasing solution ~p (~p -> ~p)~n", [erlang:phash2(S), length(CurrentResult), length(SaturatedResult)]),
+          {shortcut, {S, SaturatedResult}}; % This is the better solution (decrease sol count)
+        CurLen < 3 andalso SatLen == CurLen -> 
+          % io:format(user, "Found good solution ~p (~p)~n", [erlang:phash2(S), length(CurrentResult)]),
+          {shortcut, {S, SaturatedResult}}; % This is a good solution (no increase and keeps sol count small)
+        true -> {Cr, CurrentResult}
+      end.
+
+% -spec find_least_increasing_solutions(ToBeProcessed::[solutions()], CurrentResult::solutions(), monomorphic_variables(), {solutions(), solutions()}) -> {solutions(), solutions()}.
+% find_least_increasing_solutions(All, Acc, MonoVars, Current) ->
+%   case lists:foldl(fun
+%     (_, Z = {shortcut, _}) -> Z;
+%     (S, {Cr, CurrentResult}) -> 
+%       MeetResult = constraint_set:meet(S, Acc, MonoVars),
+%       SaturatedResult = tally_saturate(MeetResult, MonoVars),
+%       if
+%         length(SaturatedResult) < length(CurrentResult) -> 
+%           % io:format(user, "Found decreasing solution ~p (~p -> ~p)~n", [erlang:phash2(S), length(CurrentResult), length(SaturatedResult)]),
+%           {shortcut, {S, SaturatedResult}}; % This is the better solution (decrease sol count)
+%        length(CurrentResult) < 3 andalso length(SaturatedResult) == length(CurrentResult) -> 
+%           % io:format(user, "Found good solution ~p (~p)~n", [erlang:phash2(S), length(CurrentResult)]),
+%           {shortcut, {S, SaturatedResult}}; % This is a good solution (no increase and keeps sol count small)
+%         true -> {Cr, CurrentResult}
+%       end
+%                    end, Current, All) 
+%   of
+%     {shortcut, Z} -> Z;
+%     Z -> Z
+%   end.
 
 % =========================
 % full tally implementation
