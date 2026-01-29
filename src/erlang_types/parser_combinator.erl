@@ -29,7 +29,7 @@ item() -> fun([]) -> []; ([X | Xs]) -> [{X, Xs}] end.
 bind({lazy, ParserA}, Binder) -> bind(ParserA(), Binder);
 bind(ParserA, Binder) ->
     fun(Input) -> 
-        utils:flatten([(Binder(V))(InputPrime) || {V, InputPrime} <- ParserA(Input)])
+        lists:flatten([(Binder(V))(InputPrime) || {V, InputPrime} <- ParserA(Input)])
     end.
 
 -spec sat(fun((char()) -> boolean())) -> parser(char()).
