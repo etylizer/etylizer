@@ -98,6 +98,8 @@
 
 {module, global_state, #{file => "etylizer/src/erlang_types/global_state.erl", overlays => [{library, "../../overlays/etylizer_overlay.erl"}], timeout => 10000}}.
 
+{module, parser_combinator, #{file => "etylizer/src/erlang_types/parser_combinator.erl", overlays => [{library, "../../overlays/etylizer_overlay.erl"}], timeout => 10000}}.
+
 {module, tarjan, #{file => "etylizer/src/erlang_types/tarjan.erl", overlays => [{library, "../../overlays/etylizer_overlay.erl"}], timeout => 10000}}.
 
 {module, ty, #{file => "etylizer/src/erlang_types/ty.erl", overlays => [{library, "../../overlays/etylizer_overlay.erl"}], timeout => 10000}}.
