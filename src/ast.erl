@@ -148,7 +148,7 @@
 ]).
 
 -export([
-    format_loc/1, to_loc/2, loc_auto/0, min_loc/2, leq_loc/2, is_predef_name/1, is_predef_alias_name/1,
+    format_loc/1, to_loc/2, loc_auto/0, min_loc/2, leq_loc/2, maybe_predef_name/1, is_predef_name/1, is_predef_alias_name/1,
     local_varname_from_any_ref/1, get_fun_name/1, loc_exp/1
 ]).
 
@@ -446,6 +446,20 @@ is_predef_name(N) ->
         integer -> true;
         atom -> true;
         dynamic -> true;
+        _ -> false
+    end.
+
+-spec maybe_predef_name(atom()) -> {true, predef_name()} | false.
+maybe_predef_name(N) ->
+    case N of
+        any -> {true, any};
+        none -> {true, none};
+        pid -> {true, pid};
+        port -> {true, port};
+        reference -> {true, reference};
+        float -> {true, float};
+        integer -> {true, integer};
+        atom -> {true, atom};
         _ -> false
     end.
 
