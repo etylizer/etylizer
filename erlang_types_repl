@@ -1,0 +1,12 @@
+#!/usr/bin/env bash
+
+D=$( cd -- "$( dirname -- "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )
+
+if [ "$1" == "--build" ]; then
+    shift
+    pushd $D
+    make build-repl || exit 1
+    popd
+fi
+
+$D/_build/repl/bin/erlang_types_repl "$@"
