@@ -12,6 +12,9 @@ release:
 build:
 	$(REBAR) escriptize
 
+build-repl:
+	$(REBAR) as repl escriptize
+
 clean:
 	$(REBAR) clean
 	rm -rf _build _etylizer rebar.lock
