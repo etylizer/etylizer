@@ -25,6 +25,7 @@ files=(
     "ty_tuple.erl"
     "ty_tuples.erl"
     "ty_variable.erl"
+    "parser_combinator.erl"
 )
 
 
