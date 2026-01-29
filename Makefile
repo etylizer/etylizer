@@ -17,6 +17,10 @@ build: espresso
 	$(REBAR) escriptize
 	cp _build/espresso _build/default/bin/espresso
 
+build-repl:
+	$(REBAR) as repl escriptize
+	cp _build/espresso _build/repl/bin/espresso
+
 clean:
 	$(REBAR) clean
 	rm -rf _build _etylizer rebar.lock
