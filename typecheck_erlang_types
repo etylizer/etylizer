@@ -29,6 +29,7 @@ files=(
     "ty_tuples.erl"
     "ty_variable.erl"
     "parser_combinator.erl"
+    "ast_parser.erl"
 )
 
 
@@ -80,6 +81,7 @@ TO=$TO" -i ty_rec:unparse_any/3 "
 TO=$TO" -i ty_tuples:compare/2 "
 TO=$TO" -i ty_tuples:is_empty/2 "
 TO=$TO" -i ty_tuples:unparse/2 "
+TO=$TO" -i ast_parser:parse_all/0 "
 
 make build > /dev/null
 for file in "${files[@]}"; do
