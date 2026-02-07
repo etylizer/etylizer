@@ -829,15 +829,18 @@ trans_qualifiers(Ctx, Env, Qs) ->
     -> {ast:qualifier(), varenv_local:t()}.
 trans_qualifier(Ctx, Env, Q) ->
     case Q of
-        {K, Anno, Pat, Exp} when (K == generate orelse K == b_generate) -> % generator "Pat <- Exp"
+         % generator patterns for lists and bitstrings Pat <- / <:- / <= / <:= Exp
+        {K, Anno, Pat, Exp} when 
+              (K == generate orelse K == generate_strict orelse K == b_generate orelse K == b_generate_strict) ->
             NewExp = trans_exp_noenv(Ctx, Env, Exp),
             {NewPat, NewEnv} = trans_pat(Ctx, Env, Pat, shadow),
             {{K, to_loc(Ctx, Anno), NewPat, NewExp}, NewEnv};
-        {m_generate, Anno, {map_field_exact, _Anno2, K, V}, Exp} ->
+         % map generate patterns  KeyPattern := ValuePattern <- / <:- MapExpression
+        {K, Anno, {map_field_exact, _Anno2, K, V}, Exp} when (K == m_generate orelse K == m_generate_strict)->
             NewExp = trans_exp_noenv(Ctx, Env, Exp),
             {NewK, NewEnv1} = trans_pat(Ctx, Env, K, shadow),
             {NewV, NewEnv2} = trans_pat(Ctx, NewEnv1, V, shadow),
-            {{m_generate, to_loc(Ctx, Anno), NewK, NewV, NewExp}, NewEnv2};
+            {{K, to_loc(Ctx, Anno), NewK, NewV, NewExp}, NewEnv2};
         Exp -> % filter
             trans_exp(Ctx, Env, Exp)
     end.
@@ -859,8 +862,8 @@ trans_map_assoc(Ctx, Env, Assoc) ->
                     map_field_assoc -> map_field_opt;
                     map_field_exact -> map_field_req
                 end,
-            {{NewK, to_loc(Ctx, Anno), NewExpKey, NewExpVal}, Env2};
-        X -> errors:uncovered_case(?FILE, ?LINE, X)
+            {{NewK, to_loc(Ctx, Anno), NewExpKey, NewExpVal}, Env2}
+        % X -> errors:uncovered_case(?FILE, ?LINE, X) refinement on K
     end.
 
 -spec trans_record_fields(ctx(), tyenv(), [ast_erl:record_field()]) -> [ast:record_field()].
