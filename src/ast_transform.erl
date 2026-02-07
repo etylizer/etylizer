@@ -916,18 +916,22 @@ trans_qualifiers(Ctx, Env, Qs) ->
     -> {ast:qualifier(), varenv_local:t()}.
 trans_qualifier(Ctx, Env, Q) ->
     case Q of
-        {K, Anno, Pat, Exp} when (K == generate_strict orelse K == generate orelse K == b_generate) -> % generator "Pat <- Exp"
+         % generator patterns for lists and bitstrings Pat <- / <:- / <= / <:= Exp
+        {K, Anno, Pat, Exp} when 
+              (K == generate orelse K == generate_strict orelse K == b_generate orelse K == b_generate_strict) ->
             NewExp = trans_exp_noenv(Ctx, Env, Exp),
             {NewPat, NewEnv} = trans_pat(Ctx, Env, Pat, shadow),
             {{K, to_loc(Ctx, Anno), NewPat, NewExp}, NewEnv};
+         % map generate patterns  KeyPattern := ValuePattern <- / <:- MapExpression
+        {K, Anno, {map_field_exact, _Anno2, KeyPat, ValPat}, Exp} when (K == m_generate orelse K == m_generate_strict)->
+            NewExp = trans_exp_noenv(Ctx, Env, Exp),
+            {NewK, NewEnv1} = trans_pat(Ctx, Env, KeyPat, shadow),
+            {NewV, NewEnv2} = trans_pat(Ctx, NewEnv1, ValPat, shadow),
+            {{K, to_loc(Ctx, Anno), NewK, NewV, NewExp}, NewEnv2};
+        % zip generator
         {zip, Anno, Qs} -> 
             {NewQ, NewEnv} = trans_qualifiers(Ctx, Env, Qs),
             {{zip, to_loc(Ctx, Anno), NewQ}, NewEnv};
-        {m_generate, Anno, {map_field_exact, _Anno2, K, V}, Exp} ->
-            NewExp = trans_exp_noenv(Ctx, Env, Exp),
-            {NewK, NewEnv1} = trans_pat(Ctx, Env, K, shadow),
-            {NewV, NewEnv2} = trans_pat(Ctx, NewEnv1, V, shadow),
-            {{m_generate, to_loc(Ctx, Anno), NewK, NewV, NewExp}, NewEnv2};
         Exp -> % filter
             trans_exp(Ctx, Env, Exp)
     end.

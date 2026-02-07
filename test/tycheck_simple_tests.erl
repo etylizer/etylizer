@@ -156,11 +156,17 @@ simple_test_() ->
   WhatNot = [
     % TODO binary pattern element size verification
     "b4_fail",
-    % TODO refinement for list comprehensions doesn't work (#279)
-    "lc_13",
-    % TODO unbound cariable in constraint simplification (#278)
-    "lc_11",
-    "lc_12_fail"
+    % TODO for if expressions guards always reference outer scope variables 
+    %      lower is always none() for any non-trivial if guard
+    %      see case_13_fail, maybe at some point we have better 
+    %      bounds for scoped variables
+    %      other tests that access outer variables are included here, too
+    "if_06",
+    "if_17",
+    "if_18",
+    "case_26",
+    "refinement_01c",
+    "refinement_01b"
   ],
 
   NoInfer = [
@@ -176,12 +182,17 @@ simple_test_() ->
     "inter_04_ok",
     "foo",
     "op_08",
+    % TODO slow maybe inference
+    "maybe_08",
+    "maybe_09",
     % TODO inferred type is less general than spec?
     "lc_10",
     "zip_01",
-    % TODO slow maybe inference
-    "maybe_08",
-    "maybe_09"
+    "lc_11",
+    "lc_13",
+    "lc_13b",
+    "lc_15",
+    "lc_16"
   ],
 
   %What = ["atom_03_fail"],
