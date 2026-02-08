@@ -115,3 +115,7 @@ zip_01() ->
 zip_02_fail() ->
   [{X, Y} || X <- [1] && Y <- [4]].
 
+% #20
+-spec lc_15_fail(integer()) -> list().
+lc_15_fail(N) ->  [X || X <- N].
+

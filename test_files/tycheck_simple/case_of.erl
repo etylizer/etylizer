@@ -245,3 +245,10 @@ case_31() ->
     case U = ok of
         _ -> U
     end.
+
+-spec case_32(boolean()) -> ok | error.
+case_32(X) ->
+    case X of
+        true -> throw(ok);
+        false -> error
+    end.
