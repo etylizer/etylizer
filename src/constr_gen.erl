@@ -190,6 +190,62 @@ exp_constrs(Ctx, E, T) ->
             Top = {predef, any},
             {Cs, _CatchEnv} = exp_constrs(Ctx, CatchE, Top),
             {sets:add_element({csubty, mk_locs("result of catch", L), Top, T}, Cs), #{}};
+        {'try', L, Body, [], CatchClauses, AfterBody} ->
+            % 'of clauses' are always [] after AST transformation.
+
+            % discard env, no variable is safe after env
+            TryResultTy = fresh_tyvar(Ctx),
+            {TryBodyCs, _TryBodyEnv} = exps_constrs(Ctx, L, Body, TryResultTy),
+
+            % Process catch clauses
+            {CatchBodyList, CatchCs} =
+                case CatchClauses of
+                    [] -> {[], sets:new()};
+                    _ ->
+                        {CBList, CCs} =
+                            lists:foldl(
+                                fun(CatchClause, {AccBodyList, AccCs}) ->
+                                    {ThisCs, ThisBody, _ThisEnv} =
+                                        catch_clause_constrs(Ctx, CatchClause, T),
+                                    {AccBodyList ++ [ThisBody],
+                                     sets:union(ThisCs, AccCs)}
+                                end,
+                                {[], sets:new()},
+                                CatchClauses),
+                        {CBList, CCs}
+                end,
+
+            % after section, result is discarded
+            AfterCs = case AfterBody of
+                [] -> sets:new();
+                _ ->
+                    AfterTy = fresh_tyvar(Ctx),
+                    {ACs, _AfterEnv} = exps_constrs(Ctx, L, AfterBody, AfterTy),
+                    ACs
+            end,
+
+            % Try body result is one branch, catch clauses are other branches
+            % Try body is a branch that always succeeds (no guard)
+            TryResCs = utils:single({csubty, mk_locs("try body result", L), TryResultTy, T}),
+            TryBodyPayload = constr:mk_case_branch_payload(
+                {#{}, sets:new()},         % Guard (always true, no env)
+                {#{}, TryBodyCs},          % Body constraints
+                none,                      % No redundancy check
+                TryResCs),                 % Result constraint
+            TryBodyBranch = {ccase_branch, mk_locs("try body", L), TryBodyPayload},
+            AllBodyList = [TryBodyBranch | CatchBodyList],
+
+            AllCs = sets:union([TryBodyCs, CatchCs, AfterCs]),
+
+            % Result: create the ccase constraint
+            % Note: TryBodyEnv should NOT be wrapped around the ccase because:
+            % 1. exps_constrs already embeds the environment in TryBodyCs via internal cdef
+            % 2. Wrapping would make try body vars visible to catch clauses (wrong!)
+            % 3. Per Erlang rules, try body vars are unsafe in catch/after sections
+            ResultCs = sets:from_list([{ccase, mk_locs("try-catch", L), AllCs,
+                                       sets:new(), AllBodyList}]),
+
+            {ResultCs, #{}};
         {cons, L, Head, Tail} ->
             Alpha = fresh_tyvar(Ctx),
             {C1, _Env1} = exp_constrs(Ctx, Head, Alpha),
@@ -434,8 +490,6 @@ exp_constrs(Ctx, E, T) ->
                   Args),
             TupleC = {csubty, mk_locs("tuple constructor", L), {tuple, Tys}, T},
             {sets:add_element(TupleC, Cs), #{}};
-        {'try', L, _Exps, _CaseClauses, _CatchClauses, _AfterBody} ->
-            errors:unsupported(L, "try expression", []);
         {var, L, AnyRef} ->
             Msg = utils:sformat("var ~s", pretty:render(pretty:ref(AnyRef))),
             {utils:single({cvar, mk_locs(Msg, L), AnyRef, T}), #{}};
@@ -734,6 +788,83 @@ case_clause_constrs(Ctx, TyScrut, Scrut, ScrutEnv, NeedsUnmatchedCheck, LowersBe
     ConstrBody = {ccase_branch, mk_locs("case branch", L), Payload},
     AllCs = sets:union([BodyEnvCs, GuardEnvCs]),
     {BodyLower, BodyUpper, AllCs, ConstrBody, CompleteBodyEnv}.
+
+% Generates constraints for a catch clause in a try-catch expression.
+% Parameters:
+%   ctx(): context
+%   ast:catch_clause(): the catch clause
+%   ast:ty(): expected type from outer context
+% Result:
+%   constr:constrs(): constraints from the catch clause pattern and guards
+%   constr:constr_case_branch(): the body of the catch clause
+%   constr:constr_env(): environment from catch clause body (unsafe outside try-catch)
+-spec catch_clause_constrs(ctx(), ast:catch_clause(), ast:ty()) ->
+    {constr:constrs(), constr:constr_case_branch(), constr:constr_env()}.
+catch_clause_constrs(Ctx, {catch_clause, L, ExcType, Pat, Stack, Guards, Body}, ExpectedTy) ->
+    % Create environment from exception type, pattern, and stacktrace bindings
+    {PatCs, PatEnv0} = catch_clause_pat_env(Ctx, L, ExcType, Pat, Stack),
+
+    % Apply guards to refine the environment (guards only refine, no constraints)
+    {GuardEnv, _GuardStatus} = guard_seq_env(Guards),
+    PatEnv = intersect_envs(PatEnv0, GuardEnv),
+
+    % Generate constraints for body in the refined environment
+    Beta = fresh_tyvar(Ctx),
+    InnerCs0 = sets:union(PatCs, sets:new([{version, 2}])),
+    {BodyCs, BodySafeEnv} = exps_constrs(Ctx, L, Body, Beta),
+    InnerCs = sets:union(BodyCs, InnerCs0),
+
+    % Result type constraint
+    ResultLocs = mk_locs("catch clause result", L),
+    ResultCs = utils:single({csubty, ResultLocs, Beta, ExpectedTy}),
+
+    % Create branch payload with pattern environment
+    % The pattern environment needs to be wrapped in cdef
+    BodyWithEnv = sets:from_list([{cdef, mk_locs("catch clause", L), PatEnv, InnerCs}], [{version, 2}]),
+    Payload = constr:mk_case_branch_payload(
+        {GuardEnv, sets:new()},  % Guard constraints (guards don't generate constraints)
+        {BodySafeEnv, BodyWithEnv},  % Body constraints with env
+        none,                     % No redundancy check for catch
+        ResultCs),                % Result constraint
+    ConstrBody = {ccase_branch, mk_locs("catch clause", L), Payload},
+
+    % Return pattern constraints (like case_clause_constrs returns pattern/guard constraints)
+    {PatCs, ConstrBody, BodySafeEnv}.
+
+% Helper for catch_clause_constrs: generate environment from exception pattern
+-spec catch_clause_pat_env(ctx(), ast:loc(), ast:exc_type_pat(), ast:pat(), ast:stacktrace_pat()) ->
+    {constr:constrs(), constr:constr_env()}.
+catch_clause_pat_env(Ctx, L, ExcType, Pat, Stack) ->
+    % Exception type can be a variable, wildcard, or atom (throw/error/exit)
+    ExcTypeEnv = case ExcType of
+        {var, _VarLoc, {local_bind, Name}} ->
+            % Exception type is bound to a variable - it's an atom (throw/error/exit)
+            % Use explicit union type since there's no predef_alias for exception classes
+            ExcTypeAtom = {union, [{singleton, throw}, {singleton, error}, {singleton, exit}]},
+            #{{local_ref, Name} => ExcTypeAtom};
+        _ ->
+            % Wildcard or atom - no binding
+            #{}
+    end,
+
+    % Stacktrace can be a variable or wildcard
+    StackEnv = case Stack of
+        {var, _StackLoc, {local_bind, StackName}} ->
+            % Stacktrace is bound to a variable - type is any() (list of stack frames)
+            StackTy = {predef, any},
+            #{{local_ref, StackName} => StackTy};
+        _ ->
+            % Wildcard - no binding
+            #{}
+    end,
+
+    % Pattern binds the exception value - we use `any()` as exception value type
+    ExceptionValueTy = {predef, any},
+    {PatCs, PatEnv} = pat_env(Ctx, L, ExceptionValueTy, Pat),
+
+    % Merge all environments
+    CombinedEnv = maps:merge(maps:merge(ExcTypeEnv, StackEnv), PatEnv),
+    {PatCs, CombinedEnv}.
 
 % helper function for case_clause_constrs
 -spec case_clause_env(ctx(), ast:loc(), ast:ty(), ast:exp(), ast:pat(), [ast:guard()]) ->

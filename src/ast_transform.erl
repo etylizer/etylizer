@@ -614,11 +614,26 @@ trans_exp(Ctx, Env, Exp) ->
             {NewArgs, NewEnv} = trans_exps(Ctx, Env, Args),
             {{tuple, to_loc(Ctx, Anno), NewArgs}, NewEnv};
         {'try', Anno, Body, CaseClauses, CatchClauses, AfterBody} ->
-            {NewBody, Env1} = trans_exp_seq(Ctx, Env, Body),
-            {NewCaseClauses, _} = trans_case_clauses(Ctx, Env1, CaseClauses),
+            % transform try-of into try without an of section to simplify constraint generation
+            RewrittenBody = case CaseClauses of
+                [] -> Body; % no of section
+                _ ->
+                    {InitExprs, LastExpr} = case Body of
+                        [] -> {[], {atom, Anno, undefined}}; % empty body edge case
+                        [Single] -> {[], Single}; % single expression
+                        _ -> {lists:droplast(Body), lists:last(Body)}
+                    end,
+                    CaseExp = {'case', Anno, LastExpr, CaseClauses},
+                    % wrap in block: begin InitExprs..., case LastExpr of Clauses end end
+                    [{block, Anno, InitExprs ++ [CaseExp]}]
+            end,
+
+            {TransformedBody, _UnusedEnv} = trans_exp_seq(Ctx, Env, RewrittenBody),
+            % catch clauses use original Env  since try body vars are unsafe
             NewCatchClauses = trans_catch_clauses(Ctx, Env, CatchClauses),
             NewAfterBody = trans_exp_seq_noenv(Ctx, Env, AfterBody),
-            {{'try', to_loc(Ctx, Anno), NewBody, NewCaseClauses, NewCatchClauses, NewAfterBody},
+            % cases field is always empty after transformation
+            {{'try', to_loc(Ctx, Anno), TransformedBody, [], NewCatchClauses, NewAfterBody},
              Env};
         {var, Anno, Name} ->
             Loc = to_loc(Ctx, Anno),
