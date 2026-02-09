@@ -1515,6 +1515,7 @@ var_test_env(FunExp, X, RestArgs) ->
                             is_atom -> {#{XRef => {predef, atom}}, safe};
                             is_binary -> {#{XRef => {predef_alias, binary}}, safe};
                             is_bitstring -> {#{XRef => {predef_alias, bitstring}}, safe};
+                            is_boolean -> {#{XRef => {predef_alias, boolean}}, safe};
                             is_function -> {#{XRef => {predef_alias, function}}, safe};
                             is_integer -> {#{XRef => {predef, integer}}, safe};
                             is_float -> {#{XRef => {predef, float}}, safe};

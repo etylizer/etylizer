@@ -382,12 +382,22 @@ espresso_split_line_into_elements_and_result(LineStr) ->
 
 -spec '_minimize_espresso'(string()) -> string().
 '_minimize_espresso'(StrInput) ->
-    % TODO IMPORTANT make sure binary is available! wasted 2 hours searching for a non-issue
-    file:make_dir("/tmp/etylizer"),
-    file:write_file("/tmp/etylizer/espresso_input.pla", StrInput),
-    % T0 = os:system_time(millisecond),
-    os:cmd(etylizer_main:get_espresso_binary() ++ " < /tmp/etylizer/espresso_input.pla").
-% file:delete("/tmp/etylizer/espresso_input.pla"),
+    Path = espresso_bin:get_path(),
+    Port = open_port({spawn_executable, Path}, [use_stdio, exit_status, stream, stderr_to_stdout]),
+    % Append .e marker so espresso stops reading without needing EOF on stdin
+    port_command(Port, ?assert_type([StrInput, "\n.e\n"], iodata())),
+    '_collect_port_output'(Port, []).
+
+-spec '_collect_port_output'(port(), iolist()) -> string().
+'_collect_port_output'(Port, Acc) ->
+    receive
+        {Port, {data, Data}} ->
+            '_collect_port_output'(Port, [Acc, Data]);
+        {Port, {exit_status, 0}} ->
+            lists:flatten(Acc);
+        {Port, {exit_status, Status}} ->
+            error({espresso_exit, Status})
+    end.
 
 -spec replace_index(string(), [A], Line, #{A => integer()}) -> Line.
 replace_index(Val, Term, CurrentLine, VariableIndices) ->
