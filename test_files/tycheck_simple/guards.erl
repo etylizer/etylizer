@@ -46,6 +46,9 @@ guard_09_fail(F) when is_function(F, 2) -> ok.
 -spec guard_10_fail(fun((term()) -> term())) -> ok.
 guard_10_fail(F) when is_function(F, 2) -> ok.
 
+-spec guard_11(boolean()) -> integer().
+guard_11(Boolean) when is_boolean(Boolean) -> 0.
+
 -spec refinement_01(integer()) -> 1.
 refinement_01(X) ->
     case X of
