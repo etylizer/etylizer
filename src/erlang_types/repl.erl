@@ -47,20 +47,8 @@
 -define(PRINT_VERSION, io:format("erlang_types REPL v0.0.2-rc\n\r" ++ color("help;;", yellow) ++ " for help\n\r")).
 
 
-% TODO consolidate binary in etylizer_main
--spec get_espresso_binary() -> string().
-get_espresso_binary() ->
-    Path = case (catch persistent_term:get(espresso_root)) of
-        {_, _} -> filename:join([filename:dirname(escript:script_name()), "espresso"]); % default
-        empty -> filename:join([filename:dirname(escript:script_name()), "espresso"]); % default
-        Root -> filename:join([?assert_type(Root, string()), "espresso"]) % should be a string
-    end,
-    ?assert_pattern({ok, _}, file:read_file_info(Path)),
-    ?assert_type(Path, string()). % FIXME Path should be a binary, but filename:join may return something else -> overlay
-
 -spec main(_) -> no_return().
 main(_) ->
-    ?assert_pattern({ok, _}, file:read_file_info(get_espresso_binary())),
     % initialize erlang_types global state
     global_state:init(),
     % is stdin enabled or not?
