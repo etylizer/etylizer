@@ -385,7 +385,7 @@ espresso_split_line_into_elements_and_result(LineStr) ->
     Path = espresso_bin:get_path(),
     Port = open_port({spawn_executable, Path}, [use_stdio, exit_status, stream, stderr_to_stdout]),
     % Append .e marker so espresso stops reading without needing EOF on stdin
-    port_command(Port, [StrInput, "\n.e\n"]),
+    port_command(Port, ?assert_type([StrInput, "\n.e\n"], iodata())),
     '_collect_port_output'(Port, []).
 
 -spec '_collect_port_output'(port(), iolist()) -> string().
