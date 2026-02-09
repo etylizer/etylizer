@@ -17,7 +17,6 @@ build:
 
 build-repl:
 	$(REBAR) as repl escriptize
-	cp _build/espresso _build/repl/bin/espresso
 
 clean:
 	$(REBAR) clean
