@@ -85,6 +85,9 @@ guard_outer_refine_01(X, Y) ->
         _ -> 0
     end.
 
+-spec guard_11(boolean()) -> integer().
+guard_11(Boolean) when is_boolean(Boolean) -> 0.
+
 -spec refinement_01(integer()) -> 1.
 refinement_01(X) ->
     case X of
