@@ -7,7 +7,7 @@
 
 -export([
     quit/3, quit/2,
-    everywhere/2, everything/2,
+    everywhere/2, everywhere_acc/3, everything/2,
     error/2,
     is_string/1, is_char/1,
     sformat/2, sformat/3, sformat/4,  sformat/6, sformat/5, sformat/7, sformat1/2,
@@ -112,6 +112,28 @@ everywhere(F, T) ->
             end;
         {ok, X} -> X;
         {rec, X} -> everywhere(F, X)
+    end.
+
+% Like everywhere/2 but threads an accumulator through the traversal.
+% - If the function returns {ok, X, Acc1}, the term is replaced by X (no further recursion).
+% - If the function returns {error, Acc1}, the term is traversed recursively.
+-spec everywhere_acc(fun((term(), Acc) -> {ok, term(), Acc} | {error, Acc}), T, Acc) -> {T, Acc}.
+everywhere_acc(F, T, Acc) ->
+    case F(T, Acc) of
+        {error, Acc1} ->
+            case T of
+                X when is_list(X) ->
+                    {NewList, Acc2} = lists:mapfoldl(fun(E, A) -> everywhere_acc(F, E, A) end, Acc1, X),
+                    {NewList, Acc2};
+                X when is_tuple(X) ->
+                    {NewList, Acc2} = lists:mapfoldl(fun(E, A) -> everywhere_acc(F, E, A) end, Acc1, tuple_to_list(X)),
+                    {list_to_tuple(NewList), Acc2};
+                X when is_map(X) ->
+                    {NewList, Acc2} = lists:mapfoldl(fun(E, A) -> everywhere_acc(F, E, A) end, Acc1, maps:to_list(X)),
+                    {maps:from_list(NewList), Acc2};
+                X -> {X, Acc1}
+            end;
+        {ok, X, Acc1} -> {X, Acc1}
     end.
 
 % Generically transforms the term given and collects all results T

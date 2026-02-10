@@ -3,100 +3,83 @@
 -include("log.hrl").
 
 -export([
-    init/0,
-    clean/0,
-    preprocess_constrs/1,
-    postprocess/4,
+    preprocess_constrs/2,
+    postprocess/5,
     subst_ty/3
 ]).
 
 -ifdef(TEST).
 -export([
   collect_pos_neg_tyvars/2,
-  replace_dynamic/1
+  replace_dynamic/2
 ]).
 -endif.
 
--define(VAR_ETS, framevariable_counter_ets_table).
--define(ALL_ETS, [?VAR_ETS]).
-
-
--spec init() -> _.
-init() ->
-  case ets:whereis(?VAR_ETS) of
-      undefined -> 
-        [ets:new(T, [public, set, named_table]) || T <- ?ALL_ETS],
-        ets:insert(?VAR_ETS, {variable_id, 0});
-      _ -> ok
-  end.
-
--spec clean() -> _.
-clean() ->
-  case ets:whereis(?VAR_ETS) of
-      undefined -> ok;
-      _ -> 
-        [ets:delete(T) || T <- ?ALL_ETS]
-  end.
-
-
--spec fresh_typevar_name() -> ast:ty_varname().
-fresh_typevar_name() ->
-    NewId = ets:update_counter(?VAR_ETS, variable_id, {2,1}),
+-spec fresh_typevar_name(non_neg_integer()) -> {ast:ty_varname(), non_neg_integer()}.
+fresh_typevar_name(Counter) ->
+    NewId = Counter + 1,
     S = utils:sformat("$post_%~w", NewId),
-    list_to_atom(S).
+    {list_to_atom(S), NewId}.
 
--spec fresh_typevar() -> ast:ty_var().
-fresh_typevar() ->
-    X = fresh_typevar_name(),
-    {var, X}.
+-spec fresh_typevar(non_neg_integer()) -> {ast:ty_var(), non_neg_integer()}.
+fresh_typevar(Counter) ->
+    {Name, C1} = fresh_typevar_name(Counter),
+    {{var, Name}, C1}.
 
--spec fresh_framevar_name() -> ast:ty_varname().
-fresh_framevar_name() ->
-    NewId = ets:update_counter(?VAR_ETS, variable_id, {2,1}),
+-spec fresh_framevar_name(non_neg_integer()) -> {ast:ty_varname(), non_neg_integer()}.
+fresh_framevar_name(Counter) ->
+    NewId = Counter + 1,
     S = utils:sformat("%~w", NewId),
-    list_to_atom(S).
+    {list_to_atom(S), NewId}.
 
--spec fresh_framevar() -> ast:ty_var().
-fresh_framevar() ->
-    X = fresh_framevar_name(),
-    {var, X}.
+-spec fresh_framevar(non_neg_integer()) -> {ast:ty_var(), non_neg_integer()}.
+fresh_framevar(Counter) ->
+    {Name, C1} = fresh_framevar_name(Counter),
+    {{var, Name}, C1}.
 
 
 % When we see a gradual type with {predef, dynamic}
 % we replace each dynamic with a fresh frame variable
--spec preprocess_constrs(constr:collected_constrs()) -> {constr:subty_constrs(), constr:subty_constrs(), constr:mater_constrs(), subst:base_subst()}.
-preprocess_constrs(Constrs) ->
-    {SubtyConstrs, Maters} = sets:fold(
+-spec preprocess_constrs(constr:collected_constrs(), non_neg_integer()) ->
+    {constr:subty_constrs(), constr:subty_constrs(), constr:mater_constrs(), subst:base_subst(), non_neg_integer()}.
+preprocess_constrs(Constrs, Counter0) ->
+    {SubtyConstrs, Maters, Counter1} = sets:fold(
         fun
-            ({scsubty, Loc, T1, T2}, {Cs, Maters}) ->
-              {sets:add_element({scsubty, Loc, replace_dynamic(T1), replace_dynamic(T2)}, Cs), Maters};
-            ({scmater, Loc, T1, T2}, {Cs, Maters}) ->
-              {Cs, sets:add_element({scmater, Loc, replace_dynamic(T1), T2}, Maters)};
-            (Constr, {Cs, Maters}) ->
-              {sets:add_element(Constr, Cs), Maters}
+            ({scsubty, Loc, T1, T2}, {Cs, Ms, C0}) ->
+              {T1b, C1} = replace_dynamic(T1, C0),
+              {T2b, C2} = replace_dynamic(T2, C1),
+              {sets:add_element({scsubty, Loc, T1b, T2b}, Cs), Ms, C2};
+            ({scmater, Loc, T1, T2}, {Cs, Ms, C0}) ->
+              {T1b, C1} = replace_dynamic(T1, C0),
+              {Cs, sets:add_element({scmater, Loc, T1b, T2}, Ms), C1};
+            (Constr, {Cs, Ms, C0}) ->
+              {sets:add_element(Constr, Cs), Ms, C0}
         end,
-        {sets:new([{version,2}]), sets:new([{version,2}])},
+        {sets:new([{version,2}]), sets:new([{version,2}]), Counter0},
         Constrs),
-    
+
     UnificationSubst = maps:from_list(lists:map(fun({scmater, _, Tau, Alpha}) -> {Alpha, Tau} end, sets:to_list(Maters))),
-    InlinedConstrs = sets:map(fun(Constr) -> 
+    InlinedConstrs = sets:map(fun(Constr) ->
       case Constr of
         {scsubty, _Loc, T1, T2} -> {scsubty, _Loc, subst_ty(T1, UnificationSubst, no_discrimination), subst_ty(T2, UnificationSubst, no_discrimination)};
         Other -> Other
       end
     end, SubtyConstrs),
-    {InlinedConstrs, SubtyConstrs, Maters, UnificationSubst}.
+    {InlinedConstrs, SubtyConstrs, Maters, UnificationSubst, Counter1}.
 
--spec replace_dynamic(ast:ty()) -> ast:ty().
-replace_dynamic(Ty) -> 
-  utils:everywhere(fun
-    ({predef, dynamic}) -> {ok, fresh_framevar()};
-    (_) -> error
-  end, Ty).
+-spec replace_dynamic(ast:ty(), non_neg_integer()) -> {ast:ty(), non_neg_integer()}.
+replace_dynamic(Ty, Counter) ->
+  utils:everywhere_acc(fun
+    ({predef, dynamic}, C) ->
+        {Var, C1} = fresh_framevar(C),
+        {ok, Var, C1};
+    (_, C) -> {error, C}
+  end, Ty, Counter).
 
 % This postprocess step refers to the work of Petrucciani in his PhD thesis (chapter 10.4.2)
--spec postprocess(subst:t(), constr:subty_constrs(), constr:subty_constrs(), symtab:t()) -> subst:t().
-postprocess({tally_subst, S, Fixed}, Constrs, Maters, SymTab) ->
+-spec postprocess(subst:t(), constr:subty_constrs(), constr:subty_constrs(), symtab:t(), non_neg_integer()) ->
+    {subst:t(), non_neg_integer()}.
+postprocess({tally_subst, S, Fixed}, Constrs, Maters, SymTab, Counter0) ->
     ?LOG_DEBUG("Postprocessing tally substitution:~nSubstitution:~n~s~nConstraints:~n~s~nMaterialization constraints:~n~s",
         pretty:render_subst(S),
         pretty:render_constr(Constrs),
@@ -155,19 +138,21 @@ postprocess({tally_subst, S, Fixed}, Constrs, Maters, SymTab) ->
     Alpha = sets:subtract(Var_D, sets:union(Dom_Sigma, A)),
 
     % Step 3e): Create fresh alpha and X
-    X_Subst = sets:fold(
-      fun(Framevar, Acc) ->
-        maps:put(Framevar, fresh_typevar(), Acc)
+    {X_Subst, Counter1} = sets:fold(
+      fun(Framevar, {Acc, C}) ->
+        {FreshVar, C1} = fresh_typevar(C),
+        {maps:put(Framevar, FreshVar, Acc), C1}
       end,
-      #{},
+      {#{}, Counter0},
       X
     ),
 
-    Alpha_Subst = sets:fold(
-      fun(Typevar, Acc) ->
-        maps:put(Typevar, fresh_framevar(), Acc)
+    {Alpha_Subst, Counter2} = sets:fold(
+      fun(Typevar, {Acc, C}) ->
+        {FreshVar, C1} = fresh_framevar(C),
+        {maps:put(Typevar, FreshVar, Acc), C1}
       end,
-      #{},
+      {#{}, Counter1},
       Alpha
     ),
 
@@ -176,7 +161,7 @@ postprocess({tally_subst, S, Fixed}, Constrs, Maters, SymTab) ->
 
     % compose sigma2 and sigma
     Composition = compose({tally_subst, S, Fixed}, Sigma2),
-    Composition.
+    {Composition, Counter2}.
 
 % Returns the set of variable names appearing in both positive and negative positions in Ty.
 % Delegates to subst:collect_vars/4 for exhaustive AST traversal.

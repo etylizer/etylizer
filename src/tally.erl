@@ -40,8 +40,8 @@ tally(SymTab, Constraints, FixedVars, Mode) ->
   % erlang_types has a global symtab
   ty_parser:set_symtab(SymTab),
 
-  gradual_utils:init(),
-  {InlinedConstrs, SubtyConstrs, Maters, UnificationSubst} = gradual_utils:preprocess_constrs(Constraints),
+  Counter0 = 0,
+  {InlinedConstrs, SubtyConstrs, Maters, UnificationSubst, Counter1} = gradual_utils:preprocess_constrs(Constraints, Counter0),
   
   InternalConstraints = 
     lists:map( fun ({scsubty, _, S, T}) -> {ty_parser:parse(S), ty_parser:parse(T)} end,
@@ -66,16 +66,18 @@ tally(SymTab, Constraints, FixedVars, Mode) ->
                               || {{var, _, VarName, _}, Ty} <- maps:to_list(Subst)])) % FIXME depends on internal ty_variable representation
               || Subst <- InternalResult],
               
-              lists:map(
-                fun({tally_subst, S, Fixed}) ->
-                  MaterSubst = maps:fold(fun(Var, Ty, Acc) ->
-                      maps:put(Var, gradual_utils:subst_ty(Ty, S, no_discrimination), Acc)
+              {_, Results} = lists:foldl(
+                fun({tally_subst, S, Fixed}, {C, Acc}) ->
+                  MaterSubst = maps:fold(fun(Var, Ty, MAcc) ->
+                      maps:put(Var, gradual_utils:subst_ty(Ty, S, no_discrimination), MAcc)
                     end,
                     #{}, UnificationSubst),
-                  gradual_utils:postprocess({tally_subst, maps:merge(S, MaterSubst), Fixed}, SubtyConstrs, Maters, SymTab)
+                  {Result, C1} = gradual_utils:postprocess({tally_subst, maps:merge(S, MaterSubst), Fixed}, SubtyConstrs, Maters, SymTab, C),
+                  {C1, [Result | Acc]}
                 end,
-                Sigmas
-              )
+                {Counter1, []},
+                Sigmas),
+              lists:reverse(Results)
       end;
     satisfiable ->
       InternalResult = etally:is_tally_satisfiable(InternalConstraints, MonomorphicTallyVariables),
@@ -85,7 +87,6 @@ tally(SymTab, Constraints, FixedVars, Mode) ->
         true -> {true, subst:empty()}
       end
   end,
-  gradual_utils:clean(),
   Res.
 
 

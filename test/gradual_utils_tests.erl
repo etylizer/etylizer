@@ -111,37 +111,30 @@ subst_fun_full_recursive_test() ->
     ).
 
 
-%% replace_dynamic/1 tests
+%% replace_dynamic/2 tests
 
 replace_dynamic_simple_test() ->
-    gradual_utils:clean(),
-    gradual_utils:init(),
-    R = gradual_utils:replace_dynamic({predef, dynamic}),
+    {R, _} = gradual_utils:replace_dynamic({predef, dynamic}, 0),
     ?assertMatch({var, _}, R),
     {var, Name} = R,
     %% frame variable names start with "%"
     ?assertNotEqual(nomatch, string:prefix(atom_to_list(Name), "%")).
 
 replace_dynamic_var_passthrough_test() ->
-    gradual_utils:clean(),
-    gradual_utils:init(),
     Ty = {var, '$A'},
-    ?assertEqual(Ty, gradual_utils:replace_dynamic(Ty)).
+    {R, _} = gradual_utils:replace_dynamic(Ty, 0),
+    ?assertEqual(Ty, R).
 
 replace_dynamic_union_test() ->
-    gradual_utils:clean(),
-    gradual_utils:init(),
     Ty = {union, [ {predef, dynamic}, {var, '$B'} ]},
-    R = gradual_utils:replace_dynamic(Ty),
+    {R, _} = gradual_utils:replace_dynamic(Ty, 0),
     ?assertMatch({union, [ {var, _}, {var, '$B'} ]}, R),
     {union, [ {var, Name}, {var, '$B'} ]} = R,
     ?assertNotEqual(nomatch, string:prefix(atom_to_list(Name), "%")).
 
 replace_dynamic_intersection_distinct_test() ->
-    gradual_utils:clean(),
-    gradual_utils:init(),
     Ty = {intersection, [ {predef, dynamic}, {predef, dynamic} ]},
-    R = gradual_utils:replace_dynamic(Ty),
+    {R, _} = gradual_utils:replace_dynamic(Ty, 0),
     ?assertMatch({intersection, [ {var, _}, {var, _} ]}, R),
     {intersection, [ {var, N1}, {var, N2} ]} = R,
     ?assertNotEqual(nomatch, string:prefix(atom_to_list(N1), "%")),
@@ -150,10 +143,8 @@ replace_dynamic_intersection_distinct_test() ->
     ?assertNotEqual(N1, N2).
 
 replace_dynamic_fun_full_test() ->
-    gradual_utils:clean(),
-    gradual_utils:init(),
     Ty = {fun_full, [ {predef, dynamic}, {var, '$X'} ], {union, [ {predef, dynamic}, {var, '$Y'} ]}},
-    R = gradual_utils:replace_dynamic(Ty),
+    {R, _} = gradual_utils:replace_dynamic(Ty, 0),
     ?assertMatch(
         {fun_full, [ {var, _}, {var, '$X'} ], {union, [ {var, _}, {var, '$Y'} ]}},
         R
@@ -165,17 +156,14 @@ replace_dynamic_fun_full_test() ->
     ?assertNotEqual(A1, R1).
 
 replace_dynamic_list_test() ->
-    gradual_utils:clean(),
-    gradual_utils:init(),
     Ty = {list, {predef, dynamic}},
-    R = gradual_utils:replace_dynamic(Ty),
+    {R, _} = gradual_utils:replace_dynamic(Ty, 0),
     ?assertMatch({list, {var, _}}, R),
     {list, {var, Name}} = R,
     ?assertNotEqual(nomatch, string:prefix(atom_to_list(Name), "%")).
 
 replace_dynamic_non_dynamic_passthrough_test() ->
-    gradual_utils:clean(),
-    gradual_utils:init(),
     Ty = {predef, integer},
-    ?assertEqual(Ty, gradual_utils:replace_dynamic(Ty)).
+    {R, _} = gradual_utils:replace_dynamic(Ty, 0),
+    ?assertEqual(Ty, R).
 
