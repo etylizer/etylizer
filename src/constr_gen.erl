@@ -381,10 +381,10 @@ exp_constrs(Ctx, E, T) ->
                      [{cop, mk_locs(MsgTy, L), Op, 1, {fun_full, [Alpha], Beta}},
                       {csubty, mk_locs(MsgRes, L), Beta, T}], [{version, 2}]),
             {sets:union(ArgCs, OpCs), ArgEnv};
-        {'receive', L, _CaseClauses} ->
-            errors:unsupported(L, "receive expression", []);
-        {receive_after, L, _CauseClauses, _TimeoutExp, _Body} ->
-            errors:unsupported(L, "receive_after expression", []);
+        {'receive', L, CaseClauses} ->
+            receive_constrs(Ctx, L, CaseClauses, T);
+        {receive_after, L, CaseClauses, TimeoutExp, AfterBody} ->
+            receive_after_constrs(Ctx, L, CaseClauses, TimeoutExp, AfterBody, T);
         {record_create, L, Name, GivenFields} ->
             {_, DefFields} = symtab:lookup_record(Name, L, Ctx#ctx.symtab),
             VarFields =
@@ -698,6 +698,65 @@ var_as_global_ref({var, _, Ref}) ->
 
 -spec ty_without(ast:ty(), ast:ty()) -> ast:ty().
 ty_without(T1, T2) -> ast_lib:mk_intersection([T1, ast_lib:mk_negation(T2)]).
+
+% Generates constraints for a receive expression.
+% Pattern variables are bound to dynamic() since we don't know message types.
+% Guards override dynamic with specific types (e.g., is_integer(X) makes X :: integer()).
+-spec receive_constrs(ctx(), ast:loc(), [ast:case_clause()], ast:ty()) ->
+    {constr:constrs(), constr:constr_env()}.
+receive_constrs(Ctx, _L, CaseClauses, T) ->
+    ClauseCs = lists:map(
+        fun(Clause) -> receive_clause_constrs(Ctx, Clause, T) end,
+        CaseClauses),
+    {sets:union(ClauseCs), #{}}.
+
+% Generates constraints for a receive...after expression.
+% Combines receive clause constraints with the after body constraints.
+-spec receive_after_constrs(ctx(), ast:loc(), [ast:case_clause()], ast:exp(), [ast:exp()], ast:ty()) ->
+    {constr:constrs(), constr:constr_env()}.
+receive_after_constrs(Ctx, L, CaseClauses, TimeoutExp, AfterBody, T) ->
+    % Generate constraints for timeout expression
+    {TimeoutCs, _TimeoutEnv} = exp_constrs(Ctx, TimeoutExp, {union, [{predef, integer}, {singleton, infinity}]}),
+    % Generate constraints for the after body
+    Beta = fresh_tyvar(Ctx),
+    {AfterCs, _AfterEnv} = exps_constrs(Ctx, L, AfterBody, Beta),
+    AfterResultCs = utils:single({csubty, mk_locs("receive after result", L), Beta, T}),
+    % Generate constraints for receive clauses
+    ClauseCs = lists:map(
+        fun(Clause) -> receive_clause_constrs(Ctx, Clause, T) end,
+        CaseClauses),
+    {sets:union([TimeoutCs, AfterCs, AfterResultCs | ClauseCs]), #{}}.
+
+% Generates constraints for a single receive clause.
+% Pattern variables get type dynamic(). Guards override with specific types.
+-spec receive_clause_constrs(ctx(), ast:case_clause(), ast:ty()) -> constr:constrs().
+receive_clause_constrs(Ctx, {case_clause, L, Pat, Guards, Exps}, T) ->
+    % Bind pattern variables to dynamic
+    BoundVars = bound_vars_pat(Pat),
+    DynamicPatEnv = sets:fold(
+        fun(V, Acc) -> maps:put({local_ref, V}, {predef, dynamic}, Acc) end,
+        #{},
+        BoundVars),
+    % Guard environment may refine variable types
+    {GuardEnv, _} = guard_seq_env(Guards),
+    % TODO think about why we can't intersect with dynamic() here
+    %      recv_05_fail won't fail if we do
+    VarEnv = maps:merge(DynamicPatEnv, GuardEnv),
+    % Generate guard constraints to evaluate to boolean()
+    GuardCs = sets:union(
+        lists:map(
+            fun(Guard) ->
+                {Cs, _} = exps_constrs(Ctx, L, Guard, {predef_alias, boolean}),
+                Cs
+            end,
+            Guards)),
+    % Generate body constraints
+    Beta = fresh_tyvar(Ctx),
+    {BodyCs, _BodyEnv} = exps_constrs(Ctx, L, Exps, Beta),
+    ResultCs = utils:single({csubty, mk_locs("receive clause result", L), Beta, T}),
+    % Wrap in cdef with variable bindings
+    InnerCs = sets:union([GuardCs, BodyCs, ResultCs]),
+    utils:single({cdef, mk_locs("receive clause", L), VarEnv, InnerCs}).
 
 -spec needs_unmatched_check(list(ast:case_clause())) -> boolean().
 needs_unmatched_check(Clauses) ->
