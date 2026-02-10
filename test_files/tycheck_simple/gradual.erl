@@ -35,13 +35,13 @@ fun_up2(X) -> X.
     fun((integer(), dynamic(), float()) -> {dynamic(), integer()}).
 fun_mixed(X) -> X.
 
--spec fun_mixed_fail(fun((integer(), string(), dynamic()) -> {atom(), dynamic()})) ->
-    fun((integer(), dynamic(), float()) -> {float(), integer()}).
-fun_mixed_fail(X) -> X.
-
--spec fun_mixed2_fail(fun((integer(), string(), dynamic()) -> {atom(), dynamic()})) ->
+-spec fun_mixed2(fun((integer(), string(), dynamic()) -> {atom(), dynamic()})) ->
     fun((atom(), dynamic(), float()) -> {dynamic(), integer()}).
-fun_mixed2_fail(X) -> X.
+fun_mixed2(X) -> X.
+
+-spec fun_mixed3(fun((integer(), string(), dynamic()) -> {atom(), dynamic()})) ->
+    fun((integer(), dynamic(), float()) -> {float(), integer()}).
+fun_mixed3(X) -> X.
 
 -spec list_down(list(dynamic())) -> list(integer()).
 list_down(X) -> X.
@@ -52,8 +52,8 @@ list_up(X) -> X.
 -spec tuple_down({integer(), dynamic(), atom()}) -> {integer(), string(), atom()}.
 tuple_down(X) -> X.
 
--spec tuple_down_fail({integer(), dynamic(), atom()}) -> {integer(), string(), float()}.
-tuple_down_fail(X) -> X.
+-spec tuple_down2({integer(), dynamic(), atom()}) -> {integer(), string(), float()}.
+tuple_down2(X) -> X.
 
 -spec tuple_up({integer(), string(), atom()}) -> {integer(), dynamic(), atom()}.
 tuple_up(X) -> X.
@@ -64,5 +64,5 @@ tuple_up_fail(X) -> X.
 -spec tuple_up_down({dynamic(), string(), atom()}) -> {integer(), dynamic(), atom()}.
 tuple_up_down(X) -> X.
 
--spec tuple_up_down_fail({dynamic(), string(), atom()}) -> {integer(), dynamic(), float()}.
-tuple_up_down_fail(X) -> X.
+-spec tuple_up_down2({dynamic(), string(), atom()}) -> {integer(), dynamic(), float()}.
+tuple_up_down2(X) -> X.

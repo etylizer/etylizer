@@ -14,7 +14,7 @@
 
 -type constr_blocks() :: list(constr_block()).
 
--type constr_block() :: {constr_error_kind(), ast:loc(), string(), constr:subty_constrs()}.
+-type constr_block() :: {constr_error_kind(), ast:loc(), string(), constr:collected_constrs()}.
 
 -spec loc_of_block(constr_block()) -> ast:loc().
 loc_of_block({_, L, _, _}) -> L.

@@ -67,7 +67,7 @@ simp_constr(Ctx, C) ->
             Loc = loc(Locs),
             sets:from_list([
                 {scmater, Loc, fresh_ty_scheme(Ctx, PolyTy), Alpha}
-            ], [{version,2}]);
+            ]);
         {cop, Locs, OpName, OpArity, T} ->
             PolyTy = symtab:lookup_op(OpName, OpArity, loc(Locs), Ctx#ctx.symtab),
             utils:single({scsubty, loc(Locs), fresh_ty_scheme(Ctx, PolyTy), T});
