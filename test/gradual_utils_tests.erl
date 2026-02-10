@@ -114,27 +114,31 @@ subst_fun_full_recursive_test() ->
 %% replace_dynamic/2 tests
 
 replace_dynamic_simple_test() ->
-    {R, _} = gradual_utils:replace_dynamic({predef, dynamic}, 0),
+    Ctx = gradual_utils:new_ctx(),
+    R = gradual_utils:replace_dynamic({predef, dynamic}, Ctx),
     ?assertMatch({var, _}, R),
     {var, Name} = R,
     %% frame variable names start with "%"
     ?assertNotEqual(nomatch, string:prefix(atom_to_list(Name), "%")).
 
 replace_dynamic_var_passthrough_test() ->
+    Ctx = gradual_utils:new_ctx(),
     Ty = {var, '$A'},
-    {R, _} = gradual_utils:replace_dynamic(Ty, 0),
+    R = gradual_utils:replace_dynamic(Ty, Ctx),
     ?assertEqual(Ty, R).
 
 replace_dynamic_union_test() ->
+    Ctx = gradual_utils:new_ctx(),
     Ty = {union, [ {predef, dynamic}, {var, '$B'} ]},
-    {R, _} = gradual_utils:replace_dynamic(Ty, 0),
+    R = gradual_utils:replace_dynamic(Ty, Ctx),
     ?assertMatch({union, [ {var, _}, {var, '$B'} ]}, R),
     {union, [ {var, Name}, {var, '$B'} ]} = R,
     ?assertNotEqual(nomatch, string:prefix(atom_to_list(Name), "%")).
 
 replace_dynamic_intersection_distinct_test() ->
+    Ctx = gradual_utils:new_ctx(),
     Ty = {intersection, [ {predef, dynamic}, {predef, dynamic} ]},
-    {R, _} = gradual_utils:replace_dynamic(Ty, 0),
+    R = gradual_utils:replace_dynamic(Ty, Ctx),
     ?assertMatch({intersection, [ {var, _}, {var, _} ]}, R),
     {intersection, [ {var, N1}, {var, N2} ]} = R,
     ?assertNotEqual(nomatch, string:prefix(atom_to_list(N1), "%")),
@@ -143,8 +147,9 @@ replace_dynamic_intersection_distinct_test() ->
     ?assertNotEqual(N1, N2).
 
 replace_dynamic_fun_full_test() ->
+    Ctx = gradual_utils:new_ctx(),
     Ty = {fun_full, [ {predef, dynamic}, {var, '$X'} ], {union, [ {predef, dynamic}, {var, '$Y'} ]}},
-    {R, _} = gradual_utils:replace_dynamic(Ty, 0),
+    R = gradual_utils:replace_dynamic(Ty, Ctx),
     ?assertMatch(
         {fun_full, [ {var, _}, {var, '$X'} ], {union, [ {var, _}, {var, '$Y'} ]}},
         R
@@ -156,14 +161,16 @@ replace_dynamic_fun_full_test() ->
     ?assertNotEqual(A1, R1).
 
 replace_dynamic_list_test() ->
+    Ctx = gradual_utils:new_ctx(),
     Ty = {list, {predef, dynamic}},
-    {R, _} = gradual_utils:replace_dynamic(Ty, 0),
+    R = gradual_utils:replace_dynamic(Ty, Ctx),
     ?assertMatch({list, {var, _}}, R),
     {list, {var, Name}} = R,
     ?assertNotEqual(nomatch, string:prefix(atom_to_list(Name), "%")).
 
 replace_dynamic_non_dynamic_passthrough_test() ->
+    Ctx = gradual_utils:new_ctx(),
     Ty = {predef, integer},
-    {R, _} = gradual_utils:replace_dynamic(Ty, 0),
+    R = gradual_utils:replace_dynamic(Ty, Ctx),
     ?assertEqual(Ty, R).
 

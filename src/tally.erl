@@ -40,8 +40,8 @@ tally(SymTab, Constraints, FixedVars, Mode) ->
   % erlang_types has a global symtab
   ty_parser:set_symtab(SymTab),
 
-  Counter0 = 0,
-  {InlinedConstrs, SubtyConstrs, Maters, UnificationSubst, Counter1} = gradual_utils:preprocess_constrs(Constraints, Counter0),
+  Ctx = gradual_utils:new_ctx(),
+  {InlinedConstrs, SubtyConstrs, Maters, UnificationSubst} = gradual_utils:preprocess_constrs(Constraints, Ctx),
 
   InternalRawConstraints =
     lists:map( fun ({scsubty, _, S, T}) -> {S, T} end,
@@ -76,18 +76,15 @@ tally(SymTab, Constraints, FixedVars, Mode) ->
                               || {{var, _, VarName, _}, Ty} <- maps:to_list(Subst)])) % FIXME depends on internal ty_variable representation
               || Subst <- InternalResult],
 
-              {_, Results} = lists:foldl(
-                fun({tally_subst, S, Fixed}, {C, Acc}) ->
+              lists:map(
+                fun({tally_subst, S, Fixed}) ->
                   MaterSubst = maps:fold(fun(Var, Ty, MAcc) ->
                       maps:put(Var, subst:apply_base(S, Ty), MAcc)
                     end,
                     #{}, UnificationSubst),
-                  {Result, C1} = gradual_utils:postprocess({tally_subst, maps:merge(S, MaterSubst), Fixed}, SubtyConstrs, Maters, SymTab, C),
-                  {C1, [Result | Acc]}
+                  gradual_utils:postprocess({tally_subst, maps:merge(S, MaterSubst), Fixed}, SubtyConstrs, Maters, SymTab)
                 end,
-                {Counter1, []},
-                Sigmas),
-              lists:reverse(Results)
+                Sigmas)
       end;
     satisfiable ->
       InternalResult = etally:is_tally_satisfiable(InternalConstraints, MonomorphicTallyVariables),
