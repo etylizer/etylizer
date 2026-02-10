@@ -4,6 +4,7 @@
     encode_record_ty/2,
     encode_record_ty/1,
     record_ty_from_decl/2,
+    record_type_name/1,
     lookup_field_ty/3,
     lookup_field_index/3
 ]).
@@ -63,3 +64,7 @@ lookup_field_index({RecName, DefFields}, FieldName, L) ->
         {ok, FieldTy, I} ->
             {FieldTy, I}
     end.
+
+-spec record_type_name(atom()) -> atom().
+record_type_name(RecName) ->
+    list_to_atom("$record$" ++ atom_to_list(RecName)).

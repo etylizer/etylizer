@@ -28,7 +28,9 @@
           % functions for which exhaustiveness has been added at the function clause level
           % via a -etylizer({disable_exhaustiveness_toplevel, [...]}) user-specified attribute
           % depends on annotations being transformed before function definitions
-          nonexhaustive_funs = sets:new() :: sets:set({atom(), arity()})
+          nonexhaustive_funs = sets:new() :: sets:set({atom(), arity()}),
+          % Extra type forms generated for record override variants (e.g., #rec{field :: any()})
+          extra_forms = [] :: [ast:form()]
         }).
 -type ctx() :: #ctx{}.
 
@@ -54,7 +56,7 @@ trans(Path, Forms, Mode) ->
 -spec trans(string(), [ast_erl:form()], trans_mode(), funenv()) -> [ast:form()].
 trans(Path, Forms, Mode, FunEnv) ->
     ModName = ast_utils:modname_from_path(Path),
-    {RevNewForms, _} =
+    {RevNewForms, FinalCtx} =
         lists:foldl(
             fun(F, {NewForms, Ctx}) ->
                 case trans_form(Ctx, F, Mode) of
@@ -67,7 +69,7 @@ trans(Path, Forms, Mode, FunEnv) ->
             {[], #ctx{ path = Path, module_name = ModName, funenv = FunEnv, records = #{} }},
             Forms
             ),
-    lists:reverse(RevNewForms).
+    lists:reverse(RevNewForms) ++ FinalCtx#ctx.extra_forms.
 
 -spec build_funenv(file:filename(), [ast_erl:form()]) -> funenv().
 build_funenv(Path, Forms) ->
@@ -133,18 +135,29 @@ trans_form(Ctx, Form, Mode) ->
                 {attribute, Loc, callback, Name, Arity, trans_spec_ty(Ctx, Loc, FunTys),
                  without_mod};
             {attribute, Anno, record, {Name, Fields}} when is_atom(Name) ->
-                % FIXME: this is a dirty hack to work around #152 (support for recursive record
-                % types). We temporarly register the name of the record with an empty record
+                % We temporarily register the name of the record with an empty record
                 % type, so that fields of the record can refer to the record itself.
+                % Self-references in field types emit named references (see trans_ty).
                 EmptyRecordTy = {Name, []},
                 TmpCtx = Ctx#ctx { records = maps:put(Name, EmptyRecordTy, Ctx#ctx.records) },
                 NewFields = trans_record_fields(TmpCtx, varenv:empty("type variable"), Fields),
                 NewForm = {attribute, to_loc(TmpCtx, Anno), record, {Name, NewFields}},
                 RecordTy = records:record_ty_from_decl(Name, NewFields),
                 FieldDefaults = extract_field_defaults(NewFields),
+                % Generate type forms for override variants created during field processing
+                OverrideVariants = collect_record_variants(Name),
+                Loc = to_loc(Ctx, Anno),
+                VariantForms = lists:map(
+                    fun ({VariantName, VOverrides}) ->
+                        VariantBody = records:encode_record_ty(RecordTy, VOverrides),
+                        {attribute, Loc, type, transparent,
+                            {VariantName, {ty_scheme, [], VariantBody}}}
+                    end,
+                    OverrideVariants),
                 NewCtx = Ctx#ctx {
                     records = maps:put(Name, RecordTy, Ctx#ctx.records),
-                    record_defaults = maps:put(Name, FieldDefaults, Ctx#ctx.record_defaults)
+                    record_defaults = maps:put(Name, FieldDefaults, Ctx#ctx.record_defaults),
+                    extra_forms = Ctx#ctx.extra_forms ++ VariantForms
                 },
                 ?LOG_TRACE("Registered new record type: ~200p", RecordTy),
                 {NewForm, NewCtx};
@@ -292,17 +305,33 @@ trans_ty(Ctx, Env, Ty) ->
             eval_const_ty(Ty, to_loc(Ctx, Anno));
         {type, Anno, record, [{'atom', _, Name} | Fields]} ->
             Loc = to_loc(Ctx, Anno),
-            Overrides =
-                lists:map(
-                    fun ({type, _, field_type, [{'atom', _, FieldName}, FieldTy]}) ->
-                            {FieldName, trans_ty(Ctx, Env, FieldTy)}
-                    end,
-                    Fields),
             case maps:find(Name, Ctx#ctx.records) of
                 error ->
                     errors:name_error(Loc, "record ~w not defined", [Name]);
                 {ok, RecTy} ->
-                    records:encode_record_ty(RecTy, Overrides)
+                    case Fields of
+                        [] ->
+                            % Use named reference (enables recursive records)
+                            RecRef = {ty_ref, Ctx#ctx.module_name, records:record_type_name(Name), 0},
+                            {named, Loc, RecRef, []};
+                        _ ->
+                            Overrides =
+                                lists:map(
+                                    fun ({type, _, field_type, [{'atom', _, FieldName}, FieldTy]}) ->
+                                            {FieldName, trans_ty(Ctx, Env, FieldTy)}
+                                    end,
+                                    Fields),
+                            case RecTy of
+                                {Name, []} ->
+                                    % Self-referencing record with field overrides.
+                                    % Emit a named reference to an override variant type.
+                                    VariantName = store_record_variant(Name, Overrides),
+                                    VariantRef = {ty_ref, Ctx#ctx.module_name, VariantName, 0},
+                                    {named, Loc, VariantRef, []};
+                                _ ->
+                                    records:encode_record_ty(RecTy, Overrides)
+                            end
+                    end
             end;
         {type, _, tuple, any} -> {tuple_any};
         {type, _, tuple, ArgTys} -> {tuple, trans_tys(Ctx, Env, ArgTys)};
@@ -1150,8 +1179,29 @@ is_error_clause(Body) ->
 -spec add_exhaustive_clause(ctx(), arity()) -> ast:fun_clause().
 add_exhaustive_clause(Ctx, Arity) ->
     Loc = {loc, Ctx#ctx.path, 0, 0}, % dummy location TODO loc?
-    ErrorCall = {'call', Loc, {var, Loc, {qref, erlang, error, 1}}, 
+    ErrorCall = {'call', Loc, {var, Loc, {qref, erlang, error, 1}},
                 [{'atom', Loc, exhaustive}]},
-    {fun_clause, Loc, [{wildcard, Loc} || _ <- lists:seq(1, Arity)], 
-        [], 
+    {fun_clause, Loc, [{wildcard, Loc} || _ <- lists:seq(1, Arity)],
+        [],
         [ErrorCall]}.
+
+% Stores a record override variant in the process dictionary for later retrieval.
+% Used when a self-referencing record has field overrides (e.g., #rr{name :: any()}).
+% Returns the generated variant type name.
+-spec store_record_variant(atom(), [records:record_field()]) -> atom().
+store_record_variant(RecName, Overrides) ->
+    ListKey = {etylizer_record_variants, RecName},
+    Existing = case get(ListKey) of undefined -> []; L -> L end,
+    N = length(Existing) + 1,
+    VariantName = list_to_atom("$record$" ++ atom_to_list(RecName) ++ "$v" ++ integer_to_list(N)),
+    put(ListKey, [{VariantName, Overrides} | Existing]),
+    VariantName.
+
+% Collects and removes all record override variants from the process dictionary.
+-spec collect_record_variants(atom()) -> [{atom(), [records:record_field()]}].
+collect_record_variants(RecName) ->
+    ListKey = {etylizer_record_variants, RecName},
+    case erase(ListKey) of
+        undefined -> [];
+        Variants -> Variants
+    end.

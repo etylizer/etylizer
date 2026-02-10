@@ -1,4 +1,4 @@
--module(maps).
+-module(records).
 
 -compile(export_all).
 -compile(nowarn_export_all).
@@ -152,11 +152,18 @@ default_03_fail() -> #item{value=1}.
 
 %% recursive
 
-% Deactived because of #152
-%-record(rr, {name :: string(), recursive :: [#rr{}] }).
-%
-%-spec add1(string(), #rr{}) -> #rr{}.
-%add1(Name, R) -> #rr{name=Name, recursive=[R]}.
-%
-%-spec add2(string(), #rr{}) -> #rr{}.
-%add2(Name, R) -> R#rr{ recursive = [#rr{name=Name, recursive=[]} | R#rr.recursive]}.
+-record(rr, {name :: string(), recursive :: [#rr{}] }).
+-spec add1(string(), #rr{}) -> #rr{}.
+add1(Name, R) -> #rr{name=Name, recursive=[R]}.
+
+-spec add2(string(), #rr{}) -> #rr{}.
+add2(Name, R) -> R#rr{ recursive = [#rr{name=Name, recursive=[]} | R#rr.recursive]}.
+
+-record(rr2, {name :: string(), recursive :: [#rr2{name :: any()}] }).
+-spec add3(string(), #rr2{}) -> #rr2{}.
+add3(Name, R) -> #rr2{name=Name, recursive=[R]}.
+
+% while the definition is OK, the usage is not and causes a type error
+-record(rr3, {name :: string(), recursive :: [#rr3{name :: integer()}] }).
+-spec add4_fail(string(), #rr3{}) -> #rr3{}.
+add4_fail(Name, R) -> #rr3{name=Name, recursive=[R]}.
