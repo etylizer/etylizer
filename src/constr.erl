@@ -24,6 +24,7 @@
      simp_constr_case/0,
      simp_constr_case_branch/0,
      subty_constrs/0,
+     collected_constrs/0,
      mater_constrs/0
  ]).
 
@@ -49,6 +50,7 @@
 -type simp_constrs_loc() :: {ast:loc(), simp_constrs()}.
 -type simp_constr() :: simp_constr_subty() | simp_constr_mater() | simp_constr_case().
 -type subty_constrs() :: sets:set(constr:simp_constr_subty()).
+-type collected_constrs() :: sets:set(simp_constr_subty() | simp_constr_mater()).
 -type mater_constrs() :: sets:set(simp_constr_mater()).
 
 -type simp_constr_subty() :: {scsubty, ast:loc(), ast:ty(), ast:ty()}.

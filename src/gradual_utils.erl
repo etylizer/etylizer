@@ -64,7 +64,7 @@ fresh_framevar() ->
 
 % When we see a gradual type with {predef, dynamic}
 % we replace each dynamic with a fresh frame variable
--spec preprocess_constrs(constr:subty_constrs()) -> {constr:subty_constrs(), constr:subty_constrs(), constr:mater_constrs(), subst:base_subst()}.
+-spec preprocess_constrs(constr:collected_constrs()) -> {constr:subty_constrs(), constr:subty_constrs(), constr:mater_constrs(), subst:base_subst()}.
 preprocess_constrs(Constrs) ->
     {SubtyConstrs, Maters} = sets:fold(
         fun

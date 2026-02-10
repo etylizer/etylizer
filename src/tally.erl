@@ -17,21 +17,21 @@
 -type monomorphic_variables() :: term().
 -type tally_res() :: {error, [{error, string()}]} | nonempty_list(subst:t()).
 
--spec tally(symtab:t(), constr:subty_constrs()) -> tally_res().
+-spec tally(symtab:t(), constr:collected_constrs()) -> tally_res().
 tally(SymTab, Constraints) -> tally(SymTab, Constraints, sets:new()) .
 
--spec is_satisfiable(symtab:t(), constr:subty_constrs(), sets:set(ast:ty_varname())) ->
+-spec is_satisfiable(symtab:t(), constr:collected_constrs(), sets:set(ast:ty_varname())) ->
   {false, [{error, string()}]} | {true, subst:t()}. % The substitution is just returned for debugging purpose.
 is_satisfiable(SymTab, Constraints, FixedVars) ->
   tally(SymTab, Constraints, FixedVars, satisfiable).
 
--spec tally(symtab:t(), constr:subty_constrs(), sets:set(ast:ty_varname())) -> tally_res().
+-spec tally(symtab:t(), constr:collected_constrs(), sets:set(ast:ty_varname())) -> tally_res().
 tally(SymTab, Constraints, FixedVars) ->
   tally(SymTab, Constraints, FixedVars, solve).
 
 -spec tally
-  (symtab:t(), constr:subty_constrs(), sets:set(ast:ty_varname()), solve) -> tally_res();
-  (symtab:t(), constr:subty_constrs(), sets:set(ast:ty_varname()), satisfiable) -> {false, [{error, string()}]} | {true, subst:t()}.
+  (symtab:t(), constr:collected_constrs(), sets:set(ast:ty_varname()), solve) -> tally_res();
+  (symtab:t(), constr:collected_constrs(), sets:set(ast:ty_varname()), satisfiable) -> {false, [{error, string()}]} | {true, subst:t()}.
 tally(SymTab, Constraints, FixedVars, Mode) ->
 
   % uncomment to extract a tally test case config file

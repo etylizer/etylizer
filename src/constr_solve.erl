@@ -171,7 +171,7 @@ format_tally_error(ErrList) ->
         true -> utils:sformat("~n    (skipped ~w lines)", N)
      end).
 
--spec is_satisfiable(symtab:t(), constr:subty_constrs(), sets:set(ast:ty_varname()), string()) -> boolean().
+-spec is_satisfiable(symtab:t(), constr:collected_constrs(), sets:set(ast:ty_varname()), string()) -> boolean().
 is_satisfiable(Tab, Constrs, Fixed, What) ->
     {SatisfyRes, Delta} = utils:timing(fun() -> tally:is_satisfiable(Tab, Constrs, Fixed) end),
     case SatisfyRes of
