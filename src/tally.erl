@@ -79,7 +79,7 @@ tally(SymTab, Constraints, FixedVars, Mode) ->
               {_, Results} = lists:foldl(
                 fun({tally_subst, S, Fixed}, {C, Acc}) ->
                   MaterSubst = maps:fold(fun(Var, Ty, MAcc) ->
-                      maps:put(Var, gradual_utils:subst_ty(Ty, S, no_discrimination), MAcc)
+                      maps:put(Var, subst:apply_base(S, Ty), MAcc)
                     end,
                     #{}, UnificationSubst),
                   {Result, C1} = gradual_utils:postprocess({tally_subst, maps:merge(S, MaterSubst), Fixed}, SubtyConstrs, Maters, SymTab, C),

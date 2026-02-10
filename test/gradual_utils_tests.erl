@@ -69,42 +69,42 @@ empty_union_test() ->
     ?assertEqual(sets:new([{version, 2}]), Res).
 
 
-%% -------------------- subst_ty/3 tests -----------------------
+%% -------------------- apply_base + discriminate_framevars tests -----------
 
 subst_discriminate_framevar_to_dynamic_test() ->
     Sub = #{ '$A' => {var, '%F1'} },
     Ty = {var, '$A'},
-    R = gradual_utils:subst_ty(Ty, Sub, discriminate),
+    R = gradual_utils:discriminate_framevars(subst:apply_base(Sub, Ty)),
     ?assertEqual({predef, dynamic}, R).
 
 subst_discriminate_normal_var_passthrough_test() ->
     Sub = #{ '$A' => {var, '$B'} },
     Ty = {var, '$A'},
-    R = gradual_utils:subst_ty(Ty, Sub, discriminate),
+    R = gradual_utils:discriminate_framevars(subst:apply_base(Sub, Ty)),
     ?assertEqual({var, '$B'}, R).
 
 subst_no_discrimination_keeps_framevar_test() ->
     Sub = #{ '$A' => {var, '%F2'} },
     Ty = {var, '$A'},
-    R = gradual_utils:subst_ty(Ty, Sub, no_discrimination),
+    R = subst:apply_base(Sub, Ty),
     ?assertEqual({var, '%F2'}, R).
 
 subst_unknown_var_passthrough_test() ->
     Sub = #{ '$B' => {var, '$C'} },
     Ty = {var, '$A'},
-    R = gradual_utils:subst_ty(Ty, Sub, discriminate),
+    R = gradual_utils:discriminate_framevars(subst:apply_base(Sub, Ty)),
     ?assertEqual({var, '$A'}, R).
 
 subst_union_recursive_test() ->
     Sub = #{ '$A' => {var, '%F3'}, '$B' => {var, '$C'} },
     Ty = {union, [ {var, '$A'}, {var, '$B'} ]},
-    R = gradual_utils:subst_ty(Ty, Sub, discriminate),
+    R = gradual_utils:discriminate_framevars(subst:apply_base(Sub, Ty)),
     ?assertEqual({union, [ {predef, dynamic}, {var, '$C'} ]}, R).
 
 subst_fun_full_recursive_test() ->
     Sub = #{ '$P' => {var, '%F4'}, '$Q' => {var, '$R'} },
     Ty = {fun_full, [ {var, '$P'} ], {union, [ {var, '$Q'}, {var, '$P'} ]}},
-    R = gradual_utils:subst_ty(Ty, Sub, discriminate),
+    R = gradual_utils:discriminate_framevars(subst:apply_base(Sub, Ty)),
     ?assertEqual(
         {fun_full, [ {predef, dynamic} ], {union, [ {var, '$R'}, {predef, dynamic} ]}},
         R

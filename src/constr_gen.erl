@@ -409,7 +409,7 @@ exp_constrs(Ctx, E, T) ->
             Locs = mk_locs(Msg, L),
             Mater = {cvarmater, Locs, AnyRef, AlphaName},
             Link = {csubty, Locs, {var, AlphaName}, T},
-            sets:from_list([Mater, Link], [{version,2}]);
+            sets:from_list([Mater, Link]);
         X -> errors:uncovered_case(?FILE, ?LINE, X)
     end.
 

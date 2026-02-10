@@ -11,6 +11,7 @@
 
 -export([
     apply/3,
+    apply_base/2,
     from_list/1,
     empty/0,
     extend/3,

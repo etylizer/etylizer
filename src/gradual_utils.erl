@@ -4,13 +4,13 @@
 
 -export([
     preprocess_constrs/2,
-    postprocess/5,
-    subst_ty/3
+    postprocess/5
 ]).
 
 -ifdef(TEST).
 -export([
   collect_pos_neg_tyvars/2,
+  discriminate_framevars/1,
   replace_dynamic/2
 ]).
 -endif.
@@ -61,7 +61,7 @@ preprocess_constrs(Constrs, Counter0) ->
     UnificationSubst = maps:from_list(lists:map(fun({scmater, _, Tau, Alpha}) -> {Alpha, Tau} end, sets:to_list(Maters))),
     InlinedConstrs = sets:map(fun(Constr) ->
       case Constr of
-        {scsubty, _Loc, T1, T2} -> {scsubty, _Loc, subst_ty(T1, UnificationSubst, no_discrimination), subst_ty(T2, UnificationSubst, no_discrimination)};
+        {scsubty, _Loc, T1, T2} -> {scsubty, _Loc, subst:apply_base(UnificationSubst, T1), subst:apply_base(UnificationSubst, T2)};
         Other -> Other
       end
     end, SubtyConstrs),
@@ -189,37 +189,22 @@ apply_subst(S, Sigma2) ->
         fun(Var, Ty, Acc) ->
             case is_framevar(Var) of
               true -> maps:remove(Var, Acc); % frame variables are removed from the substitution
-              false -> maps:put(Var, subst_ty(Ty, Sigma2, discriminate), Acc)
+              false -> maps:put(Var, discriminate_framevars(subst:apply_base(Sigma2, Ty)), Acc)
             end
         end,
         S,
         S).
 
--spec subst_ty(ast:ty(), subst:base_subst(), atom()) -> ast:ty().
-subst_ty(Ty, VarSubst, Mode) -> 
-  utils:everywhere(fun
-    ({var, Name}) when is_atom(Name) ->
-      NewTy = find_in_subst({var, Name}, VarSubst),
-      case Mode of
-        discriminate -> {ok, utils:everywhere(fun
-          ({var, N}) when is_atom(N) ->
+-spec discriminate_framevars(ast:ty()) -> ast:ty().
+discriminate_framevars(Ty) ->
+    utils:everywhere(fun
+        ({var, N}) when is_atom(N) ->
             case is_framevar(N) of
-              true -> {ok, {predef, dynamic}}; % replace frame variables with dynamic (discrimination)
-              false -> error % keep as type variable
+                true -> {ok, {predef, dynamic}};
+                false -> error
             end;
-          (_) -> error
-        end, NewTy)};
-        _ -> {ok, NewTy}
-      end;
-    (_) -> error
-  end, Ty).
-
--spec find_in_subst(ast:ty_var(), subst:base_subst()) -> ast:ty().
-find_in_subst({var, Name}, VarSubst) ->
-    case maps:find(Name, VarSubst) of
-        {ok, SubstTy} -> SubstTy;
-        error -> {var, Name}
-    end.
+        (_) -> error
+    end, Ty).
 
 -spec collect_tyvars(ast:ty()) -> [ast:ty_varname()].
 collect_tyvars(Ty) ->
