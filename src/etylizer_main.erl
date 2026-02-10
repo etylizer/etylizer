@@ -72,6 +72,10 @@ parse_args(Args) ->
             "Change the mode of how to check for exhaustiveness. Currently, " ++
             "the checker can either globally enable or disable exhaustiveness." ++
             "Default: enabled (enabled, disabled)."},
+         {gradual_mode, undefined, "gradual-mode", string,
+            "Choose how to handle functions without type specs. " ++
+            "'dynamic' assigns dynamic types, 'infer' infers types. " ++
+            "Default: dynamic (dynamic, infer)."},
          {only, $o, "only", string,
             "Only type check these functions (given as module:name/arity or name/arity or just the name)"},
          {ignore, $i, "ignore", string,
@@ -124,6 +128,9 @@ parse_args(Args) ->
                         {exhaustiveness_mode, "enabled"} -> Opts#opts{ exhaustiveness_mode = enabled };
                         {exhaustiveness_mode, "disabled"} -> Opts#opts{ exhaustiveness_mode = disabled };
                         {exhaustiveness_mode, M} -> utils:quit(2, "Invalid exhaustiveness mode: " ++ M ++ "~n");
+                        {gradual_mode, "dynamic"} -> Opts#opts{ gradual_typing_mode = dynamic };
+                        {gradual_mode, "infer"} -> Opts#opts{ gradual_typing_mode = infer };
+                        {gradual_mode, M} -> utils:quit(2, "Invalid gradual mode: " ++ M ++ "~n");
                         no_deps -> Opts#opts{ no_deps = true };
                         check_exports -> Opts#opts{ check_exports = true };
                         {type_overlay, S} -> Opts#opts{ type_overlay = S };

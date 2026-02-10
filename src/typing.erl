@@ -3,7 +3,7 @@
 -export([
     check_forms/6,
     new_ctx/3,
-    new_ctx/6
+    new_ctx/7
 ]).
 
 -include("log.hrl").
@@ -11,17 +11,17 @@
 
 -spec new_ctx(symtab:t(), symtab:t(), t:opt(ast_check:ty_map())) -> ctx().
 new_ctx(Tab, Overlay, Sanity) ->
-    new_ctx(Tab, Overlay, Sanity, early_exit, 5000, enabled).
+    new_ctx(Tab, Overlay, Sanity, early_exit, 5000, enabled, dynamic).
 
--spec new_ctx(symtab:t(), symtab:t(), t:opt(ast_check:ty_map()), feature_flags:report_mode(), pos_integer(), feature_flags:exhaustiveness_mode()) -> ctx().
-new_ctx(Tab, Overlay, Sanity, ReportMode, ReportTimeout, ExhaustivenessMode) ->
-    Ctx = #ctx{ symtab = Tab, overlay_symtab = Overlay, sanity = Sanity, report_mode = ReportMode, report_timeout = ReportTimeout, exhaustiveness_mode = ExhaustivenessMode },
+-spec new_ctx(symtab:t(), symtab:t(), t:opt(ast_check:ty_map()), feature_flags:report_mode(), pos_integer(), feature_flags:exhaustiveness_mode(), feature_flags:gradual_typing_mode()) -> ctx().
+new_ctx(Tab, Overlay, Sanity, ReportMode, ReportTimeout, ExhaustivenessMode, GradualTypingMode) ->
+    Ctx = #ctx{ symtab = Tab, overlay_symtab = Overlay, sanity = Sanity, gradual_typing_mode = GradualTypingMode, report_mode = ReportMode, report_timeout = ReportTimeout, exhaustiveness_mode = ExhaustivenessMode },
     Ctx.
 
 % Checks all forms of a module
 -spec check_forms(ctx(), string(), ast:forms(), sets:set(string()), sets:set(string()), boolean()) -> ok.
 check_forms(Ctx, FileName, Forms, Only, Ignore, CheckExports) ->
-    case CheckExports of
+    case CheckExports orelse Ctx#ctx.gradual_typing_mode =:= infer of
         true ->
             ?LOG_INFO("Checking whether exported functions in ~s have a type spec", FileName),
             check_exported_funs_specified(Forms);
@@ -33,6 +33,7 @@ check_forms(Ctx, FileName, Forms, Only, Ignore, CheckExports) ->
     ?LOG_DEBUG("Only: ~200p", sets:to_list(Only)),
     ?LOG_DEBUG("Ignore: ~200p", sets:to_list(Ignore)),
     % Split in functions with and without tyspec
+    GradualMode = ExtCtx#ctx.gradual_typing_mode,
     {FunsWithSpec, FunsWithoutSpec, KnownFuns} =
         lists:foldr(
           fun(Form, Acc = {With, Without, Knowns}) ->
@@ -49,11 +50,22 @@ check_forms(Ctx, FileName, Forms, Only, Ignore, CheckExports) ->
                         error ->
                             if
                               Check ->
-                                  {With, [Form | Without], [X | Knowns]};
+                                  case GradualMode of
+                                      dynamic ->
+                                          DynTy = dynamic_ty_scheme(Arity),
+                                          {[{Form, DynTy} | With], Without, [X | Knowns]};
+                                      infer ->
+                                          {With, [Form | Without], [X | Knowns]}
+                                  end;
                               true ->
-                                  errors:some_error(
-                                      "~s: Cannot ignore function without type spec: ~s", [FileName, RefStr]
-                                  )
+                                  case GradualMode of
+                                      dynamic ->
+                                          {With, Without, [X | Knowns]};
+                                      infer ->
+                                          errors:some_error(
+                                              "~s: Cannot ignore function without type spec: ~s", [FileName, RefStr]
+                                          )
+                                  end
                             end;
                         {ok, Ty} ->
                             if
@@ -81,7 +93,7 @@ check_forms(Ctx, FileName, Forms, Only, Ignore, CheckExports) ->
         false ->
             ?LOG_INFO("Unknown functions in only: ~200p", sets:to_list(Unknowns))
     end,
-    % infer types of functions without spec
+    % Infer types of functions without spec (empty in dynamic mode)
     InferredTyEnvs = typing_infer:infer_all(ExtCtx, FileName, FunsWithoutSpec),
     % Typechecks the functions with a type spec. We need to check against all InferredTyEnvs,
     % we can stop on the first success.
@@ -142,6 +154,12 @@ should_check(QRefStr, RefStr, NameStr, Only, Ignore) ->
                 orelse sets:is_element(RefStr, Only)
                 orelse sets:is_element(NameStr, Only)
     end.
+
+% Creates a dynamic type scheme for a function with the given arity.
+-spec dynamic_ty_scheme(non_neg_integer()) -> ast:ty_scheme().
+dynamic_ty_scheme(Arity) ->
+    DynamicArgs = lists:duplicate(Arity, {predef, dynamic}),
+    {ty_scheme, [], {fun_full, DynamicArgs, {predef, dynamic}}}.
 
 -spec check_exported_funs_specified(ast:forms()) -> ok | no_return().
 check_exported_funs_specified(Forms) ->

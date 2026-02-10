@@ -1,6 +1,5 @@
 -type opts_mode() :: prod_mode | test_mode.
 
-% gradual_typing_mode: 'infer' (default) or 'dynamic' (default all untyped to dynamic)
 -record(opts, {log_level = default :: log:log_level() | default,
                help = false :: boolean(),
                dump_raw = false :: boolean(),
@@ -11,6 +10,7 @@
                report_mode = early_exit :: feature_flags:report_mode(),
                report_timeout = 5000 :: pos_integer(),
                exhaustiveness_mode = enabled :: feature_flags:exhaustiveness_mode(),
+               gradual_typing_mode = dynamic :: feature_flags:gradual_typing_mode(),
                no_deps = false :: boolean(),
                check_exports = false :: boolean(),
                type_check_only = [] :: [string()],
