@@ -174,3 +174,16 @@ replace_dynamic_non_dynamic_passthrough_test() ->
     R = gradual_utils:replace_dynamic(Ty, Ctx),
     ?assertEqual(Ty, R).
 
+
+%% -------------------- compose/2 tests ------------------------------------
+
+compose_fixed_contains_varnames_test() ->
+    %% compose/2 should add the *names* of Sigma2's values to Fixed,
+    %% not the {var, Name} tuples themselves.
+    InputSubst = {tally_subst, #{ '$A' => {var, '$B'} }, sets:new([{version, 2}])},
+    Sigma2 = #{ '%1' => {var, '$post_%1'} },
+    {tally_subst, _, Fixed} = gradual_utils:compose(InputSubst, Sigma2),
+    %% Fixed must contain the atom '$post_%1', not the tuple {var, '$post_%1'}
+    ?assert(sets:is_element('$post_%1', Fixed)),
+    ?assertNot(sets:is_element({var, '$post_%1'}, Fixed)).
+

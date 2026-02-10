@@ -15,6 +15,7 @@
 -ifdef(TEST).
 -export([
   collect_pos_neg_tyvars/2,
+  compose/2,
   discriminate_framevars/1,
   replace_dynamic/2
 ]).
@@ -65,7 +66,7 @@ preprocess_constrs(Constrs, Ctx) ->
             (Constr, {Cs, Ms}) ->
               {sets:add_element(Constr, Cs), Ms}
         end,
-        {sets:new([{version,2}]), sets:new([{version,2}])},
+        {sets:new(), sets:new()},
         Constrs),
 
     UnificationSubst = maps:from_list(lists:map(fun({scmater, _, Tau, Alpha}) -> {Alpha, Tau} end, sets:to_list(Maters))),
@@ -98,20 +99,20 @@ postprocess({tally_subst, S, Fixed}, Constrs, Maters, SymTab) ->
     TypeVarsInMaters = sets:fold(
         fun({scmater, _, Tau, _}, Acc) ->
           TypeVars = collect_tyvars(Tau),
-          sets:union(Acc, sets:from_list(TypeVars, [{version, 2}]))
+          sets:union(Acc, sets:from_list(TypeVars))
         end,
-        sets:new([{version, 2}]),
+        sets:new(),
         Maters),
     TypeVarsInSubsts = sets:fold(
       fun(Alpha, Acc) ->
         case maps:find(Alpha, S) of
           {ok, Ty} ->
             TypeVars = collect_tyvars(Ty),
-            sets:union(Acc, sets:from_list(TypeVars, [{version, 2}]));
+            sets:union(Acc, sets:from_list(TypeVars));
           error -> Acc
         end
       end,
-      sets:new([{version, 2}]),
+      sets:new(),
       TypeVarsInMaters
     ),
 
@@ -123,7 +124,7 @@ postprocess({tally_subst, S, Fixed}, Constrs, Maters, SymTab) ->
         Tyvars2 = collect_pos_neg_tyvars(T2, SymTab),
         sets:union([Acc, Tyvars1, Tyvars2])
       end,
-      sets:new([{version, 2}]),
+      sets:new(),
       Constrs
     ),
     A = sets:union(TypeVarsInSubsts, PosNegTyvars),
@@ -136,14 +137,14 @@ postprocess({tally_subst, S, Fixed}, Constrs, Maters, SymTab) ->
     Var_D = sets:fold(
       fun({scsubty, _, T1, T2}, Acc) ->
         sets:union(
-          sets:from_list(collect_tyvars(T1) ++ collect_tyvars(T2), [{version, 2}]),
+          sets:from_list(collect_tyvars(T1) ++ collect_tyvars(T2)),
           Acc
         )
       end,
-      sets:new([{version, 2}]),
+      sets:new(),
       Constrs
     ),
-    Dom_Sigma = sets:from_list(lists:filter(fun(Var) -> is_typevar(Var) end, maps:keys(S)), [{version, 2}]),
+    Dom_Sigma = sets:from_list(lists:filter(fun(Var) -> is_typevar(Var) end, maps:keys(S))),
     Alpha = sets:subtract(Var_D, sets:union(Dom_Sigma, A)),
 
     % Step 3e): Create fresh alpha and X
@@ -183,13 +184,13 @@ collect_pos_neg_tyvars(Ty, SymTab) ->
               _ -> Acc
           end
       end,
-      sets:new([{version, 2}]),
+      sets:new(),
       VarPositions).
 
 -spec compose(subst:t(), subst:base_subst()) -> subst:t().
 compose({tally_subst, S, Fixed}, Sigma2) ->
         S1 = apply_subst(S, Sigma2),
-        {tally_subst, S1, sets:union(Fixed, sets:from_list(maps:values(Sigma2), [{version, 2}]))}.
+        {tally_subst, S1, sets:union(Fixed, sets:from_list([N || {var, N} <- maps:values(Sigma2)]))}.
 
 -spec apply_subst(subst:base_subst(), subst:base_subst()) -> subst:base_subst().
 apply_subst(S, Sigma2) ->
