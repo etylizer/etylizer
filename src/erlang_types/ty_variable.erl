@@ -107,18 +107,18 @@ leq(V1, V2) ->
 -spec fresh_from(type()) -> type().
 fresh_from(#var{id = name, name = Name}) ->
   Id = get_new_id(),
-  #var{id = Id, name = Name, type = default};
+  #var{id = Id, name = Name};
 fresh_from(#var{id = _Id, name = Name}) ->
   new(Name).
 
 -spec new(atom()) -> type().
 new(Name) when is_atom(Name) ->
   NewId = ets:update_counter(?VAR_ETS, variable_id, {2,1}),
-  #var{id = NewId, name = Name, type = default}.
+  #var{id = NewId, name = Name}.
 
 -spec new_with_name(atom()) -> type().
 new_with_name(Name) when is_atom(Name) ->
-  #var{id = name, name = Name, type = default}.
+  #var{id = name, name = Name}.
 
 -spec new_as_frame() -> type().
 new_as_frame() ->
@@ -132,7 +132,7 @@ is_frame(V = #var{type = frame}) -> {true, V}.
 % used in ty_parser to convert already known variables
 -spec with_name_and_id(integer(), atom()) -> type().
 with_name_and_id(Id, Name) when is_atom(Name) ->
-  #var{id = Id, name = Name, type = default}.
+  #var{id = Id, name = Name}.
 
 -spec get_new_id() -> non_neg_integer().
 get_new_id() ->
