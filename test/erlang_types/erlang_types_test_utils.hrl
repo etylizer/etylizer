@@ -45,7 +45,7 @@ ttuple_any() -> {tuple_any}.
 ttuple(Types) -> {tuple, Types}.
 ttuple1(Type) -> {tuple, [Type]}.
 test_key(Key) -> test_key(Key, 0).
-test_key(Key, LenArgs) -> {test_key, '.', Key, LenArgs}.
+test_key(Key, LenArgs) -> {ty_key, '.', Key, LenArgs}.
 tnamed_ns(Ns, Ref, Args) -> 
   {named, {loc, "AUTO", -1, -1}, {ty_ref, Ns, Ref, length(Args)}, Args}.
 tnamed(Ref) -> tnamed(Ref, []).

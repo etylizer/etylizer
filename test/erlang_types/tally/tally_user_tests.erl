@@ -41,10 +41,10 @@ issue_226_test() ->
   GuardTest = tnamed(gen_tuple, [tnamed(guard_test, [])]),
   GenTuple = ttuple([tlist(v('T'))]),
 
-  Sym = [
-    {test_key(guard_test), tyscm([], GuardTest)},
-    {test_key(gen_tuple, 1), tyscm([t], GenTuple)}
-  ],
+  Sym = #{
+    test_key(guard_test) => tyscm([], GuardTest),
+    test_key(gen_tuple, 1) => tyscm([t], GenTuple)
+  },
 
   test_tally_satisfiable(
     true,

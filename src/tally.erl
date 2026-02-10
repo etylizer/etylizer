@@ -35,19 +35,29 @@ tally(SymTab, Constraints, FixedVars) ->
 tally(SymTab, Constraints, FixedVars, Mode) ->
 
   % uncomment to extract a tally test case config file
-  %io:format(user, "~s~n", [utils:format_tally_config(sets:to_list(Constraints), FixedVars, SymTab)]),
-  
+  % io:format(user, "~s~n", [utils:format_tally_config(sets:to_list(Constraints), FixedVars, SymTab)]),
+
   % erlang_types has a global symtab
   ty_parser:set_symtab(SymTab),
 
   Counter0 = 0,
   {InlinedConstrs, SubtyConstrs, Maters, UnificationSubst, Counter1} = gradual_utils:preprocess_constrs(Constraints, Counter0),
-  
-  InternalConstraints = 
-    lists:map( fun ({scsubty, _, S, T}) -> {ty_parser:parse(S), ty_parser:parse(T)} end,
+
+  InternalRawConstraints =
+    lists:map( fun ({scsubty, _, S, T}) -> {S, T} end,
       lists:sort( fun ({scsubty, _, S, T}, {scsubty, _, X, Y}) -> (erts_debug:size({S, T})) < erts_debug:size(({X, Y})) end,
         sets:to_list(InlinedConstrs))
     ),
+
+  MaybeCleanedConstraints =
+    case Mode of
+      solve -> InternalRawConstraints;
+      satisfiable ->
+        subst:clean_cons(InternalRawConstraints, FixedVars, SymTab)
+    end,
+
+  InternalConstraints = [{ty_parser:parse(T1), ty_parser:parse(T2)} || {T1, T2} <- MaybeCleanedConstraints],
+
   MonomorphicTallyVariables = maps:from_list([{ty_variable:new_with_name(Var), []} || Var <- sets:to_list(FixedVars)]),
 
   case Mode of
@@ -65,7 +75,7 @@ tally(SymTab, Constraints, FixedVars, Mode) ->
                 maps:from_list([{VarName, ty_parser:unparse(Ty)}
                               || {{var, _, VarName, _}, Ty} <- maps:to_list(Subst)])) % FIXME depends on internal ty_variable representation
               || Subst <- InternalResult],
-              
+
               {_, Results} = lists:foldl(
                 fun({tally_subst, S, Fixed}, {C, Acc}) ->
                   MaterSubst = maps:fold(fun(Var, Ty, MAcc) ->

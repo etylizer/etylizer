@@ -1,9 +1,9 @@
 -module(typing_common).
 
 -export([
-    mono_ty/2,
     mono_ty/3,
     mono_ty/4,
+    mono_ty/5,
     format_src_loc/1
 ]).
 
@@ -31,8 +31,8 @@ format_src_loc({loc, File, LineNo, ColumnNo}) ->
 
 % Creates the monomorphic version of the given type scheme, does not
 % replace the universally quantified type variables with fresh ones.
--spec mono_ty(ast:loc(), ast:ty_scheme()) -> {ast:ty(), sets:set(ast:ty_varname()), integer() | no_fresh}.
-mono_ty(L, TyScm) -> mono_ty(L, TyScm, no_fresh).
+-spec mono_ty(ast:loc(), ast:ty_scheme(), symtab:t()) -> {ast:ty(), sets:set(ast:ty_varname()), integer() | no_fresh}.
+mono_ty(L, TyScm, SymTab) -> mono_ty(L, TyScm, no_fresh, SymTab).
 
 -spec fresh_tyvar(ast:ty_varname(), integer() | no_fresh) ->
           {ast:ty_varname(), integer() | no_fresh}.
@@ -54,10 +54,10 @@ fresh_tyvar(Alpha, I) ->
 %
 % The next steps then replaces each type variable that is still present with a fresh
 % type variable.
--spec mono_ty(ast:loc(), ast:ty_scheme(), integer() | no_fresh) ->
+-spec mono_ty(ast:loc(), ast:ty_scheme(), integer() | no_fresh, symtab:t()) ->
     {ast:ty(), sets:set(ast:ty_varname()), integer() | no_fresh}.
-mono_ty(L, TyScm, FreshStart) ->
-    mono_ty(L, TyScm, FreshStart, fun fresh_tyvar/2).
+mono_ty(L, TyScm, FreshStart, SymTab) ->
+    mono_ty(L, TyScm, FreshStart, fun fresh_tyvar/2, SymTab).
 
 -type fresh_fun(State) :: fun((ast:ty_varname(), State) -> {ast:ty_varname(), State}).
 
@@ -103,24 +103,25 @@ is_any_bound(_) -> false.
 
 % assumes that the bounds are already ordered so that if {Beta, Bound} is in the list of
 % bounds and Alpha is free in Bound, the Alpha appears in the list of bounds before Beta,
--spec replace_bounds([ast:bounded_tyvar()], [ast:ty_varname()], subst:t(), State, fresh_fun(State)) ->
+-spec replace_bounds
+([ast:bounded_tyvar()], [ast:ty_varname()], subst:t(), State, fresh_fun(State), symtab:t()) ->
     {[ast:ty_varname()], subst:t(), State}.
-replace_bounds([], Polys, Subst, State, _FreshFun) ->
+replace_bounds([], Polys, Subst, State, _FreshFun, _SymTab) ->
     {lists:reverse(Polys), Subst, State};
-replace_bounds([{Alpha, Bound} | Rest], Polys, Subst, State, FreshFun) ->
+replace_bounds([{Alpha, Bound} | Rest], Polys, Subst, State, FreshFun, SymTab) ->
     case is_any_bound(Bound) of
         true  ->
             {Fresh, NewState} = FreshFun(Alpha, State),
             NewSubst = subst:extend(Subst, Alpha, {var, Fresh}),
-            replace_bounds(Rest, [Fresh | Polys], NewSubst, NewState, FreshFun);
+            replace_bounds(Rest, [Fresh | Polys], NewSubst, NewState, FreshFun, SymTab);
         false ->
-            NewSubst = subst:extend(Subst, Alpha, subst:apply(Subst, Bound)),
-            replace_bounds(Rest, Polys, NewSubst, State, FreshFun)
+            NewSubst = subst:extend(Subst, Alpha, subst:apply(Subst, Bound, {clean, SymTab})),
+            replace_bounds(Rest, Polys, NewSubst, State, FreshFun, SymTab)
     end.
 
--spec mono_ty(ast:loc(), ast:ty_scheme(), State, fresh_fun(State)) ->
+-spec mono_ty(ast:loc(), ast:ty_scheme(), State, fresh_fun(State), symtab:t()) ->
     {ast:ty(), sets:set(ast:ty_varname()), State}.
-mono_ty(Loc, TyScm = {ty_scheme, Bounds, T}, FreshStart, FreshFun) ->
+mono_ty(Loc, TyScm = {ty_scheme, Bounds, T}, FreshStart, FreshFun, SymTab) ->
     ?LOG_TRACE("Monomorphizing type scheme ~s", pretty:render_tyscheme(TyScm)),
     case order_bounds(Bounds) of
         cyclic ->
@@ -129,8 +130,8 @@ mono_ty(Loc, TyScm = {ty_scheme, Bounds, T}, FreshStart, FreshFun) ->
         OrderedBounds ->
             ?LOG_TRACE("Ordered bounds: ~200p", OrderedBounds),
             {Fresh, Subst, NewState} =
-                replace_bounds(OrderedBounds, [], subst:empty(), FreshStart, FreshFun),
-            Res = subst:apply(Subst, T),
+                replace_bounds(OrderedBounds, [], subst:empty(), FreshStart, FreshFun, SymTab),
+            Res = subst:apply(Subst, T, {clean, SymTab}),
             ?LOG_TRACE("Result of monomorphizing type scheme ~s:~n~s~nRaw: ~w~nFresh: ~200p",
                pretty:render_tyscheme(TyScm), pretty:render_ty(Res), Res, Fresh),
             {Res, sets:from_list(Fresh, [{version, 2}]), NewState}
