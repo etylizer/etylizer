@@ -514,7 +514,6 @@ is_predef_alias_name(N) ->
 -type ty_negation() :: {negation, ty()}.
 
 % We do not have an explicit type for records. We encode them as tuples instead.
-
 -type ty() :: ty_singleton() | ty_bitstring() | ty_some_list()
     | ty_fun() | ty_integer_range() | ty_map_any() | ty_map() | ty_predef() | ty_predef_alias()
     | ty_named() | ty_tuple_any() | ty_tuple() | ty_var() | ty_mu_var() | ty_mu()

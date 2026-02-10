@@ -1,7 +1,7 @@
 % ERROR
 % apply_fun(fun(_X) -> 1 end)
 
--module(higher_order).
+-module(higher_order_fail1).
 
 -export([main/0]).
 

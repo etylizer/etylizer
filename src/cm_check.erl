@@ -135,4 +135,3 @@ overlay_symtab(Opts) ->
             parse_cache:parse(intern, OverlayFile)
     end,
     symtab:overlay_symtab(OverlayForms).
-

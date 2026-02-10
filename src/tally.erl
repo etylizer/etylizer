@@ -4,7 +4,7 @@
   tally/2,
   is_satisfiable/3
 ]).
- 
+
 -ifdef(TEST).
 -export([
   tally/3
@@ -50,7 +50,7 @@ tally(SymTab, Constraints, FixedVars, Mode) ->
     ),
   MonomorphicTallyVariables = maps:from_list([{ty_variable:new_with_name(Var), []} || Var <- sets:to_list(FixedVars)]),
 
-  Res = case Mode of
+  case Mode of
     solve ->
       InternalResult = etally:tally(InternalConstraints, MonomorphicTallyVariables),
 
@@ -81,15 +81,9 @@ tally(SymTab, Constraints, FixedVars, Mode) ->
       end;
     satisfiable ->
       InternalResult = etally:is_tally_satisfiable(InternalConstraints, MonomorphicTallyVariables),
-      
+
       case InternalResult of
         false -> {false, []};
         true -> {true, subst:empty()}
       end
-  end,
-  Res.
-
-
-
-
-
+  end.

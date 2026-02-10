@@ -178,7 +178,7 @@ collect_pos_neg_tyvars(Ty, _SymTab) ->
       sets:new([{version, 2}]),
       VarPositions).
 
--spec compose([subst:t()], subst:base_subst()) -> [subst:t()].
+-spec compose(subst:t(), subst:base_subst()) -> subst:t().
 compose({tally_subst, S, Fixed}, Sigma2) ->
         S1 = apply_subst(S, Sigma2),
         {tally_subst, S1, sets:union(Fixed, sets:from_list(maps:values(Sigma2), [{version, 2}]))}.

@@ -2,31 +2,31 @@
 
 % @doc This module defines types for constraints.
 
- -export_type([
-     locs/0,
-     constr_env/0,
-     constr_poly_env/0,
-     constrs/0,
-     constr/0,
-     constr_subty/0,
-     constr_var/0,
-     constr_var_mater/0,
-     constr_def/0,
-     constr_case_branch/0,
-     case_branch_payload/0,
-     constr_case_branch_cond/0,
-     constrs_with_env/0,
-     simp_constrs/0,
-     simp_constr/0,
-     simp_constrs_loc/0,
-     simp_constr_subty/0,
-     simp_constr_mater/0,
-     simp_constr_case/0,
-     simp_constr_case_branch/0,
-     subty_constrs/0,
-     collected_constrs/0,
-     mater_constrs/0
- ]).
+-export_type([
+    locs/0,
+    constr_env/0,
+    constr_poly_env/0,
+    constrs/0,
+    constr/0,
+    constr_subty/0,
+    constr_var/0,
+    constr_var_mater/0,
+    constr_def/0,
+    constr_case_branch/0,
+    case_branch_payload/0,
+    constr_case_branch_cond/0,
+    constrs_with_env/0,
+    simp_constrs/0,
+    simp_constr/0,
+    simp_constrs_loc/0,
+    simp_constr_subty/0,
+    simp_constr_mater/0,
+    simp_constr_case/0,
+    simp_constr_case_branch/0,
+    subty_constrs/0,
+    collected_constrs/0,
+    mater_constrs/0
+]).
 
 -export([
     case_branch_guard/1,

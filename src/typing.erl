@@ -1,4 +1,3 @@
-
 -module(typing).
 
 -export([
@@ -6,8 +5,8 @@
     new_ctx/3
 ]).
 
--include("typing.hrl").
 -include("log.hrl").
+-include("typing.hrl").
 
 -spec new_ctx(symtab:t(), symtab:t(), t:opt(ast_check:ty_map())) -> ctx().
 new_ctx(Tab, Overlay, Sanity) ->
@@ -79,7 +78,6 @@ check_forms(Ctx, FileName, Forms, Only, Ignore, CheckExports) ->
     end,
     % infer types of functions without spec
     InferredTyEnvs = typing_infer:infer_all(ExtCtx, FileName, FunsWithoutSpec),
-       
     % Typechecks the functions with a type spec. We need to check against all InferredTyEnvs,
     % we can stop on the first success.
     ?LOG_INFO("Checking ~w functions in ~s against their specs (~w environments)",

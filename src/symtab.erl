@@ -43,7 +43,7 @@
               modules :: mod_env()
 }).
 
--opaque t() :: #tab{}.
+-type t() :: #tab{}.
 
 get_types(#tab{types = Types}) -> Types.
 

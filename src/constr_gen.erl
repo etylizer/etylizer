@@ -64,13 +64,13 @@ mk_locs(Label, X) -> {Label, utils:single(X)}.
 gen_constrs_fun_group(Symtab, Decls) ->
     Ctx = new_ctx(Symtab),
     lists:foldl(
-        fun({function, L, Name, Arity, FunClauses}, {Cs, Env}) ->
-            Exp = {'fun', L, no_name, FunClauses},
-            Alpha = fresh_tyvar(Ctx),
-            ThisCs = exp_constrs(Ctx, Exp, Alpha),
-            Ref = {ref, Name, Arity},
-            {sets:union(ThisCs, Cs), maps:put(Ref, Alpha, Env)}
-        end, {sets:new([{version, 2}]), #{}}, Decls).
+      fun({function, L, Name, Arity, FunClauses}, {Cs, Env}) ->
+              Exp = {'fun', L, no_name, FunClauses},
+              Alpha = fresh_tyvar(Ctx),
+              ThisCs = exp_constrs(Ctx, Exp, Alpha),
+              Ref = {ref, Name, Arity},
+              {sets:union(ThisCs, Cs), maps:put(Ref, Alpha, Env)}
+      end, {sets:new([{version, 2}]), #{}}, Decls).
 
 % Checking the type spec of a function.
 % This function is invoked for each branch of the intersection type in the type spec.
@@ -106,7 +106,6 @@ exps_constrs(Ctx, _L, Es, T) ->
                         Init)
     end.
 
-
 -spec exp_constrs(ctx(), ast:exp(), ast:ty()) -> constr:constrs().
 exp_constrs(Ctx, E, T) ->
     case E of
@@ -117,8 +116,8 @@ exp_constrs(Ctx, E, T) ->
         {'string', L, ""} -> utils:single({csubty, mk_locs("empty string literal", L), {empty_list}, T});
         {'string', L, _S} -> utils:single({csubty, mk_locs("string literal", L), {predef_alias, nonempty_string}, T});
         {bin, L, []} -> utils:single({csubty, mk_locs("empty bitstring", L), {bitstring}, T});
-        {bin, L, _Cs} ->
-            % TODO constraints for inner binary pattern elements
+        {bin, L, _Cs} -> 
+            % TODO constraints for inner binary pattern elements 
             ?LOG_WARN("Skipping verification of binary pattern elements of ~s", ast:format_loc(L)),
             utils:single({csubty, mk_locs("bitstring", L), {bitstring}, T});
         {bc, L, _E, _Qs} -> errors:unsupported(L, "bitstrings");
@@ -205,19 +204,19 @@ exp_constrs(Ctx, E, T) ->
             AssocsCs =
                 lists:foldl(
                   fun({map_field_opt, _FieldL, KeyE, ValE}, AccCs) ->
-              KeyCs = exp_constrs(Ctx, KeyE, KeyAlpha),
-              ValCs = exp_constrs(Ctx, ValE, ValAlpha),
+                          KeyCs = exp_constrs(Ctx, KeyE, KeyAlpha),
+                          ValCs = exp_constrs(Ctx, ValE, ValAlpha),
                           sets:union([AccCs, KeyCs, ValCs])
                   end,
                   sets:new([{version, 2}]),
                   Assocs),
             ResultC = {csubty, mk_locs("map_create", L), MapTy, T},
             sets:add_element(ResultC, AssocsCs);
-    {map_update, L, MapExp, Assocs} ->
+        {map_update, L, MapExp, Assocs} ->
             KeyAlpha = fresh_tyvar(Ctx),
             ValAlpha = fresh_tyvar(Ctx),
             MapTy = {map, [{map_field_opt, KeyAlpha, ValAlpha}]},
-        Cs1 = exp_constrs(Ctx, MapExp, MapTy),
+            Cs1 = exp_constrs(Ctx, MapExp, MapTy),
             Cs2 =
                 lists:foldl(
                 fun(Assoc, AccCs) ->
@@ -226,8 +225,8 @@ exp_constrs(Ctx, E, T) ->
                             {map_field_opt, _FieldL, K, V} -> {K, V};
                             {map_field_req, _FieldL, K, V} -> {K, V}
                         end,
-            KeyCs = exp_constrs(Ctx, KeyE, KeyAlpha),
-            ValCs = exp_constrs(Ctx, ValE, ValAlpha),
+                    KeyCs = exp_constrs(Ctx, KeyE, KeyAlpha),
+                    ValCs = exp_constrs(Ctx, ValE, ValAlpha),
                     sets:union([AccCs, KeyCs, ValCs])
                 end,
                 Cs1,
@@ -262,7 +261,7 @@ exp_constrs(Ctx, E, T) ->
             errors:unsupported(L, "receive: ~200p", [E]);
         {receive_after, L, _CauseClauses, _TimeoutExp, _Body} ->
             errors:unsupported(L, "receive_after: ~200p", [E]);
-    {record_create, L, Name, GivenFields} ->
+        {record_create, L, Name, GivenFields} ->
             {_, DefFields} = symtab:lookup_record(Name, L, Ctx#ctx.symtab),
             VarFields =
                 lists:map(
@@ -358,12 +357,12 @@ exp_constrs(Ctx, E, T) ->
                 end,
                 sets:add_element(ResConstr, ExpCs),
                 FieldUpdates);
-    {tuple, L, Args} ->
+        {tuple, L, Args} ->
             {Tys, Cs} =
                 lists:foldr(
                   fun(Arg, {Tys, Cs}) ->
                           Alpha = fresh_tyvar(Ctx),
-              ThisCs = exp_constrs(Ctx, Arg, Alpha),
+                          ThisCs = exp_constrs(Ctx, Arg, Alpha),
                           {[Alpha | Tys], sets:union(Cs, ThisCs)}
                   end,
                   {[], sets:new([{version, 2}])},
@@ -385,14 +384,14 @@ exp_constrs(Ctx, E, T) ->
 -spec gen_funcall_constrs(ctx(), ast:loc(), ast:exp(), [ast:exp()], ast:ty()) -> constr:constrs().
 gen_funcall_constrs(Ctx, L, FunExp, Args, T) ->
     {ArgCs, ArgTys} =
-    lists:foldr(
-        fun(ArgExp, {AccCs, AccTys}) ->
-            Alpha = fresh_tyvar(Ctx),
-            Cs = exp_constrs(Ctx, ArgExp, Alpha),
-            {sets:union(AccCs, Cs), [Alpha | AccTys]}
-        end,
-        {sets:new([{version, 2}]), []},
-        Args),
+        lists:foldr(
+            fun(ArgExp, {AccCs, AccTys}) ->
+                    Alpha = fresh_tyvar(Ctx),
+                    Cs = exp_constrs(Ctx, ArgExp, Alpha),
+                    {sets:union(AccCs, Cs), [Alpha | AccTys]}
+            end,
+            {sets:new([{version, 2}]), []},
+            Args),
     Beta = fresh_tyvar(Ctx),
     FunTy = {fun_full, ArgTys, Beta},
     FunCs = exp_constrs(Ctx, FunExp, FunTy),
@@ -418,7 +417,6 @@ var_funcall_constrs(Ctx, L, Var, Args, T) ->
             end
     end.
 
-
 -spec funcall_constrs_with_tyscm(ctx(), ast:loc(), ast:exp_var(), ast:ty_scheme(), [ast:exp()], ast:ty()) -> constr:constrs().
 funcall_constrs_with_tyscm(Ctx, L, Var, TyScm, Args, T) ->
     {Mono, _, _} = typing_common:mono_ty(L, TyScm, none, fun(_, none) -> {fresh_ty_varname(Ctx), none} end),
@@ -432,10 +430,6 @@ funcall_constrs_with_tyscm(Ctx, L, Var, TyScm, Args, T) ->
                     T},
             Res = lists:foldr(
                 fun({Arg, Ty}, Cs) ->
-                    % FreshAlpha = fresh_ty_varname(Ctx),
-                    % ThisCs = exp_constrs(Ctx, Arg, {var, FreshAlpha}),
-                    % MaterConstr = {cmater, mk_locs(utils:sformat("argument ~p of calling ~s", Arg, FunName), L), Ty, FreshAlpha},
-                    % sets:union(sets:add_element(MaterConstr, Cs), ThisCs)
                     ThisCs = exp_constrs(Ctx, Arg, Ty),
                     sets:union(Cs, ThisCs)
                 end,
@@ -522,8 +516,8 @@ case_clause_constrs(Ctx, TyScrut, Scrut, NeedsUnmatchedCheck, LowersBefore,
     CGuards =
         sets:union(
           lists:map(
-        fun(Guard) ->
-            exps_constrs(Ctx, L, Guard, {predef_alias, boolean})
+            fun(Guard) ->
+                    exps_constrs(Ctx, L, Guard, {predef_alias, boolean})
             end,
             Guards)),
     RedundancyCs =

@@ -177,7 +177,7 @@ simple_test_() ->
 
   % If OnlyFiles is empty, all files not in IgnoreFiles are checked
   % If OnlyFiles is not empty, only the files in OnlyFiles but not in IgnoreFiels are checked
-  OnlyFiles = ["gradual.erl"],
+  OnlyFiles = [],
   IgnoreFiles = [],
 
   parse_cache:with_cache(
