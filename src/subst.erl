@@ -16,7 +16,8 @@
     empty/0,
     extend/3,
     mk_tally_subst/2,
-    base_subst/1
+    base_subst/1,
+    collect_vars/4
 ]).
 
 -ifdef(TEST).

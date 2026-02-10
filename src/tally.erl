@@ -72,7 +72,7 @@ tally(SymTab, Constraints, FixedVars, Mode) ->
                       maps:put(Var, gradual_utils:subst_ty(Ty, S, no_discrimination), Acc)
                     end,
                     #{}, UnificationSubst),
-                  gradual_utils:postprocess({tally_subst, maps:merge(S, MaterSubst), Fixed}, SubtyConstrs, Maters)
+                  gradual_utils:postprocess({tally_subst, maps:merge(S, MaterSubst), Fixed}, SubtyConstrs, Maters, SymTab)
                 end,
                 Sigmas
               )

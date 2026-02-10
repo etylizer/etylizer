@@ -6,13 +6,13 @@
     init/0,
     clean/0,
     preprocess_constrs/1,
-    postprocess/3,
+    postprocess/4,
     subst_ty/3
 ]).
 
 -ifdef(TEST).
 -export([
-  collect_pos_neg_tyvars/1,
+  collect_pos_neg_tyvars/2,
   replace_dynamic/1
 ]).
 -endif.
@@ -95,8 +95,8 @@ replace_dynamic(Ty) ->
   end, Ty).
 
 % This postprocess step refers to the work of Petrucciani in his PhD thesis (chapter 10.4.2)
--spec postprocess(subst:t(), constr:subty_constrs(), constr:subty_constrs()) -> subst:t().
-postprocess({tally_subst, S, Fixed}, Constrs, Maters) ->
+-spec postprocess(subst:t(), constr:subty_constrs(), constr:subty_constrs(), symtab:t()) -> subst:t().
+postprocess({tally_subst, S, Fixed}, Constrs, Maters, SymTab) ->
     ?LOG_DEBUG("Postprocessing tally substitution:~nSubstitution:~n~s~nConstraints:~n~s~nMaterialization constraints:~n~s",
         pretty:render_subst(S),
         pretty:render_constr(Constrs),
@@ -127,8 +127,8 @@ postprocess({tally_subst, S, Fixed}, Constrs, Maters) ->
     % the subtyping constraints
     PosNegTyvars = sets:fold(
       fun({scsubty, _, T1, T2}, Acc) ->
-        Tyvars1 = collect_pos_neg_tyvars(T1),
-        Tyvars2 = collect_pos_neg_tyvars(T2),
+        Tyvars1 = collect_pos_neg_tyvars(T1, SymTab),
+        Tyvars2 = collect_pos_neg_tyvars(T2, SymTab),
         sets:union([Acc, Tyvars1, Tyvars2])
       end,
       sets:new([{version, 2}]),
@@ -178,58 +178,27 @@ postprocess({tally_subst, S, Fixed}, Constrs, Maters) ->
     Composition = compose({tally_subst, S, Fixed}, Sigma2),
     Composition.
 
--spec collect_pos_neg_tyvars(ast:ty()) -> sets:set(ast:ty_varname()).
-collect_pos_neg_tyvars(Ty) -> 
-  {Pos, Neg} = collect_pos_neg_tyvars(Ty, 0),  
-  Res = sets:intersection(sets:from_list(Pos, [{version, 2}]), sets:from_list(Neg, [{version, 2}])),
-  Res.
-
--spec collect_pos_neg_tyvars(ast:ty(), non_neg_integer()) -> {[ast:ty_varname()], [ast:ty_varname()]}.
-collect_pos_neg_tyvars({var, Alpha}, NegCount) ->
-    case NegCount rem 2 of
-        0 -> {[Alpha], []};
-        1 -> {[], [Alpha]}
-    end;
-
-collect_pos_neg_tyvars({union, Types}, NegCount) ->
-    fold_types(Types, NegCount);
-
-collect_pos_neg_tyvars({intersection, Types}, NegCount) ->
-    fold_types(Types, NegCount);
-
-collect_pos_neg_tyvars({tuple, Types}, NegCount) ->
-    fold_types(Types, NegCount);
-
-collect_pos_neg_tyvars({fun_full, ArgTypes, RetType}, NegCount) ->
-    {EArgs, OArgs} = fold_types(ArgTypes, NegCount),
-    {ERet, ORet} = collect_pos_neg_tyvars(RetType, NegCount),
-    {EArgs ++ ERet, OArgs ++ ORet};
-
-collect_pos_neg_tyvars({negation, Ty}, NegCount) ->
-    collect_pos_neg_tyvars(Ty, NegCount + 1);
-
-% Fallback
-collect_pos_neg_tyvars(_, _) ->
-    {[], []}.
-    
-% Helper to fold over a list of subtypes
--spec fold_types([ast:ty()], non_neg_integer()) -> {[ast:ty_varname()], [ast:ty_varname()]}.
-fold_types(Types, NegCount) ->
-    lists:foldl(
-      fun(T, {Evens, Odds}) ->
-              {E2, O2} = collect_pos_neg_tyvars(T, NegCount),
-              {Evens ++ E2, Odds ++ O2}
+% Returns the set of variable names appearing in both positive and negative positions in Ty.
+% Delegates to subst:collect_vars/4 for exhaustive AST traversal.
+-spec collect_pos_neg_tyvars(ast:ty(), symtab:t()) -> sets:set(ast:ty_varname()).
+collect_pos_neg_tyvars(Ty, _SymTab) ->
+    VarPositions = subst:collect_vars(Ty, 0, #{}, sets:new()),
+    maps:fold(
+      fun(Name, Positions, Acc) ->
+          case lists:usort(Positions) of
+              [0, 1] -> sets:add_element(Name, Acc);
+              _ -> Acc
+          end
       end,
-      {[], []},
-      Types
-    ).
+      sets:new([{version, 2}]),
+      VarPositions).
 
 -spec compose([subst:t()], subst:base_subst()) -> [subst:t()].
 compose({tally_subst, S, Fixed}, Sigma2) ->
         S1 = apply_subst(S, Sigma2),
         {tally_subst, S1, sets:union(Fixed, sets:from_list(maps:values(Sigma2), [{version, 2}]))}.
 
--spec apply_subst(subst:t(), subst:base_subst()) -> subst:t().
+-spec apply_subst(subst:base_subst(), subst:base_subst()) -> subst:base_subst().
 apply_subst(S, Sigma2) ->
     maps:fold(
         fun(Var, Ty, Acc) ->
@@ -244,11 +213,11 @@ apply_subst(S, Sigma2) ->
 -spec subst_ty(ast:ty(), subst:base_subst(), atom()) -> ast:ty().
 subst_ty(Ty, VarSubst, Mode) -> 
   utils:everywhere(fun
-    ({var, Name}) ->
+    ({var, Name}) when is_atom(Name) ->
       NewTy = find_in_subst({var, Name}, VarSubst),
       case Mode of
         discriminate -> {ok, utils:everywhere(fun
-          ({var, N}) ->
+          ({var, N}) when is_atom(N) ->
             case is_framevar(N) of
               true -> {ok, {predef, dynamic}}; % replace frame variables with dynamic (discrimination)
               false -> error % keep as type variable
@@ -267,11 +236,11 @@ find_in_subst({var, Name}, VarSubst) ->
         error -> {var, Name}
     end.
 
--spec collect_tyvars(ast:ty()) -> sets:set(ast:ty_varname()).
+-spec collect_tyvars(ast:ty()) -> [ast:ty_varname()].
 collect_tyvars(Ty) ->
     utils:everything(
       fun
-        ({var, Name}) -> 
+        ({var, Name}) when is_atom(Name) ->
           case is_typevar(Name) of
             true -> {ok, Name};
             false -> error

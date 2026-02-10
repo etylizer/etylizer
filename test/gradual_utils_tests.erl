@@ -2,7 +2,7 @@
 
 -include_lib("eunit/include/eunit.hrl").
  
-%% -------------------- collect_pos_neg_tyvars/1 tests -----------------------
+%% -------------------- collect_pos_neg_tyvars/2 tests -----------------------
 
 collect_pos_neg_tyvars_test() ->
     % Construct a type AST where:
@@ -21,7 +21,7 @@ collect_pos_neg_tyvars_test() ->
                   {negation, {var, 'A'}}                % odd (negative) occurrence of 'A'
               ]}
           ]},
-    Res = gradual_utils:collect_pos_neg_tyvars(Ty),
+    Res = gradual_utils:collect_pos_neg_tyvars(Ty, symtab:empty()),
     ?assertEqual(sets:from_list(['A'], [{version, 2}]), Res).
 
 no_overlap_all_positive_test() ->
@@ -33,7 +33,7 @@ no_overlap_all_positive_test() ->
                   {negation, {negation, {var, 'R'}}}
               ]}
           ]},
-    Res = gradual_utils:collect_pos_neg_tyvars(Ty),
+    Res = gradual_utils:collect_pos_neg_tyvars(Ty, symtab:empty()),
     ?assertEqual(sets:new([{version, 2}]), Res).
 
 no_overlap_all_negative_test() ->
@@ -45,24 +45,27 @@ no_overlap_all_negative_test() ->
                   {negation, {negation, {negation, {var, 'N3'}}}}
               ]}
           ]},
-    Res = gradual_utils:collect_pos_neg_tyvars(Ty),
+    Res = gradual_utils:collect_pos_neg_tyvars(Ty, symtab:empty()),
     ?assertEqual(sets:new([{version, 2}]), Res).
 
 function_argument_and_return_parity_test() ->
-    Ty = {fun_full, [ {negation, {var, 'X'}} ], {var, 'X'}},
-    Res = gradual_utils:collect_pos_neg_tyvars(Ty),
+    % subst:collect_vars/4 flips position for fun args (contravariant),
+    % so {negation, {var, X}} in arg position: contravariance + negation cancel out,
+    % X only appears positively. Use {var, X} in arg to get contravariant occurrence.
+    Ty = {fun_full, [ {var, 'X'} ], {var, 'X'}},
+    Res = gradual_utils:collect_pos_neg_tyvars(Ty, symtab:empty()),
     ?assertEqual(sets:from_list(['X'], [{version, 2}]), Res).
 
 nested_negations_parity_test() ->
     % A variable appearing once positive and once with triple negation -> both parities
     Ty = {union, [ {var, 'Y'}, {negation, {negation, {negation, {var, 'Y'}}}} ]},
-    Res = gradual_utils:collect_pos_neg_tyvars(Ty),
+    Res = gradual_utils:collect_pos_neg_tyvars(Ty, symtab:empty()),
     ?assertEqual(sets:from_list(['Y'], [{version, 2}]), Res).
 
 empty_union_test() ->
     % Empty union should yield empty result set
     Ty = {union, []},
-    Res = gradual_utils:collect_pos_neg_tyvars(Ty),
+    Res = gradual_utils:collect_pos_neg_tyvars(Ty, symtab:empty()),
     ?assertEqual(sets:new([{version, 2}]), Res).
 
 
