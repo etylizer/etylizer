@@ -10,7 +10,7 @@
     constr_block/0
 ]).
 
--type constr_error_kind() :: tyerror | redundant_branch | non_exhaustive_case.
+-type constr_error_kind() :: tyerror | redundant_branch | non_exhaustive_case | nominal_incompatible.
 
 -type constr_blocks() :: list(constr_block()).
 
