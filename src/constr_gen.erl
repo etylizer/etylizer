@@ -50,7 +50,7 @@ fresh_vars(Ctx, N) ->
                 if
                     J > N -> [];
                     true ->
-                        ArgJ = list_to_atom(utils:sformat("A~w", J)),
+                        ArgJ = list_to_atom(utils:sformat("$A~w", J)),
                         X = {ArgJ, I},
                         [X | Loop(J + 1)]
                 end

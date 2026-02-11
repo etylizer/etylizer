@@ -45,3 +45,11 @@ guard_09_fail(F) when is_function(F, 2) -> ok.
 
 -spec guard_10_fail(fun((term()) -> term())) -> ok.
 guard_10_fail(F) when is_function(F, 2) -> ok.
+
+-spec guard_variable_name_01({atom() | integer(), atom() | integer()}) -> atom().
+guard_variable_name_01({A1, A2}) when is_atom(A1), is_atom(A2) -> A1;
+guard_variable_name_01({_, _}) -> ok.
+
+-spec guard_variable_name_02({atom() | integer(), atom() | integer()}) -> atom().
+guard_variable_name_02({ZZ1, ZZ2}) when is_atom(ZZ1), is_atom(ZZ2) -> ZZ1;
+guard_variable_name_02({_, _}) -> ok.
