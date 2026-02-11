@@ -63,3 +63,11 @@ guard_variable_name_02({_, _}) -> ok.
 -spec guard_or_narrow_01({atom() | integer(), atom() | integer()}) -> integer().
 guard_or_narrow_01({_X, _Y}) when is_atom(_X) or is_atom(_Y) -> 0;
 guard_or_narrow_01({X, Y}) -> X + Y.
+
+% Unsound union_envs for or-guards with non-overlapping keys:
+% is_atom(X) or is_atom(Y) only guarantees that ONE of them is an atom,
+% but the current union_envs refines BOTH to atom. This test should fail
+% because Y could be integer when X is the atom (and vice versa).
+-spec guard_or_unsound_01_fail({atom() | integer(), atom() | integer()}) -> {atom(), atom()}.
+guard_or_unsound_01_fail({X, Y}) when is_atom(X) or is_atom(Y) -> {X, Y};
+guard_or_unsound_01_fail({_, _}) -> {a, b}.
