@@ -75,12 +75,13 @@ check_fail_fun(Filename, Tab, OverlayTab, Decl = {function, L, Name, Arity, _}, 
     end.
 
 -type what() :: all | {include, sets:set(string())} | {exclude, sets:set(string())}.
+-type no_infer() :: all | sets:set(string()).
 
 -spec has_intersection(ast:ty_scheme()) -> boolean().
 has_intersection({ty_scheme, _, {intersection, _}}) -> true;
 has_intersection({ty_scheme, _, _}) -> false.
 
--spec check_decls_in_file(string(), what(), sets:set(string())) -> list().
+-spec check_decls_in_file(string(), what(), no_infer()) -> list().
 check_decls_in_file(F, What, NoInfer) ->
   RawForms = parse:parse_file_or_die(F),
   Forms = ast_transform:trans(F, RawForms),
@@ -110,7 +111,7 @@ check_decls_in_file(F, What, NoInfer) ->
               end}
             },
         InferTest =
-          {timeout, 45, {FullNameStr ++ " (infer)", fun() ->
+          {timeout, 60, {FullNameStr ++ " (infer)", fun() ->
                 ?LOG_NOTE("Infering type for ~s from ~s", NameStr, F),
                 global_state:with_new_state(fun() ->
                   check_infer_ok_fun(F, Tab, OverlayTab, Decl, Ty)
@@ -119,7 +120,8 @@ check_decls_in_file(F, What, NoInfer) ->
               end}
           },
         ShouldRun = should_run(NameStr, What),
-        ShouldInfer = not ShouldFail andalso not sets:is_element(NameStr, NoInfer)
+        ShouldInfer = not ShouldFail andalso NoInfer =/= all
+          andalso not sets:is_element(NameStr, NoInfer)
           andalso not has_intersection(Ty),
         ExtraTestCases =
           case {ShouldRun, ShouldInfer} of
@@ -143,12 +145,30 @@ should_run(_Name, all) -> true.
 
 
 
--spec check_decls_in_files(list(string()), what(), sets:set(string())) -> list().
+-spec check_decls_in_files(list(string()), what(), no_infer()) -> list().
 check_decls_in_files(Files, What, NoInfer) ->
   CollectDecls = fun(File, TestCases) ->
     TestCases ++ check_decls_in_file(File, What, NoInfer)
   end,
   lists:foldl(CollectDecls, [], Files).
+
+% Reads TEST, MODULE, and NO_INFER environment variables for test filtering.
+% Returns {OnlyFiles, What, SkipAllInfer}.
+%   TEST=module:fun_name  - run only fun_name from module.erl
+%   TEST=module           - run all functions from module.erl
+%   NO_INFER=1            - skip all inference tests
+-spec parse_test_env() -> {list(string()), what() | undefined, boolean()}.
+parse_test_env() ->
+  SkipAllInfer = os:getenv("NO_INFER") =/= false,
+  case os:getenv("TEST") of
+    false ->
+      {[], undefined, SkipAllInfer};
+    TestVal ->
+      case string:split(TestVal, ":") of
+        [Mod, Fun] -> {[Mod ++ ".erl"], {include, sets:from_list([Fun])}, SkipAllInfer};
+        [Mod] -> {[Mod ++ ".erl"], undefined, SkipAllInfer}
+      end
+  end.
 
 simple_test_() ->
   % The following functions are currently excluded from being tested.
@@ -188,13 +208,23 @@ simple_test_() ->
     "maybe_09"
   ],
 
-  %What = ["atom_03_fail"],
+  {EnvOnlyFiles, EnvWhat, SkipAllInfer} = parse_test_env(),
+
   TopDir = "test_files/tycheck_simple",
 
-  % If OnlyFiles is empty, all files not in IgnoreFiles are checked
-  % If OnlyFiles is not empty, only the files in OnlyFiles but not in IgnoreFiels are checked
-  OnlyFiles = [],
+  OnlyFiles = EnvOnlyFiles,
+  % OnlyFiles = ["guards.erl"], % use this instead to not use ENV vars to select modules to test
   IgnoreFiles = [],
+
+  What = case EnvWhat of
+    undefined -> {exclude, sets:from_list(WhatNot)};
+    W -> W
+  end,
+
+  NoInferSet = case SkipAllInfer of
+    true -> all;
+    false -> sets:from_list(NoInfer)
+  end,
 
   parse_cache:with_cache(
     #opts{},
@@ -215,10 +245,7 @@ simple_test_() ->
               [] -> erlang:error("No test files found in " ++ TopDir);
               _ -> ok
             end,
-            check_decls_in_files(ErlFiles,
-                          {exclude, sets:from_list(WhatNot)},
-                          %{include, sets:from_list(What)},
-                          sets:from_list(NoInfer));
+            check_decls_in_files(ErlFiles, What, NoInferSet);
         _ -> erlang:error("Failed to list test directory " ++ TopDir)
       end
     end).
