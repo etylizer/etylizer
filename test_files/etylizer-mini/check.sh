@@ -2,15 +2,17 @@
 
 cd $(dirname $0)
 OVERLAY=overlay.erl
-LOGLEVEL=info
+LOGLEVEL=error
 
 if [ ! -z "$ETYLIZER_CASE_STUDY_LOGLEVEL" ]; then
     LOGLEVEL="$ETYLIZER_CASE_STUDY_LOGLEVEL"
 fi
 
 function run_ety() {
-    ../../ety --build --type-overlay $OVERLAY --force -l $LOGLEVEL -P . -I src $QF --no-deps "$@" || exit 1
+    ../../ety --type-overlay $OVERLAY --force -l $LOGLEVEL -P . -I src $QF --no-deps "$@" || exit 1
 }
+
+../../ety --build -h
 
 # to) timeout
 # 1) impl: try & catch
@@ -28,6 +30,8 @@ QF=""
 run_ety src/ast_erl.erl
 
 QF=""
+QF=$QF" -i mk_intersection/1" # to)
+QF=$QF" -i mk_union/1" # to)
 run_ety src/ast_lib.erl
 
 QF=""
@@ -55,7 +59,7 @@ QF="" run_ety src/records.erl
 QF=""
 QF=$QF" -i expand_predef_alias/1" # to)
 QF=$QF" -i builtin_ops/0" # to)
-# QF=$QF" -i mk_builtin_funs/1" # 5) 
+QF=$QF" -i mk_builtin_funs/1" # to)
 QF=$QF" -i builtin_funs/0" # 4)
 run_ety src/stdtypes.erl
 
@@ -66,7 +70,9 @@ run_ety src/tmp.erl
 
 QF="" run_ety src/varenv.erl
 
-QF="" run_ety src/varenv_local.erl
+QF="" 
+QF=$QF" -i merge_envs/1" # to
+run_ety src/varenv_local.erl
 
 QF="" run_ety src/ast_erl.erl
 
@@ -83,6 +89,8 @@ QF=$QF" -i fl/1" # not part of case study (overlay with additional -type)
 run_ety src/utils.erl
 
 QF="" 
+QF=$QF" -i thread_through_env/3" # 130s
+QF=$QF" -i trans_exp_bin_elem/3" # 130s
 QF=$QF" -i resolve_ety_ty/3" # 80s
 QF=$QF" -i eval_const_ty/2" # 1)
 QF=$QF" -i shallow_remove_match/1" # to)
@@ -95,6 +103,11 @@ QF=$QF" -i trans_pat/4" # 4)
 QF=$QF" -i trans_exp/3" # to)
 QF=$QF" -i trans/4" # to) tally v1 is faster check why
 QF=$QF" -i trans_catch_clause/3" # 3)
-# QF=$QF" -i build_funenv/2" # 5) implemented assert fun
+QF=$QF" -i trans_case_clause/3" # 120s
+QF=$QF" -i trans_map_assoc/3" # 200s
+QF=$QF" -i build_funenv/2" # to)
+QF=$QF" -i trans_pat_bin_elem/4" # to)
+QF=$QF" -i trans_case_clauses/3" # to)
+QF=$QF" -i trans_fun_clause/3" # to)
 # QF=$QF" -i mk_builtin_funs/2" # 5) implemented assert fun
 run_ety src/ast_transform.erl

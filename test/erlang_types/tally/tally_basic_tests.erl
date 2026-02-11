@@ -188,7 +188,6 @@ tally_10_test() ->
     V0 = v(v1),
     V7 = v(v2),
     B = b(foo),
-    T = b(tag),
     test_tally(
       [
        {
