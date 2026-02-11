@@ -1,0 +1,11 @@
+{                                                                                                                                 
+  "languageserver": {                                                     
+    "erlang": {                                                                                                                   
+      "command": "elp",                                                                                                           
+      "args": ["server"],
+      "filetypes": ["erlang"],
+      "settings": {
+        "elp": {
+          "diagnostics": {
+            "disabled": ["W0049", "W0023", "W0030", "W0032"]
+}}}}}}
