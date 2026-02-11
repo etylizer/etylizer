@@ -240,7 +240,7 @@ get_fun_name({function, _Loc, Name, Arity, _}) -> utils:sformat("~w/~w", Name, A
                     }.
 -type record_decl() :: {attribute, loc(), record, {Name::atom(), [record_field()]}}.
 -type record_field() :: {record_field, loc(), atom(), untyped | ty(), no_default | exp()}.
--type type_decl() :: {attribute, loc(), type, transparent|opaque, tydef()}.
+-type type_decl() :: {attribute, loc(), type, transparent|opaque|nominal, tydef()}.
 
 % The forall-quantified tyvars are bound in Rhs, Rhs contains no other type variables.
 -type tydef() :: {Name::atom(), Rhs::ty_scheme()}.

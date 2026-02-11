@@ -26,7 +26,8 @@
     empty/0,
     extend_symtab_with_module_list/4,
     dump_symtab/2, overlay_symtab/1,
-    get_types/1
+    get_types/1,
+    is_nominal/2
 ]).
 
 -ifdef(TEST). % for tally tests
@@ -46,12 +47,21 @@
               ops :: op_env(),
               types :: ty_env(),
               records :: record_env(),
-              modules :: mod_env()
+              modules :: mod_env(),
+              nominals :: sets:set(ty_key())
 }).
 
 -type t() :: #tab{}.
 
 get_types(#tab{types = Types}) -> Types.
+
+-spec is_nominal(ast:ty_ref(), t()) -> boolean().
+is_nominal(Ref, Tab) ->
+    Key = case Ref of
+              {ty_ref, M, N, A} -> {ty_key, M, N, A};
+              {ty_qref, M, N, A} -> {ty_key, M, N, A}
+          end,
+    sets:is_element(Key, Tab#tab.nominals).
 
 -spec dump_symtab(string(), t()) -> ok.
 dump_symtab(Msg, Tab) ->
@@ -148,7 +158,7 @@ symbols_for_module(Mod, Tab) ->
         ).
 
 -spec empty() -> t().
-empty() -> #tab { funs = #{}, ops = #{}, types = #{}, records = #{}, modules = #{} }.
+empty() -> #tab { funs = #{}, ops = #{}, types = #{}, records = #{}, modules = #{}, nominals = sets:new([{version, 2}]) }.
 
 -spec std_symtab(paths:search_path(), t()) -> t().
 std_symtab(SearchPath, OverlaySymtab) ->
@@ -162,7 +172,7 @@ std_symtab(SearchPath, OverlaySymtab) ->
         lists:foldl(fun({Name, Arity, T}, Map) -> maps:put({Name, Arity}, T, Map) end,
                     #{},
                     stdtypes:builtin_ops()),
-    Tab = #tab { funs = Funs, ops = Ops, types = #{}, records = #{}, modules = #{} },
+    Tab = #tab { funs = Funs, ops = Ops, types = #{}, records = #{}, modules = #{}, nominals = sets:new([{version, 2}]) },
     ExtTab = extend_symtab_with_module_list(Tab, SearchPath, [erlang], OverlaySymtab),
     ?LOG_DEBUG("Done building symtab for standard library"),
     ExtTab.
@@ -230,9 +240,14 @@ extend_symtab_internal(Filename, Forms, RefType, Tab, OverlaySymtab) ->
                             ?LOG_DEBUG("Overlay found for ~w:~w/~p", ModuleName, Name, Arity),
                             AccTab#tab { funs = maps:put(create_ref_tuple(RefType, Name, Arity), OverlayT, AccTab#tab.funs) }
                     end;
-                {attribute, _, type, _, {Name, TyScm = {ty_scheme, TyVars, _}}} ->
+                {attribute, _, type, Visibility, {Name, TyScm = {ty_scheme, TyVars, _}}} ->
                     Arity = length(TyVars),
-                    AccTab#tab { types = maps:put({ty_key, ModuleName, Name, Arity}, TyScm, AccTab#tab.types) };
+                    Key = {ty_key, ModuleName, Name, Arity},
+                    AccTab1 = AccTab#tab { types = maps:put(Key, TyScm, AccTab#tab.types) },
+                    case Visibility of
+                        nominal -> AccTab1#tab { nominals = sets:add_element(Key, AccTab1#tab.nominals) };
+                        _ -> AccTab1
+                    end;
                 {attribute, _, record, {RecordName, Fields}} ->
                     RecordTy = records:record_ty_from_decl(RecordName, Fields),
                     RecTypeName = records:record_type_name(RecordName),
