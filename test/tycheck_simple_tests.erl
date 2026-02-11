@@ -206,7 +206,8 @@ simple_test_() ->
     "lc_13",
     "lc_13b",
     "lc_15",
-    "lc_16"
+    "lc_16",
+    "bin_concat_04"
   ],
 
   %What = ["atom_03_fail"],

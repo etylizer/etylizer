@@ -178,11 +178,18 @@ ty(Prec, T) ->
                 _ when is_integer(A) -> integer(A);
                 _ -> text([$$, A]) % must be a char
             end;
-        % TODO full bitstring support
         {bitstring} ->
             text("bitstring()");
-        % {binary, I, J} ->
-        %     text(utils:sformat("<<_:~w, _:_*~w>>", I, J));
+        {bitstring, 0, 0} ->
+            text("<<>>");
+        {bitstring, 0, 8} ->
+            text("binary()");
+        {bitstring, M, 0} ->
+            text(utils:sformat("<<_:~w>>", M));
+        {bitstring, 0, N} ->
+            text(utils:sformat("<<_:_*~w>>", N));
+        {bitstring, M, N} ->
+            text(utils:sformat("<<_:~w, _:_*~w>>", M, N));
         {empty_list} ->
             text("[]");
         {cons, A, B} ->

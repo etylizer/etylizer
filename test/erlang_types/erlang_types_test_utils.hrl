@@ -41,6 +41,11 @@ p(A, B) -> {tuple, [A, B]}.
 p(A) when not is_list(A) -> {tuple, [A]};
 p(A) when is_list(A) -> {tuple, A}.
 tbitstring() -> {bitstring}.
+tbinary() -> {bitstring, 0, 8}.
+tnonempty_binary() -> {bitstring, 8, 8}.
+tnonempty_bitstring() -> {bitstring, 1, 1}.
+tempty_bitstring() -> {bitstring, 0, 0}.
+tbitstring_m_n(M, N) -> {bitstring, M, N}.
 ttuple_any() -> {tuple_any}.
 ttuple(Types) -> {tuple, Types}.
 ttuple1(Type) -> {tuple, [Type]}.
