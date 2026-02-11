@@ -53,3 +53,13 @@ guard_variable_name_01({_, _}) -> ok.
 -spec guard_variable_name_02({atom() | integer(), atom() | integer()}) -> atom().
 guard_variable_name_02({ZZ1, ZZ2}) when is_atom(ZZ1), is_atom(ZZ2) -> ZZ1;
 guard_variable_name_02({_, _}) -> ok.
+
+% Guard narrowing with 'or': when the or-guard fails, 
+% the negation 
+%   not(is_atom(X) or is_atom(Y)) 
+% which is equal to
+%   not is_atom(X) and not is_atom(Y)
+% should narrow both X and Y to integer() in clause 2.
+-spec guard_or_narrow_01({atom() | integer(), atom() | integer()}) -> integer().
+guard_or_narrow_01({_X, _Y}) when is_atom(_X) or is_atom(_Y) -> 0;
+guard_or_narrow_01({X, Y}) -> X + Y.
