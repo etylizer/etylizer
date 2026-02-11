@@ -636,32 +636,43 @@ case_clause_env(Ctx, L, TyScrut, Scrut, Pat, Guards) ->
 % ⌊ p when g ⌋_e and ⌈ p when g ⌉_e
 -spec pat_guard_lower_upper(symtab:t(), ast:pat(), [ast:guard()], ast:exp()) -> {ast:ty(), ast:ty()}.
 pat_guard_lower_upper(Symtab, P, Gs, E) ->
-    % Env has type constr:constr_env() = #{ast:any_ref() => ast:ty()}
-    {Env, Status} = guard_seq_env(Gs),
     EPat = pat_of_exp(E),
-    UpperPatTy = ty_of_pat(Symtab, Env, P, upper),
-    LowerPatTy = ty_of_pat(Symtab, Env, P, lower),
-    UpperETy = ty_of_pat(Symtab, Env, EPat, upper),
-    LowerETy = ty_of_pat(Symtab, Env, EPat, lower),
-    Upper = ast_lib:mk_intersection([UpperPatTy, UpperETy]),
-    VarsOfGuards = sets:from_list(lists:filtermap(fun ast:local_varname_from_any_ref/1, maps:keys(Env)), [{version, 2}]),
     BoundVars = sets:union(bound_vars_pat(P), bound_vars_pat(EPat)),
+    % Compute Lower and Upper as unions over disjunctive guard branches.
+    % For 'or' guards like is_atom(X) or is_atom(Y), each branch contributes
+    % a separate bound, and the union gives: {atom, any} | {any, atom}.
+    % Both Upper and Lower must be computed disjunctively so they stay consistent
+    DisjEnvs = guard_seq_lower_envs(Gs),
+    Upper =
+        ast_lib:mk_union(
+            lists:map(
+                fun({UEnv, _}) ->
+                    UpperPatTy = ty_of_pat(Symtab, UEnv, P, upper),
+                    UpperETy = ty_of_pat(Symtab, UEnv, EPat, upper),
+                    ast_lib:mk_intersection([UpperPatTy, UpperETy])
+                end,
+                DisjEnvs)),
     Lower =
-        case {Status, sets:is_subset(VarsOfGuards, BoundVars)} of
-            {safe, true} -> ast_lib:mk_intersection([LowerPatTy, LowerETy]);
-            _ -> {predef, none}
-        end,
-    ?LOG_TRACE("EPat=~200p, UpperPatTy=~s, LowerPatTy=~s, UpperETy=~s, LowerETy=~s Upper=~s, Lower=~s, VarsOfGuards=~200p, BoundVars=~w, Status=~w",
+        ast_lib:mk_union(
+            lists:map(
+                fun({LEnv, LStatus}) ->
+                    LVarsOfGuards = sets:from_list(
+                        lists:filtermap(fun ast:local_varname_from_any_ref/1, maps:keys(LEnv))),
+                    case {LStatus, sets:is_subset(LVarsOfGuards, BoundVars)} of
+                        {safe, true} ->
+                            LowerPatTy = ty_of_pat(Symtab, LEnv, P, lower),
+                            LowerETy = ty_of_pat(Symtab, LEnv, EPat, lower),
+                            ast_lib:mk_intersection([LowerPatTy, LowerETy]);
+                        _ -> {predef, none}
+                    end
+                end,
+                DisjEnvs)),
+    ?LOG_TRACE("EPat=~200p, Upper=~s, Lower=~s, BoundVars=~w, DisjEnvs=~w",
                EPat,
-               pretty:render_ty(UpperPatTy),
-               pretty:render_ty(LowerPatTy),
-               pretty:render_ty(UpperETy),
-               pretty:render_ty(LowerETy),
                pretty:render_ty(Upper),
                pretty:render_ty(Lower),
-               maps:keys(Env),
                sets:to_list(BoundVars),
-               Status),
+               length(DisjEnvs)),
     {Lower, Upper}.
 
 % The variables bound by a pattern
@@ -986,40 +997,86 @@ pat_of_exp(E) ->
         _ -> Wc
     end.
 
-% Γ //\\ Γ
--spec intersect_envs(constr:constr_env(), constr:constr_env()) -> constr:constr_env().
-intersect_envs(Env1, Env2) ->
-    combine_envs(Env1, Env2, fun(T1, T2) -> ast_lib:mk_intersection([T1, T2]) end).
-
+% Combines two environments key-wise using F. The Default parameter is
+% used for keys missing from one environment:
+%   intersect_envs uses any()  because T /\ any() = T  (identity)
+%   union_envs     uses any()  because T \/ any() = any()
+%     (a variable unconstrained in one branch is unconstrained overall)
 -spec combine_envs(
         constr:constr_env(),
         constr:constr_env(),
-        fun((ast:ty(), ast:ty()) -> ast:ty())
+        fun((ast:ty(), ast:ty()) -> ast:ty()),
+        ast:ty()
        ) -> constr:constr_env().
-combine_envs(Env1, Env2, F) ->
-    Keys = sets:from_list(maps:keys(Env1) ++ maps:keys(Env2), [{version, 2}]),
+combine_envs(Env1, Env2, F, Default) ->
+    Keys = sets:from_list(maps:keys(Env1) ++ maps:keys(Env2)),
     sets:fold(
       fun (K, Env) ->
-              T1 = maps:get(K, Env1, none),
-              T2 = maps:get(K, Env2, none),
-              T = case {T1, T2} of
-                      {none, X}-> X;
-                      {X, none} -> X;
-                      _ -> F(T1, T2)
-                  end,
-              maps:put(K, T, Env)
+              T1 = maps:get(K, Env1, Default),
+              T2 = maps:get(K, Env2, Default),
+              maps:put(K, F(T1, T2), Env)
       end,
       #{},
       Keys
      ).
 
+% Γ //\\ Γ
+-spec intersect_envs(constr:constr_env(), constr:constr_env()) -> constr:constr_env().
+intersect_envs(Env1, Env2) ->
+    combine_envs(Env1, Env2, fun(T1, T2) -> ast_lib:mk_intersection([T1, T2]) end, {predef, any}).
+
 % Γ \\// Γ
+% Missing keys default to any(): a variable unconstrained in one branch
+% gives T \/ any() = any(), correctly losing the refinement.
 -spec union_envs(constr:constr_env(), constr:constr_env()) -> constr:constr_env().
 union_envs(Env1, Env2) ->
-    combine_envs(Env1, Env2, fun(T1, T2) -> ast_lib:mk_union([T1, T2]) end).
+    combine_envs(Env1, Env2, fun(T1, T2) -> ast_lib:mk_union([T1, T2]) end, {predef, any}).
 
 -spec negate_env(constr:constr_env()) -> constr:constr_env().
 negate_env(Env) -> maps:map(fun (_Key, T) -> ast_lib:mk_negation(T) end, Env).
+
+% Returns a list of disjunctive environments for computing Lower.
+% For 'or' guards, each branch produces a separate environment.
+% For 'and' guards, environments are intersected (Cartesian product).
+% For other guards, falls back to guard_test_env.
+-spec guard_test_lower_envs(ast:guard_test()) -> [{constr:constr_env(), safe | unsafe}].
+guard_test_lower_envs(G) ->
+    case G of
+        {op, _L, Op, Left, Right} when Op =:= 'orelse'; Op =:= 'or' ->
+            guard_test_lower_envs(Left) ++ guard_test_lower_envs(Right);
+        {op, _L, Op, Left, Right} when Op =:= 'andalso'; Op =:= 'and' ->
+            [{intersect_envs(EL, ER), merge_status(SL, SR)}
+             || {EL, SL} <- guard_test_lower_envs(Left),
+                {ER, SR} <- guard_test_lower_envs(Right)];
+        % De Morgan: not(A or B) = not(A) and not(B)
+        {op, L, 'not', {op, _, Op, Left, Right}} when Op =:= 'orelse'; Op =:= 'or' ->
+            guard_test_lower_envs({op, L, 'andalso', {op, L, 'not', Left}, {op, L, 'not', Right}});
+        % De Morgan: not(A and B) = not(A) or not(B)
+        {op, L, 'not', {op, _, Op, Left, Right}} when Op =:= 'andalso'; Op =:= 'and' ->
+            guard_test_lower_envs({op, L, 'orelse', {op, L, 'not', Left}, {op, L, 'not', Right}});
+        _ ->
+            [guard_test_env(G)]
+    end.
+
+% Like guard_env/1 but returns disjunctive environments.
+% Tests within a guard are conjunctive (,) so we take the Cartesian product.
+-spec guard_lower_envs(ast:guard()) -> [{constr:constr_env(), safe | unsafe}].
+guard_lower_envs(Tests) ->
+    lists:foldl(
+        fun(Test, AccEnvs) ->
+            TestEnvs = guard_test_lower_envs(Test),
+            [{intersect_envs(E1, E2), merge_status(S1, S2)}
+             || {E1, S1} <- AccEnvs,
+                {E2, S2} <- TestEnvs]
+        end,
+        [{#{}, safe}],
+        Tests).
+
+% Like guard_seq_env/1 but returns a list of disjunctive environments for Lower computation.
+% Guard sequences are disjunctive (;) so we concatenate.
+-spec guard_seq_lower_envs([ast:guard()]) -> [{constr:constr_env(), safe | unsafe}].
+guard_seq_lower_envs([]) -> [{#{}, safe}];
+guard_seq_lower_envs(Guards) -> lists:flatmap(fun guard_lower_envs/1, Guards).
 
 % env(g)
 -spec guard_seq_env([ast:guard()]) -> {constr:constr_env(), safe | unsafe}.
@@ -1035,12 +1092,15 @@ guard_env(Guards) ->
                            fun((constr:constr_env(), constr:constr_env()) ->
                                       constr:constr_env())) ->
           {constr:constr_env(), safe | unsafe}.
+combine_guard_result([], _RecFun, _CombineFun) ->
+    {#{}, safe};
 combine_guard_result(Guards, RecFun, CombineFun) ->
+    [First | Rest] = lists:map(RecFun, Guards),
     lists:foldl(fun({Env, Status}, {AccEnv, AccStatus}) ->
                         {CombineFun(Env, AccEnv), merge_status(Status, AccStatus)}
                 end,
-                {#{}, safe},
-                lists:map(RecFun, Guards)).
+                First,
+                Rest).
 
 % Constructs an environment and a status from a guard test. The status 'safe' expresses
 % that the the type checker could fully analyze the guard, that is the guard test
