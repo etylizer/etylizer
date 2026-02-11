@@ -87,3 +87,23 @@ error11(A) ->
   case A of
     foo -> bar
   end.
+
+%%%%%%%%%%%%%%%%%%%%%%%% DYNAMIC FUNCTION CALLS %%%%%%%%%%%%%%%%%%%%%%%
+
+-spec dyncall_01(atom()) -> any().
+dyncall_01(Type) -> Type:new().
+
+-spec dyncall_02(atom(), integer()) -> any().
+dyncall_02(Mod, X) -> Mod:process(X).
+
+-spec dyncall_03(atom(), atom()) -> any().
+dyncall_03(Mod, Fun) -> Mod:Fun().
+
+-spec dyncall_04(atom(), atom(), integer()) -> any().
+dyncall_04(Mod, Fun, X) -> Mod:Fun(X).
+
+-spec dyncall_05(atom()) -> {ok, any()}.
+dyncall_05(Type) -> {ok, Type:new()}.
+
+-spec dyncall_06(atom()) -> integer().
+dyncall_06(Type) -> Type:new().
