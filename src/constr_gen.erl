@@ -141,12 +141,18 @@ exp_constrs(Ctx, E, T) ->
         {'float', L, _F} -> {utils:single({csubty, mk_locs("float literal", L), {predef, float}, T}), #{}};
         {'string', L, ""} -> {utils:single({csubty, mk_locs("empty string literal", L), {empty_list}, T}), #{}};
         {'string', L, _S} -> {utils:single({csubty, mk_locs("string literal", L), {predef_alias, nonempty_string}, T}), #{}};
-        {bin, L, []} -> {utils:single({csubty, mk_locs("empty bitstring", L), {bitstring}, T}), #{}};
-        {bin, L, _Cs} ->
-            % TODO constraints for inner binary pattern elements
-            ?LOG_WARN("Skipping verification of binary pattern elements of ~s", ast:format_loc(L)),
-            {utils:single({csubty, mk_locs("bitstring", L), {bitstring}, T}), #{}};
-        {bc, L, _E, _Qs} -> errors:unsupported(L, "bitstrings");
+        {bin, L, []} -> {utils:single({csubty, mk_locs("empty bitstring", L), {bitstring, 0, 0}, T}), #{}};
+        {bin, L, BinElems} ->
+            {ElemCs, ResultTy} = bin_expr_constrs(Ctx, L, BinElems),
+            {sets:add_element({csubty, mk_locs("bitstring", L), ResultTy, T}, ElemCs), #{}};
+        {bc, L, Exp, Qs} ->
+            {Env, Cs0} = process_qualifiers(Ctx, L, Qs, #{}, sets:new()),
+            Beta = fresh_tyvar(Ctx),
+            {ExpCs, _ExpEnv} = exp_constrs(Ctx, Exp, Beta),
+            BodyCs = sets:from_list([{cdef, mk_locs("binary comprehension body", L), Env, ExpCs}], []),
+            ResultTy = {bitstring, 0, 8},  % binary() result
+            Cs1 = sets:add_element({csubty, mk_locs("binary comprehension result", L), ResultTy, T}, BodyCs),
+            {sets:union(Cs0, Cs1), #{}};
         {block, L, Es} ->
             exps_constrs(Ctx, L, Es, T);
         {'case', L, ScrutE, Clauses} ->
@@ -179,11 +185,12 @@ exp_constrs(Ctx, E, T) ->
                             {[], [], [], sets:new([{version, 2}]), []},
                             Clauses),
             CsScrut = sets:union(Cs0, CsCases),
+            HasBinPat = lists:any(fun({case_clause, _, Pat, _, _}) -> has_bin_pat(Pat) end, Clauses),
             Exhaust =
-            case Ctx#ctx.exhaustiveness_mode of
-                enabled -> utils:single(
+            case {Ctx#ctx.exhaustiveness_mode, HasBinPat} of
+                {enabled, false} -> utils:single(
                               {csubty, mk_locs("case exhaustiveness", L), Alpha, ast_lib:mk_union(Lowers)});
-                disabled -> sets:new()
+                _ -> sets:new()
             end,
             SafeEnv = intersect_envs(ScrutEnv, safe_env_from_branch_envs(BodyEnvs)),
             {sets:from_list([
@@ -520,6 +527,138 @@ exp_constrs(Ctx, E, T) ->
     end.
 
 
+% Analyze a bitstring type specifier list to determine segment type, signedness, default size, and unit.
+-spec analyze_bin_tyspec(default | ast:bitstring_tyspec_list()) ->
+    {integer | float | binary | bitstring | utf8 | utf16 | utf32, boolean(), integer() | default, integer()}.
+analyze_bin_tyspec(default) -> {integer, false, 8, 1};
+analyze_bin_tyspec(TyspecList) ->
+    Type = determine_segment_type(TyspecList),
+    Signed = lists:member(signed, TyspecList),
+    Unit = case lists:keyfind(unit, 1, TyspecList) of
+        {unit, U} -> U;
+        false -> default_unit(Type)
+    end,
+    DefaultSize = default_size(Type),
+    {Type, Signed, DefaultSize, Unit}.
+
+-spec determine_segment_type(ast:bitstring_tyspec_list()) -> integer | float | binary | bitstring | utf8 | utf16 | utf32.
+determine_segment_type([]) -> integer;
+determine_segment_type([integer | _]) -> integer;
+determine_segment_type([float | _]) -> float;
+determine_segment_type([binary | _]) -> binary;
+determine_segment_type([bytes | _]) -> binary;
+determine_segment_type([bitstring | _]) -> bitstring;
+determine_segment_type([bits | _]) -> bitstring;
+determine_segment_type([utf8 | _]) -> utf8;
+determine_segment_type([utf16 | _]) -> utf16;
+determine_segment_type([utf32 | _]) -> utf32;
+determine_segment_type([_ | Rest]) -> determine_segment_type(Rest).
+
+-spec default_unit(integer | float | binary | bitstring | utf8 | utf16 | utf32) -> integer().
+default_unit(integer) -> 1;
+default_unit(float) -> 1;
+default_unit(binary) -> 8;
+default_unit(bitstring) -> 1;
+default_unit(utf8) -> 1;
+default_unit(utf16) -> 1;
+default_unit(utf32) -> 1.
+
+-spec default_size(integer | float | binary | bitstring | utf8 | utf16 | utf32) -> integer() | default.
+default_size(integer) -> 8;
+default_size(float) -> 64;
+default_size(binary) -> default;
+default_size(bitstring) -> default;
+default_size(utf8) -> default;
+default_size(utf16) -> default;
+default_size(utf32) -> default.
+
+% Generate constraints for binary expression elements and compute result type.
+-spec bin_expr_constrs(ctx(), ast:loc(), [ast:exp_bitstring_elem()]) -> {constr:constrs(), ast:ty()}.
+bin_expr_constrs(Ctx, L, BinElems) ->
+    {Cs, TotalBits, AllByteAligned, AllFixed} =
+        lists:foldl(
+            fun({bin_element, ElemL, Value, Size, TyspecList}, {AccCs, AccBits, AccAligned, AccFixed}) ->
+                {SegType, _Signed, DefaultSize, Unit} = analyze_bin_tyspec(TyspecList),
+                % Generate constraint for the value expression
+                % String literals in binary construction are expanded to bytes;
+                % for utf types, strings are also valid values
+                IsStringValue = case Value of
+                    {'string', _, _} -> true;
+                    _ -> false
+                end,
+                ValueTy = case {SegType, IsStringValue} of
+                    {_, true} -> {predef, any};  % strings in binaries are always valid
+                    {integer, _} -> {predef, integer};
+                    {float, _} -> {predef_alias, number};  % floats accept integers too
+                    {binary, _} when Unit =:= 8 -> {bitstring, 0, 8};
+                    {binary, _} -> {bitstring};  % binary with non-default unit accepts any bitstring
+                    {bitstring, _} -> {bitstring};
+                    {utf8, _} -> {predef, integer};
+                    {utf16, _} -> {predef, integer};
+                    {utf32, _} -> {predef, integer}
+                end,
+                Alpha = fresh_tyvar(Ctx),
+                {ValCs, _ValEnv} = exp_constrs(Ctx, Value, Alpha),
+                ValConstr = {csubty, mk_locs("bin element value", ElemL), Alpha, ValueTy},
+                % Generate constraint for the size expression (if present)
+                SizeCs = case Size of
+                    default -> sets:new([{version, 2}]);
+                    _ ->
+                        SizeAlpha = fresh_tyvar(Ctx),
+                        {SCs, _SEnv} = exp_constrs(Ctx, Size, SizeAlpha),
+                        sets:add_element(
+                            {csubty, mk_locs("bin element size", ElemL), SizeAlpha, {predef, integer}},
+                            SCs)
+                end,
+                % Compute bit contribution and alignment
+                % String values contribute length(Str) * DefaultSize * Unit bits
+                StrLen = case Value of
+                    {'string', _, S} -> length(S);
+                    _ -> 0
+                end,
+                {NewBits, NewAligned, NewFixed} = case {Size, DefaultSize, SegType, IsStringValue} of
+                    {default, default, utf8, true} -> {AccBits, AccAligned, false};
+                    {default, default, utf16, true} -> {AccBits, AccAligned, false};
+                    {default, default, utf32, true} ->
+                        Bits = StrLen * 32,
+                        {AccBits + Bits, AccAligned, AccFixed};
+                    {default, _, _, true} ->
+                        % String with integer/default type: each char is DefaultSize*Unit bits
+                        DS = case DefaultSize of default -> 8; _ -> DefaultSize end,
+                        Bits = StrLen * DS * Unit,
+                        {AccBits + Bits, AccAligned andalso (Bits rem 8 =:= 0), AccFixed};
+                    {default, default, utf8, _} -> {AccBits, AccAligned, false};
+                    {default, default, utf16, _} -> {AccBits, AccAligned, false};
+                    {default, default, utf32, _} -> {AccBits + 32, AccAligned, AccFixed};
+                    {default, default, binary, _} -> {AccBits, AccAligned, false};
+                    {default, default, bitstring, _} -> {AccBits, false, false};
+                    {default, DS, _, _} ->
+                        Bits = DS * Unit,
+                        {AccBits + Bits, AccAligned andalso (Bits rem 8 =:= 0), AccFixed};
+                    {{integer, _, V}, _, _, _} when is_integer(V) ->
+                        Bits = V * Unit,
+                        {AccBits + Bits, AccAligned andalso (Bits rem 8 =:= 0), AccFixed};
+                    _ ->
+                        % Variable size: can't know bit count
+                        {AccBits, AccAligned andalso (Unit rem 8 =:= 0), false}
+                end,
+                {sets:union([AccCs, ValCs, SizeCs, sets:from_list([ValConstr])]),
+                 NewBits, NewAligned, NewFixed}
+            end,
+            {sets:new([{version, 2}]), 0, true, true},
+            BinElems),
+    ResultTy = case {AllFixed, AllByteAligned, TotalBits rem 8 =:= 0} of
+        {true, true, true} -> {bitstring, TotalBits, 0};
+        {true, _, true} -> {bitstring, TotalBits, 0};
+        {true, _, false} -> {bitstring, TotalBits, 0};
+        {false, true, true} -> {bitstring, TotalBits, 8};
+        {false, true, false} -> {bitstring, TotalBits, 8};
+        {false, false, _} ->
+            ?LOG_WARN("Non-byte-aligned binary expression at ~s, using bitstring()", ast:format_loc(L)),
+            {bitstring}
+    end,
+    {Cs, ResultTy}.
+
 -spec process_qualifiers(ctx(), ast:loc(), [ast:qualifier()], constr:constr_env(), constr:constrs()) ->
           {constr:constr_env(), constr:constrs()}.
 process_qualifiers(_Ctx, _Loc, [], Env, Cs) -> {Env, Cs};
@@ -559,12 +698,30 @@ process_qualifiers(Ctx, Loc, [Q | Qs], Env, Cs) ->
         {zip, LGen, NestedQualifiers} ->
             {NewEnv, NewCs} = process_qualifiers(Ctx, LGen, NestedQualifiers, Env, Cs),
             process_qualifiers(Ctx, Loc, Qs, NewEnv, NewCs);
-        % Pat <= Exp
-        {b_generate, _, _, _} ->
-            errors:unsupported(Loc, "generator ~w", Q);
-        % Pat <:= Exp
-        {b_generate_strict, _, _, _} ->
-            errors:unsupported(Loc, "generator ~w", Q);
+        % Pat <= Exp (binary generator)
+        {b_generate, LGen, Pat, Exp} ->
+            Alpha = fresh_tyvar(Ctx),
+            Beta = fresh_tyvar(Ctx),
+            {ExpCs, _ExpEnv} = exp_constrs(Ctx, Exp, {bitstring}),
+            TyPat = ty_of_pat(Ctx#ctx.symtab, Env, Pat, upper),
+            {PatCs, PatEnv} = pat_env(Ctx, LGen, Beta, Pat),
+            GeneratorC = [
+                {csubty, mk_locs("binary pattern lower bound", LGen), ast_lib:mk_intersection([Alpha, TyPat]), Beta},
+                {csubty, mk_locs("binary pattern upper bound", LGen), Beta, Alpha}
+            ],
+            NewEnv = intersect_envs(Env, PatEnv),
+            process_qualifiers(Ctx, Loc, Qs, NewEnv, sets:union([Cs, ExpCs, PatCs, sets:from_list(GeneratorC)]));
+        % Pat <:= Exp (strict binary generator)
+        {b_generate_strict, LGen, Pat, Exp} ->
+            Alpha = fresh_tyvar(Ctx),
+            {ExpCs, _ExpEnv} = exp_constrs(Ctx, Exp, {bitstring}),
+            TyPat = ty_of_pat(Ctx#ctx.symtab, Env, Pat, upper),
+            StrictCs = sets:from_list([
+                {csubty, mk_locs("strict binary generator", LGen), Alpha, TyPat}
+            ]),
+            {PatCs, PatEnv} = pat_env(Ctx, LGen, Alpha, Pat),
+            NewEnv = intersect_envs(Env, PatEnv),
+            process_qualifiers(Ctx, Loc, Qs, NewEnv, sets:union([Cs, ExpCs, PatCs, StrictCs]));
         % strict map generator: KeyPat := ValPat <:- Exp
         {m_generate_strict, LGen, KeyPat, ValPat, Exp} ->
             KeyAlpha = fresh_tyvar(Ctx),
@@ -773,6 +930,13 @@ receive_clause_constrs(Ctx, {case_clause, L, Pat, Guards, Exps}, T) ->
     % Wrap in cdef with variable bindings
     InnerCs = sets:union([GuardCs, BodyCs, ResultCs]),
     utils:single({cdef, mk_locs("receive clause", L), VarEnv, InnerCs}).
+
+% Check if a pattern contains a binary pattern at the top level (possibly inside a tuple).
+-spec has_bin_pat(ast:pat()) -> boolean().
+has_bin_pat({bin, _, _}) -> true;
+has_bin_pat({tuple, _, Ps}) -> lists:any(fun has_bin_pat/1, Ps);
+has_bin_pat({match, _, P1, P2}) -> has_bin_pat(P1) orelse has_bin_pat(P2);
+has_bin_pat(_) -> false.
 
 -spec needs_unmatched_check(list(ast:case_clause())) -> boolean().
 needs_unmatched_check(Clauses) ->
@@ -1084,8 +1248,8 @@ ty_of_pat(Symtab, Env, P, Mode) ->
         {'string', _L, Z} -> 
             [X|Xs] = lists:reverse(Z),
             lists:foldl(fun(E, Acc) -> {cons, {singleton, E}, Acc} end, {cons, {singleton, X}, {empty_list}}, Xs);
-        % TODO correct binary patterns
-        {bin, _L, _Elems} -> {bitstring};
+        {bin, _L, []} -> {bitstring, 0, 0};
+        {bin, _L, Elems} -> ty_of_bin_pat(Elems, Mode);
         {match, _L, P1, P2} ->
             ast_lib:mk_intersection([ty_of_pat(Symtab, Env, P1, Mode), ty_of_pat(Symtab, Env, P2, Mode)]);
         {nil, _L} -> {empty_list};
@@ -1178,6 +1342,81 @@ ty_of_pat(Symtab, Env, P, Mode) ->
             end
     end.
 
+% Compute the type of a non-empty binary pattern.
+% Upper bound: what types CAN match. Lower bound: what types DEFINITELY match.
+-spec ty_of_bin_pat([ast:gen_bitstring_elem(ast:pat(), ast:exp())], upper | lower) -> ast:ty().
+ty_of_bin_pat(Elems, Mode) ->
+    % Analyze each element for fixed bits and alignment
+    {TotalFixedBits, HasRestBinary, HasRestBitstring, AllByteAligned, AllDefinite, AllFixed} =
+        lists:foldl(
+            fun({bin_element, _, Value, Size, TyspecList}, {AccBits, AccRestBin, AccRestBits, AccAligned, AccDef, AccFixed}) ->
+                {SegType, _Signed, DefaultSize, Unit} = analyze_bin_tyspec(TyspecList),
+                IsDefinite = is_definite_match(Value),
+                case {Size, DefaultSize, SegType} of
+                    {default, default, binary} ->
+                        % Rest binary segment (e.g., _/binary): consumes remaining, byte-aligned
+                        {AccBits, true, AccRestBits, AccAligned, AccDef andalso IsDefinite, false};
+                    {default, default, bitstring} ->
+                        % Rest bitstring segment (e.g., _/bitstring): consumes remaining, any alignment
+                        {AccBits, AccRestBin, true, false, AccDef andalso IsDefinite, false};
+                    {default, default, utf8} ->
+                        {AccBits, AccRestBin, AccRestBits, AccAligned, false, false};
+                    {default, default, utf16} ->
+                        {AccBits, AccRestBin, AccRestBits, AccAligned, false, false};
+                    {default, default, utf32} ->
+                        {AccBits + 32, AccRestBin, AccRestBits, AccAligned, AccDef andalso IsDefinite, AccFixed};
+                    {default, DS, _} ->
+                        Bits = DS * Unit,
+                        {AccBits + Bits, AccRestBin, AccRestBits, AccAligned andalso (Bits rem 8 =:= 0),
+                         AccDef andalso IsDefinite, AccFixed};
+                    {{integer, _, V}, _, _} when is_integer(V) ->
+                        Bits = V * Unit,
+                        {AccBits + Bits, AccRestBin, AccRestBits, AccAligned andalso (Bits rem 8 =:= 0),
+                         AccDef andalso IsDefinite, AccFixed};
+                    _ ->
+                        % Variable size
+                        {AccBits, AccRestBin, AccRestBits, AccAligned andalso (Unit rem 8 =:= 0),
+                         AccDef andalso IsDefinite, false}
+                end
+            end,
+            {0, false, false, true, true, true},
+            Elems),
+    case Mode of
+        upper ->
+            % Upper bound: what types CAN match this pattern
+            case {AllByteAligned, HasRestBitstring} of
+                {true, false} -> {bitstring, 0, 8};  % binary()
+                _ -> {bitstring}  % any bitstring
+            end;
+        lower ->
+            % Lower bound: what types DEFINITELY match this pattern
+            case AllDefinite of
+                false ->
+                    % Pattern has literals or variable refs → can't guarantee match
+                    {predef, none};
+                true ->
+                    case {AllFixed, HasRestBinary, HasRestBitstring} of
+                        {true, false, false} ->
+                            % All fixed size, no rest segment
+                            {bitstring, TotalFixedBits, 0};
+                        {_, true, false} ->
+                            % Has rest binary segment (byte-aligned)
+                            {bitstring, TotalFixedBits, 8};
+                        {_, _, true} ->
+                            % Has rest bitstring segment (any alignment)
+                            {bitstring, TotalFixedBits, 1};
+                        _ ->
+                            {predef, none}
+                    end
+            end
+    end.
+
+% Check if a pattern value position is a "definite match" (wildcard or fresh bind).
+-spec is_definite_match(ast:pat()) -> boolean().
+is_definite_match({wildcard, _}) -> true;
+is_definite_match({var, _, {local_bind, _}}) -> true;
+is_definite_match(_) -> false.
+
 % t // pg
 -spec pat_guard_env(ctx(), ast:loc(), ast:ty(), ast:pat(), [ast:guard()]) ->
           {constr:constrs(), constr:constr_env()}.
@@ -1196,26 +1435,23 @@ pat_env(Ctx, OuterL, T, P) ->
         {'integer', _L, _I} -> Empty;
         {'float', _L, _F} -> Empty;
         {'string', _L, _S} -> Empty;
-        % TODO correct pattern environment for binaries
-        {bin, _L, Elems} -> 
+        {bin, _L, []} ->
+            C = {csubty, mk_locs("t // <<>>", OuterL), T, {bitstring, 0, 0}},
+            {sets:from_list([C], [{version, 2}]), #{}};
+        {bin, _L, Elems} ->
+            BinTy = ty_of_bin_pat(Elems, upper),
             {Cs, Env} =
                 lists:foldl(
-                  fun (P, {Cs, Env}) ->
-                          % unused type variables
-                          Alpha = fresh_tyvar(Ctx),
-                          {ThisCs, ThisEnv} = pat_env(Ctx, OuterL, Alpha, P),
-                          {sets:union(Cs, ThisCs),
-                           intersect_envs(Env, ThisEnv)}
+                  fun (Elem, {AccCs, AccEnv}) ->
+                          {ThisCs, ThisEnv} = bin_elem_pat_env(Ctx, OuterL, Elem),
+                          {sets:union(AccCs, ThisCs),
+                           intersect_envs(AccEnv, ThisEnv)}
                   end,
                   {sets:new([{version, 2}]), #{}},
                   Elems),
-            C = {csubty, mk_locs("t // <<...>>", OuterL), T, {bitstring}},
+            C = {csubty, mk_locs("t // <<...>>", OuterL), T, BinTy},
             {sets:add_element(C, Cs), Env};
         default -> Empty;
-        {bin_element, _L, Value, Size, _TyspecList} -> 
-            {Cs1, Env1} = pat_env(Ctx, OuterL, T, Value),
-            {Cs2, Env2} = pat_env(Ctx, OuterL, T, Size),
-            {sets:union(Cs1, Cs2), intersect_envs(Env1, Env2)};
         {match, _L, P1, P2} ->
             {Cs1, Env1} = pat_env(Ctx, OuterL, T, P1),
             {Cs2, Env2} = pat_env(Ctx, OuterL, T, P2),
@@ -1306,6 +1542,29 @@ pat_env(Ctx, OuterL, T, P) ->
             % V refers to an existing variable
             {sets:new([{version, 2}]), #{ LocalRef => T }}
     end.
+
+% Process a single bin_element in a binary pattern, computing proper types for Value and Size.
+-spec bin_elem_pat_env(ctx(), ast:loc(), ast:gen_bitstring_elem(ast:pat(), ast:exp())) ->
+    {constr:constrs(), constr:constr_env()}.
+bin_elem_pat_env(Ctx, OuterL, {bin_element, _L, Value, Size, TyspecList}) ->
+    {SegType, Signed, _, Unit} = analyze_bin_tyspec(TyspecList),
+    ValueTy = case SegType of
+        integer when Signed -> {predef, integer};
+        integer -> {predef_alias, non_neg_integer};  % non_neg_integer for unsigned
+        float -> {predef, float};
+        binary when Unit =:= 8 -> {bitstring, 0, 8};
+        binary -> {bitstring};  % binary with non-default unit accepts any bitstring
+        bitstring -> {bitstring};
+        utf8 -> {predef, integer};
+        utf16 -> {predef, integer};
+        utf32 -> {predef, integer}
+    end,
+    {Cs1, Env1} = pat_env(Ctx, OuterL, ValueTy, Value),
+    {Cs2, Env2} = case Size of
+        default -> {sets:new([{version, 2}]), #{}};
+        _ -> pat_env(Ctx, OuterL, {predef, integer}, Size)
+    end,
+    {sets:union(Cs1, Cs2), intersect_envs(Env1, Env2)}.
 
 % (| e |)
 -spec pat_of_exp(ast:exp()) -> ast:pat().

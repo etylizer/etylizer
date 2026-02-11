@@ -493,6 +493,8 @@ do_convert({{map_any}, R}, Q, Cache) ->
 % bitstrings
 do_convert({{bitstring}, R}, Q, Cache) ->
   {?TY:bitstring(dnf_ty_bitstring:any()), Q, R, Cache};
+do_convert({{bitstring, M, N}, R}, Q, Cache) ->
+  {?TY:bitstring(dnf_ty_bitstring:from_m_n(M, N)), Q, R, Cache};
 
 % atoms
 do_convert({{singleton, Atom}, R}, Q, Cache) when is_atom(Atom) ->
@@ -671,6 +673,7 @@ debruijn({mu_var, Name}, Env) ->
 % other cases
 debruijn({singleton, _} = T, _Env) -> T;
 debruijn({bitstring}, _Env) -> {bitstring};
+debruijn({bitstring, M, N}, _Env) -> {bitstring, M, N};
 debruijn({empty_list}, _Env) -> {empty_list};
 debruijn({cons, U, L}, Env) -> {cons, debruijn(U, Env), debruijn(L, Env)};
 debruijn({list, U}, Env) -> {list, debruijn(U, Env)};
