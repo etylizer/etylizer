@@ -71,3 +71,16 @@ guard_or_narrow_01({X, Y}) -> X + Y.
 -spec guard_or_unsound_01_fail({atom() | integer(), atom() | integer()}) -> {atom(), atom()}.
 guard_or_unsound_01_fail({X, Y}) when is_atom(X) or is_atom(Y) -> {X, Y};
 guard_or_unsound_01_fail({_, _}) -> {a, b}.
+
+% Guard refinement of an outer-scope variable in a case expression.
+% The guard is_integer(X) refines X (from the function args), not the
+% scrutiny Y. Upper cannot capture this because X is not bound by the
+% case pattern, so guard_seq_env in pat_guard_env is the sole source.
+% This tests that combine_guard_result does not lose refinements
+% when folding over a single guard sequence.
+-spec guard_outer_refine_01(atom() | integer(), term()) -> integer().
+guard_outer_refine_01(X, Y) ->
+    case Y of
+        _ when is_integer(X) -> X;
+        _ -> 0
+    end.

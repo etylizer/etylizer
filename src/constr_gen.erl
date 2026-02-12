@@ -997,37 +997,39 @@ pat_of_exp(E) ->
         _ -> Wc
     end.
 
-% Γ //\\ Γ
--spec intersect_envs(constr:constr_env(), constr:constr_env()) -> constr:constr_env().
-intersect_envs(Env1, Env2) ->
-    combine_envs(Env1, Env2, fun(T1, T2) -> ast_lib:mk_intersection([T1, T2]) end).
-
+% Combines two environments key-wise using F. The Default parameter is the
+% identity element used for keys missing from one environment:
+%   any()  - identity for intersection (T /\ any() = T)
+%   none() - identity for union (T \/ none() = T)
 -spec combine_envs(
         constr:constr_env(),
         constr:constr_env(),
-        fun((ast:ty(), ast:ty()) -> ast:ty())
+        fun((ast:ty(), ast:ty()) -> ast:ty()),
+        ast:ty()
        ) -> constr:constr_env().
-combine_envs(Env1, Env2, F) ->
-    Keys = sets:from_list(maps:keys(Env1) ++ maps:keys(Env2), [{version, 2}]),
+combine_envs(Env1, Env2, F, Default) ->
+    Keys = sets:from_list(maps:keys(Env1) ++ maps:keys(Env2)),
     sets:fold(
       fun (K, Env) ->
-              T1 = maps:get(K, Env1, none),
-              T2 = maps:get(K, Env2, none),
-              T = case {T1, T2} of
-                      {none, X}-> X;
-                      {X, none} -> X;
-                      _ -> F(T1, T2)
-                  end,
-              maps:put(K, T, Env)
+              T1 = maps:get(K, Env1, Default),
+              T2 = maps:get(K, Env2, Default),
+              maps:put(K, F(T1, T2), Env)
       end,
       #{},
       Keys
      ).
 
+% Γ //\\ Γ
+-spec intersect_envs(constr:constr_env(), constr:constr_env()) -> constr:constr_env().
+intersect_envs(Env1, Env2) ->
+    combine_envs(Env1, Env2, fun(T1, T2) -> ast_lib:mk_intersection([T1, T2]) end, {predef, any}).
+
 % Γ \\// Γ
+% Missing keys default to any(): a variable unconstrained in one branch
+% gives T \/ any() = any(), correctly losing the refinement.
 -spec union_envs(constr:constr_env(), constr:constr_env()) -> constr:constr_env().
 union_envs(Env1, Env2) ->
-    combine_envs(Env1, Env2, fun(T1, T2) -> ast_lib:mk_union([T1, T2]) end).
+    combine_envs(Env1, Env2, fun(T1, T2) -> ast_lib:mk_union([T1, T2]) end, {predef, any}).
 
 -spec negate_env(constr:constr_env()) -> constr:constr_env().
 negate_env(Env) -> maps:map(fun (_Key, T) -> ast_lib:mk_negation(T) end, Env).
@@ -1083,12 +1085,15 @@ guard_env(Guards) ->
                            fun((constr:constr_env(), constr:constr_env()) ->
                                       constr:constr_env())) ->
           {constr:constr_env(), safe | unsafe}.
+combine_guard_result([], _RecFun, _CombineFun) ->
+    {#{}, safe};
 combine_guard_result(Guards, RecFun, CombineFun) ->
+    [First | Rest] = lists:map(RecFun, Guards),
     lists:foldl(fun({Env, Status}, {AccEnv, AccStatus}) ->
                         {CombineFun(Env, AccEnv), merge_status(Status, AccStatus)}
                 end,
-                {#{}, safe},
-                lists:map(RecFun, Guards)).
+                First,
+                Rest).
 
 % Constructs an environment and a status from a guard test. The status 'safe' expresses
 % that the the type checker could fully analyze the guard, that is the guard test
