@@ -5,6 +5,7 @@
                dump_raw = false :: boolean(),
                dump = false :: boolean(),
                sanity = false :: boolean(),
+               sanity_infer = false :: boolean(),
                force = false :: boolean(),
                no_type_checking = false :: boolean(),
                report_mode = early_exit :: feature_flags:report_mode(),

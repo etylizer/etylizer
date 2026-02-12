@@ -8,7 +8,8 @@
           exhaustiveness_mode :: feature_flags:exhaustiveness_mode(),
           % functions where exhaustiveness is disabled at the constraint generation level
           % via a -disable_exhaustiveness user-specified attribute
-          disable_exhaustiveness = sets:new() :: sets:set({atom(), arity()})
+          disable_exhaustiveness = sets:new() :: sets:set({atom(), arity()}),
+          sanity_infer = false :: boolean()
         }).
 
 -type ctx() :: #ctx{}.

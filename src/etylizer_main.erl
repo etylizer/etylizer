@@ -59,6 +59,8 @@ parse_args(Args) ->
             "Dump the internal ast of the files given"},
          {sanity, undefined, "sanity", undefined,
             "Perform sanity checks"},
+         {sanity_inference, undefined, "sanity-inference", undefined,
+            "After checking, also infer types and verify that inferred types are more general than specs"},
          {no_type_checking, undefined, "no-type-checking", undefined,
             "Do not perform type cecking at all"},
          {report_mode, undefined, "report-mode", string,
@@ -118,6 +120,7 @@ parse_args(Args) ->
                         dump_raw -> Opts#opts{ dump_raw = true };
                         dump -> Opts#opts{ dump = true };
                         sanity -> Opts#opts{ sanity = true };
+                        sanity_inference -> Opts#opts{ sanity_infer = true };
                         force -> Opts#opts{ force = true };
                         no_type_checking -> Opts#opts{ no_type_checking = true };
                         {report_mode, "early-exit"} -> Opts#opts{ report_mode = early_exit };

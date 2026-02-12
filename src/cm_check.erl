@@ -97,7 +97,8 @@ traverse_and_check([CurrentFile | RemainingFiles], Symtab, OverlaySymtab, Search
     ReportTimeout = Opts#opts.report_timeout,
     ExhaustivenessMode = Opts#opts.exhaustiveness_mode,
     GradualTypingMode = Opts#opts.gradual_typing_mode,
-    Ctx = typing:new_ctx(ExpandedSymtab, OverlaySymtab, Sanity, ReportMode, ReportTimeout, ExhaustivenessMode, GradualTypingMode),
+    SanityInfer = Opts#opts.sanity_infer,
+    Ctx = typing:new_ctx(ExpandedSymtab, OverlaySymtab, Sanity, ReportMode, ReportTimeout, ExhaustivenessMode, GradualTypingMode, SanityInfer),
     case Opts#opts.no_type_checking of
         true ->
             ?LOG_INFO("Not type checking ~p as requested", CurrentFile);
