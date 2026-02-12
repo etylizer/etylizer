@@ -4,6 +4,7 @@
     check_forms/6,
     new_ctx/3,
     new_ctx/7,
+    new_ctx/8,
     disable_exhaustiveness_from_forms/1
 ]).
 
@@ -16,7 +17,11 @@ new_ctx(Tab, Overlay, Sanity) ->
 
 -spec new_ctx(symtab:t(), symtab:t(), t:opt(ast_check:ty_map()), feature_flags:report_mode(), pos_integer(), feature_flags:exhaustiveness_mode(), feature_flags:gradual_typing_mode()) -> ctx().
 new_ctx(Tab, Overlay, Sanity, ReportMode, ReportTimeout, ExhaustivenessMode, GradualTypingMode) ->
-    Ctx = #ctx{ symtab = Tab, overlay_symtab = Overlay, sanity = Sanity, gradual_typing_mode = GradualTypingMode, report_mode = ReportMode, report_timeout = ReportTimeout, exhaustiveness_mode = ExhaustivenessMode },
+    new_ctx(Tab, Overlay, Sanity, ReportMode, ReportTimeout, ExhaustivenessMode, GradualTypingMode, false).
+
+-spec new_ctx(symtab:t(), symtab:t(), t:opt(ast_check:ty_map()), feature_flags:report_mode(), pos_integer(), feature_flags:exhaustiveness_mode(), feature_flags:gradual_typing_mode(), boolean()) -> ctx().
+new_ctx(Tab, Overlay, Sanity, ReportMode, ReportTimeout, ExhaustivenessMode, GradualTypingMode, SanityInfer) ->
+    Ctx = #ctx{ symtab = Tab, overlay_symtab = Overlay, sanity = Sanity, gradual_typing_mode = GradualTypingMode, report_mode = ReportMode, report_timeout = ReportTimeout, exhaustiveness_mode = ExhaustivenessMode, sanity_infer = SanityInfer },
     Ctx.
 
 % extracts the set of functions with disabled exhaustiveness from forms.
@@ -156,7 +161,37 @@ check_forms(Ctx, FileName, Forms, Only, Ignore, CheckExports) ->
         end,
     Loop(InferredTyEnvs, []),
     ?LOG_INFO("Checking ~w functions in ~s against their specs finished successfully",
-              length(FunsWithSpec), FileName).
+              length(FunsWithSpec), FileName),
+    case ExtCtx#ctx.sanity_infer of
+        true ->
+            InferCtx = ExtCtx#ctx{sanity = error},
+            lists:foreach(
+                fun({Decl = {function, Loc, Name, Arity, _}, SpecTy}) ->
+                    FunStr = utils:sformat("~w/~w", Name, Arity),
+                    ?LOG_INFO("Sanity inference check for ~s in ~s", FunStr, FileName),
+                    global_state:with_new_state(fun() -> 
+                        % TODO disabling caching leads to different results for inference!
+                        Envs = typing_infer:infer_all(InferCtx, FileName, [Decl]),
+                        InferredTys = [T || Env <- Envs, [{_, T}] <:- [maps:to_list(Env)]],
+                        case lists:any(
+                                fun(InferredTy) ->
+                                    typing_infer:more_general(Loc, InferredTy, SpecTy, ExtCtx#ctx.symtab)
+                                end,
+                                InferredTys)
+                        of
+                            true ->
+                                ?LOG_INFO("Sanity inference check passed for ~s", FunStr);
+                            false ->
+                                errors:ty_error(Loc,
+                                    "Sanity inference check failed for ~s: "
+                                    "no inferred type is more general than the spec",
+                                    FunStr)
+                        end
+                    end)
+                end,
+                FunsWithSpec);
+        false -> ok
+    end.
 
 -spec should_check(string(), string(), string(), sets:set(string()), sets:set(string())) -> boolean().
 should_check(QRefStr, RefStr, NameStr, Only, Ignore) ->
