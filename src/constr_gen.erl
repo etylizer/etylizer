@@ -1221,6 +1221,26 @@ bound_vars_pat(P) ->
         {var, _L, {local_ref, _V}} -> sets:new([{version, 2}])
     end.
 
+% Returns true if the pattern contains any variable bindings or references.
+% Used to skip fresh variable creation in pat_env when a sub-pattern
+% has no variables (the decomposition constraints would be wasted).
+-spec pat_has_vars(ast:pat()) -> boolean().
+pat_has_vars(P) ->
+    case P of
+        {var, _, _} -> true;
+        {tuple, _, Ps} -> lists:any(fun pat_has_vars/1, Ps);
+        {cons, _, P1, P2} -> pat_has_vars(P1) orelse pat_has_vars(P2);
+        {match, _, P1, P2} -> pat_has_vars(P1) orelse pat_has_vars(P2);
+        {map, _, Assocs} ->
+            lists:any(fun({map_field_req, _, _PK, PV}) -> pat_has_vars(PV) end, Assocs);
+        {record, _, _, FieldPats} ->
+            lists:any(fun({record_field, _, _, FP}) -> pat_has_vars(FP) end, FieldPats);
+        {op, _, _, Ps} -> lists:any(fun pat_has_vars/1, Ps);
+        {bin, _, Elems} ->
+            lists:any(fun({bin_element, _, Value, _, _}) -> pat_has_vars(Value);
+                         (Other) -> pat_has_vars(Other) end, Elems);
+        _ -> false
+    end.
 
 % ty_of_pat
 % \lbag p \rbag_\Gamma
@@ -1523,11 +1543,18 @@ pat_env(Ctx, OuterL, T, P) ->
             {Alphas, Cs, Env} =
                 lists:foldl(
                   fun (P, {Alphas, Cs, Env}) ->
-                          Alpha = fresh_tyvar(Ctx),
-                          {ThisCs, ThisEnv} = pat_env(Ctx, OuterL, Alpha, P),
-                          {Alphas ++ [Alpha],
-                           sets:union(Cs, ThisCs),
-                           intersect_envs(Env, ThisEnv)}
+                          case pat_has_vars(P) of
+                              false ->
+                                  % No variables bound in this element, use any() to
+                                  % avoid creating an unused fresh type variable.
+                                  {Alphas ++ [{predef, any}], Cs, Env};
+                              true ->
+                                  Alpha = fresh_tyvar(Ctx),
+                                  {ThisCs, ThisEnv} = pat_env(Ctx, OuterL, Alpha, P),
+                                  {Alphas ++ [Alpha],
+                                   sets:union(Cs, ThisCs),
+                                   intersect_envs(Env, ThisEnv)}
+                          end
                   end,
                   {[], sets:new([{version, 2}]), #{}},
                   Ps),
