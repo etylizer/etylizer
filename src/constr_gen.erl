@@ -132,6 +132,29 @@ exps_constrs(Ctx, L, [E | Rest], T) ->
         _ -> {sets:union(Cs, sets:from_list([{cdef, mk_locs("safe vars", L), Env, RestCs}])), maps:merge(Env, RestEnv)}
     end.
 
+% Like exp_constrs, but returns the TYPE of the expression directly instead of
+% constraining it against a target T. For simple expressions (variables, literals),
+% this avoids creating an intermediate fresh type variable. Falls back to creating
+% a fresh variable for complex expressions.
+-spec exp_constrs_tyof(ctx(), ast:exp()) -> {ast:ty(), constr:constrs(), constr:constr_env()}.
+exp_constrs_tyof(Ctx, E) ->
+    case E of
+        {'atom', _L, A} -> {{singleton, A}, sets:new([{version, 2}]), #{}};
+        {'char', _L, C} -> {{singleton, C}, sets:new([{version, 2}]), #{}};
+        {'integer', _L, I} -> {{singleton, I}, sets:new([{version, 2}]), #{}};
+        {'float', _L, _F} -> {{predef, float}, sets:new([{version, 2}]), #{}};
+        {var, L, AnyRef} ->
+            AlphaName = fresh_ty_varname(Ctx),
+            Msg = utils:sformat("var ~s", pretty:render(pretty:ref(AnyRef))),
+            Locs = mk_locs(Msg, L),
+            Mater = {cvarmater, Locs, AnyRef, AlphaName},
+            {{var, AlphaName}, utils:single(Mater), #{}};
+        _ ->
+            Alpha = fresh_tyvar(Ctx),
+            {Cs, Env} = exp_constrs(Ctx, E, Alpha),
+            {Alpha, Cs, Env}
+    end.
+
 -spec exp_constrs(ctx(), ast:exp(), ast:ty()) -> {constr:constrs(), constr:constr_env()}.
 exp_constrs(Ctx, E, T) ->
     case E of
