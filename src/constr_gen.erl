@@ -157,7 +157,7 @@ exp_constrs(Ctx, E, T) ->
             exps_constrs(Ctx, L, Es, T);
         {'case', L, ScrutE, Clauses} ->
             Alpha = fresh_tyvar(Ctx),
-            {Cs0, ScrutEnv} = exp_constrs(Ctx, ScrutE, Alpha),
+            {Cs0, ScrutEnv} = scrut_constrs_compact(Ctx, ScrutE, Alpha),
             NeedsUnmatchedCheck = needs_unmatched_check(Clauses),
             {BodyList, Lowers, _Uppers, CsCases, BodyEnvs} =
                 lists:foldl(fun (Clause = {case_clause, LocClause, _, _, _},
