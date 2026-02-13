@@ -147,7 +147,7 @@ build_dep_graph(Worklist, SearchPath, DepGraph, AlreadyHandled) ->
     case Worklist of
         [] -> DepGraph;
         [File | Rest] ->
-            ?LOG_INFO("Adding ~p to dependency graph", File),
+            ?LOG_DEBUG("Adding ~p to dependency graph", File),
             Forms = parse_intern(File),
             {All, _, _} = NewDepGraph = update_dep_graph(File, Forms, SearchPath, DepGraph),
             NewAlreadyHandled = sets:add_element(File, AlreadyHandled),
@@ -155,7 +155,7 @@ build_dep_graph(Worklist, SearchPath, DepGraph, AlreadyHandled) ->
                 sets:subtract(All, NewAlreadyHandled),
                 sets:from_list(Rest, [{version, 2}])
             ),
-            ?LOG_INFO("Done adding ~p to dependency graph", File),
+            ?LOG_TRACE("Done adding ~p to dependency graph", File),
             build_dep_graph(
                 Rest ++ lists:map(fun utils:normalize_path/1, sets:to_list(NewFiles)),
                 SearchPath,

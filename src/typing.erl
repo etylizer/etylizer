@@ -23,10 +23,10 @@ new_ctx(Tab, Overlay, Sanity, ReportMode, ReportTimeout, ExhaustivenessMode, Gra
 check_forms(Ctx, FileName, Forms, Only, Ignore, CheckExports) ->
     case CheckExports orelse Ctx#ctx.gradual_typing_mode =:= infer of
         true ->
-            ?LOG_INFO("Checking whether exported functions in ~s have a type spec", FileName),
+            ?LOG_DEBUG("Checking whether exported functions in ~s have a type spec", FileName),
             check_exported_funs_specified(Forms);
         false ->
-            ?LOG_INFO("Skipping check for exported functions in ~s", FileName)
+            ?LOG_DEBUG("Skipping check for exported functions in ~s", FileName)
     end,
     ExtTab = symtab:extend_symtab(FileName, Forms, Ctx#ctx.symtab, Ctx#ctx.overlay_symtab),
     ExtCtx = Ctx#ctx { symtab = ExtTab },
@@ -71,7 +71,7 @@ check_forms(Ctx, FileName, Forms, Only, Ignore, CheckExports) ->
                             if
                                 Check -> {[{Form, Ty} | With], Without, [X | Knowns]};
                                 true ->
-                                    ?LOG_INFO("~s: not type checking function ~s as requested",
+                                    ?LOG_TRACE("~s: not type checking function ~s as requested",
                                                ast:format_loc(Loc), RefStr),
                                     {With, Without, [X | Knowns]}
                             end
@@ -97,7 +97,7 @@ check_forms(Ctx, FileName, Forms, Only, Ignore, CheckExports) ->
     InferredTyEnvs = typing_infer:infer_all(ExtCtx, FileName, FunsWithoutSpec),
     % Typechecks the functions with a type spec. We need to check against all InferredTyEnvs,
     % we can stop on the first success.
-    ?LOG_INFO("Checking ~w functions in ~s against their specs (~w environments)",
+    ?LOG_DEBUG("Checking ~w functions in ~s against their specs (~w environments)",
               length(FunsWithSpec), FileName, length(InferredTyEnvs)),
 
     % if in report mode, continue type checking

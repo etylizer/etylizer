@@ -57,6 +57,26 @@ check_simp_constrs_return_unmatched(Tab, FixedTyvars, Ds, What) ->
         false -> {error, none} % FIXME: error locations
     end.
 
+% Check if dynamic() appears anywhere in the constraint set.
+% If so, redundancy checks are skipped entirely because dynamic() is consistent
+% with both T and not(T) for any T, making the satisfiability-based redundancy
+% check unsound.
+-spec has_dynamic_constr(symtab:t(), constr:collected_constrs()) -> boolean().
+has_dynamic_constr(Tab, Constrs) ->
+    TyHasDynamic = fun(Ty) ->
+        Unfolded = ast_utils:unfold_ty(Tab, Ty),
+        utils:everything(
+            fun ({predef, dynamic}) -> {ok, true};
+                (_) -> error
+            end, Unfolded) =/= []
+    end,
+    lists:any(
+        fun ({scsubty, _, T1, T2}) -> TyHasDynamic(T1) orelse TyHasDynamic(T2);
+            ({scmater, _, T1, _}) -> TyHasDynamic(T1);
+            (_) -> false
+        end,
+        sets:to_list(Constrs)).
+
 % Treats unmatched branches as errors.
 -spec check_simp_constrs(symtab:t(), sets:set(ast:ty_varname()), constr:simp_constrs(), string()) ->
     ok | {error, error() | none}.
@@ -70,30 +90,36 @@ check_simp_constrs(Tab, FixedTyvars, Ds, What) ->
             ReduDs = constr_collect:collect_matching_cond_constrs(Ds),
             ?LOG_DEBUG("Constraints are satisfiable, now checking ~w branches for redundancy",
                 length(ReduDs)),
-            lists:foldl(
-                fun ({Loc, UnmatchedConstrs}, Acc) ->
-                    case Acc of
-                        ok ->
-                            All = sets:union(UnmatchedConstrs, SubtyConstrs),
-                            case is_satisfiable(Tab, All, FixedTyvars, "redundancy check") of
-                                true ->
-                                    ?LOG_DEBUG("Branch at ~s is redundant. Constraints that were added to the constraint above: ~s~nFixed: ~200p",
-                                        ast:format_loc(Loc),
-                                        pretty:render_constr(UnmatchedConstrs),
-                                        sets:to_list(FixedTyvars)),
-                                    {error, {redundant_branch, Loc, ""}};
-                                false ->
-                                    ?LOG_DEBUG("Branch at ~s is not redundant. Constraints that were added to the constraint above: ~s~nFixed: ~200p",
-                                        ast:format_loc(Loc),
-                                        pretty:render_constr(UnmatchedConstrs),
-                                        sets:to_list(FixedTyvars)),
-                                    ok
-                            end;
-                        _ -> Acc
-                    end
-                end,
-                ok,
-                ReduDs);
+            case has_dynamic_constr(Tab, SubtyConstrs) of
+                true ->
+                    ?LOG_DEBUG("Skipping all redundancy checks (dynamic() found in constraints)"),
+                    ok;
+                false ->
+                    lists:foldl(
+                        fun ({Loc, UnmatchedConstrs}, Acc) ->
+                            case Acc of
+                                ok ->
+                                    All = sets:union(UnmatchedConstrs, SubtyConstrs),
+                                    case is_satisfiable(Tab, All, FixedTyvars, "redundancy check") of
+                                        true ->
+                                            ?LOG_DEBUG("Branch at ~s is redundant. Constraints that were added to the constraint above: ~s~nFixed: ~200p",
+                                                ast:format_loc(Loc),
+                                                pretty:render_constr(UnmatchedConstrs),
+                                                sets:to_list(FixedTyvars)),
+                                            {error, {redundant_branch, Loc, ""}};
+                                        false ->
+                                            ?LOG_DEBUG("Branch at ~s is not redundant. Constraints that were added to the constraint above: ~s~nFixed: ~200p",
+                                                ast:format_loc(Loc),
+                                                pretty:render_constr(UnmatchedConstrs),
+                                                sets:to_list(FixedTyvars)),
+                                            ok
+                                    end;
+                                _ -> Acc
+                            end
+                        end,
+                        ok,
+                        ReduDs)
+            end;
         false ->
             Blocks = constr_error_locs:simp_constrs_to_blocks(Ds),
             ?LOG_DEBUG("Constraints are not satisfiable, now locating source of errors. Blocks:~n~s",

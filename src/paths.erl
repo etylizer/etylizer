@@ -169,11 +169,11 @@ generate_input_file_list(Opts) ->
                 case Opts#opts.files of
                     [] -> utils:quit(1, "No input files given, aborting. Use --help to print help.~n");
                     Files ->
-                        ?LOG_INFO("Only using explicitly specified input files: ~200p", Files),
+                        ?LOG_DEBUG("Only using explicitly specified input files: ~200p", Files),
                         Files
                 end;
             Paths ->
-                ?LOG_INFO(
+                ?LOG_DEBUG(
                     "Searching for input files in ~200p and using explicitly specified files as input files: ~200p",
                     Paths, Opts#opts.files),
                 lists:foldl(

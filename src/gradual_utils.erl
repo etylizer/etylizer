@@ -173,10 +173,11 @@ postprocess({tally_subst, S, Fixed}, Constrs, Maters, SymTab) ->
     compose({tally_subst, S, Fixed}, Sigma2).
 
 % Returns the set of variable names appearing in both positive and negative positions in Ty.
-% Delegates to subst:collect_vars/6 for exhaustive AST traversal.
+% Delegates to subst:collect_vars/4 for exhaustive AST traversal.
 -spec collect_pos_neg_tyvars(ast:ty(), symtab:t()) -> sets:set(ast:ty_varname()).
 collect_pos_neg_tyvars(Ty, SymTab) ->
-    VarPositions = subst:collect_vars(Ty, 0, #{}, sets:new(), SymTab, #{}),
+    UnfoldedTy = ast_utils:unfold_ty(SymTab, Ty),
+    VarPositions = subst:collect_vars(UnfoldedTy, 0, #{}, sets:new()),
     maps:fold(
       fun(Name, Positions, Acc) ->
           case lists:usort(Positions) of

@@ -167,7 +167,7 @@ doWork(Opts) ->
       ?LOG_TRACE("Check if espresso executable is available"),
       {ok, _} = file:read_file_info(get_espresso_binary()),
 
-      ?LOG_INFO("Initializing ETS tables"),
+      ?LOG_TRACE("Initializing ETS tables"),
       parse_cache:init(Opts),
       stdtypes:init(),
       try
@@ -193,7 +193,7 @@ doWork(Opts) ->
                       % only typecheck the files given
                       cm_depgraph:new(SourceList);
                   false ->
-                      ?LOG_NOTE("Entry points: ~p, now building dependency graph", SourceList),
+                      ?LOG_DEBUG("Entry points: ~p, now building dependency graph", SourceList),
                       G = cm_depgraph:build_dep_graph(
                           SourceList,
                           SearchPath),
@@ -229,7 +229,7 @@ get_espresso_binary() ->
 main(Args) ->
     Opts = parse_args(Args),
     log:init(Opts#opts.log_level),
-    ?LOG_INFO("Parsed commandline options as ~200p", Opts),
+    ?LOG_DEBUG("Parsed commandline options as ~200p", Opts),
     try doWork(Opts)
     catch throw:{etylizer, K, Msg}:S ->
             Raw = erl_error:format_exception(throw, K, S),

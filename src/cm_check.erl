@@ -23,25 +23,25 @@ perform_type_checks(SearchPath, SourceList, DepGraph, Opts) ->
     IndexFile = paths:index_file_name(Opts),
     RebarLockFile = paths:rebar_lock_file(Opts),
     Index = cm_index:load_index(RebarLockFile, IndexFile, Opts#opts.mode),
-    ?LOG_INFO("All sources: ~p", SourceList),
+    ?LOG_DEBUG("All sources: ~p", SourceList),
     {DepsChanged, NewIndex1} =
         cm_index:has_external_dep_changed(RebarLockFile, Index),
     CheckList =
         case {DepsChanged, Opts#opts.force} of
             {true, false} ->
-                ?LOG_INFO("Some external dependency has changed, rechecking everything"),
+                ?LOG_DEBUG("Some external dependency has changed, rechecking everything"),
                 SourceList;
             {false, true} ->
-                ?LOG_INFO("Forced to recheck everything"),
+                ?LOG_TRACE("Forced to recheck everything"),
                 SourceList;
             _ ->
-                ?LOG_INFO("No external dependency has changed"),
+                ?LOG_TRACE("No external dependency has changed"),
                 create_check_list(SourceList, NewIndex1, DepGraph)
         end,
     case CheckList of
-        [] -> ?LOG_INFO("Need to check 0 of ~p files", length(CheckList));
+        [] -> ?LOG_DEBUG("Need to check 0 of ~p files", length(CheckList));
         _ ->
-            ?LOG_INFO("Need to check ~p of ~p files: ~p",
+            ?LOG_DEBUG("Need to check ~p of ~p files: ~p",
                 length(CheckList), length(SourceList), CheckList)
     end,
     OverlaySymtab = overlay_symtab(Opts),
@@ -83,7 +83,7 @@ traverse_and_check([], _, _, _, _, Index) ->
     Index;
 
 traverse_and_check([CurrentFile | RemainingFiles], Symtab, OverlaySymtab, SearchPath, Opts, Index) ->
-    ?LOG_INFO("Checking ~s", CurrentFile),
+    ?LOG_DEBUG("Checking ~s", CurrentFile),
     Forms = parse_cache:parse(intern, CurrentFile),
     ModName = ast_utils:modname_from_path(CurrentFile),
     Referenced = lists:filter(fun (M) -> M =/= ModName end, ast_utils:referenced_modules(Forms)),
@@ -129,7 +129,7 @@ perform_sanity_check(CurrentFile, Forms, DoCheck) ->
 overlay_symtab(Opts) ->
     OverlayForms = case Opts#opts.type_overlay of
         [] ->
-            ?LOG_INFO("Not using any overlays"),
+            ?LOG_DEBUG("Not using any overlays"),
             [];
         OverlayFile ->
             ?LOG_INFO("Using overlays from ~s", OverlayFile),

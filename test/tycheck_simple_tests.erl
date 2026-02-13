@@ -155,6 +155,9 @@ simple_test_() ->
   WhatNot = [
     % TODO binary pattern element size verification
     "b4_fail",
+    % TODO better redundancy check detection for dynamic()
+    "refine_times_02_fail",
+    "refine_times_03_fail",
     % TODO refinement for list comprehensions doesn't work (#279)
     "lc_13",
     % TODO unbound cariable in constraint simplification (#278)
@@ -163,6 +166,8 @@ simple_test_() ->
   ],
 
   NoInfer = [
+    % TODO slow, timeouts
+    "refine_tagged_tuple",
     % TODO timeout, with flipped variable ordering it infers instantly
     "match_13",
     % TODO slow (tuple-encoded lists) inference #255

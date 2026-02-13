@@ -53,7 +53,7 @@ load_index(RebarLockFile, Path, Mode) ->
         true ->
             case file:consult(Path) of
                 {ok, [{etylizer_index, ?INDEX_VERSION, Index}]} ->
-                    ?LOG_INFO("Loading index from ~p", Path),
+                    ?LOG_TRACE("Loading index from ~p", Path),
                     Index;
                 {ok, []} ->
                     BadIndex(utils:sformat("Empty index at ~p", Path));
@@ -65,7 +65,7 @@ load_index(RebarLockFile, Path, Mode) ->
                         Reason))
             end;
         false ->
-            ?LOG_INFO("No index exists at ~p, using empty index", Path),
+            ?LOG_DEBUG("No index exists at ~p, using empty index", Path),
             empty_index(RebarLockFile)
     end.
 
@@ -74,7 +74,7 @@ save_index(Path, Index) ->
     filelib:ensure_dir(Path),
     case file:write_file(Path, io_lib:format("~p.~n", [{etylizer_index, ?INDEX_VERSION, Index}])) of
         ok ->
-            ?LOG_INFO("Stored index at ~p", Path),
+            ?LOG_DEBUG("Stored index at ~p", Path),
             ok;
         {error, Reason} ->
             ?ABORT("Error occurred while trying to save index. Reason: ~s", Reason)
