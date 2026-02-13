@@ -169,6 +169,7 @@ exp_constrs(Ctx, E, T) ->
                                     {ThisLower, ThisUpper, ThisCs, ThisConstrBody, ThisBodyEnv} =
                                         case_clause_constrs(
                                           Ctx,
+                                          Alpha,
                                           ty_without(Alpha, ast_lib:mk_union(Lowers)),
                                           ScrutE,
                                           ScrutEnv,
@@ -953,19 +954,21 @@ needs_unmatched_check(Clauses) ->
 % Computes the redudance constraints of a case clause. The clause is redudandant iff the
 % constraints are satisfiable.
 % Parameters:
-%   ctx(): context
+%   ast:loc(): location of the case clause
 %   list(ast:ty()): accepting types (lower bound) of the guarded patterns of the branches
 %       coming *before* the current branch
 %   ast:ty(): potential type of the guarded pattern of the current branch
-%   ast:exp(): scrutiny of the whole case
+%   ast:ty(): the scrutiny type variable (Alpha from the case expression)
 % Result:
 %   constr:constr_case_branc_cond(): set of constraints
--spec case_clause_unmatched_constraints(ctx(), list(ast:ty()), ast:ty(), ast:exp()) ->
+-spec case_clause_unmatched_constraints(ast:loc(), list(ast:ty()), ast:ty(), ast:ty()) ->
     constr:constr_case_branch_cond().
-case_clause_unmatched_constraints(Ctx, LowersBefore, Upper, Scrut) ->
+case_clause_unmatched_constraints(L, LowersBefore, Upper, ScrutAlpha) ->
     Ui = ast_lib:mk_union([ast_lib:mk_negation(Upper) | LowersBefore]),
-    {Cs, _Env} = exp_constrs(Ctx, Scrut, Ui),
-    Cs.
+    % Use the scrutiny type variable directly instead of re-evaluating the
+    % scrutiny expression. This avoids creating fresh type variables for each
+    % branch's redundancy check, since ScrutAlpha already captures the scrutiny type.
+    utils:single({csubty, mk_locs("case branch unmatched", L), ScrutAlpha, Ui}).
 
 % Parameters:
 %   ctx(): context
