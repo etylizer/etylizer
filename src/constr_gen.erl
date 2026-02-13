@@ -983,13 +983,22 @@ case_clause_unmatched_constraints(Ctx, LowersBefore, Upper, Scrut) ->
 %   constr:constrs(): constraints result from the guarded pattern of the clause
 %   constr:constr_case_branch(): the body of the case
 -spec case_clause_constrs(
-    ctx(), ast:ty(), ast:exp(), constr:constr_env(), boolean(), list(ast:ty()), ast:case_clause(), ast:ty()
+    ctx(), ast:ty(), ast:ty(), ast:exp(), constr:constr_env(), boolean(), list(ast:ty()), ast:case_clause(), ast:ty()
 ) -> {ast:ty(), ast:ty(), constr:constrs(), constr:constr_case_branch(), constr:constr_env()}.
-case_clause_constrs(Ctx, TyScrut, Scrut, ScrutEnv, NeedsUnmatchedCheck, LowersBefore,
+case_clause_constrs(Ctx, ScrutAlpha, TyScrut, Scrut, ScrutEnv, NeedsUnmatchedCheck, LowersBefore,
     {case_clause, L, Pat, Guards, Exps}, ExpectedTy) ->
     {BodyLower, BodyUpper, BodyEnvCs, BodyEnv0} =
         case_clause_env(Ctx, L, TyScrut, Scrut, Pat, Guards),
-    {_, _, GuardEnvCs, GuardEnv0} = case_clause_env(Ctx, L, TyScrut, Scrut, Pat, []),
+    % When there are no guards and the pattern has no variables, both calls to
+    % case_clause_env produce identical results (same inputs), so we can reuse
+    % the body env for the guard env, saving fresh type variable allocations.
+    {GuardEnvCs, GuardEnv0} =
+        case Guards == [] andalso not pat_has_vars(Pat) of
+            true -> {BodyEnvCs, BodyEnv0};
+            false ->
+                {_, _, GCs, GEnv} = case_clause_env(Ctx, L, TyScrut, Scrut, Pat, []),
+                {GCs, GEnv}
+        end,
     % Variables bound in the scrutinee expression (e.g. case U = ok of ...)
     % must be visible in the clause body and guard environments.
     BodyEnv = intersect_envs(ScrutEnv, BodyEnv0),
@@ -1019,7 +1028,7 @@ case_clause_constrs(Ctx, TyScrut, Scrut, ScrutEnv, NeedsUnmatchedCheck, LowersBe
     RedundancyCs =
         if
             NeedsUnmatchedCheck ->
-                case_clause_unmatched_constraints(Ctx, LowersBefore, BodyUpper, Scrut);
+                case_clause_unmatched_constraints(L, LowersBefore, BodyUpper, ScrutAlpha);
             true -> none
         end,
     RL =
