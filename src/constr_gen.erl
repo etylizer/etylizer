@@ -169,7 +169,6 @@ exp_constrs(Ctx, E, T) ->
                                     {ThisLower, ThisUpper, ThisCs, ThisConstrBody, ThisBodyEnv} =
                                         case_clause_constrs(
                                           Ctx,
-                                          Alpha,
                                           ty_without(Alpha, ast_lib:mk_union(Lowers)),
                                           ScrutE,
                                           ScrutEnv,
@@ -954,21 +953,45 @@ needs_unmatched_check(Clauses) ->
 % Computes the redudance constraints of a case clause. The clause is redudandant iff the
 % constraints are satisfiable.
 % Parameters:
-%   ast:loc(): location of the case clause
+%   ctx(): context
 %   list(ast:ty()): accepting types (lower bound) of the guarded patterns of the branches
 %       coming *before* the current branch
 %   ast:ty(): potential type of the guarded pattern of the current branch
-%   ast:ty(): the scrutiny type variable (Alpha from the case expression)
+%   ast:exp(): scrutiny of the whole case
 % Result:
 %   constr:constr_case_branc_cond(): set of constraints
--spec case_clause_unmatched_constraints(ast:loc(), list(ast:ty()), ast:ty(), ast:ty()) ->
+-spec case_clause_unmatched_constraints(ctx(), list(ast:ty()), ast:ty(), ast:exp()) ->
     constr:constr_case_branch_cond().
-case_clause_unmatched_constraints(L, LowersBefore, Upper, ScrutAlpha) ->
+case_clause_unmatched_constraints(Ctx, LowersBefore, Upper, Scrut) ->
     Ui = ast_lib:mk_union([ast_lib:mk_negation(Upper) | LowersBefore]),
-    % Use the scrutiny type variable directly instead of re-evaluating the
-    % scrutiny expression. This avoids creating fresh type variables for each
-    % branch's redundancy check, since ScrutAlpha already captures the scrutiny type.
-    utils:single({csubty, mk_locs("case branch unmatched", L), ScrutAlpha, Ui}).
+    {Cs, _Env} = scrut_constrs_compact(Ctx, Scrut, Ui),
+    Cs.
+
+% Like exp_constrs but optimized for scrutiny expressions that are tuples of
+% variables. For each variable element, directly materializes it into the tuple
+% type, skipping the intermediate fresh type variable that exp_constrs creates.
+% Falls back to exp_constrs for non-tuple or non-variable-only scrutinies.
+-spec scrut_constrs_compact(ctx(), ast:exp(), ast:ty()) -> {constr:constrs(), constr:constr_env()}.
+scrut_constrs_compact(Ctx, {tuple, L, Args}, T) ->
+    case lists:all(fun({var, _, _}) -> true; (_) -> false end, Args) of
+        true ->
+            {Tys, Cs} = lists:foldr(
+                fun({var, VL, AnyRef}, {AccTys, AccCs}) ->
+                    AlphaName = fresh_ty_varname(Ctx),
+                    Msg = utils:sformat("var ~s", pretty:render(pretty:ref(AnyRef))),
+                    Locs = mk_locs(Msg, VL),
+                    Mater = {cvarmater, Locs, AnyRef, AlphaName},
+                    {[{var, AlphaName} | AccTys], sets:add_element(Mater, AccCs)}
+                end,
+                {[], sets:new([{version, 2}])},
+                Args),
+            TupleC = {csubty, mk_locs("tuple constructor", L), {tuple, Tys}, T},
+            {sets:add_element(TupleC, Cs), #{}};
+        false ->
+            exp_constrs(Ctx, {tuple, L, Args}, T)
+    end;
+scrut_constrs_compact(Ctx, Scrut, T) ->
+    exp_constrs(Ctx, Scrut, T).
 
 % Parameters:
 %   ctx(): context
@@ -986,9 +1009,9 @@ case_clause_unmatched_constraints(L, LowersBefore, Upper, ScrutAlpha) ->
 %   constr:constrs(): constraints result from the guarded pattern of the clause
 %   constr:constr_case_branch(): the body of the case
 -spec case_clause_constrs(
-    ctx(), ast:ty(), ast:ty(), ast:exp(), constr:constr_env(), boolean(), list(ast:ty()), ast:case_clause(), ast:ty()
+    ctx(), ast:ty(), ast:exp(), constr:constr_env(), boolean(), list(ast:ty()), ast:case_clause(), ast:ty()
 ) -> {ast:ty(), ast:ty(), constr:constrs(), constr:constr_case_branch(), constr:constr_env()}.
-case_clause_constrs(Ctx, ScrutAlpha, TyScrut, Scrut, ScrutEnv, NeedsUnmatchedCheck, LowersBefore,
+case_clause_constrs(Ctx, TyScrut, Scrut, ScrutEnv, NeedsUnmatchedCheck, LowersBefore,
     {case_clause, L, Pat, Guards, Exps}, ExpectedTy) ->
     {BodyLower, BodyUpper, BodyEnvCs, BodyEnv0} =
         case_clause_env(Ctx, L, TyScrut, Scrut, Pat, Guards),
@@ -1031,7 +1054,7 @@ case_clause_constrs(Ctx, ScrutAlpha, TyScrut, Scrut, ScrutEnv, NeedsUnmatchedChe
     RedundancyCs =
         if
             NeedsUnmatchedCheck ->
-                case_clause_unmatched_constraints(L, LowersBefore, BodyUpper, ScrutAlpha);
+                case_clause_unmatched_constraints(Ctx, LowersBefore, BodyUpper, Scrut);
             true -> none
         end,
     RL =
