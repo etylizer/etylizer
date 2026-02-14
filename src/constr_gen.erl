@@ -987,12 +987,26 @@ has_bin_pat(_) -> false.
 % pattern-mismatch is already caught by the exhaustiveness constraint.
 % Binary patterns are excluded because the exhaustiveness check is disabled for
 % them, making the redundancy check the only safety net.
+% Assert-pattern cases (from ?assert_pattern macro) also skip redundancy: the user
+% explicitly asserts the pattern matches, so redundancy checking is wasteful.
 -spec needs_unmatched_check(list(ast:case_clause())) -> boolean().
 needs_unmatched_check(Clauses) ->
     case Clauses of
         [{case_clause, _, Pat, _, _}] -> has_bin_pat(Pat);
-        _ -> true
+        _ -> not is_assert_pattern_case(Clauses)
     end.
+
+% Detects the ?assert_pattern macro expansion:
+%   case Expr of __Z = Pattern -> __Z; _ -> error(exhaustiveness_violated) end
+% The last branch always calls error(exhaustiveness_violated) with that specific atom.
+-spec is_assert_pattern_case(list(ast:case_clause())) -> boolean().
+is_assert_pattern_case(Clauses) when length(Clauses) >= 2 ->
+    case lists:last(Clauses) of
+        {case_clause, _, _, [],
+         [{call, _, _, [{atom, _, exhaustiveness_violated}]}]} -> true;
+        _ -> false
+    end;
+is_assert_pattern_case(_) -> false.
 
 % Computes the redudance constraints of a case clause. The clause is redudandant iff the
 % constraints are satisfiable.
