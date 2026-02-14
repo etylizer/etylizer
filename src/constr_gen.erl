@@ -143,6 +143,7 @@ exp_constrs_tyof(Ctx, E) ->
         {'char', _L, C} -> {{singleton, C}, sets:new([{version, 2}]), #{}};
         {'integer', _L, I} -> {{singleton, I}, sets:new([{version, 2}]), #{}};
         {'float', _L, _F} -> {{predef, float}, sets:new([{version, 2}]), #{}};
+        {nil, _L} -> {{empty_list}, sets:new([{version, 2}]), #{}};
         {var, L, AnyRef} ->
             AlphaName = fresh_ty_varname(Ctx),
             Msg = utils:sformat("var ~s", pretty:render(pretty:ref(AnyRef))),
@@ -280,12 +281,10 @@ exp_constrs(Ctx, E, T) ->
 
             {ResultCs, #{}};
         {cons, L, Head, Tail} ->
-            Alpha = fresh_tyvar(Ctx),
-            {C1, _Env1} = exp_constrs(Ctx, Head, Alpha),
-            Beta = fresh_tyvar(Ctx),
-            {C2, _Env2} = exp_constrs(Ctx, Tail, Beta),
+            {HeadTy, C1, _Env1} = exp_constrs_tyof(Ctx, Head),
+            {TailTy, C2, _Env2} = exp_constrs_tyof(Ctx, Tail),
             Cs = sets:union(C1, C2),
-            ListC = {csubty, mk_locs("cons constructor", L), {cons, Alpha, Beta}, T},
+            ListC = {csubty, mk_locs("cons constructor", L), {cons, HeadTy, TailTy}, T},
             {sets:add_element(ListC, Cs), #{}};
         {fun_ref, L, GlobalRef} ->
             {utils:single({cvar, mk_locs("function ref", L), GlobalRef, T}), #{}};
