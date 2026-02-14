@@ -189,6 +189,25 @@ exp_constrs(Ctx, E, T) ->
             {sets:union(Cs0, Cs1), #{}};
         {block, L, Es} ->
             exps_constrs(Ctx, L, Es, T);
+        {'case', L, ScrutE, [{case_clause, _, {wildcard, _}, [], Exps}]}
+                when length(Exps) =:= 1 ->
+            % Single clause with wildcard pattern, no guards, single body expression.
+            % This pattern arises from the maybe expression transformation:
+            %   case E of _ -> E end
+            % The body determines the result type; the scrutinee is redundant.
+            [BodyE] = Exps,
+            case BodyE =:= ScrutE of
+                true ->
+                    % Scrutinee and body are structurally identical (maybe artifact).
+                    % Type-check once with the target type.
+                    exp_constrs(Ctx, BodyE, T);
+                false ->
+                    % Different expressions: type-check scrutinee for well-typedness,
+                    % body for result type.
+                    {ScrutCs, _ScrutEnv} = exp_constrs(Ctx, ScrutE, {predef, any}),
+                    {BodyCs, BodyEnv} = exps_constrs(Ctx, L, Exps, T),
+                    {sets:union(ScrutCs, BodyCs), BodyEnv}
+            end;
         {'case', L, ScrutE, Clauses} ->
             Alpha = fresh_tyvar(Ctx),
             {Cs0, ScrutEnv} = scrut_constrs_compact(Ctx, ScrutE, Alpha),
