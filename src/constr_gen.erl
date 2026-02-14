@@ -2023,27 +2023,49 @@ var_test_env(FunExp, X, RestArgs) ->
 %   (pm1, pm2, ..., pmn) -> em
 % end
 -spec fun_clauses_to_exp(ctx(), ast:loc(), [ast:fun_clause()]) -> {[ast:local_varname()], ast:exps()}.
-fun_clauses_to_exp(Ctx, _, [{fun_clause, L, Pats, [], Body}]) ->
-    % Single clause, no guards: keep variable patterns as direct args,
-    % wrap non-variable patterns in case expressions in the body.
-    {Args, CaseMatches} = lists:foldr(
-        fun(Pat, {AccArgs, AccMatches}) ->
+fun_clauses_to_exp(Ctx, _, FunClauses = [{fun_clause, L, Pats, [], Body}]) ->
+    % Single clause, no guards: classify patterns
+    {Vars, HasVar, HasComplex} = lists:foldr(
+        fun(Pat, {Acc, AnyVar, AnyComplex}) ->
             case Pat of
-                {var, _, {local_bind, V}} ->
-                    {[V | AccArgs], AccMatches};
-                _ ->
-                    [FreshV] = fresh_vars(Ctx, 1),
-                    {[FreshV | AccArgs], [{FreshV, L, Pat} | AccMatches]}
+                {var, _, {local_bind, V}} -> {[{var, V} | Acc], true, AnyComplex};
+                _ -> {[complex | Acc], AnyVar, true}
             end
-        end, {[], []}, Pats),
-    WrappedBody = lists:foldl(
-        fun({Var, Loc, Pat}, B) ->
-            [{'case', Loc, {var, Loc, {local_ref, Var}},
-              [{case_clause, Loc, Pat, [], B}]}]
-        end, Body, CaseMatches),
-    {Args, WrappedBody};
+        end, {[], false, false}, Pats),
+    case {HasVar, HasComplex} of
+        {_, false} ->
+            % All variable patterns: use direct args (fast path)
+            VarList = [V || {var, V} <- Vars],
+            {VarList, Body};
+        {true, true} ->
+            % Mix of variable and complex patterns: keep var patterns as direct args,
+            % wrap complex patterns in case expressions to avoid a full tuple case.
+            {Args, CaseMatches} = lists:foldr(
+                fun({var, V}, {AccArgs, AccMatches}) ->
+                        {[V | AccArgs], AccMatches};
+                   (complex, {AccArgs, AccMatches}) ->
+                        [FreshV] = fresh_vars(Ctx, 1),
+                        {[FreshV | AccArgs], [{FreshV, L} | AccMatches]}
+                end, {[], []}, Vars),
+            % Recover the complex patterns in order
+            ComplexPats = [Pat || Pat <- Pats, not is_simple_var_pat(Pat)],
+            Matches = lists:zip(CaseMatches, ComplexPats),
+            WrappedBody = lists:foldl(
+                fun({{Var, Loc}, Pat}, B) ->
+                    [{'case', Loc, {var, Loc, {local_ref, Var}},
+                      [{case_clause, Loc, Pat, [], B}]}]
+                end, Body, Matches),
+            {Args, WrappedBody};
+        {false, true} ->
+            % All complex patterns: use the original tuple-case approach
+            fun_clauses_to_exp_aux(Ctx, L, FunClauses)
+    end;
 fun_clauses_to_exp(Ctx, L, FunClauses) ->
     fun_clauses_to_exp_aux(Ctx, L, FunClauses).
+
+-spec is_simple_var_pat(ast:pat()) -> boolean().
+is_simple_var_pat({var, _, {local_bind, _}}) -> true;
+is_simple_var_pat(_) -> false.
 
 -spec fun_clauses_to_exp_aux(ctx(), ast:loc(), [ast:fun_clause()]) -> {[ast:local_varname()], ast:exps()}.
 fun_clauses_to_exp_aux(Ctx, L, FunClauses) ->
