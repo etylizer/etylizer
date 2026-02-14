@@ -329,7 +329,10 @@ builtin_ops() ->
         tfun([tfloat()], tfloat())
     ])),
     DivOpTy = tyscm(tinter([tfun([tint(), tint()], tint()), tfun([tnon_neg_int(), tnon_neg_int()], tnon_neg_int())])),
-    IntOpTy = tyscm(tfun([tint(), tint()], tint())),
+    IntOpTy = tyscm(tinter([
+        tfun([tnon_neg_int(), tnon_neg_int()], tnon_neg_int()),
+        tfun([tint(), tint()], tint())
+    ])),
     BoolOpTy = tyscm(tfun([tbool(), tbool()], tbool())),
     AndShortcutOpTy = tyscm(tinter([tfun([tatom(false), tany()], tatom(false)), tfun([tatom(true), tvar(a)], tvar(a))])),
     OrShortcutOpTy = tyscm(tinter([tfun([tatom(true), tany()], tatom(true)), tfun([tatom(false), tvar(b)], tvar(b))])),
