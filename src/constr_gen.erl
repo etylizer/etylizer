@@ -88,9 +88,13 @@ gen_constrs_annotated_fun(ExhaustivenessMode, Symtab, DisableExhaustiveness, {fu
             errors:ty_error(L, "Arity mismatch for function ~w", Name);
        true -> ok
     end,
+    file:write_file("/tmp/ast_body.txt", io_lib:format("~p~n", [Body])),
+    VarsBefore = counters:get(Ctx#ctx.var_counter, 1),
     ArgRefs = lists:map(fun(V) -> {local_ref, V} end, Args),
     Env = maps:from_list(lists:zip(ArgRefs, ArgTys)),
     {BodyCs, _BodyEnv} = exps_constrs(Ctx, L, Body, ResTy),
+    VarsAfter = counters:get(Ctx#ctx.var_counter, 1),
+    io:format("VARCOUNT ~w/~w: ~w poly vars~n", [Name, Arity, VarsAfter - VarsBefore]),
     Msg = utils:sformat("definition of ~w/~w", Name, Arity),
     utils:single({cdef, mk_locs(Msg, L), Env, BodyCs}).
 
@@ -2121,11 +2125,107 @@ fun_clauses_to_exp(Ctx, _, FunClauses = [{fun_clause, L, Pats, [], Body}]) ->
             fun_clauses_to_exp_aux(Ctx, L, FunClauses)
     end;
 fun_clauses_to_exp(Ctx, L, FunClauses) ->
-    fun_clauses_to_exp_aux(Ctx, L, FunClauses).
+    % Multi-clause: check if some positions are always simple var patterns
+    case analyze_multi_clause_positions(FunClauses) of
+        {ok, PositionTypes} ->
+            HasDirect = lists:any(fun(direct) -> true; (_) -> false end, PositionTypes),
+            HasComplex = lists:any(fun(complex) -> true; (_) -> false end, PositionTypes),
+            case {HasDirect, HasComplex} of
+                {true, true} ->
+                    fun_clauses_to_exp_mixed_multi(Ctx, L, FunClauses, PositionTypes);
+                _ ->
+                    fun_clauses_to_exp_aux(Ctx, L, FunClauses)
+            end;
+        not_applicable ->
+            fun_clauses_to_exp_aux(Ctx, L, FunClauses)
+    end.
 
 -spec is_simple_var_pat(ast:pat()) -> boolean().
 is_simple_var_pat({var, _, {local_bind, _}}) -> true;
 is_simple_var_pat(_) -> false.
+
+-spec is_simple_var_or_wildcard(ast:pat()) -> boolean().
+is_simple_var_or_wildcard({var, _, {local_bind, _}}) -> true;
+is_simple_var_or_wildcard({wildcard, _}) -> true;
+is_simple_var_or_wildcard(_) -> false.
+
+% Analyze parameter positions across all clauses of a multi-clause function.
+% Returns {ok, [direct | complex]} when all clauses have no guards and at least
+% 2 clauses exist, or not_applicable otherwise.
+-spec analyze_multi_clause_positions([ast:fun_clause()]) -> {ok, [direct | complex]} | not_applicable.
+analyze_multi_clause_positions(FunClauses) when length(FunClauses) < 2 -> not_applicable;
+analyze_multi_clause_positions(FunClauses) ->
+    % Only apply when all clauses have no guards
+    AllNoGuards = lists:all(
+        fun({fun_clause, _, _, Guards, _}) -> Guards =:= [] end,
+        FunClauses),
+    case AllNoGuards of
+        false -> not_applicable;
+        true ->
+            [{fun_clause, _, FirstPats, _, _} | _] = FunClauses,
+            Arity = length(FirstPats),
+            PositionTypes = lists:map(
+                fun(I) ->
+                    AllSimple = lists:all(
+                        fun({fun_clause, _, Pats, _, _}) ->
+                            is_simple_var_or_wildcard(lists:nth(I, Pats))
+                        end, FunClauses),
+                    case AllSimple of
+                        true -> direct;
+                        false -> complex
+                    end
+                end, lists:seq(1, Arity)),
+            {ok, PositionTypes}
+    end.
+
+% Multi-clause optimization: pass always-simple positions as direct args,
+% wrap only complex positions in a smaller tuple case.
+-spec fun_clauses_to_exp_mixed_multi(ctx(), ast:loc(), [ast:fun_clause()], [direct | complex]) ->
+    {[ast:local_varname()], ast:exps()}.
+fun_clauses_to_exp_mixed_multi(Ctx, L, FunClauses, PositionTypes) ->
+    Arity = length(PositionTypes),
+    Vars = fresh_vars(Ctx, Arity),
+    IndexedTypes = lists:zip(lists:seq(1, Arity), PositionTypes),
+    ComplexIndices = [I || {I, complex} <- IndexedTypes],
+    DirectIndices = [I || {I, direct} <- IndexedTypes],
+    % Build scrutiny from complex positions only
+    ComplexVarRefs = [{var, L, {local_ref, lists:nth(I, Vars)}} || I <- ComplexIndices],
+    ScrutExp = case ComplexVarRefs of
+        [ScrutSingle] -> ScrutSingle;
+        _ -> {tuple, L, ComplexVarRefs}
+    end,
+    % Build case clauses
+    CaseClauses = lists:map(
+        fun({fun_clause, CL, Pats, _Guards, Body}) ->
+            % Case pattern from complex positions only
+            ComplexPats = [lists:nth(I, Pats) || I <- ComplexIndices],
+            CasePat = case ComplexPats of
+                [PatSingle] -> PatSingle;
+                _ -> {tuple, CL, ComplexPats}
+            end,
+            % Wrap body in case bindings for direct positions (skip wildcards)
+            % Uses single-branch case: case $Ai of VarPat -> Body end
+            DirectBindings = lists:filtermap(
+                fun(Idx) ->
+                    case lists:nth(Idx, Pats) of
+                        {var, PL, {local_bind, _}} ->
+                            ArgVar = lists:nth(Idx, Vars),
+                            {true, {PL, ArgVar, lists:nth(Idx, Pats)}};
+                        {wildcard, _} ->
+                            false
+                    end
+                end, DirectIndices),
+            WrappedBody = lists:foldl(
+                fun({PL, ArgVar, Pat}, B) ->
+                    [{'case', PL, {var, PL, {local_ref, ArgVar}},
+                      [{case_clause, PL, Pat, [], B}]}]
+                end, Body, DirectBindings),
+            {case_clause, CL, CasePat, [], WrappedBody}
+        end, FunClauses),
+    E = {'case', L, ScrutExp, CaseClauses},
+    ?LOG_TRACE("Rewrote multi-clause function at ~s with mixed optimization, ~w direct / ~w complex positions",
+        ast:format_loc(L), length(DirectIndices), length(ComplexIndices)),
+    {Vars, [E]}.
 
 -spec fun_clauses_to_exp_aux(ctx(), ast:loc(), [ast:fun_clause()]) -> {[ast:local_varname()], ast:exps()}.
 fun_clauses_to_exp_aux(Ctx, L, FunClauses) ->
