@@ -218,13 +218,17 @@ exp_constrs(Ctx, E, T) ->
                                     % the current pattern (different atom literals at
                                     % some tuple position). Reduces negation size.
                                     RelevantLowers = filter_relevant_lowers(PatLowers, Pat),
+                                    % When all previous lowers are disjoint from
+                                    % current pattern, the clause is trivially
+                                    % non-redundant. Skip the redundancy check.
+                                    SkipRedundancy = RelevantLowers =:= [],
                                     {ThisLower, ThisUpper, ThisCs, ThisConstrBody, ThisBodyEnv} =
                                         case_clause_constrs(
                                           Ctx,
                                           ty_without(Alpha, ast_lib:mk_union(RelevantLowers)),
                                           ScrutE,
                                           ScrutEnv,
-                                          NeedsUnmatchedCheck,
+                                          NeedsUnmatchedCheck andalso not SkipRedundancy,
                                           RelevantLowers,
                                           Clause,
                                           T,
@@ -1068,6 +1072,8 @@ pats_disjoint(_, _) -> false.
 
 -spec pat_elems_disjoint({ast:pat(), ast:pat()}) -> boolean().
 pat_elems_disjoint({{atom, _, A1}, {atom, _, A2}}) -> A1 =/= A2;
+pat_elems_disjoint({{tuple, _, Ps1}, {tuple, _, Ps2}}) when length(Ps1) == length(Ps2) ->
+    lists:any(fun pat_elems_disjoint/1, lists:zip(Ps1, Ps2));
 pat_elems_disjoint(_) -> false.
 
 % Computes the redudance constraints of a case clause. The clause is redudandant iff the
