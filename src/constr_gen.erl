@@ -207,31 +207,36 @@ exp_constrs(Ctx, E, T) ->
                 none -> false;
                 ScrutVarNames -> not clauses_ref_any_var(Clauses, ScrutVarNames)
             end,
-            {BodyList, Lowers, _Uppers, CsCases, BodyEnvs} =
-                lists:foldl(fun (Clause = {case_clause, LocClause, _, _, _},
-                                 {BodyList, Lowers, Uppers, AccCs, AccEnvs}) ->
+            {BodyList, Lowers, _PatLowers, _Uppers, CsCases, BodyEnvs} =
+                lists:foldl(fun (Clause = {case_clause, LocClause, Pat, _, _},
+                                 {BodyList, Lowers, PatLowers, Uppers, AccCs, AccEnvs}) ->
                                     ?LOG_TRACE("Generating constraint for case clause at ~s: Lowers=~s, Uppers=~s",
                                                ast:format_loc(LocClause),
                                                pretty:render_tys(Lowers),
                                                pretty:render_tys(Uppers)),
+                                    % Filter lowers that are provably disjoint from
+                                    % the current pattern (different atom literals at
+                                    % some tuple position). Reduces negation size.
+                                    RelevantLowers = filter_relevant_lowers(PatLowers, Pat),
                                     {ThisLower, ThisUpper, ThisCs, ThisConstrBody, ThisBodyEnv} =
                                         case_clause_constrs(
                                           Ctx,
-                                          ty_without(Alpha, ast_lib:mk_union(Lowers)),
+                                          ty_without(Alpha, ast_lib:mk_union(RelevantLowers)),
                                           ScrutE,
                                           ScrutEnv,
                                           NeedsUnmatchedCheck,
-                                          Lowers,
+                                          RelevantLowers,
                                           Clause,
                                           T,
                                           SkipScrutDecomp),
                                     {BodyList ++ [ThisConstrBody],
                                      Lowers ++ [ThisLower],
+                                     PatLowers ++ [{ThisLower, Pat}],
                                      Uppers ++ [ThisUpper],
                                      sets:union(ThisCs, AccCs),
                                      AccEnvs ++ [ThisBodyEnv]}
                             end,
-                            {[], [], [], sets:new([{version, 2}]), []},
+                            {[], [], [], [], sets:new([{version, 2}]), []},
                             Clauses),
             CsScrut = sets:union(Cs0, CsCases),
             HasBinPat = lists:any(fun({case_clause, _, Pat, _, _}) -> has_bin_pat(Pat) end, Clauses),
@@ -1044,6 +1049,26 @@ is_assert_pattern_case(Clauses) when length(Clauses) >= 2 ->
         _ -> false
     end;
 is_assert_pattern_case(_) -> false.
+
+% Filter previous clause lowers, removing those provably disjoint from the
+% current clause's pattern. Two tuple patterns are disjoint if at some position,
+% both have different atom literals. This reduces the negation size in scrutiny
+% and bodyCond constraints, avoiding BDD blowup for functions with many clauses
+% dispatching on atom arguments (e.g. module name dispatch).
+-spec filter_relevant_lowers([{ast:ty(), ast:pat()}], ast:pat()) -> [ast:ty()].
+filter_relevant_lowers(LowersWithPats, CurrentPat) ->
+    [Lower || {Lower, Pat} <- LowersWithPats, not pats_disjoint(Pat, CurrentPat)].
+
+% Two tuple patterns are provably disjoint if at some shared position, both have
+% different atom literals. Conservative: returns false if uncertain.
+-spec pats_disjoint(ast:pat(), ast:pat()) -> boolean().
+pats_disjoint({tuple, _, Ps1}, {tuple, _, Ps2}) when length(Ps1) == length(Ps2) ->
+    lists:any(fun pat_elems_disjoint/1, lists:zip(Ps1, Ps2));
+pats_disjoint(_, _) -> false.
+
+-spec pat_elems_disjoint({ast:pat(), ast:pat()}) -> boolean().
+pat_elems_disjoint({{atom, _, A1}, {atom, _, A2}}) -> A1 =/= A2;
+pat_elems_disjoint(_) -> false.
 
 % Computes the redudance constraints of a case clause. The clause is redudandant iff the
 % constraints are satisfiable.
