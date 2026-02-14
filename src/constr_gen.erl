@@ -144,6 +144,15 @@ exp_constrs_tyof(Ctx, E) ->
         {'integer', _L, I} -> {{singleton, I}, sets:new([{version, 2}]), #{}};
         {'float', _L, _F} -> {{predef, float}, sets:new([{version, 2}]), #{}};
         {nil, _L} -> {{empty_list}, sets:new([{version, 2}]), #{}};
+        {tuple, _L, Es} ->
+            {Cs, ElemTys} = lists:foldr(
+                fun(Elem, {AccCs, AccTys}) ->
+                    {Ty, ECs, _Env} = exp_constrs_tyof(Ctx, Elem),
+                    {sets:union(AccCs, ECs), [Ty | AccTys]}
+                end,
+                {sets:new([{version, 2}]), []},
+                Es),
+            {{tuple, ElemTys}, Cs, #{}};
         {var, L, AnyRef} ->
             AlphaName = fresh_ty_varname(Ctx),
             Msg = utils:sformat("var ~s", pretty:render(pretty:ref(AnyRef))),
@@ -808,9 +817,8 @@ gen_funcall_constrs(Ctx, L, FunExp, Args, T) ->
     {ArgCs, ArgTys} =
         lists:foldr(
             fun(ArgExp, {AccCs, AccTys}) ->
-                    Alpha = fresh_tyvar(Ctx),
-                    {Cs, _Env} = exp_constrs(Ctx, ArgExp, Alpha),
-                    {sets:union(AccCs, Cs), [Alpha | AccTys]}
+                    {Ty, Cs, _Env} = exp_constrs_tyof(Ctx, ArgExp),
+                    {sets:union(AccCs, Cs), [Ty | AccTys]}
             end,
             {sets:new([{version, 2}]), []},
             Args),
@@ -843,7 +851,16 @@ var_funcall_constrs(Ctx, L, Var, Args, T) ->
 funcall_constrs_with_tyscm(Ctx, L, Var, TyScm, Args, T) ->
     {Mono, _, _} = typing_common:mono_ty(L, TyScm, none, fun(_, none) -> {fresh_ty_varname(Ctx), none} end, Ctx#ctx.symtab),
     case Mono of
-        {fun_full, ArgTys, ResTy} when length(Args) =:= length(ArgTys) ->
+        {fun_full, ArgTys0, ResTy} when length(Args) =:= length(ArgTys0) ->
+            % When the return type is concrete (no poly vars), parameter poly vars
+            % are dead: they don't appear in the return type and can't flow to the
+            % caller. Replace them with any() to eliminate wasted variables.
+            % This commonly helps with error/1, throw/1, exit/1 (return no_return()).
+            ArgTys = case res_ty_is_concrete(ResTy) of
+                true ->
+                    [case Ty of {var, _} -> {predef, any}; _ -> Ty end || Ty <- ArgTys0];
+                false -> ArgTys0
+            end,
             FunName = pretty:render_var(Var),
             ResConstr =
                 {csubty,
@@ -870,6 +887,14 @@ var_as_global_ref({var, _, Ref}) ->
         {local_ref, _} -> error;
         _ -> {ok, Ref}
     end.
+
+% Checks if a return type is concrete (no type variables).
+% Used to determine if parameter poly vars are dead and can be replaced.
+-spec res_ty_is_concrete(ast:ty()) -> boolean().
+res_ty_is_concrete({predef, _}) -> true;
+res_ty_is_concrete({singleton, _}) -> true;
+res_ty_is_concrete({empty_list}) -> true;
+res_ty_is_concrete(_) -> false.
 
 % Generates constraints for a dynamic function call (Mod:Fun(Args)).
 % Arguments are constrained to dynamic(), result is dynamic().
