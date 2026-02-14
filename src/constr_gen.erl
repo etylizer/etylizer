@@ -218,17 +218,13 @@ exp_constrs(Ctx, E, T) ->
                                     % the current pattern (different atom literals at
                                     % some tuple position). Reduces negation size.
                                     RelevantLowers = filter_relevant_lowers(PatLowers, Pat),
-                                    % When all previous lowers are disjoint from
-                                    % current pattern, the clause is trivially
-                                    % non-redundant. Skip the redundancy check.
-                                    SkipRedundancy = RelevantLowers =:= [],
                                     {ThisLower, ThisUpper, ThisCs, ThisConstrBody, ThisBodyEnv} =
                                         case_clause_constrs(
                                           Ctx,
                                           ty_without(Alpha, ast_lib:mk_union(RelevantLowers)),
                                           ScrutE,
                                           ScrutEnv,
-                                          NeedsUnmatchedCheck andalso not SkipRedundancy,
+                                          NeedsUnmatchedCheck,
                                           RelevantLowers,
                                           Clause,
                                           T,
