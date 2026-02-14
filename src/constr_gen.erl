@@ -88,13 +88,9 @@ gen_constrs_annotated_fun(ExhaustivenessMode, Symtab, DisableExhaustiveness, {fu
             errors:ty_error(L, "Arity mismatch for function ~w", Name);
        true -> ok
     end,
-    file:write_file("/tmp/ast_body.txt", io_lib:format("~p~n", [Body])),
-    VarsBefore = counters:get(Ctx#ctx.var_counter, 1),
     ArgRefs = lists:map(fun(V) -> {local_ref, V} end, Args),
     Env = maps:from_list(lists:zip(ArgRefs, ArgTys)),
     {BodyCs, _BodyEnv} = exps_constrs(Ctx, L, Body, ResTy),
-    VarsAfter = counters:get(Ctx#ctx.var_counter, 1),
-    io:format("VARCOUNT ~w/~w: ~w poly vars~n", [Name, Arity, VarsAfter - VarsBefore]),
     Msg = utils:sformat("definition of ~w/~w", Name, Arity),
     utils:single({cdef, mk_locs(Msg, L), Env, BodyCs}).
 
@@ -895,8 +891,6 @@ funcall_constrs_with_tyscm(Ctx, L, Var, TyScm, Args, T) ->
                 end,
                 utils:single(ResConstr),
                 lists:zip(Args, ArgTys)),
-            ?LOG_DEBUG("Generating specialized constraints for call of fun ~s with type ~s (type scheme: ~s)",
-                FunName, pretty:render_ty(Mono), pretty:render_tyscheme(TyScm)),
             Res;
         _ ->
             gen_funcall_constrs(Ctx, L, Var, Args, T)
