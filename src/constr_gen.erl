@@ -199,6 +199,14 @@ exp_constrs(Ctx, E, T) ->
             Alpha = fresh_tyvar(Ctx),
             {Cs0, ScrutEnv} = scrut_constrs_compact(Ctx, ScrutE, Alpha),
             NeedsUnmatchedCheck = needs_unmatched_check(Clauses),
+            % When the scrutiny is a tuple of variable refs and none of those
+            % variables are referenced in clause bodies or guards, skip the
+            % per-clause scrutiny pattern decomposition (saves 1 poly var per
+            % scrutiny element per clause).
+            SkipScrutDecomp = case scrut_var_set(ScrutE) of
+                none -> false;
+                ScrutVarNames -> not clauses_ref_any_var(Clauses, ScrutVarNames)
+            end,
             {BodyList, Lowers, _Uppers, CsCases, BodyEnvs} =
                 lists:foldl(fun (Clause = {case_clause, LocClause, _, _, _},
                                  {BodyList, Lowers, Uppers, AccCs, AccEnvs}) ->
@@ -215,7 +223,8 @@ exp_constrs(Ctx, E, T) ->
                                           NeedsUnmatchedCheck,
                                           Lowers,
                                           Clause,
-                                          T),
+                                          T,
+                                          SkipScrutDecomp),
                                     {BodyList ++ [ThisConstrBody],
                                      Lowers ++ [ThisLower],
                                      Uppers ++ [ThisUpper],
@@ -1081,12 +1090,13 @@ scrut_constrs_compact(Ctx, Scrut, T) ->
 %   constr:constrs(): constraints result from the guarded pattern of the clause
 %   constr:constr_case_branch(): the body of the case
 -spec case_clause_constrs(
-    ctx(), ast:ty(), ast:exp(), constr:constr_env(), boolean(), list(ast:ty()), ast:case_clause(), ast:ty()
+    ctx(), ast:ty(), ast:exp(), constr:constr_env(), boolean(), list(ast:ty()),
+    ast:case_clause(), ast:ty(), boolean()
 ) -> {ast:ty(), ast:ty(), constr:constrs(), constr:constr_case_branch(), constr:constr_env()}.
 case_clause_constrs(Ctx, TyScrut, Scrut, ScrutEnv, NeedsUnmatchedCheck, LowersBefore,
-    {case_clause, L, Pat, Guards, Exps}, ExpectedTy) ->
+    {case_clause, L, Pat, Guards, Exps}, ExpectedTy, SkipScrutDecomp) ->
     {BodyLower, BodyUpper, BodyEnvCs, BodyEnv0} =
-        case_clause_env(Ctx, L, TyScrut, Scrut, Pat, Guards),
+        case_clause_env(Ctx, L, TyScrut, Scrut, Pat, Guards, SkipScrutDecomp),
     % When guards are empty, the guard env is never used: no guard constraints
     % reference it. Skip generating guard env vars to reduce the variable count.
     % When guards exist but the pattern has no variables, body and guard env
@@ -1098,7 +1108,8 @@ case_clause_constrs(Ctx, TyScrut, Scrut, ScrutEnv, NeedsUnmatchedCheck, LowersBe
                 case pat_has_vars(Pat) of
                     false -> {BodyEnvCs, BodyEnv0};
                     true ->
-                        {_, _, GCs, GEnv} = case_clause_env(Ctx, L, TyScrut, Scrut, Pat, []),
+                        {_, _, GCs, GEnv} = case_clause_env(Ctx, L, TyScrut, Scrut, Pat, [],
+                                                             SkipScrutDecomp),
                         {GCs, GEnv}
                 end
         end,
@@ -1219,12 +1230,18 @@ catch_clause_pat_env(Ctx, L, ExcType, Pat, Stack) ->
     {PatCs, CombinedEnv}.
 
 % helper function for case_clause_constrs
--spec case_clause_env(ctx(), ast:loc(), ast:ty(), ast:exp(), ast:pat(), [ast:guard()]) ->
+-spec case_clause_env(ctx(), ast:loc(), ast:ty(), ast:exp(), ast:pat(), [ast:guard()],
+                      boolean()) ->
           {ast:ty(), ast:ty(), constr:constrs(), constr:constr_env()}.
-case_clause_env(Ctx, L, TyScrut, Scrut, Pat, Guards) ->
+case_clause_env(Ctx, L, TyScrut, Scrut, Pat, Guards, SkipScrutDecomp) ->
     {Lower, Upper} = pat_guard_lower_upper(Ctx#ctx.symtab, Pat, Guards, Scrut),
     Ti = ast_lib:mk_intersection([TyScrut, Upper]),
-    {Ci0, Gamma0} = pat_env(Ctx, L, Ti, pat_of_exp(Scrut)),
+    % When the scrutiny is a tuple of vars not referenced in clause bodies/guards,
+    % skip the scrutiny decomposition to avoid creating unused type variables.
+    {Ci0, Gamma0} = case SkipScrutDecomp of
+        true -> {sets:new([{version, 2}]), #{}};
+        false -> pat_env(Ctx, L, Ti, pat_of_exp(Scrut))
+    end,
     % Skip pattern decomposition when the pattern has no variables,
     % since no environment bindings would be produced.
     % But still include guard refinements, as guards may refine outer variables.
@@ -1594,11 +1611,20 @@ pat_env(Ctx, OuterL, T, P) ->
         {nil, _L} ->
             Empty;
         {cons, L, P1, P2} ->
-            Alpha1 = fresh_tyvar(Ctx),
-            {Cs1, Env1} = pat_env(Ctx, L, Alpha1, P1),
-            
-            Alpha2 = fresh_tyvar(Ctx),
-            {Cs2, Env2} = pat_env(Ctx, L, Alpha2, P2),
+            {Alpha1, Cs1, Env1} = case pat_has_vars(P1) of
+                false -> {{predef, any}, sets:new([{version, 2}]), #{}};
+                true ->
+                    A1 = fresh_tyvar(Ctx),
+                    {C1, E1} = pat_env(Ctx, L, A1, P1),
+                    {A1, C1, E1}
+            end,
+            {Alpha2, Cs2, Env2} = case pat_has_vars(P2) of
+                false -> {{predef, any}, sets:new([{version, 2}]), #{}};
+                true ->
+                    A2 = fresh_tyvar(Ctx),
+                    {C2, E2} = pat_env(Ctx, L, A2, P2),
+                    {A2, C2, E2}
+            end,
 
             NewEnv = intersect_envs(Env1, Env2),
             NewCs = sets:union(Cs1, Cs2),
@@ -1725,6 +1751,41 @@ pat_of_exp(E) ->
         {var, _L, {local_ref, V}} -> {var, ast:loc_auto(), {local_bind, V}};
         _ -> Wc
     end.
+
+% Check if the scrutiny is a tuple of simple variable references.
+% Returns the set of variable names if so, 'none' otherwise.
+-spec scrut_var_set(ast:exp()) -> none | sets:set(ast:local_varname()).
+scrut_var_set({tuple, _, Args}) ->
+    case lists:all(fun({var, _, {local_ref, _}}) -> true; (_) -> false end, Args) of
+        true ->
+            sets:from_list([V || {var, _, {local_ref, V}} <- Args], [{version, 2}]);
+        false -> none
+    end;
+scrut_var_set(_) -> none.
+
+% Check if any clause body or guard references any variable in VarSet.
+-spec clauses_ref_any_var([ast:case_clause()], sets:set(ast:local_varname())) -> boolean().
+clauses_ref_any_var([], _) -> false;
+clauses_ref_any_var([{case_clause, _, _Pat, Guards, Exps} | Rest], VarSet) ->
+    term_has_local_ref(Guards, VarSet) orelse
+    term_has_local_ref(Exps, VarSet) orelse
+    clauses_ref_any_var(Rest, VarSet).
+
+% Generic term walker: check if any {local_ref, V} in Term has V in VarSet.
+-spec term_has_local_ref(term(), sets:set(ast:local_varname())) -> boolean().
+term_has_local_ref({local_ref, V}, VarSet) -> sets:is_element(V, VarSet);
+term_has_local_ref(T, VarSet) when is_tuple(T) ->
+    term_has_local_ref_tuple(T, 1, tuple_size(T), VarSet);
+term_has_local_ref([H | T], VarSet) ->
+    term_has_local_ref(H, VarSet) orelse term_has_local_ref(T, VarSet);
+term_has_local_ref(_, _) -> false.
+
+-spec term_has_local_ref_tuple(tuple(), pos_integer(), non_neg_integer(),
+                                sets:set(ast:local_varname())) -> boolean().
+term_has_local_ref_tuple(_, I, Size, _) when I > Size -> false;
+term_has_local_ref_tuple(T, I, Size, VarSet) ->
+    term_has_local_ref(element(I, T), VarSet) orelse
+    term_has_local_ref_tuple(T, I + 1, Size, VarSet).
 
 % Combines two environments key-wise using F. The Default parameter is the
 % identity element used for keys missing from one environment:
