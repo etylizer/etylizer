@@ -77,6 +77,41 @@ has_dynamic_constr(Tab, Constrs) ->
         end,
         sets:to_list(Constrs)).
 
+-spec check_redundant_branch(symtab:t(), sets:set(ast:ty_varname()), constr:subty_constrs(),
+    {ast:loc(), constr:subty_constrs()}, ok | {error, error()}) -> ok | {error, error()}.
+check_redundant_branch(_Tab, _FixedTyvars, _SubtyConstrs, _LocAndConstrs, Acc = {error, _}) -> Acc;
+check_redundant_branch(Tab, FixedTyvars, SubtyConstrs, {Loc, UnmatchedConstrs}, ok) ->
+    All = sets:union(UnmatchedConstrs, SubtyConstrs),
+    case is_satisfiable(Tab, All, FixedTyvars, "redundancy check") of
+        true ->
+            ?LOG_DEBUG("Branch at ~s is redundant. Constraints that were added to the constraint above: ~s~nFixed: ~200p",
+                ast:format_loc(Loc),
+                pretty:render_constr(UnmatchedConstrs),
+                sets:to_list(FixedTyvars)),
+            {error, {redundant_branch, Loc, ""}};
+        false ->
+            ?LOG_DEBUG("Branch at ~s is not redundant. Constraints that were added to the constraint above: ~s~nFixed: ~200p",
+                ast:format_loc(Loc),
+                pretty:render_constr(UnmatchedConstrs),
+                sets:to_list(FixedTyvars)),
+            ok
+    end.
+
+-spec locate_unsat_error(symtab:t(), sets:set(ast:ty_varname()), constr:simp_constrs()) ->
+    {error, error() | none}.
+locate_unsat_error(Tab, FixedTyvars, Ds) ->
+    Blocks = constr_error_locs:simp_constrs_to_blocks(Ds),
+    ?LOG_DEBUG("Constraints are not satisfiable, now locating source of errors. Blocks:~n~s",
+        pretty:render_list(fun pretty:constr_block/1, Blocks)),
+    Timeout = 4000,
+    TimeoutRes = utils:timeout(Timeout, fun () -> locate_tyerror(Tab, FixedTyvars, Blocks) end),
+    case TimeoutRes of
+        {ok, Res} -> Res;
+        timeout ->
+            ?LOG_INFO("Locating type error timed out after ~wms", Timeout),
+            {error, none}
+    end.
+
 % Treats unmatched branches as errors.
 -spec check_simp_constrs(symtab:t(), sets:set(ast:ty_varname()), constr:simp_constrs(), string()) ->
     ok | {error, error() | none}.
@@ -89,7 +124,6 @@ check_simp_constrs(Tab, FixedTyvars, Ds, What) ->
         ok ->
             case is_satisfiable(Tab, SubtyConstrs, FixedTyvars, "satisfiability check") of
                 true ->
-                    % check for redundant branches
                     ReduDs = constr_collect:collect_matching_cond_constrs(Ds),
                     ?LOG_DEBUG("Constraints are satisfiable, now checking ~w branches for redundancy",
                         length(ReduDs)),
@@ -99,44 +133,14 @@ check_simp_constrs(Tab, FixedTyvars, Ds, What) ->
                             ok;
                         false ->
                             lists:foldl(
-                                fun ({Loc, UnmatchedConstrs}, Acc) ->
-                                    case Acc of
-                                        ok ->
-                                            All = sets:union(UnmatchedConstrs, SubtyConstrs),
-                                            case is_satisfiable(Tab, All, FixedTyvars, "redundancy check") of
-                                                true ->
-                                                    ?LOG_DEBUG("Branch at ~s is redundant. Constraints that were added to the constraint above: ~s~nFixed: ~200p",
-                                                        ast:format_loc(Loc),
-                                                        pretty:render_constr(UnmatchedConstrs),
-                                                        sets:to_list(FixedTyvars)),
-                                                    {error, {redundant_branch, Loc, ""}};
-                                                false ->
-                                                    ?LOG_DEBUG("Branch at ~s is not redundant. Constraints that were added to the constraint above: ~s~nFixed: ~200p",
-                                                        ast:format_loc(Loc),
-                                                        pretty:render_constr(UnmatchedConstrs),
-                                                        sets:to_list(FixedTyvars)),
-                                                    ok
-                                            end;
-                                        _ -> Acc
-                                    end
+                                fun (LocAndConstrs, Acc) ->
+                                    check_redundant_branch(Tab, FixedTyvars, SubtyConstrs, LocAndConstrs, Acc)
                                 end,
                                 ok,
                                 ReduDs)
                     end;
                 false ->
-                    Blocks = constr_error_locs:simp_constrs_to_blocks(Ds),
-                    ?LOG_DEBUG("Constraints are not satisfiable, now locating source of errors. Blocks:~n~s",
-                        pretty:render_list(fun pretty:constr_block/1, Blocks)),
-                    Timeout = 4000,
-                    TimeoutRes = utils:timeout(
-                        Timeout,
-                        fun () -> locate_tyerror(Tab, FixedTyvars, Blocks) end),
-                    case TimeoutRes of
-                        {ok, Res} -> Res;
-                        timeout ->
-                            ?LOG_INFO("Locating type error timed out after ~wms", Timeout),
-                            {error, none}
-                    end
+                    locate_unsat_error(Tab, FixedTyvars, Ds)
             end
     end.
 
@@ -289,7 +293,8 @@ check_nominal_pairs(Tab, Loc, [T1 | Rest1], [T2 | Rest2]) ->
     case check_nominal_pair(Tab, Loc, T1, T2) of
         ok -> check_nominal_pairs(Tab, Loc, Rest1, Rest2);
         Err -> Err
-    end.
+    end;
+check_nominal_pairs(_Tab, _Loc, _, _) -> ok.
 
 -spec refs_equal(ast:ty_ref(), ast:ty_ref()) -> boolean().
 refs_equal(Ref1, Ref2) ->
@@ -307,7 +312,7 @@ solve_simp_constrs(Tab, Ds, What) ->
         {error, ErrList} ->
             ?LOG_DEBUG("Tally time (~s): ~pms, tally finished with errors.", What, Delta),
             ?LOG_TRACE("Tally errors: ~s", format_tally_error(ErrList)),
-            false;
+            error;
         Substs ->
             ?LOG_DEBUG("Tally time (~s): ~pms, tally successful.", What, Delta),
             ?LOG_TRACE("Substitutions:~n~s", [pretty:render_substs(Substs)]),

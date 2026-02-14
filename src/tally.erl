@@ -90,49 +90,75 @@ tally(SymTab, Constraints, FixedVars) ->
     % elp:ignore W0036
     MonomorphicTallyVariables = maps:from_list([{ty_variable:new_with_name(Var), []} || Var <- sets:to_list(FixedVars)]),
 
-    InternalResult = etally:tally(InternalConstraints, MonomorphicTallyVariables),
+    InternalResult = 
+    % TODO tally should return a nonempty list of solutions if not an error
+    case etally:tally(InternalConstraints, MonomorphicTallyVariables) of
+        [] -> {error, []};
+        Z -> Z
+    end,
 
     Free = tyutils:free_in_subty_constrs(InlinedConstrs),
-    case InternalResult of
-        {error, []} -> {error, []};
-        _ ->
-            % transform to subst:t()
-            Sigmas = [subst:mk_tally_subst(
-               sets:union(FixedVars, Free),
-               % elp:ignore W0036 W0034
-               maps:from_list([{VarName, ty_parser:unparse(Ty)}
-                               || {{var, _, VarName, _}, Ty} <- maps:to_list(Subst)])) % FIXME depends on internal ty_variable representation
-             || Subst <- InternalResult],
+    process_tally_result(InternalResult, FixedVars, Free, UnificationSubst, SubtyConstrs, Maters, SymTab).
 
-            lists:map(
-              fun({tally_subst, S, Fixed}) ->
-                MaterSubst = maps:fold(fun(Var, Ty, MAcc) ->
-                    maps:put(Var, subst:apply_base(S, Ty), MAcc)
-                  end,
-                  #{}, UnificationSubst),
-                gradual_utils:postprocess({tally_subst, maps:merge(S, MaterSubst), Fixed}, SubtyConstrs, Maters, SymTab)
-              end,
-              Sigmas)
-      end.
+-spec process_tally_result(
+    {error, []} | etally:tally_solutions_nonempty(), sets:set(ast:ty_varname()), sets:set(ast:ty_varname()),
+    subst:base_subst(), constr:subty_constrs(), constr:mater_constrs(), symtab:t()
+) -> tally_res().
+process_tally_result({error, []}, _FixedVars, _Free, _UnificationSubst, _SubtyConstrs, _Maters, _SymTab) ->
+    {error, []};
+process_tally_result(InternalResult, FixedVars, Free, UnificationSubst, SubtyConstrs, Maters, SymTab) ->
+    FixedFree = sets:union(FixedVars, Free),
+    lists:map(
+      fun(Subst) ->
+        % elp:ignore W0036 W0034
+        TallySubst = subst:mk_tally_subst(
+           FixedFree,
+           maps:from_list([{VarName, ty_parser:unparse(Ty)}
+                           || {{var, _, VarName, _}, Ty} <- maps:to_list(Subst)])), % FIXME depends on internal ty_variable representation
+        apply_mater_and_postprocess(TallySubst, UnificationSubst, SubtyConstrs, Maters, SymTab)
+      end,
+      InternalResult).
+
+% Applies the unification substitution to a tally_subst and runs postprocessing.
+-spec apply_mater_and_postprocess(subst:tally_subst(), subst:base_subst(),
+    constr:subty_constrs(), constr:mater_constrs(), symtab:t()) -> subst:tally_subst().
+apply_mater_and_postprocess({tally_subst, S, Fixed}, UnificationSubst, SubtyConstrs, Maters, SymTab) ->
+    MaterSubst = maps:fold(fun(Var, Ty, MAcc) ->
+        maps:put(Var, subst:apply_base(S, Ty), MAcc)
+      end,
+      #{}, UnificationSubst),
+    gradual_utils:postprocess({tally_subst, maps:merge(S, MaterSubst), Fixed}, SubtyConstrs, Maters, SymTab).
 
 -spec split([{ast:ty(), ast:ty()}], monomorphic_variables()) -> constraints_partition().
 split(Constrs, FixedVars) ->
     lists:foldl(fun(Entry, Acc) ->
-        Vars = varset(Entry, FixedVars),
-
-        case find_group(Vars, Acc) of
-            {found, SharedVarsL} ->
-                {NewMap, NewVars, NewValues} = lists:foldl(fun(SharedVars, {CurrentRmMap, CurrentUnionOfVars, CurrentValueMapping}) ->
-                    OldEntry = maps:get(SharedVars, CurrentRmMap),
-                    RmMap = maps:remove(SharedVars, CurrentRmMap),
-                    {RmMap, uvars(SharedVars, CurrentUnionOfVars), OldEntry ++ CurrentValueMapping}
-                            end, {Acc, Vars, [Entry]}, SharedVarsL),
-                % elp:ignore W0030
-                maps:put(NewVars, NewValues, NewMap);
-            none ->
-                Acc#{Vars => [Entry]}
-        end
+        add_to_partition(Entry, varset(Entry, FixedVars), Acc)
     end, #{}, Constrs).
+
+-spec add_to_partition({ast:ty(), ast:ty()}, [ast:ty_var()], constraints_partition()) -> constraints_partition().
+add_to_partition(Entry, Vars, Acc) ->
+    case find_group(Vars, Acc) of
+        {found, SharedVarsL} ->
+            merge_groups(Entry, Vars, SharedVarsL, Acc);
+        none ->
+            maps:put(Vars, [Entry], Acc)
+    end.
+
+-spec merge_groups({ast:ty(), ast:ty()}, [ast:ty_var()], [[ast:ty_var()]], constraints_partition()) ->
+    constraints_partition().
+merge_groups(Entry, Vars, SharedVarsL, Acc) ->
+    {NewMap, NewVars, NewValues} = collect_shared(SharedVarsL, Acc, Vars, [Entry]),
+    % elp:ignore W0030
+    maps:put(NewVars, NewValues, NewMap).
+
+-spec collect_shared([[ast:ty_var()]], constraints_partition(), [ast:ty_var()], [{ast:ty(), ast:ty()}]) ->
+    {constraints_partition(), [ast:ty_var()], [{ast:ty(), ast:ty()}]}.
+collect_shared([], Map, Vars, Values) ->
+    {Map, Vars, Values};
+collect_shared([SharedVars | Rest], Map, Vars, Values) ->
+    OldEntry = maps:get(SharedVars, Map),
+    NewMap = maps:remove(SharedVars, Map),
+    collect_shared(Rest, NewMap, uvars(SharedVars, Vars), OldEntry ++ Values).
 
 -spec varset({ast:ty(), ast:ty()}, monomorphic_variables()) -> [ast:ty_var()].
 varset(Constraint, FixedVars) ->

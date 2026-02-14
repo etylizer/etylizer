@@ -21,22 +21,24 @@ ety_attrs_from_file(Path) ->
 -spec ety_attrs_from_lines(string(), [string()]) -> t:opt([ety_attr()], string()).
 ety_attrs_from_lines(Path, Lines) -> ety_attrs_from_lines(Path, 1, Lines).
 
+-spec collect_ety_attrs(string(), t:lineno(), [string()]) -> [ety_attr()].
+collect_ety_attrs(_Path, _N, []) -> [];
+collect_ety_attrs(Path, N, [Line | RestLines]) ->
+    Rest = collect_ety_attrs(Path, N + 1, RestLines),
+    case parse_ety_attr({loc, Path, N, 1}, Line) of
+        no_attr -> Rest;
+        {ok, R} -> [R | Rest]
+    end.
+
 -spec ety_attrs_from_lines(string(), t:lineno(), [string()]) -> t:opt([ety_attr()], string()).
 ety_attrs_from_lines(Path, Lineno, Lines) ->
-    Loop =
-        fun Loop(N, List) ->
-            case List of
-                [] -> [];
-                [Line | RestLines] ->
-                    Rest = Loop(N + 1, RestLines),
-                    case parse_ety_attr({loc, Path, N, 1}, Line) of
-                        no_attr -> Rest;
-                        {ok, R} -> [R | Rest]
-                    end
-            end
-        end,
-    try {ok, Loop(Lineno, Lines)}
-    catch {bad_attr, Msg} -> {error, utils:sformat("~1000p", Msg)} end.
+    try {ok, collect_ety_attrs(Path, Lineno, Lines)}
+    catch throw:BadAttr ->
+        case BadAttr of
+            {bad_attr, Msg} -> {error, utils:sformat("~1000p", Msg)};
+            _ -> throw(BadAttr)
+        end
+    end.
 
 -spec parse_ety_attr(ast:loc(), string()) -> no_attr | {ok, ety_attr()}.
 parse_ety_attr(Loc, S) ->

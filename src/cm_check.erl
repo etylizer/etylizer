@@ -85,30 +85,39 @@ traverse_and_check([], _, _, _, _, Index) ->
     Index;
 
 traverse_and_check([CurrentFile | RemainingFiles], Symtab, OverlaySymtab, SearchPath, Opts, Index) ->
+    NewIndex = check_single_file(CurrentFile, Symtab, OverlaySymtab, SearchPath, Opts, Index),
+    traverse_and_check(RemainingFiles, Symtab, OverlaySymtab, SearchPath, Opts, NewIndex).
+
+-spec check_single_file(
+    file:filename(), symtab:t(), symtab:t(), paths:search_path(), cmd_opts(), cm_index:index())
+    -> cm_index:index().
+check_single_file(CurrentFile, Symtab, OverlaySymtab, SearchPath, Opts, Index) ->
     ?LOG_DEBUG("Checking ~s", CurrentFile),
     Forms = parse_cache:parse(intern, CurrentFile),
     ModName = ast_utils:modname_from_path(CurrentFile),
-    Referenced = lists:filter(fun (M) -> M =/= ModName end, ast_utils:referenced_modules(Forms)),
+    Referenced = [M || M <- ast_utils:referenced_modules(Forms), M =/= ModName],
     ?LOG_DEBUG("Referenced from ~s: ~200p", CurrentFile, Referenced),
     ExpandedSymtab = symtab:extend_symtab_with_module_list(Symtab, SearchPath, Referenced, OverlaySymtab),
+    do_type_check(CurrentFile, Forms, ExpandedSymtab, OverlaySymtab, Opts),
+    cm_index:insert(CurrentFile, Forms, Index).
 
-    Only = sets:from_list(Opts#opts.type_check_only, [{version, 2}]),
-    Ignore = sets:from_list(Opts#opts.type_check_ignore,[{version, 2}]),
+-spec do_type_check(file:filename(), ast:forms(), symtab:t(), symtab:t(), cmd_opts()) -> ok.
+do_type_check(CurrentFile, Forms, ExpandedSymtab, OverlaySymtab, Opts) ->
     Sanity = perform_sanity_check(CurrentFile, Forms, Opts#opts.sanity),
-    ReportMode = Opts#opts.report_mode,
-    ReportTimeout = Opts#opts.report_timeout,
-    ExhaustivenessMode = Opts#opts.exhaustiveness_mode,
-    GradualTypingMode = Opts#opts.gradual_typing_mode,
-    SanityInfer = Opts#opts.sanity_infer,
-    Ctx = typing:new_ctx(ExpandedSymtab, OverlaySymtab, Sanity, ReportMode, ReportTimeout, ExhaustivenessMode, GradualTypingMode, SanityInfer),
+    Ctx = typing:new_ctx(ExpandedSymtab, OverlaySymtab, Sanity,
+        Opts#opts.report_mode, Opts#opts.report_timeout,
+        Opts#opts.exhaustiveness_mode, Opts#opts.gradual_typing_mode,
+        Opts#opts.sanity_infer),
     case Opts#opts.no_type_checking of
         true ->
             ?LOG_INFO("Not type checking ~p as requested", CurrentFile);
         false ->
-            typing:check_forms(Ctx, CurrentFile, Forms, Only, Ignore, Opts#opts.check_exports)
+            typing:check_forms(Ctx, CurrentFile, Forms,
+                sets:from_list(Opts#opts.type_check_only, [{version, 2}]),
+                sets:from_list(Opts#opts.type_check_ignore, [{version, 2}]),
+                Opts#opts.check_exports)
     end,
-    NewIndex = cm_index:insert(CurrentFile, Forms, Index),
-    traverse_and_check(RemainingFiles, Symtab, OverlaySymtab, SearchPath, Opts, NewIndex).
+    ok.
 
 -spec perform_sanity_check(file:filename(), ast:forms(), boolean()) -> {ok, ast_check:ty_map()} | error.
 perform_sanity_check(CurrentFile, Forms, DoCheck) ->
