@@ -144,6 +144,7 @@ exp_constrs_tyof(Ctx, E) ->
         {'integer', _L, I} -> {{singleton, I}, sets:new([{version, 2}]), #{}};
         {'float', _L, _F} -> {{predef, float}, sets:new([{version, 2}]), #{}};
         {nil, _L} -> {{empty_list}, sets:new([{version, 2}]), #{}};
+        {map_create, _L, []} -> {{map, []}, sets:new([{version, 2}]), #{}};
         {tuple, _L, Es} ->
             {Cs, ElemTys} = lists:foldr(
                 fun(Elem, {AccCs, AccTys}) ->
@@ -708,20 +709,27 @@ process_qualifiers(Ctx, Loc, [Q | Qs], Env, Cs) ->
             process_qualifiers(Ctx, Loc, Qs, NewEnv, sets:union([Cs, ExpCs, PatCs, StrictCs]));
         % list generator: Pat <- Exp
         {generate, LGen, Pat, Exp} ->
-            Alpha = fresh_tyvar(Ctx), % list elements 
-            Beta = fresh_tyvar(Ctx), % pattern
-
+            Alpha = fresh_tyvar(Ctx), % list elements
             {ExpCs, _ExpEnv} = exp_constrs(Ctx, Exp, stdtypes:tlist(Alpha)),
-
-            TyPat = ty_of_pat(Ctx#ctx.symtab, Env, Pat, upper),
-            {PatCs, PatEnv} = pat_env(Ctx, LGen, Beta, Pat),
-
-            GeneratorC = [
-                          {csubty, mk_locs("pattern lower bound", LGen), ast_lib:mk_intersection([Alpha, TyPat]), Beta},
-                          {csubty, mk_locs("pattern upper bound", LGen), Beta, Alpha}
-                         ],
-            NewEnv = intersect_envs(Env, PatEnv),
-            process_qualifiers(Ctx, Loc, Qs, NewEnv, sets:union([Cs, ExpCs, PatCs, sets:from_list(GeneratorC)]));
+            % For simple variable patterns, Alpha and Beta are forced equal
+            % (since ty_of_pat returns any(), intersection is identity).
+            % Skip Beta and bind the variable directly to Alpha.
+            case Pat of
+                {var, _, {local_bind, V}} ->
+                    PatEnv = #{{local_ref, V} => Alpha},
+                    NewEnv = intersect_envs(Env, PatEnv),
+                    process_qualifiers(Ctx, Loc, Qs, NewEnv, sets:union(Cs, ExpCs));
+                _ ->
+                    Beta = fresh_tyvar(Ctx), % pattern
+                    TyPat = ty_of_pat(Ctx#ctx.symtab, Env, Pat, upper),
+                    {PatCs, PatEnv} = pat_env(Ctx, LGen, Beta, Pat),
+                    GeneratorC = [
+                                  {csubty, mk_locs("pattern lower bound", LGen), ast_lib:mk_intersection([Alpha, TyPat]), Beta},
+                                  {csubty, mk_locs("pattern upper bound", LGen), Beta, Alpha}
+                                 ],
+                    NewEnv = intersect_envs(Env, PatEnv),
+                    process_qualifiers(Ctx, Loc, Qs, NewEnv, sets:union([Cs, ExpCs, PatCs, sets:from_list(GeneratorC)]))
+            end;
         {zip, LGen, NestedQualifiers} ->
             {NewEnv, NewCs} = process_qualifiers(Ctx, LGen, NestedQualifiers, Env, Cs),
             process_qualifiers(Ctx, Loc, Qs, NewEnv, NewCs);
@@ -2015,20 +2023,25 @@ var_test_env(FunExp, X, RestArgs) ->
 %   (pm1, pm2, ..., pmn) -> em
 % end
 -spec fun_clauses_to_exp(ctx(), ast:loc(), [ast:fun_clause()]) -> {[ast:local_varname()], ast:exps()}.
-fun_clauses_to_exp(Ctx, _, FunClauses = [{fun_clause, L, Pats, [], Body}]) ->
-    % special case: only one clause, no guards, all patterns are variables
-    Vars =
-        lists:foldr(fun (Pat, Acc) ->
-                            case {Acc, Pat} of
-                                {error, _} -> error;
-                                {Vars, {var, _, {local_bind, V}}} -> [V | Vars];
-                                _ -> error
-                            end
-                    end, [], Pats),
-    case Vars of
-        error -> fun_clauses_to_exp_aux(Ctx, L, FunClauses);
-        VarList -> {VarList, Body}
-    end;
+fun_clauses_to_exp(Ctx, _, [{fun_clause, L, Pats, [], Body}]) ->
+    % Single clause, no guards: keep variable patterns as direct args,
+    % wrap non-variable patterns in case expressions in the body.
+    {Args, CaseMatches} = lists:foldr(
+        fun(Pat, {AccArgs, AccMatches}) ->
+            case Pat of
+                {var, _, {local_bind, V}} ->
+                    {[V | AccArgs], AccMatches};
+                _ ->
+                    [FreshV] = fresh_vars(Ctx, 1),
+                    {[FreshV | AccArgs], [{FreshV, L, Pat} | AccMatches]}
+            end
+        end, {[], []}, Pats),
+    WrappedBody = lists:foldl(
+        fun({Var, Loc, Pat}, B) ->
+            [{'case', Loc, {var, Loc, {local_ref, Var}},
+              [{case_clause, Loc, Pat, [], B}]}]
+        end, Body, CaseMatches),
+    {Args, WrappedBody};
 fun_clauses_to_exp(Ctx, L, FunClauses) ->
     fun_clauses_to_exp_aux(Ctx, L, FunClauses).
 
