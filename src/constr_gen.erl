@@ -892,6 +892,7 @@ var_as_global_ref({var, _, Ref}) ->
 % Used to determine if parameter poly vars are dead and can be replaced.
 -spec res_ty_is_concrete(ast:ty()) -> boolean().
 res_ty_is_concrete({predef, _}) -> true;
+res_ty_is_concrete({predef_alias, _}) -> true;
 res_ty_is_concrete({singleton, _}) -> true;
 res_ty_is_concrete({empty_list}) -> true;
 res_ty_is_concrete(_) -> false.
