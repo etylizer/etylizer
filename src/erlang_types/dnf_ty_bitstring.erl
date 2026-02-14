@@ -47,9 +47,9 @@
 reorder(X) -> X.
 
 -spec compare(T, T) -> eq | lt | gt when T :: type().
-compare(X, X) -> eq;
 compare(X, Y) when X < Y -> lt;
-compare(X, Y) when X > Y -> gt.
+compare(X, Y) when X > Y -> gt;
+compare(_, _) -> eq.
 
 -spec empty() -> type().
 empty() -> 0.
@@ -93,19 +93,35 @@ compute_bits(M, N, Bits, K) ->
     {_, 0} -> 2; % nonempty byte-aligned
     {_, _} -> 4  % nonempty non-byte-aligned
   end,
-  compute_bits(M, N, Bits bor NewBit, K + 1).
+  compute_bits(M, N, union(Bits, NewBit), K + 1).
 
 -spec union(T, T) -> T when T :: type().
-union(X, Y) -> X bor Y.
+union(X, Y) ->
+    case X bor Y of
+        0 -> 0; 1 -> 1; 2 -> 2; 3 -> 3;
+        4 -> 4; 5 -> 5; 6 -> 6; _ -> 7
+    end.
 
 -spec intersect(T, T) -> T when T :: type().
-intersect(X, Y) -> X band Y.
+intersect(X, Y) ->
+    case X band Y of
+        0 -> 0; 1 -> 1; 2 -> 2; 3 -> 3;
+        4 -> 4; 5 -> 5; 6 -> 6; _ -> 7
+    end.
 
 -spec difference(T, T) -> T when T :: type().
-difference(X, Y) -> X band (?UNIVERSE bxor Y).
+difference(X, Y) ->
+    case X band (?UNIVERSE bxor Y) of
+        0 -> 0; 1 -> 1; 2 -> 2; 3 -> 3;
+        4 -> 4; 5 -> 5; 6 -> 6; _ -> 7
+    end.
 
 -spec negate(T) -> T when T :: type().
-negate(X) -> ?UNIVERSE bxor X.
+negate(X) ->
+    case ?UNIVERSE bxor X of
+        0 -> 0; 1 -> 1; 2 -> 2; 3 -> 3;
+        4 -> 4; 5 -> 5; 6 -> 6; _ -> 7
+    end.
 
 -spec is_any(type()) -> boolean().
 is_any(?UNIVERSE) -> true;

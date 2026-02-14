@@ -94,16 +94,39 @@ postprocess({tally_subst, S, Fixed}, Constrs, Maters, SymTab) ->
         pretty:render_constr(Constrs),
         pretty:render_constr(Maters)),
     Ctx = new_ctx(),
-    % Step 3b): find all type variables appearing in the gradual types in materialization constraints
-    % and substitute them with the found tally solution
-    TypeVarsInMaters = sets:fold(
+    A = compute_A(S, Constrs, Maters, SymTab),
+    % Step 3c): Get all frame variables from A
+    X = sets:filter(fun(Var) -> is_framevar(Var) end, A),
+    % Step 3d)
+    Alpha = compute_alpha(S, Constrs, A),
+    % Step 3e): build sigma2 and compose
+    Sigma2 = build_sigma2(Ctx, X, Alpha),
+    compose({tally_subst, S, Fixed}, Sigma2).
+
+% Step 3b): Collect all relevant type variables from materialization and subtyping constraints.
+-spec compute_A(subst:base_subst(), constr:subty_constrs(), constr:mater_constrs(), symtab:t()) ->
+    sets:set(ast:ty_varname()).
+compute_A(S, Constrs, Maters, SymTab) ->
+    TypeVarsInMaters = collect_mater_tyvars(Maters),
+    TypeVarsInSubsts = collect_subst_tyvars(S, TypeVarsInMaters),
+    PosNegTyvars = collect_pos_neg_constrs_tyvars(Constrs, SymTab),
+    sets:union(TypeVarsInSubsts, PosNegTyvars).
+
+% Collect type variables appearing in gradual types in materialization constraints.
+-spec collect_mater_tyvars(constr:mater_constrs()) -> sets:set(ast:ty_varname()).
+collect_mater_tyvars(Maters) ->
+    sets:fold(
         fun({scmater, _, Tau, _}, Acc) ->
           TypeVars = collect_tyvars(Tau),
           sets:union(Acc, sets:from_list(TypeVars))
         end,
         sets:new(),
-        Maters),
-    TypeVarsInSubsts = sets:fold(
+        Maters).
+
+% Substitute mater type variables through the tally solution and collect transitive type variables.
+-spec collect_subst_tyvars(subst:base_subst(), sets:set(ast:ty_varname())) -> sets:set(ast:ty_varname()).
+collect_subst_tyvars(S, TypeVarsInMaters) ->
+    sets:fold(
       fun(Alpha, Acc) ->
         case maps:find(Alpha, S) of
           {ok, Ty} ->
@@ -114,11 +137,12 @@ postprocess({tally_subst, S, Fixed}, Constrs, Maters, SymTab) ->
       end,
       sets:new(),
       TypeVarsInMaters
-    ),
+    ).
 
-    % Step 3b): find all variables that have at least both positive and negative occurrences in
-    % the subtyping constraints
-    PosNegTyvars = sets:fold(
+% Collect variables with both positive and negative occurrences in subtyping constraints.
+-spec collect_pos_neg_constrs_tyvars(constr:subty_constrs(), symtab:t()) -> sets:set(ast:ty_varname()).
+collect_pos_neg_constrs_tyvars(Constrs, SymTab) ->
+    sets:fold(
       fun({scsubty, _, T1, T2}, Acc) ->
         Tyvars1 = collect_pos_neg_tyvars(T1, SymTab),
         Tyvars2 = collect_pos_neg_tyvars(T2, SymTab),
@@ -126,14 +150,13 @@ postprocess({tally_subst, S, Fixed}, Constrs, Maters, SymTab) ->
       end,
       sets:new(),
       Constrs
-    ),
-    A = sets:union(TypeVarsInSubsts, PosNegTyvars),
+    ).
 
-    % Step 3c): Get all frame variables from A
-    X = sets:filter(fun(Var) -> is_framevar(Var) end, A),
-
-    % Step 3d): Collect all type variables which are not fixed, in the domain of the substitution
-    % or in A:  α = var(D)\(∆∪dom(σ0)∪A)
+% Step 3d): Collect all type variables which are not fixed, in the domain of the substitution
+% or in A:  α = var(D)\(∆∪dom(σ0)∪A)
+-spec compute_alpha(subst:base_subst(), constr:subty_constrs(), sets:set(ast:ty_varname())) ->
+    sets:set(ast:ty_varname()).
+compute_alpha(S, Constrs, A) ->
     Var_D = sets:fold(
       fun({scsubty, _, T1, T2}, Acc) ->
         sets:union(
@@ -145,9 +168,11 @@ postprocess({tally_subst, S, Fixed}, Constrs, Maters, SymTab) ->
       Constrs
     ),
     Dom_Sigma = sets:from_list(lists:filter(fun(Var) -> is_typevar(Var) end, maps:keys(S))),
-    Alpha = sets:subtract(Var_D, sets:union(Dom_Sigma, A)),
+    sets:subtract(Var_D, sets:union(Dom_Sigma, A)).
 
-    % Step 3e): Create fresh alpha and X
+% Step 3e): Create fresh substitutions for frame variables and alpha variables, merge them.
+-spec build_sigma2(ctx(), sets:set(ast:ty_varname()), sets:set(ast:ty_varname())) -> subst:base_subst().
+build_sigma2(Ctx, X, Alpha) ->
     X_Subst = sets:fold(
       fun(Framevar, Acc) ->
         FreshVar = fresh_typevar(Ctx),
@@ -156,7 +181,6 @@ postprocess({tally_subst, S, Fixed}, Constrs, Maters, SymTab) ->
       #{},
       X
     ),
-
     Alpha_Subst = sets:fold(
       fun(Typevar, Acc) ->
         FreshVar = fresh_framevar(Ctx),
@@ -165,12 +189,7 @@ postprocess({tally_subst, S, Fixed}, Constrs, Maters, SymTab) ->
       #{},
       Alpha
     ),
-
-    % Step 3a): build sigma2
-    Sigma2 = maps:merge(X_Subst, Alpha_Subst),
-
-    % compose sigma2 and sigma
-    compose({tally_subst, S, Fixed}, Sigma2).
+    maps:merge(X_Subst, Alpha_Subst).
 
 % Returns the set of variable names appearing in both positive and negative positions in Ty.
 % Delegates to subst:collect_vars/4 for exhaustive AST traversal.

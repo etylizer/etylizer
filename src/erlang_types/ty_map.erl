@@ -94,7 +94,7 @@ unparse_tuple_part_dnf(TyTupPart, ST) ->
     TDnf = dnf_ty_tuple:minimize_dnf(dnf_ty_tuple:dnf(TuplesDnf)),
 
     % negative part should be empty always, and only a single positive tuple remaining
-    ToUnparse = lists:map(fun({[PosTup], [], 1}) -> PosTup;(_) -> error(badarg) end, TDnf), %[PosTup || {[PosTup], [], 1} <- TDnf], 
+    ToUnparse = [PosTup || {[PosTup], [], 1} <- TDnf], 
     unparse_tuple_part_dnf_unparse(ToUnparse, ST).
 
 -spec unparse_tuple_part_dnf_unparse([ty_tuple:type()], S) -> {{union, [ast:ty_tuple()]}, S} when S :: unparse_cache().

@@ -29,12 +29,10 @@
     timeout/2, is_same_file/2, file_exists/1,
     normalize_path/1,
     replace/2,
-    fold_with_context/3,
     compare/3,
     compare_multiple/1,
     update_ets_from_map/2,
-    format_tally_config/3,
-    flatten/1
+    format_tally_config/3
 ]).
 
 -include("etylizer.hrl").
@@ -193,7 +191,7 @@ shorten([X | Xs], N) ->
 map_flip(L, F) -> lists:map(F, L).
 
 -spec concat_map([A], fun((A) -> [B])) -> [B].
-concat_map(L, F) -> lists:concat(lists:map(F, L)).
+concat_map(L, F) -> lists:flatmap(F, L).
 
 -spec foreach([T], fun((T) -> any())) -> ok.
 foreach(L, F) -> lists:foreach(F, L).
@@ -385,28 +383,6 @@ update_ets_from_map(EtsTable, LocalMap) ->
   % Bulk-insert changes
   ets:insert(EtsTable, ChangedEntries).
 
-% map_with_context(Fun, List) ->
-%     map_with_context(Fun, List, []).
-%
-% map_with_context(_Fun, [], Acc) ->
-%     lists:reverse(Acc);
-% map_with_context(Fun, [H|T], Acc) ->
-%     {Result, NewT} = Fun({H, T}),
-%     map_with_context(Fun, NewT, [Result|Acc]).
-
--spec fold_with_context(Fun, Acc, List) -> Acc when
-    Fun :: fun(({Acc, H, T}) -> {NewAcc, NewT}),
-    Acc :: term(),
-    List :: [H],
-    H :: term(),
-    T :: [H],
-    NewAcc :: term(),
-    NewT :: [H].
-fold_with_context(_Fun, Acc, []) ->
-    Acc;
-fold_with_context(Fun, Acc, [H|T]) ->
-    {NewAcc, NewT} = Fun({Acc, H, T}),
-    fold_with_context(Fun, NewAcc, NewT).
 
 % transforms a tally:tally constraints to a config file which can be loaded in the tally_tests.erl tests
 % TODO free variables #74
@@ -417,14 +393,3 @@ format_tally_config(Constraints, FixedVars, Symtab) ->
     ++ "\n" 
     ++ io_lib:format("~p.", [FixedVars]).
 
--spec flatten(deep_list(A)) -> [A].
-flatten(L) -> do_flatten(L, []).
-
--type deep_list(A) :: [etylizer:without(A, list()) | deep_list(A)].
--spec do_flatten(deep_list(A), [A]) -> [A].
-do_flatten([H|T], Tail) when is_list(H) ->
-    do_flatten(H, do_flatten(T, Tail));
-do_flatten([H|T], Tail) ->
-    [H|do_flatten(T, Tail)];
-do_flatten([], Tail) ->
-    Tail.

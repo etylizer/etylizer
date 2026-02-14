@@ -45,17 +45,17 @@ infer(Ctx, Decls) ->
         {ok, TyMap} -> constr_gen:sanity_check(Cs, TyMap);
         error -> ok
     end,
+    SimpConstrs = simplify_and_log(Ctx, Cs, Env, Funs),
+    SolveRes = constr_solve:solve_simp_constrs(Ctx#ctx.symtab, SimpConstrs, "inference"),
+    ResultEnvs = build_result_envs(Ctx, Decls, Env, SolveRes),
+    check_result_envs(ResultEnvs, Loc, FunsStr).
+
+-spec simplify_and_log(ctx(), constr:constrs(), constr:constr_env(), [string()]) -> constr:simp_constrs().
+simplify_and_log(Ctx, Cs, Env, Funs) ->
     ?LOG_DEBUG("Constraints:~n~s", pretty:render_constr(Cs)),
     PolyEnv = maps:map(fun(_Key, T) -> {ty_scheme, [], T} end, Env),
     Tab = Ctx#ctx.symtab,
     SimpCtx = constr_simp:new_ctx(Tab, PolyEnv, Ctx#ctx.sanity),
-    Funs =
-        lists:map(
-            fun({function, _Loc, Name, Arity, _}) ->
-                    utils:sformat("~w/~w", Name, Arity)
-            end,
-            Decls),
-
     SimpConstrs = constr_simp:simp_constrs(SimpCtx, Cs),
     case Ctx#ctx.sanity of
         {ok, TyMap2} -> constr_simp:sanity_check(SimpConstrs, TyMap2);
@@ -65,39 +65,38 @@ infer(Ctx, Decls) ->
     ?LOG_DEBUG("Simplified constraint set for a group of mutually recursive functions ~s, now " ++
                 "checking constraints for solvability.~nConstraints:~n~s",
                 FunNamesStr, pretty:render_constr(SimpConstrs)),
-    SolveRes = constr_solve:solve_simp_constrs(Tab, SimpConstrs, "inference"),
-    ResultEnvs =
-        case SolveRes of
-            error -> [];
-            Substs ->
-                utils:map_flip(Substs,
-                    fun(Subst) ->
-                            ResultEnv = maps:from_list(utils:map_flip(
-                                Decls,
-                                fun({function, _Loc, Name, Arity, _}) ->
-                                        Ref = {ref, Name, Arity},
-                                        case maps:find(Ref, Env) of
-                                            error ->
-                                                errors:bug("Function ~w/~w not found in env",
-                                                            [Name, Arity]);
-                                            {ok, T} ->
-                                                {Ref, generalize(subst:apply(Subst, T, {clean, Ctx#ctx.symtab}))}
-                                        end
-                                end)),
-                            ?LOG_DEBUG("Environment:~n~s", [pretty:render_fun_env(ResultEnv)]),
-                            ResultEnv
-                    end)
-        end, % of case
-    case length(ResultEnvs) of
-        0 ->
-            errors:ty_error(Loc,
-                            "Could not infer types for recursive functions ~s",
-                            FunsStr);
-        N ->
-            ?LOG_INFO("Inferred ~w possible environments for functions ~s",
-                      N, FunsStr),
-            ResultEnvs
-    end.
+    SimpConstrs.
+
+-spec build_result_envs(ctx(), [ast:fun_decl()], constr:constr_env(), error | nonempty_list(subst:t())) -> [symtab:fun_env()].
+build_result_envs(_Ctx, _Decls, _Env, error) -> [];
+build_result_envs(Ctx, Decls, Env, Substs) ->
+    utils:map_flip(Substs,
+        fun(Subst) ->
+                ResultEnv = maps:from_list(utils:map_flip(
+                    Decls,
+                    fun({function, _Loc, Name, Arity, _}) ->
+                            Ref = {ref, Name, Arity},
+                            case maps:find(Ref, Env) of
+                                error ->
+                                    errors:bug("Function ~w/~w not found in env",
+                                                [Name, Arity]);
+                                {ok, T} ->
+                                    {Ref, generalize(subst:apply(Subst, T, {clean, Ctx#ctx.symtab}))}
+                            end
+                    end)),
+                ?LOG_DEBUG("Environment:~n~s", [pretty:render_fun_env(ResultEnv)]),
+                ResultEnv
+        end).
+
+-spec check_result_envs([symtab:fun_env()], ast:loc(), string()) -> [symtab:fun_env()].
+check_result_envs([], Loc, FunsStr) ->
+    errors:ty_error(Loc,
+                    "Could not infer types for recursive functions ~s",
+                    FunsStr);
+check_result_envs(ResultEnvs, _Loc, FunsStr) ->
+    ?LOG_INFO("Inferred ~w possible environments for functions ~s",
+              length(ResultEnvs), FunsStr),
+    ResultEnvs.
 
 % more_general(L, T1, T2, Sym) return true of T1 is more general than T2
 -spec more_general(ast:loc(), ast:ty_scheme(), ast:ty_scheme(), symtab:t()) -> boolean().
@@ -108,8 +107,8 @@ more_general(Loc, Ts1, Ts2, Tab) ->
     {Mono1, _, Next} = typing_common:mono_ty(Loc, Ts1, 0, Tab),
     % Arbitrary instantiation of Ts2, the type variables A2 are fix
     {Mono2, A2, _} = typing_common:mono_ty(Loc, Ts2, Next, Tab),
-    C = {scsubty, sets:new([{version, 2}]), Mono1, Mono2},
-    {SatisfyRes, Delta} = utils:timing(fun() -> tally:is_satisfiable(Tab, sets:from_list([C], [{version, 2}]), A2) end),
+    C = {scsubty, Loc, Mono1, Mono2},
+    {SatisfyRes, Delta} = utils:timing(fun() -> tally:is_satisfiable(Tab, sets:from_list([C]), A2) end),
     ?LOG_DEBUG("Tally time: ~pms", Delta),
     Result =
         case SatisfyRes of
@@ -132,13 +131,12 @@ generalize(T) ->
 
 -spec ftv(ast:ty()) -> sets:set(ast:ty_varname()).
 ftv(T) ->
-    L =
-        utils:everything(
+    L = utils:everything(
           fun(X) ->
                   case X of
-                      {var, Alpha} -> {ok, Alpha};
+                      {var, Alpha} when is_atom(Alpha) -> {ok, Alpha};
                       _ -> error
                   end
           end,
           T),
-    sets:from_list(L, [{version, 2}]).
+    sets:from_list(L).

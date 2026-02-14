@@ -16,6 +16,7 @@
 -define(TABLE, parse_result).
 -define(FORMS, forms).
 
+-include("etylizer.hrl").
 
 % Scanner: http://erlang.org/doc/man/erl_parse.html
 % Parser: http://erlang.org/doc/man/erl_parse.html
@@ -23,42 +24,73 @@
 
 -spec parse_file(string(), parse_opts()) -> error | {ok, [ast_erl:form()]}.
 parse_file(Path, Opts) ->
-    case ets:whereis(?TABLE) of
-        undefined ->
-            ets:new(?TABLE, [named_table, public, set]);
-        _ -> ets:delete_all_objects(?TABLE)
-    end,
+    init_parse_table(),
     ?LOG_TRACE("Parsing ~s", Path),
     Ext = filename:extension(Path),
     if
         Ext == ".erl" ->
-            NoExt = filename:rootname(Path),
-            CompileOpts =
-                [{parse_transform,parse},basic_validation, report] ++
-                (if Opts#parse_opts.verbose -> [verbose]; true -> [] end) ++
-                lists:map(fun (X) -> {i,X} end, Opts#parse_opts.includes) ++
-                lists:map(fun ({Name, Val}) ->
-                    case string:len(Val) of
-                        0 -> {d, Name};
-                        _ -> {d, Name, Val}
-                    end
-                end, Opts#parse_opts.defines),
-            ?LOG_TRACE("Calling compile:file for ~s, options: ~200p", NoExt, CompileOpts),
-            case compile:file(NoExt, CompileOpts) of
-                {ok, _} ->
-                    ?LOG_TRACE("Done parsing ~s", Path),
-                    case ets:lookup(?TABLE, ?FORMS) of
-                        [{?FORMS, Forms}] -> {ok, Forms};
-                        _ ->
-                            ?LOG_ERROR("No result in ETS table after parsing"),
-                            error
-                    end;
-                error ->
-                    ?LOG_NOTE("Error parsing ~s", Path),
-                    error
-            end;
+            do_parse_erl(Path, Opts);
         true ->
             ?LOG_ERROR("Invalid input file: ~s", Path),
+            error
+    end.
+
+-spec init_parse_table() -> ok.
+init_parse_table() ->
+    case ets:whereis(?TABLE) of
+        undefined ->
+            ets:new(?TABLE, [named_table, public, set]),
+            ok;
+        _ ->
+            ets:delete_all_objects(?TABLE),
+            ok
+    end.
+
+-spec make_define_opt({atom(), string()}) -> {d, atom()} | {d, atom(), string()}.
+make_define_opt({Name, Val}) ->
+    case string:len(Val) of
+        0 -> {d, Name};
+        _ -> {d, Name, Val}
+    end.
+
+-spec build_compile_opts(parse_opts()) -> [compile:option()].
+build_compile_opts(Opts) ->
+    [{parse_transform,parse},basic_validation, report] ++
+    (case Opts#parse_opts.verbose of true -> [verbose]; _ -> [] end) ++
+    lists:map(fun (X) -> {i,X} end, Opts#parse_opts.includes) ++
+    lists:map(fun make_define_opt/1, Opts#parse_opts.defines).
+
+-spec do_parse_erl(string(), parse_opts()) -> error | {ok, [ast_erl:form()]}.
+do_parse_erl(Path, Opts) ->
+    NoExt = filename:rootname(Path),
+    CompileOpts = build_compile_opts(Opts),
+    case compile:file(NoExt, CompileOpts) of
+        {ok, _} ->
+            extract_parse_result(Path);
+        error ->
+            log_parse_error(Path);
+        _ ->
+            log_unexpected_compile(Path)
+    end.
+
+-spec log_parse_error(string()) -> error.
+log_parse_error(Path) ->
+    ?LOG_NOTE("Error parsing ~s", Path),
+    error.
+
+-spec log_unexpected_compile(string()) -> error.
+log_unexpected_compile(Path) ->
+    ?LOG_ERROR("Unexpected compile result for ~s", Path),
+    error.
+
+-spec extract_parse_result(string()) -> error | {ok, [ast_erl:form()]}.
+extract_parse_result(Path) ->
+    ?LOG_TRACE("Done parsing ~s", Path),
+    case ets:lookup(?TABLE, ?FORMS) of
+        [{_, StoredForms}] ->
+            {ok, ?assert_type(StoredForms, [ast_erl:form()])};
+        _ ->
+            ?LOG_ERROR("No result in ETS table after parsing"),
             error
     end.
 
@@ -72,7 +104,7 @@ parse_file_or_die(Path, Opts) ->
         error -> errors:parse_error(utils:sformat("Error parsing ~s", Path))
     end.
 
--spec parse_transform(any(), any()) -> ok.
+-spec parse_transform(any(), any()) -> any().
 parse_transform(Forms, _Opts) ->
     try
         % ?LOG_TRACE("Forms: ~p", [Forms]),
@@ -80,7 +112,13 @@ parse_transform(Forms, _Opts) ->
         % ?LOG_TRACE("done with parse_transform"),
         Forms
     catch
-        K:E ->
-            ?LOG_ERROR("Error ~p in parse_transform: ~p", K, E),
+        throw:E ->
+            ?LOG_ERROR("Error throw in parse_transform: ~p", E),
+            Forms;
+        error:E ->
+            ?LOG_ERROR("Error error in parse_transform: ~p", E),
+            Forms;
+        exit:E ->
+            ?LOG_ERROR("Error exit in parse_transform: ~p", E),
             Forms
     end.

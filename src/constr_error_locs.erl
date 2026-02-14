@@ -10,6 +10,8 @@
     constr_block/0
 ]).
 
+-include("etylizer.hrl").
+
 -type constr_error_kind() :: tyerror | redundant_branch | non_exhaustive_case | nominal_incompatible.
 
 -type constr_blocks() :: list(constr_block()).
@@ -39,36 +41,41 @@ simp_constrs_to_blocks(Ds) ->
             ListOfBlocks),
     lists:append(SortedListOfBlocks).
 
+-spec simp_constr_branch_to_blocks(constr:simp_constr_case_branch()) -> constr_blocks().
+simp_constr_branch_to_blocks({sccase_branch, {LocGuard, Guards}, _Cond,
+        {LocBody, Body}, {LocResult, Result}}) ->
+    BodyBlocks =
+        case sets:size(Body) of
+            1 -> simp_constr_to_blocks(lists:nth(1, ?assert_type(sets:to_list(Body), nonempty_list(constr:simp_constr()))));
+            _ -> [{tyerror, LocBody, "branch body",
+                    constr_collect:collect_constrs_no_matching_cond(Body)}]
+        end,
+    GuardBlocks =
+        case sets:is_empty(Guards) of
+            true -> [];
+            false ->
+                [{tyerror, LocGuard, "branch guard",
+                     constr_collect:collect_constrs_no_matching_cond(Guards)}]
+        end,
+    ResultBlocks =
+        [{tyerror, LocResult, "branch result",
+            constr_collect:collect_constrs_no_matching_cond(Result)}],
+    GuardBlocks ++ ResultBlocks ++ BodyBlocks.
+
+-spec simp_constr_to_blocks_sccase(constr:simp_constrs(), ast:loc(), constr:simp_constrs(),
+    [constr:simp_constr_case_branch()]) -> constr_blocks().
+simp_constr_to_blocks_sccase(DsScrut, LocExhaus, DsExhaust, Branches) ->
+    BranchBlocks = utils:concat_map(Branches, fun simp_constr_branch_to_blocks/1),
+    simp_constrs_to_blocks(DsScrut) ++
+        [{non_exhaustive_case, LocExhaus, "case exhaust",
+            constr_collect:collect_constrs_no_matching_cond(DsExhaust)}] ++
+        BranchBlocks.
+
 -spec simp_constr_to_blocks(constr:simp_constr()) -> constr_blocks().
 simp_constr_to_blocks(D) ->
     case D of
         {scsubty, L, _, _} -> [{tyerror, L, "subty", utils:single(D)}];
         {scmater, L, _T, _Alpha} -> [{tyerror, L, "subty", utils:single(D)}];
         {sccase, {_LocScrut, DsScrut}, {LocExhaus, DsExhaust}, Branches} ->
-            BranchBlocks =
-                utils:concat_map(Branches,
-                    fun ({sccase_branch, {LocGuard, Guards}, _Cond,
-                            {LocBody, Body}, {LocResult, Result}}) ->
-                        BodyBlocks =
-                            case sets:size(Body) of
-                                1 -> simp_constr_to_blocks(lists:nth(1, sets:to_list(Body)));
-                                _ -> [{tyerror, LocBody, "branch body",
-                                        constr_collect:collect_constrs_no_matching_cond(Body)}]
-                            end,
-                        GuardBlocks =
-                            case sets:is_empty(Guards) of
-                                true -> [];
-                                false ->
-                                    [{tyerror, LocGuard, "branch guard",
-                                         constr_collect:collect_constrs_no_matching_cond(Guards)}]
-                            end,
-                        ResultBlocks =
-                            [{tyerror, LocResult, "branch result",
-                                constr_collect:collect_constrs_no_matching_cond(Result)}],
-                        GuardBlocks ++ ResultBlocks ++ BodyBlocks
-                    end),
-            simp_constrs_to_blocks(DsScrut) ++
-                [{non_exhaustive_case, LocExhaus, "case exhaust",
-                    constr_collect:collect_constrs_no_matching_cond(DsExhaust)}] ++
-                BranchBlocks
+            simp_constr_to_blocks_sccase(DsScrut, LocExhaus, DsExhaust, Branches)
     end.

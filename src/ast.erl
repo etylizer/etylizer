@@ -355,7 +355,11 @@ get_fun_name({function, _Loc, Name, Arity, _}) -> utils:sformat("~w/~w", Name, A
 -type exps() :: [exp()].
 
 -spec loc_exp(exp()) -> loc().
-loc_exp(X) -> element(2, X).
+loc_exp({_, L}) -> L;
+loc_exp({_, L, _}) -> L;
+loc_exp({_, L, _, _}) -> L;
+loc_exp({_, L, _, _, _}) -> L;
+loc_exp({_, L, _, _, _, _}) -> L.
 
 -type qual_zip_gen() ::  {zip, loc(), [generators()]}. 
 -type qual_list_strict_gen() ::  {generate_strict, loc(), pat(), exp()}.

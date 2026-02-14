@@ -42,29 +42,27 @@ phi(BigS, [], ST) ->
     {false, ST}, 
   BigS);
 phi(BigS, [Ty | N], ST) ->
-  Solve = fun
-    (_, {false, ST2}) -> {false, ST2};
-    ({Index, {_PComponent, NComponent}}, {true, ST2}) ->
-      begin
-      % remove pi_Index(NegativeComponents) from pi_Index(PComponents) and continue searching
-        DoDiff = fun({IIndex, PComp}) ->
-          case IIndex of
-            Index -> ?NODE:difference(PComp, NComponent);
-            _ -> PComp
-          end
-                 end,
-        NewBigS = lists:map(DoDiff, lists:zip(lists:seq(1, length(BigS)), BigS)),
-        phi(NewBigS, N, ST2)
-      end
-          end,
-
   maybe
     {false, ST1} ?= lists:foldl(fun(_S, {true, ST0}) -> {true, ST0}; (S, {false, ST0}) -> ?NODE:is_empty(S, ST0) end, {false, ST}, BigS),
     lists:foldl(
-      Solve, 
+      fun(E, Acc) -> phi_solve(E, Acc, N, BigS) end, 
       {true, ST1}, 
       lists:zip(lists:seq(1, length(ty_tuple:components(Ty))), lists:zip(BigS, ty_tuple:components(Ty))))
   end.
+
+-spec phi_solve({integer(), {ty:type(), ty:type()}}, {boolean(), S}, [?ATOM:type()], [ty:type()]) -> {boolean(), S} when S :: is_empty_cache().
+phi_solve(_, {false, ST2}, _, _) -> {false, ST2};
+phi_solve({Index, {_PComponent, NComponent}}, {true, ST2}, N, BigS) ->
+    % remove pi_Index(NegativeComponents) from pi_Index(PComponents) and continue searching
+    DoDiff = fun({IIndex, PComp}) ->
+      case IIndex of
+        Index -> ?NODE:difference(PComp, NComponent);
+        _ -> PComp
+      end
+             end,
+    NewBigS = lists:map(DoDiff, lists:zip(lists:seq(1, length(BigS)), BigS)),
+    phi(NewBigS, N, ST2).
+
 
 
 -spec normalize_line({[T], [T], ?LEAF:type()}, monomorphic_variables(), S) -> 
@@ -90,37 +88,36 @@ phi_norm(BigS, [], Fixed, ST) ->
     {[], ST}, 
     BigS);
 phi_norm(BigS, [Ty | N], Fixed, ST) ->
-  Solve = fun({Index, {_PComponent, NComponent}}, {Result, ST00}) -> % FIXME shortcut
-    % TODO can be implemented easier with new Erlang list zipper &&
-    % remove pi_Index(NegativeComponents) from pi_Index(PComponents) and continue searching
-    DoDiff = 
-      fun({IIndex, PComp}) -> 
-        case IIndex of 
-          Index -> ty_node:difference(PComp, NComponent); 
-          _ -> PComp 
-        end
-      end,
-    % elp:ignore W0033
-    NewBigS = lists:map(DoDiff, lists:zip(lists:seq(1, length(BigS)), BigS)),
-    {Res01, ST01} = phi_norm(NewBigS, N, Fixed, ST00),
-    {constraint_set:meet(Result, Res01, Fixed), ST01}
-          end,
-
   {R1, ST0} = lists:foldl(
-    fun(S, {R2, ST2}) -> 
+    fun(S, {R2, ST2}) ->
       {R3, ST3} = ty_node:normalize(S, Fixed, ST2),
       {constraint_set:join(R2, R3, Fixed), ST3}
-    end, 
-    {[], ST}, 
+    end,
+    {[], ST},
     BigS),
 
   {R4, ST4} = lists:foldl(
-    Solve, 
-    {[[]], ST0}, 
+    fun(E, Acc) -> phi_norm_solve(E, Acc, N, BigS, Fixed) end,
+    {[[]], ST0},
     lists:zip(lists:seq(1, length(ty_tuple:components(Ty))), lists:zip(BigS, ty_tuple:components(Ty)))
   ),
 
   {constraint_set:join(R1, R4, Fixed), ST4}.
+
+-spec phi_norm_solve({integer(), {ty_node:type(), ty_node:type()}}, {set_of_constraint_sets(), S}, [?ATOM:type()], [ty_node:type()], monomorphic_variables()) ->
+    {set_of_constraint_sets(), S} when S :: normalize_cache().
+phi_norm_solve({Index, {_PComponent, NComponent}}, {Result, ST00}, N, BigS, Fixed) ->
+    % remove pi_Index(NegativeComponents) from pi_Index(PComponents) and continue searching
+    DoDiff =
+      fun({IIndex, PComp}) ->
+        case IIndex of
+          Index -> ty_node:difference(PComp, NComponent);
+          _ -> PComp
+        end
+      end,
+    NewBigS = lists:map(DoDiff, lists:zip(lists:seq(1, length(BigS)), BigS)),
+    {Res01, ST01} = phi_norm(NewBigS, N, Fixed, ST00),
+    {constraint_set:meet(Result, Res01, Fixed), ST01}.
 
 -spec all_variables_line([T], [T], ?LEAF:type(), all_variables_cache()) -> 
     sets:set(variable()) when T :: ?ATOM:type().

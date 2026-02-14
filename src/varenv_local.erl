@@ -68,20 +68,22 @@ find(Name, {_, Map, _}) ->
 % (Variables bound in only a subset of the varenvs are considered 'unsafe' in Erlang.)
 % All variables kept must have the same unique name. It's a bug if this is not the case.
 % The list of varenvs must not be empty
+-spec merge_envs_combiner(atom(), ast:unique_tok(), ast:unique_tok()) -> ast:unique_tok().
+merge_envs_combiner(K, V1, V2) ->
+    if V1 == V2 -> V1;
+       true -> errors:bug("~w is associated with ~w and ~w when merging envs",
+                          [K, V1, V2])
+    end.
+
+-spec merge_envs_fold(t(), t()) -> t().
+merge_envs_fold({Next1, M, R}, {Next2, AccMap, R2}) ->
+    if R == R2 -> ok; true -> errors:bug("merge_envs: R mismatch") end,
+    {max(Next1, Next2), maps:intersect_with(fun merge_envs_combiner/3, M, AccMap), R2}.
+
 -spec merge_envs([t()]) -> t().
+merge_envs([]) -> errors:bug("merge_envs called with empty list");
 merge_envs([Init | Rest]) ->
-    Combiner =
-        fun (K, V1, V2) ->
-                if V1 == V2 -> V1;
-                   true -> errors:bug("~w is associated with ~w and ~w when merging envs",
-                                      [K, V1, V2])
-                end
-        end,
-    lists:foldl(
-        fun ({Next1, M, R}, {Next2, AccMap, R2}) ->
-            R = R2, % TODO
-            {max(Next1, Next2), maps:intersect_with(Combiner, M, AccMap), R2}
-        end, Init, Rest).
+    lists:foldl(fun merge_envs_fold/2, Init, Rest).
 
 
 -spec merge(t(), t()) -> t().

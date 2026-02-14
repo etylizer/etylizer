@@ -11,7 +11,7 @@
 free_in_ty(T) ->
     L = utils:everything(fun (U) ->
                                  case U of
-                                     {var, X} -> {ok, X};
+                                     {var, X} when is_atom(X) -> {ok, X};
                                      _ -> error
                                  end
                          end, T),
