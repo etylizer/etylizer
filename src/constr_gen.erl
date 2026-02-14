@@ -957,15 +957,15 @@ has_bin_pat({tuple, _, Ps}) -> lists:any(fun has_bin_pat/1, Ps);
 has_bin_pat({match, _, P1, P2}) -> has_bin_pat(P1) orelse has_bin_pat(P2);
 has_bin_pat(_) -> false.
 
+% Single-branch case expressions without binary patterns never need redundancy
+% checks: with no prior branches, a branch cannot be made unreachable, and
+% pattern-mismatch is already caught by the exhaustiveness constraint.
+% Binary patterns are excluded because the exhaustiveness check is disabled for
+% them, making the redundancy check the only safety net.
 -spec needs_unmatched_check(list(ast:case_clause())) -> boolean().
 needs_unmatched_check(Clauses) ->
     case Clauses of
-        [{case_clause, _, Pat, [], _}] ->
-            case Pat of
-                {wildcard, _} -> false;
-                {var, _, _} -> false;
-                _ -> true
-            end;
+        [{case_clause, _, Pat, _, _}] -> has_bin_pat(Pat);
         _ -> true
     end.
 
@@ -1034,15 +1034,20 @@ case_clause_constrs(Ctx, TyScrut, Scrut, ScrutEnv, NeedsUnmatchedCheck, LowersBe
     {case_clause, L, Pat, Guards, Exps}, ExpectedTy) ->
     {BodyLower, BodyUpper, BodyEnvCs, BodyEnv0} =
         case_clause_env(Ctx, L, TyScrut, Scrut, Pat, Guards),
-    % When there are no guards and the pattern has no variables, both calls to
-    % case_clause_env produce identical results (same inputs), so we can reuse
-    % the body env for the guard env, saving fresh type variable allocations.
+    % When guards are empty, the guard env is never used: no guard constraints
+    % reference it. Skip generating guard env vars to reduce the variable count.
+    % When guards exist but the pattern has no variables, body and guard env
+    % produce identical results, so reuse body env.
     {GuardEnvCs, GuardEnv0} =
-        case Guards == [] andalso not pat_has_vars(Pat) of
-            true -> {BodyEnvCs, BodyEnv0};
-            false ->
-                {_, _, GCs, GEnv} = case_clause_env(Ctx, L, TyScrut, Scrut, Pat, []),
-                {GCs, GEnv}
+        case Guards of
+            [] -> {sets:new([{version, 2}]), #{}};
+            _ ->
+                case pat_has_vars(Pat) of
+                    false -> {BodyEnvCs, BodyEnv0};
+                    true ->
+                        {_, _, GCs, GEnv} = case_clause_env(Ctx, L, TyScrut, Scrut, Pat, []),
+                        {GCs, GEnv}
+                end
         end,
     % Variables bound in the scrutinee expression (e.g. case U = ok of ...)
     % must be visible in the clause body and guard environments.
