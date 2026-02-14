@@ -409,12 +409,9 @@ exp_constrs(Ctx, E, T) ->
         {op, L, Op, Lhs, Rhs} ->
             {Alpha1, Cs1, Env1} = exp_constrs_tyof(Ctx, Lhs),
             {Alpha2, Cs2, Env2} = exp_constrs_tyof(Ctx, Rhs),
-            Beta = fresh_tyvar(Ctx),
             MsgTy = utils:sformat("type of op ~w", Op),
-            MsgRes = utils:sformat("result of op ~w", Op),
-            OpCs = sets:from_list(
-                     [{cop, mk_locs(MsgTy, L), Op, 2, {fun_full, [Alpha1, Alpha2], Beta}},
-                      {csubty, mk_locs(MsgRes, L), Beta, T}], [{version, 2}]),
+            % Use target type T directly as the operator result, eliminating intermediate Beta.
+            OpCs = utils:single({cop, mk_locs(MsgTy, L), Op, 2, {fun_full, [Alpha1, Alpha2], T}}),
             % If LHS binds variables, make them available to RHS
             Cs2WithEnv = case maps:size(Env1) of
                 0 -> Cs2;
@@ -425,12 +422,8 @@ exp_constrs(Ctx, E, T) ->
             {sets:union([Cs1, Cs2WithEnv, OpCs]), CombinedEnv};
         {op, L, Op, Arg} ->
             {Alpha, ArgCs, ArgEnv} = exp_constrs_tyof(Ctx, Arg),
-            Beta = fresh_tyvar(Ctx),
             MsgTy = utils:sformat("type of op ~w", Op),
-            MsgRes = utils:sformat("result of op ~w", Op),
-            OpCs = sets:from_list(
-                     [{cop, mk_locs(MsgTy, L), Op, 1, {fun_full, [Alpha], Beta}},
-                      {csubty, mk_locs(MsgRes, L), Beta, T}], [{version, 2}]),
+            OpCs = utils:single({cop, mk_locs(MsgTy, L), Op, 1, {fun_full, [Alpha], T}}),
             {sets:union(ArgCs, OpCs), ArgEnv};
         {'receive', L, CaseClauses} ->
             receive_constrs(Ctx, L, CaseClauses, T);
