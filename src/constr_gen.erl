@@ -383,10 +383,8 @@ exp_constrs(Ctx, E, T) ->
         {nil, L} ->
             {utils:single({csubty, mk_locs("result of nil", L), {empty_list}, T}), #{}};
         {op, L, Op, Lhs, Rhs} ->
-            Alpha1 = fresh_tyvar(Ctx),
-            {Cs1, Env1} = exp_constrs(Ctx, Lhs, Alpha1),
-            Alpha2 = fresh_tyvar(Ctx),
-            {Cs2, Env2} = exp_constrs(Ctx, Rhs, Alpha2),
+            {Alpha1, Cs1, Env1} = exp_constrs_tyof(Ctx, Lhs),
+            {Alpha2, Cs2, Env2} = exp_constrs_tyof(Ctx, Rhs),
             Beta = fresh_tyvar(Ctx),
             MsgTy = utils:sformat("type of op ~w", Op),
             MsgRes = utils:sformat("result of op ~w", Op),
@@ -402,8 +400,7 @@ exp_constrs(Ctx, E, T) ->
             CombinedEnv = intersect_envs(Env1, Env2),
             {sets:union([Cs1, Cs2WithEnv, OpCs]), CombinedEnv};
         {op, L, Op, Arg} ->
-            Alpha = fresh_tyvar(Ctx),
-            {ArgCs, ArgEnv} = exp_constrs(Ctx, Arg, Alpha),
+            {Alpha, ArgCs, ArgEnv} = exp_constrs_tyof(Ctx, Arg),
             Beta = fresh_tyvar(Ctx),
             MsgTy = utils:sformat("type of op ~w", Op),
             MsgRes = utils:sformat("result of op ~w", Op),
@@ -515,9 +512,8 @@ exp_constrs(Ctx, E, T) ->
             {Tys, Cs} =
                 lists:foldr(
                   fun(Arg, {Tys, Cs}) ->
-                          Alpha = fresh_tyvar(Ctx),
-                          {ThisCs, _ThisEnv} = exp_constrs(Ctx, Arg, Alpha),
-                          {[Alpha | Tys], sets:union(Cs, ThisCs)}
+                          {ArgTy, ThisCs, _ThisEnv} = exp_constrs_tyof(Ctx, Arg),
+                          {[ArgTy | Tys], sets:union(Cs, ThisCs)}
                   end,
                   {[], sets:new([{version, 2}])},
                   Args),
