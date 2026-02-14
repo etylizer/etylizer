@@ -2246,11 +2246,24 @@ fun_clauses_to_exp_aux(Ctx, L, FunClauses) ->
                   Rest)
         end,
     Vars = fresh_vars(Ctx, Arity),
-    ScrutExp = {tuple, L, lists:map(fun(V) -> {var, L, {local_ref, V}} end, Vars)},
-    CaseClauses = lists:map(fun fun_clause_to_case_clause/1, FunClauses),
-    E = {'case', L, ScrutExp, CaseClauses},
-    ?LOG_TRACE("Rewrote function clauses at ~s with arguments=~w:\n~200p", ast:format_loc(L), Vars, E),
-    {Vars, [E]}.
+    case Arity of
+        1 ->
+            % Arity 1: skip tuple wrapping, case directly on the single arg
+            [Var] = Vars,
+            ScrutExp = {var, L, {local_ref, Var}},
+            CaseClauses = lists:map(
+                fun({fun_clause, CL, [Pat], Guards, Exps}) ->
+                    {case_clause, CL, Pat, Guards, Exps}
+                end, FunClauses),
+            E = {'case', L, ScrutExp, CaseClauses},
+            {Vars, [E]};
+        _ ->
+            ScrutExp = {tuple, L, lists:map(fun(V) -> {var, L, {local_ref, V}} end, Vars)},
+            CaseClauses = lists:map(fun fun_clause_to_case_clause/1, FunClauses),
+            E = {'case', L, ScrutExp, CaseClauses},
+            ?LOG_TRACE("Rewrote function clauses at ~s with arguments=~w:\n~200p", ast:format_loc(L), Vars, E),
+            {Vars, [E]}
+    end.
 
 -spec fun_clause_to_case_clause(ast:fun_clause()) -> ast:case_clause().
 fun_clause_to_case_clause({fun_clause, L, Pats, Guards, Exps}) ->
