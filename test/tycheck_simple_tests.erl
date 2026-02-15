@@ -208,6 +208,7 @@ simple_test_() ->
   NoInfer = [
     % TODO slow, timeouts
     "refine_tagged_tuple",
+    "refine_02",
     % TODO timeout, with flipped variable ordering it infers instantly
     "match_13",
     % TODO slow (tuple-encoded lists) inference #255

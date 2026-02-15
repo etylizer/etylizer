@@ -3,7 +3,33 @@ set -e
 TYPE_LIB="./src/erlang_types/"
 
 files=(
+    "constraint_set.erl"
+    "dnf_ty_atom.erl"
+    "dnf_ty_bitstring.erl"
     "dnf_ty_function.erl"
+    "dnf_ty_interval.erl"
+    "dnf_ty_list.erl"
+    "dnf_ty_map.erl"
+    "dnf_ty_predefined.erl"
+    "dnf_ty_tuple.erl"
+    "dnf_ty_variable.erl"
+    "etally.erl"
+    "feature_flags.erl"
+    "global_state.erl"
+    "tarjan.erl"
+    "ty_bool.erl"
+    "ty.erl"
+    "ty_function.erl"
+    "ty_functions.erl"
+    "ty_list.erl"
+    "ty_map.erl"
+    "ty_node.erl"
+    "ty_rec.erl"
+    "ty_tuple.erl"
+    "ty_tuples.erl"
+    "ty_variable.erl"
+    "parser_combinator.erl"
+    "ast_parser.erl"
 )
 
 
@@ -58,7 +84,7 @@ TO=$TO" -i ty_tuples:is_empty/2 "
 TO=$TO" -i ty_tuples:unparse/2 "
 TO=$TO" -i ast_parser:parse_all/0 "
 
-make build > /dev/null
+# make build > /dev/null
 for file in "${files[@]}"; do
     ./ety \
         -P . \

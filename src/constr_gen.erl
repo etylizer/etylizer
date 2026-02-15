@@ -132,6 +132,40 @@ exps_constrs(Ctx, L, [E | Rest], T) ->
         _ -> {sets:union(Cs, sets:from_list([{cdef, mk_locs("safe vars", L), Env, RestCs}])), maps:merge(Env, RestEnv)}
     end.
 
+% Like exp_constrs, but returns the TYPE of the expression directly instead of
+% constraining it against a target T. For simple expressions (variables, literals),
+% this avoids creating an intermediate fresh type variable. Falls back to creating
+% a fresh variable for complex expressions.
+-spec exp_constrs_tyof(ctx(), ast:exp()) -> {ast:ty(), constr:constrs(), constr:constr_env()}.
+exp_constrs_tyof(Ctx, E) ->
+    case E of
+        {'atom', _L, A} -> {{singleton, A}, sets:new([{version, 2}]), #{}};
+        {'char', _L, C} -> {{singleton, C}, sets:new([{version, 2}]), #{}};
+        {'integer', _L, I} -> {{singleton, I}, sets:new([{version, 2}]), #{}};
+        {'float', _L, _F} -> {{predef, float}, sets:new([{version, 2}]), #{}};
+        {nil, _L} -> {{empty_list}, sets:new([{version, 2}]), #{}};
+        {map_create, _L, []} -> {{map, []}, sets:new([{version, 2}]), #{}};
+        {tuple, _L, Es} ->
+            {Cs, ElemTys} = lists:foldr(
+                fun(Elem, {AccCs, AccTys}) ->
+                    {Ty, ECs, _Env} = exp_constrs_tyof(Ctx, Elem),
+                    {sets:union(AccCs, ECs), [Ty | AccTys]}
+                end,
+                {sets:new([{version, 2}]), []},
+                Es),
+            {{tuple, ElemTys}, Cs, #{}};
+        {var, L, AnyRef} ->
+            AlphaName = fresh_ty_varname(Ctx),
+            Msg = utils:sformat("var ~s", pretty:render(pretty:ref(AnyRef))),
+            Locs = mk_locs(Msg, L),
+            Mater = {cvarmater, Locs, AnyRef, AlphaName},
+            {{var, AlphaName}, utils:single(Mater), #{}};
+        _ ->
+            Alpha = fresh_tyvar(Ctx),
+            {Cs, Env} = exp_constrs(Ctx, E, Alpha),
+            {Alpha, Cs, Env}
+    end.
+
 -spec exp_constrs(ctx(), ast:exp(), ast:ty()) -> {constr:constrs(), constr:constr_env()}.
 exp_constrs(Ctx, E, T) ->
     case E of
@@ -155,34 +189,54 @@ exp_constrs(Ctx, E, T) ->
             {sets:union(Cs0, Cs1), #{}};
         {block, L, Es} ->
             exps_constrs(Ctx, L, Es, T);
+        {'case', _L, ScrutE, [{case_clause, _, {wildcard, _}, [], [BodyE]}]}
+                when BodyE =:= ScrutE ->
+            % Maybe artifact: case E of _ -> E end (from non-match final expression
+            % in maybe blocks). Scrutinee and body are structurally identical.
+            % Type-check once with the target type.
+            exp_constrs(Ctx, BodyE, T);
         {'case', L, ScrutE, Clauses} ->
             Alpha = fresh_tyvar(Ctx),
-            {Cs0, ScrutEnv} = exp_constrs(Ctx, ScrutE, Alpha),
+            {Cs0, ScrutEnv} = scrut_constrs_compact(Ctx, ScrutE, Alpha),
             NeedsUnmatchedCheck = needs_unmatched_check(Clauses),
-            {BodyList, Lowers, _Uppers, CsCases, BodyEnvs} =
-                lists:foldl(fun (Clause = {case_clause, LocClause, _, _, _},
-                                 {BodyList, Lowers, Uppers, AccCs, AccEnvs}) ->
+            % When the scrutiny is a tuple of variable refs and none of those
+            % variables are referenced in clause bodies or guards, skip the
+            % per-clause scrutiny pattern decomposition (saves 1 poly var per
+            % scrutiny element per clause).
+            SkipScrutDecomp = case scrut_var_set(ScrutE) of
+                none -> false;
+                ScrutVarNames -> not clauses_ref_any_var(Clauses, ScrutVarNames)
+            end,
+            {BodyList, Lowers, _PatLowers, _Uppers, CsCases, BodyEnvs} =
+                lists:foldl(fun (Clause = {case_clause, LocClause, Pat, _, _},
+                                 {BodyList, Lowers, PatLowers, Uppers, AccCs, AccEnvs}) ->
                                     ?LOG_TRACE("Generating constraint for case clause at ~s: Lowers=~s, Uppers=~s",
                                                ast:format_loc(LocClause),
                                                pretty:render_tys(Lowers),
                                                pretty:render_tys(Uppers)),
+                                    % Filter lowers that are provably disjoint from
+                                    % the current pattern (different atom literals at
+                                    % some tuple position). Reduces negation size.
+                                    RelevantLowers = filter_relevant_lowers(PatLowers, Pat),
                                     {ThisLower, ThisUpper, ThisCs, ThisConstrBody, ThisBodyEnv} =
                                         case_clause_constrs(
                                           Ctx,
-                                          ty_without(Alpha, ast_lib:mk_union(Lowers)),
+                                          ty_without(Alpha, ast_lib:mk_union(RelevantLowers)),
                                           ScrutE,
                                           ScrutEnv,
                                           NeedsUnmatchedCheck,
-                                          Lowers,
+                                          RelevantLowers,
                                           Clause,
-                                          T),
+                                          T,
+                                          SkipScrutDecomp),
                                     {BodyList ++ [ThisConstrBody],
                                      Lowers ++ [ThisLower],
+                                     PatLowers ++ [{ThisLower, Pat}],
                                      Uppers ++ [ThisUpper],
                                      sets:union(ThisCs, AccCs),
                                      AccEnvs ++ [ThisBodyEnv]}
                             end,
-                            {[], [], [], sets:new([{version, 2}]), []},
+                            {[], [], [], [], sets:new([{version, 2}]), []},
                             Clauses),
             CsScrut = sets:union(Cs0, CsCases),
             HasBinPat = lists:any(fun({case_clause, _, Pat, _, _}) -> has_bin_pat(Pat) end, Clauses),
@@ -257,12 +311,10 @@ exp_constrs(Ctx, E, T) ->
 
             {ResultCs, #{}};
         {cons, L, Head, Tail} ->
-            Alpha = fresh_tyvar(Ctx),
-            {C1, _Env1} = exp_constrs(Ctx, Head, Alpha),
-            Beta = fresh_tyvar(Ctx),
-            {C2, _Env2} = exp_constrs(Ctx, Tail, Beta),
+            {HeadTy, C1, _Env1} = exp_constrs_tyof(Ctx, Head),
+            {TailTy, C2, _Env2} = exp_constrs_tyof(Ctx, Tail),
             Cs = sets:union(C1, C2),
-            ListC = {csubty, mk_locs("cons constructor", L), {cons, Alpha, Beta}, T},
+            ListC = {csubty, mk_locs("cons constructor", L), {cons, HeadTy, TailTy}, T},
             {sets:add_element(ListC, Cs), #{}};
         {fun_ref, L, GlobalRef} ->
             {utils:single({cvar, mk_locs("function ref", L), GlobalRef, T}), #{}};
@@ -360,16 +412,11 @@ exp_constrs(Ctx, E, T) ->
         {nil, L} ->
             {utils:single({csubty, mk_locs("result of nil", L), {empty_list}, T}), #{}};
         {op, L, Op, Lhs, Rhs} ->
-            Alpha1 = fresh_tyvar(Ctx),
-            {Cs1, Env1} = exp_constrs(Ctx, Lhs, Alpha1),
-            Alpha2 = fresh_tyvar(Ctx),
-            {Cs2, Env2} = exp_constrs(Ctx, Rhs, Alpha2),
-            Beta = fresh_tyvar(Ctx),
+            {Alpha1, Cs1, Env1} = exp_constrs_tyof(Ctx, Lhs),
+            {Alpha2, Cs2, Env2} = exp_constrs_tyof(Ctx, Rhs),
             MsgTy = utils:sformat("type of op ~w", Op),
-            MsgRes = utils:sformat("result of op ~w", Op),
-            OpCs = sets:from_list(
-                     [{cop, mk_locs(MsgTy, L), Op, 2, {fun_full, [Alpha1, Alpha2], Beta}},
-                      {csubty, mk_locs(MsgRes, L), Beta, T}], [{version, 2}]),
+            % Use target type T directly as the operator result, eliminating intermediate Beta.
+            OpCs = utils:single({cop, mk_locs(MsgTy, L), Op, 2, {fun_full, [Alpha1, Alpha2], T}}),
             % If LHS binds variables, make them available to RHS
             Cs2WithEnv = case maps:size(Env1) of
                 0 -> Cs2;
@@ -379,14 +426,9 @@ exp_constrs(Ctx, E, T) ->
             CombinedEnv = intersect_envs(Env1, Env2),
             {sets:union([Cs1, Cs2WithEnv, OpCs]), CombinedEnv};
         {op, L, Op, Arg} ->
-            Alpha = fresh_tyvar(Ctx),
-            {ArgCs, ArgEnv} = exp_constrs(Ctx, Arg, Alpha),
-            Beta = fresh_tyvar(Ctx),
+            {Alpha, ArgCs, ArgEnv} = exp_constrs_tyof(Ctx, Arg),
             MsgTy = utils:sformat("type of op ~w", Op),
-            MsgRes = utils:sformat("result of op ~w", Op),
-            OpCs = sets:from_list(
-                     [{cop, mk_locs(MsgTy, L), Op, 1, {fun_full, [Alpha], Beta}},
-                      {csubty, mk_locs(MsgRes, L), Beta, T}], [{version, 2}]),
+            OpCs = utils:single({cop, mk_locs(MsgTy, L), Op, 1, {fun_full, [Alpha], T}}),
             {sets:union(ArgCs, OpCs), ArgEnv};
         {'receive', L, CaseClauses} ->
             receive_constrs(Ctx, L, CaseClauses, T);
@@ -492,9 +534,8 @@ exp_constrs(Ctx, E, T) ->
             {Tys, Cs} =
                 lists:foldr(
                   fun(Arg, {Tys, Cs}) ->
-                          Alpha = fresh_tyvar(Ctx),
-                          {ThisCs, _ThisEnv} = exp_constrs(Ctx, Arg, Alpha),
-                          {[Alpha | Tys], sets:union(Cs, ThisCs)}
+                          {ArgTy, ThisCs, _ThisEnv} = exp_constrs_tyof(Ctx, Arg),
+                          {[ArgTy | Tys], sets:union(Cs, ThisCs)}
                   end,
                   {[], sets:new([{version, 2}])},
                   Args),
@@ -681,20 +722,27 @@ process_qualifiers(Ctx, Loc, [Q | Qs], Env, Cs) ->
             process_qualifiers(Ctx, Loc, Qs, NewEnv, sets:union([Cs, ExpCs, PatCs, StrictCs]));
         % list generator: Pat <- Exp
         {generate, LGen, Pat, Exp} ->
-            Alpha = fresh_tyvar(Ctx), % list elements 
-            Beta = fresh_tyvar(Ctx), % pattern
-
+            Alpha = fresh_tyvar(Ctx), % list elements
             {ExpCs, _ExpEnv} = exp_constrs(Ctx, Exp, stdtypes:tlist(Alpha)),
-
-            TyPat = ty_of_pat(Ctx#ctx.symtab, Env, Pat, upper),
-            {PatCs, PatEnv} = pat_env(Ctx, LGen, Beta, Pat),
-
-            GeneratorC = [
-                          {csubty, mk_locs("pattern lower bound", LGen), ast_lib:mk_intersection([Alpha, TyPat]), Beta},
-                          {csubty, mk_locs("pattern upper bound", LGen), Beta, Alpha}
-                         ],
-            NewEnv = intersect_envs(Env, PatEnv),
-            process_qualifiers(Ctx, Loc, Qs, NewEnv, sets:union([Cs, ExpCs, PatCs, sets:from_list(GeneratorC)]));
+            % For simple variable patterns, Alpha and Beta are forced equal
+            % (since ty_of_pat returns any(), intersection is identity).
+            % Skip Beta and bind the variable directly to Alpha.
+            case Pat of
+                {var, _, {local_bind, V}} ->
+                    PatEnv = #{{local_ref, V} => Alpha},
+                    NewEnv = intersect_envs(Env, PatEnv),
+                    process_qualifiers(Ctx, Loc, Qs, NewEnv, sets:union(Cs, ExpCs));
+                _ ->
+                    Beta = fresh_tyvar(Ctx), % pattern
+                    TyPat = ty_of_pat(Ctx#ctx.symtab, Env, Pat, upper),
+                    {PatCs, PatEnv} = pat_env(Ctx, LGen, Beta, Pat),
+                    GeneratorC = [
+                                  {csubty, mk_locs("pattern lower bound", LGen), ast_lib:mk_intersection([Alpha, TyPat]), Beta},
+                                  {csubty, mk_locs("pattern upper bound", LGen), Beta, Alpha}
+                                 ],
+                    NewEnv = intersect_envs(Env, PatEnv),
+                    process_qualifiers(Ctx, Loc, Qs, NewEnv, sets:union([Cs, ExpCs, PatCs, sets:from_list(GeneratorC)]))
+            end;
         {zip, LGen, NestedQualifiers} ->
             {NewEnv, NewCs} = process_qualifiers(Ctx, LGen, NestedQualifiers, Env, Cs),
             process_qualifiers(Ctx, Loc, Qs, NewEnv, NewCs);
@@ -790,9 +838,8 @@ gen_funcall_constrs(Ctx, L, FunExp, Args, T) ->
     {ArgCs, ArgTys} =
         lists:foldr(
             fun(ArgExp, {AccCs, AccTys}) ->
-                    Alpha = fresh_tyvar(Ctx),
-                    {Cs, _Env} = exp_constrs(Ctx, ArgExp, Alpha),
-                    {sets:union(AccCs, Cs), [Alpha | AccTys]}
+                    {Ty, Cs, _Env} = exp_constrs_tyof(Ctx, ArgExp),
+                    {sets:union(AccCs, Cs), [Ty | AccTys]}
             end,
             {sets:new([{version, 2}]), []},
             Args),
@@ -825,7 +872,17 @@ var_funcall_constrs(Ctx, L, Var, Args, T) ->
 funcall_constrs_with_tyscm(Ctx, L, Var, TyScm, Args, T) ->
     {Mono, _, _} = typing_common:mono_ty(L, TyScm, none, fun(_, none) -> {fresh_ty_varname(Ctx), none} end, Ctx#ctx.symtab),
     case Mono of
-        {fun_full, ArgTys, ResTy} when length(Args) =:= length(ArgTys) ->
+        {fun_full, ArgTys0, ResTy} when length(Args) =:= length(ArgTys0) ->
+            % When the return type is concrete (no poly vars), parameter poly vars
+            % are dead: they don't appear in the return type and can't flow to the
+            % caller. Replace them with any() to eliminate wasted variables.
+            % This commonly helps with error/1, throw/1, exit/1 (return no_return()).
+            ResTyUnfolded = ast_utils:unfold_ty(Ctx#ctx.symtab, ResTy),
+            ArgTys = case res_ty_is_concrete(ResTyUnfolded) of
+                true ->
+                    [case Ty of {var, _} -> {predef, any}; _ -> Ty end || Ty <- ArgTys0];
+                false -> ArgTys0
+            end,
             FunName = pretty:render_var(Var),
             ResConstr =
                 {csubty,
@@ -839,8 +896,6 @@ funcall_constrs_with_tyscm(Ctx, L, Var, TyScm, Args, T) ->
                 end,
                 utils:single(ResConstr),
                 lists:zip(Args, ArgTys)),
-            ?LOG_DEBUG("Generating specialized constraints for call of fun ~s with type ~s (type scheme: ~s)",
-                FunName, pretty:render_ty(Mono), pretty:render_tyscheme(TyScm)),
             Res;
         _ ->
             gen_funcall_constrs(Ctx, L, Var, Args, T)
@@ -852,6 +907,37 @@ var_as_global_ref({var, _, Ref}) ->
         {local_ref, _} -> error;
         _ -> {ok, Ref}
     end.
+
+% Checks if a return type is concrete (no type variables).
+% Used to determine if parameter poly vars are dead and can be replaced.
+% Descends into compound types (tuples, lists, unions, etc.) to detect
+% cases like {ok, integer()} or [atom()] as concrete.
+% Named types should be unfolded via ast_utils:unfold_ty/2 before calling.
+-spec res_ty_is_concrete(ast:ty()) -> boolean().
+res_ty_is_concrete({var, _}) -> false;
+res_ty_is_concrete({predef, _}) -> true;
+res_ty_is_concrete({predef_alias, _}) -> true;
+res_ty_is_concrete({singleton, _}) -> true;
+res_ty_is_concrete({empty_list}) -> true;
+res_ty_is_concrete({tuple_any}) -> true;
+res_ty_is_concrete({tuple, Tys}) -> lists:all(fun res_ty_is_concrete/1, Tys);
+res_ty_is_concrete({list, Ty}) -> res_ty_is_concrete(Ty);
+res_ty_is_concrete({nonempty_list, Ty}) -> res_ty_is_concrete(Ty);
+res_ty_is_concrete({cons, H, T}) -> res_ty_is_concrete(H) andalso res_ty_is_concrete(T);
+res_ty_is_concrete({improper_list, H, T}) -> res_ty_is_concrete(H) andalso res_ty_is_concrete(T);
+res_ty_is_concrete({nonempty_improper_list, H, T}) -> res_ty_is_concrete(H) andalso res_ty_is_concrete(T);
+res_ty_is_concrete({union, Tys}) -> lists:all(fun res_ty_is_concrete/1, Tys);
+res_ty_is_concrete({intersection, Tys}) -> lists:all(fun res_ty_is_concrete/1, Tys);
+res_ty_is_concrete({negation, Ty}) -> res_ty_is_concrete(Ty);
+res_ty_is_concrete({map, Assocs}) ->
+    lists:all(fun({_, K, V}) -> res_ty_is_concrete(K) andalso res_ty_is_concrete(V) end, Assocs);
+res_ty_is_concrete({map_any}) -> true;
+res_ty_is_concrete({range, _, _}) -> true;
+res_ty_is_concrete({bitstring, _, _}) -> true;
+res_ty_is_concrete({bitstring}) -> true;
+res_ty_is_concrete({fun_full, ArgTys, ResTy}) ->
+    lists:all(fun res_ty_is_concrete/1, ArgTys) andalso res_ty_is_concrete(ResTy);
+res_ty_is_concrete(_) -> false.
 
 % Generates constraints for a dynamic function call (Mod:Fun(Args)).
 % Arguments are constrained to dynamic(), result is dynamic().
@@ -938,16 +1024,84 @@ has_bin_pat({tuple, _, Ps}) -> lists:any(fun has_bin_pat/1, Ps);
 has_bin_pat({match, _, P1, P2}) -> has_bin_pat(P1) orelse has_bin_pat(P2);
 has_bin_pat(_) -> false.
 
+% Single-branch case expressions without binary patterns never need redundancy
+% checks: with no prior branches, a branch cannot be made unreachable, and
+% pattern-mismatch is already caught by the exhaustiveness constraint.
+% Binary patterns are excluded because the exhaustiveness check is disabled for
+% them, making the redundancy check the only safety net.
+% Assert-pattern cases (from ?assert_pattern macro) also skip redundancy: the user
+% explicitly asserts the pattern matches, so redundancy checking is wasteful.
 -spec needs_unmatched_check(list(ast:case_clause())) -> boolean().
 needs_unmatched_check(Clauses) ->
     case Clauses of
-        [{case_clause, _, Pat, [], _}] ->
-            case Pat of
-                {wildcard, _} -> false;
-                {var, _, _} -> false;
-                _ -> true
-            end;
-        _ -> true
+        [{case_clause, _, Pat, _, _}] -> has_bin_pat(Pat);
+        _ -> not is_assert_pattern_case(Clauses)
+    end.
+
+% Detects the ?assert_pattern macro expansion:
+%   case Expr of __Z = Pattern -> __Z; _ -> error(exhaustiveness_violated) end
+% The last branch always calls error(exhaustiveness_violated) with that specific atom.
+-spec is_assert_pattern_case(list(ast:case_clause())) -> boolean().
+is_assert_pattern_case(Clauses) when length(Clauses) >= 2 ->
+    case lists:last(Clauses) of
+        {case_clause, _, _, [],
+         [{call, _, _, [{atom, _, exhaustiveness_violated}]}]} -> true;
+        _ -> false
+    end;
+is_assert_pattern_case(_) -> false.
+
+% Filter previous clause lowers, removing those provably disjoint from the
+% current clause's pattern. Two patterns are disjoint if they have different
+% structural kinds (e.g. different tuple arities, tuple vs atom) or if same-arity
+% tuples differ at some element position. This reduces the negation size in scrutiny
+% and bodyCond constraints, avoiding BDD blowup for functions with many clauses.
+-spec filter_relevant_lowers([{ast:ty(), ast:pat()}], ast:pat()) -> [ast:ty()].
+filter_relevant_lowers(LowersWithPats, CurrentPat) ->
+    [Lower || {Lower, Pat} <- LowersWithPats, not pats_disjoint(Pat, CurrentPat)].
+
+% Classify a pattern into a structural kind for disjointness checking.
+% Two patterns with different non-unknown kinds are provably disjoint.
+-spec pat_structural_kind(ast:pat()) ->
+    {tuple, non_neg_integer()} | {atom, atom()} | {integer, integer()} | nil | cons | unknown.
+pat_structural_kind({tuple, _, Ps}) -> {tuple, length(Ps)};
+pat_structural_kind({atom, _, A}) -> {atom, A};
+pat_structural_kind({integer, _, I}) -> {integer, I};
+pat_structural_kind({char, _, C}) -> {integer, C};
+pat_structural_kind({nil, _}) -> nil;
+pat_structural_kind({cons, _, _, _}) -> cons;
+pat_structural_kind(_) -> unknown.
+
+% Two patterns are provably disjoint if:
+% - They have different structural kinds (tuple vs atom, different tuple arities, etc.)
+% - They are same-arity tuples with a disjoint element at some position
+% - A match pattern (P1 = P2) is disjoint from Q if either P1 or P2 is disjoint from Q
+% Conservative: returns false if uncertain.
+-spec pats_disjoint(ast:pat(), ast:pat()) -> boolean().
+pats_disjoint({match, _, P1, P2}, Other) ->
+    pats_disjoint(P1, Other) orelse pats_disjoint(P2, Other);
+pats_disjoint(Other, {match, _, P1, P2}) ->
+    pats_disjoint(Other, P1) orelse pats_disjoint(Other, P2);
+pats_disjoint({tuple, _, Ps1}, {tuple, _, Ps2}) when length(Ps1) == length(Ps2) ->
+    lists:any(fun pat_elems_disjoint/1, lists:zip(Ps1, Ps2));
+pats_disjoint(P1, P2) ->
+    case {pat_structural_kind(P1), pat_structural_kind(P2)} of
+        {unknown, _} -> false;
+        {_, unknown} -> false;
+        {K1, K2} -> K1 =/= K2
+    end.
+
+-spec pat_elems_disjoint({ast:pat(), ast:pat()}) -> boolean().
+pat_elems_disjoint({{match, _, P1, P2}, Other}) ->
+    pat_elems_disjoint({P1, Other}) orelse pat_elems_disjoint({P2, Other});
+pat_elems_disjoint({Other, {match, _, P1, P2}}) ->
+    pat_elems_disjoint({Other, P1}) orelse pat_elems_disjoint({Other, P2});
+pat_elems_disjoint({{tuple, _, Ps1}, {tuple, _, Ps2}}) when length(Ps1) == length(Ps2) ->
+    lists:any(fun pat_elems_disjoint/1, lists:zip(Ps1, Ps2));
+pat_elems_disjoint({P1, P2}) ->
+    case {pat_structural_kind(P1), pat_structural_kind(P2)} of
+        {unknown, _} -> false;
+        {_, unknown} -> false;
+        {K1, K2} -> K1 =/= K2
     end.
 
 % Computes the redudance constraints of a case clause. The clause is redudandant iff the
@@ -964,8 +1118,34 @@ needs_unmatched_check(Clauses) ->
     constr:constr_case_branch_cond().
 case_clause_unmatched_constraints(Ctx, LowersBefore, Upper, Scrut) ->
     Ui = ast_lib:mk_union([ast_lib:mk_negation(Upper) | LowersBefore]),
-    {Cs, _Env} = exp_constrs(Ctx, Scrut, Ui),
+    {Cs, _Env} = scrut_constrs_compact(Ctx, Scrut, Ui),
     Cs.
+
+% Like exp_constrs but optimized for scrutiny expressions that are tuples of
+% variables. For each variable element, directly materializes it into the tuple
+% type, skipping the intermediate fresh type variable that exp_constrs creates.
+% Falls back to exp_constrs for non-tuple or non-variable-only scrutinies.
+-spec scrut_constrs_compact(ctx(), ast:exp(), ast:ty()) -> {constr:constrs(), constr:constr_env()}.
+scrut_constrs_compact(Ctx, {tuple, L, Args}, T) ->
+    case lists:all(fun({var, _, _}) -> true; (_) -> false end, Args) of
+        true ->
+            {Tys, Cs} = lists:foldr(
+                fun({var, VL, AnyRef}, {AccTys, AccCs}) ->
+                    AlphaName = fresh_ty_varname(Ctx),
+                    Msg = utils:sformat("var ~s", pretty:render(pretty:ref(AnyRef))),
+                    Locs = mk_locs(Msg, VL),
+                    Mater = {cvarmater, Locs, AnyRef, AlphaName},
+                    {[{var, AlphaName} | AccTys], sets:add_element(Mater, AccCs)}
+                end,
+                {[], sets:new([{version, 2}])},
+                Args),
+            TupleC = {csubty, mk_locs("tuple constructor", L), {tuple, Tys}, T},
+            {sets:add_element(TupleC, Cs), #{}};
+        false ->
+            exp_constrs(Ctx, {tuple, L, Args}, T)
+    end;
+scrut_constrs_compact(Ctx, Scrut, T) ->
+    exp_constrs(Ctx, Scrut, T).
 
 % Parameters:
 %   ctx(): context
@@ -983,13 +1163,29 @@ case_clause_unmatched_constraints(Ctx, LowersBefore, Upper, Scrut) ->
 %   constr:constrs(): constraints result from the guarded pattern of the clause
 %   constr:constr_case_branch(): the body of the case
 -spec case_clause_constrs(
-    ctx(), ast:ty(), ast:exp(), constr:constr_env(), boolean(), list(ast:ty()), ast:case_clause(), ast:ty()
+    ctx(), ast:ty(), ast:exp(), constr:constr_env(), boolean(), list(ast:ty()),
+    ast:case_clause(), ast:ty(), boolean()
 ) -> {ast:ty(), ast:ty(), constr:constrs(), constr:constr_case_branch(), constr:constr_env()}.
 case_clause_constrs(Ctx, TyScrut, Scrut, ScrutEnv, NeedsUnmatchedCheck, LowersBefore,
-    {case_clause, L, Pat, Guards, Exps}, ExpectedTy) ->
+    {case_clause, L, Pat, Guards, Exps}, ExpectedTy, SkipScrutDecomp) ->
     {BodyLower, BodyUpper, BodyEnvCs, BodyEnv0} =
-        case_clause_env(Ctx, L, TyScrut, Scrut, Pat, Guards),
-    {_, _, GuardEnvCs, GuardEnv0} = case_clause_env(Ctx, L, TyScrut, Scrut, Pat, []),
+        case_clause_env(Ctx, L, TyScrut, Scrut, Pat, Guards, SkipScrutDecomp),
+    % When guards are empty, the guard env is never used: no guard constraints
+    % reference it. Skip generating guard env vars to reduce the variable count.
+    % When guards exist but the pattern has no variables, body and guard env
+    % produce identical results, so reuse body env.
+    {GuardEnvCs, GuardEnv0} =
+        case Guards of
+            [] -> {sets:new([{version, 2}]), #{}};
+            _ ->
+                case pat_has_vars(Pat) of
+                    false -> {BodyEnvCs, BodyEnv0};
+                    true ->
+                        {_, _, GCs, GEnv} = case_clause_env(Ctx, L, TyScrut, Scrut, Pat, [],
+                                                             SkipScrutDecomp),
+                        {GCs, GEnv}
+                end
+        end,
     % Variables bound in the scrutinee expression (e.g. case U = ok of ...)
     % must be visible in the clause body and guard environments.
     BodyEnv = intersect_envs(ScrutEnv, BodyEnv0),
@@ -1002,8 +1198,9 @@ case_clause_constrs(Ctx, TyScrut, Scrut, ScrutEnv, NeedsUnmatchedCheck, LowersBe
         pretty:render_mono_env(BodyEnv),
         pretty:render_constr(BodyEnvCs)
     ),
-    Beta = fresh_tyvar(Ctx),
-    {InnerCs, InnerSafeEnv} = exps_constrs(Ctx, L, Exps, Beta),
+    % Pass ExpectedTy directly as the target for the body expression,
+    % eliminating the intermediate Beta variable and its result constraint.
+    {InnerCs, InnerSafeEnv} = exps_constrs(Ctx, L, Exps, ExpectedTy),
 
     % Merge pattern/guard environment with variables bound in body
     CompleteBodyEnv = intersect_envs(BodyEnv, InnerSafeEnv),
@@ -1022,15 +1219,8 @@ case_clause_constrs(Ctx, TyScrut, Scrut, ScrutEnv, NeedsUnmatchedCheck, LowersBe
                 case_clause_unmatched_constraints(Ctx, LowersBefore, BodyUpper, Scrut);
             true -> none
         end,
-    RL =
-        case Exps of
-            % [] -> L; % a case clause shouldn't have an empty exps list, dialyzer says this can't happen
-            [E | _] -> ast:loc_exp(E)
-        end,
-    ResultLocs = mk_locs("case result", RL),
-    ResultCs = utils:single({csubty, ResultLocs, Beta, ExpectedTy}),
     Payload = constr:mk_case_branch_payload(
-        {GuardEnv, CGuards}, {BodyEnv, InnerCs}, RedundancyCs, ResultCs),
+        {GuardEnv, CGuards}, {BodyEnv, InnerCs}, RedundancyCs, sets:new([{version, 2}])),
     ConstrBody = {ccase_branch, mk_locs("case branch", L), Payload},
     AllCs = sets:union([BodyEnvCs, GuardEnvCs]),
     {BodyLower, BodyUpper, AllCs, ConstrBody, CompleteBodyEnv}.
@@ -1113,13 +1303,28 @@ catch_clause_pat_env(Ctx, L, ExcType, Pat, Stack) ->
     {PatCs, CombinedEnv}.
 
 % helper function for case_clause_constrs
--spec case_clause_env(ctx(), ast:loc(), ast:ty(), ast:exp(), ast:pat(), [ast:guard()]) ->
+-spec case_clause_env(ctx(), ast:loc(), ast:ty(), ast:exp(), ast:pat(), [ast:guard()],
+                      boolean()) ->
           {ast:ty(), ast:ty(), constr:constrs(), constr:constr_env()}.
-case_clause_env(Ctx, L, TyScrut, Scrut, Pat, Guards) ->
+case_clause_env(Ctx, L, TyScrut, Scrut, Pat, Guards, SkipScrutDecomp) ->
     {Lower, Upper} = pat_guard_lower_upper(Ctx#ctx.symtab, Pat, Guards, Scrut),
     Ti = ast_lib:mk_intersection([TyScrut, Upper]),
-    {Ci0, Gamma0} = pat_env(Ctx, L, Ti, pat_of_exp(Scrut)),
-    {Ci1, Gamma1} = pat_guard_env(Ctx, L, Ti, Pat, Guards),
+    % When the scrutiny is a tuple of vars not referenced in clause bodies/guards,
+    % skip the scrutiny decomposition to avoid creating unused type variables.
+    {Ci0, Gamma0} = case SkipScrutDecomp of
+        true -> {sets:new([{version, 2}]), #{}};
+        false -> pat_env(Ctx, L, Ti, pat_of_exp(Scrut))
+    end,
+    % Skip pattern decomposition when the pattern has no variables,
+    % since no environment bindings would be produced.
+    % But still include guard refinements, as guards may refine outer variables.
+    {Ci1, Gamma1} =
+        case pat_has_vars(Pat) of
+            false ->
+                {EnvGuards, _} = guard_seq_env(Guards),
+                {sets:new([{version, 2}]), EnvGuards};
+            true -> pat_guard_env(Ctx, L, Ti, Pat, Guards)
+        end,
     Gamma2 = intersect_envs(Gamma1, Gamma0),
     {Lower, Upper, sets:union(Ci0, Ci1), Gamma2}.
 
@@ -1221,6 +1426,26 @@ bound_vars_pat(P) ->
         {var, _L, {local_ref, _V}} -> sets:new([{version, 2}])
     end.
 
+% Returns true if the pattern contains any variable bindings or references.
+% Used to skip fresh variable creation in pat_env when a sub-pattern
+% has no variables (the decomposition constraints would be wasted).
+-spec pat_has_vars(ast:pat()) -> boolean().
+pat_has_vars(P) ->
+    case P of
+        {var, _, _} -> true;
+        {tuple, _, Ps} -> lists:any(fun pat_has_vars/1, Ps);
+        {cons, _, P1, P2} -> pat_has_vars(P1) orelse pat_has_vars(P2);
+        {match, _, P1, P2} -> pat_has_vars(P1) orelse pat_has_vars(P2);
+        {map, _, Assocs} ->
+            lists:any(fun({map_field_req, _, _PK, PV}) -> pat_has_vars(PV) end, Assocs);
+        {record, _, _, FieldPats} ->
+            lists:any(fun({record_field, _, _, FP}) -> pat_has_vars(FP) end, FieldPats);
+        {op, _, _, Ps} -> lists:any(fun pat_has_vars/1, Ps);
+        {bin, _, Elems} ->
+            lists:any(fun({bin_element, _, Value, _, _}) -> pat_has_vars(Value);
+                         (Other) -> pat_has_vars(Other) end, Elems);
+        _ -> false
+    end.
 
 % ty_of_pat
 % \lbag p \rbag_\Gamma
@@ -1459,11 +1684,20 @@ pat_env(Ctx, OuterL, T, P) ->
         {nil, _L} ->
             Empty;
         {cons, L, P1, P2} ->
-            Alpha1 = fresh_tyvar(Ctx),
-            {Cs1, Env1} = pat_env(Ctx, L, Alpha1, P1),
-            
-            Alpha2 = fresh_tyvar(Ctx),
-            {Cs2, Env2} = pat_env(Ctx, L, Alpha2, P2),
+            {Alpha1, Cs1, Env1} = case pat_has_vars(P1) of
+                false -> {{predef, any}, sets:new([{version, 2}]), #{}};
+                true ->
+                    A1 = fresh_tyvar(Ctx),
+                    {C1, E1} = pat_env(Ctx, L, A1, P1),
+                    {A1, C1, E1}
+            end,
+            {Alpha2, Cs2, Env2} = case pat_has_vars(P2) of
+                false -> {{predef, any}, sets:new([{version, 2}]), #{}};
+                true ->
+                    A2 = fresh_tyvar(Ctx),
+                    {C2, E2} = pat_env(Ctx, L, A2, P2),
+                    {A2, C2, E2}
+            end,
 
             NewEnv = intersect_envs(Env1, Env2),
             NewCs = sets:union(Cs1, Cs2),
@@ -1523,11 +1757,18 @@ pat_env(Ctx, OuterL, T, P) ->
             {Alphas, Cs, Env} =
                 lists:foldl(
                   fun (P, {Alphas, Cs, Env}) ->
-                          Alpha = fresh_tyvar(Ctx),
-                          {ThisCs, ThisEnv} = pat_env(Ctx, OuterL, Alpha, P),
-                          {Alphas ++ [Alpha],
-                           sets:union(Cs, ThisCs),
-                           intersect_envs(Env, ThisEnv)}
+                          case pat_has_vars(P) of
+                              false ->
+                                  % No variables bound in this element, use any() to
+                                  % avoid creating an unused fresh type variable.
+                                  {Alphas ++ [{predef, any}], Cs, Env};
+                              true ->
+                                  Alpha = fresh_tyvar(Ctx),
+                                  {ThisCs, ThisEnv} = pat_env(Ctx, OuterL, Alpha, P),
+                                  {Alphas ++ [Alpha],
+                                   sets:union(Cs, ThisCs),
+                                   intersect_envs(Env, ThisEnv)}
+                          end
                   end,
                   {[], sets:new([{version, 2}]), #{}},
                   Ps),
@@ -1583,6 +1824,41 @@ pat_of_exp(E) ->
         {var, _L, {local_ref, V}} -> {var, ast:loc_auto(), {local_bind, V}};
         _ -> Wc
     end.
+
+% Check if the scrutiny is a tuple of simple variable references.
+% Returns the set of variable names if so, 'none' otherwise.
+-spec scrut_var_set(ast:exp()) -> none | sets:set(ast:local_varname()).
+scrut_var_set({tuple, _, Args}) ->
+    case lists:all(fun({var, _, {local_ref, _}}) -> true; (_) -> false end, Args) of
+        true ->
+            sets:from_list([V || {var, _, {local_ref, V}} <- Args], [{version, 2}]);
+        false -> none
+    end;
+scrut_var_set(_) -> none.
+
+% Check if any clause body or guard references any variable in VarSet.
+-spec clauses_ref_any_var([ast:case_clause()], sets:set(ast:local_varname())) -> boolean().
+clauses_ref_any_var([], _) -> false;
+clauses_ref_any_var([{case_clause, _, _Pat, Guards, Exps} | Rest], VarSet) ->
+    term_has_local_ref(Guards, VarSet) orelse
+    term_has_local_ref(Exps, VarSet) orelse
+    clauses_ref_any_var(Rest, VarSet).
+
+% Generic term walker: check if any {local_ref, V} in Term has V in VarSet.
+-spec term_has_local_ref(term(), sets:set(ast:local_varname())) -> boolean().
+term_has_local_ref({local_ref, V}, VarSet) -> sets:is_element(V, VarSet);
+term_has_local_ref(T, VarSet) when is_tuple(T) ->
+    term_has_local_ref_tuple(T, 1, tuple_size(T), VarSet);
+term_has_local_ref([H | T], VarSet) ->
+    term_has_local_ref(H, VarSet) orelse term_has_local_ref(T, VarSet);
+term_has_local_ref(_, _) -> false.
+
+-spec term_has_local_ref_tuple(tuple(), pos_integer(), non_neg_integer(),
+                                sets:set(ast:local_varname())) -> boolean().
+term_has_local_ref_tuple(_, I, Size, _) when I > Size -> false;
+term_has_local_ref_tuple(T, I, Size, VarSet) ->
+    term_has_local_ref(element(I, T), VarSet) orelse
+    term_has_local_ref_tuple(T, I + 1, Size, VarSet).
 
 % Combines two environments key-wise using F. The Default parameter is the
 % identity element used for keys missing from one environment:
@@ -1890,21 +2166,144 @@ var_test_env(FunExp, X, RestArgs) ->
 % end
 -spec fun_clauses_to_exp(ctx(), ast:loc(), [ast:fun_clause()]) -> {[ast:local_varname()], ast:exps()}.
 fun_clauses_to_exp(Ctx, _, FunClauses = [{fun_clause, L, Pats, [], Body}]) ->
-    % special case: only one clause, no guards, all patterns are variables
-    Vars =
-        lists:foldr(fun (Pat, Acc) ->
-                            case {Acc, Pat} of
-                                {error, _} -> error;
-                                {Vars, {var, _, {local_bind, V}}} -> [V | Vars];
-                                _ -> error
-                            end
-                    end, [], Pats),
-    case Vars of
-        error -> fun_clauses_to_exp_aux(Ctx, L, FunClauses);
-        VarList -> {VarList, Body}
+    % Single clause, no guards: classify patterns
+    {Vars, HasVar, HasComplex} = lists:foldr(
+        fun(Pat, {Acc, AnyVar, AnyComplex}) ->
+            case Pat of
+                {var, _, {local_bind, V}} -> {[{var, V} | Acc], true, AnyComplex};
+                _ -> {[complex | Acc], AnyVar, true}
+            end
+        end, {[], false, false}, Pats),
+    case {HasVar, HasComplex} of
+        {_, false} ->
+            % All variable patterns: use direct args (fast path)
+            VarList = [V || {var, V} <- Vars],
+            {VarList, Body};
+        {true, true} ->
+            % Mix of variable and complex patterns: keep var patterns as direct args,
+            % wrap complex patterns in case expressions to avoid a full tuple case.
+            {Args, CaseMatches} = lists:foldr(
+                fun({var, V}, {AccArgs, AccMatches}) ->
+                        {[V | AccArgs], AccMatches};
+                   (complex, {AccArgs, AccMatches}) ->
+                        [FreshV] = fresh_vars(Ctx, 1),
+                        {[FreshV | AccArgs], [{FreshV, L} | AccMatches]}
+                end, {[], []}, Vars),
+            % Recover the complex patterns in order
+            ComplexPats = [Pat || Pat <- Pats, not is_simple_var_pat(Pat)],
+            Matches = lists:zip(CaseMatches, ComplexPats),
+            WrappedBody = lists:foldl(
+                fun({{Var, Loc}, Pat}, B) ->
+                    [{'case', Loc, {var, Loc, {local_ref, Var}},
+                      [{case_clause, Loc, Pat, [], B}]}]
+                end, Body, Matches),
+            {Args, WrappedBody};
+        {false, true} ->
+            % All complex patterns: use the original tuple-case approach
+            fun_clauses_to_exp_aux(Ctx, L, FunClauses)
     end;
 fun_clauses_to_exp(Ctx, L, FunClauses) ->
-    fun_clauses_to_exp_aux(Ctx, L, FunClauses).
+    % Multi-clause: check if some positions are always simple var patterns
+    case analyze_multi_clause_positions(FunClauses) of
+        {ok, PositionTypes} ->
+            HasDirect = lists:any(fun(direct) -> true; (_) -> false end, PositionTypes),
+            HasComplex = lists:any(fun(complex) -> true; (_) -> false end, PositionTypes),
+            case {HasDirect, HasComplex} of
+                {true, true} ->
+                    fun_clauses_to_exp_mixed_multi(Ctx, L, FunClauses, PositionTypes);
+                _ ->
+                    fun_clauses_to_exp_aux(Ctx, L, FunClauses)
+            end;
+        not_applicable ->
+            fun_clauses_to_exp_aux(Ctx, L, FunClauses)
+    end.
+
+-spec is_simple_var_pat(ast:pat()) -> boolean().
+is_simple_var_pat({var, _, {local_bind, _}}) -> true;
+is_simple_var_pat(_) -> false.
+
+-spec is_simple_var_or_wildcard(ast:pat()) -> boolean().
+is_simple_var_or_wildcard({var, _, {local_bind, _}}) -> true;
+is_simple_var_or_wildcard({wildcard, _}) -> true;
+is_simple_var_or_wildcard(_) -> false.
+
+% Analyze parameter positions across all clauses of a multi-clause function.
+% Returns {ok, [direct | complex]} when all clauses have no guards and at least
+% 2 clauses exist, or not_applicable otherwise.
+-spec analyze_multi_clause_positions([ast:fun_clause()]) -> {ok, [direct | complex]} | not_applicable.
+analyze_multi_clause_positions(FunClauses) when length(FunClauses) < 2 -> not_applicable;
+analyze_multi_clause_positions(FunClauses) ->
+    % Only apply when all clauses have no guards
+    AllNoGuards = lists:all(
+        fun({fun_clause, _, _, Guards, _}) -> Guards =:= [] end,
+        FunClauses),
+    case AllNoGuards of
+        false -> not_applicable;
+        true ->
+            [{fun_clause, _, FirstPats, _, _} | _] = FunClauses,
+            Arity = length(FirstPats),
+            PositionTypes = lists:map(
+                fun(I) ->
+                    AllSimple = lists:all(
+                        fun({fun_clause, _, Pats, _, _}) ->
+                            is_simple_var_or_wildcard(lists:nth(I, Pats))
+                        end, FunClauses),
+                    case AllSimple of
+                        true -> direct;
+                        false -> complex
+                    end
+                end, lists:seq(1, Arity)),
+            {ok, PositionTypes}
+    end.
+
+% Multi-clause optimization: pass always-simple positions as direct args,
+% wrap only complex positions in a smaller tuple case.
+-spec fun_clauses_to_exp_mixed_multi(ctx(), ast:loc(), [ast:fun_clause()], [direct | complex]) ->
+    {[ast:local_varname()], ast:exps()}.
+fun_clauses_to_exp_mixed_multi(Ctx, L, FunClauses, PositionTypes) ->
+    Arity = length(PositionTypes),
+    Vars = fresh_vars(Ctx, Arity),
+    IndexedTypes = lists:zip(lists:seq(1, Arity), PositionTypes),
+    ComplexIndices = [I || {I, complex} <- IndexedTypes],
+    DirectIndices = [I || {I, direct} <- IndexedTypes],
+    % Build scrutiny from complex positions only
+    ComplexVarRefs = [{var, L, {local_ref, lists:nth(I, Vars)}} || I <- ComplexIndices],
+    ScrutExp = case ComplexVarRefs of
+        [ScrutSingle] -> ScrutSingle;
+        _ -> {tuple, L, ComplexVarRefs}
+    end,
+    % Build case clauses
+    CaseClauses = lists:map(
+        fun({fun_clause, CL, Pats, _Guards, Body}) ->
+            % Case pattern from complex positions only
+            ComplexPats = [lists:nth(I, Pats) || I <- ComplexIndices],
+            CasePat = case ComplexPats of
+                [PatSingle] -> PatSingle;
+                _ -> {tuple, CL, ComplexPats}
+            end,
+            % Wrap body in case bindings for direct positions (skip wildcards)
+            % Uses single-branch case: case $Ai of VarPat -> Body end
+            DirectBindings = lists:filtermap(
+                fun(Idx) ->
+                    case lists:nth(Idx, Pats) of
+                        {var, PL, {local_bind, _}} ->
+                            ArgVar = lists:nth(Idx, Vars),
+                            {true, {PL, ArgVar, lists:nth(Idx, Pats)}};
+                        {wildcard, _} ->
+                            false
+                    end
+                end, DirectIndices),
+            WrappedBody = lists:foldl(
+                fun({PL, ArgVar, Pat}, B) ->
+                    [{'case', PL, {var, PL, {local_ref, ArgVar}},
+                      [{case_clause, PL, Pat, [], B}]}]
+                end, Body, DirectBindings),
+            {case_clause, CL, CasePat, [], WrappedBody}
+        end, FunClauses),
+    E = {'case', L, ScrutExp, CaseClauses},
+    ?LOG_TRACE("Rewrote multi-clause function at ~s with mixed optimization, ~w direct / ~w complex positions",
+        ast:format_loc(L), length(DirectIndices), length(ComplexIndices)),
+    {Vars, [E]}.
 
 -spec fun_clauses_to_exp_aux(ctx(), ast:loc(), [ast:fun_clause()]) -> {[ast:local_varname()], ast:exps()}.
 fun_clauses_to_exp_aux(Ctx, L, FunClauses) ->
@@ -1925,11 +2324,24 @@ fun_clauses_to_exp_aux(Ctx, L, FunClauses) ->
                   Rest)
         end,
     Vars = fresh_vars(Ctx, Arity),
-    ScrutExp = {tuple, L, lists:map(fun(V) -> {var, L, {local_ref, V}} end, Vars)},
-    CaseClauses = lists:map(fun fun_clause_to_case_clause/1, FunClauses),
-    E = {'case', L, ScrutExp, CaseClauses},
-    ?LOG_TRACE("Rewrote function clauses at ~s with arguments=~w:\n~200p", ast:format_loc(L), Vars, E),
-    {Vars, [E]}.
+    case Arity of
+        1 ->
+            % Arity 1: skip tuple wrapping, case directly on the single arg
+            [Var] = Vars,
+            ScrutExp = {var, L, {local_ref, Var}},
+            CaseClauses = lists:map(
+                fun({fun_clause, CL, [Pat], Guards, Exps}) ->
+                    {case_clause, CL, Pat, Guards, Exps}
+                end, FunClauses),
+            E = {'case', L, ScrutExp, CaseClauses},
+            {Vars, [E]};
+        _ ->
+            ScrutExp = {tuple, L, lists:map(fun(V) -> {var, L, {local_ref, V}} end, Vars)},
+            CaseClauses = lists:map(fun fun_clause_to_case_clause/1, FunClauses),
+            E = {'case', L, ScrutExp, CaseClauses},
+            ?LOG_TRACE("Rewrote function clauses at ~s with arguments=~w:\n~200p", ast:format_loc(L), Vars, E),
+            {Vars, [E]}
+    end.
 
 -spec fun_clause_to_case_clause(ast:fun_clause()) -> ast:case_clause().
 fun_clause_to_case_clause({fun_clause, L, Pats, Guards, Exps}) ->

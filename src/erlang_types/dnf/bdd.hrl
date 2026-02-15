@@ -366,6 +366,7 @@ minimize_node_dnf(Dnf) ->
         NewTWithoutOutputs = ?assert_type(tuple_to_list(NewMinTerm1), [string()]),
         Outputs = ?assert_type(tuple_to_list(MinTermOutputsFin), [string()]),
         [lists:flatten(NewTWithoutOutputs ++ " " ++ Outputs)] ++ All
+
     end, [], Dnf).
 
 % "01-1001 1" -> {"01-1001", "1"}
