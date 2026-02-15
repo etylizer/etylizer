@@ -400,9 +400,9 @@ espresso_split_line_into_elements_and_result(LineStr) ->
 '_collect_port_output'(Port, Acc) ->
     receive
         {Port, {data, Data}} ->
-            '_collect_port_output'(Port, [Acc, Data]);
+            '_collect_port_output'(Port, Acc ++ Data);
         {Port, {exit_status, 0}} ->
-            lists:flatten(Acc);
+            Acc;
         {Port, {exit_status, Status}} ->
             error({espresso_exit, Status})
     end.
