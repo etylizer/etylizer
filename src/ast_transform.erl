@@ -953,29 +953,29 @@ trans_fun_clauses_no_exhaust(Ctx, Env, Cs) ->
     trans_fun_clauses(Ctx, Env, Cs, {false, 0}).
 
 -spec trans_fun_clauses(ctx(), varenv_local:t(), [ast_erl:fun_clause()], {boolean(), arity()}) -> [ast:fun_clause()].
-trans_fun_clauses(Ctx, Env, Cs, {DisableExhaustive, Arity}) -> 
+trans_fun_clauses(Ctx, Env, Cs, {DisableExhaustive, Arity}) ->
     Clauses = lists:map(fun(C) -> trans_fun_clause(Ctx, Env, C) end, Cs),
 
     FilteredClauses =  case Clauses of
         [_] -> Clauses;
-        [_|_] -> 
+        [_|_] ->
             {fun_clause, Loc, _, _, Body} = lists:nth(length(Clauses), Clauses),
-            case is_error_clause(Body) of 
-                true -> 
+            case is_error_clause(Body) of
+                true ->
                     ?LOG_DEBUG("Exhaustiveness heuristic triggered: removing last error clause at ~p", Loc),
                     lists:sublist(Clauses, length(Clauses) - 1);
                 false -> Clauses
             end
     end,
-    FilteredClauses,
 
-    % if this function is marked as not exhaustive, 
+    % if this function is marked as not exhaustive,
     % we add a dummy function header to that clause
     % so that the type system does not complain
-    case DisableExhaustive of
+    AllClauses = case DisableExhaustive of
         true -> FilteredClauses ++ [add_exhaustive_clause(Ctx, Arity)];
-        false -> FilteredClauses 
-    end.
+        false -> FilteredClauses
+    end,
+    optimize_dispatched_clauses(AllClauses).
 
 
 
@@ -1197,6 +1197,191 @@ add_exhaustive_clause(Ctx, Arity) ->
     {fun_clause, Loc, [{wildcard, Loc} || _ <- lists:seq(1, Arity)],
         [],
         [ErrorCall]}.
+
+% Optimize multi-clause functions by removing non-dispatching arguments from case patterns.
+% When some argument positions are always simple variables or wildcards across all clauses,
+% rewrite into a single-clause function with a case expression on only the complex positions.
+% E.g., f(ok, X, Y) -> ...; f(error, X, Y) -> ...
+% becomes: f(Arg1, X, Y) -> case Arg1 of ok -> ...; error -> ... end
+-spec optimize_dispatched_clauses([ast:fun_clause()]) -> [ast:fun_clause()].
+optimize_dispatched_clauses(Clauses) when length(Clauses) < 2 -> Clauses;
+optimize_dispatched_clauses(Clauses) ->
+    [{fun_clause, _, FirstPats, _, _} | _] = Clauses,
+    Arity = length(FirstPats),
+    case Arity < 2 of
+        true -> Clauses;
+        false ->
+            PositionTypes = classify_positions(Clauses, Arity),
+            HasDirect = lists:any(fun(direct) -> true; (_) -> false end, PositionTypes),
+            HasComplex = lists:any(fun(complex) -> true; (_) -> false end, PositionTypes),
+            case {HasDirect, HasComplex} of
+                {true, true} ->
+                    case complex_has_catchall(Clauses, PositionTypes) of
+                        true -> Clauses;
+                        false ->
+                            case guards_ref_direct_vars(Clauses, PositionTypes) of
+                                true -> Clauses;
+                                false -> rewrite_dispatched_clauses(Clauses, PositionTypes)
+                            end
+                    end;
+                _ -> Clauses
+            end
+    end.
+
+% Classify each argument position as 'direct' (always var/wildcard) or 'complex'.
+-spec classify_positions([ast:fun_clause()], arity()) -> [direct | complex].
+classify_positions(Clauses, Arity) ->
+    lists:map(
+        fun(I) ->
+            AllSimple = lists:all(
+                fun({fun_clause, _, Pats, _, _}) ->
+                    case lists:nth(I, Pats) of
+                        {var, _, {local_bind, _}} -> true;
+                        {wildcard, _} -> true;
+                        _ -> false
+                    end
+                end, Clauses),
+            case AllSimple of
+                true -> direct;
+                false -> complex
+            end
+        end, lists:seq(1, Arity)).
+
+% Check if any complex position has a catch-all pattern in some clause.
+% A catch-all is a variable/wildcard, or a record pattern where all fields are catch-alls.
+% This indicates intersection-type dispatch (e.g., tuple clause + catch-all clause),
+% where converting to a case would make the catch-all branch appear redundant within
+% one intersection component, causing a false "this branch never matches" error.
+-spec complex_has_catchall([ast:fun_clause()], [direct | complex]) -> boolean().
+complex_has_catchall(Clauses, PositionTypes) ->
+    IndexedTypes = lists:zip(lists:seq(1, length(PositionTypes)), PositionTypes),
+    lists:any(
+        fun({I, complex}) ->
+            lists:any(
+                fun({fun_clause, _, Pats, _, _}) ->
+                    pat_is_catchall(lists:nth(I, Pats))
+                end, Clauses);
+           ({_, direct}) -> false
+        end, IndexedTypes).
+
+-spec pat_is_catchall(ast:pat()) -> boolean().
+pat_is_catchall({var, _, {local_bind, _}}) -> true;
+pat_is_catchall({wildcard, _}) -> true;
+pat_is_catchall({record, _, _, Fields}) ->
+    lists:all(fun({record_field, _, _, Pat}) -> pat_is_catchall(Pat) end, Fields);
+pat_is_catchall(_) -> false.
+
+% Rewrite multi-clause function into single-clause with case on complex positions only.
+-spec rewrite_dispatched_clauses([ast:fun_clause()], [direct | complex]) -> [ast:fun_clause()].
+rewrite_dispatched_clauses(Clauses, PositionTypes) ->
+    [{fun_clause, L, _, _, _} | _] = Clauses,
+    Arity = length(PositionTypes),
+    IndexedTypes = lists:zip(lists:seq(1, Arity), PositionTypes),
+    ComplexIndices = [I || {I, complex} <- IndexedTypes],
+    DirectIndices = [I || {I, direct} <- IndexedTypes],
+
+    % Generate fresh variable names for all positions
+    FreshVars = [begin
+        Name = list_to_atom("$dispatch_" ++ integer_to_list(I)),
+        {Name, erlang:unique_integer([positive])}
+    end || I <- lists:seq(1, Arity)],
+
+    % Build scrutiny from complex positions only
+    ComplexVarRefs = [{var, L, {local_ref, lists:nth(I, FreshVars)}} || I <- ComplexIndices],
+    ScrutExp = case ComplexVarRefs of
+        [Single] -> Single;
+        _ -> {tuple, L, ComplexVarRefs}
+    end,
+
+    % Build case clauses from original fun clauses
+    CaseClauses = lists:map(
+        fun({fun_clause, CL, Pats, Guards, Body}) ->
+            % Case pattern from complex positions only
+            ComplexPats = [lists:nth(I, Pats) || I <- ComplexIndices],
+            CasePat = case ComplexPats of
+                [SinglePat] -> SinglePat;
+                _ -> {tuple, CL, ComplexPats}
+            end,
+
+            % Build substitution map: original direct-position vars -> fresh vars
+            SubstMap = lists:foldl(
+                fun(I, Acc) ->
+                    SharedVar = lists:nth(I, FreshVars),
+                    case lists:nth(I, Pats) of
+                        {var, _, {local_bind, V}} when V =/= SharedVar ->
+                            Acc#{V => SharedVar};
+                        _ -> Acc % wildcard or already matches
+                    end
+                end, #{}, DirectIndices),
+
+            NewGuards = subst_local_refs(Guards, SubstMap),
+            NewBody = subst_local_refs(Body, SubstMap),
+            {case_clause, CL, CasePat, NewGuards, NewBody}
+        end, Clauses),
+
+    % Build outer single fun clause
+    OuterPats = [{var, L, {local_bind, V}} || V <- FreshVars],
+    CaseExp = {'case', L, ScrutExp, CaseClauses},
+    [{fun_clause, L, OuterPats, [], [CaseExp]}].
+
+% Substitute local variable references in AST terms.
+% Replaces {local_ref, V} with {local_ref, NewV} where V is in SubstMap.
+-spec subst_local_refs(term(), #{ast:local_varname() => ast:local_varname()}) -> term().
+subst_local_refs(Term, SubstMap) when map_size(SubstMap) == 0 -> Term;
+subst_local_refs({local_ref, V} = Term, SubstMap) ->
+    case maps:find(V, SubstMap) of
+        {ok, NewV} -> {local_ref, NewV};
+        error -> Term
+    end;
+subst_local_refs(T, SubstMap) when is_tuple(T) ->
+    list_to_tuple(subst_local_refs_list(tuple_to_list(T), SubstMap));
+subst_local_refs([H|T], SubstMap) ->
+    [subst_local_refs(H, SubstMap) | subst_local_refs(T, SubstMap)];
+subst_local_refs(Term, _) -> Term.
+
+-spec subst_local_refs_list([term()], #{ast:local_varname() => ast:local_varname()}) -> [term()].
+subst_local_refs_list([], _) -> [];
+subst_local_refs_list([H|T], SubstMap) ->
+    [subst_local_refs(H, SubstMap) | subst_local_refs_list(T, SubstMap)].
+
+% Check if any guard in any clause references a variable from a direct position.
+% When guards reference direct-position variables, the optimization cannot be applied
+% because the guard variables would no longer be bound by the case pattern, breaking
+% the lower-bound computation in pat_guard_lower_upper (exhaustiveness analysis).
+-spec guards_ref_direct_vars([ast:fun_clause()], [direct | complex]) -> boolean().
+guards_ref_direct_vars(Clauses, PositionTypes) ->
+    DirectIndices = [I || {I, direct} <- lists:zip(lists:seq(1, length(PositionTypes)), PositionTypes)],
+    lists:any(
+        fun({fun_clause, _, Pats, Guards, _}) ->
+            case Guards of
+                [] -> false;
+                _ ->
+                    DirectVars = sets:from_list(
+                        lists:filtermap(
+                            fun(I) ->
+                                case lists:nth(I, Pats) of
+                                    {var, _, {local_bind, V}} -> {true, V};
+                                    _ -> false
+                                end
+                            end, DirectIndices),
+                        [{version, 2}]),
+                    has_local_ref(Guards, DirectVars)
+            end
+        end, Clauses).
+
+% Walk an AST term and check if it contains any {local_ref, V} where V is in VarSet.
+-spec has_local_ref(term(), sets:set(ast:local_varname())) -> boolean().
+has_local_ref({local_ref, V}, VarSet) -> sets:is_element(V, VarSet);
+has_local_ref(T, VarSet) when is_tuple(T) ->
+    has_local_ref_list(tuple_to_list(T), VarSet);
+has_local_ref([H|T], VarSet) ->
+    has_local_ref(H, VarSet) orelse has_local_ref(T, VarSet);
+has_local_ref(_, _) -> false.
+
+-spec has_local_ref_list([term()], sets:set(ast:local_varname())) -> boolean().
+has_local_ref_list([], _) -> false;
+has_local_ref_list([H|T], VarSet) ->
+    has_local_ref(H, VarSet) orelse has_local_ref_list(T, VarSet).
 
 % Stores a record override variant in the process dictionary for later retrieval.
 % Used when a self-referencing record has field overrides (e.g., #rr{name :: any()}).

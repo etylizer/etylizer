@@ -78,7 +78,7 @@ has_dynamic_constr(Tab, Constrs) ->
         sets:to_list(Constrs)).
 
 -spec check_redundant_branch(symtab:t(), sets:set(ast:ty_varname()), constr:subty_constrs(),
-    {ast:loc(), constr:subty_constrs()}, ok | {error, error()}) -> ok | {error, error()}.
+    {ast:loc(), constr:collected_constrs()}, ok | {error, error()}) -> ok | {error, error()}.
 check_redundant_branch(_Tab, _FixedTyvars, _SubtyConstrs, _LocAndConstrs, Acc = {error, _}) -> Acc;
 check_redundant_branch(Tab, FixedTyvars, SubtyConstrs, {Loc, UnmatchedConstrs}, ok) ->
     All = sets:union(UnmatchedConstrs, SubtyConstrs),
