@@ -20,129 +20,131 @@ parse_define(S) ->
         [Name | Val] -> {list_to_atom(Name), Val}
     end.
 
+-spec cmd_spec() -> argparse:command().
+cmd_spec() ->
+    #{
+        arguments => [
+            #{name => espresso_root, short => $E, long => "-espresso-root",
+              help => "Path to the root of the espresso binary. Default root is the escript folder."},
+            #{name => project_root, short => $P, long => "-project-root",
+              help => "Path to the root of the project. Stores persistent information in $PROJECT_DIR/_etylizer."},
+            #{name => src_path, short => $S, long => "-src-path", action => append,
+              help => "Path to a directory containing source files. May be given multiple times."},
+            #{name => include, short => $I, long => "-include", action => append,
+              help => "Where to search for include files (.hrl). May be given multiple times."},
+            #{name => define, short => $D, long => "-define", action => append,
+              help => "Define macro (either '-D NAME' or '-D NAME=VALUE')"},
+            #{name => load_start, short => $a, long => "-pa", action => append,
+              help => "Add path to the front of Erlang's code path"},
+            #{name => load_end, short => $z, long => "-pz", action => append,
+              help => "Add path to the end of Erlang's code path"},
+            #{name => force, short => $f, long => "-force", type => boolean, default => false,
+              help => "Force type-checking"},
+            #{name => help, short => $h, long => "-help", type => boolean, default => false,
+              help => "Output help message"},
+            #{name => check_ast, short => $c, long => "-check-ast",
+              help => "Check that all files match the AST type defined in the file given"},
+            #{name => dump_raw, long => "-dump-raw", type => boolean, default => false,
+              help => "Dump the raw ast (directly after parsing) of the files given"},
+            #{name => dump, short => $d, long => "-dump", type => boolean, default => false,
+              help => "Dump the internal ast of the files given"},
+            #{name => sanity, long => "-sanity", type => boolean, default => false,
+              help => "Perform sanity checks"},
+            #{name => sanity_inference, long => "-sanity-inference", type => boolean, default => false,
+              help => "After checking, also infer types and verify that inferred types are more general than specs"},
+            #{name => no_type_checking, long => "-no-type-checking", type => boolean, default => false,
+              help => "Do not perform type checking at all"},
+            #{name => report_mode, long => "-report-mode", type => {string, ["early-exit", "report"]},
+              help => "Error reporting mode (early-exit, report). Default: early-exit"},
+            #{name => report_timeout, long => "-report-timeout", type => {integer, [{min, 1}]},
+              default => 5000,
+              help => "Timeout in ms for type checking a function in report mode. Default: 5000"},
+            #{name => exhaustiveness_mode, long => "-exhaustiveness-mode",
+              type => {string, ["enabled", "disabled"]},
+              help => "Enable or disable exhaustiveness checking. Default: enabled"},
+            #{name => gradual_mode, long => "-gradual-mode", type => {string, ["dynamic", "infer"]},
+              help => "How to handle functions without type specs. Default: dynamic"},
+            #{name => only, short => $o, long => "-only", action => append,
+              help => "Only type check these functions (module:name/arity or name/arity or name)"},
+            #{name => ignore, short => $i, long => "-ignore", action => append,
+              help => "Do not type check these functions (module:name/arity or name/arity or name)"},
+            #{name => no_deps, long => "-no-deps", type => boolean, default => false,
+              help => "Only type check files specified on the commandline"},
+            #{name => log_level, short => $l, long => "-level",
+              help => "Minimal log level (trace2,trace,debug,info,note,warn)"},
+            #{name => type_overlay, long => "-type-overlay",
+              help => "Overlays for fun and type specs"},
+            #{name => check_exports, long => "-check-exports", type => boolean, default => false,
+              help => "Check that all exported functions have a type spec."},
+            #{name => files, nargs => list, required => false, default => [],
+              help => "Files to type check"}
+        ]
+    }.
+
 -spec parse_args([string()]) -> #opts{}.
 parse_args(Args) ->
-    OptSpecList =
-        [
-         {espresso_root, $E,    "espresso-root",  string,
-             "Path to the root of the espresso binary. Etylizer executes that binary as " ++
-             "$ESPRESSO_DIR/espresso. Default root is the escript folder."},
-         {project_root, $P,    "project-root",  string,
-             "Path to the root of the project. Etylizer stores persistent information in " ++
-             "$PROJECT_DIR/_etylizer."},
-         {src_path,    $S,    "src-path",       string,
-             "Path to a directory containing source files. All .erl files within this " ++
-             "directory are type checked, but the directory is not search recursively for " ++
-             ".erl files. May be given multiple times. Source files explicitly given " ++
-             "on the commandline are added to files found via --source-path."},
-         {include,    $I,   "include",   string,
-             "Where to search for include files (.hrl). May be given multiple times."  },
-         {define,     $D,   "define",    string,
-             "Define macro (either '-D NAME' or '-D NAME=VALUE')"},
-         {load_start, $a,   "pa",        string,
-             "Add path to the front of Erlang's code path"},
-         {load_end,   $z,   "pz",        string,
-             "Add path to the end of Erlang's code path"},
-         {force,       $f,   "force",      undefined,
-            "Force type-checking"},
-         {help,       $h,   "help",      undefined,
-            "Output help message"},
-         {check_ast,  $c,   "check-ast", string,
-            "Check that all files match the AST type defined in the file given"},
-         {dump_raw,  undefined, "dump-raw", undefined,
-            "Dump the raw ast (directly after parsing) of the files given"},
-         {dump,  $d,   "dump", undefined,
-            "Dump the internal ast of the files given"},
-         {sanity, undefined, "sanity", undefined,
-            "Perform sanity checks"},
-         {sanity_inference, undefined, "sanity-inference", undefined,
-            "After checking, also infer types and verify that inferred types are more general than specs"},
-         {no_type_checking, undefined, "no-type-checking", undefined,
-            "Do not perform type cecking at all"},
-         {report_mode, undefined, "report-mode", string,
-            "Choose a different mode of error reporting. The default 'early-exit' stops on the first type error encountered, " ++
-            "the 'report' mode continues and prints all results at the end to the console (early-exit, report)"},
-         {report_timeout, undefined, "report-timeout", string,
-            "Define a timeout in milliseconds for type checking a function in report_mode 'report'." ++
-            "Default timeout is 5000 milliseconds."},
-         {exhaustiveness_mode, undefined, "exhaustiveness-mode", string,
-            "Change the mode of how to check for exhaustiveness. Currently, " ++
-            "the checker can either globally enable or disable exhaustiveness." ++
-            "Default: enabled (enabled, disabled)."},
-         {gradual_mode, undefined, "gradual-mode", string,
-            "Choose how to handle functions without type specs. " ++
-            "'dynamic' assigns dynamic types, 'infer' infers types. " ++
-            "Default: dynamic (dynamic, infer)."},
-         {only, $o, "only", string,
-            "Only type check these functions (given as module:name/arity or name/arity or just the name)"},
-         {ignore, $i, "ignore", string,
-            "Do not type check these functions (given as module:name/arity or just name/arity or just the name)"},
-         {no_deps, undefined, "no-deps", undefined,
-            "Only type check files specified on the commandline (either via --source-path or " ++
-            "FILES arguments). The default behavior is to also check the dependencies of these " ++
-            "files."},
-         {log_level,  $l,   "level",    string,
-            "Minimal log level (trace2,trace,debug,info,note,warn)"},
-         {type_overlay, undefined, "type-overlay", string,
-            "Overlays for fun and type specs"},
-        {check_exports, undefined, "check-exports", undefined,
-            "Check that all exported functions have a type spec."}
-        ],
-    Opts = case getopt:parse(OptSpecList, Args) of
-        {error, {Reason, Data}} ->
-            utils:quit(1, "Invalid commandline options: ~p ~p~n", [Reason, Data]);
-        {ok, {OptList, RestArgs}} ->
-            lists:foldl(
-                fun(O, Opts) ->
-                    case O of
-                        {log_level, S} ->
-                            case log:parse_level(S) of
-                                bad_log_level -> utils:quit(2, "Invalid log level: " ++ S ++ "~n");
-                                L -> Opts#opts{ log_level = L }
-                            end;
-                        {define, S} ->
-                            Opts#opts{ defines = Opts#opts.defines ++ [parse_define(S)] };
-                        {load_start, S} ->
-                            Opts#opts{ load_start = [S | Opts#opts.load_start] };
-                        {load_end, S} ->
-                            Opts#opts{ load_end = Opts#opts.load_end ++ [S] };
-                        {check_ast, S} -> Opts#opts{ ast_file = S };
-                        {espresso_root, S} -> Opts#opts{ espresso_root = S };
-                        {project_root, S} -> Opts#opts{ project_root = S };
-                        {src_path, F} -> Opts#opts{ src_paths = Opts#opts.src_paths ++ [F]};
-                        {include, F} -> Opts#opts{ includes = Opts#opts.includes ++ [F]};
-                        {only, S} -> Opts#opts { type_check_only = Opts#opts.type_check_only ++ [S]};
-                        {ignore, S} -> Opts#opts { type_check_ignore = Opts#opts.type_check_ignore ++ [S]};
-                        dump_raw -> Opts#opts{ dump_raw = true };
-                        dump -> Opts#opts{ dump = true };
-                        sanity -> Opts#opts{ sanity = true };
-                        sanity_inference -> Opts#opts{ sanity_infer = true };
-                        force -> Opts#opts{ force = true };
-                        no_type_checking -> Opts#opts{ no_type_checking = true };
-                        {report_mode, "early-exit"} -> Opts#opts{ report_mode = early_exit };
-                        {report_mode, "report"} -> Opts#opts{ report_mode = report };
-                        {report_mode, M} -> utils:quit(2, "Invalid report mode: " ++ M ++ "~n");
-                        {report_timeout, T} -> Parsed = list_to_integer(T), true = Parsed > 0, Opts#opts{ report_timeout = Parsed };
-                        {exhaustiveness_mode, "enabled"} -> Opts#opts{ exhaustiveness_mode = enabled };
-                        {exhaustiveness_mode, "disabled"} -> Opts#opts{ exhaustiveness_mode = disabled };
-                        {exhaustiveness_mode, M} -> utils:quit(2, "Invalid exhaustiveness mode: " ++ M ++ "~n");
-                        {gradual_mode, "dynamic"} -> Opts#opts{ gradual_typing_mode = dynamic };
-                        {gradual_mode, "infer"} -> Opts#opts{ gradual_typing_mode = infer };
-                        {gradual_mode, M} -> utils:quit(2, "Invalid gradual mode: " ++ M ++ "~n");
-                        no_deps -> Opts#opts{ no_deps = true };
-                        check_exports -> Opts#opts{ check_exports = true };
-                        {type_overlay, S} -> Opts#opts{ type_overlay = S };
-                        help -> Opts#opts{ help = true }
-                    end
-                end, #opts{ files = RestArgs}, OptList)
+    Command = cmd_spec(),
+    ParseOpts = #{progname => "etylizer"},
+    ArgMap = case argparse:parse(Args, Command, ParseOpts) of
+        {error, Reason} ->
+            io:format("~ts~n", [argparse:format_error(Reason)]),
+            utils:quit(1, "Invalid commandline options~n");
+        {ok, AM, _, _} ->
+            AM
     end,
-    if
-        Opts#opts.help ->
-            getopt:usage(OptSpecList, "etylizer", "[FILES ...]"),
+    case maps:get(help, ArgMap, false) of
+        true ->
+            io:format("~ts", [argparse:help(Command, ParseOpts)]),
             utils:quit(2, "Aborting~n");
-        true -> ok
+        false -> ok
     end,
-    Opts.
+    LogLevel = case maps:find(log_level, ArgMap) of
+        {ok, S} ->
+            case log:parse_level(S) of
+                bad_log_level -> utils:quit(2, "Invalid log level: " ++ S ++ "~n");
+                L -> L
+            end;
+        error -> default
+    end,
+    ReportMode = case maps:get(report_mode, ArgMap, "early-exit") of
+        "early-exit" -> early_exit;
+        "report" -> report
+    end,
+    ExhaustivenessMode = case maps:get(exhaustiveness_mode, ArgMap, "enabled") of
+        "enabled" -> enabled;
+        "disabled" -> disabled
+    end,
+    GradualMode = case maps:get(gradual_mode, ArgMap, "dynamic") of
+        "dynamic" -> dynamic;
+        "infer" -> infer
+    end,
+    #opts{
+        log_level = LogLevel,
+        dump_raw = maps:get(dump_raw, ArgMap, false),
+        dump = maps:get(dump, ArgMap, false),
+        sanity = maps:get(sanity, ArgMap, false),
+        sanity_infer = maps:get(sanity_inference, ArgMap, false),
+        force = maps:get(force, ArgMap, false),
+        no_type_checking = maps:get(no_type_checking, ArgMap, false),
+        report_mode = ReportMode,
+        report_timeout = maps:get(report_timeout, ArgMap, 5000),
+        exhaustiveness_mode = ExhaustivenessMode,
+        gradual_typing_mode = GradualMode,
+        no_deps = maps:get(no_deps, ArgMap, false),
+        check_exports = maps:get(check_exports, ArgMap, false),
+        type_check_only = maps:get(only, ArgMap, []),
+        type_check_ignore = maps:get(ignore, ArgMap, []),
+        ast_file = maps:get(check_ast, ArgMap, empty),
+        project_root = maps:get(project_root, ArgMap, empty),
+        espresso_root = maps:get(espresso_root, ArgMap, empty),
+        src_paths = maps:get(src_path, ArgMap, []),
+        includes = maps:get(include, ArgMap, []),
+        defines = [parse_define(D) || D <- maps:get(define, ArgMap, [])],
+        load_start = maps:get(load_start, ArgMap, []),
+        load_end = maps:get(load_end, ArgMap, []),
+        files = maps:get(files, ArgMap, []),
+        type_overlay = maps:get(type_overlay, ArgMap, [])
+    }.
 
 % FIXME (sw, 2023-07-04): this is ugly global state. Remove!
 -spec fix_load_path(#opts{}) -> true.
