@@ -340,8 +340,8 @@ handle_tab(State) ->
             update_display(State, NewState);
         {yes, "", List} ->
             % show multiple matches
-            nl(),% FIXME TE bug line below
-            ?assert_type(io:format(lists:join("   ", [ io_lib:format(color("~s", teal), [C]) || C <- List])), any()), 
+            nl(),
+            ?assert_type(io:format("~s", [lists:join("   ", [ io_lib:format(color("~s", teal), [C]) || C <- List])]), any()),
             nl(),
             update_display(State, State);
         {no, _, _} ->
