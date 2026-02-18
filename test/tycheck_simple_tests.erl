@@ -10,7 +10,8 @@
 
 -spec check_ok_fun(string(), symtab:t(), symtab:t(), sets:set({atom(), arity()}), ast:fun_decl(), ast:ty_scheme()) -> ok.
 check_ok_fun(Filename, Tab, OverlayTab, DisableExhaustiveness, Decl = {function, L, Name, Arity, _}, Ty) ->
-    SanityCheck = cm_check:perform_sanity_check(Filename, [Decl], true),
+    Includes = ["include", "src", "src/erlang_types", "src/erlang_types/dnf", "src/erlang_types/utils"],
+    SanityCheck = cm_check:perform_sanity_check(Filename, [Decl], true, Includes),
     Ctx0 = typing:new_ctx(Tab, OverlayTab, SanityCheck), % FIXME: perform sanity check!
     Ctx = Ctx0#ctx{ disable_exhaustiveness = DisableExhaustiveness },
     try
@@ -87,7 +88,9 @@ has_intersection({ty_scheme, _, _}) -> false.
 
 -spec check_decls_in_file(string(), what(), sets:set(string())) -> list().
 check_decls_in_file(F, What, NoInfer) ->
-  {ok, RawForms} = parse:parse_file(F, #parse_opts{includes = ["include"]}),
+  {ok, RawForms} = parse:parse_file(F, #parse_opts{includes = 
+                                                   ["include", "src", "src/erlang_types", 
+                                                    "src/erlang_types/dnf", "src/erlang_types/utils"]}),
   Forms = ast_transform:trans(F, RawForms),
   SearchPath = paths:compute_search_path(#opts{}),
   OverlayTab = symtab:empty(),
