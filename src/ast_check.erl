@@ -12,6 +12,7 @@
     check/4,
     check_against_type/4,
     parse_spec/1,
+    parse_spec/2,
     merge_specs/1
 ]).
 -export_type([ty_map/0]).
@@ -51,7 +52,7 @@ check(Spec, Module, Path, ParseOpts) ->
 prepare_spec(Module, Forms) ->
     Insert = fun (Form, M) ->
         case Form of
-            {attribute, _, type, {Name, Ty, Args}} ->
+            {attribute, _, Kind, {Name, Ty, Args}} when Kind =:= type; Kind =:= opaque; Kind =:= nominal ->
                 maps:put({Module, Name, length(Args)},
                          {lists:map(fun(X) -> ast_erl:ty_varname(X) end, Args), Ty}, M);
             _ -> M
@@ -60,10 +61,21 @@ prepare_spec(Module, Forms) ->
     lists:foldl(Insert, maps:new(), Forms).
 
 -spec parse_spec(file:filename()) -> {ty_map(), module_name()}.
-parse_spec(Path) ->
+parse_spec(Path) -> parse_spec(Path, #parse_opts{}).
+
+-spec parse_spec(file:filename(), parse_opts()) -> {ty_map(), module_name()}.
+parse_spec(Path, Opts) ->
     Module = list_to_atom(filename:basename(Path, ".erl")),
-    SpecForms = parse:parse_file_or_die(Path),
-    {prepare_spec(Module, SpecForms), Module}.
+    SpecForms = parse:parse_file_or_die(Path, Opts),
+    Spec = prepare_spec(Module, SpecForms),
+    SpecWithDeps = merge_specs([Spec | otp_dep_specs()]),
+    {SpecWithDeps, Module}.
+
+-spec otp_dep_specs() -> [ty_map()].
+otp_dep_specs() ->
+    ErlAnnoPath = filename:join([code:lib_dir(stdlib), "src", "erl_anno.erl"]),
+    ErlAnnoForms = parse:parse_file_or_die(ErlAnnoPath),
+    [prepare_spec(erl_anno, ErlAnnoForms)].
 
 -spec merge_specs([ty_map()]) -> ty_map().
 merge_specs(Specs) -> lists:foldl(fun maps:merge/2, #{}, Specs).
@@ -157,6 +169,10 @@ check_ty(Spec, CurModule, Ty, Form, Depth) ->
         {type, _, nil, []} -> raise_unless(Form =:= [], Ty, Form, Depth);
         {type, _, list, [Ty2]} ->
             raise_unless(is_list(Form), Ty, Form, Depth),
+            lists:foreach(fun (X) -> check_ty(Spec, CurModule, Ty2, X, Depth + 1) end, Form),
+            ok;
+        {type, _, nonempty_list, [Ty2]} ->
+            raise_unless(is_list(Form) andalso Form =/= [], Ty, Form, Depth),
             lists:foreach(fun (X) -> check_ty(Spec, CurModule, Ty2, X, Depth + 1) end, Form),
             ok;
         {type, _, 'fun', _} ->

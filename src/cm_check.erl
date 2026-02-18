@@ -8,11 +8,13 @@
 ]).
 
 -ifdef(TEST).
--export([perform_sanity_check/3]).
+-export([perform_sanity_check/3, perform_sanity_check/4]).
 -endif.
 
 -include("log.hrl").
 -include("etylizer_main.hrl").
+-include("parse.hrl").
+
 
 -spec perform_type_checks(
     paths:search_path(),
@@ -110,17 +112,22 @@ traverse_and_check([CurrentFile | RemainingFiles], Symtab, OverlaySymtab, Search
 
 -spec perform_sanity_check(file:filename(), ast:forms(), boolean()) -> {ok, ast_check:ty_map()} | error.
 perform_sanity_check(CurrentFile, Forms, DoCheck) ->
+    perform_sanity_check(CurrentFile, Forms, DoCheck, []).
+
+-spec perform_sanity_check(file:filename(), ast:forms(), boolean(), [string()]) -> {ok, ast_check:ty_map()} | error.
+perform_sanity_check(CurrentFile, Forms, DoCheck, Includes) ->
     if DoCheck ->
+            ParseOpts = #parse_opts{includes = Includes},
             ?LOG_INFO("Checking whether transformation result for ~p conforms to AST in "
                       "ast.erl ...", CurrentFile),
-            {AstSpec, _} = ast_check:parse_spec("src/ast.erl"),
+            {AstSpec, _} = ast_check:parse_spec("src/ast.erl", ParseOpts),
             case ast_check:check_against_type(AstSpec, ast, forms, Forms) of
                 true ->
                     ?LOG_INFO("Transform result from ~s conforms to AST in ast.erl", CurrentFile);
                 false ->
                     ?ABORT("Transform result from ~s violates AST in ast.erl", CurrentFile)
             end,
-            {SpecConstr, _} = ast_check:parse_spec("src/constr.erl"),
+            {SpecConstr, _} = ast_check:parse_spec("src/constr.erl", ParseOpts),
             SpecFullConstr = ast_check:merge_specs([SpecConstr, AstSpec]),
             {ok, SpecFullConstr};
        true -> error
