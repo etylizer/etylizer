@@ -180,7 +180,7 @@ replicate(N, X) -> [X | replicate(N - 1, X)].
 string_ends_with(S, Suffix) ->
     string:find(S, Suffix, trailing) =:= Suffix.
 
--spec shorten(list(), integer()) -> {list(), integer()}.
+-spec shorten(list(T), integer()) -> {list(T), integer()}.
 shorten(L, N) when N < 0 -> {[], length(L)};
 shorten([], _) -> {[], 0};
 shorten([X | Xs], N) ->
