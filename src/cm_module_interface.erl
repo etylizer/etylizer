@@ -7,6 +7,8 @@
 
 -export([extract_interface_declaration/1]).
 
+-include("etylizer.hrl").
+
 %% Extracts interface declarations from the given abstract syntax tree (AST) forms.
 %% The function takes a list of forms representing the AST of an Erlang module as input
 %% and returns a list of forms containing only the exported function and type declarations.
@@ -27,7 +29,7 @@ extract_interface_declaration(Forms) ->
     NotExportedTypes = lists:filter(
                          fun({attribute, _, type, _, {Name, {ty_scheme, VariableList, _}}}) ->
                                  not sets:is_element({Name, length(VariableList)}, ExportedTypes)
-                         end, AllTypes),
+                         end, ?assert_type(AllTypes, [ast:type_decl()])),
     TypesFromExportedTypes = extract_types_from_exported_types(Forms, NotExportedTypes, ExportedTypes),
     TypesFromSignatures = extract_types_from_function_signatures(Forms, NotExportedTypes, ExportedFunctions),
     RelevantTypes = sets:union([ExportedTypes, TypesFromExportedTypes, TypesFromSignatures]),
@@ -40,7 +42,7 @@ extract_interface_declaration(Forms) ->
                           false -> error
                       end;
                   {attribute, _, type, _, {Name, {ty_scheme, VariableList, _}}} ->
-                      case sets:is_element({Name, length(VariableList)}, RelevantTypes) of
+                      case sets:is_element({Name, length(?assert_type(VariableList, [term()]))}, RelevantTypes) of
                           true -> {ok, T};
                           false -> error
                       end;
@@ -65,7 +67,8 @@ extract_exported_functions_and_types(Forms) ->
                           _ -> error
                       end
               end, Forms),
-    {sets:from_list(lists:flatten(Functions), [{version, 2}]), sets:from_list(lists:flatten(Types), [{version, 2}])}.
+    {sets:from_list(?assert_type(lists:flatten(Functions), [ast:fun_with_arity()]), [{version, 2}]),
+     sets:from_list(?assert_type(lists:flatten(Types), [ast:ty_with_arity()]), [{version, 2}])}.
 
 %% Extracts and aggregates types with their arities from exported type declarations in the AST
 %% of an Erlang module.
@@ -81,7 +84,7 @@ extract_types_from_exported_types(Forms, TypeDeclarations, ExportedTypes) ->
                       error
               end
       end, TySchemes),
-    traverse_named_references(NamedReferences, TypeDeclarations, sets:new([{version, 2}])).
+    traverse_named_references(?assert_type(NamedReferences, [ast:ty_named()]), TypeDeclarations, sets:new([{version, 2}])).
 
 -spec find_ty_schemes_from_types(ast:forms(), sets:set(ast:ty_with_arity())) -> [ast:ty_scheme()].
 find_ty_schemes_from_types(Forms, ExportedTypes) ->
@@ -89,9 +92,9 @@ find_ty_schemes_from_types(Forms, ExportedTypes) ->
       fun(T) ->
               case T of
                   {attribute, _, type, _, {TypeName, TyScheme}} ->
-                      {ty_scheme, VariableList, _} = TyScheme,
+                      {ty_scheme, VariableList, _} = ?assert_type(TyScheme, ast:ty_scheme()),
                       case sets:is_element({TypeName, length(VariableList)}, ExportedTypes) of
-                          true -> {ok, TyScheme};
+                          true -> {ok, ?assert_type(TyScheme, ast:ty_scheme())};
                           false -> error
                       end;
                   _ -> error
@@ -115,7 +118,7 @@ find_ty_schemes_from_functions(Forms, Functions) ->
               case T of
                   {attribute, _, spec, Name, Arity, TyScheme, _} ->
                       case sets:is_element({Name, Arity}, Functions) of
-                          true -> {ok, TyScheme};
+                          true -> {ok, ?assert_type(TyScheme, ast:ty_scheme())};
                           false -> error
                       end;
                   _ -> error
@@ -127,7 +130,7 @@ handle_function_signature({{fun_full, Params, ReturnType}, NotExportedTypes}, Ac
     NamedReferences = filter_named_references(Params ++ [ReturnType]),
     handle_named_references(NamedReferences, NotExportedTypes, AccTypes);
 
-handle_function_signature({{fun_any_arg, _, ReturnType}, NotExportedTypes}, AccTypes) ->
+handle_function_signature({{fun_any_arg, ReturnType}, NotExportedTypes}, AccTypes) ->
     NamedReferences = filter_named_references([ReturnType]),
     handle_named_references(NamedReferences, NotExportedTypes, AccTypes);
 
@@ -140,9 +143,9 @@ handle_named_references(NamedReferences, NotExportedTypes, AccTypes) ->
 
 -spec filter_named_references([ast:ty()]) -> [ast:ty_named()].
 filter_named_references(Types) ->
-    [Ty || Ty <- Types, is_named_reference(Ty)].
+    ?assert_type([Ty || Ty <- Types, is_named_reference(Ty)], [ast:ty_named()]).
 
--spec is_named_reference(ast:ty_named()) -> boolean().
+-spec is_named_reference(ast:ty()) -> boolean().
 is_named_reference({named, _, {ty_ref, _, _, _}, _}) ->
     true;
 is_named_reference(_) ->
@@ -157,7 +160,8 @@ traverse_named_references([], _, Types) ->
     Types;
 
 traverse_named_references([CurrentReference | RemainingReferences], TypeDeclarations, Types) ->
-    {named, _, {ty_ref, _, CurrentName, TypeArity}, ParameterTypes} = CurrentReference,
+    {named, _, TyRef, ParameterTypes} = CurrentReference,
+    {ty_ref, _, CurrentName, TypeArity} = ?assert_type(TyRef, {ty_ref, atom(), atom(), arity()}),
     CurrentType = {CurrentName, TypeArity},
     NextReferences = case find_type_declaration(CurrentType, TypeDeclarations) of
                          {value, TyDecl} -> find_named_references(TyDecl);
@@ -167,7 +171,8 @@ traverse_named_references([CurrentReference | RemainingReferences], TypeDeclarat
     % Filter out existing Names from the NextReferences list to prevent infinite loops
     % when we encounter cyclic type definitions.
     FilteredNextReferences = lists:filter(fun({named, _, {ty_ref, _ModName, Name, Arity}, _}) ->
-                                                  not sets:is_element({Name, Arity}, Types)
+                                                  not sets:is_element({Name, Arity}, Types);
+                                             (_) -> true
                                           end, NextReferences ++ ParameterReferences),
     traverse_named_references(RemainingReferences ++ FilteredNextReferences, TypeDeclarations, sets:add_element(CurrentType, Types)).
 
@@ -197,7 +202,7 @@ find_named_references(TypeDeclaration) ->
     utils:everything(
       fun(T) ->
               case T of
-                  {named, _, {ty_ref, _Mod, _Name, _}, _} -> {ok, T};
+                  {named, _, {ty_ref, _Mod, _Name, _}, _} -> {ok, ?assert_type(T, ast:ty_named())};
                   _ -> error
               end
       end, TypeDeclaration).
