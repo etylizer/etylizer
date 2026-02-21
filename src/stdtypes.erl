@@ -438,18 +438,20 @@ mk_builtin_funs(Path) ->
     ?LOG_TRACE2("Builtin functions: ~200p", Result),
     Result.
 
--spec collect_exports_and_specs([ast_erl:form()]) ->
-    {sets:set({atom(), arity()}), [ast_erl:form()]}.
-collect_exports_and_specs([]) -> {sets:new([{version, 2}]), []};
-collect_exports_and_specs([Form | Rest]) ->
-    {Exports, Specs} = collect_exports_and_specs(Rest),
-    case Form of
-        {attribute, _, export, Funs} ->
-            {utils:set_add_many(Funs, Exports), Specs};
-        {attribute, _, spec, _} ->
-            {Exports, [Form | Specs]};
-        _ -> {Exports, Specs}
-    end.
+-spec collect_exports_and_specs([dynamic()]) ->
+    {sets:set({atom(), arity()}), [dynamic()]}.
+collect_exports_and_specs(RawForms) ->
+    lists:foldl(
+      fun (Form, {Exports, Specs}) ->
+              case Form of
+                  {attribute, _, spec, _} ->
+                      {Exports, [Form | Specs]};
+                  {attribute, _, export, Funs} ->
+                      {utils:set_add_many(Funs, Exports), Specs};
+                  _ -> {Exports, Specs}
+              end
+      end,
+      {sets:new([{version, 2}]), []}, RawForms).
 
 -spec filter_exported_specs([ast:form()], sets:set({atom(), arity()})) -> fun_types().
 filter_exported_specs(AllSpecs, Exports) ->
