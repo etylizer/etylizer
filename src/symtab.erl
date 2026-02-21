@@ -166,6 +166,19 @@ empty() -> #tab { funs = #{}, ops = #{}, types = #{}, records = #{}, modules = #
 
 -spec std_symtab(paths:search_path(), t()) -> t().
 std_symtab(SearchPath, OverlaySymtab) ->
+    CacheKey = erlang:phash2(OverlaySymtab),
+    case persistent_term:get(std_symtab_cache, undefined) of
+        {CacheKey, CachedTab} ->
+            ?LOG_DEBUG("Using cached standard symtab"),
+            CachedTab;
+        _ ->
+            Tab = build_std_symtab(SearchPath, OverlaySymtab),
+            persistent_term:put(std_symtab_cache, {CacheKey, Tab}),
+            Tab
+    end.
+
+-spec build_std_symtab(paths:search_path(), t()) -> t().
+build_std_symtab(SearchPath, OverlaySymtab) ->
     ?LOG_DEBUG("Building symtab for standard library ..."),
     Funs =
         lists:foldl(fun({Name, Arity, T}, Map) ->
