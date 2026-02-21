@@ -189,15 +189,16 @@ check_ty(Spec, CurModule, Ty, Form, Depth) ->
         _ -> utils:error("unsupported type: ~p", Ty)
     end.
 
--spec check_ty_remote(ty_map(), module_name(), term(), term(), integer()) -> ok.
+-spec check_ty_remote(ty_map(), module_name(), ast_erl:ty(), term(), integer()) -> ok.
 check_ty_remote(Spec, CurModule, Ty, Form, Depth) ->
     case Ty of
-        {remote_type, _, [{atom, _, RemoteMod}, {atom, _, Name}, Args]} ->
+        {remote_type, _, [{atom, _, RemoteMod}, {atom, _, Name}, Args0]} ->
+            Args = ?assert_type(Args0, [ast_erl:ty()]),
             case {RemoteMod, Name, Args} of
                 {sets, set, [Ty2]} ->
                     raise_unless(sets:is_set(Form), Ty, Form, Depth),
                     lists:foreach(fun (X) -> check_ty(Spec, CurModule, Ty2, X, Depth + 1) end,
-                              sets:to_list(Form)),
+                              sets:to_list(?assert_type(Form, sets:set(term())))),
                     ok;
                 _ ->
                     Ty3 = lookup_ty_or_die(Spec, RemoteMod, Name, Args),
@@ -206,7 +207,7 @@ check_ty_remote(Spec, CurModule, Ty, Form, Depth) ->
         _ -> erlang:error({expected_remote_type, Ty})
     end.
 
--spec check_ty_type(ty_map(), module_name(), term(), term(), integer()) -> ok.
+-spec check_ty_type(ty_map(), module_name(), ast_erl:ty(), term(), integer()) -> ok.
 check_ty_type(Spec, CurModule, Ty, Form, Depth) ->
     case Ty of
         {type, _, binary, [{integer, _, _I1}, {integer, _, _I2}]} ->
@@ -214,11 +215,13 @@ check_ty_type(Spec, CurModule, Ty, Form, Depth) ->
         {type, _, nil, []} -> raise_unless(Form =:= [], Ty, Form, Depth);
         {type, _, list, [Ty2]} ->
             raise_unless(is_list(Form), Ty, Form, Depth),
-            lists:foreach(fun (X) -> check_ty(Spec, CurModule, Ty2, X, Depth + 1) end, Form),
+            lists:foreach(fun (X) -> check_ty(Spec, CurModule, Ty2, X, Depth + 1) end,
+                          ?assert_type(Form, [term()])),
             ok;
         {type, _, nonempty_list, [Ty2]} ->
             raise_unless(is_list(Form) andalso Form =/= [], Ty, Form, Depth),
-            lists:foreach(fun (X) -> check_ty(Spec, CurModule, Ty2, X, Depth + 1) end, Form),
+            lists:foreach(fun (X) -> check_ty(Spec, CurModule, Ty2, X, Depth + 1) end,
+                          ?assert_type(Form, [term()])),
             ok;
         {type, _, 'fun', _} ->
             utils:error("Cannot check term against function type ~p", Ty);
@@ -226,6 +229,12 @@ check_ty_type(Spec, CurModule, Ty, Form, Depth) ->
             utils:error("Cannot check term against function type ~p", Ty);
         {type, _, range, [{integer, _, _I1}, {integer, _, _I2}]} ->
             utils:error("Checking of types for integer ranges not implemented: ~p", Ty);
+        _ -> check_ty_type2(Spec, CurModule, Ty, Form, Depth)
+    end.
+
+-spec check_ty_type2(ty_map(), module_name(), ast_erl:ty(), term(), integer()) -> ok.
+check_ty_type2(Spec, CurModule, Ty, Form, Depth) ->
+    case Ty of
         {type, _, map, any} ->
             raise_unless({} =:= Form, Ty, Form, Depth);
         {type, _, map, _} ->
@@ -241,7 +250,7 @@ check_ty_type(Spec, CurModule, Ty, Form, Depth) ->
         _ -> check_ty_type_simple(Ty, Form, Depth)
     end.
 
--spec check_ty_type_simple(term(), term(), integer()) -> ok.
+-spec check_ty_type_simple(ast_erl:ty(), term(), integer()) -> ok.
 check_ty_type_simple(Ty, Form, Depth) ->
     case Ty of
         {type, _, any, []} -> ok;
@@ -256,7 +265,7 @@ check_ty_type_simple(Ty, Form, Depth) ->
         _ -> check_ty_type_simple2(Ty, Form, Depth)
     end.
 
--spec check_ty_type_simple2(term(), term(), integer()) -> ok.
+-spec check_ty_type_simple2(ast_erl:ty(), term(), integer()) -> ok.
 check_ty_type_simple2(Ty, Form, Depth) ->
     case Ty of
         {type, _, non_neg_integer, []} ->
@@ -278,29 +287,45 @@ check_ty_type_simple2(Ty, Form, Depth) ->
         _ -> utils:error("unsupported type: ~p", Ty)
     end.
 
--spec check_ty_map(ty_map(), module_name(), term(), term(), integer()) -> ok.
+-spec check_ty_map(ty_map(), module_name(), ast_erl:ty(), term(), integer()) -> ok.
 check_ty_map(Spec, CurModule, Ty, Form, Depth) ->
-    case Ty of
-        {type, Anno, map, TyAssocs} ->
-            case
-                try maps:to_list(Form)
-                catch {badmap, _} -> false
-                end
-            of
-                false -> raise(Ty, Form, Depth);
-                List ->
-                    KeyTy = {type, Anno, union,
-                             lists:map(fun({type, _, _, [K, _]}) -> K end, ?assert_type(TyAssocs, [term()]))},
-                    ValTy = {type, Anno, union,
-                             lists:map(fun({type, _, _, [_, V]}) -> V end, ?assert_type(TyAssocs, [term()]))},
-                    KvTy = {type, Anno, tuple, [KeyTy, ValTy]},
-                    TotalTy = {type, Anno, list, [KvTy]},
-                    check_ty(Spec, CurModule, TotalTy, ?assert_type(List, [term()]), Depth)
-            end;
-        _ -> erlang:error({expected_map_type, Ty})
+    {type, Anno, map, TyAssocs0} = ?assert_type(Ty, ast_erl:ty_map()),
+    raise_unless(is_map(Form), Ty, Form, Depth),
+    TyAssocs = ?assert_type(TyAssocs0, [ast_erl:ty_map_assoc()]),
+    check_ty_map_body(Spec, CurModule, Anno, TyAssocs, ?assert_type(Form, map()), Depth).
+
+-spec check_ty_map_body(ty_map(), module_name(), ast_erl:anno(), [ast_erl:ty_map_assoc()], map(), integer()) -> ok.
+check_ty_map_body(Spec, CurModule, Anno, TyAssocs, Form, Depth) ->
+    Keys = lists:map(fun map_assoc_key/1, TyAssocs),
+    Vals = lists:map(fun map_assoc_val/1, TyAssocs),
+    KeyTy = ?assert_type({type, Anno, union, Keys}, ast_erl:ty()),
+    ValTy = ?assert_type({type, Anno, union, Vals}, ast_erl:ty()),
+    check_ty_map_entries(Spec, CurModule, KeyTy, ValTy, maps:to_list(Form), Depth).
+
+-spec check_ty_map_entries(ty_map(), module_name(), ast_erl:ty(), ast_erl:ty(), [{term(), term()}], integer()) -> ok.
+check_ty_map_entries(_Spec, _CurModule, _KeyTy, _ValTy, [], _Depth) -> ok;
+check_ty_map_entries(Spec, CurModule, KeyTy, ValTy, [{K, V} | Rest], Depth) ->
+    check_ty(Spec, CurModule, KeyTy, K, Depth + 1),
+    check_ty(Spec, CurModule, ValTy, V, Depth + 1),
+    check_ty_map_entries(Spec, CurModule, KeyTy, ValTy, Rest, Depth).
+
+-spec map_assoc_key(ast_erl:ty_map_assoc()) -> ast_erl:ty().
+map_assoc_key(Assoc) ->
+    {type, _, _, Args} = Assoc,
+    case ?assert_type(Args, [ast_erl:ty()]) of
+        [K | _] -> K;
+        _ -> erlang:error(bad_map_assoc)
     end.
 
--spec check_ty_tuple(ty_map(), module_name(), term(), [ast_erl:ty()], term(), integer()) -> ok.
+-spec map_assoc_val(ast_erl:ty_map_assoc()) -> ast_erl:ty().
+map_assoc_val(Assoc) ->
+    {type, _, _, Args} = Assoc,
+    case ?assert_type(Args, [ast_erl:ty()]) of
+        [_, V | _] -> V;
+        _ -> erlang:error(bad_map_assoc)
+    end.
+
+-spec check_ty_tuple(ty_map(), module_name(), ast_erl:ty(), [ast_erl:ty()], term(), integer()) -> ok.
 check_ty_tuple(Spec, CurModule, Ty, Tys, Form, Depth) ->
     raise_unless(is_tuple(Form), Ty, Form, Depth),
     FormList = tuple_to_list(?assert_type(Form, tuple())),
@@ -309,7 +334,7 @@ check_ty_tuple(Spec, CurModule, Ty, Tys, Form, Depth) ->
         lists:zip(Tys, ?assert_type(FormList, [term()]))),
     ok.
 
--spec check_ty_union(ty_map(), module_name(), term(), term(), integer()) -> ok.
+-spec check_ty_union(ty_map(), module_name(), ast_erl:ty(), term(), integer()) -> ok.
 check_ty_union(Spec, CurModule, Ty, Form, Depth) ->
     case Ty of
         {type, _, union, Tys} ->
@@ -317,7 +342,7 @@ check_ty_union(Spec, CurModule, Ty, Form, Depth) ->
         _ -> erlang:error({expected_union_type, Ty})
     end.
 
--spec check_ty_union_results(ty_map(), module_name(), term(), [ast_erl:ty()], term(), integer()) -> ok.
+-spec check_ty_union_results(ty_map(), module_name(), ast_erl:ty(), [ast_erl:ty()], term(), integer()) -> ok.
 check_ty_union_results(Spec, CurModule, Ty, Tys, Form, Depth) ->
     Results =
         lists:map(
