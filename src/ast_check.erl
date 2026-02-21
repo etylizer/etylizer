@@ -59,8 +59,12 @@ prepare_spec(Module, Forms) ->
 prepare_spec_form(Module, Form, M) ->
     case Form of
         {attribute, _, Kind, {Name, Ty, Args}} when Kind =:= type; Kind =:= opaque; Kind =:= nominal ->
-            maps:put({Module, Name, length(?assert_type(Args, [term()]))},
-                     {lists:map(fun(X) -> ast_erl:ty_varname(X) end, ?assert_type(Args, [ast_erl:ty_var()])), Ty}, M);
+            Arity = ?assert_type(length(?assert_type(Args, [term()])), arity()),
+            Key = {Module, ?assert_type(Name, atom()), Arity},
+            Val = {lists:map(fun(X) -> ast_erl:ty_varname(X) end, ?assert_type(Args, [ast_erl:ty_var()])),
+                   ?assert_type(Ty, ast_erl:ty())},
+            M0 = ?assert_type(M, #{ty_map_key() => {[atom()], ast_erl:ty()}}),
+            ?assert_type(maps:put(Key, Val, M0), ty_map());
         _ -> M
     end.
 
