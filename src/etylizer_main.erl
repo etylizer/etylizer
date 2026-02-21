@@ -24,7 +24,7 @@ parse_define(S) ->
 
 -spec cmd_spec() -> argparse:command().
 cmd_spec() ->
-    #{
+    ?assert_type(#{
         arguments => [
             #{name => espresso_root, short => $E, long => "-espresso-root",
               help => "Path to the root of the espresso binary. Default root is the escript folder."},
@@ -83,7 +83,7 @@ cmd_spec() ->
             #{name => files, nargs => list, required => false, default => [],
               help => "Files to type check"}
         ]
-    }.
+    }, argparse:command()).
 
 -spec parse_args([string()]) -> #opts{}.
 parse_args(Args) ->
@@ -96,60 +96,83 @@ parse_args(Args) ->
         {ok, AM, _, _} ->
             AM
     end,
-    case maps:get(help, ArgMap, false) of
+    case ?assert_type(maps:get(help, ArgMap, false), boolean()) of
         true ->
             io:format("~ts", [argparse:help(Command, ParseOpts)]),
             utils:quit(2, "Aborting~n");
         false -> ok
     end,
-    LogLevel = case maps:find(log_level, ArgMap) of
-        {ok, S} ->
+    build_opts(ArgMap).
+
+-spec parse_log_level(argparse:arg_map()) -> log:log_level() | default.
+parse_log_level(ArgMap) ->
+    case maps:find(log_level, ArgMap) of
+        {ok, Val} ->
+            S = ?assert_type(Val, string()),
             case log:parse_level(S) of
                 bad_log_level -> utils:quit(2, "Invalid log level: " ++ S ++ "~n");
                 L -> L
             end;
         error -> default
-    end,
-    ReportMode = case maps:get(report_mode, ArgMap, "early-exit") of
+    end.
+
+-spec parse_report_mode(argparse:arg_map()) -> feature_flags:report_mode().
+parse_report_mode(ArgMap) ->
+    case ?assert_type(maps:get(report_mode, ArgMap, "early-exit"), string()) of
         "early-exit" -> early_exit;
-        "report" -> report
-    end,
-    ExhaustivenessMode = case maps:get(exhaustiveness_mode, ArgMap, "enabled") of
+        "report" -> report;
+        _ -> erlang:error(bad_report_mode)
+    end.
+
+-spec parse_exhaustiveness_mode(argparse:arg_map()) -> feature_flags:exhaustiveness_mode().
+parse_exhaustiveness_mode(ArgMap) ->
+    case ?assert_type(maps:get(exhaustiveness_mode, ArgMap, "enabled"), string()) of
         "enabled" -> enabled;
-        "disabled" -> disabled
-    end,
-    GradualMode = case maps:get(gradual_mode, ArgMap, "dynamic") of
+        "disabled" -> disabled;
+        _ -> erlang:error(bad_exhaustiveness_mode)
+    end.
+
+-spec parse_gradual_mode(argparse:arg_map()) -> feature_flags:gradual_typing_mode().
+parse_gradual_mode(ArgMap) ->
+    case ?assert_type(maps:get(gradual_mode, ArgMap, "dynamic"), string()) of
         "dynamic" -> dynamic;
-        "infer" -> infer
-    end,
-    LogFile = maps:get(log_file, ArgMap, "etylizer.log"),
+        "infer" -> infer;
+        _ -> erlang:error(bad_gradual_mode)
+    end.
+
+-spec build_opts(argparse:arg_map()) -> #opts{}.
+build_opts(ArgMap) ->
+    LogLevel = parse_log_level(ArgMap),
+    ReportMode = parse_report_mode(ArgMap),
+    ExhaustivenessMode = parse_exhaustiveness_mode(ArgMap),
+    GradualMode = parse_gradual_mode(ArgMap),
     #opts{
         log_level = LogLevel,
-        log_file = LogFile,
-        dump_raw = maps:get(dump_raw, ArgMap, false),
-        dump = maps:get(dump, ArgMap, false),
-        sanity = maps:get(sanity, ArgMap, false),
-        sanity_infer = maps:get(sanity_inference, ArgMap, false),
-        force = maps:get(force, ArgMap, false),
-        no_type_checking = maps:get(no_type_checking, ArgMap, false),
+        log_file = ?assert_type(maps:get(log_file, ArgMap, "etylizer.log"), string()),
+        dump_raw = ?assert_type(maps:get(dump_raw, ArgMap, false), boolean()),
+        dump = ?assert_type(maps:get(dump, ArgMap, false), boolean()),
+        sanity = ?assert_type(maps:get(sanity, ArgMap, false), boolean()),
+        sanity_infer = ?assert_type(maps:get(sanity_inference, ArgMap, false), boolean()),
+        force = ?assert_type(maps:get(force, ArgMap, false), boolean()),
+        no_type_checking = ?assert_type(maps:get(no_type_checking, ArgMap, false), boolean()),
         report_mode = ReportMode,
-        report_timeout = maps:get(report_timeout, ArgMap, 5000),
+        report_timeout = ?assert_type(maps:get(report_timeout, ArgMap, 5000), pos_integer()),
         exhaustiveness_mode = ExhaustivenessMode,
         gradual_typing_mode = GradualMode,
-        no_deps = maps:get(no_deps, ArgMap, false),
-        check_exports = maps:get(check_exports, ArgMap, false),
-        type_check_only = maps:get(only, ArgMap, []),
-        type_check_ignore = maps:get(ignore, ArgMap, []),
-        ast_file = maps:get(check_ast, ArgMap, empty),
-        project_root = maps:get(project_root, ArgMap, empty),
-        espresso_root = maps:get(espresso_root, ArgMap, empty),
-        src_paths = maps:get(src_path, ArgMap, []),
-        includes = maps:get(include, ArgMap, []),
-        defines = [parse_define(D) || D <- maps:get(define, ArgMap, [])],
-        load_start = maps:get(load_start, ArgMap, []),
-        load_end = maps:get(load_end, ArgMap, []),
-        files = maps:get(files, ArgMap, []),
-        type_overlay = maps:get(type_overlay, ArgMap, [])
+        no_deps = ?assert_type(maps:get(no_deps, ArgMap, false), boolean()),
+        check_exports = ?assert_type(maps:get(check_exports, ArgMap, false), boolean()),
+        type_check_only = ?assert_type(maps:get(only, ArgMap, []), [string()]),
+        type_check_ignore = ?assert_type(maps:get(ignore, ArgMap, []), [string()]),
+        ast_file = ?assert_type(maps:get(check_ast, ArgMap, empty), empty | string()),
+        project_root = ?assert_type(maps:get(project_root, ArgMap, empty), empty | string()),
+        espresso_root = ?assert_type(maps:get(espresso_root, ArgMap, empty), empty | string()),
+        src_paths = ?assert_type(maps:get(src_path, ArgMap, []), [string()]),
+        includes = ?assert_type(maps:get(include, ArgMap, []), [string()]),
+        defines = [parse_define(D) || D <- ?assert_type(maps:get(define, ArgMap, []), [string()])],
+        load_start = ?assert_type(maps:get(load_start, ArgMap, []), [string()]),
+        load_end = ?assert_type(maps:get(load_end, ArgMap, []), [string()]),
+        files = ?assert_type(maps:get(files, ArgMap, []), [string()]),
+        type_overlay = ?assert_type(maps:get(type_overlay, ArgMap, []), string())
     }.
 
 % FIXME (sw, 2023-07-04): this is ugly global state. Remove!
@@ -213,31 +236,40 @@ main(Args) ->
     Opts = parse_args(Args),
     log:init(Opts#opts.log_level, Opts#opts.log_file),
     ?LOG_DEBUG("Parsed commandline options as ~200p", Opts),
+    main_run(Opts).
+
+-spec main_run(#opts{}) -> ok.
+main_run(Opts) ->
     try doWork(Opts)
-    catch throw:{etylizer, K, Msg}:S ->
-            Raw = erl_error:format_exception(throw, K, S),
-            IsExpected =
-                case K of
-                    ty_error -> true;
-                    name_error -> true;
-                    parse_error -> true;
-                    _ -> false
-                end,
-            if
-                IsExpected ->
-                    ?LOG_DEBUG("~s", Raw),
-                    io:format("~s~n", [Msg]);
-                true ->
-                    ?LOG_ERROR("~s", Raw),
-                    io:format("~s~n", [Msg])
-            end,
-            case K of
-              ty_error -> erlang:halt(1);
-              name_error -> erlang:halt(1);
-              parse_error -> erlang:halt(1);
-              unsupported -> erlang:halt(5);
-              not_implemented -> erlang:halt(5);
-              _ -> erlang:halt(2)
-            end
+    catch throw:Thrown:S ->
+        {etylizer, K, Msg} = ?assert_type(Thrown, {etylizer, atom(), string()}),
+        handle_main_error(K, Msg, ?assert_type(S, erlang:stacktrace()))
     end,
     ok.
+
+-spec handle_main_error(atom(), string(), erlang:stacktrace()) -> no_return().
+handle_main_error(K, Msg, S) ->
+    Raw = erl_error:format_exception(throw, K, S),
+    IsExpected =
+        case K of
+            ty_error -> true;
+            name_error -> true;
+            parse_error -> true;
+            _ -> false
+        end,
+    if
+        IsExpected ->
+            ?LOG_DEBUG("~s", Raw),
+            io:format("~s~n", [Msg]);
+        true ->
+            ?LOG_ERROR("~s", Raw),
+            io:format("~s~n", [Msg])
+    end,
+    case K of
+      ty_error -> erlang:halt(1);
+      name_error -> erlang:halt(1);
+      parse_error -> erlang:halt(1);
+      unsupported -> erlang:halt(5);
+      not_implemented -> erlang:halt(5);
+      _ -> erlang:halt(2)
+    end.
