@@ -276,29 +276,32 @@ expand_predef_alias(list) -> {list, {predef, any}};
 expand_predef_alias(nonempty_list) -> {nonempty_list, {predef, any}};
 expand_predef_alias(maybe_improper_list) -> {improper_list, {predef, any}, {predef, any}};
 expand_predef_alias(nonempty_maybe_improper_list) -> {nonempty_list, {predef, any}};
-expand_predef_alias(string) -> {list, expand_predef_alias(char)};
-expand_predef_alias(nonempty_string) -> {nonempty_list, expand_predef_alias(char)};
-expand_predef_alias(iodata) -> {union, [expand_predef_alias(iolist), expand_predef_alias(binary)]};
-expand_predef_alias(iolist) ->
+expand_predef_alias(Name) -> expand_predef_alias2(Name).
+
+-spec expand_predef_alias2(ast:predef_alias_name()) -> ast:ty().
+expand_predef_alias2(string) -> {list, expand_predef_alias(char)};
+expand_predef_alias2(nonempty_string) -> {nonempty_list, expand_predef_alias(char)};
+expand_predef_alias2(iodata) -> {union, [expand_predef_alias(iolist), expand_predef_alias(binary)]};
+expand_predef_alias2(iolist) ->
     % TODO fix variable IDs
     RecVarID = erlang:unique_integer(),
     Var = {mu_var, erlang:list_to_atom("mu" ++ integer_to_list(RecVarID))},
     RecType = {improper_list, {union, [expand_predef_alias(byte), expand_predef_alias(binary), Var]}, {union, [expand_predef_alias(binary), tempty_list()]}},
     {mu, Var, RecType};
-expand_predef_alias(map) -> {map, [{map_field_opt, {predef, any}, {predef, any}}]};
-expand_predef_alias(function) -> {fun_simple};
-expand_predef_alias(module) -> tatom();
-expand_predef_alias(mfa) -> {tuple, [tatom(), tatom(), {predef, integer}]};
-expand_predef_alias(arity) -> {predef, integer};
-expand_predef_alias(identifier) -> {union, [{predef, pid}, {predef, port}, {predef, reference}]};
-expand_predef_alias(node) -> tatom();
-expand_predef_alias(timeout) -> {union, [{singleton, infinity}, expand_predef_alias(non_neg_integer)]};
-expand_predef_alias(no_return) -> {predef, none};
-expand_predef_alias(non_neg_integer) -> {range, 0, '*'};
-expand_predef_alias(pos_integer) -> {range, 1, '*'};
-expand_predef_alias(neg_integer) -> {range, '*', -1};
+expand_predef_alias2(map) -> {map, [{map_field_opt, {predef, any}, {predef, any}}]};
+expand_predef_alias2(function) -> {fun_simple};
+expand_predef_alias2(module) -> tatom();
+expand_predef_alias2(mfa) -> {tuple, [tatom(), tatom(), {predef, integer}]};
+expand_predef_alias2(arity) -> {predef, integer};
+expand_predef_alias2(identifier) -> {union, [{predef, pid}, {predef, port}, {predef, reference}]};
+expand_predef_alias2(node) -> tatom();
+expand_predef_alias2(timeout) -> {union, [{singleton, infinity}, expand_predef_alias(non_neg_integer)]};
+expand_predef_alias2(no_return) -> {predef, none};
+expand_predef_alias2(non_neg_integer) -> {range, 0, '*'};
+expand_predef_alias2(pos_integer) -> {range, 1, '*'};
+expand_predef_alias2(neg_integer) -> {range, '*', -1};
 
-expand_predef_alias(Name) ->
+expand_predef_alias2(Name) ->
     logger:error("Not expanding: ~p", [Name]),
     errors:not_implemented(utils:sformat("expand_predef_alias for ~w", Name)).
 
@@ -438,20 +441,21 @@ mk_builtin_funs(Path) ->
     ?LOG_TRACE2("Builtin functions: ~200p", Result),
     Result.
 
--spec collect_exports_and_specs([dynamic()]) ->
-    {sets:set({atom(), arity()}), [dynamic()]}.
+-spec collect_export_form(ast_erl:form(), sets:set({atom(), arity()})) -> sets:set({atom(), arity()}).
+collect_export_form({attribute, _, export, Funs}, Exports) ->
+    utils:set_add_many(?assert_type(Funs, [{atom(), arity()}]), Exports);
+collect_export_form(_, Exports) -> Exports.
+
+-spec collect_spec_form(ast_erl:form(), [ast_erl:form()]) -> [ast_erl:form()].
+collect_spec_form(Form = {attribute, _, spec, _}, Specs) -> [Form | Specs];
+collect_spec_form(_, Specs) -> Specs.
+
+-spec collect_exports_and_specs([ast_erl:form()]) ->
+    {sets:set({atom(), arity()}), [ast_erl:form()]}.
 collect_exports_and_specs(RawForms) ->
-    lists:foldl(
-      fun (Form, {Exports, Specs}) ->
-              case Form of
-                  {attribute, _, spec, _} ->
-                      {Exports, [Form | Specs]};
-                  {attribute, _, export, Funs} ->
-                      {utils:set_add_many(Funs, Exports), Specs};
-                  _ -> {Exports, Specs}
-              end
-      end,
-      {sets:new([{version, 2}]), []}, RawForms).
+    Exports = lists:foldl(fun collect_export_form/2, sets:new([{version, 2}]), RawForms),
+    Specs = lists:foldl(fun collect_spec_form/2, [], RawForms),
+    {Exports, Specs}.
 
 -spec filter_exported_specs([ast:form()], sets:set({atom(), arity()})) -> fun_types().
 filter_exported_specs(AllSpecs, Exports) ->
