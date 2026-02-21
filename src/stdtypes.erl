@@ -432,30 +432,35 @@ mk_builtin_funs(Path) ->
     RawForms = parse:parse_file_or_die(Path, #parse_opts{
                                                 verbose = false
                                                }),
-    {Exports, RawSpecs} =
-        lists:foldl(
-          fun (Form, Acc = {Exports, Specs}) ->
-                  case Form of
-                      {attribute, _, export, Funs} ->
-                          {utils:set_add_many(Funs, Exports), Specs};
-                      {attribute, _, spec, _} ->
-                          {Exports, [Form | Specs]};
-                      _ -> Acc
-                  end
-          end,
-          {sets:new([{version, 2}]), []}, RawForms),
+    {Exports, RawSpecs} = collect_exports_and_specs(RawForms),
     AllSpecs = ast_transform:trans(Path, lists:reverse(RawSpecs), flat, varenv:empty("function")),
-    Result =
-        lists:filtermap(
-          fun (Spec) ->
-                  case Spec of
-                      {attribute, _, spec, Name, Arity, Ty, without_mod} ->
-                          case sets:is_element({Name, Arity}, Exports) of
-                              true -> {true, {Name, Arity, Ty}};
-                              false -> false
-                          end;
-                      _ -> false
-                  end
-          end, AllSpecs) ++ extra_funs(),
+    Result = filter_exported_specs(AllSpecs, Exports) ++ extra_funs(),
     ?LOG_TRACE2("Builtin functions: ~200p", Result),
     Result.
+
+-spec collect_exports_and_specs([ast_erl:form()]) ->
+    {sets:set({atom(), arity()}), [ast_erl:form()]}.
+collect_exports_and_specs([]) -> {sets:new([{version, 2}]), []};
+collect_exports_and_specs([Form | Rest]) ->
+    {Exports, Specs} = collect_exports_and_specs(Rest),
+    case Form of
+        {attribute, _, export, Funs} ->
+            {utils:set_add_many(Funs, Exports), Specs};
+        {attribute, _, spec, _} ->
+            {Exports, [Form | Specs]};
+        _ -> {Exports, Specs}
+    end.
+
+-spec filter_exported_specs([ast:form()], sets:set({atom(), arity()})) -> fun_types().
+filter_exported_specs(AllSpecs, Exports) ->
+    lists:filtermap(
+      fun (Spec) ->
+              case Spec of
+                  {attribute, _, spec, Name, Arity, Ty, without_mod} ->
+                      case sets:is_element({Name, Arity}, Exports) of
+                          true -> {true, {Name, Arity, Ty}};
+                          false -> false
+                      end;
+                  _ -> false
+              end
+      end, AllSpecs).
