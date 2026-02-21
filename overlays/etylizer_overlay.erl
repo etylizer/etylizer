@@ -58,6 +58,9 @@
 -spec 'erlang:hd'(nonempty_list(A)) -> A.
 'erlang:hd'(_List) -> error(overlay).
 
+-spec 'erlang:system_info'(dynamic()) -> dynamic().
+'erlang:system_info'(_) -> error(overlay).
+
 -type deepList(A) :: [A | deepList(A)].
 -spec 'lists:flatten'(deepList(A)) -> [A].
 'lists:flatten'(_) -> error(overlay).

@@ -116,7 +116,7 @@ get_rebar_hash(RebarLockFile) ->
 
 -spec get_external_deps(file:filename()) -> {string(), string()}.
 get_external_deps(RebarLockFile) ->
-    OtpVersion = ?assert_type(erlang:system_info(otp_release), string()),
+    OtpVersion = erlang:system_info(otp_release),
     RebarHash = get_rebar_hash(RebarLockFile),
     {OtpVersion, RebarHash}.
 
