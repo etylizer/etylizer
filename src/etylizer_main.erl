@@ -12,12 +12,14 @@
 -include("log.hrl").
 -include("parse.hrl").
 -include("etylizer_main.hrl").
+-include("etylizer.hrl").
 
 -spec parse_define(string()) -> {atom(), string()}.
 parse_define(S) ->
     case string:split(string:strip(S), "=") of
+        [Name, Val] -> {list_to_atom(Name), Val};
         [Name] -> {list_to_atom(Name), ""};
-        [Name | Val] -> {list_to_atom(Name), Val}
+        _ -> erlang:error({bad_define, S})
     end.
 
 -spec cmd_spec() -> argparse:command().
@@ -157,13 +159,13 @@ fix_load_path(Opts) ->
         {[], []} -> true;
         {Start, End} ->
             Path = Start ++ [D || D <- code:get_path(), D =/= "."] ++ End,
-            true = code:set_path(Path),
+            ?assert_pattern(true, code:set_path(Path)),
             true
     end.
 
 -spec doWork(#opts{}) -> [file:filename()].
 doWork(Opts) ->
-    global_state:with_new_state(fun() ->
+    ?assert_type(global_state:with_new_state(fun() ->
       ?LOG_TRACE("Initializing ETS tables"),
       parse_cache:init(Opts),
       stdtypes:init(),
@@ -203,7 +205,7 @@ doWork(Opts) ->
           parse_cache:cleanup(),
           stdtypes:cleanup()
       end
-                                end).
+                                end), [file:filename()]).
 
 
 -spec main([string()]) -> ok.
