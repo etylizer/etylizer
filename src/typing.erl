@@ -214,7 +214,7 @@ dynamic_ty_scheme(Arity) ->
 
 -spec check_exported_funs_specified(ast:forms()) -> ok | no_return().
 check_exported_funs_specified(Forms) ->
-    Exported = [Exp || {attribute, _, export, Exports} <- Forms, Exp <- Exports],
+    Exported = lists:append([Exports || {attribute, _, export, Exports} <- Forms]),
     Speced = [{Fun, Arity} || {attribute, _, spec, Fun, Arity, _, _} <- Forms],
     Missing = [ utils:sformat("~w/~w", Fun, Arity) || {Fun, Arity} <- Exported, not lists:member({Fun, Arity}, Speced) ],
     case Missing of
