@@ -9,6 +9,7 @@
 %         substs/1,
 %         subst/1,
          constr_block/1,
+         constr_simp/1,
          loc/1,
 %         locs/1,
          atom/1,

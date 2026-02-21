@@ -86,13 +86,13 @@ check_redundant_branch(Tab, FixedTyvars, SubtyConstrs, {Loc, UnmatchedConstrs}, 
         true ->
             ?LOG_DEBUG("Branch at ~s is redundant. Constraints that were added to the constraint above: ~s~nFixed: ~200p",
                 ast:format_loc(Loc),
-                pretty:render_constr(UnmatchedConstrs),
+                pretty:render_list(fun pretty:constr_simp/1, sets:to_list(UnmatchedConstrs)),
                 sets:to_list(FixedTyvars)),
             {error, {redundant_branch, Loc, ""}};
         false ->
             ?LOG_DEBUG("Branch at ~s is not redundant. Constraints that were added to the constraint above: ~s~nFixed: ~200p",
                 ast:format_loc(Loc),
-                pretty:render_constr(UnmatchedConstrs),
+                pretty:render_list(fun pretty:constr_simp/1, sets:to_list(UnmatchedConstrs)),
                 sets:to_list(FixedTyvars)),
             ok
     end.
@@ -101,8 +101,8 @@ check_redundant_branch(Tab, FixedTyvars, SubtyConstrs, {Loc, UnmatchedConstrs}, 
     {error, error() | none}.
 locate_unsat_error(Tab, FixedTyvars, Ds) ->
     Blocks = constr_error_locs:simp_constrs_to_blocks(Ds),
-    ?LOG_DEBUG("Constraints are not satisfiable, now locating source of errors. Blocks:~n~s",
-        pretty:render_list(fun pretty:constr_block/1, Blocks)),
+    ?LOG_DEBUG("Constraints are not satisfiable, now locating source of errors. ~w blocks",
+        length(Blocks)),
     Timeout = 4000,
     TimeoutRes = utils:timeout(Timeout, fun () -> locate_tyerror(Tab, FixedTyvars, Blocks) end),
     case TimeoutRes of
@@ -118,7 +118,7 @@ locate_unsat_error(Tab, FixedTyvars, Ds) ->
 check_simp_constrs(Tab, FixedTyvars, Ds, What) ->
     SubtyConstrs = constr_collect:collect_constrs_no_matching_cond(Ds),
     ?LOG_DEBUG("Checking constraints for satisfiability to type check ~s:~n~s~nFixed: ~s",
-        What, pretty:render_constr(SubtyConstrs), pretty:render_set(fun pretty:atom/1, FixedTyvars)),
+        What, pretty:render_list(fun pretty:constr_simp/1, sets:to_list(SubtyConstrs)), pretty:render_set(fun pretty:atom/1, FixedTyvars)),
     case check_nominal_constrs(Tab, SubtyConstrs) of
         {error, NomErr} -> {error, NomErr};
         ok ->
@@ -151,7 +151,8 @@ check_simp_constrs(Tab, FixedTyvars, Ds, What) ->
 % Precondition: Pred(F(X1) union ... union F(Xn)), where n is the length of L, must be false.
 -spec search_failing_prefix(
     list(T), fun((T) -> sets:set(U)), fun((sets:set(U)) -> boolean())) -> T.
-search_failing_prefix(L, F, Pred) ->
+search_failing_prefix([], _, _) -> erlang:error({search_failing_prefix, empty_list});
+search_failing_prefix([_ | _] = L, F, Pred) ->
     N = length(L),
     ?LOG_DEBUG("Search for a minimal unsatisfiable prefix in ~w blocks", N),
     I = search_failing_prefix(L, F, Pred, 1, N),
@@ -163,13 +164,13 @@ search_failing_prefix(L, F, Pred) ->
 % Left and Right are the (inclusive) boundaries of the search, starting at 1.
 % Invariants: Left <= Right and Pred(F(X1) union ... union F(X_Right)) yields false
 -spec search_failing_prefix(
-    list(T), fun((T) -> sets:set(U)), fun((sets:set(U)) -> boolean()), integer(), integer())
-    -> integer().
-search_failing_prefix(L, F, Pred, Left, Right) ->
-    Mid = (Left + Right) div 2,
+    nonempty_list(T), fun((T) -> sets:set(U)), fun((sets:set(U)) -> boolean()), pos_integer(), pos_integer())
+    -> pos_integer().
+search_failing_prefix([_ | _] = L, F, Pred, Left, Right) ->
+    Mid = max(1, (Left + Right) div 2),
     Prefix = lists:sublist(L, Mid), % take all elements until Mid (inclusive)
     ?LOG_DEBUG("Checking if the first ~w blocks are satisifiable", Mid),
-    Set = sets:union(lists:map(F, Prefix)),
+    Set = sets:union([F(X) || X <- Prefix]),
     Res = Pred(Set),
     % io:format("  Left=~w, Right=~w, Mid=~w, Res=~w, Prefix=~w~n", [Left, Right, Mid, Res, Prefix]),
     case Res of
