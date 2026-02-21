@@ -183,6 +183,8 @@ collect_vars_clist(L, CPos, Pos, Fix) when is_list(L) ->
         maps:merge_with(fun combine_vars/3, M1, M2)
                 end, Pos, L).
 
+-spec collect_vars(ast:ty() | {ty_hole}, 0 | 1, #{ast:ty_varname() => [0 | 1]}, sets:set(ast:ty_varname())) ->
+    #{ast:ty_varname() => [0 | 1]}.
 collect_vars(M = {map, _}, CPos, Pos, Fix) ->
     collect_vars(ty_parser:rewrite_map_to_representation(M), CPos, Pos, Fix);
 collect_vars({K, Components}, CPos, Pos, Fix) when K == union; K == intersection; K == tuple ->

@@ -54,7 +54,17 @@ fresh_framevar(Ctx) ->
 -spec preprocess_constrs(constr:collected_constrs(), ctx()) ->
     {constr:subty_constrs(), constr:subty_constrs(), constr:mater_constrs(), subst:base_subst()}.
 preprocess_constrs(Constrs, Ctx) ->
-    {SubtyConstrs, Maters} = sets:fold(
+    {SubtyConstrs, Maters} = separate_constrs(Constrs, Ctx),
+    UnificationSubst = build_unification_subst(Maters),
+    InlinedConstrs = inline_subst(SubtyConstrs, UnificationSubst),
+    {InlinedConstrs, SubtyConstrs, Maters, UnificationSubst}.
+
+% Separate collected constraints into subtyping and materialization constraints,
+% replacing dynamic() with fresh frame variables.
+-spec separate_constrs(constr:collected_constrs(), ctx()) ->
+    {constr:subty_constrs(), constr:mater_constrs()}.
+separate_constrs(Constrs, Ctx) ->
+    sets:fold(
         fun
             ({scsubty, Loc, T1, T2}, {Cs, Ms}) ->
               T1b = replace_dynamic(T1, Ctx),
@@ -62,21 +72,24 @@ preprocess_constrs(Constrs, Ctx) ->
               {sets:add_element({scsubty, Loc, T1b, T2b}, Cs), Ms};
             ({scmater, Loc, T1, T2}, {Cs, Ms}) ->
               T1b = replace_dynamic(T1, Ctx),
-              {Cs, sets:add_element({scmater, Loc, T1b, T2}, Ms)};
-            (Constr, {Cs, Ms}) ->
-              {sets:add_element(Constr, Cs), Ms}
+              {Cs, sets:add_element({scmater, Loc, T1b, T2}, Ms)}
         end,
         {sets:new(), sets:new()},
-        Constrs),
+        Constrs).
 
-    UnificationSubst = maps:from_list(lists:map(fun({scmater, _, Tau, Alpha}) -> {Alpha, Tau} end, sets:to_list(Maters))),
-    InlinedConstrs = sets:map(fun(Constr) ->
-      case Constr of
-        {scsubty, _Loc, T1, T2} -> {scsubty, _Loc, subst:apply_base(UnificationSubst, T1), subst:apply_base(UnificationSubst, T2)};
-        Other -> Other
-      end
-    end, SubtyConstrs),
-    {InlinedConstrs, SubtyConstrs, Maters, UnificationSubst}.
+% Build a unification substitution from materialization constraints.
+-spec build_unification_subst(constr:mater_constrs()) -> subst:base_subst().
+build_unification_subst(Maters) ->
+    maps:from_list(lists:map(
+        fun({scmater, _, Tau, Alpha}) -> {Alpha, Tau} end,
+        sets:to_list(Maters))).
+
+% Inline the unification substitution into subtyping constraints.
+-spec inline_subst(constr:subty_constrs(), subst:base_subst()) -> constr:subty_constrs().
+inline_subst(SubtyConstrs, UnificationSubst) ->
+    sets:map(fun({scsubty, Loc, T1, T2}) ->
+        {scsubty, Loc, subst:apply_base(UnificationSubst, T1), subst:apply_base(UnificationSubst, T2)}
+    end, SubtyConstrs).
 
 -spec replace_dynamic(ast:ty(), ctx()) -> ast:ty().
 replace_dynamic(Ty, Ctx) ->
@@ -253,8 +266,7 @@ collect_tyvars(Ty) ->
   (ast:ty_varname()) -> boolean();
   (ast:ty_var()) -> boolean().
 is_framevar(Name) when is_atom(Name) -> starts_with(Name, "%");
-is_framevar({var, Name}) -> starts_with(Name, "%");
-is_framevar(_) -> false.
+is_framevar({var, Name}) -> starts_with(Name, "%").
 
 -spec is_typevar(ast:ty_varname()) -> boolean().
 is_typevar(Name) -> starts_with(Name, "$").
