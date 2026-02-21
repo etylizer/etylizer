@@ -17,6 +17,7 @@
 
 -include("log.hrl").
 -include("etylizer_main.hrl").
+-include("etylizer.hrl").
 
 -type index() :: {
     % OTP version and hash of rebar.lock
@@ -54,7 +55,7 @@ load_index(RebarLockFile, Path, Mode) ->
             case file:consult(Path) of
                 {ok, [{etylizer_index, ?INDEX_VERSION, Index}]} ->
                     ?LOG_TRACE("Loading index from ~p", Path),
-                    Index;
+                    ?assert_type(Index, index());
                 {ok, []} ->
                     BadIndex(utils:sformat("Empty index at ~p", Path));
                 {ok, _} ->
@@ -72,13 +73,8 @@ load_index(RebarLockFile, Path, Mode) ->
 -spec save_index(file:filename(), index()) -> ok.
 save_index(Path, Index) ->
     filelib:ensure_dir(Path),
-    case file:write_file(Path, io_lib:format("~p.~n", [{etylizer_index, ?INDEX_VERSION, Index}])) of
-        ok ->
-            ?LOG_DEBUG("Stored index at ~p", Path),
-            ok;
-        {error, Reason} ->
-            ?ABORT("Error occurred while trying to save index. Reason: ~s", Reason)
-    end.
+    Formatted = lists:flatten(io_lib:format("~p.~n", [{etylizer_index, ?INDEX_VERSION, Index}])),
+    ?assert_pattern(ok, file:write_file(Path, ?assert_type(Formatted, string()))).
 
 -spec has_file_changed(file:filename(), index()) -> boolean().
 has_file_changed(Path, {_, Index}) ->
@@ -86,7 +82,7 @@ has_file_changed(Path, {_, Index}) ->
         error ->
             true;
         {ok, {OldFileHash, _}} ->
-            {ok, Content} = file:read_file(Path),
+            {ok, Content} = ?assert_type(file:read_file(Path), {ok, binary()}),
             NewHash = utils:hash_sha1(Content),
             NewHash =/= OldFileHash
     end.
@@ -99,25 +95,29 @@ has_exported_interface_changed(Path, Forms, {_, Index}) ->
         {ok, {_, OldInterfaceHash}} ->
             Interface = cm_module_interface:extract_interface_declaration(Forms),
             ?LOG_DEBUG("Interface of ~p: ~200p", Path, Interface),
-            NewHash = utils:hash_sha1(io_lib:write(Interface)),
+            Written = ?assert_type(io_lib:write(Interface), iodata()),
+            NewHash = utils:hash_sha1(Written),
             OldInterfaceHash =/= NewHash
+    end.
+
+-spec get_rebar_hash(file:filename()) -> string() | [].
+get_rebar_hash(RebarLockFile) ->
+    case utils:hash_file(RebarLockFile) of
+        {error, _} ->
+            case filelib:is_file(paths:rebar_config_from_lock_file(RebarLockFile)) of
+                true ->
+                    ?ABORT("Could not read rebar's lock file at ~p. Please build your project " ++
+                            "with rebar before using etylizer.", RebarLockFile);
+                false ->
+                    []
+            end;
+        H -> H
     end.
 
 -spec get_external_deps(file:filename()) -> {string(), string()}.
 get_external_deps(RebarLockFile) ->
-    OtpVersion = erlang:system_info(otp_release),
-    RebarHash =
-        case utils:hash_file(RebarLockFile) of
-            {error, _} ->
-                case filelib:is_file(paths:rebar_config_from_lock_file(RebarLockFile)) of
-                    true ->
-                        ?ABORT("Could not read rebar's lock file at ~p. Please build your project " ++
-                                "with rebar before using etylizer.", RebarLockFile);
-                    false ->
-                        []
-                end;
-            H -> H
-        end,
+    OtpVersion = ?assert_type(erlang:system_info(otp_release), string()),
+    RebarHash = get_rebar_hash(RebarLockFile),
     {OtpVersion, RebarHash}.
 
 -spec has_external_dep_changed(file:filename(), index()) -> {boolean(), index()}.
@@ -138,8 +138,9 @@ has_external_dep_changed(RebarLockFile, {{StoredOtpVersion, StoredRebarHash}, In
 
 -spec insert(file:filename(), ast:forms(), index()) -> index().
 insert(Path, Forms, {DepVersions, Index}) ->
-    {ok, FileContent} = file:read_file(Path),
+    {ok, FileContent} = ?assert_type(file:read_file(Path), {ok, binary()}),
     FileHash = utils:hash_sha1(FileContent),
     Interface = cm_module_interface:extract_interface_declaration(Forms),
-    InterfaceHash = utils:hash_sha1(io_lib:write(Interface)),
+    Written = ?assert_type(io_lib:write(Interface), iodata()),
+    InterfaceHash = utils:hash_sha1(Written),
     {DepVersions, maps:put(Path, {FileHash, InterfaceHash}, Index)}.
