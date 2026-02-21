@@ -245,10 +245,12 @@ get_fun_name({function, _Loc, Name, Arity, _}) -> utils:sformat("~w/~w", Name, A
 % The forall-quantified tyvars are bound in Rhs, Rhs contains no other type variables.
 -type tydef() :: {Name::atom(), Rhs::ty_scheme()}.
 
+-type etylizer_form() :: {attribute, loc(), etylizer, {disable_exhaustiveness, [{atom(), arity()}]}}.
+
 % Attribute "-file(File,Line)" ignored.
 % Wild attributes ignored.
 -type form() :: export_form() | export_type_form() | import_form() | mod_form() | compile_form()
-    | fun_decl() | fun_spec() | record_decl() | type_decl().
+    | fun_decl() | fun_spec() | record_decl() | type_decl() | etylizer_form().
 -type forms() :: [form()].
 
 % 8.2  Atomic Literals
