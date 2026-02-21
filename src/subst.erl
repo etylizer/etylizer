@@ -198,9 +198,8 @@ combine_vars(_K, V1, V2) ->
     #{ast:ty_varname() => [0 | 1]}.
 collect_vars_clist(L, CPos, Pos, Fix) when is_list(L) ->
     lists:foldl(fun({C1, C2}, Acc) ->
-        M1 = collect_vars(C1, CPos, Acc, Fix),
-        M2 = collect_vars(C2, flip_pos(CPos), Acc, Fix),
-        maps:merge_with(fun combine_vars/3, M1, M2)
+        Acc1 = collect_vars(C1, CPos, Acc, Fix),
+        collect_vars(C2, flip_pos(CPos), Acc1, Fix)
                 end, Pos, L).
 
 -spec collect_vars(ast:ty() | {ty_hole}, 0 | 1, #{ast:ty_varname() => [0 | 1]}, sets:set(ast:ty_varname())) ->
@@ -237,29 +236,23 @@ collect_vars(Ty, CPos, Pos, Fix) ->
 collect_vars_rec(Ty, CPos, Pos, Fix) ->
     case Ty of
         {K, Components} when K == union; K == intersection; K == tuple ->
-            VPos = lists:map(fun(T) -> collect_vars(T, CPos, Pos, Fix) end, Components),
-            lists:foldl(fun(FPos, Current) -> maps:merge_with(fun combine_vars/3, FPos, Current) end, Pos, VPos);
+            lists:foldl(fun(T, Acc) -> collect_vars(T, CPos, Acc, Fix) end, Pos, Components);
         {fun_full, Components, Target} ->
-            VPos = lists:map(fun(T) -> collect_vars(T, flip_pos(CPos), Pos, Fix) end, Components),
-            M1 = lists:foldl(fun(FPos, Current) -> maps:merge_with(fun combine_vars/3, FPos, Current) end, Pos, VPos),
-            M2 = collect_vars(Target, CPos, Pos, Fix),
-            maps:merge_with(fun combine_vars/3, M1, M2);
+            Acc1 = lists:foldl(fun(T, Acc) -> collect_vars(T, flip_pos(CPos), Acc, Fix) end, Pos, Components),
+            collect_vars(Target, CPos, Acc1, Fix);
         {negation, A} -> collect_vars(A, flip_pos(CPos), Pos, Fix);
         {nonempty_improper_list, A, B} ->
-            M1 = collect_vars(A, CPos, Pos, Fix),
-            M2 = collect_vars(B, CPos, Pos, Fix),
-            maps:merge_with(fun combine_vars/3, M1, M2);
+            Acc1 = collect_vars(A, CPos, Pos, Fix),
+            collect_vars(B, CPos, Acc1, Fix);
         {nonempty_list, A} -> collect_vars(A, CPos, Pos, Fix);
         {list, A} -> collect_vars(A, CPos, Pos, Fix);
         {mu, _MuVar, A} -> collect_vars(A, CPos, Pos, Fix);
         {cons, A, B} ->
-            M1 = collect_vars(A, CPos, Pos, Fix),
-            M2 = collect_vars(B, CPos, Pos, Fix),
-            maps:merge_with(fun combine_vars/3, M1, M2);
+            Acc1 = collect_vars(A, CPos, Pos, Fix),
+            collect_vars(B, CPos, Acc1, Fix);
         {improper_list, A, B} ->
-            M1 = collect_vars(A, CPos, Pos, Fix),
-            M2 = collect_vars(B, CPos, Pos, Fix),
-            maps:merge_with(fun combine_vars/3, M1, M2);
+            Acc1 = collect_vars(A, CPos, Pos, Fix),
+            collect_vars(B, CPos, Acc1, Fix);
         _ ->
             logger:error("Unhandled collect vars branch: ~p", [Ty]),
             errors:bug("Unhandled collect vars branch: ~p", [Ty])
