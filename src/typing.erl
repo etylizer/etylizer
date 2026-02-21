@@ -10,6 +10,7 @@
 
 -include("log.hrl").
 -include("typing.hrl").
+-include("etylizer.hrl").
 
 -spec new_ctx(symtab:t(), symtab:t(), t:opt(ast_check:ty_map())) -> ctx().
 new_ctx(Tab, Overlay, Sanity) ->
@@ -48,62 +49,94 @@ check_forms(Ctx, FileName, Forms, Only, Ignore, CheckExports) ->
         false ->
             ?LOG_DEBUG("Skipping check for exported functions in ~s", FileName)
     end,
+    ExtCtx = make_ext_ctx(Ctx, FileName, Forms),
+    check_forms_classify(Ctx, ExtCtx, FileName, Forms, Only, Ignore).
+
+-spec make_ext_ctx(ctx(), string(), ast:forms()) -> ctx().
+make_ext_ctx(Ctx, FileName, Forms) ->
     ExtTab = symtab:extend_symtab(FileName, Forms, Ctx#ctx.symtab, Ctx#ctx.overlay_symtab),
     DisableExhaustiveness = disable_exhaustiveness_from_forms(Forms),
-    ExtCtx = Ctx#ctx { symtab = ExtTab, disable_exhaustiveness = DisableExhaustiveness },
+    Ctx#ctx { symtab = ExtTab, disable_exhaustiveness = DisableExhaustiveness }.
+
+-spec check_forms_classify(ctx(), ctx(), string(), ast:forms(), sets:set(string()), sets:set(string())) -> ok.
+check_forms_classify(Ctx, ExtCtx, FileName, Forms, Only, Ignore) ->
     ?LOG_DEBUG("Only: ~200p", sets:to_list(Only)),
     ?LOG_DEBUG("Ignore: ~200p", sets:to_list(Ignore)),
-    % Split in functions with and without tyspec
-    GradualMode = ExtCtx#ctx.gradual_typing_mode,
     {FunsWithSpec, FunsWithoutSpec, KnownFuns} =
-        lists:foldr(
-          fun(Form, Acc = {With, Without, Knowns}) ->
-            case Form of
-                {function, Loc, Name, Arity, _Clauses} ->
-                    ModuleName = ast_utils:modname_from_path(FileName),
-                    Ref = {ref, Name, Arity},
-                    RefStr = utils:sformat("~w/~w", Name, Arity),
-                    QRefStr = utils:sformat("~w:~s", ModuleName, RefStr),
-                    NameStr = utils:sformat("~w", Name),
-                    X = {QRefStr, RefStr, NameStr},
-                    Check = should_check(QRefStr, RefStr, NameStr, Only, Ignore),
-                    case symtab:find_fun(Ref, ExtTab) of
-                        error ->
-                            if
-                              Check ->
-                                  case GradualMode of
-                                      dynamic ->
-                                          DynTy = dynamic_ty_scheme(Arity),
-                                          {[{Form, DynTy} | With], Without, [X | Knowns]};
-                                      infer ->
-                                          {With, [Form | Without], [X | Knowns]}
-                                  end;
-                              true ->
-                                  case GradualMode of
-                                      dynamic ->
-                                          {With, Without, [X | Knowns]};
-                                      infer ->
-                                          errors:some_error(
-                                              "~s: Cannot ignore function without type spec: ~s", [FileName, RefStr]
-                                          )
-                                  end
-                            end;
-                        {ok, Ty} ->
-                            if
-                                Check -> {[{Form, Ty} | With], Without, [X | Knowns]};
-                                true ->
-                                    ?LOG_TRACE("~s: not type checking function ~s as requested",
-                                               ast:format_loc(Loc), RefStr),
-                                    {With, Without, [X | Knowns]}
-                            end
-                    end;
-                _ -> Acc
-            end
-          end,
-          {[], [], []},
-          Forms
-         ),
-    % Make sure that Only does not contain an unknown function
+        classify_forms(Forms, FileName, ExtCtx#ctx.symtab, ExtCtx#ctx.gradual_typing_mode, Only, Ignore),
+    check_unknowns(Only, KnownFuns),
+    check_forms_typecheck(Ctx, ExtCtx, FileName, FunsWithSpec, FunsWithoutSpec).
+
+-spec check_forms_typecheck(ctx(), ctx(), string(), [{ast:fun_decl(), ast:ty_scheme()}], [ast:fun_decl()]) -> ok.
+check_forms_typecheck(Ctx, ExtCtx, FileName, FunsWithSpec, FunsWithoutSpec) ->
+    % Infer types of functions without spec (empty in dynamic mode)
+    InferredTyEnvs = typing_infer:infer_all(ExtCtx, FileName, FunsWithoutSpec),
+    ?LOG_DEBUG("Checking ~w functions in ~s against their specs (~w environments)",
+              length(FunsWithSpec), FileName, length(InferredTyEnvs)),
+    check_against_envs(Ctx#ctx.report_mode, ExtCtx, FileName, FunsWithSpec, InferredTyEnvs, []),
+    ?LOG_INFO("Checking ~w functions in ~s against their specs finished successfully",
+              length(FunsWithSpec), FileName),
+    sanity_infer_check(ExtCtx, FileName, FunsWithSpec).
+
+-type classify_acc() :: {
+    [{ast:fun_decl(), ast:ty_scheme()}],
+    [ast:fun_decl()],
+    [{string(), string(), string()}]
+}.
+
+-spec classify_forms(ast:forms(), string(), symtab:t(), feature_flags:gradual_typing_mode(), sets:set(string()), sets:set(string())) -> classify_acc().
+classify_forms(Forms, FileName, ExtTab, GradualMode, Only, Ignore) ->
+    FunDecls = [F || F = {function, _, _, _, _} <- Forms],
+    lists:foldr(
+        fun(Form, Acc) -> classify_fun_decl(Form, Acc, FileName, ExtTab, GradualMode, Only, Ignore) end,
+        {[], [], []},
+        FunDecls).
+
+-spec classify_fun_decl(ast:fun_decl(), classify_acc(), string(), symtab:t(), feature_flags:gradual_typing_mode(), sets:set(string()), sets:set(string())) -> classify_acc().
+classify_fun_decl(Form = {function, Loc, Name, Arity, _Clauses}, Acc, FileName, ExtTab, GradualMode, Only, Ignore) ->
+    RefStr = utils:sformat("~w/~w", Name, Arity),
+    QRefStr = utils:sformat("~w:~s", ast_utils:modname_from_path(FileName), RefStr),
+    NameStr = utils:sformat("~w", Name),
+    X = {QRefStr, RefStr, NameStr},
+    Check = should_check(QRefStr, RefStr, NameStr, Only, Ignore),
+    case symtab:find_fun({ref, Name, Arity}, ExtTab) of
+        error ->
+            case Check of
+                true -> classify_no_spec_checked(Form, Arity, GradualMode, Acc, X);
+                false -> classify_no_spec_ignored(FileName, RefStr, GradualMode, Acc, X)
+            end;
+        {ok, Ty} ->
+            classify_with_spec(Check, Form, Loc, RefStr, Ty, Acc, X)
+    end.
+
+-spec classify_no_spec_checked(
+    ast:fun_decl(), arity(), feature_flags:gradual_typing_mode(), classify_acc(),
+    {string(), string(), string()}) -> classify_acc().
+classify_no_spec_checked(Form, Arity, dynamic, {With, Without, Knowns}, X) ->
+    {[{Form, dynamic_ty_scheme(?assert_type(Arity, non_neg_integer()))} | With], Without, [X | Knowns]};
+classify_no_spec_checked(Form, _Arity, infer, {With, Without, Knowns}, X) ->
+    {With, [Form | Without], [X | Knowns]}.
+
+-spec classify_no_spec_ignored(
+    string(), string(), feature_flags:gradual_typing_mode(), classify_acc(),
+    {string(), string(), string()}) -> classify_acc().
+classify_no_spec_ignored(_FileName, _RefStr, dynamic, {With, Without, Knowns}, X) ->
+    {With, Without, [X | Knowns]};
+classify_no_spec_ignored(FileName, RefStr, infer, _Acc, _X) ->
+    errors:some_error("~s: Cannot ignore function without type spec: ~s", [FileName, RefStr]).
+
+-spec classify_with_spec(
+    boolean(), ast:fun_decl(), ast:loc(), string(), ast:ty_scheme(),
+    classify_acc(), {string(), string(), string()}) -> classify_acc().
+classify_with_spec(true, Form, _Loc, _RefStr, Ty, {With, Without, Knowns}, X) ->
+    {[{Form, Ty} | With], Without, [X | Knowns]};
+classify_with_spec(false, _Form, Loc, RefStr, _Ty, {With, Without, Knowns}, X) ->
+    ?LOG_TRACE("~s: not type checking function ~s as requested",
+               ast:format_loc(Loc), RefStr),
+    {With, Without, [X | Knowns]}.
+
+-spec check_unknowns(sets:set(string()), [{string(), string(), string()}]) -> ok.
+check_unknowns(Only, KnownFuns) ->
     {WithModuleName, WithArity, JustNames} = lists:unzip3(KnownFuns),
     Unknowns = sets:subtract(Only,
         sets:union([sets:from_list(WithModuleName, [{version, 2}]),
@@ -113,85 +146,85 @@ check_forms(Ctx, FileName, Forms, Only, Ignore, CheckExports) ->
         true -> ok;
         false ->
             ?LOG_INFO("Unknown functions in only: ~200p", sets:to_list(Unknowns))
-    end,
-    % Infer types of functions without spec (empty in dynamic mode)
-    InferredTyEnvs = typing_infer:infer_all(ExtCtx, FileName, FunsWithoutSpec),
-    % Typechecks the functions with a type spec. We need to check against all InferredTyEnvs,
-    % we can stop on the first success.
-    ?LOG_DEBUG("Checking ~w functions in ~s against their specs (~w environments)",
-              length(FunsWithSpec), FileName, length(InferredTyEnvs)),
+    end.
 
-    % if in report mode, continue type checking
-    ReportMode = Ctx#ctx.report_mode,
-    Loop =
-        fun Loop(Envs, Errs) ->
-                case Envs of
-                    [] ->
-                        case Errs of
-                            [] -> errors:bug("Lists of errors empty");
-                            [{_, Msg}] -> errors:ty_error(Msg);
-                            _ ->
-                                Formatted =
-                                    utils:map_flip(
-                                      Errs,
-                                      fun({Env, Msg}) ->
-                                              utils:sformat("~s:\nEnv: ~s",
-                                                            Msg,
-                                                            pretty:render_fun_env(Env))
-                                      end
-                                     ),
-                                Msg = utils:sformat("Checking functions against their specs " ++
-                                                        "failed for all ~w type environments " ++
-                                                        "inferred from functions without " ++
-                                                        "specs.\n\n~s",
-                                                    length(Errs), string:join(Formatted, "\n\n")),
-                                errors:ty_error(Msg)
-                        end;
-                    [E | RestEnvs] ->
-                        case ReportMode of
-                            early_exit -> 
-                                case typing_check:check_all(ExtCtx, FileName, E, FunsWithSpec) of
-                                    ok -> ok; % we are done
-                                    {error, Msg} -> Loop(RestEnvs, [{E, Msg} | Errs])
-                                end;
-                            report -> 
-                                typing_check:check_all_report(ExtCtx, FileName, E, FunsWithSpec)
-                        end
-                end
-        end,
-    Loop(InferredTyEnvs, []),
-    ?LOG_INFO("Checking ~w functions in ~s against their specs finished successfully",
-              length(FunsWithSpec), FileName),
+-spec check_against_envs(
+    feature_flags:report_mode(), ctx(), string(),
+    [{ast:fun_decl(), ast:ty_scheme()}], [symtab:fun_env()],
+    [{symtab:fun_env(), string()}]) -> ok.
+check_against_envs(_ReportMode, _ExtCtx, _FileName, _FunsWithSpec, [], Errs) ->
+    case Errs of
+        [] -> errors:bug("Lists of errors empty");
+        [{_, Msg}] -> errors:ty_error(Msg);
+        _ ->
+            Formatted = lists:map(fun format_env_error/1, Errs),
+            Msg = utils:sformat("Checking functions against their specs " ++
+                                    "failed for all ~w type environments " ++
+                                    "inferred from functions without " ++
+                                    "specs.\n\n~s",
+                                length(Errs), string:join(Formatted, "\n\n")),
+            errors:ty_error(Msg)
+    end;
+check_against_envs(ReportMode, ExtCtx, FileName, FunsWithSpec, [E | RestEnvs], Errs) ->
+    case ReportMode of
+        early_exit ->
+            case typing_check:check_all(ExtCtx, FileName, E, FunsWithSpec) of
+                ok -> ok;
+                {error, Msg} ->
+                    check_against_envs(ReportMode, ExtCtx, FileName, FunsWithSpec, RestEnvs, [{E, Msg} | Errs])
+            end;
+        report ->
+            typing_check:check_all_report(ExtCtx, FileName, E, FunsWithSpec)
+    end.
+
+-spec format_env_error({symtab:fun_env(), string()}) -> string().
+format_env_error({Env, Msg}) ->
+    utils:sformat("~s:\nEnv: ~s", Msg, pretty:render_fun_env(Env)).
+
+-spec sanity_infer_check(ctx(), string(), [{ast:fun_decl(), ast:ty_scheme()}]) -> ok.
+sanity_infer_check(ExtCtx, FileName, FunsWithSpec) ->
     case ExtCtx#ctx.sanity_infer of
         true ->
             InferCtx = ExtCtx#ctx{sanity = error},
             lists:foreach(
-                fun({Decl = {function, Loc, Name, Arity, _}, SpecTy}) ->
-                    FunStr = utils:sformat("~w/~w", Name, Arity),
-                    ?LOG_INFO("Sanity inference check for ~s in ~s", FunStr, FileName),
-                    global_state:with_new_state(fun() -> 
-                        % TODO disabling caching leads to different results for inference!
-                        Envs = typing_infer:infer_all(InferCtx, FileName, [Decl]),
-                        InferredTys = [T || Env <- Envs, [{_, T}] <:- [maps:to_list(Env)]],
-                        case lists:any(
-                                fun(InferredTy) ->
-                                    typing_infer:more_general(Loc, InferredTy, SpecTy, ExtCtx#ctx.symtab)
-                                end,
-                                InferredTys)
-                        of
-                            true ->
-                                ?LOG_INFO("Sanity inference check passed for ~s", FunStr);
-                            false ->
-                                errors:ty_error(Loc,
-                                    "Sanity inference check failed for ~s: "
-                                    "no inferred type is more general than the spec",
-                                    FunStr)
-                        end
-                    end)
+                fun({Decl, SpecTy}) ->
+                    sanity_infer_one(ExtCtx, InferCtx, FileName, Decl, SpecTy)
                 end,
                 FunsWithSpec);
         false -> ok
     end.
+
+-spec sanity_infer_one(ctx(), ctx(), string(), ast:fun_decl(), ast:ty_scheme()) -> ok.
+sanity_infer_one(ExtCtx, InferCtx, FileName, Decl = {function, _Loc, Name, Arity, _}, SpecTy) ->
+    FunStr = utils:sformat("~w/~w", Name, Arity),
+    ?LOG_INFO("Sanity inference check for ~s in ~s", FunStr, FileName),
+    ?assert_type(global_state:with_new_state(fun() ->
+        sanity_infer_one_inner(ExtCtx, InferCtx, FileName, Decl, SpecTy, FunStr)
+    end), ok).
+
+-spec sanity_infer_one_inner(ctx(), ctx(), string(), ast:fun_decl(), ast:ty_scheme(), string()) -> ok.
+sanity_infer_one_inner(ExtCtx, InferCtx, FileName, Decl = {function, Loc, _Name, _Arity, _}, SpecTy, FunStr) ->
+    % TODO disabling caching leads to different results for inference!
+    Envs = typing_infer:infer_all(InferCtx, FileName, [Decl]),
+    InferredTys = extract_inferred_tys(Envs),
+    case lists:any(
+            fun(InferredTy) ->
+                typing_infer:more_general(Loc, InferredTy, SpecTy, ExtCtx#ctx.symtab)
+            end,
+            InferredTys)
+    of
+        true ->
+            ?LOG_INFO("Sanity inference check passed for ~s", FunStr);
+        false ->
+            errors:ty_error(Loc,
+                "Sanity inference check failed for ~s: "
+                "no inferred type is more general than the spec",
+                FunStr)
+    end.
+
+-spec extract_inferred_tys([symtab:fun_env()]) -> [ast:ty_scheme()].
+extract_inferred_tys(Envs) ->
+    lists:flatmap(fun(Env) -> [T || {_, T} <- maps:to_list(Env)] end, Envs).
 
 -spec should_check(string(), string(), string(), sets:set(string()), sets:set(string())) -> boolean().
 should_check(QRefStr, RefStr, NameStr, Only, Ignore) ->
