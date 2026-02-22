@@ -32,7 +32,9 @@
          render_list/2,
 %         pretty_list/2,
 %         render_list_with_braces/2,
-         ref/1
+         ref/1,
+         render_varnames/1,
+         render_exps/2
         ]).
 
 
@@ -584,3 +586,90 @@ render_list(Fun, L) ->
 -spec render_set(fun((T) -> doc()), sets:set(T)) -> string().
 render_set(Fun, S) ->
     render_list(Fun, sets:to_list(S)).
+
+% --- Pretty-printing for transformed AST expressions ---
+
+-spec render_varnames([ast:local_varname()]) -> string().
+render_varnames(Vars) ->
+    string:join([varname(V) || V <- Vars], ", ").
+
+-spec render_exps([ast:exp()], non_neg_integer()) -> string().
+render_exps(Exps, Indent) ->
+    Pad = lists:duplicate(Indent, $\s),
+    string:join([Pad ++ render_exp(E, Indent) || E <- Exps], ",\n").
+
+-spec varname(ast:local_varname()) -> string().
+varname({Name, _Tok}) -> atom_to_list(Name).
+
+-spec render_exp(ast:exp(), non_neg_integer()) -> string().
+render_exp(Exp, Indent) ->
+    case Exp of
+        {atom, _, A} -> atom_to_list(A);
+        {integer, _, I} -> integer_to_list(I);
+        {char, _, C} -> [$ | [C]];
+        {float, _, F} -> float_to_list(F);
+        {string, _, S} -> io_lib:format("~p", [S]);
+        {var, _, {local_ref, V}} -> varname(V);
+        {var, _, {local_bind, V}} -> varname(V);
+        {var, _, {ref, N, A}} -> utils:sformat("~w/~w", N, A);
+        {var, _, {qref, M, N, A}} -> utils:sformat("~w:~w/~w", M, N, A);
+        {wildcard, _} -> "_";
+        {tuple, _, Elems} ->
+            "{" ++ string:join([render_exp(E, Indent) || E <- Elems], ", ") ++ "}";
+        {cons, _, H, T} ->
+            "[" ++ render_exp(H, Indent) ++ " | " ++ render_exp(T, Indent) ++ "]";
+        {nil, _} -> "[]";
+        {'case', _, Scrut, Clauses} ->
+            Pad = lists:duplicate(Indent, $\s),
+            Inner = Indent + 2,
+            InPad = lists:duplicate(Inner, $\s),
+            "case " ++ render_exp(Scrut, Indent) ++ " of\n" ++
+            string:join([InPad ++ render_clause(C, Inner) || C <- Clauses], ";\n") ++ "\n" ++
+            Pad ++ "end";
+        {call, _, Fun, Args} ->
+            render_exp(Fun, Indent) ++ "(" ++
+            string:join([render_exp(A, Indent) || A <- Args], ", ") ++ ")";
+        {call_remote, _, Mod, Fun, Args} ->
+            render_exp(Mod, Indent) ++ ":" ++ render_exp(Fun, Indent) ++ "(" ++
+            string:join([render_exp(A, Indent) || A <- Args], ", ") ++ ")";
+        {op, _, Op, L, R} ->
+            render_exp(L, Indent) ++ " " ++ atom_to_list(Op) ++ " " ++ render_exp(R, Indent);
+        {op, _, Op, Operand} ->
+            atom_to_list(Op) ++ render_exp(Operand, Indent);
+        {'fun', _, _Name, Clauses} ->
+            Pad = lists:duplicate(Indent, $\s),
+            Inner = Indent + 2,
+            InPad = lists:duplicate(Inner, $\s),
+            "fun\n" ++
+            string:join([InPad ++ render_fun_clause(C, Inner) || C <- Clauses], ";\n") ++ "\n" ++
+            Pad ++ "end";
+        {fun_ref, _, Ref} -> "fun " ++ render(ref(Ref));
+        {block, _, Exps} ->
+            "begin " ++ string:join([render_exp(E, Indent) || E <- Exps], ", ") ++ " end";
+        {match, _, Pat, E} ->
+            render_exp(Pat, Indent) ++ " = " ++ render_exp(E, Indent);
+        _ ->
+            io_lib:format("~w", [Exp])
+    end.
+
+-spec render_clause(ast:case_clause(), non_neg_integer()) -> string().
+render_clause({case_clause, _, Pat, Guards, Body}, Indent) ->
+    PatStr = render_exp(Pat, Indent),
+    GuardStr = case Guards of
+        [] -> "";
+        _ -> " when " ++ string:join(
+            [string:join([render_exp(G, Indent) || G <- Guard], ", ") || Guard <- Guards], "; ")
+    end,
+    BodyStr = string:join([render_exp(E, Indent + 2) || E <- Body], ",\n" ++ lists:duplicate(Indent + 2, $\s)),
+    PatStr ++ GuardStr ++ " ->\n" ++ lists:duplicate(Indent + 2, $\s) ++ BodyStr.
+
+-spec render_fun_clause(ast:fun_clause(), non_neg_integer()) -> string().
+render_fun_clause({fun_clause, _, Pats, Guards, Body}, Indent) ->
+    PatStr = "(" ++ string:join([render_exp(P, Indent) || P <- Pats], ", ") ++ ")",
+    GuardStr = case Guards of
+        [] -> "";
+        _ -> " when " ++ string:join(
+            [string:join([render_exp(G, Indent) || G <- Guard], ", ") || Guard <- Guards], "; ")
+    end,
+    BodyStr = string:join([render_exp(E, Indent + 2) || E <- Body], ",\n" ++ lists:duplicate(Indent + 2, $\s)),
+    PatStr ++ GuardStr ++ " -> " ++ BodyStr.
