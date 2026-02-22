@@ -3,12 +3,14 @@
 -define(TY, ty_node).
 
 
--export_type([monomorphic_variables/0, tally_solutions/0, tally_solutions_nonempty/0]).
+-export_type([monomorphic_variables/0, tally_solutions/0, tally_solutions_nonempty/0, solutions/0]).
 
 -export([
   tally/1,
   tally/2,
   is_tally_satisfiable/2,
+  is_tally_satisfiable_with_solutions/2,
+  is_tally_satisfiable_incremental/3,
   tally_saturate/2,
   is_satisfiable_v2/2
 ]).
@@ -39,6 +41,50 @@ is_tally_satisfiable(Constraints, MonomorphicVariables) ->
   end.
 
 
+
+% Like is_tally_satisfiable but returns the saturated solutions on success.
+-spec is_tally_satisfiable_with_solutions(input_constraints(), monomorphic_variables()) ->
+    {true, solutions()} | false.
+is_tally_satisfiable_with_solutions(Constraints, MonomorphicVariables) ->
+  InputSolutions = [tally_saturate(tally_normalize([C], MonomorphicVariables), MonomorphicVariables) || C <- Constraints],
+  case lists:all(fun([[]]) -> true; (_) -> false end, InputSolutions) of
+    true -> {true, [[]]};
+    false ->
+      Red = [N || N <- InputSolutions, N /= [[]]],
+      process_input_solutions_with_result(Red, [[]], MonomorphicVariables)
+  end.
+
+-spec process_input_solutions_with_result([solutions()], solutions(), monomorphic_variables()) ->
+    {true, solutions()} | false.
+process_input_solutions_with_result([], FinalResult, _MonoVars) ->
+  {true, FinalResult};
+process_input_solutions_with_result(TodoSols, CurrentResult, MonoVars) ->
+  {SelectedSolution, NewResult} = find_least_increasing_solutions(TodoSols, CurrentResult, MonoVars),
+  case NewResult of
+    [] -> false;
+    _ -> process_input_solutions_with_result(TodoSols -- [SelectedSolution], NewResult, MonoVars)
+  end.
+
+% Checks satisfiability by merging new constraints into pre-computed base solutions.
+-spec is_tally_satisfiable_incremental(input_constraints(), solutions(), monomorphic_variables()) -> boolean().
+is_tally_satisfiable_incremental(NewConstraints, BaseSolutions, MonomorphicVariables) ->
+  NewInputSols = [tally_saturate(tally_normalize([C], MonomorphicVariables), MonomorphicVariables) || C <- NewConstraints],
+  case lists:any(fun([]) -> true; (_) -> false end, NewInputSols) of
+    true -> false;
+    false ->
+      Red = [N || N <- NewInputSols, N /= [[]]],
+      case Red of
+        [] -> true;
+        _ ->
+          MergedResult = lists:foldl(
+            fun(_, []) -> [];
+               (NewSol, Acc) ->
+                  Merged = constraint_set:meet(NewSol, Acc, MonomorphicVariables),
+                  tally_saturate(Merged, MonomorphicVariables)
+            end, BaseSolutions, Red),
+          MergedResult =/= []
+      end
+  end.
 
 % CDuce version without the solve phase, almost paper version
 % normalize & first part of merge at the same time,
