@@ -27,7 +27,8 @@ is_satisfiable(SymTab, Constraints, FixedVars) ->
     ty_parser:set_symtab(SymTab),
 
     Ctx = gradual_utils:new_ctx(),
-    {InlinedConstrs, _SubtyConstrs, _Maters, _UnificationSubst} = gradual_utils:preprocess_constrs(Constraints, Ctx),
+    {_PreT, {InlinedConstrs, _SubtyConstrs, _Maters, _UnificationSubst}} = timer:tc(fun() -> gradual_utils:preprocess_constrs(Constraints, Ctx) end),
+    % io:format(user, "[TALLY] preprocess: ~pms, ~p constraints~n", [_PreT div 1000, sets:size(InlinedConstrs)]),
 
     InternalRawConstraints =
     lists:map( fun ({scsubty, _, S, T}) -> {S, T} end,
@@ -36,15 +37,25 @@ is_satisfiable(SymTab, Constraints, FixedVars) ->
                            sets:to_list(InlinedConstrs))),
 
     % cleaning is OK, we only care about one solution
-    FinalCons = subst:clean_cons(InternalRawConstraints, FixedVars, SymTab),
+    {_CleanT, CleanedCons} = timer:tc(fun() -> subst:clean_cons(InternalRawConstraints, FixedVars, SymTab) end),
+    % io:format(user, "[TALLY] clean_cons: ~pms, ~p -> ~p constraints~n", [_CleanT div 1000, length(InternalRawConstraints), length(CleanedCons)]),
+
+    % Pre-filter trivially satisfiable constraints (none ⊆ T, T ⊆ any, T ⊆ T)
+    TrivFiltered = lists:filter(fun({T1, T2}) -> not is_trivially_true(T1, T2) end, CleanedCons),
+    % io:format(user, "[TALLY] after trivial filter: ~p constraints~n", [length(TrivFiltered)]),
+
+    % Eliminate hub variables: substitute variables that have pure lower bounds
+    % and only appear covariantly elsewhere. Sound for satisfiability checking.
+    AfterLB = eliminate_hubs(lower, TrivFiltered, FixedVars),
+    FinalCons = eliminate_hubs(upper, AfterLB, FixedVars),
 
     % Split constraints into independent partitions
     MM = split(FinalCons, FixedVars),
     Partitions = [V || {_, V} <- maps:to_list(MM)],
+    % io:format(user, "[TALLY] ~p partitions, sizes: ~p~n", [length(Partitions), [length(P) || P <- Partitions]]),
     case Partitions of
         [] -> {true, satisfiable}; % no subtype constraints
         [First | Rest] ->
-            % Check satisfiability for each partition
             FirstRes = do_satisfiable(First, FixedVars),
             lists:foldl(fun(_, {false, _}) -> {false, []};
                            (C, {true, _}) -> do_satisfiable(C, FixedVars)
@@ -54,7 +65,10 @@ is_satisfiable(SymTab, Constraints, FixedVars) ->
 -spec do_satisfiable([{ast:ty(), ast:ty()}], monomorphic_variables()) ->
     {false, [{error, string()}]} | {true, term()}.
 do_satisfiable(FinalCons, FixedVars) ->
-    InternalConstraints = [{ty_parser:parse(T1), ty_parser:parse(T2)} || {T1, T2} <- FinalCons],
+    ParsedConstraints = [{ty_parser:parse(T1), ty_parser:parse(T2)} || {T1, T2} <- FinalCons],
+    % Pre-filter: if LHS is empty or RHS is any, constraint T1 ⊆ T2 is trivially satisfied.
+    InternalConstraints = [{L, R} || {L, R} <- ParsedConstraints,
+                                     not ty_node:is_empty(L), not ty_node:leq(ty_node:any(), R)],
 
     % elp:ignore W0036
     MonomorphicTallyVariables = maps:from_list([{ty_variable:new_with_name(Var), []} || Var <- sets:to_list(FixedVars)]),
@@ -90,7 +104,7 @@ tally(SymTab, Constraints, FixedVars) ->
     % elp:ignore W0036
     MonomorphicTallyVariables = maps:from_list([{ty_variable:new_with_name(Var), []} || Var <- sets:to_list(FixedVars)]),
 
-    InternalResult = 
+    InternalResult =
     % TODO tally should return a nonempty list of solutions if not an error
     case etally:tally(InternalConstraints, MonomorphicTallyVariables) of
         [] -> {error, []};
@@ -196,6 +210,126 @@ find_group(Vars, MapOfVarsToConstraints) ->
                   false -> {found, [Current]}
               end
       end, none, maps:keys(MapOfVarsToConstraints)).
+
+% Apply a substitution to its own values until fixed point.
+% Handles chains like $3 ⊆ $1, ($1 ∩ T) ⊆ $0 where $0's value contains $1.
+% Self-referential LBs are already excluded by eliminate_hubs, so this terminates.
+-spec compose_subst(subst:base_subst()) -> subst:base_subst().
+compose_subst(Subst) -> compose_subst(Subst, 10).
+
+-spec compose_subst(subst:base_subst(), non_neg_integer()) -> subst:base_subst().
+compose_subst(Subst, 0) -> Subst;
+compose_subst(Subst, N) ->
+    Composed = maps:map(fun(_V, Ty) -> subst:apply_base(Subst, Ty) end, Subst),
+    case Composed =:= Subst of
+        true -> Subst;
+        false -> compose_subst(Composed, N - 1)
+    end.
+
+% Eliminate hub variables for satisfiability checking.
+% Mode = lower: eliminate variables with pure lower bounds (T ⊆ V), substitute V = union(LBs)
+% Mode = upper: eliminate variables with pure upper bounds (V ⊆ T), substitute V = intersection(UBs)
+-spec eliminate_hubs(lower | upper, [{ast:ty(), ast:ty()}], monomorphic_variables()) -> [{ast:ty(), ast:ty()}].
+eliminate_hubs(Mode, Constrs, FixedVars) ->
+    % Step 1: Find pure bound constraints where V is free
+    BoundMap = lists:foldl(fun(Constr, Acc) ->
+        case bound_var(Mode, Constr) of
+            {ok, V, Bound} ->
+                case sets:is_element(V, FixedVars) of
+                    true -> Acc;
+                    false -> maps:update_with(V, fun(Bs) -> [Bound | Bs] end, [Bound], Acc)
+                end;
+            none -> Acc
+        end
+    end, #{}, Constrs),
+
+    % Step 2: For each candidate V, verify:
+    %   - V doesn't appear inside its own bound values (avoids self-referential substitution)
+    %   - V doesn't appear on the "other side" of any non-bound constraint
+    Eliminable = maps:filter(fun(V, Bounds) ->
+        not lists:any(fun(B) -> var_in_ty(V, B) end, Bounds) andalso
+        lists:all(fun(Constr) ->
+            case other_side(Mode, Constr) of
+                {ok, V2} -> V2 =:= V;
+                {check, Ty} -> not var_in_ty(V, Ty)
+            end
+        end, Constrs)
+    end, BoundMap),
+
+    case maps:size(Eliminable) of
+        0 -> Constrs;
+        _ ->
+            % Step 3: Build substitution V -> union/intersection(bounds)
+            Combiner = case Mode of lower -> union; upper -> intersection end,
+            RawSubst = maps:map(fun(_V, Bounds) ->
+                case Bounds of
+                    [Single] -> Single;
+                    Multiple -> {Combiner, Multiple}
+                end
+            end, Eliminable),
+            % Compose: apply the substitution to its own values so that
+            % chained eliminations are resolved. Iterate until fixed point.
+            Subst = compose_subst(RawSubst),
+            EliminatedVarSet = sets:from_list(maps:keys(Eliminable)),
+
+            % Step 4: Apply substitution and remove pure bound constraints for eliminated vars
+            lists:filtermap(fun(Constr) ->
+                {T1, T2} = Constr,
+                case bound_var(Mode, Constr) of
+                    {ok, V, _} ->
+                        case sets:is_element(V, EliminatedVarSet) of
+                            true -> false;
+                            false -> subst_constr(Subst, T1, T2)
+                        end;
+                    none -> subst_constr(Subst, T1, T2)
+                end
+            end, Constrs)
+    end.
+
+% Extract the bound variable and bound type from a constraint, depending on mode.
+% lower: {T, {var, V}} -> V is bounded from below by T
+% upper: {{var, V}, T} -> V is bounded from above by T
+-spec bound_var(lower | upper, {ast:ty(), ast:ty()}) -> {ok, ast:ty_varname(), ast:ty()} | none.
+bound_var(lower, {Bound, {var, V}}) when is_atom(V) -> {ok, V, Bound};
+bound_var(upper, {{var, V}, Bound}) when is_atom(V) -> {ok, V, Bound};
+bound_var(_, _) -> none.
+
+% For a constraint, return what needs to be checked on the "other side" (the side
+% opposite to where the bound variable sits).
+% If the bound variable is on this side, return {ok, V} (it's a bound constraint for V).
+% Otherwise return {check, Ty} meaning we need to verify V doesn't appear in Ty.
+-spec other_side(lower | upper, {ast:ty(), ast:ty()}) -> {ok, ast:ty_varname()} | {check, ast:ty()}.
+other_side(lower, {_T1, {var, V}}) when is_atom(V) -> {ok, V};
+other_side(lower, {_T1, T2}) -> {check, T2};
+other_side(upper, {{var, V}, _T2}) when is_atom(V) -> {ok, V};
+other_side(upper, {T1, _T2}) -> {check, T1}.
+
+% Apply substitution to a constraint and filter out trivially true results.
+-spec subst_constr(subst:base_subst(), ast:ty(), ast:ty()) -> {true, {ast:ty(), ast:ty()}} | false.
+subst_constr(Subst, T1, T2) ->
+    ST1 = subst:apply_base(Subst, T1),
+    ST2 = subst:apply_base(Subst, T2),
+    case is_trivially_true(ST1, ST2) of
+        true -> false;
+        false -> {true, {ST1, ST2}}
+    end.
+
+% Check if a variable name appears anywhere inside a type.
+-spec var_in_ty(ast:ty_varname(), ast:ty()) -> boolean().
+var_in_ty(VarName, Ty) ->
+    lists:any(fun({var, N}) -> N =:= VarName end,
+        utils:everything(fun
+            ({var, N}) when is_atom(N) -> {ok, {var, N}};
+            (_) -> error
+        end, Ty)).
+
+% Check if a constraint T1 ⊆ T2 is trivially true based on syntactic form.
+-spec is_trivially_true(ast:ty(), ast:ty()) -> boolean().
+is_trivially_true({predef, none}, _) -> true;
+is_trivially_true(_, {predef, any}) -> true;
+is_trivially_true(_, {predef_alias, term}) -> true;
+is_trivially_true(T, T) -> true;
+is_trivially_true(_, _) -> false.
 
 -ifdef(TEST).
 
