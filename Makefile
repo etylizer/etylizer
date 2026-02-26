@@ -44,7 +44,7 @@ testtest:
 check:
 	$(REBAR) as test dialyzer
 	@echo "Run etylizer to type check etylizer..."
-	./typecheck_erlang_types
+	./typecheck_etylizer.sh
 
 gradualize:
 	cd src && gradualizer --fmt_location brief *.erl

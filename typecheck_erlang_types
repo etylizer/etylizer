@@ -1,7 +1,0 @@
-#!/bin/bash
-set -e
-TYPE_LIB="./src/erlang_types/"
-
-./ety --build -P . -I include -I src -I src/erlang_types -I src/erlang_types/dnf \
-    --type-overlay overlays/etylizer_overlay.erl -f --no-deps -S src/erlang_types \
-    "$@"
