@@ -1955,8 +1955,7 @@ guard_seq_lower_envs(Guards) -> lists:flatmap(fun guard_lower_envs/1, Guards).
 flip_comparison_op('>') -> '<';
 flip_comparison_op('<') -> '>';
 flip_comparison_op('>=') -> '=<';
-flip_comparison_op('=<') -> '>=';
-flip_comparison_op(Other) -> Other.
+flip_comparison_op('=<') -> '>='.
 
 % Refinement heuristic for < > <= >= operators and constant types.
 % For integer constants, returns an integer range (e.g. X > 2 gives 3..*).
@@ -1974,8 +1973,7 @@ comparison_refine_env(Op, X, ConstExp) ->
                 '>'  -> TyOther(stdtypes:trange(N + 1, '*'));
                 '>=' -> TyOther(stdtypes:trange(N, '*'));
                 '<'  -> TyOther(stdtypes:trange('*', N - 1));
-                '=<' -> TyOther(stdtypes:trange('*', N));
-                _ -> {predef, any}
+                '=<' -> TyOther(stdtypes:trange('*', N))
             end,
             {#{{local_ref, X} => Ty}, safe};
         _ -> {#{}, unsafe}
