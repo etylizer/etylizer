@@ -111,8 +111,8 @@ parse_args(Args) ->
     case ?assert_type(maps:get(version, ArgMap, false), boolean()) of
         true ->
             application:load(etylizer),
-            {ok, Vsn} = application:get_key(etylizer, vsn),
-            io:format("etylizer ~s~n", [Vsn]),
+            {ok, Vsn} = ?assert_pattern({ok, _}, application:get_key(etylizer, vsn)),
+            io:format("etylizer ~s~n", [?assert_type(Vsn, string())]),
             utils:quit(0, "");
         false -> ok
     end,

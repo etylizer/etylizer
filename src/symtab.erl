@@ -170,7 +170,7 @@ std_symtab(SearchPath, OverlaySymtab) ->
     case persistent_term:get(std_symtab_cache, undefined) of
         {CacheKey, CachedTab} ->
             ?LOG_DEBUG("Using cached standard symtab"),
-            CachedTab;
+            ?assert_type(CachedTab, t());
         _ ->
             Tab = build_std_symtab(SearchPath, OverlaySymtab),
             persistent_term:put(std_symtab_cache, {CacheKey, Tab}),
