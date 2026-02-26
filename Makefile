@@ -33,6 +33,9 @@ test: unit-tests testtest
 	./_build/default/bin/etylizer --sanity --no-type-checking -I ./include -I ./src ./src/*.erl
 
 casestudy: build
+	# hack to fix espresso location for espresso_bin.erl
+	mkdir -p test_files/case_studies/_build
+	cp _build/espresso test_files/case_studies/_build/espresso
 	@echo "Running case study ..."
 	test_files/case_studies/check-stdlib.sh
 	test_files/case_studies/check-jsone.sh
