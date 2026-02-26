@@ -20,6 +20,19 @@ jobs:
     - uses: actions/checkout@v2
     - run: make build
 
+  casestudy:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        erlang: [ 28 ]
+
+    container:
+      image: erlang:${{ matrix.erlang }}
+
+    steps:
+    - uses: actions/checkout@v2
+    - run: make casestudy
+
   test:
     runs-on: ubuntu-latest
     strategy:

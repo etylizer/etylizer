@@ -80,3 +80,8 @@
 'erlang:element'(2, {_A, B, _C, _D, _E, _F, _G}) -> B;
 'erlang:element'(2, {_A, B, _C, _D, _E, _F, _G, _H}) -> B;
 'erlang:element'(_, _) -> error(todo).
+
+-spec 'lists:reverse'
+  (nonempty_list(T), term()) -> nonempty_list(T);
+  (list(T), term()) -> list(T).
+'lists:reverse'(_, _) -> error(overlay).
