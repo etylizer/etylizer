@@ -71,9 +71,9 @@ cmd_spec() ->
             #{name => gradual_mode, long => "-gradual-mode", type => {string, ["dynamic", "infer"]},
               help => "How to handle functions without type specs. Default: dynamic"},
             #{name => only, short => $o, long => "-only", action => append,
-              help => "Only type check these functions (module:name/arity or name/arity or name)"},
+              help => "Only type check these functions/modules (module, module:name/arity, name/arity, or name)"},
             #{name => ignore, short => $i, long => "-ignore", action => append,
-              help => "Do not type check these functions (module:name/arity or name/arity or name)"},
+              help => "Do not type check these functions/modules (module, module:name/arity, name/arity, or name)"},
             #{name => no_deps, long => "-no-deps", type => boolean, default => false,
               help => "Only type check files specified on the commandline"},
             #{name => log_level, short => $l, long => "-level",
@@ -213,12 +213,14 @@ dump_transformed_ast(Opts) ->
             RefStr = utils:sformat("~w/~w", Name, Arity),
             QRefStr = utils:sformat("~w:~s", ModName, RefStr),
             NameStr = utils:sformat("~w", Name),
+            ModStr = utils:sformat("~w", ModName),
             ShouldDump = case sets:is_empty(Only) of
                 true -> true;
                 false ->
                     sets:is_element(QRefStr, Only)
                     orelse sets:is_element(RefStr, Only)
                     orelse sets:is_element(NameStr, Only)
+                    orelse sets:is_element(ModStr, Only)
             end,
             case ShouldDump of
                 false -> ok;
