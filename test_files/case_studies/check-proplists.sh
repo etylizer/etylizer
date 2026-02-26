@@ -28,6 +28,4 @@ QF=$QF" -i get_value/3" # 1)
 QF=$QF" -i get_all_values/2" # 1)
 QF=$QF" -i split/3" # 1)
 QF=$QF" -i to_map/1" # 1)
-../../ety --type-overlay overlay.erl --no-deps -f -l info stdlib/proplists2.erl $QF
-
-../../ety --report-mode report --report-timeout 10000 --type-overlay overlay.erl --no-deps -f stdlib/proplists2.erl
+../../ety --type-overlay overlay.erl --no-deps -f stdlib/proplists2.erl $QF
