@@ -339,12 +339,8 @@ check_ty_tuple(Spec, CurModule, Ty, Tys, Form, Depth) ->
     ok.
 
 -spec check_ty_union(ty_map(), module_name(), ast_erl:ty(), term(), integer()) -> ok.
-check_ty_union(Spec, CurModule, Ty, Form, Depth) ->
-    case Ty of
-        {type, _, union, Tys} ->
-            check_ty_union_results(Spec, CurModule, Ty, Tys, Form, Depth);
-        _ -> erlang:error({expected_union_type, Ty})
-    end.
+check_ty_union(Spec, CurModule, Ty = {type, _, union, Tys}, Form, Depth) ->
+    check_ty_union_results(Spec, CurModule, Ty, Tys, Form, Depth).
 
 -spec check_ty_union_results(ty_map(), module_name(), ast_erl:ty(), [ast_erl:ty()], term(), integer()) -> ok.
 check_ty_union_results(Spec, CurModule, Ty, Tys, Form, Depth) ->

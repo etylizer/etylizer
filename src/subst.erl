@@ -188,9 +188,6 @@ clean_type(Ty, Fix, SymTab) ->
 flip_pos(0) -> 1;
 flip_pos(1) -> 0.
 
--spec combine_vars(ast:ty_varname(), [0 | 1], [0 | 1]) -> [0 | 1].
-combine_vars(_K, V1, V2) ->
-    lists:uniq(V1 ++ V2).
 
 % Operates on unfolded types (named types already resolved, recursive refs are {ty_hole}).
 % Callers must unfold via ast_utils:unfold_ty/2 before calling.
