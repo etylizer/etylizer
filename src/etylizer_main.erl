@@ -44,6 +44,8 @@ cmd_spec() ->
               help => "Force type-checking"},
             #{name => help, short => $h, long => "-help", type => boolean, default => false,
               help => "Output help message"},
+            #{name => version, long => "-version", type => boolean, default => false,
+              help => "Display version and exit"},
             #{name => check_ast, short => $c, long => "-check-ast",
               help => "Check that all files match the AST type defined in the file given"},
             #{name => dump_raw, long => "-dump-raw", type => boolean, default => false,
@@ -82,6 +84,8 @@ cmd_spec() ->
               help => "Overlays for fun and type specs"},
             #{name => check_exports, long => "-check-exports", type => boolean, default => false,
               help => "Check that all exported functions have a type spec."},
+            #{name => verbose, short => $v, long => "-verbose", type => boolean, default => false,
+              help => "Verbose output (e.g. preprocessor warnings)"},
             #{name => files, nargs => list, required => false, default => [],
               help => "Files to type check"}
         ]
@@ -102,6 +106,14 @@ parse_args(Args) ->
         true ->
             io:format("~ts", [argparse:help(Command, ParseOpts)]),
             utils:quit(2, "Aborting~n");
+        false -> ok
+    end,
+    case ?assert_type(maps:get(version, ArgMap, false), boolean()) of
+        true ->
+            application:load(etylizer),
+            {ok, Vsn} = application:get_key(etylizer, vsn),
+            io:format("etylizer ~s~n", [Vsn]),
+            utils:quit(0, "");
         false -> ok
     end,
     build_opts(ArgMap).
@@ -175,7 +187,8 @@ build_opts(ArgMap) ->
         load_start = ?assert_type(maps:get(load_start, ArgMap, []), [string()]),
         load_end = ?assert_type(maps:get(load_end, ArgMap, []), [string()]),
         files = ?assert_type(maps:get(files, ArgMap, []), [string()]),
-        type_overlay = ?assert_type(maps:get(type_overlay, ArgMap, []), string())
+        type_overlay = ?assert_type(maps:get(type_overlay, ArgMap, []), string()),
+        verbose = ?assert_type(maps:get(verbose, ArgMap, false), boolean())
     }.
 
 % FIXME (sw, 2023-07-04): this is ugly global state. Remove!
@@ -231,6 +244,7 @@ doWork(Opts) ->
               AstPath ->
                   {Spec, Module} = ast_check:parse_spec(AstPath),
                   ParseOpts = #parse_opts{
+                      verbose = Opts#opts.verbose,
                       includes = Opts#opts.includes,
                       defines = Opts#opts.defines
                   },
