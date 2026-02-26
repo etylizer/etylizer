@@ -2,53 +2,6 @@
 set -e
 TYPE_LIB="./src/erlang_types/"
 
-files=(
-    "ty_parser.erl"
-    # "constraint_set.erl"
-    # "dnf_ty_atom.erl"
-    # "dnf_ty_bitstring.erl"
-    # "dnf_ty_function.erl"
-    # "dnf_ty_interval.erl"
-    # "dnf_ty_list.erl"
-    # "dnf_ty_map.erl"
-    # "dnf_ty_predefined.erl"
-    # "dnf_ty_tuple.erl"
-    # "dnf_ty_variable.erl"
-    # "etally.erl"
-    # "feature_flags.erl"
-    # "global_state.erl"
-    # "tarjan.erl"
-    # "ty_bool.erl"
-    # "ty.erl"
-    # "ty_function.erl"
-    # "ty_functions.erl"
-    # "ty_list.erl"
-    # "ty_map.erl"
-    # "ty_node.erl"
-    # "ty_rec.erl"
-    # "ty_tuple.erl"
-    # "ty_tuples.erl"
-    # "ty_variable.erl"
-    # "parser_combinator.erl"
-    # "ast_parser.erl"
-)
-
-
-# make build > /dev/null
-# for file in "${files[@]}"; do
-#     ./ety \
-#         -P . \
-#         -I ./include \
-#         -I ./src \
-#         -I ./erlang_types \
-#         -I ./erlang_types/dnf \
-#         -l error \
-#         --type-overlay overlays/etylizer_overlay.erl \
-#         -f \
-#         --no-deps "$TYPE_LIB""$file" \
-#         "$@"
-# done
-
 ./ety --build -P . -I include -I src -I src/erlang_types -I src/erlang_types/dnf \
     --type-overlay overlays/etylizer_overlay.erl -f --no-deps -S src/erlang_types \
     "$@"

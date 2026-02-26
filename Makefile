@@ -32,9 +32,8 @@ test: unit-tests testtest
 	@echo "Checking syntax transformation for source code of type checker ..."
 	./_build/default/bin/etylizer --sanity --no-type-checking -I ./include -I ./src ./src/*.erl
 	@echo "Running case study ..."
-	test_files/etylizer-mini/check-stdlib.sh
-	test_files/etylizer-mini/check-jsone.sh
-	ETYLIZER_CASE_STUDY_LOGLEVEL=warn test_files/etylizer-mini/check-ety.sh
+	test_files/case_studies/check-stdlib.sh
+	test_files/case_studies/check-jsone.sh
 
 
 testtest:
@@ -44,7 +43,7 @@ testtest:
 
 check:
 	$(REBAR) as test dialyzer
-	@echo "Run etylizer to type check erlang_types library..."
+	@echo "Run etylizer to type check etylizer..."
 	./typecheck_erlang_types
 
 gradualize:
