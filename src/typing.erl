@@ -81,7 +81,7 @@ check_forms_typecheck(Ctx, ExtCtx, FileName, FunsWithSpec, FunsWithoutSpec) ->
 -type classify_acc() :: {
     [{ast:fun_decl(), ast:ty_scheme()}],
     [ast:fun_decl()],
-    [{string(), string(), string()}]
+    [{string(), string(), string(), string()}]
 }.
 
 -spec classify_forms(ast:forms(), string(), symtab:t(), feature_flags:gradual_typing_mode(), sets:set(string()), sets:set(string())) -> classify_acc().
@@ -94,11 +94,13 @@ classify_forms(Forms, FileName, ExtTab, GradualMode, Only, Ignore) ->
 
 -spec classify_fun_decl(ast:fun_decl(), classify_acc(), string(), symtab:t(), feature_flags:gradual_typing_mode(), sets:set(string()), sets:set(string())) -> classify_acc().
 classify_fun_decl(Form = {function, Loc, Name, Arity, _Clauses}, Acc, FileName, ExtTab, GradualMode, Only, Ignore) ->
+    ModName = ast_utils:modname_from_path(FileName),
     RefStr = utils:sformat("~w/~w", Name, Arity),
-    QRefStr = utils:sformat("~w:~s", ast_utils:modname_from_path(FileName), RefStr),
+    QRefStr = utils:sformat("~w:~s", ModName, RefStr),
     NameStr = utils:sformat("~w", Name),
-    X = {QRefStr, RefStr, NameStr},
-    Check = should_check(QRefStr, RefStr, NameStr, Only, Ignore),
+    ModStr = utils:sformat("~w", ModName),
+    X = {QRefStr, RefStr, NameStr, ModStr},
+    Check = should_check(QRefStr, RefStr, NameStr, ModStr, Only, Ignore),
     case symtab:find_fun({ref, Name, Arity}, ExtTab) of
         error ->
             case Check of
@@ -111,7 +113,7 @@ classify_fun_decl(Form = {function, Loc, Name, Arity, _Clauses}, Acc, FileName, 
 
 -spec classify_no_spec_checked(
     ast:fun_decl(), arity(), feature_flags:gradual_typing_mode(), classify_acc(),
-    {string(), string(), string()}) -> classify_acc().
+    {string(), string(), string(), string()}) -> classify_acc().
 classify_no_spec_checked(Form, Arity, dynamic, {With, Without, Knowns}, X) ->
     {[{Form, dynamic_ty_scheme(?assert_type(Arity, non_neg_integer()))} | With], Without, [X | Knowns]};
 classify_no_spec_checked(Form, _Arity, infer, {With, Without, Knowns}, X) ->
@@ -119,7 +121,7 @@ classify_no_spec_checked(Form, _Arity, infer, {With, Without, Knowns}, X) ->
 
 -spec classify_no_spec_ignored(
     string(), string(), feature_flags:gradual_typing_mode(), classify_acc(),
-    {string(), string(), string()}) -> classify_acc().
+    {string(), string(), string(), string()}) -> classify_acc().
 classify_no_spec_ignored(_FileName, _RefStr, dynamic, {With, Without, Knowns}, X) ->
     {With, Without, [X | Knowns]};
 classify_no_spec_ignored(FileName, RefStr, infer, _Acc, _X) ->
@@ -127,7 +129,7 @@ classify_no_spec_ignored(FileName, RefStr, infer, _Acc, _X) ->
 
 -spec classify_with_spec(
     boolean(), ast:fun_decl(), ast:loc(), string(), ast:ty_scheme(),
-    classify_acc(), {string(), string(), string()}) -> classify_acc().
+    classify_acc(), {string(), string(), string(), string()}) -> classify_acc().
 classify_with_spec(true, Form, _Loc, _RefStr, Ty, {With, Without, Knowns}, X) ->
     {[{Form, Ty} | With], Without, [X | Knowns]};
 classify_with_spec(false, _Form, Loc, RefStr, _Ty, {With, Without, Knowns}, X) ->
@@ -135,13 +137,12 @@ classify_with_spec(false, _Form, Loc, RefStr, _Ty, {With, Without, Knowns}, X) -
                ast:format_loc(Loc), RefStr),
     {With, Without, [X | Knowns]}.
 
--spec check_unknowns(sets:set(string()), [{string(), string(), string()}]) -> ok.
+-spec check_unknowns(sets:set(string()), [{string(), string(), string(), string()}]) -> ok.
 check_unknowns(Only, KnownFuns) ->
-    {WithModuleName, WithArity, JustNames} = lists:unzip3(KnownFuns),
-    Unknowns = sets:subtract(Only,
-        sets:union([sets:from_list(WithModuleName, [{version, 2}]),
-                        sets:from_list(WithArity, [{version, 2}]),
-                        sets:from_list(JustNames, [{version, 2}])])),
+    Known = lists:foldl(fun({QRef, Ref, Name, Mod}, Acc) ->
+        [QRef, Ref, Name, Mod | Acc]
+    end, [], KnownFuns),
+    Unknowns = sets:subtract(Only, sets:from_list(Known, [{version, 2}])),
     case sets:is_empty(Unknowns) of
         true -> ok;
         false ->
@@ -226,17 +227,19 @@ sanity_infer_one_inner(ExtCtx, InferCtx, FileName, Decl = {function, Loc, _Name,
 extract_inferred_tys(Envs) ->
     lists:flatmap(fun(Env) -> [T || {_, T} <- maps:to_list(Env)] end, Envs).
 
--spec should_check(string(), string(), string(), sets:set(string()), sets:set(string())) -> boolean().
-should_check(QRefStr, RefStr, NameStr, Only, Ignore) ->
+-spec should_check(string(), string(), string(), string(), sets:set(string()), sets:set(string())) -> boolean().
+should_check(QRefStr, RefStr, NameStr, ModStr, Only, Ignore) ->
     case sets:is_empty(Only) of
         true ->
             not (sets:is_element(QRefStr, Ignore)
                     orelse sets:is_element(RefStr, Ignore)
-                    orelse sets:is_element(NameStr, Ignore));
+                    orelse sets:is_element(NameStr, Ignore)
+                    orelse sets:is_element(ModStr, Ignore));
         false ->
             sets:is_element(QRefStr, Only)
                 orelse sets:is_element(RefStr, Only)
                 orelse sets:is_element(NameStr, Only)
+                orelse sets:is_element(ModStr, Only)
     end.
 
 % Creates a dynamic type scheme for a function with the given arity.
