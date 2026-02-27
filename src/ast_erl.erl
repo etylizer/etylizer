@@ -182,6 +182,10 @@
 
 
 % 8.1  Module Declarations and Forms
+-type all_attrs() ::
+    export | export_type | import
+    | file | module | behavior | behaviour | spec
+    | callback | record | type | opaque | nominal.
 -type anno() :: erl_anno:anno(). % Should be erl_anno:anno() but ast_check.erl cannot handle this.
 -type fun_with_arity() :: {atom(), integer()}.
 -type ty_with_arity() :: {atom(), integer()}.
@@ -191,7 +195,7 @@
 -type file_form() :: {attribute, anno(), file, {File::string(), Line::integer()}}.
 -type mod_form() :: {attribute, anno(), module, Mod::atom()}.
 -type behavior_form() :: {attribute, anno(), behavior | behaviour, Mod::atom()}.
--type other_attr_form() :: {attribute, anno(), atom(), term()}.
+-type other_attr_form() :: {attribute, anno(), etylizer:without(atom(), all_attrs()), term()}.
 -type fun_decl() :: {function, anno(), Name::atom(), Arity::integer(), [fun_clause()]}.
 -type fun_spec_q() :: {attribute, anno(), spec, {{Mod::atom(), Name::atom(), Arity::integer()},
                                                  [ty_full_fun()]}}.
@@ -201,7 +205,7 @@
 -type record_decl() :: {attribute, anno(), record, {Name::atom(),[record_field()]}}.
 -type type_decl() :: {attribute, anno(), type|opaque|nominal, tydef()}.
 -type tydef() :: {Name::atom(), Rhs::ty(), [ty_var()]}.
--type wild_attr() :: {attribute, anno(), atom(), term()}.
+-type wild_attr() :: {attribute, anno(), etylizer:without(atom(), all_attrs()), term()}.
 -type eof() :: {eof, anno()}.
 -type warnings_errors() :: {error, any()} | {warning, any()}.
 
