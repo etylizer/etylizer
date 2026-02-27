@@ -39,8 +39,9 @@ disable_exhaustiveness_from_forms(Forms) ->
       sets:new(),
       Forms).
 
-% Checks all forms of a module
--spec check_forms(ctx(), string(), ast:forms(), sets:set(string()), sets:set(string()), boolean()) -> ok.
+% Checks all forms of a module. Returns the list of functions that failed
+% type checking (empty in early-exit mode, since it throws on error).
+-spec check_forms(ctx(), string(), ast:forms(), sets:set(string()), sets:set(string()), boolean()) -> [{atom(), arity()}].
 check_forms(Ctx, FileName, Forms, Only, Ignore, CheckExports) ->
     case CheckExports orelse Ctx#ctx.gradual_typing_mode =:= infer of
         true ->
@@ -58,7 +59,7 @@ make_ext_ctx(Ctx, FileName, Forms) ->
     DisableExhaustiveness = disable_exhaustiveness_from_forms(Forms),
     Ctx#ctx { symtab = ExtTab, disable_exhaustiveness = DisableExhaustiveness }.
 
--spec check_forms_classify(ctx(), ctx(), string(), ast:forms(), sets:set(string()), sets:set(string())) -> ok.
+-spec check_forms_classify(ctx(), ctx(), string(), ast:forms(), sets:set(string()), sets:set(string())) -> [{atom(), arity()}].
 check_forms_classify(Ctx, ExtCtx, FileName, Forms, Only, Ignore) ->
     ?LOG_DEBUG("Only: ~200p", sets:to_list(Only)),
     ?LOG_DEBUG("Ignore: ~200p", sets:to_list(Ignore)),
@@ -67,16 +68,17 @@ check_forms_classify(Ctx, ExtCtx, FileName, Forms, Only, Ignore) ->
     check_unknowns(Only, KnownFuns),
     check_forms_typecheck(Ctx, ExtCtx, FileName, FunsWithSpec, FunsWithoutSpec).
 
--spec check_forms_typecheck(ctx(), ctx(), string(), [{ast:fun_decl(), ast:ty_scheme()}], [ast:fun_decl()]) -> ok.
+-spec check_forms_typecheck(ctx(), ctx(), string(), [{ast:fun_decl(), ast:ty_scheme()}], [ast:fun_decl()]) -> [{atom(), arity()}].
 check_forms_typecheck(Ctx, ExtCtx, FileName, FunsWithSpec, FunsWithoutSpec) ->
     % Infer types of functions without spec (empty in dynamic mode)
     InferredTyEnvs = typing_infer:infer_all(ExtCtx, FileName, FunsWithoutSpec),
     ?LOG_DEBUG("Checking ~w functions in ~s against their specs (~w environments)",
               length(FunsWithSpec), FileName, length(InferredTyEnvs)),
-    check_against_envs(Ctx#ctx.report_mode, ExtCtx, FileName, FunsWithSpec, InferredTyEnvs, []),
-    ?LOG_INFO("Checking ~w functions in ~s against their specs finished successfully",
+    FailedFuns = check_against_envs(Ctx#ctx.report_mode, ExtCtx, FileName, FunsWithSpec, InferredTyEnvs, []),
+    ?LOG_INFO("Checking ~w functions in ~s against their specs finished",
               length(FunsWithSpec), FileName),
-    sanity_infer_check(ExtCtx, FileName, FunsWithSpec).
+    sanity_infer_check(ExtCtx, FileName, FunsWithSpec),
+    FailedFuns.
 
 -type classify_acc() :: {
     [{ast:fun_decl(), ast:ty_scheme()}],
@@ -152,7 +154,7 @@ check_unknowns(Only, KnownFuns) ->
 -spec check_against_envs(
     feature_flags:report_mode(), ctx(), string(),
     [{ast:fun_decl(), ast:ty_scheme()}], [symtab:fun_env()],
-    [{symtab:fun_env(), string()}]) -> ok.
+    [{symtab:fun_env(), string()}]) -> [{atom(), arity()}].
 check_against_envs(_ReportMode, _ExtCtx, _FileName, _FunsWithSpec, [], Errs) ->
     case Errs of
         [] -> errors:bug("Lists of errors empty");
@@ -170,7 +172,7 @@ check_against_envs(ReportMode, ExtCtx, FileName, FunsWithSpec, [E | RestEnvs], E
     case ReportMode of
         early_exit ->
             case typing_check:check_all(ExtCtx, FileName, E, FunsWithSpec) of
-                ok -> ok;
+                ok -> [];
                 {error, Msg} ->
                     check_against_envs(ReportMode, ExtCtx, FileName, FunsWithSpec, RestEnvs, [{E, Msg} | Errs])
             end;
@@ -229,17 +231,21 @@ extract_inferred_tys(Envs) ->
 
 -spec should_check(string(), string(), string(), string(), sets:set(string()), sets:set(string())) -> boolean().
 should_check(QRefStr, RefStr, NameStr, ModStr, Only, Ignore) ->
-    case sets:is_empty(Only) of
-        true ->
-            not (sets:is_element(QRefStr, Ignore)
-                    orelse sets:is_element(RefStr, Ignore)
-                    orelse sets:is_element(NameStr, Ignore)
-                    orelse sets:is_element(ModStr, Ignore));
+    IsIgnored = sets:is_element(QRefStr, Ignore)
+        orelse sets:is_element(RefStr, Ignore)
+        orelse sets:is_element(NameStr, Ignore)
+        orelse sets:is_element(ModStr, Ignore),
+    case IsIgnored of
+        true -> false;
         false ->
-            sets:is_element(QRefStr, Only)
-                orelse sets:is_element(RefStr, Only)
-                orelse sets:is_element(NameStr, Only)
-                orelse sets:is_element(ModStr, Only)
+            case sets:is_empty(Only) of
+                true -> true;
+                false ->
+                    sets:is_element(QRefStr, Only)
+                        orelse sets:is_element(RefStr, Only)
+                        orelse sets:is_element(NameStr, Only)
+                        orelse sets:is_element(ModStr, Only)
+            end
     end.
 
 % Creates a dynamic type scheme for a function with the given arity.
