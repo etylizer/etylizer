@@ -20,6 +20,8 @@
 -type error_kind() :: constr_error_locs:constr_error_kind().
 -type error() :: {error_kind(), ast:loc(), string()}.
 
+-include("etylizer.hrl").
+
 % Ignores unmatched branches, just returns their locations.
 -spec check_simp_constrs_return_unmatched(
     symtab:t(),
