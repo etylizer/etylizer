@@ -94,7 +94,7 @@ check_decls_in_file(F, What, NoInfer) ->
   Forms = ast_transform:trans(F, RawForms),
   SearchPath = paths:compute_search_path(#opts{}),
   OverlayTab = symtab:empty(),
-  Tab0 = symtab:std_symtab(SearchPath, symtab:empty()),
+  Tab0 = symtab:std_symtab(SearchPath, symtab:empty(), "/tmp/etylizer_test_std_symtab.config"),
   Tab = symtab:extend_symtab(F, Forms, Tab0,symtab:empty()),
   DisableExhaustiveness = typing:disable_exhaustiveness_from_forms(Forms),
 

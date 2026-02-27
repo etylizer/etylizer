@@ -843,7 +843,8 @@ process_qualifiers(Ctx, Loc, [Q | Qs], Env, Cs) ->
             % treat filter as if it is a guard to refine existing variable types
             % guard_seq_env cannot be applied to any expression, 
             % but the default case is unsafe, so we do it anyway
-            {GuardEnv, _} = guard_seq_env([[Filter]]),
+            {GuardEnv0, _} = guard_seq_env([[Filter]]),
+            GuardEnv = resolve_record_types(GuardEnv0, Ctx#ctx.symtab),
             I = intersect_envs(Env, GuardEnv),
             NewEnv = intersect_envs(I, FilterEnv),
             process_qualifiers(Ctx, Loc, Qs, NewEnv, sets:union(Cs, FilterCs))
@@ -1016,7 +1017,8 @@ receive_clause_constrs(Ctx, {case_clause, L, Pat, Guards, Exps}, T) ->
         #{},
         BoundVars),
     % Guard environment may refine variable types
-    {GuardEnv, _} = guard_seq_env(Guards),
+    {GuardEnv0, _} = guard_seq_env(Guards),
+    GuardEnv = resolve_record_types(GuardEnv0, Ctx#ctx.symtab),
     % TODO think about why we can't intersect with dynamic() here
     %      recv_05_fail won't fail if we do
     VarEnv = maps:merge(DynamicPatEnv, GuardEnv),
@@ -1260,7 +1262,8 @@ catch_clause_constrs(Ctx, {catch_clause, L, ExcType, Pat, Stack, Guards, Body}, 
     {PatCs, PatEnv0} = catch_clause_pat_env(Ctx, L, ExcType, Pat, Stack),
 
     % Apply guards to refine the environment (guards only refine, no constraints)
-    {GuardEnv, _GuardStatus} = guard_seq_env(Guards),
+    {GuardEnv0, _GuardStatus} = guard_seq_env(Guards),
+    GuardEnv = resolve_record_types(GuardEnv0, Ctx#ctx.symtab),
     PatEnv = intersect_envs(PatEnv0, GuardEnv),
 
     % Generate constraints for body in the refined environment
@@ -1340,8 +1343,8 @@ case_clause_env(Ctx, L, TyScrut, Scrut, Pat, Guards, SkipScrutDecomp) ->
     {Ci1, Gamma1} =
         case pat_has_vars(Pat) of
             false ->
-                {EnvGuards, _} = guard_seq_env(Guards),
-                {sets:new([{version, 2}]), EnvGuards};
+                {EnvGuards0, _} = guard_seq_env(Guards),
+                {sets:new([{version, 2}]), resolve_record_types(EnvGuards0, Ctx#ctx.symtab)};
             true -> pat_guard_env(Ctx, L, Ti, Pat, Guards)
         end,
     Gamma2 = intersect_envs(Gamma1, Gamma0),
@@ -1356,7 +1359,8 @@ pat_guard_lower_upper(Symtab, P, Gs, E) ->
     % For 'or' guards like is_atom(X) or is_atom(Y), each branch contributes
     % a separate bound, and the union gives: {atom, any} | {any, atom}.
     % Both Upper and Lower must be computed disjunctively so they stay consistent
-    DisjEnvs = guard_seq_lower_envs(Gs),
+    DisjEnvs0 = guard_seq_lower_envs(Gs),
+    DisjEnvs = [{resolve_record_types(Env, Symtab), Status} || {Env, Status} <- DisjEnvs0],
     Upper =
         ast_lib:mk_union(
             lists:map(
@@ -1662,7 +1666,8 @@ is_definite_match(_) -> false.
           {constr:constrs(), constr:constr_env()}.
 pat_guard_env(Ctx, L, T, P, Gs) ->
     {Cs, Env} = pat_env(Ctx, L, T, P),
-    {EnvGuards, _} = guard_seq_env(Gs),
+    {EnvGuards0, _} = guard_seq_env(Gs),
+    EnvGuards = resolve_record_types(EnvGuards0, Ctx#ctx.symtab),
     {Cs, intersect_envs(Env, EnvGuards)}.
 
 % t // p
@@ -2101,6 +2106,17 @@ ty_of_const_exp(E) ->
 -spec merge_status(safe | unsafe, safe | unsafe) -> safe | unsafe.
 merge_status(safe, safe) -> safe;
 merge_status(_, _) -> unsafe.
+
+% Resolves {record, Name, []} types in a guard environment to their encoded tuple types.
+-spec resolve_record_types(constr:constr_env(), symtab:t()) -> constr:constr_env().
+resolve_record_types(Env, Symtab) ->
+    maps:map(fun(_VarRef, Ty) -> resolve_record_type(Ty, Symtab) end, Env).
+
+-spec resolve_record_type(ast:ty(), symtab:t()) -> ast:ty().
+resolve_record_type({record, RecordName, Overrides}, Symtab) ->
+    RecordTy = symtab:lookup_record(RecordName, ast:loc_auto(), Symtab),
+    records:encode_record_ty(RecordTy, Overrides);
+resolve_record_type(Ty, _Symtab) -> Ty.
 
 % {var,{loc,"test_files/tycheck_simple.erl",202,16},{qref,erlang,is_integer,1}} for {'Y',0} and args []: {#{},unsafe}
 -spec var_test_env(ast:guard_test(), ast:local_varname(), [ast:guard_test()]) ->

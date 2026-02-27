@@ -34,7 +34,8 @@
 %         render_list_with_braces/2,
          ref/1,
          render_varnames/1,
-         render_exps/2
+         render_exps/2,
+         render_exp/2
         ]).
 
 
@@ -634,7 +635,13 @@ render_exp(Exp, Indent) ->
             string:join([render_exp(A, Indent) || A <- Args], ", ") ++ ")";
         {op, _, Op, L, R} ->
             render_exp(L, Indent) ++ " " ++ atom_to_list(Op) ++ " " ++ render_exp(R, Indent);
-        {op, _, Op, Operand} ->
+        {op, _, Op, [L, R]} ->
+            % Pattern binary op (ast_transform wraps pattern operands in a list)
+            render_exp(L, Indent) ++ " " ++ atom_to_list(Op) ++ " " ++ render_exp(R, Indent);
+        {op, _, Op, [Operand]} ->
+            % Pattern unary op (ast_transform wraps pattern operand in a list)
+            atom_to_list(Op) ++ render_exp(Operand, Indent);
+        {op, _, Op, Operand} when not is_list(Operand) ->
             atom_to_list(Op) ++ render_exp(Operand, Indent);
         {'fun', _, _Name, Clauses} ->
             Pad = lists:duplicate(Indent, $\s),
@@ -644,12 +651,121 @@ render_exp(Exp, Indent) ->
             string:join([InPad ++ render_fun_clause(C, Inner) || C <- Clauses], ";\n") ++ "\n" ++
             Pad ++ "end";
         {fun_ref, _, Ref} -> "fun " ++ render(ref(Ref));
+        {fun_ref_dyn, _, {qref_dyn, Mod, Fun, Arity}} ->
+            "fun " ++ render_exp(Mod, Indent) ++ ":" ++ render_exp(Fun, Indent) ++
+            "/" ++ render_exp(Arity, Indent);
         {block, _, Exps} ->
             "begin " ++ string:join([render_exp(E, Indent) || E <- Exps], ", ") ++ " end";
         {match, _, Pat, E} ->
             render_exp(Pat, Indent) ++ " = " ++ render_exp(E, Indent);
-        _ ->
-            io_lib:format("~w", [Exp])
+        {'catch', _, E} ->
+            "catch " ++ render_exp(E, Indent);
+        {'if', _, Clauses} ->
+            Pad = lists:duplicate(Indent, $\s),
+            Inner = Indent + 2,
+            InPad = lists:duplicate(Inner, $\s),
+            "if\n" ++
+            string:join([InPad ++ render_if_clause(C, Inner) || C <- Clauses], ";\n") ++ "\n" ++
+            Pad ++ "end";
+        {lc, _, LcE, Qualifiers} ->
+            "[" ++ render_exp(LcE, Indent) ++ " || " ++
+            string:join([render_qualifier(Q, Indent) || Q <- Qualifiers], ", ") ++ "]";
+        {bc, _, BcE, Qualifiers} ->
+            "<< " ++ render_exp(BcE, Indent) ++ " || " ++
+            string:join([render_qualifier(Q, Indent) || Q <- Qualifiers], ", ") ++ " >>";
+        {mc, _, Key, Val, Qualifiers} ->
+            "#{" ++ render_exp(Key, Indent) ++ " => " ++ render_exp(Val, Indent) ++ " || " ++
+            string:join([render_qualifier(Q, Indent) || Q <- Qualifiers], ", ") ++ "}";
+        {bin, _, Elements} ->
+            "<<" ++ string:join([render_bin_element(E, Indent) || E <- Elements], ", ") ++ ">>";
+        {map_create, _, Assocs} ->
+            "#{" ++ string:join([render_map_assoc(A, Indent) || A <- Assocs], ", ") ++ "}";
+        {map, _, Assocs} ->
+            "#{" ++ string:join([render_map_assoc(A, Indent) || A <- Assocs], ", ") ++ "}";
+        {map_update, _, MapE, Assocs} ->
+            render_exp(MapE, Indent) ++ "#{" ++
+            string:join([render_map_assoc(A, Indent) || A <- Assocs], ", ") ++ "}";
+        {map, _, MapE, Assocs} ->
+            render_exp(MapE, Indent) ++ "#{" ++
+            string:join([render_map_assoc(A, Indent) || A <- Assocs], ", ") ++ "}";
+        {'receive', _, Clauses} ->
+            Pad = lists:duplicate(Indent, $\s),
+            Inner = Indent + 2,
+            InPad = lists:duplicate(Inner, $\s),
+            "receive\n" ++
+            string:join([InPad ++ render_clause(C, Inner) || C <- Clauses], ";\n") ++ "\n" ++
+            Pad ++ "end";
+        {receive_after, _, Clauses, Timeout, AfterBody} ->
+            Pad = lists:duplicate(Indent, $\s),
+            Inner = Indent + 2,
+            InPad = lists:duplicate(Inner, $\s),
+            CasePart = case Clauses of
+                [] -> "";
+                _ ->
+                    string:join([InPad ++ render_clause(C, Inner) || C <- Clauses], ";\n") ++ "\n"
+            end,
+            AfterStr = InPad ++ render_exp(Timeout, Inner) ++ " ->\n" ++
+                lists:duplicate(Inner + 2, $\s) ++
+                string:join([render_exp(E, Inner + 2) || E <- AfterBody],
+                            ",\n" ++ lists:duplicate(Inner + 2, $\s)),
+            "receive\n" ++ CasePart ++
+            Pad ++ "after\n" ++ AfterStr ++ "\n" ++
+            Pad ++ "end";
+        {record_create, _, Name, Fields} ->
+            "#" ++ atom_to_list(Name) ++ "{" ++
+            string:join([render_record_field(F, Indent) || F <- Fields], ", ") ++ "}";
+        {record, _, Name, Fields} ->
+            "#" ++ atom_to_list(Name) ++ "{" ++
+            string:join([render_record_field(F, Indent) || F <- Fields], ", ") ++ "}";
+        {record_field, _, RecE, Name, Field} ->
+            render_exp(RecE, Indent) ++ "#" ++ atom_to_list(Name) ++ "." ++ atom_to_list(Field);
+        {record_index, _, Name, Field} ->
+            "#" ++ atom_to_list(Name) ++ "." ++ atom_to_list(Field);
+        {record_update, _, RecUE, Name, Fields} ->
+            render_exp(RecUE, Indent) ++ "#" ++ atom_to_list(Name) ++ "{" ++
+            string:join([render_record_field(F, Indent) || F <- Fields], ", ") ++ "}";
+        {'try', _, Body, Cases, Catches, After} ->
+            Pad = lists:duplicate(Indent, $\s),
+            Inner = Indent + 2,
+            InPad = lists:duplicate(Inner, $\s),
+            BodyStr = string:join([render_exp(E, Inner) || E <- Body],
+                                  ",\n" ++ InPad),
+            CaseStr = case Cases of
+                [] -> "";
+                _ ->
+                    " of\n" ++
+                    string:join([InPad ++ render_clause(C, Inner) || C <- Cases], ";\n") ++ "\n"
+            end,
+            CatchStr = case Catches of
+                [] -> "";
+                _ ->
+                    Pad ++ "catch\n" ++
+                    string:join([InPad ++ render_catch_clause(C, Inner) || C <- Catches], ";\n") ++ "\n"
+            end,
+            AfterStr = case After of
+                [] -> "";
+                _ ->
+                    Pad ++ "after\n" ++
+                    InPad ++ string:join([render_exp(E, Inner) || E <- After],
+                                        ",\n" ++ InPad) ++ "\n"
+            end,
+            "try\n" ++ InPad ++ BodyStr ++ "\n" ++
+            CaseStr ++ CatchStr ++ AfterStr ++
+            Pad ++ "end";
+        {'maybe', _, Exps} ->
+            Pad = lists:duplicate(Indent, $\s),
+            Inner = Indent + 2,
+            InPad = lists:duplicate(Inner, $\s),
+            "maybe\n" ++
+            InPad ++ string:join([render_exp(E, Inner) || E <- Exps],
+                                 ",\n" ++ InPad) ++ "\n" ++
+            Pad ++ "end";
+        {'maybe_match', _, MaybeE, Pat} ->
+            render_exp(Pat, Indent) ++ " ?= " ++ render_exp(MaybeE, Indent);
+        {annotate, _, AnnE, ATy} ->
+            render_exp(AnnE, Indent) ++ " :: " ++ render_ty(ATy);
+        {assert, _, AssE, ATy} ->
+            render_exp(AssE, Indent) ++ " :! " ++ render_ty(ATy)
     end.
 
 -spec render_clause(ast:case_clause(), non_neg_integer()) -> string().
@@ -673,3 +789,83 @@ render_fun_clause({fun_clause, _, Pats, Guards, Body}, Indent) ->
     end,
     BodyStr = string:join([render_exp(E, Indent + 2) || E <- Body], ",\n" ++ lists:duplicate(Indent + 2, $\s)),
     PatStr ++ GuardStr ++ " -> " ++ BodyStr.
+
+-spec render_if_clause(ast:if_clause(), non_neg_integer()) -> string().
+render_if_clause({if_clause, _, Guards, Body}, Indent) ->
+    GuardStr = string:join(
+        [string:join([render_exp(G, Indent) || G <- Guard], ", ") || Guard <- Guards], "; "),
+    BodyStr = string:join([render_exp(E, Indent + 2) || E <- Body],
+                          ",\n" ++ lists:duplicate(Indent + 2, $\s)),
+    GuardStr ++ " ->\n" ++ lists:duplicate(Indent + 2, $\s) ++ BodyStr.
+
+-spec render_catch_clause(ast:catch_clause(), non_neg_integer()) -> string().
+render_catch_clause({catch_clause, _, ExcType, Pat, Stack, Guards, Body}, Indent) ->
+    ExcStr = render_exp(ExcType, Indent),
+    PatStr = render_exp(Pat, Indent),
+    StackStr = case Stack of
+        {wildcard, _} -> "";
+        _ -> ":" ++ render_exp(Stack, Indent)
+    end,
+    GuardStr = case Guards of
+        [] -> "";
+        _ -> " when " ++ string:join(
+            [string:join([render_exp(G, Indent) || G <- Guard], ", ") || Guard <- Guards], "; ")
+    end,
+    BodyStr = string:join([render_exp(E, Indent + 2) || E <- Body],
+                          ",\n" ++ lists:duplicate(Indent + 2, $\s)),
+    ExcStr ++ ":" ++ PatStr ++ StackStr ++ GuardStr ++ " ->\n" ++
+    lists:duplicate(Indent + 2, $\s) ++ BodyStr.
+
+-spec render_qualifier(ast:qualifier(), non_neg_integer()) -> string().
+render_qualifier(Qual, Indent) ->
+    case Qual of
+        {generate, _, Pat, Exp} ->
+            render_exp(Pat, Indent) ++ " <- " ++ render_exp(Exp, Indent);
+        {generate_strict, _, Pat, Exp} ->
+            render_exp(Pat, Indent) ++ " <:- " ++ render_exp(Exp, Indent);
+        {b_generate, _, Pat, Exp} ->
+            render_exp(Pat, Indent) ++ " <= " ++ render_exp(Exp, Indent);
+        {b_generate_strict, _, Pat, Exp} ->
+            render_exp(Pat, Indent) ++ " <:= " ++ render_exp(Exp, Indent);
+        {m_generate, _, KeyPat, ValPat, Exp} ->
+            render_exp(KeyPat, Indent) ++ " := " ++ render_exp(ValPat, Indent) ++
+            " <- " ++ render_exp(Exp, Indent);
+        {m_generate_strict, _, KeyPat, ValPat, Exp} ->
+            render_exp(KeyPat, Indent) ++ " := " ++ render_exp(ValPat, Indent) ++
+            " <:- " ++ render_exp(Exp, Indent);
+        {zip, _, Gens} ->
+            "zip(" ++ string:join([render_qualifier(G, Indent) || G <- Gens], " && ") ++ ")";
+        _ ->
+            % Filter expression (just an expression)
+            render_exp(Qual, Indent)
+    end.
+
+-spec render_bin_element(ast:exp_bitstring_elem(), non_neg_integer()) -> string().
+render_bin_element({bin_element, _, Value, Size, TypeSpecs}, Indent) ->
+    ValStr = render_exp(Value, Indent),
+    SizeStr = case Size of
+        default -> "";
+        _ -> ":" ++ render_exp(Size, Indent)
+    end,
+    TypeStr = case TypeSpecs of
+        default -> "";
+        _ -> "/" ++ string:join([render_tyspec(TS) || TS <- TypeSpecs], "-")
+    end,
+    ValStr ++ SizeStr ++ TypeStr.
+
+-spec render_tyspec(ast:bitstring_tyspec()) -> string().
+render_tyspec(Spec) when is_atom(Spec) -> atom_to_list(Spec);
+render_tyspec({Name, Value}) -> atom_to_list(Name) ++ ":" ++ integer_to_list(Value).
+
+-spec render_map_assoc(ast:map_assoc(), non_neg_integer()) -> string().
+render_map_assoc({map_field_opt, _, Key, Val}, Indent) ->
+    render_exp(Key, Indent) ++ " => " ++ render_exp(Val, Indent);
+render_map_assoc({map_field_req, _, Key, Val}, Indent) ->
+    render_exp(Key, Indent) ++ " := " ++ render_exp(Val, Indent).
+
+-spec render_record_field({record_field, ast:loc(), atom(), ast:exp()} |
+                          {record_field_other, ast:loc(), ast:exp()}, non_neg_integer()) -> string().
+render_record_field({record_field, _, Field, Exp}, Indent) ->
+    atom_to_list(Field) ++ " = " ++ render_exp(Exp, Indent);
+render_record_field({record_field_other, _, Exp}, Indent) ->
+    "_ = " ++ render_exp(Exp, Indent).

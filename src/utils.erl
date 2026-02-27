@@ -344,26 +344,29 @@ compare(Cmp, [T1 | Ts1], [T2 | Ts2]) ->
 replace(Term, Mapping) ->
     replace_term(Term, Mapping).
 
--spec replace_term(dynamic(), #{term() => term()}) -> dynamic().
+-spec replace_term(dynamic(), dynamic()) -> dynamic().
 %-spec replace_term(A, #{term() => term()}) -> A. % rank-2 types needed
-replace_term({node, _} = Ref, Mapping) ->
-    case maps:find(Ref, Mapping) of
-        {ok, NewTerm} -> NewTerm;
-        error -> Ref
-    end;
-replace_term({local_ref, _} = Ref, Mapping) ->
-    case maps:find(Ref, Mapping) of
-        {ok, NewTerm} -> NewTerm;
-        error -> Ref
-    end;
+replace_term({node, _} = Ref, Mapping) -> replace_term_node(Ref, Mapping);
+replace_term({local_ref, _} = Ref, Mapping) -> replace_term_node(Ref, Mapping);
 replace_term(Tuple, Mapping) when is_tuple(Tuple) ->
     list_to_tuple([replace_term(Element, Mapping) || Element <- tuple_to_list(Tuple)]);
 replace_term([H|T], Mapping) ->
     [replace_term(H, Mapping) | replace_term(T, Mapping)];
 replace_term(Map, Mapping) when is_map(Map) ->
-    maps:from_list([{replace_term(K, Mapping), replace_term(V, Mapping)} || {K, V} <- maps:to_list(Map)]);
+    replace_term_map(Map, Mapping);
 replace_term(Term, _Mapping) ->
     Term.
+
+-spec replace_term_map(map(), dynamic()) -> map().
+replace_term_map(Map, Mapping) ->
+    maps:from_list([{replace_term(K, Mapping), replace_term(V, Mapping)} || {K, V} <- maps:to_list(Map)]).
+
+-spec replace_term_node({node |local_ref, term()}, dynamic()) -> dynamic().
+replace_term_node(Ref, Mapping) ->
+    case maps:find(Ref, Mapping) of
+        {ok, NewTerm} -> NewTerm;
+        error -> Ref
+    end.
 
 
 -spec update_ets_from_map(atom(), #{term() => term()}) -> _.

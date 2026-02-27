@@ -233,7 +233,7 @@ dump_transformed_ast(Opts) ->
         end, FunDecls)
     end, Opts#opts.files).
 
--spec doWork(#opts{}) -> [file:filename()].
+-spec doWork(#opts{}) -> cm_check:check_list().
 doWork(Opts) ->
     ?assert_type(global_state:with_new_state(fun() ->
       ?LOG_TRACE("Initializing ETS tables"),
@@ -257,18 +257,26 @@ doWork(Opts) ->
           end,
           SourceList = paths:generate_input_file_list(Opts),
           SearchPath = paths:compute_search_path(Opts),
+          DepGraphFile = paths:depgraph_file_name(Opts),
           DepGraph =
               case Opts#opts.no_deps of
                   true ->
                       % only typecheck the files given
                       cm_depgraph:new(SourceList);
                   false ->
-                      ?LOG_DEBUG("Entry points: ~p, now building dependency graph", SourceList),
-                      G = cm_depgraph:build_dep_graph(
-                          SourceList,
-                          SearchPath),
-                      ?LOG_DEBUG("Reverse dependency graph: ~p", cm_depgraph:pretty_depgraph(G)),
-                      G
+                      case Opts#opts.force of
+                          true ->
+                              ?LOG_DEBUG("Force flag set, rebuilding dependency graph"),
+                              build_and_save_depgraph(SourceList, SearchPath, DepGraphFile);
+                          false ->
+                              case cm_depgraph:load_depgraph(DepGraphFile, SourceList) of
+                                  {ok, CachedGraph} ->
+                                      ?LOG_DEBUG("Using cached dependency graph"),
+                                      CachedGraph;
+                                  stale ->
+                                      build_and_save_depgraph(SourceList, SearchPath, DepGraphFile)
+                              end
+                      end
               end,
           case Opts#opts.dump_transformed of
               true ->
@@ -276,14 +284,25 @@ doWork(Opts) ->
                   [];
               false ->
                   ?LOG_INFO("Performing type checking"),
-                  cm_check:perform_type_checks(SearchPath, cm_depgraph:all_sources(DepGraph), DepGraph, Opts)
+                  cm_check:perform_type_checks(
+                      SearchPath, cm_depgraph:all_sources(DepGraph), DepGraph, Opts)
           end
       after
           parse_cache:cleanup(),
-          stdtypes:cleanup()
+          stdtypes:cleanup(),
+          paths:clear_module_cache()
       end
-                                end), [file:filename()]).
+                                end), cm_check:check_list()).
 
+
+-spec build_and_save_depgraph([file:filename()], paths:search_path(), file:filename()) ->
+    cm_depgraph:dep_graph().
+build_and_save_depgraph(SourceList, SearchPath, DepGraphFile) ->
+    ?LOG_DEBUG("Entry points: ~p, now building dependency graph", SourceList),
+    G = cm_depgraph:build_dep_graph(SourceList, SearchPath),
+    ?LOG_DEBUG("Reverse dependency graph: ~p", cm_depgraph:pretty_depgraph(G)),
+    cm_depgraph:save_depgraph(DepGraphFile, G),
+    G.
 -spec main([string()]) -> ok.
 main(Args) ->
     Opts = parse_args(Args),

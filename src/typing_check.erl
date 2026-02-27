@@ -18,33 +18,42 @@
 -include("etylizer.hrl").
 
 % Checks all functions against their specs, only print a report.
+% Returns the list of functions that failed type checking.
 -spec check_all_report(
         ctx(), string(), symtab:fun_env(), [{ast:fun_decl(), ast:ty_scheme()}]
-       ) -> ok.
+       ) -> [{atom(), arity()}].
 check_all_report(Ctx, FileName, Env, Decls) ->
     ?LOG_NOTE("Checking ~w functions in ~s against their specs", length(Decls), FileName),
     ExtSymtab = symtab:extend_symtab_with_fun_env(Env, Ctx#ctx.symtab),
     ExtCtx = Ctx#ctx { symtab = ExtSymtab },
     BaseName = filename:basename(filename:rootname(FileName)),
-    lists:foreach(
-        fun({Decl, Ty}) -> check_one_report(ExtCtx, BaseName, Decl, Ty) end,
+    lists:filtermap(
+        fun({Decl, Ty}) ->
+            case check_one_report(ExtCtx, BaseName, Decl, Ty) of
+                ok -> false;
+                {error, FA} -> {true, FA}
+            end
+        end,
         Decls
-    ),
-    ok.
+    ).
 
--spec check_one_report(ctx(), string(), ast:fun_decl(), ast:ty_scheme()) -> ok.
+-spec check_one_report(ctx(), string(), ast:fun_decl(), ast:ty_scheme()) -> ok | {error, {atom(), arity()}}.
 check_one_report(ExtCtx, BaseName, Decl = {function, _, Name, Arity, _}, Ty) ->
     T0 = erlang:system_time(millisecond),
     try check_report(ExtCtx, Decl, Ty) of
         success ->
-            io:format(user,"Ok: ~s:~w/~w (~p ms)~n", [BaseName, Name, Arity, ?TIME(T0)]);
+            io:format(user,"Ok: ~s:~w/~w (~p ms)~n", [BaseName, Name, Arity, ?TIME(T0)]),
+            ok;
         timeout ->
-            io:format(user,"Timeout: ~s:~w/~w (~p ms)~n", [BaseName, Name, Arity, ?TIME(T0)])
+            io:format(user,"Timeout: ~s:~w/~w (~p ms)~n", [BaseName, Name, Arity, ?TIME(T0)]),
+            {error, {Name, Arity}}
     catch
         throw:Thrown ->
-            check_one_report_thrown(?assert_type(Thrown, tuple()), BaseName, Name, Arity, T0);
+            check_one_report_thrown(?assert_type(Thrown, tuple()), BaseName, Name, Arity, T0),
+            {error, {Name, Arity}};
         _:T ->
-            io:format(user,"Other: (~p) ~s:~w/~w (~p ms)~n", [{T}, BaseName, Name, Arity, ?TIME(T0)])
+            io:format(user,"Other: (~p) ~s:~w/~w (~p ms)~n", [{T}, BaseName, Name, Arity, ?TIME(T0)]),
+            {error, {Name, Arity}}
     end.
 
 -spec check_one_report_thrown(tuple(), string(), atom(), arity(), integer()) -> ok.

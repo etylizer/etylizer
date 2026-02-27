@@ -20,7 +20,7 @@
     lookup_op/4,
     lookup_ty/3,
     lookup_record/3,
-    std_symtab/2,
+    std_symtab/3,
     extend_symtab/4,
     extend_symtab_with_fun_env/2,
     empty/0,
@@ -164,17 +164,55 @@ symbols_for_module(Mod, Tab) ->
 -spec empty() -> t().
 empty() -> #tab { funs = #{}, ops = #{}, types = #{}, records = #{}, modules = #{}, nominals = sets:new([{version, 2}]) }.
 
--spec std_symtab(paths:search_path(), t()) -> t().
-std_symtab(SearchPath, OverlaySymtab) ->
-    CacheKey = erlang:phash2(OverlaySymtab),
+-define(STD_SYMTAB_VERSION, 2).
+
+-spec std_symtab(paths:search_path(), t(), file:filename()) -> t().
+std_symtab(SearchPath, OverlaySymtab, CacheFile) ->
+    OtpVersion = erlang:system_info(otp_release),
+    OverlayHash = erlang:phash2(OverlaySymtab),
+    CacheKey = {?STD_SYMTAB_VERSION, OtpVersion, OverlayHash},
+    % Check in-memory cache first
     case persistent_term:get(std_symtab_cache, undefined) of
         {CacheKey, CachedTab} ->
-            ?LOG_DEBUG("Using cached standard symtab"),
+            ?LOG_DEBUG("Using in-memory cached standard symtab"),
             ?assert_type(CachedTab, t());
         _ ->
-            Tab = build_std_symtab(SearchPath, OverlaySymtab),
-            persistent_term:put(std_symtab_cache, {CacheKey, Tab}),
-            Tab
+            % Try disk cache
+            case load_std_symtab(CacheFile, CacheKey) of
+                {ok, Tab} ->
+                    ?LOG_DEBUG("Loaded standard symtab from disk cache"),
+                    persistent_term:put(std_symtab_cache, {CacheKey, Tab}),
+                    Tab;
+                stale ->
+                    Tab = build_std_symtab(SearchPath, OverlaySymtab),
+                    persistent_term:put(std_symtab_cache, {CacheKey, Tab}),
+                    save_std_symtab(CacheFile, CacheKey, Tab),
+                    Tab
+            end
+    end.
+
+% @doc Save the standard symtab to disk.
+-spec save_std_symtab(string(), term(), t()) -> ok.
+save_std_symtab(Path, CacheKey, Tab) ->
+    filelib:ensure_dir(Path),
+    Data = io_lib:format("~p.~n", [{etylizer_std_symtab, CacheKey, Tab}]),
+    ?assert_pattern(ok, file:write_file(Path, Data)).
+
+% @doc Load the standard symtab from disk if the cache key matches.
+-spec load_std_symtab(file:filename(), term()) -> {ok, t()} | stale.
+load_std_symtab(Path, ExpectedKey) ->
+    case file:consult(Path) of
+        {ok, [{etylizer_std_symtab, ExpectedKey, Tab}]} when is_record(Tab, tab) ->
+            {ok, Tab};
+        {ok, _} ->
+            ?LOG_DEBUG("Standard symtab cache at ~p has wrong key", Path),
+            stale;
+        {error, enoent} ->
+            ?LOG_DEBUG("No standard symtab cache at ~p", Path),
+            stale;
+        {error, _} ->
+            ?LOG_WARN("Standard symtab cache at ~p is corrupted", Path),
+            stale
     end.
 
 -spec build_std_symtab(paths:search_path(), t()) -> t().

@@ -78,7 +78,7 @@
 'string:trim'(_, _) -> error(badarg).
 -spec 'os:cmd'(string()) -> string().
 'os:cmd'(_) -> error(badarg).
--spec 'file:write_file'(string(), string()) -> _.
+-spec 'file:write_file'(string(), string() | io_lib:chars()) -> _.
 'file:write_file'(_, _) -> error(badarg).
 
 -spec 'io:get_line'(pid(), string()) -> string() | eof.

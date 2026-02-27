@@ -167,3 +167,10 @@ add3(Name, R) -> #rr2{name=Name, recursive=[R]}.
 -record(rr3, {name :: string(), recursive :: [#rr3{name :: integer()}] }).
 -spec add4_fail(string(), #rr3{}) -> #rr3{}.
 add4_fail(Name, R) -> #rr3{name=Name, recursive=[R]}.
+
+-spec record_guard_01(term()) -> {ok, #person{}} | stale.
+record_guard_01(MaybePerson) ->
+    case MaybePerson of
+        Person when is_record(Person, person) -> {ok, Person};
+        _ -> stale
+    end.

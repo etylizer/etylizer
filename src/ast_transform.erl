@@ -1255,7 +1255,7 @@ rewrite_dispatched_clauses(Clauses, PositionTypes) ->
     % Generate fresh variable names for all positions
     FreshVars = [begin
         Name = list_to_atom("$dispatch_" ++ integer_to_list(I)),
-        {Name, erlang:unique_integer([positive])}
+        {Name, 0}
     end || I <- lists:seq(1, Arity)],
 
     % Build scrutiny from complex positions only
