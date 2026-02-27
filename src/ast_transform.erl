@@ -10,10 +10,12 @@
 -include_lib("eunit/include/eunit.hrl").
 -endif.
 
+-etylizer({disable_exhaustiveness_toplevel, [eval_type_int/1]}).
 
 -compile([nowarn_shadow_vars]).
 
 -include("log.hrl").
+-include("etylizer.hrl").
 
 -record(ctx,
         { path :: file:filename(),
@@ -181,16 +183,21 @@ to_loc(Ctx, Anno) -> ast:to_loc(Ctx#ctx.path, Anno).
 
 -spec trans_spec_ty(ctx(), ast:loc(), [ast_erl:ty_full_fun()]) -> ast:ty_scheme().
 trans_spec_ty(Ctx, Loc, FunTys) ->
-    AllTyvars =
+    AllTyvars = % :: [ast_erl:ty_full_fun()]
         utils:everything(
-          fun (V = {var, _, _}) -> {ok, V};
+          % TODO why is the guard not enough to narrow down the type to ast_erl:ty_var()?
+          fun (V = {var, _, Name}) when is_atom(Name) -> {ok, ?assert_type(V, ast_erl:ty_var())};
               (_) -> error
           end,
           FunTys),
     {UnconstrFunTys, NestedConstrs} =
         lists:unzip(
-          lists:map(
-            fun ({type, _Anno, bounded_fun, [Ty, Constrs]}) -> {Ty, Constrs};
+          lists:map( % FIXME list2 not supported
+            fun ({type, _Anno, bounded_fun, [Ty, Constrs]}) ->
+                    {
+                     ?assert_type(Ty, ast_erl:ty_fun_unconstrained_ty()),
+                     ?assert_type(Constrs, ast_erl:ty_fun_constraint())
+                    };
                 (Ty) -> {Ty, []}
             end, FunTys)),
     Env = make_tyenv(Ctx, AllTyvars, ignore_dups),
