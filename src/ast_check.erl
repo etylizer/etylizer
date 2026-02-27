@@ -197,52 +197,54 @@ check_ty_remote(Spec, CurModule, Ty, Form, Depth) ->
     case Ty of
         {remote_type, _, [{atom, _, RemoteMod}, {atom, _, Name}, Args0]} ->
             Args = ?assert_type(Args0, [ast_erl:ty()]),
-            case {RemoteMod, Name, Args} of
-                {sets, set, [Ty2]} ->
-                    raise_unless(sets:is_set(Form), Ty, Form, Depth),
-                    lists:foreach(fun (X) -> check_ty(Spec, CurModule, Ty2, X, Depth + 1) end,
-                              sets:to_list(?assert_type(Form, sets:set(term())))),
-                    ok;
-                {etylizer, without, [BaseTy, _ExcludedTy]} ->
-                    % without(T, U) means T \ U; for checking purposes, just check T
-                    check_ty(Spec, CurModule, BaseTy, Form, Depth);
-                {etylizer, list1, [T]} ->
-                    % list1(T) means [T], a list with exactly one element
-                    case Form of
-                        [E1] -> check_ty(Spec, CurModule, T, E1, Depth + 1);
-                        _ -> raise(Ty, Form, Depth)
-                    end;
-                {etylizer, list2, [T, U]} ->
-                    % list2(T, U) means [T, U], a list with exactly two elements
-                    case Form of
-                        [E1, E2] -> 
-                            check_ty(Spec, CurModule, T, E1, Depth + 1),
-                            check_ty(Spec, CurModule, U, E2, Depth + 1);
-                        _ -> raise(Ty, Form, Depth)
-                    end;
-                {etylizer, list3, [T, U, V]} ->
-                    % list3(T, U, V) means [T, U, V], a list with exactly three elements
-                    case Form of
-                        [E1, E2, E3] -> 
-                            check_ty(Spec, CurModule, T, E1, Depth + 1),
-                            check_ty(Spec, CurModule, U, E2, Depth + 1),
-                            check_ty(Spec, CurModule, V, E3, Depth + 1);
-                        _ -> raise(Ty, Form, Depth)
-                    end;
-                {etylizer, list1star, [T, U]} ->
-                    % list1star(T, U) means [T | [U]], first element T then arbitrary many Us
-                    case Form of
-                        [E1, Rest] -> 
-                            check_ty(Spec, CurModule, T, E1, Depth + 1),
-                            lists:foreach(fun(X) -> check_ty(Spec, CurModule, U, X, Depth + 1) end, Rest);
-                        _ -> raise(Ty, Form, Depth)
-                    end;
-                _ ->
-                    Ty3 = lookup_ty_or_die(Spec, RemoteMod, Name, Args),
-                    check_ty(Spec, RemoteMod, Ty3, Form, Depth)
-            end;
+            check_ty_remote2(Spec, CurModule, Ty, RemoteMod, Name, Args, Form, Depth);
         _ -> erlang:error({expected_remote_type, Ty})
     end.
+
+% @doc Checks a remote type given its module, name, and args.
+-spec check_ty_remote2(ty_map(), module_name(), ast_erl:ty(), module(), atom(), [ast_erl:ty()], term(), integer()) -> ok.
+check_ty_remote2(Spec, CurModule, Ty, sets, set, [Ty2], Form, Depth) ->
+    raise_unless(sets:is_set(Form), Ty, Form, Depth),
+    lists:foreach(fun (X) -> check_ty(Spec, CurModule, Ty2, X, Depth + 1) end,
+              sets:to_list(?assert_type(Form, sets:set(term())))),
+    ok;
+check_ty_remote2(Spec, CurModule, _Ty, etylizer, without, [BaseTy, _ExcludedTy], Form, Depth) ->
+    % without(T, U) means T \ U; for checking purposes, just check T
+    check_ty(Spec, CurModule, BaseTy, Form, Depth);
+check_ty_remote2(Spec, CurModule, Ty, etylizer, list1, [T], Form, Depth) ->
+    % list1(T) means [T], a list with exactly one element
+    case Form of
+        [E1] -> check_ty(Spec, CurModule, T, E1, Depth + 1);
+        _ -> raise(Ty, Form, Depth)
+    end;
+check_ty_remote2(Spec, CurModule, Ty, etylizer, list2, [T, U], Form, Depth) ->
+    % list2(T, U) means [T, U], a list with exactly two elements
+    case Form of
+        [E1, E2] ->
+            check_ty(Spec, CurModule, T, E1, Depth + 1),
+            check_ty(Spec, CurModule, U, E2, Depth + 1);
+        _ -> raise(Ty, Form, Depth)
+    end;
+check_ty_remote2(Spec, CurModule, Ty, etylizer, list3, [T, U, V], Form, Depth) ->
+    % list3(T, U, V) means [T, U, V], a list with exactly three elements
+    case Form of
+        [E1, E2, E3] ->
+            check_ty(Spec, CurModule, T, E1, Depth + 1),
+            check_ty(Spec, CurModule, U, E2, Depth + 1),
+            check_ty(Spec, CurModule, V, E3, Depth + 1);
+        _ -> raise(Ty, Form, Depth)
+    end;
+check_ty_remote2(Spec, CurModule, Ty, etylizer, list1star, [T, U], Form, Depth) ->
+    % list1star(T, U) means [T | [U]], first element T then arbitrary many Us
+    case Form of
+        [E1, Rest] ->
+            check_ty(Spec, CurModule, T, E1, Depth + 1),
+            check_ty(Spec, CurModule, U, Rest, Depth + 1);
+        _ -> raise(Ty, Form, Depth)
+    end;
+check_ty_remote2(Spec, _CurModule, _Ty, RemoteMod, Name, Args, Form, Depth) ->
+    Ty3 = lookup_ty_or_die(Spec, RemoteMod, Name, Args),
+    check_ty(Spec, RemoteMod, Ty3, Form, Depth).
 
 -spec check_ty_type(ty_map(), module_name(), ast_erl:ty(), term(), integer()) -> ok.
 check_ty_type(Spec, CurModule, Ty, Form, Depth) ->
