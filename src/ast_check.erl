@@ -204,6 +204,9 @@ check_ty_remote(Spec, CurModule, Ty, Form, Depth) ->
                     lists:foreach(fun (X) -> check_ty(Spec, CurModule, Ty2, X, Depth + 1) end,
                               sets:to_list(?assert_type(Form, sets:set(term())))),
                     ok;
+                {etylizer, without, [BaseTy, _ExcludedTy]} ->
+                    % without(T, U) means T \ U; for checking purposes, just check T
+                    check_ty(Spec, CurModule, BaseTy, Form, Depth);
                 _ ->
                     Ty3 = lookup_ty_or_die(Spec, RemoteMod, Name, Args),
                     check_ty(Spec, RemoteMod, Ty3, Form, Depth)
