@@ -164,21 +164,9 @@
 ]).
 
 % At several places, the AST contains lists with a fixed number of elements in a fixed order.
-% Such types are not expressible in erlang's type syntax. So we introduce various type synonyms
-% to clarify the intention.
-
-% Lists with exactly three elements.
--type list3(T, U, V) :: [T | U | V].
-
-% Lists with exactly two elements.
--type list2(T, U) :: [T | U].
--type list2(T) :: [T].
-
-% A list containing exactly one element of type T
--type list1(T) :: [T].
-
-% A list with first element of type T and then arbitrary manu Us.
--type list1star(T, U) :: [T | U].
+% Such types are not expressible in erlang's type syntax. We use etylizer:list1, etylizer:list2,
+% etylizer:list3, and etylizer:list1star to clarify the intention.
+% See resolve_ety_ty in ast_transform.erl for the precise semantics.
 
 
 % 8.1  Module Declarations and Forms
@@ -351,7 +339,7 @@
 -type unop() :: atom().
 
 % 8.5  Clauses
--type catch_clause() :: {clause, anno(), Header::list1(catch_clause_header()), Guards::[guard()],
+-type catch_clause() :: {clause, anno(), Header::etylizer:list1(catch_clause_header()), Guards::[guard()],
                          Body::exps()}.
 -type exc_type_pat() :: rep_atom() | pat_var().
 -type catch_clause_header() :: {tuple, anno(),
@@ -362,13 +350,13 @@
                                  % - P is a pattern
                                  % - S is a wildcard or variable for the stacktrace.
 
--type maybe_else_clause()  :: {clause, anno(), Pats::list1(pat()), Guards::[guard()], Body::exps()}.
--type case_clause()        :: {clause, anno(), Pats::list1(pat()), Guards::[guard()], Body::exps()}.
+-type maybe_else_clause()  :: {clause, anno(), Pats::etylizer:list1(pat()), Guards::[guard()], Body::exps()}.
+-type case_clause()        :: {clause, anno(), Pats::etylizer:list1(pat()), Guards::[guard()], Body::exps()}.
 -type fun_clause()         :: {clause, anno(), Pats::[pat()],      Guards::[guard()], Body::exps()}.
 -type if_clause()          :: {clause, anno(), Pats::[],           Guards::[guard()], Body::exps()}.
 
 % 8.6  Guards
--type guard() :: list1(guard_test()).
+-type guard() :: etylizer:list1(guard_test()).
 -type guard_test_bitstring_constr() :: gen_bitstring_constr(guard_test(), guard_test()).
 -type guard_test_cons() :: gen_cons(guard_test()).
 -type guard_test_funcall() :: gen_funcall(guard_test()).
@@ -393,38 +381,38 @@
 
 % 8.7  Types
 
--type ty_ann() :: {ann_type, anno(), list2(Var::exp_var(), Ty::ty())}. % annotation A::T in type specs
+-type ty_ann() :: {ann_type, anno(), etylizer:list2(Var::exp_var(), Ty::ty())}. % annotation A::T in type specs
 -type ty_lit() :: rep_atom() | rep_integer() | rep_char().
--type ty_bitstring() :: {type, anno(), binary, list2(rep_integer())}.
+-type ty_bitstring() :: {type, anno(), binary, etylizer:list2(rep_integer(), rep_integer())}.
 -type ty_empty_list() :: {type, anno(), nil, []}.
--type ty_list() :: {type, anno(), list, list1(ty())}.
+-type ty_list() :: {type, anno(), list, etylizer:list1(ty())}.
 
 -type ty_full_fun() :: ty_fun_unconstrained_ty() | ty_fun_constrained_ty().
 -type ty_fun_unconstrained_ty() :: % fun((T1...Tn) -> T)
-    {type, anno(), 'fun', list2({type, anno(), product, [ty()]}, ty())}.
+    {type, anno(), 'fun', etylizer:list2({type, anno(), product, [ty()]}, ty())}.
 -type ty_fun_constrained_ty() ::   % fun((T1...Tn) -> T) when Fc
-    {type, anno(), bounded_fun, list2(ty_fun_unconstrained_ty(), ty_fun_constraint())}.
+    {type, anno(), bounded_fun, etylizer:list2(ty_fun_unconstrained_ty(), ty_fun_constraint())}.
 -type ty_fun_constraint() :: [ty_constraint()].
--type ty_constraint() :: {type, anno(), constraint, list2({atom,anno(),is_subtype}, list2(ty_var(), ty()))}.
+-type ty_constraint() :: {type, anno(), constraint, etylizer:list2({atom,anno(),is_subtype}, etylizer:list2(ty_var(), ty()))}.
 
 -type ty_simple_fun() :: {type, anno(), 'fun', []}. % fun()
--type ty_any_arg_fun() :: {type, anno(),'fun', list2({type, anno(), any}, ty())}. % fun(...) -> T
+-type ty_any_arg_fun() :: {type, anno(),'fun', etylizer:list2({type, anno(), any}, ty())}. % fun(...) -> T
 -type ty_fun() :: ty_simple_fun() | ty_any_arg_fun() | ty_full_fun().
 
--type ty_integer_range() :: {type, anno(), range, list2(rep_integer())}.
+-type ty_integer_range() :: {type, anno(), range, etylizer:list2(rep_integer(), rep_integer())}.
 -type ty_map_any() :: {type, anno(), map, any}.
 -type ty_map() :: {type, anno(), map, [ty_map_assoc()]}.
--type ty_map_assoc_opt() :: {type, anno(), map_field_assoc, list2(ty())}.
--type ty_map_assoc_req() :: {type, anno(), map_field_exact, list2(ty())}.
+-type ty_map_assoc_opt() :: {type, anno(), map_field_assoc, etylizer:list2(ty(), ty())}.
+-type ty_map_assoc_req() :: {type, anno(), map_field_exact, etylizer:list2(ty(), ty())}.
 -type ty_map_assoc() :: ty_map_assoc_opt() | ty_map_assoc_req().
 % The types ty_binop and ty_unop denote expressions that can be evaluated to an integer
 % at compile time.
 -type ty_binop() :: {op, anno(), binop(), ty(), ty()}.
 -type ty_unop() :: {op, anno(), unop(), ty()}.
 -type ty_predef() :: {type, anno(), atom(), [ty()]}.
--type ty_record() :: {type, anno(), record, list1star(Name::rep_atom(), ty_field())}.
--type ty_field() :: {type, anno(), field_type, list2(Name::rep_atom(), ty())}.
--type ty_remote() :: {remote_type, anno(), list3(Module::rep_atom(), Name::rep_atom(), Args::[ty()])}.
+-type ty_record() :: {type, anno(), record, etylizer:list1star(Name::rep_atom(), ty_field())}.
+-type ty_field() :: {type, anno(), field_type, etylizer:list2(Name::rep_atom(), ty())}.
+-type ty_remote() :: {remote_type, anno(), etylizer:list3(Module::rep_atom(), Name::rep_atom(), Args::[ty()])}.
 -type ty_tuple_any() :: {type, anno(), tuple, any}.
 -type ty_tuple() :: {type, anno(), tuple, [ty()]}.
 -type ty_union() :: {type, anno(), union, [ty()]}.

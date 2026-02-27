@@ -160,3 +160,79 @@ list_pattern_12(S) ->
 list_01_fail(_Fun, {[],[]}) -> error(todo); % both R and F are non-empty in the next branch
 list_01_fail(Fun, {R,F}) when is_list(R), is_list(F) -> Fun(R, F).
 
+%%%%%%%%%%%%%%%%%%%%%%%% LIST1, LIST2, LIST3, LIST1STAR %%%%%%%%%%%%%%%%%%%%%%%
+
+% list1: exactly one element
+-spec list1_01() -> etylizer:list1(integer()).
+list1_01() -> [1].
+
+-spec list1_02() -> etylizer:list1(atom()).
+list1_02() -> [hello].
+
+-spec list1_03_fail() -> etylizer:list1(integer()).
+list1_03_fail() -> [1, 2].
+
+-spec list1_04_fail() -> etylizer:list1(integer()).
+list1_04_fail() -> [].
+
+-spec list1_05_fail() -> etylizer:list1(integer()).
+list1_05_fail() -> [hello].
+
+% list1 in argument position
+-spec list1_06(etylizer:list1(integer())) -> integer().
+list1_06([X]) -> X.
+
+% list2: exactly two elements
+-spec list2_01() -> etylizer:list2(integer(), atom()).
+list2_01() -> [1, hello].
+
+-spec list2_02() -> etylizer:list2(atom(), atom()).
+list2_02() -> [a, b].
+
+-spec list2_03_fail() -> etylizer:list2(integer(), atom()).
+list2_03_fail() -> [1].
+
+-spec list2_04_fail() -> etylizer:list2(integer(), atom()).
+list2_04_fail() -> [1, 2, 3].
+
+-spec list2_05_fail() -> etylizer:list2(integer(), atom()).
+list2_05_fail() -> [hello, world].
+
+% list2 in argument position
+-spec list2_06(etylizer:list2(integer(), atom())) -> {integer(), atom()}.
+list2_06([X, Y]) -> {X, Y}.
+
+% list3: exactly three elements
+-spec list3_01() -> etylizer:list3(integer(), atom(), float()).
+list3_01() -> [1, hello, 2.0].
+
+-spec list3_02_fail() -> etylizer:list3(integer(), atom(), float()).
+list3_02_fail() -> [1, hello].
+
+-spec list3_03_fail() -> etylizer:list3(integer(), atom(), float()).
+list3_03_fail() -> [1, hello, 2.0, extra].
+
+% list3 in argument position
+-spec list3_04(etylizer:list3(integer(), atom(), float())) -> {integer(), atom(), float()}.
+list3_04([X, Y, Z]) -> {X, Y, Z}.
+
+% list1star: first element of type T, then arbitrary many Us
+-spec list1star_01() -> etylizer:list1star(integer(), atom()).
+list1star_01() -> [1].
+
+-spec list1star_02() -> etylizer:list1star(integer(), atom()).
+list1star_02() -> [1, hello].
+
+-spec list1star_03() -> etylizer:list1star(integer(), atom()).
+list1star_03() -> [1, hello, world].
+
+-spec list1star_04_fail() -> etylizer:list1star(integer(), atom()).
+list1star_04_fail() -> [].
+
+-spec list1star_05_fail() -> etylizer:list1star(integer(), atom()).
+list1star_05_fail() -> [hello].
+
+% list1star in argument position
+-spec list1star_06(etylizer:list1star(integer(), atom())) -> integer().
+list1star_06([X | _]) -> X.
+

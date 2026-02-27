@@ -185,14 +185,9 @@ trans_spec_ty(Ctx, Loc, FunTys) ->
           FunTys),
     {UnconstrFunTys, NestedConstrs} =
         lists:unzip(
-          lists:map( % FIXME list2 not supported
-            fun ({type, _Anno, bounded_fun, [Ty, Constrs]}) ->
-                    {
-                     ?assert_type(Ty, ast_erl:ty_fun_unconstrained_ty()),
-                     ?assert_type(Constrs, ast_erl:ty_fun_constraint())
-                    };
-                (Ty) -> {Ty, []}
-            end, FunTys)),
+          lists:map(
+            fun ({type, _Anno, bounded_fun, [Ty, Constrs]}) -> {Ty, Constrs}; (Ty) -> {Ty, []} end, 
+            FunTys)),
     Env = make_tyenv(Ctx, AllTyvars, ignore_dups),
     Constrs =
         lists:flatmap(fun(L) -> lists:map(fun (C) -> trans_constraint(Ctx, Env, C) end, L) end,
@@ -246,7 +241,8 @@ trans_constraint(Ctx, Env, C) ->
         X -> errors:uncovered_case(?FILE, ?LINE, X)
     end.
 
-% support for etylizer:negation, etylizer:intersection, and etylizer:without
+% support for etylizer:negation, etylizer:intersection, etylizer:without,
+% and etylizer:list1, etylizer:list2, etylizer:list3, etylizer:list1star
 -spec resolve_ety_ty(ast:loc(), atom(), [ast:ty()]) -> ast:ty().
 resolve_ety_ty(_, negation, [Ty]) -> {negation, Ty};
 resolve_ety_ty(_, intersection, Tys) ->
@@ -256,6 +252,10 @@ resolve_ety_ty(_, intersection, Tys) ->
         _ -> {intersection, Tys}
     end;
 resolve_ety_ty(_, without, [T, U]) -> {intersection, [T, {negation, U}]};
+resolve_ety_ty(_, list1, [T]) -> {cons, T, {empty_list}};
+resolve_ety_ty(_, list2, [T, U]) -> {cons, T, {cons, U, {empty_list}}};
+resolve_ety_ty(_, list3, [T, U, V]) -> {cons, T, {cons, U, {cons, V, {empty_list}}}};
+resolve_ety_ty(_, list1star, [T, U]) -> {cons, T, {list, U}};
 resolve_ety_ty(L, Name, _) ->
     errors:ty_error(L, "Invalid use of builtin type etylizer:~w", Name).
 
