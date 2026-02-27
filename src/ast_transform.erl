@@ -98,85 +98,78 @@ build_funenv(Path, Forms) ->
 
 -spec trans_form(ctx(), ast_erl:form(), trans_mode()) -> {ast:form(), ctx()} | ast:form() | error | {error, ctx()}.
 trans_form(Ctx, Form, Mode) ->
-    R =
-        case Form of
-            {attribute, Anno, export, X} -> {attribute, to_loc(Ctx, Anno), export, X};
-            {attribute, Anno, export_type, X} -> {attribute, to_loc(Ctx, Anno), export_type, X};
-            {attribute, Anno, import, X} -> {attribute, to_loc(Ctx, Anno), import, X};
-            {attribute, Anno, module, X} -> {attribute, to_loc(Ctx, Anno), module, X};
-            {attribute, Anno, compile, X} -> {attribute, to_loc(Ctx, Anno), compile, X};
-            {attribute, Anno, etylizer, EtylizerOpt} ->
-                case EtylizerOpt of
-                    {disable_exhaustiveness_toplevel, ListOfFuns} ->
-                        % add functions where an exhaustive header are added in the transform phase
-                        {error, Ctx#ctx { nonexhaustive_funs = sets:union(Ctx#ctx.nonexhaustive_funs, sets:from_list(ListOfFuns)) }};
-                    {disable_exhaustiveness, ListOfFuns} ->
-                        {attribute, to_loc(Ctx, Anno), etylizer, {disable_exhaustiveness, ListOfFuns}};
-                    _ ->
-                        error
-                end;
-            {attribute, _, file, _} -> error;
-            {attribute, _, behaviour, _} -> error;
-            {attribute, _, behavior, _} -> error;
-            {function, Anno, Name, Arity, Clauses} ->
-                case Mode of
-                    full ->
-                        DisableExhaustive = sets:is_element({Name, Arity}, Ctx#ctx.nonexhaustive_funs),
-                        {function, to_loc(Ctx, Anno), Name, Arity, trans_fun_clauses(Ctx, Clauses, {DisableExhaustive, Arity})};
-                    flat ->
-                        error
-                end;
-            {attribute, Anno, spec, {{Name, Arity}, FunTys}} ->
-                Loc = to_loc(Ctx, Anno),
-                {attribute, Loc, spec, Name, Arity, trans_spec_ty(Ctx, Loc, FunTys), without_mod};
-            {attribute, Anno, spec, {{_Mod, Name, Arity}, FunTys}} ->
-                Loc = to_loc(Ctx, Anno),
-                {attribute, Loc, spec, Name, Arity, trans_spec_ty(Ctx, Loc, FunTys), with_mod};
-            {attribute, Anno, callback, {{Name, Arity}, FunTys}} ->
-                Loc = to_loc(Ctx, Anno),
-                {attribute, Loc, callback, Name, Arity, trans_spec_ty(Ctx, Loc, FunTys),
-                 without_mod};
-            {attribute, Anno, record, {Name, Fields}} when is_atom(Name) ->
-                % We temporarily register the name of the record with an empty record
-                % type, so that fields of the record can refer to the record itself.
-                % Self-references in field types emit named references (see trans_ty).
-                EmptyRecordTy = {Name, []},
-                TmpCtx = Ctx#ctx { records = maps:put(Name, EmptyRecordTy, Ctx#ctx.records) },
-                NewFields = trans_record_fields(TmpCtx, varenv:empty("type variable"), Fields),
-                NewForm = {attribute, to_loc(TmpCtx, Anno), record, {Name, NewFields}},
-                RecordTy = records:record_ty_from_decl(Name, NewFields),
-                FieldDefaults = extract_field_defaults(NewFields),
-                % Generate type forms for override variants created during field processing
-                OverrideVariants = collect_record_variants(Name),
-                Loc = to_loc(Ctx, Anno),
-                VariantForms = lists:map(
-                    fun ({VariantName, VOverrides}) ->
-                        VariantBody = records:encode_record_ty(RecordTy, VOverrides),
-                        {attribute, Loc, type, transparent,
-                            {VariantName, {ty_scheme, [], VariantBody}}}
-                    end,
-                    OverrideVariants),
-                NewCtx = Ctx#ctx {
-                    records = maps:put(Name, RecordTy, Ctx#ctx.records),
-                    record_defaults = maps:put(Name, FieldDefaults, Ctx#ctx.record_defaults),
-                    extra_forms = Ctx#ctx.extra_forms ++ VariantForms
-                },
-                ?LOG_TRACE("Registered new record type: ~200p", RecordTy),
-                {NewForm, NewCtx};
-            {attribute, Anno, type, Def} ->
-                {attribute, to_loc(Ctx, Anno), type, transparent, trans_tydef(Ctx, Def)};
-            {attribute, Anno, opaque, Def} ->
-                {attribute, to_loc(Ctx, Anno), type, opaque, trans_tydef(Ctx, Def)};
-            {attribute, Anno, nominal, Def} ->
-                {attribute, to_loc(Ctx, Anno), type, nominal, trans_tydef(Ctx, Def)};
-            {attribute, Anno, Other, _} ->
-                ?LOG_TRACE("Ignoring attribute ~w at ~s", Other, ast:format_loc(to_loc(Ctx, Anno))),
-                error;
-            {warning, _} -> error;
-            {eof, _} -> error;
-            X -> errors:uncovered_case(?FILE, ?LINE, X)
-        end,
-    R.
+    case Form of
+        {attribute, Anno, export, X} -> {attribute, to_loc(Ctx, Anno), export, X};
+        {attribute, Anno, export_type, X} -> {attribute, to_loc(Ctx, Anno), export_type, X};
+        {attribute, Anno, import, X} -> {attribute, to_loc(Ctx, Anno), import, X};
+        {attribute, Anno, module, X} -> {attribute, to_loc(Ctx, Anno), module, X};
+        {attribute, Anno, compile, X} -> {attribute, to_loc(Ctx, Anno), compile, X};
+        {attribute, _Anno, etylizer, {disable_exhaustiveness_toplevel, ListOfFuns}} ->
+            % add functions where an exhaustive header are added in the transform phase
+            {error, Ctx#ctx { nonexhaustive_funs = sets:union(Ctx#ctx.nonexhaustive_funs, sets:from_list(ListOfFuns)) }};
+        {attribute, Anno, etylizer, {disable_exhaustiveness, ListOfFuns}} ->
+            {attribute, to_loc(Ctx, Anno), etylizer, {disable_exhaustiveness, ListOfFuns}};
+        {attribute, _, file, _} -> error;
+        {attribute, _, behaviour, _} -> error;
+        {attribute, _, behavior, _} -> error;
+        {function, Anno, Name, Arity, Clauses} ->
+            case Mode of
+                full ->
+                    DisableExhaustive = sets:is_element({Name, Arity}, Ctx#ctx.nonexhaustive_funs),
+                    {function, to_loc(Ctx, Anno), Name, Arity, trans_fun_clauses(Ctx, Clauses, {DisableExhaustive, Arity})};
+                flat ->
+                    error
+            end;
+        {attribute, Anno, spec, {{Name, Arity}, FunTys}} ->
+            Loc = to_loc(Ctx, Anno),
+            {attribute, Loc, spec, Name, Arity, trans_spec_ty(Ctx, Loc, FunTys), without_mod};
+        {attribute, Anno, spec, {{_Mod, Name, Arity}, FunTys}} ->
+            Loc = to_loc(Ctx, Anno),
+            {attribute, Loc, spec, Name, Arity, trans_spec_ty(Ctx, Loc, FunTys), with_mod};
+        {attribute, Anno, callback, {{Name, Arity}, FunTys}} ->
+            Loc = to_loc(Ctx, Anno),
+            {attribute, Loc, callback, Name, Arity, trans_spec_ty(Ctx, Loc, FunTys),
+             without_mod};
+        {attribute, Anno, record, {Name, Fields}} when is_atom(Name) ->
+            % We temporarily register the name of the record with an empty record
+            % type, so that fields of the record can refer to the record itself.
+            % Self-references in field types emit named references (see trans_ty).
+            EmptyRecordTy = {Name, []},
+            TmpCtx = Ctx#ctx { records = maps:put(Name, EmptyRecordTy, Ctx#ctx.records) },
+            NewFields = trans_record_fields(TmpCtx, varenv:empty("type variable"), Fields),
+            NewForm = {attribute, to_loc(TmpCtx, Anno), record, {Name, NewFields}},
+            RecordTy = records:record_ty_from_decl(Name, NewFields),
+            FieldDefaults = extract_field_defaults(NewFields),
+            % Generate type forms for override variants created during field processing
+            OverrideVariants = collect_record_variants(Name),
+            Loc = to_loc(Ctx, Anno),
+            VariantForms = lists:map(
+                fun ({VariantName, VOverrides}) ->
+                    VariantBody = records:encode_record_ty(RecordTy, VOverrides),
+                    {attribute, Loc, type, transparent,
+                        {VariantName, {ty_scheme, [], VariantBody}}}
+                end,
+                OverrideVariants),
+            NewCtx = Ctx#ctx {
+                records = maps:put(Name, RecordTy, Ctx#ctx.records),
+                record_defaults = maps:put(Name, FieldDefaults, Ctx#ctx.record_defaults),
+                extra_forms = Ctx#ctx.extra_forms ++ VariantForms
+            },
+            ?LOG_TRACE("Registered new record type: ~200p", RecordTy),
+            {NewForm, NewCtx};
+        {attribute, Anno, type, Def} ->
+            {attribute, to_loc(Ctx, Anno), type, transparent, trans_tydef(Ctx, Def)};
+        {attribute, Anno, opaque, Def} ->
+            {attribute, to_loc(Ctx, Anno), type, opaque, trans_tydef(Ctx, Def)};
+        {attribute, Anno, nominal, Def} ->
+            {attribute, to_loc(Ctx, Anno), type, nominal, trans_tydef(Ctx, Def)};
+        {attribute, Anno, Other, _} ->
+            ?LOG_TRACE("Ignoring attribute ~w at ~s", Other, ast:format_loc(to_loc(Ctx, Anno))),
+            error;
+        {warning, _} -> error;
+        {eof, _} -> error;
+        X -> errors:uncovered_case(?FILE, ?LINE, X)
+    end.
 
 -spec to_loc(ctx(), ast_erl:anno()) -> ast:loc().
 to_loc(Ctx, Anno) -> ast:to_loc(Ctx#ctx.path, Anno).

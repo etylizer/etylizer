@@ -183,10 +183,10 @@
 
 % 8.1  Module Declarations and Forms
 -type all_attrs() ::
-    export | export_type | import
+    export | export_type | import | etylizer
     | file | module | behavior | behaviour | spec
     | callback | record | type | opaque | nominal.
--type anno() :: erl_anno:anno(). % Should be erl_anno:anno() but ast_check.erl cannot handle this.
+-type anno() :: erl_anno:anno().
 -type fun_with_arity() :: {atom(), integer()}.
 -type ty_with_arity() :: {atom(), integer()}.
 -type export_form() :: {attribute, anno(), export, [fun_with_arity()]}.
@@ -209,9 +209,13 @@
 -type eof() :: {eof, anno()}.
 -type warnings_errors() :: {error, any()} | {warning, any()}.
 
+-type etylizer_form() :: {attribute, anno(), etylizer,
+                          {disable_exhaustiveness | disable_exhaustiveness_toplevel, [ty_with_arity()]}}.
+
 -type form() :: export_form() | export_type_form() | behavior_form()
     | import_form() | file_form() | mod_form() | fun_decl()
     | fun_spec() | record_decl() | type_decl() | wild_attr() | other_attr_form()
+    | etylizer_form()
     | eof() | warnings_errors().
 -type forms() :: [form()].
 
