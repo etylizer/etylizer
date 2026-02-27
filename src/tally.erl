@@ -376,6 +376,31 @@ is_trivially_true(_, {predef_alias, term}) -> true;
 is_trivially_true(T, T) -> true;
 is_trivially_true(_, _) -> false.
 
+% % Print a variable co-occurrence graph in DOT format when VAR_GRAPH=1 is set.
+% % Nodes are type variables, edges connect variables that appear in the same constraint.
+% -spec maybe_print_var_graph([{ast:ty(), ast:ty()}]) -> ok.
+% maybe_print_var_graph(Constraints) ->
+%     case os:getenv("VAR_GRAPH") of
+%         "1" -> print_var_graph(Constraints);
+%         _ -> ok
+%     end.
+%
+% -spec print_var_graph([{ast:ty(), ast:ty()}]) -> ok.
+% print_var_graph(Constraints) ->
+%     GetVar = fun ({var, A}) when is_atom(A) -> {ok, {var, A}}; (_) -> error end,
+%     VarGroups = [utils:everything(GetVar, C) || C <- Constraints],
+%     Z = fun(A) -> string:replace(atom_to_list(A), "$", "") end,
+%     io:format(user, "graph{~n", []),
+%     lists:foreach(fun
+%         ([]) -> ok;
+%         ([_]) -> ok;
+%         (All) ->
+%             [io:format(user, "  ~s -- ~s~n", [Z(R), Z(R2)])
+%              || {var, R} <- All, {var, R2} <- All, R /= R2]
+%     end, VarGroups),
+%     io:format(user, "}~n", []),
+%     ok.
+
 -ifdef(TEST).
 
 partition_test() ->
