@@ -92,3 +92,26 @@ check_riak_test() ->
            '-',
            {integer,{205,20},1}},
     check_against(pat, Exp).
+
+check_list3_test() ->
+    M = mk_full_spec(),
+    Loc = erl_anno:new({1,1}),
+    IntTy = {type, Loc, integer, []},
+    AtomTy = {type, Loc, atom, []},
+    Ty = {remote_type, Loc, [{atom, Loc, etylizer}, {atom, Loc, list3}, [IntTy, AtomTy, IntTy]]},
+    true = ast_check:check_against_type(M, ast_erl, Ty, [42, hello, 7]),
+    false = ast_check:check_against_type(M, ast_erl, Ty, [42, hello]),
+    false = ast_check:check_against_type(M, ast_erl, Ty, [hello, hello, hello]).
+
+check_list1star_test() ->
+    M = mk_full_spec(),
+    Loc = erl_anno:new({1,1}),
+    IntTy = {type, Loc, integer, []},
+    AtomTy = {type, Loc, atom, []},
+    Ty = {remote_type, Loc, [{atom, Loc, etylizer}, {atom, Loc, list1star}, [IntTy, AtomTy]]},
+    true = ast_check:check_against_type(M, ast_erl, Ty, [42]),
+    true = ast_check:check_against_type(M, ast_erl, Ty, [42, hello]),
+    true = ast_check:check_against_type(M, ast_erl, Ty, [42, hello, world]),
+    false = ast_check:check_against_type(M, ast_erl, Ty, []),
+    false = ast_check:check_against_type(M, ast_erl, Ty, [hello]),
+    false = ast_check:check_against_type(M, ast_erl, Ty, [42, hello, 7]).

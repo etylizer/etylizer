@@ -235,11 +235,11 @@ check_ty_remote2(Spec, CurModule, Ty, etylizer, list3, [T, U, V], Form, Depth) -
         _ -> raise(Ty, Form, Depth)
     end;
 check_ty_remote2(Spec, CurModule, Ty, etylizer, list1star, [T, U], Form, Depth) ->
-    % list1star(T, U) means [T | [U]], first element T then arbitrary many Us
+    % list1star(T, U) means [T | [U]], first element T then zero or more Us
     case Form of
-        [E1, Rest] ->
+        [E1 | Rest] when is_list(Rest) ->
             check_ty(Spec, CurModule, T, E1, Depth + 1),
-            check_ty(Spec, CurModule, U, Rest, Depth + 1);
+            lists:foreach(fun(X) -> check_ty(Spec, CurModule, U, X, Depth + 1) end, Rest);
         _ -> raise(Ty, Form, Depth)
     end;
 check_ty_remote2(Spec, _CurModule, _Ty, RemoteMod, Name, Args, Form, Depth) ->
