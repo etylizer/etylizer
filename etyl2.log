@@ -1,0 +1,781 @@
+[DEBUG 2026-03-02 14:40:40.534 etylizer_main.erl:311] Parsed commandline options as {opts,debug,"etyl2.log",false,false,false,false,false,false,true,false,report,10000,enabled,dynamic,true,false,
+                                                                                          ["rewrite_map_assoc"],
+                                                                                          [],empty,empty,empty,[],
+                                                                                          ["include","src"],
+                                                                                          [],[],[],
+                                                                                          ["src/erlang_types/ty_parser.erl"],
+                                                                                          "overlays/etylizer_overlay.erl",false,prod_mode}
+[DEBUG 2026-03-02 14:40:40.577 paths.erl:177] Only using explicitly specified input files: ["src/erlang_types/ty_parser.erl"]
+[INFO 2026-03-02 14:40:40.624 etylizer_main.erl:286] Performing type checking
+[DEBUG 2026-03-02 14:40:40.765 cm_check.erl:82] Need to check 1 of 1 files: [{"src/erlang_types/ty_parser.erl",
+                                                                              all}]
+[DEBUG 2026-03-02 14:40:40.819 cm_check.erl:125] Incrementally updating function dependency graph (1 changed files)
+[DEBUG 2026-03-02 14:40:40.822 parse_cache.erl:80] Parsing src/erlang_types/ty_parser.erl ...
+[DEBUG 2026-03-02 14:40:40.888 parse_cache.erl:82] Finished parsing src/erlang_types/ty_parser.erl
+[DEBUG 2026-03-02 14:40:40.890 parse_cache.erl:134] Transforming src/erlang_types/ty_parser.erl ...
+[DEBUG 2026-03-02 14:40:40.908 stdtypes.erl:434] Creating types for builtin functions
+[INFO 2026-03-02 14:40:41.525 cm_check.erl:469] Using overlays from overlays/etylizer_overlay.erl
+[DEBUG 2026-03-02 14:40:41.525 parse_cache.erl:80] Parsing overlays/etylizer_overlay.erl ...
+[DEBUG 2026-03-02 14:40:41.531 parse_cache.erl:82] Finished parsing overlays/etylizer_overlay.erl
+[DEBUG 2026-03-02 14:40:41.531 parse_cache.erl:134] Transforming overlays/etylizer_overlay.erl ...
+[DEBUG 2026-03-02 14:40:41.541 symtab.erl:233] Building symtab for overlay file ...
+[DEBUG 2026-03-02 14:40:41.541 symtab.erl:256] Overlay added for 'ets:update_counter'/3
+[DEBUG 2026-03-02 14:40:41.541 symtab.erl:256] Overlay added for 'lists:foldl'/3
+[DEBUG 2026-03-02 14:40:41.541 symtab.erl:256] Overlay added for 'lists:foldr'/3
+[DEBUG 2026-03-02 14:40:41.541 symtab.erl:256] Overlay added for 'lists:map'/2
+[DEBUG 2026-03-02 14:40:41.541 symtab.erl:256] Overlay added for 'lists:filtermap'/2
+[DEBUG 2026-03-02 14:40:41.541 symtab.erl:256] Overlay added for 'lists:usort'/2
+[DEBUG 2026-03-02 14:40:41.541 symtab.erl:256] Overlay added for 'lists:usort'/1
+[DEBUG 2026-03-02 14:40:41.541 symtab.erl:256] Overlay added for 'lists:keysort'/2
+[DEBUG 2026-03-02 14:40:41.541 symtab.erl:256] Overlay added for 'lists:keyfind'/3
+[DEBUG 2026-03-02 14:40:41.541 symtab.erl:256] Overlay added for 'lists:reverse'/1
+[DEBUG 2026-03-02 14:40:41.541 symtab.erl:256] Overlay added for 'erlang:length'/1
+[DEBUG 2026-03-02 14:40:41.541 symtab.erl:256] Overlay added for 'erlang:tl'/1
+[DEBUG 2026-03-02 14:40:41.541 symtab.erl:256] Overlay added for 'erlang:hd'/1
+[DEBUG 2026-03-02 14:40:41.542 symtab.erl:256] Overlay added for 'erlang:system_info'/1
+[DEBUG 2026-03-02 14:40:41.542 symtab.erl:264] Overlay type added: deepList/1
+[DEBUG 2026-03-02 14:40:41.542 symtab.erl:256] Overlay added for 'lists:flatten'/1
+[DEBUG 2026-03-02 14:40:41.542 symtab.erl:256] Overlay added for 'string:to_upper'/1
+[DEBUG 2026-03-02 14:40:41.542 symtab.erl:256] Overlay added for 'string:split'/2
+[DEBUG 2026-03-02 14:40:41.542 symtab.erl:256] Overlay added for 'string:split'/3
+[DEBUG 2026-03-02 14:40:41.542 symtab.erl:256] Overlay added for 'string:slice'/3
+[DEBUG 2026-03-02 14:40:41.542 symtab.erl:256] Overlay added for 'string:trim'/2
+[DEBUG 2026-03-02 14:40:41.542 symtab.erl:256] Overlay added for 'os:cmd'/1
+[DEBUG 2026-03-02 14:40:41.542 symtab.erl:256] Overlay added for 'file:write_file'/2
+[DEBUG 2026-03-02 14:40:41.542 symtab.erl:256] Overlay added for 'io:get_line'/2
+[DEBUG 2026-03-02 14:40:41.542 symtab.erl:256] Overlay added for 'maps:get'/2
+[DEBUG 2026-03-02 14:40:41.542 symtab.erl:256] Overlay added for 'maps:put'/3
+[DEBUG 2026-03-02 14:40:41.542 symtab.erl:256] Overlay added for 'maps:is_key'/2
+[DEBUG 2026-03-02 14:40:41.542 symtab.erl:256] Overlay added for 'maps:remove'/2
+[DEBUG 2026-03-02 14:40:41.542 symtab.erl:256] Overlay added for 'maps:from_list'/1
+[DEBUG 2026-03-02 14:40:41.542 symtab.erl:256] Overlay added for 'maps:to_list'/1
+[DEBUG 2026-03-02 14:40:41.542 symtab.erl:256] Overlay added for 'maps:fold'/3
+[DEBUG 2026-03-02 14:40:41.542 symtab.erl:256] Overlay added for 'maps:merge'/2
+[DEBUG 2026-03-02 14:40:41.542 symtab.erl:256] Overlay added for 'maps:map'/2
+[DEBUG 2026-03-02 14:40:41.542 symtab.erl:256] Overlay added for 'maps:find'/2
+[DEBUG 2026-03-02 14:40:41.542 symtab.erl:256] Overlay added for 'filename:join'/2
+[DEBUG 2026-03-02 14:40:41.543 symtab.erl:256] Overlay added for 'filename:join'/1
+[DEBUG 2026-03-02 14:40:41.543 symtab.erl:256] Overlay added for 'filename:basename'/2
+[DEBUG 2026-03-02 14:40:41.543 symtab.erl:256] Overlay added for 'filename:basename'/1
+[DEBUG 2026-03-02 14:40:41.543 symtab.erl:256] Overlay added for 'filename:dirname'/1
+[DEBUG 2026-03-02 14:40:41.543 symtab.erl:256] Overlay added for 'filename:basedir'/2
+[DEBUG 2026-03-02 14:40:41.543 symtab.erl:256] Overlay added for 'filename:nativename'/1
+[DEBUG 2026-03-02 14:40:41.543 symtab.erl:256] Overlay added for 'filename:rootname'/1
+[DEBUG 2026-03-02 14:40:41.543 symtab.erl:256] Overlay added for 'filename:extension'/1
+[DEBUG 2026-03-02 14:40:41.543 symtab.erl:256] Overlay added for 'filelib:ensure_dir'/1
+[DEBUG 2026-03-02 14:40:41.543 symtab.erl:256] Overlay added for 'filelib:is_regular'/1
+[DEBUG 2026-03-02 14:40:41.543 symtab.erl:256] Overlay added for 'filelib:is_dir'/1
+[DEBUG 2026-03-02 14:40:41.543 symtab.erl:256] Overlay added for 'filelib:is_file'/1
+[DEBUG 2026-03-02 14:40:41.543 symtab.erl:256] Overlay added for 'file:read_file'/1
+[DEBUG 2026-03-02 14:40:41.543 symtab.erl:256] Overlay added for 'file:list_dir'/1
+[DEBUG 2026-03-02 14:40:41.543 symtab.erl:256] Overlay added for 'file:open'/2
+[DEBUG 2026-03-02 14:40:41.543 symtab.erl:256] Overlay added for 'file:copy'/2
+[DEBUG 2026-03-02 14:40:41.544 symtab.erl:256] Overlay added for 'file:change_mode'/2
+[DEBUG 2026-03-02 14:40:41.544 symtab.erl:256] Overlay added for 'file:consult'/1
+[DEBUG 2026-03-02 14:40:41.975 symtab.erl:177] Loaded standard symtab from disk cache
+[DEBUG 2026-03-02 14:40:41.991 cm_check.erl:375] Checking src/erlang_types/ty_parser.erl (filter: all)
+[DEBUG 2026-03-02 14:40:42.010 cm_check.erl:378] Referenced from src/erlang_types/ty_parser.erl: [ty_node,dnf_ty_variable,ast,queue,ets,logger,symtab,maps,erlang,lists,utils,tarjan,subst,stdtypes,
+                                                                                                  ty_variable,dnf_ty_atom,dnf_ty_interval,dnf_ty_predefined,ty_functions,ty_tuples,dnf_ty_map,
+                                                                                                  dnf_ty_bitstring,string,dnf_ty_function,ty_function,dnf_ty_tuple,ty_tuple,dnf_ty_list,ty_list,
+                                                                                                  persistent_term]
+[DEBUG 2026-03-02 14:40:42.010 paths.erl:281] Resolved module ty_node to file "src/erlang_types/ty_node.erl"
+[DEBUG 2026-03-02 14:40:42.010 parse_cache.erl:80] Parsing src/erlang_types/ty_node.erl ...
+[DEBUG 2026-03-02 14:40:42.021 parse_cache.erl:82] Finished parsing src/erlang_types/ty_node.erl
+[DEBUG 2026-03-02 14:40:42.021 parse_cache.erl:134] Transforming src/erlang_types/ty_node.erl ...
+[DEBUG 2026-03-02 14:40:42.032 symtab.erl:384] Extended symtab with entries from ty_node
+[DEBUG 2026-03-02 14:40:42.034 symtab.erl:394] Additional modules for ty_node: [dnf_ty_variable,ty_variable,etally,constraint_set,ty_node,ast,sets]
+[DEBUG 2026-03-02 14:40:42.035 paths.erl:281] Resolved module dnf_ty_variable to file "src/erlang_types/dnf_ty_variable.erl"
+[DEBUG 2026-03-02 14:40:42.035 parse_cache.erl:80] Parsing src/erlang_types/dnf_ty_variable.erl ...
+[DEBUG 2026-03-02 14:40:42.052 parse_cache.erl:82] Finished parsing src/erlang_types/dnf_ty_variable.erl
+[DEBUG 2026-03-02 14:40:42.053 parse_cache.erl:134] Transforming src/erlang_types/dnf_ty_variable.erl ...
+[DEBUG 2026-03-02 14:40:42.058 ast_transform.erl:984] Exhaustiveness heuristic triggered: removing last error clause at {loc,
+                                                                                                                         "src/erlang_types/dnf_ty_variable.erl",
+                                                                                                                         450,
+                                                                                                                         1,
+                                                                                                                         -1,
+                                                                                                                         -1}
+[DEBUG 2026-03-02 14:40:42.061 symtab.erl:384] Extended symtab with entries from dnf_ty_variable
+[DEBUG 2026-03-02 14:40:42.067 symtab.erl:394] Additional modules for dnf_ty_variable: [dnf_ty_variable,ty_variable,etally,constraint_set,ty_node,ast,ty_rec,sets,dnf_ty_atom,dnf_ty_interval,
+                                                                                        ty_functions,ty_tuples,dnf_ty_list,dnf_ty_predefined,dnf_ty_bitstring,dnf_ty_map]
+[DEBUG 2026-03-02 14:40:42.067 paths.erl:281] Resolved module ast to file "_build/default/lib/etylizer/src/ast.erl"
+[DEBUG 2026-03-02 14:40:42.067 parse_cache.erl:80] Parsing _build/default/lib/etylizer/src/ast.erl ...
+[DEBUG 2026-03-02 14:40:42.089 parse_cache.erl:82] Finished parsing _build/default/lib/etylizer/src/ast.erl
+[DEBUG 2026-03-02 14:40:42.089 parse_cache.erl:134] Transforming _build/default/lib/etylizer/src/ast.erl ...
+[DEBUG 2026-03-02 14:40:42.100 symtab.erl:384] Extended symtab with entries from ast
+[DEBUG 2026-03-02 14:40:42.102 symtab.erl:394] Additional modules for ast: [ast_erl]
+[DEBUG 2026-03-02 14:40:42.103 paths.erl:281] Resolved module queue to file "/usr/lib/erlang/lib/stdlib-7.2/src/queue.erl"
+[DEBUG 2026-03-02 14:40:42.103 parse_cache.erl:80] Parsing /usr/lib/erlang/lib/stdlib-7.2/src/queue.erl ...
+[DEBUG 2026-03-02 14:40:42.123 parse_cache.erl:82] Finished parsing /usr/lib/erlang/lib/stdlib-7.2/src/queue.erl
+[DEBUG 2026-03-02 14:40:42.123 parse_cache.erl:134] Transforming /usr/lib/erlang/lib/stdlib-7.2/src/queue.erl ...
+[DEBUG 2026-03-02 14:40:42.138 symtab.erl:384] Extended symtab with entries from queue
+[DEBUG 2026-03-02 14:40:42.138 symtab.erl:394] Additional modules for queue: []
+[DEBUG 2026-03-02 14:40:42.139 paths.erl:281] Resolved module ets to file "/usr/lib/erlang/lib/stdlib-7.2/src/ets.erl"
+[DEBUG 2026-03-02 14:40:42.140 parse_cache.erl:80] Parsing /usr/lib/erlang/lib/stdlib-7.2/src/ets.erl ...
+[DEBUG 2026-03-02 14:40:42.212 parse_cache.erl:82] Finished parsing /usr/lib/erlang/lib/stdlib-7.2/src/ets.erl
+[DEBUG 2026-03-02 14:40:42.214 parse_cache.erl:134] Transforming /usr/lib/erlang/lib/stdlib-7.2/src/ets.erl ...
+[DEBUG 2026-03-02 14:40:42.264 symtab.erl:324] Overlay found for ets:update_counter/3
+[DEBUG 2026-03-02 14:40:42.264 symtab.erl:384] Extended symtab with entries from ets
+[DEBUG 2026-03-02 14:40:42.265 symtab.erl:394] Additional modules for ets: [dets,file,qlc]
+[DEBUG 2026-03-02 14:40:42.266 paths.erl:281] Resolved module logger to file "/usr/lib/erlang/lib/kernel-10.5/src/logger.erl"
+[DEBUG 2026-03-02 14:40:42.267 parse_cache.erl:80] Parsing /usr/lib/erlang/lib/kernel-10.5/src/logger.erl ...
+[DEBUG 2026-03-02 14:40:42.321 parse_cache.erl:82] Finished parsing /usr/lib/erlang/lib/kernel-10.5/src/logger.erl
+[DEBUG 2026-03-02 14:40:42.321 parse_cache.erl:134] Transforming /usr/lib/erlang/lib/kernel-10.5/src/logger.erl ...
+[DEBUG 2026-03-02 14:40:42.360 symtab.erl:384] Extended symtab with entries from logger
+[DEBUG 2026-03-02 14:40:42.361 symtab.erl:394] Additional modules for logger: [io,unicode,file,logger_handler]
+[DEBUG 2026-03-02 14:40:42.362 paths.erl:281] Resolved module symtab to file "_build/default/lib/etylizer/src/symtab.erl"
+[DEBUG 2026-03-02 14:40:42.362 parse_cache.erl:80] Parsing _build/default/lib/etylizer/src/symtab.erl ...
+[DEBUG 2026-03-02 14:40:42.379 parse_cache.erl:82] Finished parsing _build/default/lib/etylizer/src/symtab.erl
+[DEBUG 2026-03-02 14:40:42.379 parse_cache.erl:134] Transforming _build/default/lib/etylizer/src/symtab.erl ...
+[DEBUG 2026-03-02 14:40:42.390 symtab.erl:384] Extended symtab with entries from symtab
+[DEBUG 2026-03-02 14:40:42.391 symtab.erl:394] Additional modules for symtab: [ast,records,file,sets,t,paths,symtab]
+[DEBUG 2026-03-02 14:40:42.391 paths.erl:281] Resolved module utils to file "_build/default/lib/etylizer/src/utils.erl"
+[DEBUG 2026-03-02 14:40:42.391 parse_cache.erl:80] Parsing _build/default/lib/etylizer/src/utils.erl ...
+[DEBUG 2026-03-02 14:40:42.409 parse_cache.erl:82] Finished parsing _build/default/lib/etylizer/src/utils.erl
+[DEBUG 2026-03-02 14:40:42.409 parse_cache.erl:134] Transforming _build/default/lib/etylizer/src/utils.erl ...
+[DEBUG 2026-03-02 14:40:42.417 symtab.erl:384] Extended symtab with entries from utils
+[DEBUG 2026-03-02 14:40:42.417 symtab.erl:394] Additional modules for utils: [file,t,sets]
+[DEBUG 2026-03-02 14:40:42.417 paths.erl:281] Resolved module tarjan to file "src/erlang_types/tarjan.erl"
+[DEBUG 2026-03-02 14:40:42.417 parse_cache.erl:80] Parsing src/erlang_types/tarjan.erl ...
+[DEBUG 2026-03-02 14:40:42.424 parse_cache.erl:82] Finished parsing src/erlang_types/tarjan.erl
+[DEBUG 2026-03-02 14:40:42.424 parse_cache.erl:134] Transforming src/erlang_types/tarjan.erl ...
+[DEBUG 2026-03-02 14:40:42.430 symtab.erl:384] Extended symtab with entries from tarjan
+[DEBUG 2026-03-02 14:40:42.432 symtab.erl:394] Additional modules for tarjan: [sets]
+[DEBUG 2026-03-02 14:40:42.432 paths.erl:281] Resolved module subst to file "_build/default/lib/etylizer/src/subst.erl"
+[DEBUG 2026-03-02 14:40:42.432 parse_cache.erl:80] Parsing _build/default/lib/etylizer/src/subst.erl ...
+[DEBUG 2026-03-02 14:40:42.444 parse_cache.erl:82] Finished parsing _build/default/lib/etylizer/src/subst.erl
+[DEBUG 2026-03-02 14:40:42.444 parse_cache.erl:134] Transforming _build/default/lib/etylizer/src/subst.erl ...
+[DEBUG 2026-03-02 14:40:42.450 symtab.erl:384] Extended symtab with entries from subst
+[DEBUG 2026-03-02 14:40:42.450 symtab.erl:394] Additional modules for subst: [ast,sets,symtab]
+[DEBUG 2026-03-02 14:40:42.450 paths.erl:281] Resolved module stdtypes to file "_build/default/lib/etylizer/src/stdtypes.erl"
+[DEBUG 2026-03-02 14:40:42.451 parse_cache.erl:80] Parsing _build/default/lib/etylizer/src/stdtypes.erl ...
+[DEBUG 2026-03-02 14:40:42.469 parse_cache.erl:82] Finished parsing _build/default/lib/etylizer/src/stdtypes.erl
+[DEBUG 2026-03-02 14:40:42.469 parse_cache.erl:134] Transforming _build/default/lib/etylizer/src/stdtypes.erl ...
+[DEBUG 2026-03-02 14:40:42.486 symtab.erl:384] Extended symtab with entries from stdtypes
+[DEBUG 2026-03-02 14:40:42.486 symtab.erl:394] Additional modules for stdtypes: [ast,file,ast_erl,sets]
+[DEBUG 2026-03-02 14:40:42.487 paths.erl:281] Resolved module ty_variable to file "src/erlang_types/ty_variable.erl"
+[DEBUG 2026-03-02 14:40:42.487 parse_cache.erl:80] Parsing src/erlang_types/ty_variable.erl ...
+[DEBUG 2026-03-02 14:40:42.492 parse_cache.erl:82] Finished parsing src/erlang_types/ty_variable.erl
+[DEBUG 2026-03-02 14:40:42.492 parse_cache.erl:134] Transforming src/erlang_types/ty_variable.erl ...
+[DEBUG 2026-03-02 14:40:42.503 symtab.erl:384] Extended symtab with entries from ty_variable
+[DEBUG 2026-03-02 14:40:42.504 symtab.erl:394] Additional modules for ty_variable: [ast]
+[DEBUG 2026-03-02 14:40:42.504 paths.erl:281] Resolved module dnf_ty_atom to file "src/erlang_types/dnf_ty_atom.erl"
+[DEBUG 2026-03-02 14:40:42.504 parse_cache.erl:80] Parsing src/erlang_types/dnf_ty_atom.erl ...
+[DEBUG 2026-03-02 14:40:42.508 parse_cache.erl:82] Finished parsing src/erlang_types/dnf_ty_atom.erl
+[DEBUG 2026-03-02 14:40:42.508 parse_cache.erl:134] Transforming src/erlang_types/dnf_ty_atom.erl ...
+[DEBUG 2026-03-02 14:40:42.513 symtab.erl:384] Extended symtab with entries from dnf_ty_atom
+[DEBUG 2026-03-02 14:40:42.514 symtab.erl:394] Additional modules for dnf_ty_atom: [dnf_ty_variable,ty_variable,etally,constraint_set,ty_node,ast,gb_sets,sets]
+[DEBUG 2026-03-02 14:40:42.514 paths.erl:281] Resolved module dnf_ty_interval to file "src/erlang_types/dnf_ty_interval.erl"
+[DEBUG 2026-03-02 14:40:42.514 parse_cache.erl:80] Parsing src/erlang_types/dnf_ty_interval.erl ...
+[DEBUG 2026-03-02 14:40:42.522 parse_cache.erl:82] Finished parsing src/erlang_types/dnf_ty_interval.erl
+[DEBUG 2026-03-02 14:40:42.522 parse_cache.erl:134] Transforming src/erlang_types/dnf_ty_interval.erl ...
+[DEBUG 2026-03-02 14:40:42.529 symtab.erl:384] Extended symtab with entries from dnf_ty_interval
+[DEBUG 2026-03-02 14:40:42.532 symtab.erl:394] Additional modules for dnf_ty_interval: [dnf_ty_variable,ty_variable,etally,constraint_set,ty_node,ast,sets]
+[DEBUG 2026-03-02 14:40:42.532 paths.erl:281] Resolved module dnf_ty_predefined to file "src/erlang_types/dnf_ty_predefined.erl"
+[DEBUG 2026-03-02 14:40:42.532 parse_cache.erl:80] Parsing src/erlang_types/dnf_ty_predefined.erl ...
+[DEBUG 2026-03-02 14:40:42.536 parse_cache.erl:82] Finished parsing src/erlang_types/dnf_ty_predefined.erl
+[DEBUG 2026-03-02 14:40:42.536 parse_cache.erl:134] Transforming src/erlang_types/dnf_ty_predefined.erl ...
+[DEBUG 2026-03-02 14:40:42.540 symtab.erl:384] Extended symtab with entries from dnf_ty_predefined
+[DEBUG 2026-03-02 14:40:42.541 symtab.erl:394] Additional modules for dnf_ty_predefined: [dnf_ty_variable,ty_variable,etally,constraint_set,ty_node,ast,sets]
+[DEBUG 2026-03-02 14:40:42.541 paths.erl:281] Resolved module ty_functions to file "src/erlang_types/ty_functions.erl"
+[DEBUG 2026-03-02 14:40:42.541 parse_cache.erl:80] Parsing src/erlang_types/ty_functions.erl ...
+[DEBUG 2026-03-02 14:40:42.547 parse_cache.erl:82] Finished parsing src/erlang_types/ty_functions.erl
+[DEBUG 2026-03-02 14:40:42.547 parse_cache.erl:134] Transforming src/erlang_types/ty_functions.erl ...
+[DEBUG 2026-03-02 14:40:42.551 symtab.erl:384] Extended symtab with entries from ty_functions
+[DEBUG 2026-03-02 14:40:42.552 symtab.erl:394] Additional modules for ty_functions: [dnf_ty_variable,ty_variable,etally,constraint_set,ty_node,ast,dnf_ty_function,sets]
+[DEBUG 2026-03-02 14:40:42.553 paths.erl:281] Resolved module ty_tuples to file "src/erlang_types/ty_tuples.erl"
+[DEBUG 2026-03-02 14:40:42.553 parse_cache.erl:80] Parsing src/erlang_types/ty_tuples.erl ...
+[DEBUG 2026-03-02 14:40:42.559 parse_cache.erl:82] Finished parsing src/erlang_types/ty_tuples.erl
+[DEBUG 2026-03-02 14:40:42.559 parse_cache.erl:134] Transforming src/erlang_types/ty_tuples.erl ...
+[DEBUG 2026-03-02 14:40:42.562 symtab.erl:384] Extended symtab with entries from ty_tuples
+[DEBUG 2026-03-02 14:40:42.564 symtab.erl:394] Additional modules for ty_tuples: [dnf_ty_variable,ty_variable,etally,constraint_set,ty_node,ast,dnf_ty_tuple,sets]
+[DEBUG 2026-03-02 14:40:42.564 paths.erl:281] Resolved module dnf_ty_map to file "src/erlang_types/dnf_ty_map.erl"
+[DEBUG 2026-03-02 14:40:42.564 parse_cache.erl:80] Parsing src/erlang_types/dnf_ty_map.erl ...
+[DEBUG 2026-03-02 14:40:42.579 parse_cache.erl:82] Finished parsing src/erlang_types/dnf_ty_map.erl
+[DEBUG 2026-03-02 14:40:42.579 parse_cache.erl:134] Transforming src/erlang_types/dnf_ty_map.erl ...
+[DEBUG 2026-03-02 14:40:42.584 ast_transform.erl:984] Exhaustiveness heuristic triggered: removing last error clause at {loc,
+                                                                                                                         "src/erlang_types/dnf_ty_map.erl",
+                                                                                                                         450,
+                                                                                                                         1,
+                                                                                                                         -1,
+                                                                                                                         -1}
+[DEBUG 2026-03-02 14:40:42.586 symtab.erl:384] Extended symtab with entries from dnf_ty_map
+[DEBUG 2026-03-02 14:40:42.592 symtab.erl:394] Additional modules for dnf_ty_map: [dnf_ty_variable,ty_variable,etally,constraint_set,ty_node,ast,ty_map,ty_bool,sets]
+[DEBUG 2026-03-02 14:40:42.592 paths.erl:281] Resolved module dnf_ty_bitstring to file "src/erlang_types/dnf_ty_bitstring.erl"
+[DEBUG 2026-03-02 14:40:42.592 parse_cache.erl:80] Parsing src/erlang_types/dnf_ty_bitstring.erl ...
+[DEBUG 2026-03-02 14:40:42.597 parse_cache.erl:82] Finished parsing src/erlang_types/dnf_ty_bitstring.erl
+[DEBUG 2026-03-02 14:40:42.597 parse_cache.erl:134] Transforming src/erlang_types/dnf_ty_bitstring.erl ...
+[DEBUG 2026-03-02 14:40:42.601 symtab.erl:384] Extended symtab with entries from dnf_ty_bitstring
+[DEBUG 2026-03-02 14:40:42.603 symtab.erl:394] Additional modules for dnf_ty_bitstring: [dnf_ty_variable,ty_variable,etally,constraint_set,ty_node,ast,sets]
+[DEBUG 2026-03-02 14:40:42.603 paths.erl:281] Resolved module string to file "/usr/lib/erlang/lib/stdlib-7.2/src/string.erl"
+[DEBUG 2026-03-02 14:40:42.604 parse_cache.erl:80] Parsing /usr/lib/erlang/lib/stdlib-7.2/src/string.erl ...
+[DEBUG 2026-03-02 14:40:42.663 parse_cache.erl:82] Finished parsing /usr/lib/erlang/lib/stdlib-7.2/src/string.erl
+[DEBUG 2026-03-02 14:40:42.665 parse_cache.erl:134] Transforming /usr/lib/erlang/lib/stdlib-7.2/src/string.erl ...
+[DEBUG 2026-03-02 14:40:42.738 symtab.erl:324] Overlay found for string:slice/3
+[DEBUG 2026-03-02 14:40:42.739 symtab.erl:324] Overlay found for string:trim/2
+[DEBUG 2026-03-02 14:40:42.739 symtab.erl:324] Overlay found for string:split/2
+[DEBUG 2026-03-02 14:40:42.739 symtab.erl:324] Overlay found for string:split/3
+[DEBUG 2026-03-02 14:40:42.739 symtab.erl:324] Overlay found for string:to_upper/1
+[DEBUG 2026-03-02 14:40:42.739 symtab.erl:384] Extended symtab with entries from string
+[DEBUG 2026-03-02 14:40:42.740 symtab.erl:394] Additional modules for string: [lists,unicode,io_lib]
+[DEBUG 2026-03-02 14:40:42.740 paths.erl:281] Resolved module dnf_ty_function to file "src/erlang_types/dnf_ty_function.erl"
+[DEBUG 2026-03-02 14:40:42.740 parse_cache.erl:80] Parsing src/erlang_types/dnf_ty_function.erl ...
+[DEBUG 2026-03-02 14:40:42.757 parse_cache.erl:82] Finished parsing src/erlang_types/dnf_ty_function.erl
+[DEBUG 2026-03-02 14:40:42.757 parse_cache.erl:134] Transforming src/erlang_types/dnf_ty_function.erl ...
+[DEBUG 2026-03-02 14:40:42.763 ast_transform.erl:984] Exhaustiveness heuristic triggered: removing last error clause at {loc,
+                                                                                                                         "src/erlang_types/dnf_ty_function.erl",
+                                                                                                                         450,
+                                                                                                                         1,
+                                                                                                                         -1,
+                                                                                                                         -1}
+[DEBUG 2026-03-02 14:40:42.769 symtab.erl:384] Extended symtab with entries from dnf_ty_function
+[DEBUG 2026-03-02 14:40:42.776 symtab.erl:394] Additional modules for dnf_ty_function: [dnf_ty_variable,ty_variable,etally,constraint_set,ty_node,ast,ty_function,ty_bool,sets]
+[DEBUG 2026-03-02 14:40:42.776 paths.erl:281] Resolved module ty_function to file "src/erlang_types/ty_function.erl"
+[DEBUG 2026-03-02 14:40:42.777 parse_cache.erl:80] Parsing src/erlang_types/ty_function.erl ...
+[DEBUG 2026-03-02 14:40:42.781 parse_cache.erl:82] Finished parsing src/erlang_types/ty_function.erl
+[DEBUG 2026-03-02 14:40:42.781 parse_cache.erl:134] Transforming src/erlang_types/ty_function.erl ...
+[DEBUG 2026-03-02 14:40:42.784 symtab.erl:384] Extended symtab with entries from ty_function
+[DEBUG 2026-03-02 14:40:42.785 symtab.erl:394] Additional modules for ty_function: [dnf_ty_variable,ty_variable,etally,constraint_set,ty_node,ast,sets]
+[DEBUG 2026-03-02 14:40:42.785 paths.erl:281] Resolved module dnf_ty_tuple to file "src/erlang_types/dnf_ty_tuple.erl"
+[DEBUG 2026-03-02 14:40:42.785 parse_cache.erl:80] Parsing src/erlang_types/dnf_ty_tuple.erl ...
+[DEBUG 2026-03-02 14:40:42.803 parse_cache.erl:82] Finished parsing src/erlang_types/dnf_ty_tuple.erl
+[DEBUG 2026-03-02 14:40:42.803 parse_cache.erl:134] Transforming src/erlang_types/dnf_ty_tuple.erl ...
+[DEBUG 2026-03-02 14:40:42.810 ast_transform.erl:984] Exhaustiveness heuristic triggered: removing last error clause at {loc,
+                                                                                                                         "src/erlang_types/dnf_ty_tuple.erl",
+                                                                                                                         450,
+                                                                                                                         1,
+                                                                                                                         -1,
+                                                                                                                         -1}
+[DEBUG 2026-03-02 14:40:42.814 symtab.erl:384] Extended symtab with entries from dnf_ty_tuple
+[DEBUG 2026-03-02 14:40:42.821 symtab.erl:394] Additional modules for dnf_ty_tuple: [dnf_ty_variable,ty_variable,etally,constraint_set,ty_node,ast,ty_tuple,ty_bool,sets,ty]
+[DEBUG 2026-03-02 14:40:42.821 paths.erl:281] Resolved module ty_tuple to file "src/erlang_types/ty_tuple.erl"
+[DEBUG 2026-03-02 14:40:42.821 parse_cache.erl:80] Parsing src/erlang_types/ty_tuple.erl ...
+[DEBUG 2026-03-02 14:40:42.826 parse_cache.erl:82] Finished parsing src/erlang_types/ty_tuple.erl
+[DEBUG 2026-03-02 14:40:42.826 parse_cache.erl:134] Transforming src/erlang_types/ty_tuple.erl ...
+[DEBUG 2026-03-02 14:40:42.829 symtab.erl:384] Extended symtab with entries from ty_tuple
+[DEBUG 2026-03-02 14:40:42.830 symtab.erl:394] Additional modules for ty_tuple: [dnf_ty_variable,ty_variable,etally,constraint_set,ty_node,ast,sets]
+[DEBUG 2026-03-02 14:40:42.830 paths.erl:281] Resolved module dnf_ty_list to file "src/erlang_types/dnf_ty_list.erl"
+[DEBUG 2026-03-02 14:40:42.830 parse_cache.erl:80] Parsing src/erlang_types/dnf_ty_list.erl ...
+[DEBUG 2026-03-02 14:40:42.845 parse_cache.erl:82] Finished parsing src/erlang_types/dnf_ty_list.erl
+[DEBUG 2026-03-02 14:40:42.845 parse_cache.erl:134] Transforming src/erlang_types/dnf_ty_list.erl ...
+[DEBUG 2026-03-02 14:40:42.850 ast_transform.erl:984] Exhaustiveness heuristic triggered: removing last error clause at {loc,
+                                                                                                                         "src/erlang_types/dnf_ty_list.erl",
+                                                                                                                         450,
+                                                                                                                         1,
+                                                                                                                         -1,
+                                                                                                                         -1}
+[DEBUG 2026-03-02 14:40:42.852 symtab.erl:384] Extended symtab with entries from dnf_ty_list
+[DEBUG 2026-03-02 14:40:42.857 symtab.erl:394] Additional modules for dnf_ty_list: [dnf_ty_variable,ty_variable,etally,constraint_set,ty_node,ast,ty_list,ty_bool,sets]
+[DEBUG 2026-03-02 14:40:42.857 paths.erl:281] Resolved module ty_list to file "src/erlang_types/ty_list.erl"
+[DEBUG 2026-03-02 14:40:42.857 parse_cache.erl:80] Parsing src/erlang_types/ty_list.erl ...
+[DEBUG 2026-03-02 14:40:42.860 parse_cache.erl:82] Finished parsing src/erlang_types/ty_list.erl
+[DEBUG 2026-03-02 14:40:42.861 parse_cache.erl:134] Transforming src/erlang_types/ty_list.erl ...
+[DEBUG 2026-03-02 14:40:42.863 symtab.erl:384] Extended symtab with entries from ty_list
+[DEBUG 2026-03-02 14:40:42.863 symtab.erl:394] Additional modules for ty_list: [dnf_ty_variable,ty_variable,etally,constraint_set,ty_node,ast,ty_tuple]
+[DEBUG 2026-03-02 14:40:42.865 paths.erl:281] Resolved module persistent_term to file "/usr/lib/erlang/lib/erts-16.2/src/persistent_term.erl"
+[DEBUG 2026-03-02 14:40:42.865 parse_cache.erl:80] Parsing /usr/lib/erlang/lib/erts-16.2/src/persistent_term.erl ...
+[DEBUG 2026-03-02 14:40:42.871 parse_cache.erl:82] Finished parsing /usr/lib/erlang/lib/erts-16.2/src/persistent_term.erl
+[DEBUG 2026-03-02 14:40:42.871 parse_cache.erl:134] Transforming /usr/lib/erlang/lib/erts-16.2/src/persistent_term.erl ...
+[DEBUG 2026-03-02 14:40:42.874 symtab.erl:384] Extended symtab with entries from persistent_term
+[DEBUG 2026-03-02 14:40:42.874 symtab.erl:394] Additional modules for persistent_term: []
+[DEBUG 2026-03-02 14:40:42.874 paths.erl:281] Resolved module etally to file "src/erlang_types/etally.erl"
+[DEBUG 2026-03-02 14:40:42.875 parse_cache.erl:80] Parsing src/erlang_types/etally.erl ...
+[DEBUG 2026-03-02 14:40:42.890 parse_cache.erl:82] Finished parsing src/erlang_types/etally.erl
+[DEBUG 2026-03-02 14:40:42.890 parse_cache.erl:134] Transforming src/erlang_types/etally.erl ...
+[DEBUG 2026-03-02 14:40:42.898 symtab.erl:384] Extended symtab with entries from etally
+[DEBUG 2026-03-02 14:40:42.901 symtab.erl:394] Additional modules for etally: [ty_variable,ty]
+[DEBUG 2026-03-02 14:40:42.901 paths.erl:281] Resolved module constraint_set to file "src/erlang_types/constraint_set.erl"
+[DEBUG 2026-03-02 14:40:42.902 parse_cache.erl:80] Parsing src/erlang_types/constraint_set.erl ...
+[DEBUG 2026-03-02 14:40:42.910 parse_cache.erl:82] Finished parsing src/erlang_types/constraint_set.erl
+[DEBUG 2026-03-02 14:40:42.910 parse_cache.erl:134] Transforming src/erlang_types/constraint_set.erl ...
+[DEBUG 2026-03-02 14:40:42.918 symtab.erl:384] Extended symtab with entries from constraint_set
+[DEBUG 2026-03-02 14:40:42.920 symtab.erl:394] Additional modules for constraint_set: [ty_variable,ty]
+[DEBUG 2026-03-02 14:40:42.920 paths.erl:281] Resolved module ty_rec to file "src/erlang_types/ty_rec.erl"
+[DEBUG 2026-03-02 14:40:42.920 parse_cache.erl:80] Parsing src/erlang_types/ty_rec.erl ...
+[DEBUG 2026-03-02 14:40:42.933 parse_cache.erl:82] Finished parsing src/erlang_types/ty_rec.erl
+[DEBUG 2026-03-02 14:40:42.933 parse_cache.erl:134] Transforming src/erlang_types/ty_rec.erl ...
+[DEBUG 2026-03-02 14:40:42.948 symtab.erl:384] Extended symtab with entries from ty_rec
+[DEBUG 2026-03-02 14:40:42.953 symtab.erl:394] Additional modules for ty_rec: [dnf_ty_variable,ty_variable,etally,constraint_set,ty_node,ast,dnf_ty_predefined,dnf_ty_atom,dnf_ty_interval,
+                                                                               dnf_ty_list,dnf_ty_bitstring,ty_tuples,ty_functions,dnf_ty_map,sets]
+[DEBUG 2026-03-02 14:40:42.953 paths.erl:281] Resolved module ast_erl to file "_build/default/lib/etylizer/src/ast_erl.erl"
+[DEBUG 2026-03-02 14:40:42.953 parse_cache.erl:80] Parsing _build/default/lib/etylizer/src/ast_erl.erl ...
+[DEBUG 2026-03-02 14:40:42.974 parse_cache.erl:82] Finished parsing _build/default/lib/etylizer/src/ast_erl.erl
+[DEBUG 2026-03-02 14:40:42.975 parse_cache.erl:134] Transforming _build/default/lib/etylizer/src/ast_erl.erl ...
+[DEBUG 2026-03-02 14:40:42.986 symtab.erl:384] Extended symtab with entries from ast_erl
+[DEBUG 2026-03-02 14:40:42.989 symtab.erl:394] Additional modules for ast_erl: [erl_anno]
+[DEBUG 2026-03-02 14:40:42.989 paths.erl:281] Resolved module dets to file "/usr/lib/erlang/lib/stdlib-7.2/src/dets.erl"
+[DEBUG 2026-03-02 14:40:42.990 parse_cache.erl:80] Parsing /usr/lib/erlang/lib/stdlib-7.2/src/dets.erl ...
+[DEBUG 2026-03-02 14:40:43.068 parse_cache.erl:82] Finished parsing /usr/lib/erlang/lib/stdlib-7.2/src/dets.erl
+[DEBUG 2026-03-02 14:40:43.070 parse_cache.erl:134] Transforming /usr/lib/erlang/lib/stdlib-7.2/src/dets.erl ...
+[DEBUG 2026-03-02 14:40:43.144 symtab.erl:384] Extended symtab with entries from dets
+[DEBUG 2026-03-02 14:40:43.145 symtab.erl:394] Additional modules for dets: [file,ets,qlc]
+[DEBUG 2026-03-02 14:40:43.145 paths.erl:281] Resolved module qlc to file "/usr/lib/erlang/lib/stdlib-7.2/src/qlc.erl"
+[DEBUG 2026-03-02 14:40:43.146 parse_cache.erl:80] Parsing /usr/lib/erlang/lib/stdlib-7.2/src/qlc.erl ...
+[DEBUG 2026-03-02 14:40:43.229 parse_cache.erl:82] Finished parsing /usr/lib/erlang/lib/stdlib-7.2/src/qlc.erl
+[DEBUG 2026-03-02 14:40:43.232 parse_cache.erl:134] Transforming /usr/lib/erlang/lib/stdlib-7.2/src/qlc.erl ...
+[DEBUG 2026-03-02 14:40:43.305 symtab.erl:384] Extended symtab with entries from qlc
+[DEBUG 2026-03-02 14:40:43.306 symtab.erl:394] Additional modules for qlc: [erl_parse,ets,proc_lib,file,file_sorter,io_lib,compile,erl_scan,erl_eval,erl_anno]
+[DEBUG 2026-03-02 14:40:43.308 paths.erl:281] Resolved module logger_handler to file "/usr/lib/erlang/lib/kernel-10.5/src/logger_handler.erl"
+[DEBUG 2026-03-02 14:40:43.308 parse_cache.erl:80] Parsing /usr/lib/erlang/lib/kernel-10.5/src/logger_handler.erl ...
+[DEBUG 2026-03-02 14:40:43.312 parse_cache.erl:82] Finished parsing /usr/lib/erlang/lib/kernel-10.5/src/logger_handler.erl
+[DEBUG 2026-03-02 14:40:43.312 parse_cache.erl:134] Transforming /usr/lib/erlang/lib/kernel-10.5/src/logger_handler.erl ...
+[DEBUG 2026-03-02 14:40:43.315 symtab.erl:384] Extended symtab with entries from logger_handler
+[DEBUG 2026-03-02 14:40:43.316 symtab.erl:394] Additional modules for logger_handler: [logger]
+[DEBUG 2026-03-02 14:40:43.316 paths.erl:281] Resolved module records to file "_build/default/lib/etylizer/src/records.erl"
+[DEBUG 2026-03-02 14:40:43.316 parse_cache.erl:80] Parsing _build/default/lib/etylizer/src/records.erl ...
+[DEBUG 2026-03-02 14:40:43.318 parse_cache.erl:82] Finished parsing _build/default/lib/etylizer/src/records.erl
+[DEBUG 2026-03-02 14:40:43.318 parse_cache.erl:134] Transforming _build/default/lib/etylizer/src/records.erl ...
+[DEBUG 2026-03-02 14:40:43.321 symtab.erl:384] Extended symtab with entries from records
+[DEBUG 2026-03-02 14:40:43.321 symtab.erl:394] Additional modules for records: [ast]
+[DEBUG 2026-03-02 14:40:43.321 paths.erl:281] Resolved module t to file "_build/default/lib/etylizer/src/t.erl"
+[DEBUG 2026-03-02 14:40:43.321 parse_cache.erl:80] Parsing _build/default/lib/etylizer/src/t.erl ...
+[DEBUG 2026-03-02 14:40:43.322 parse_cache.erl:82] Finished parsing _build/default/lib/etylizer/src/t.erl
+[DEBUG 2026-03-02 14:40:43.322 parse_cache.erl:134] Transforming _build/default/lib/etylizer/src/t.erl ...
+[DEBUG 2026-03-02 14:40:43.325 symtab.erl:384] Extended symtab with entries from t
+[DEBUG 2026-03-02 14:40:43.325 symtab.erl:394] Additional modules for t: []
+[DEBUG 2026-03-02 14:40:43.325 paths.erl:281] Resolved module paths to file "_build/default/lib/etylizer/src/paths.erl"
+[DEBUG 2026-03-02 14:40:43.325 parse_cache.erl:80] Parsing _build/default/lib/etylizer/src/paths.erl ...
+[DEBUG 2026-03-02 14:40:43.338 parse_cache.erl:82] Finished parsing _build/default/lib/etylizer/src/paths.erl
+[DEBUG 2026-03-02 14:40:43.338 parse_cache.erl:134] Transforming _build/default/lib/etylizer/src/paths.erl ...
+[DEBUG 2026-03-02 14:40:43.344 symtab.erl:384] Extended symtab with entries from paths
+[DEBUG 2026-03-02 14:40:43.344 symtab.erl:394] Additional modules for paths: [log,feature_flags,file]
+[DEBUG 2026-03-02 14:40:43.344 paths.erl:281] Resolved module ty_map to file "src/erlang_types/ty_map.erl"
+[DEBUG 2026-03-02 14:40:43.344 parse_cache.erl:80] Parsing src/erlang_types/ty_map.erl ...
+[DEBUG 2026-03-02 14:40:43.349 parse_cache.erl:82] Finished parsing src/erlang_types/ty_map.erl
+[DEBUG 2026-03-02 14:40:43.349 parse_cache.erl:134] Transforming src/erlang_types/ty_map.erl ...
+[DEBUG 2026-03-02 14:40:43.354 symtab.erl:384] Extended symtab with entries from ty_map
+[DEBUG 2026-03-02 14:40:43.355 symtab.erl:394] Additional modules for ty_map: [dnf_ty_variable,ty_variable,etally,constraint_set,ty_node,ast,ty_tuple,dnf_ty_function,ty_rec]
+[DEBUG 2026-03-02 14:40:43.355 paths.erl:281] Resolved module ty_bool to file "src/erlang_types/ty_bool.erl"
+[DEBUG 2026-03-02 14:40:43.355 parse_cache.erl:80] Parsing src/erlang_types/ty_bool.erl ...
+[DEBUG 2026-03-02 14:40:43.358 parse_cache.erl:82] Finished parsing src/erlang_types/ty_bool.erl
+[DEBUG 2026-03-02 14:40:43.358 parse_cache.erl:134] Transforming src/erlang_types/ty_bool.erl ...
+[DEBUG 2026-03-02 14:40:43.361 symtab.erl:384] Extended symtab with entries from ty_bool
+[DEBUG 2026-03-02 14:40:43.362 symtab.erl:394] Additional modules for ty_bool: [ast,constraint_set,sets]
+[DEBUG 2026-03-02 14:40:43.362 paths.erl:281] Resolved module ty to file "src/erlang_types/ty.erl"
+[DEBUG 2026-03-02 14:40:43.362 parse_cache.erl:80] Parsing src/erlang_types/ty.erl ...
+[DEBUG 2026-03-02 14:40:43.365 parse_cache.erl:82] Finished parsing src/erlang_types/ty.erl
+[DEBUG 2026-03-02 14:40:43.365 parse_cache.erl:134] Transforming src/erlang_types/ty.erl ...
+[DEBUG 2026-03-02 14:40:43.368 symtab.erl:384] Extended symtab with entries from ty
+[DEBUG 2026-03-02 14:40:43.369 symtab.erl:394] Additional modules for ty: [dnf_ty_variable,ty_variable,etally,constraint_set,ty_node,ast,sets,ty_tuples,ty_functions]
+[DEBUG 2026-03-02 14:40:43.369 paths.erl:281] Resolved module proc_lib to file "/usr/lib/erlang/lib/stdlib-7.2/src/proc_lib.erl"
+[DEBUG 2026-03-02 14:40:43.370 parse_cache.erl:80] Parsing /usr/lib/erlang/lib/stdlib-7.2/src/proc_lib.erl ...
+[DEBUG 2026-03-02 14:40:43.404 parse_cache.erl:82] Finished parsing /usr/lib/erlang/lib/stdlib-7.2/src/proc_lib.erl
+[DEBUG 2026-03-02 14:40:43.404 parse_cache.erl:134] Transforming /usr/lib/erlang/lib/stdlib-7.2/src/proc_lib.erl ...
+[DEBUG 2026-03-02 14:40:43.428 symtab.erl:384] Extended symtab with entries from proc_lib
+[DEBUG 2026-03-02 14:40:43.429 symtab.erl:394] Additional modules for proc_lib: [erlang,logger,unicode]
+[DEBUG 2026-03-02 14:40:43.429 paths.erl:281] Resolved module file_sorter to file "/usr/lib/erlang/lib/stdlib-7.2/src/file_sorter.erl"
+[DEBUG 2026-03-02 14:40:43.430 parse_cache.erl:80] Parsing /usr/lib/erlang/lib/stdlib-7.2/src/file_sorter.erl ...
+[DEBUG 2026-03-02 14:40:43.471 parse_cache.erl:82] Finished parsing /usr/lib/erlang/lib/stdlib-7.2/src/file_sorter.erl
+[DEBUG 2026-03-02 14:40:43.471 parse_cache.erl:134] Transforming /usr/lib/erlang/lib/stdlib-7.2/src/file_sorter.erl ...
+[DEBUG 2026-03-02 14:40:43.506 symtab.erl:384] Extended symtab with entries from file_sorter
+[DEBUG 2026-03-02 14:40:43.507 symtab.erl:394] Additional modules for file_sorter: [file]
+[DEBUG 2026-03-02 14:40:43.508 paths.erl:281] Resolved module log to file "_build/default/lib/etylizer/src/log.erl"
+[DEBUG 2026-03-02 14:40:43.508 parse_cache.erl:80] Parsing _build/default/lib/etylizer/src/log.erl ...
+[DEBUG 2026-03-02 14:40:43.512 parse_cache.erl:82] Finished parsing _build/default/lib/etylizer/src/log.erl
+[DEBUG 2026-03-02 14:40:43.512 parse_cache.erl:134] Transforming _build/default/lib/etylizer/src/log.erl ...
+[DEBUG 2026-03-02 14:40:43.516 symtab.erl:384] Extended symtab with entries from log
+[DEBUG 2026-03-02 14:40:43.516 symtab.erl:394] Additional modules for log: []
+[DEBUG 2026-03-02 14:40:43.516 paths.erl:281] Resolved module feature_flags to file "src/erlang_types/feature_flags.erl"
+[DEBUG 2026-03-02 14:40:43.516 parse_cache.erl:80] Parsing src/erlang_types/feature_flags.erl ...
+[DEBUG 2026-03-02 14:40:43.517 parse_cache.erl:82] Finished parsing src/erlang_types/feature_flags.erl
+[DEBUG 2026-03-02 14:40:43.517 parse_cache.erl:134] Transforming src/erlang_types/feature_flags.erl ...
+[DEBUG 2026-03-02 14:40:43.519 symtab.erl:384] Extended symtab with entries from feature_flags
+[DEBUG 2026-03-02 14:40:43.519 symtab.erl:394] Additional modules for feature_flags: []
+[DEBUG 2026-03-02 14:40:43.531 typing.erl:51] Skipping check for exported functions in src/erlang_types/ty_parser.erl
+[DEBUG 2026-03-02 14:40:43.532 typing.erl:64] Only: ["rewrite_map_assoc"]
+[DEBUG 2026-03-02 14:40:43.532 typing.erl:65] Ignore: []
+[DEBUG 2026-03-02 14:40:43.543 typing.erl:75] Checking 1 functions in src/erlang_types/ty_parser.erl against their specs (1 environments)
+[NOTE 2026-03-02 14:40:43.553 typing_check.erl:26] Checking 1 functions in src/erlang_types/ty_parser.erl against their specs
+[INFO 2026-03-02 14:40:43.577 typing_check.erl:72] Type checking rewrite_map_assoc/2 at src/erlang_types/ty_parser.erl:984:1-18 against type fun((ast:ty_map_assoc(),
+     {ast_ty(), ast_ty(), ast_ty()}) -> {ast_ty(),
+                                         ast_ty(),
+                                         ast_ty()})
+[INFO 2026-03-02 14:40:43.602 typing_check.erl:128] Type checking rewrite_map_assoc/2 at src/erlang_types/ty_parser.erl:984:1-18 against type fun((ast:ty_map_assoc(),
+     {ast_ty(), ast_ty(), ast_ty()}) -> {ast_ty(),
+                                         ast_ty(),
+                                         ast_ty()})
+[DEBUG 2026-03-02 14:40:43.633 typing_check.erl:137] AltTys=[{fun_full,[{named,{loc,"src/erlang_types/ty_parser.erl",983,25,983,28},{ty_qref,ast,ty_map_assoc,0},[]},
+                                                                        {tuple,[{named,{loc,"src/erlang_types/ty_parser.erl",983,46,983,52},{ty_ref,ty_parser,ast_ty,0},[]},
+                                                                                {named,{loc,"src/erlang_types/ty_parser.erl",983,56,983,62},{ty_ref,ty_parser,ast_ty,0},[]},
+                                                                                {named,{loc,"src/erlang_types/ty_parser.erl",983,66,983,72},{ty_ref,ty_parser,ast_ty,0},[]}]}],
+                                                                       {tuple,[{named,{loc,"src/erlang_types/ty_parser.erl",983,81,983,87},{ty_ref,ty_parser,ast_ty,0},[]},
+                                                                               {named,{loc,"src/erlang_types/ty_parser.erl",983,91,983,97},{ty_ref,ty_parser,ast_ty,0},[]},
+                                                                               {named,{loc,"src/erlang_types/ty_parser.erl",983,101,983,107},{ty_ref,ty_parser,ast_ty,0},[]}]}}],
+MonoTy={fun_full,[{named,{loc,"src/erlang_types/ty_parser.erl",983,25,983,28},{ty_qref,ast,ty_map_assoc,0},[]},
+                  {tuple,[{named,{loc,"src/erlang_types/ty_parser.erl",983,46,983,52},{ty_ref,ty_parser,ast_ty,0},[]},
+                          {named,{loc,"src/erlang_types/ty_parser.erl",983,56,983,62},{ty_ref,ty_parser,ast_ty,0},[]},
+                          {named,{loc,"src/erlang_types/ty_parser.erl",983,66,983,72},{ty_ref,ty_parser,ast_ty,0},[]}]}],
+                 {tuple,[{named,{loc,"src/erlang_types/ty_parser.erl",983,81,983,87},{ty_ref,ty_parser,ast_ty,0},[]},
+                         {named,{loc,"src/erlang_types/ty_parser.erl",983,91,983,97},{ty_ref,ty_parser,ast_ty,0},[]},
+                         {named,{loc,"src/erlang_types/ty_parser.erl",983,101,983,107},{ty_ref,ty_parser,ast_ty,0},[]}]}}
+[INFO 2026-03-02 14:40:43.634 typing_check.erl:182] Checking function rewrite_map_assoc/2 at src/erlang_types/ty_parser.erl:984:1-18 against type fun((ast:ty_map_assoc(),
+     {ast_ty(), ast_ty(), ast_ty()}) -> {ast_ty(),
+                                         ast_ty(),
+                                         ast_ty()})
+[DEBUG 2026-03-02 14:40:43.673 typing_check.erl:206] Constraints:
+[{cdef,
+  "definition of rewrite_map_assoc/2":984:1,
+  #{$A1@0 => ast:ty_map_assoc(),
+    $A2@0 => {ast_ty(), ast_ty(), ast_ty()}},
+  [{ccase,
+    "case":984:1,
+    scrutiny:[{csubty,
+               "t // {...}":984:1,
+               $0 /\
+               {{any(), any(), any()}, {any(), any(), any()}} /\
+               {any(), any()},
+               {$3, $7}},
+              {csubty, "t // {...}":984:1, $3, {$4, $5, $6}},
+              {csubty, "t // {...}":984:1, $7, {$8, $9, $10}},
+              {csubty, "tuple constructor":984:1, {$2, $1}, $0},
+              {cvarmater, "var $A1@0":984:1, $A1@0, $2},
+              {cvarmater, "var $A2@0":984:1, $A2@0, $1}],
+    exhaust:[{csubty,
+              "case exhaustiveness":984:1,
+              $0,
+              {{any(), any(), any()}, {any(), any(), any()}} /\
+              {any(), any()}}],
+    [{"case branch":984:1,
+      guardEnv:#{},
+      guardCs:[],
+      bodyEnv:#{Association@0 => $4,
+                Functions@0 => $10,
+                Key@0 => $5,
+                PrecedenceDomain@0 => $8,
+                Tuples@0 => $9,
+                Val@0 => $6},
+      bodyCs:[{ccase,
+               "case":985:3,
+               scrutiny:[{csubty,
+                          "cons constructor":985:17,
+                          [{intersection, $13} @ $17],
+                          $12},
+                         {csubty, "cons constructor":985:33, [$14 @ $15], $13},
+                         {csubty, "cons constructor":985:39, [{negation, $16} @ []], $15},
+                         {csubty, "cons constructor":985:71, [$18 @ []], $17},
+                         {csubty, "t // [_ | _]":-1:-1, $19, [$20 @ $26]},
+                         {csubty, "t // [_ | _]":-1:-1, $21, [$22 @ $23]},
+                         {csubty, "t // [_ | _]":-1:-1, $23, [$24 @ any()]},
+                         {csubty, "t // [_ | _]":-1:-1, $26, [$27 @ any()]},
+                         {csubty, "t // {...}":-1:-1, $20, {any(), $21}},
+                         {csubty, "t // {...}":-1:-1, $24, {any(), $25}},
+                         {csubty,
+                          "t // {...}":985:3,
+                          $11 /\
+                          {any(),
+                           [{any(), [any() @ [{any(), any()} @ any()]]} @ [any() @ any()]]},
+                          {any(), $19}},
+                         {csubty, "tuple constructor":985:9, {tuple, $12}, $11},
+                         {cvarmater, "var Key@0":985:34, Key@0, $14},
+                         {cvarmater,
+                          "var PrecedenceDomain@0":985:50,
+                          PrecedenceDomain@0,
+                          $16},
+                         {cvarmater, "var Val@0":985:71, Val@0, $18}],
+               exhaust:[{csubty,
+                         "case exhaustiveness":985:3,
+                         $11,
+                         {any(),
+                          [{any(),
+                            [any() @ [{any(), any()} @ any()]]} @ [any() @ any()]]}}],
+               [{"case branch":985:3,
+                 guardEnv:#{},
+                 guardCs:[],
+                 bodyEnv:#{Key@0 => $22,
+                           PrecedenceDomain@0 => $25,
+                           Tup@0 => $11 /\
+                                    {any(),
+                                     [{any(), [any() @ [{any(), any()} @ any()]]} @ [any() @ any()]]},
+                           Val@0 => $27},
+                 bodyCs:[{ccase,
+                          "case":986:3,
+                          scrutiny:[{csubty, "cons constructor":986:23, [$30 @ $31], $29},
+                                    {csubty, "cons constructor":986:42, [$32 @ []], $31},
+                                    {csubty, "t // [_ | _]":-1:-1, $33, [$34 @ $35]},
+                                    {csubty, "t // [_ | _]":-1:-1, $35, [$36 @ any()]},
+                                    {csubty,
+                                     "t // {...}":986:3,
+                                     $28 /\ {any(), [any() @ [any() @ any()]]},
+                                     {any(), $33}},
+                                    {csubty, "tuple constructor":986:15, {union, $29}, $28},
+                                    {cvarmater, "var Key@0":986:42, Key@0, $32},
+                                    {cvarmater,
+                                     "var PrecedenceDomain@0":986:24,
+                                     PrecedenceDomain@0,
+                                     $30}],
+                          exhaust:[{csubty,
+                                    "case exhaustiveness":986:3,
+                                    $28,
+                                    {any(), [any() @ [any() @ any()]]}}],
+                          [{"case branch":986:3,
+                            guardEnv:#{},
+                            guardCs:[],
+                            bodyEnv:#{Key@0 => $36,
+                                      NewDomain@0 => $28 /\ {any(), [any() @ [any() @ any()]]},
+                                      PrecedenceDomain@0 => $34},
+                            bodyCs:[{ccase,
+                                     "case":987:3,
+                                     scrutiny:[{csubty, "cons constructor":987:23, [$39 @ $40], $38},
+                                               {csubty, "cons constructor":987:32, [$41 @ []], $40},
+                                               {csubty, "t // [_ | _]":-1:-1, $42, [$43 @ $44]},
+                                               {csubty, "t // [_ | _]":-1:-1, $44, [$45 @ any()]},
+                                               {csubty,
+                                                "t // {...}":987:3,
+                                                $37 /\ {any(), [any() @ [any() @ any()]]},
+                                                {any(), $42}},
+                                               {csubty, "tuple constructor":987:15, {union, $38}, $37},
+                                               {cvarmater, "var Tup@0":987:32, Tup@0, $41},
+                                               {cvarmater, "var Tuples@0":987:24, Tuples@0, $39}],
+                                     exhaust:[{csubty,
+                                               "case exhaustiveness":987:3,
+                                               $37,
+                                               {any(), [any() @ [any() @ any()]]}}],
+                                     [{"case branch":987:3,
+                                       guardEnv:#{},
+                                       guardCs:[],
+                                       bodyEnv:#{NewTuples@0 => $37 /\
+                                                                {any(), [any() @ [any() @ any()]]},
+                                                 Tup@0 => $45,
+                                                 Tuples@0 => $43},
+                                       bodyCs:[{ccase,
+                                                "case":988:3,
+                                                scrutiny:[{csubty, "var Association@0":988:8, $47, $46},
+                                                          {cvarmater, "var Association@0":988:8, Association@0, $47}],
+                                                exhaust:[{csubty,
+                                                          "case exhaustiveness":988:3,
+                                                          $46,
+                                                          map_field_opt | map_field_req}],
+                                                [{"case branch":989:5,
+                                                  guardEnv:#{},
+                                                  guardCs:[],
+                                                  bodyEnv:#{Association@0 => $46 /\ map_field_opt},
+                                                  bodyCs:[{csubty,
+                                                           "tuple constructor":990:7,
+                                                           {$50, $49, $48},
+                                                           {ast_ty(), ast_ty(), ast_ty()}},
+                                                          {cvarmater, "var Functions@0":990:30, Functions@0, $48},
+                                                          {cvarmater, "var NewDomain@0":990:8, NewDomain@0, $50},
+                                                          {cvarmater, "var NewTuples@0":990:19, NewTuples@0, $49}],
+                                                  bodyCond:[{csubty,
+                                                             "var Association@0":988:8,
+                                                             $51,
+                                                             not(map_field_opt)},
+                                                            {cvarmater, "var Association@0":988:8, Association@0, $51}],
+                                                  resultCs:[]},
+                                                 {"case branch":991:5,
+                                                  guardEnv:#{},
+                                                  guardCs:[],
+                                                  bodyEnv:#{Association@0 => $46 /\ map_field_req},
+                                                  bodyCs:[{ccase,
+                                                           "case":992:7,
+                                                           scrutiny:[{csubty,
+                                                                      "cons constructor":992:24,
+                                                                      [{intersection, $55} @ []],
+                                                                      $54},
+                                                                     {csubty, "cons constructor":992:40, [$56 @ $57], $55},
+                                                                     {csubty, "cons constructor":992:46, [{negation, $58} @ []], $57},
+                                                                     {csubty, "t // [_ | _]":-1:-1, $59, [$60 @ any()]},
+                                                                     {csubty, "t // [_ | _]":-1:-1, $61, [$62 @ $63]},
+                                                                     {csubty, "t // [_ | _]":-1:-1, $63, [$64 @ any()]},
+                                                                     {csubty, "t // {...}":-1:-1, $60, {any(), $61}},
+                                                                     {csubty, "t // {...}":-1:-1, $64, {any(), $65}},
+                                                                     {csubty,
+                                                                      "t // {...}":992:7,
+                                                                      $52 /\
+                                                                      {any(),
+                                                                       [{any(), [any() @ [{any(), any()} @ any()]]} @ any()],
+                                                                       any()},
+                                                                      {any(), $59, $66}},
+                                                                     {csubty, "tuple constructor":992:13, {fun_full, $54, $53}, $52},
+                                                                     {cvarmater, "var Key@0":992:41, Key@0, $56},
+                                                                     {cvarmater,
+                                                                      "var PrecedenceDomain@0":992:57,
+                                                                      PrecedenceDomain@0,
+                                                                      $58},
+                                                                     {cvarmater, "var Val@0":992:79, Val@0, $53}],
+                                                           exhaust:[{csubty,
+                                                                     "case exhaustiveness":992:7,
+                                                                     $52,
+                                                                     {any(),
+                                                                      [{any(), [any() @ [{any(), any()} @ any()]]} @ any()],
+                                                                      any()}}],
+                                                           [{"case branch":992:7,
+                                                             guardEnv:#{},
+                                                             guardCs:[],
+                                                             bodyEnv:#{Fun@0 => $52 /\
+                                                                                {any(),
+                                                                                 [{any(), [any() @ [{any(), any()} @ any()]]} @ any()],
+                                                                                 any()},
+                                                                       Key@0 => $62,
+                                                                       PrecedenceDomain@0 => $65,
+                                                                       Val@0 => $66},
+                                                             bodyCs:[{csubty, "cons constructor":993:45, [$68 @ $69], $67},
+                                                                     {csubty, "cons constructor":993:57, [$70 @ []], $69},
+                                                                     {csubty,
+                                                                      "tuple constructor":993:7,
+                                                                      {$72, $71, {intersection, $67}},
+                                                                      {ast_ty(), ast_ty(), ast_ty()}},
+                                                                     {cvarmater, "var Fun@0":993:57, Fun@0, $70},
+                                                                     {cvarmater, "var Functions@0":993:46, Functions@0, $68},
+                                                                     {cvarmater, "var NewDomain@0":993:8, NewDomain@0, $72},
+                                                                     {cvarmater, "var NewTuples@0":993:19, NewTuples@0, $71}],
+                                                             bodyCond:none,
+                                                             resultCs:[]}]}],
+                                                  bodyCond:[{csubty,
+                                                             "var Association@0":988:8,
+                                                             $73,
+                                                             not(map_field_req)},
+                                                            {cvarmater, "var Association@0":988:8, Association@0, $73}],
+                                                  resultCs:[]}]}],
+                                       bodyCond:none,
+                                       resultCs:[]}]}],
+                            bodyCond:none,
+                            resultCs:[]}]}],
+                 bodyCond:none,
+                 resultCs:[]}]}],
+      bodyCond:none,
+      resultCs:[]}]}]}]
+[DEBUG 2026-03-02 14:40:43.705 constr_solve.erl:215] Checking constraints for satisfiability to type check rewrite_map_assoc/2 at src/erlang_types/ty_parser.erl:984:1-18:
+{scsubty, 987:32, [$41 @ []], $40},
+{scmater, 985:34, $5, $14},
+{scsubty, 993:45, [$68 @ $69], $67},
+{scsubty, 988:8, $47, $46},
+{scsubty, 986:15, {union, $29}, $28},
+{scsubty, -1:-1, $20, {any(), $21}},
+{scsubty, 993:57, [$70 @ []], $69},
+{scsubty, 987:15, {union, $38}, $37},
+{scmater, 990:8, $28 /\ {any(), [any() @ [any() @ any()]]}, $50},
+{scmater,
+ 993:57,
+ $52 /\
+ {any(),
+  [{any(), [any() @ [{any(), any()} @ any()]]} @ any()],
+  any()},
+ $70},
+{scsubty, -1:-1, $21, [$22 @ $23]},
+{scsubty, 992:24, [{intersection, $55} @ []], $54},
+{scmater, 986:24, $8 /\ $25, $30},
+{scsubty, 985:17, [{intersection, $13} @ $17], $12},
+{scsubty,
+ 987:3,
+ $37 /\ {any(), [any() @ [any() @ any()]]},
+ {any(), $42}},
+{scsubty, -1:-1, $33, [$34 @ $35]},
+{scsubty,
+ 993:7,
+ {$72, $71, {intersection, $67}},
+ {ast_ty(), ast_ty(), ast_ty()}},
+{scmater, 990:30, $10, $48},
+{scsubty, -1:-1, $23, [$24 @ any()]},
+{scmater,
+ 987:32,
+ $11 /\
+ {any(),
+  [{any(), [any() @ [{any(), any()} @ any()]]} @ [any() @ any()]]},
+ $41},
+{scsubty, 988:3, $46, map_field_opt | map_field_req},
+{scsubty, 984:1, {$2, $1}, $0},
+{scsubty, 985:9, {tuple, $12}, $11},
+{scmater, 986:42, $5 /\ $22, $32},
+{scsubty, 992:40, [$56 @ $57], $55},
+{scmater, 992:79, $6 /\ $27, $53},
+{scsubty,
+ 992:7,
+ $52 /\
+ {any(),
+  [{any(), [any() @ [{any(), any()} @ any()]]} @ any()],
+  any()},
+ {any(), $59, $66}},
+{scmater, 993:46, $10, $68},
+{scsubty, -1:-1, $42, [$43 @ $44]},
+{scsubty, 984:1, $3, {$4, $5, $6}},
+{scsubty, -1:-1, $44, [$45 @ any()]},
+{scsubty,
+ 985:3,
+ $11,
+ {any(),
+  [{any(),
+    [any() @ [{any(), any()} @ any()]]} @ [any() @ any()]]}},
+{scsubty, 987:23, [$39 @ $40], $38},
+{scmater, 988:8, $4, $47},
+{scsubty,
+ 984:1,
+ $0 /\
+ {{any(), any(), any()}, {any(), any(), any()}} /\
+ {any(), any()},
+ {$3, $7}},
+{scmater, 985:50, $8, $16},
+{scsubty,
+ 992:7,
+ $52,
+ {any(),
+  [{any(), [any() @ [{any(), any()} @ any()]]} @ any()],
+  any()}},
+{scsubty,
+ 986:3,
+ $28 /\ {any(), [any() @ [any() @ any()]]},
+ {any(), $33}},
+{scmater, 987:24, $9, $39},
+{scmater, 992:41, ($5 /\ $22) /\ $36, $56},
+{scsubty, 985:71, [$18 @ []], $17},
+{scsubty, -1:-1, $35, [$36 @ any()]},
+{scsubty, 986:3, $28, {any(), [any() @ [any() @ any()]]}},
+{scsubty, 985:33, [$14 @ $15], $13},
+{scmater,
+ 993:19,
+ $37 /\ {any(), [any() @ [any() @ any()]]},
+ $71},
+{scsubty, 987:3, $37, {any(), [any() @ [any() @ any()]]}},
+{scsubty, 984:1, $7, {$8, $9, $10}},
+{scsubty, 986:23, [$30 @ $31], $29},
+{scmater,
+ 990:19,
+ $37 /\ {any(), [any() @ [any() @ any()]]},
+ $49},
+{scsubty,
+ 984:1,
+ $0,
+ {{any(), any(), any()}, {any(), any(), any()}} /\
+ {any(), any()}},
+{scsubty, -1:-1, $26, [$27 @ any()]},
+{scmater, 993:8, $28 /\ {any(), [any() @ [any() @ any()]]}, $72},
+{scmater, 984:1, {ast_ty(), ast_ty(), ast_ty()}, $1},
+{scsubty, 986:42, [$32 @ []], $31},
+{scsubty, -1:-1, $19, [$20 @ $26]},
+{scsubty, 992:46, [{negation, $58} @ []], $57},
+{scsubty, 992:13, {fun_full, $54, $53}, $52},
+{scsubty, -1:-1, $24, {any(), $25}},
+{scsubty, -1:-1, $59, [$60 @ any()]},
+{scsubty, -1:-1, $60, {any(), $61}},
+{scsubty, 985:39, [{negation, $16} @ []], $15},
+{scsubty,
+ 990:7,
+ {$50, $49, $48},
+ {ast_ty(), ast_ty(), ast_ty()}},
+{scsubty, -1:-1, $61, [$62 @ $63]},
+{scmater, 992:57, ($8 /\ $25) /\ $34, $58},
+{scsubty,
+ 985:3,
+ $11 /\
+ {any(),
+  [{any(), [any() @ [{any(), any()} @ any()]]} @ [any() @ any()]]},
+ {any(), $19}},
+{scmater, 985:71, $6, $18},
+{scsubty, -1:-1, $64, {any(), $65}},
+{scmater, 984:1, ast:ty_map_assoc(), $2},
+{scsubty, -1:-1, $63, [$64 @ any()]}
+Fixed: 
+[DEBUG 2026-03-02 14:40:47.667 constr_solve.erl:232] Constraints are satisfiable, now checking 2 branches for redundancy (incremental)
+[DEBUG 2026-03-02 14:40:47.688 constr_solve.erl:186] Tally time (redundancy check incr): 14ms, tally finished with errors.
+[DEBUG 2026-03-02 14:40:47.689 constr_solve.erl:187] Branch at src/erlang_types/ty_parser.erl:989:5-18 is not redundant. Constraints that were added to the constraint above: {scmater, 988:8, $4, $51},
+{scsubty, 988:8, $51, not(map_field_opt)}
+Fixed: []
+[DEBUG 2026-03-02 14:40:47.702 constr_solve.erl:186] Tally time (redundancy check incr): 14ms, tally finished with errors.
+[DEBUG 2026-03-02 14:40:47.703 constr_solve.erl:187] Branch at src/erlang_types/ty_parser.erl:991:5-18 is not redundant. Constraints that were added to the constraint above: {scmater, 988:8, $4, $73},
+{scsubty, 988:8, $73, not(map_field_req)}
+Fixed: []
+[INFO 2026-03-02 14:40:47.703 typing_check.erl:220] Success: function rewrite_map_assoc/2 at src/erlang_types/ty_parser.erl:984:1-18 has type fun((ast:ty_map_assoc(),
+     {ast_ty(), ast_ty(), ast_ty()}) -> {ast_ty(),
+                                         ast_ty(),
+                                         ast_ty()}).
+[INFO 2026-03-02 14:40:47.704 typing_check.erl:166] Type ok for rewrite_map_assoc/2 at src/erlang_types/ty_parser.erl:984:1-18
+[INFO 2026-03-02 14:40:47.704 typing.erl:78] Checking 1 functions in src/erlang_types/ty_parser.erl against their specs finished

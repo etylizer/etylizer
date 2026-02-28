@@ -256,9 +256,27 @@ case_32(X) ->
 
 -spec case_33_fail(fun((atom() | reference(), term()) -> [tuple()]), term()) -> term().
 case_33_fail(F, Ref) ->
-  [{Ref, Node}] = 
+  [{Ref, Node}] =
   case F(myetstable, Ref) of
       __Z = [{Ref, _}] -> __Z; _ -> error(badarg)
   end,
   Node.
+
+% Dispatch optimization: position 2 is always a simple variable (direct),
+% position 1 has complex patterns including catch-alls with guards.
+% The optimizer should dispatch only on position 1.
+-spec case_34(term(), atom()) -> atom().
+case_34({ok, _}, Tag) -> Tag;
+case_34({error, _}, Tag) -> Tag;
+case_34(Tuple, Tag) when is_tuple(Tuple) -> Tag;
+case_34([_|_], Tag) -> list;
+case_34(Map, _Tag) when is_map(Map) -> map;
+case_34(_Term, _Tag) -> other.
+
+% Dispatch optimization with intersection type spec.
+% Catch-all in complex position should not cause false errors.
+-spec case_35({ok, term()}, atom()) -> ok;
+             (error, atom()) -> error.
+case_35({ok, _}, _Tag) -> ok;
+case_35(error, _Tag) -> error.
 

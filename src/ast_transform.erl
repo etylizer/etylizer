@@ -1216,13 +1216,9 @@ optimize_dispatched_clauses(Clauses) ->
             HasComplex = lists:any(fun(complex) -> true; (_) -> false end, PositionTypes),
             case {HasDirect, HasComplex} of
                 {true, true} ->
-                    case complex_has_catchall(Clauses, PositionTypes) of
+                    case guards_ref_direct_vars(Clauses, PositionTypes) of
                         true -> Clauses;
-                        false ->
-                            case guards_ref_direct_vars(Clauses, PositionTypes) of
-                                true -> Clauses;
-                                false -> rewrite_dispatched_clauses(Clauses, PositionTypes)
-                            end
+                        false -> rewrite_dispatched_clauses(Clauses, PositionTypes)
                     end;
                 _ -> Clauses
             end
@@ -1246,30 +1242,6 @@ classify_positions(Clauses, Arity) ->
                 false -> complex
             end
         end, lists:seq(1, Arity)).
-
-% Check if any complex position has a catch-all pattern in some clause.
-% A catch-all is a variable/wildcard, or a record pattern where all fields are catch-alls.
-% This indicates intersection-type dispatch (e.g., tuple clause + catch-all clause),
-% where converting to a case would make the catch-all branch appear redundant within
-% one intersection component, causing a false "this branch never matches" error.
--spec complex_has_catchall([ast:fun_clause()], [direct | complex]) -> boolean().
-complex_has_catchall(Clauses, PositionTypes) ->
-    IndexedTypes = lists:zip(lists:seq(1, length(PositionTypes)), PositionTypes),
-    lists:any(
-        fun({I, complex}) ->
-            lists:any(
-                fun({fun_clause, _, Pats, _, _}) ->
-                    pat_is_catchall(lists:nth(I, Pats))
-                end, Clauses);
-           ({_, direct}) -> false
-        end, IndexedTypes).
-
--spec pat_is_catchall(ast:pat()) -> boolean().
-pat_is_catchall({var, _, {local_bind, _}}) -> true;
-pat_is_catchall({wildcard, _}) -> true;
-pat_is_catchall({record, _, _, Fields}) ->
-    lists:all(fun({record_field, _, _, Pat}) -> pat_is_catchall(Pat) end, Fields);
-pat_is_catchall(_) -> false.
 
 % Rewrite multi-clause function into single-clause with case on complex positions only.
 -spec rewrite_dispatched_clauses([ast:fun_clause()], [direct | complex]) -> [ast:fun_clause()].
@@ -1319,10 +1291,13 @@ rewrite_dispatched_clauses(Clauses, PositionTypes) ->
             {case_clause, CL, CasePat, NewGuards, NewBody}
         end, Clauses),
 
-    % Build outer single fun clause
-    OuterPats = [{var, L, {local_bind, V}} || V <- FreshVars],
-    CaseExp = {'case', L, ScrutExp, CaseClauses},
-    [{fun_clause, L, OuterPats, [], [CaseExp]}].
+    % Build outer single fun clause with a distinct location to avoid aliasing
+    % with the first case clause's location (which would confuse intersect_unmatched
+    % sublocation expansion when checking intersection type specs).
+    OuterL = case L of {loc, File, Line, _Col} -> {loc, File, Line, 0} end,
+    OuterPats = [{var, OuterL, {local_bind, V}} || V <- FreshVars],
+    CaseExp = {'case', OuterL, ScrutExp, CaseClauses},
+    [{fun_clause, OuterL, OuterPats, [], [CaseExp]}].
 
 % Substitute local variable references in AST terms.
 % Replaces {local_ref, V} with {local_ref, NewV} where V is in SubstMap.
