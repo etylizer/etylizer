@@ -86,6 +86,9 @@ cmd_spec() ->
               help => "Check that all exported functions have a type spec."},
             #{name => verbose, short => $v, long => "-verbose", type => boolean, default => false,
               help => "Verbose output (e.g. preprocessor warnings)"},
+            #{name => dump_tally_constraints, long => "-dump-tally-constraints",
+              type => {string, ["raw", "simplified"]},
+              help => "Dump tally constraints to stdout (raw: after collection, simplified: before etally)"},
             #{name => files, nargs => list, required => false, default => [],
               help => "Files to type check"}
         ]
@@ -154,6 +157,14 @@ parse_gradual_mode(ArgMap) ->
         _ -> erlang:error(bad_gradual_mode)
     end.
 
+-spec parse_dump_tally_constraints(argparse:arg_map()) -> feature_flags:dump_tally_constraints().
+parse_dump_tally_constraints(ArgMap) ->
+    case maps:get(dump_tally_constraints, ArgMap, "none") of
+        "raw" -> raw;
+        "simplified" -> simplified;
+        _ -> none
+    end.
+
 -spec build_opts(argparse:arg_map()) -> #opts{}.
 build_opts(ArgMap) ->
     LogLevel = parse_log_level(ArgMap),
@@ -188,7 +199,8 @@ build_opts(ArgMap) ->
         load_end = ?assert_type(maps:get(load_end, ArgMap, []), [string()]),
         files = ?assert_type(maps:get(files, ArgMap, []), [string()]),
         type_overlay = ?assert_type(maps:get(type_overlay, ArgMap, []), string()),
-        verbose = ?assert_type(maps:get(verbose, ArgMap, false), boolean())
+        verbose = ?assert_type(maps:get(verbose, ArgMap, false), boolean()),
+        dump_tally_constraints = parse_dump_tally_constraints(ArgMap)
     }.
 
 % FIXME (sw, 2023-07-04): this is ugly global state. Remove!

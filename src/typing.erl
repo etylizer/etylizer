@@ -5,6 +5,7 @@
     new_ctx/3,
     new_ctx/7,
     new_ctx/8,
+    new_ctx/9,
     disable_exhaustiveness_from_forms/1
 ]).
 
@@ -22,7 +23,11 @@ new_ctx(Tab, Overlay, Sanity, ReportMode, ReportTimeout, ExhaustivenessMode, Gra
 
 -spec new_ctx(symtab:t(), symtab:t(), t:opt(ast_check:ty_map()), feature_flags:report_mode(), pos_integer(), feature_flags:exhaustiveness_mode(), feature_flags:gradual_typing_mode(), boolean()) -> ctx().
 new_ctx(Tab, Overlay, Sanity, ReportMode, ReportTimeout, ExhaustivenessMode, GradualTypingMode, SanityInfer) ->
-    Ctx = #ctx{ symtab = Tab, overlay_symtab = Overlay, sanity = Sanity, gradual_typing_mode = GradualTypingMode, report_mode = ReportMode, report_timeout = ReportTimeout, exhaustiveness_mode = ExhaustivenessMode, sanity_infer = SanityInfer },
+    new_ctx(Tab, Overlay, Sanity, ReportMode, ReportTimeout, ExhaustivenessMode, GradualTypingMode, SanityInfer, none).
+
+-spec new_ctx(symtab:t(), symtab:t(), t:opt(ast_check:ty_map()), feature_flags:report_mode(), pos_integer(), feature_flags:exhaustiveness_mode(), feature_flags:gradual_typing_mode(), boolean(), feature_flags:dump_tally_constraints()) -> ctx().
+new_ctx(Tab, Overlay, Sanity, ReportMode, ReportTimeout, ExhaustivenessMode, GradualTypingMode, SanityInfer, DumpTallyConstraints) ->
+    Ctx = #ctx{ symtab = Tab, overlay_symtab = Overlay, sanity = Sanity, gradual_typing_mode = GradualTypingMode, report_mode = ReportMode, report_timeout = ReportTimeout, exhaustiveness_mode = ExhaustivenessMode, sanity_infer = SanityInfer, dump_tally_constraints = DumpTallyConstraints },
     Ctx.
 
 % extracts the set of functions with disabled exhaustiveness from forms.

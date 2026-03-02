@@ -3,9 +3,9 @@
 -include("log.hrl").
 
 -export([
-    check_simp_constrs/4,
-    check_simp_constrs_return_unmatched/4,
-    solve_simp_constrs/3
+    check_simp_constrs/5,
+    check_simp_constrs_return_unmatched/5,
+    solve_simp_constrs/4
 ]).
 
 -export_type([
@@ -27,9 +27,10 @@
     symtab:t(),
     sets:set(ast:ty_varname()),
     constr:simp_constrs(),
-    string()) ->
+    string(),
+    feature_flags:dump_tally_constraints()) ->
     {ok, Unmachted::sets:set(ast:loc())} | {error, error() | none}.
-check_simp_constrs_return_unmatched(Tab, FixedTyvars, Ds, What) ->
+check_simp_constrs_return_unmatched(Tab, FixedTyvars, Ds, What, DumpMode) ->
     % ?LOG_DEBUG("Constraints:~n~s", pretty:render_constr(Ds)),
     SubtyConstrsDisj = constr_collect:collect_constrs_all_combinations(Ds),
     N = length(SubtyConstrsDisj),
@@ -43,9 +44,10 @@ check_simp_constrs_return_unmatched(Tab, FixedTyvars, Ds, What) ->
         fun ({I, {SwitchedOffBranches, SubtyConstrs}}, Acc) ->
             case Acc of
                 false ->
+                    dump_tally_constraints(raw, DumpMode, What, {conjunction, I, N}, SubtyConstrs),
                     ?LOG_DEBUG("Checking conjunction ~w/~w for satisfiability:~n~s",
                         I, N, pretty:render_constr(SubtyConstrs)),
-                    case is_satisfiable(Tab, SubtyConstrs, FixedTyvars, "satisfiability check") of
+                    case is_satisfiable(Tab, SubtyConstrs, FixedTyvars, "satisfiability check", DumpMode, What) of
                         false -> false;
                         true -> {true, SwitchedOffBranches}
                     end;
@@ -140,10 +142,12 @@ locate_unsat_error(Tab, FixedTyvars, Ds) ->
     end.
 
 % Treats unmatched branches as errors.
--spec check_simp_constrs(symtab:t(), sets:set(ast:ty_varname()), constr:simp_constrs(), string()) ->
+-spec check_simp_constrs(symtab:t(), sets:set(ast:ty_varname()), constr:simp_constrs(), string(),
+    feature_flags:dump_tally_constraints()) ->
     ok | {error, error() | none}.
-check_simp_constrs(Tab, FixedTyvars, Ds, What) ->
+check_simp_constrs(Tab, FixedTyvars, Ds, What, DumpMode) ->
     SubtyConstrs = constr_collect:collect_constrs_no_matching_cond(Ds),
+    dump_tally_constraints(raw, DumpMode, What, single, SubtyConstrs),
     ?LOG_DEBUG("Checking constraints for satisfiability to type check ~s:~n~s~nFixed: ~s",
         What, pretty:render_list(fun pretty:constr_simp/1, sets:to_list(SubtyConstrs)), pretty:render_set(fun pretty:atom/1, FixedTyvars)),
     case check_nominal_constrs(Tab, SubtyConstrs) of
@@ -153,13 +157,13 @@ check_simp_constrs(Tab, FixedTyvars, Ds, What) ->
             case ReduDs of
                 [] ->
                     % No branches to check for redundancy, just check satisfiability.
-                    case is_satisfiable(Tab, SubtyConstrs, FixedTyvars, "satisfiability check") of
+                    case is_satisfiable(Tab, SubtyConstrs, FixedTyvars, "satisfiability check", DumpMode, What) of
                         true -> ok;
                         false -> locate_unsat_error(Tab, FixedTyvars, Ds)
                     end;
                 _ ->
                     % Use base result approach: compute solutions once, reuse for redundancy checks.
-                    case tally:is_satisfiable_base(Tab, SubtyConstrs, FixedTyvars) of
+                    case tally:is_satisfiable_base(Tab, SubtyConstrs, FixedTyvars, DumpMode, What) of
                         {true, BaseResult} ->
                             ?LOG_DEBUG("Constraints are satisfiable, now checking ~w branches for redundancy (incremental)",
                                 length(ReduDs)),
@@ -227,7 +231,7 @@ search_failing_prefix([_ | _] = L, F, Pred, Left, Right) ->
     -> {error, error() | none}.
 locate_tyerror(Tab, FreeSet, Blocks) ->
     Extract = fun({_Kind, _Span, _What, Ds}) -> Ds end,
-    Pred = fun(Ds) -> is_satisfiable(Tab, Ds, FreeSet, "error location") end,
+    Pred = fun(Ds) -> is_satisfiable(Tab, Ds, FreeSet, "error location", none, "") end,
     {Kind, Span, _What, _Ds} = search_failing_prefix(Blocks, Extract, Pred),
     {error, {Kind, Span, ""}}.
 
@@ -243,9 +247,10 @@ format_tally_error(ErrList) ->
         true -> utils:sformat("~n    (skipped ~w lines)", N)
      end).
 
--spec is_satisfiable(symtab:t(), constr:collected_constrs(), sets:set(ast:ty_varname()), string()) -> boolean().
-is_satisfiable(Tab, Constrs, Fixed, What) ->
-    {SatisfyRes, Delta} = utils:timing(fun() -> tally:is_satisfiable(Tab, Constrs, Fixed) end),
+-spec is_satisfiable(symtab:t(), constr:collected_constrs(), sets:set(ast:ty_varname()), string(),
+    feature_flags:dump_tally_constraints(), string()) -> boolean().
+is_satisfiable(Tab, Constrs, Fixed, What, DumpMode, FunName) ->
+    {SatisfyRes, Delta} = utils:timing(fun() -> tally:is_satisfiable(Tab, Constrs, Fixed, DumpMode, FunName) end),
     case SatisfyRes of
         {false, ErrList} ->
             ?LOG_DEBUG("Tally time (~s): ~pms, tally finished with errors.", What, Delta),
@@ -342,10 +347,11 @@ refs_equal(Ref1, Ref2) ->
 normalize_ref({ty_ref, M, N, A}) -> {M, N, A};
 normalize_ref({ty_qref, M, N, A}) -> {M, N, A}.
 
--spec solve_simp_constrs(symtab:t(), constr:simp_constrs(), string()) -> error | nonempty_list(subst:t()).
-solve_simp_constrs(Tab, Ds, What) ->
+-spec solve_simp_constrs(symtab:t(), constr:simp_constrs(), string(), feature_flags:dump_tally_constraints()) -> error | nonempty_list(subst:t()).
+solve_simp_constrs(Tab, Ds, What, DumpMode) ->
     SubtyConstrs = constr_collect:collect_constrs_no_matching_cond(Ds),
-    {Res, Delta} = utils:timing(fun() -> tally:tally(Tab, SubtyConstrs) end),
+    dump_tally_constraints(raw, DumpMode, What, single, SubtyConstrs),
+    {Res, Delta} = utils:timing(fun() -> tally:tally(Tab, SubtyConstrs, DumpMode, What) end),
     case Res of
         {error, ErrList} ->
             ?LOG_DEBUG("Tally time (~s): ~pms, tally finished with errors.", What, Delta),
@@ -355,4 +361,19 @@ solve_simp_constrs(Tab, Ds, What) ->
             ?LOG_DEBUG("Tally time (~s): ~pms, tally successful.", What, Delta),
             ?LOG_TRACE("Substitutions:~n~s", [pretty:render_substs(Substs)]),
             Substs
+    end.
+
+% Dump collected constraints to stdout when the dump mode matches.
+-spec dump_tally_constraints(raw | simplified, feature_flags:dump_tally_constraints(), string(),
+    single | {conjunction, pos_integer(), pos_integer()}, constr:collected_constrs()) -> ok.
+dump_tally_constraints(Phase, DumpMode, What, Scope, Constrs) ->
+    case Phase =:= DumpMode of
+        false -> ok;
+        true ->
+            Header = case Scope of
+                single -> utils:sformat("[~s] ~s constraints for ~s", Phase, atom_to_list(Phase), What);
+                {conjunction, I, N} -> utils:sformat("[~s] ~s constraints for ~s (conjunction ~w/~w)", Phase, atom_to_list(Phase), What, I, N)
+            end,
+            Rendered = pretty:render_list(fun pretty:constr_simp/1, sets:to_list(Constrs)),
+            io:format(user, "~s:~n~s~n", [Header, Rendered])
     end.

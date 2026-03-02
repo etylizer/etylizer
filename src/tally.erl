@@ -3,8 +3,12 @@
 -export([
   tally/2,
   tally/3,
+  tally/4,
+  tally/5,
   is_satisfiable/3,
+  is_satisfiable/5,
   is_satisfiable_base/3,
+  is_satisfiable_base/5,
   is_satisfiable_incremental/4
 ]).
 
@@ -23,6 +27,12 @@
 -spec is_satisfiable(symtab:t(), constr:collected_constrs(), monomorphic_variables()) ->
     {false, [{error, string()}]} | {true, term()}.
 is_satisfiable(SymTab, Constraints, FixedVars) ->
+    is_satisfiable(SymTab, Constraints, FixedVars, none, "").
+
+-spec is_satisfiable(symtab:t(), constr:collected_constrs(), monomorphic_variables(),
+    feature_flags:dump_tally_constraints(), string()) ->
+    {false, [{error, string()}]} | {true, term()}.
+is_satisfiable(SymTab, Constraints, FixedVars, DumpMode, FunName) ->
     % uncomment to extract a tally test case config file
     % io:format(user, "~s~n", [utils:format_tally_config(sets:to_list(Constraints), FixedVars, SymTab)]),
 
@@ -51,6 +61,8 @@ is_satisfiable(SymTab, Constraints, FixedVars) ->
     % and only appear covariantly elsewhere. Sound for satisfiability checking.
     AfterLB = eliminate_hubs(lower, TrivFiltered, FixedVars),
     FinalCons = eliminate_hubs(upper, AfterLB, FixedVars),
+
+    dump_simplified_constraints(DumpMode, FunName, FinalCons),
 
     % Split constraints into independent partitions
     MM = split(FinalCons, FixedVars),
@@ -86,6 +98,12 @@ do_satisfiable(FinalCons, FixedVars) ->
 -spec is_satisfiable_base(symtab:t(), constr:collected_constrs(), monomorphic_variables()) ->
     {false, [{error, string()}]} | {true, base_sat_result()}.
 is_satisfiable_base(SymTab, Constraints, FixedVars) ->
+    is_satisfiable_base(SymTab, Constraints, FixedVars, none, "").
+
+-spec is_satisfiable_base(symtab:t(), constr:collected_constrs(), monomorphic_variables(),
+    feature_flags:dump_tally_constraints(), string()) ->
+    {false, [{error, string()}]} | {true, base_sat_result()}.
+is_satisfiable_base(SymTab, Constraints, FixedVars, DumpMode, FunName) ->
     ty_parser:set_symtab(SymTab),
     Ctx = gradual_utils:new_ctx(),
     {_, {InlinedConstrs, _, _, _}} = timer:tc(fun() -> gradual_utils:preprocess_constrs(Constraints, Ctx) end),
@@ -98,6 +116,7 @@ is_satisfiable_base(SymTab, Constraints, FixedVars) ->
     % variables that delta constraints (from redundancy checks) still reference.
     % The base solutions must preserve all variable constraints for correct incremental merging.
     TrivFiltered = lists:filter(fun({T1, T2}) -> not is_trivially_true(T1, T2) end, InternalRawConstraints),
+    dump_simplified_constraints(DumpMode, FunName, TrivFiltered),
     ParsedConstraints = [{ty_parser:parse(T1), ty_parser:parse(T2)} || {T1, T2} <- TrivFiltered],
     InternalConstraints = [{L, R} || {L, R} <- ParsedConstraints,
                                      not ty_node:is_empty(L), not ty_node:leq(ty_node:any(), R)],
@@ -129,6 +148,15 @@ tally(SymTab, Constraints) -> tally(SymTab, Constraints, sets:new()). % elp:igno
 
 -spec tally(symtab:t(), constr:collected_constrs(), sets:set(ast:ty_varname())) -> tally_res().
 tally(SymTab, Constraints, FixedVars) ->
+    tally(SymTab, Constraints, FixedVars, none, "").
+
+-spec tally(symtab:t(), constr:collected_constrs(), feature_flags:dump_tally_constraints(), string()) -> tally_res().
+tally(SymTab, Constraints, DumpMode, FunName) ->
+    tally(SymTab, Constraints, sets:new(), DumpMode, FunName). % elp:ignore W0049
+
+-spec tally(symtab:t(), constr:collected_constrs(), sets:set(ast:ty_varname()),
+    feature_flags:dump_tally_constraints(), string()) -> tally_res().
+tally(SymTab, Constraints, FixedVars, DumpMode, FunName) ->
     % uncomment to extract a tally test case config file
     % io:format(user, "~s~n", [utils:format_tally_config(sets:to_list(Constraints), FixedVars, SymTab)]),
 
@@ -143,6 +171,8 @@ tally(SymTab, Constraints, FixedVars) ->
                lists:sort( fun ({scsubty, _, S, T}, {scsubty, _, X, Y}) ->
                                    (erts_debug:size({S, T})) < erts_debug:size(({X, Y})) end,
                            sets:to_list(InlinedConstrs))),
+
+    dump_simplified_constraints(DumpMode, FunName, InternalRawConstraints),
 
     InternalConstraints = [{ty_parser:parse(T1), ty_parser:parse(T2)} || {T1, T2} <- InternalRawConstraints],
 
@@ -417,3 +447,12 @@ partition_test() ->
     ok.
 
 -endif.
+
+% Dump simplified constraints (right before etally) to stdout when mode matches.
+-spec dump_simplified_constraints(feature_flags:dump_tally_constraints(), string(), [{ast:ty(), ast:ty()}]) -> ok.
+dump_simplified_constraints(simplified, FunName, Constraints) ->
+    Rendered = string:join(
+        [utils:sformat("  ~s <: ~s", pretty:render_ty(T1), pretty:render_ty(T2)) || {T1, T2} <- Constraints],
+        "\n"),
+    io:format(user, "[simplified] simplified constraints for ~s:~n~s~n", [FunName, Rendered]);
+dump_simplified_constraints(_, _, _) -> ok.

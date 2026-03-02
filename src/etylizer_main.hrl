@@ -29,6 +29,7 @@
                files = [] :: [string()],
                type_overlay = [] :: string(),
                verbose = false :: boolean(),
+               dump_tally_constraints = none :: feature_flags:dump_tally_constraints(),
                mode = prod_mode :: opts_mode() % only used internally
             }).
 

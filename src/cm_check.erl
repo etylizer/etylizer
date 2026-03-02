@@ -390,7 +390,7 @@ do_type_check(CurrentFile, Forms, Only, ExpandedSymtab, OverlaySymtab, Opts) ->
     Ctx = typing:new_ctx(ExpandedSymtab, OverlaySymtab, Sanity,
         Opts#opts.report_mode, Opts#opts.report_timeout,
         Opts#opts.exhaustiveness_mode, Opts#opts.gradual_typing_mode,
-        Opts#opts.sanity_infer),
+        Opts#opts.sanity_infer, Opts#opts.dump_tally_constraints),
     case Opts#opts.no_type_checking of
         true ->
             ?LOG_INFO("Not type checking ~p as requested", CurrentFile),

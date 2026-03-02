@@ -46,7 +46,7 @@ infer(Ctx, Decls) ->
         error -> ok
     end,
     SimpConstrs = simplify_and_log(Ctx, Cs, Env, Funs),
-    SolveRes = constr_solve:solve_simp_constrs(Ctx#ctx.symtab, SimpConstrs, "inference"),
+    SolveRes = constr_solve:solve_simp_constrs(Ctx#ctx.symtab, SimpConstrs, "inference", Ctx#ctx.dump_tally_constraints),
     ResultEnvs = build_result_envs(Ctx, Decls, Env, SolveRes),
     check_result_envs(ResultEnvs, Loc, FunsStr).
 
