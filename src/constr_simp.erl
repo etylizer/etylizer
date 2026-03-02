@@ -170,7 +170,7 @@ loc(Set, Def) ->
     GetLoc = fun(X) ->
         % X is either a constr:constr() or a ast:loc()
         case X of
-            {loc, _, _, _} -> X;
+            {loc, _, _, _, _, _} -> X;
             _ -> loc(constr:locs_of_constr(X))
         end
     end,

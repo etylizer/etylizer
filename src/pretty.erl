@@ -491,7 +491,7 @@ locs({Msg, Locs}) ->
            end).
 
 -spec loc(ast:loc()) -> doc().
-loc({loc, _, Line,Col}) -> text(utils:sformat("~w:~w", Line, Col)).
+loc({loc, _, Line, Col, _, _}) -> text(utils:sformat("~w:~w", Line, Col)).
 
 -spec substs([subst:t()]) -> doc().
 substs(L) ->

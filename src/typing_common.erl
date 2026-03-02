@@ -15,7 +15,7 @@
 
 
 -spec format_src_loc(ast:loc()) -> string().
-format_src_loc({loc, File, LineNo, ColumnNo}) ->
+format_src_loc({loc, File, LineNo, ColumnNo, EndLine, EndCol}) ->
     ErrMsg = "",
     case utils:file_get_lines(File) of
         {error, _} -> ErrMsg;
@@ -24,8 +24,22 @@ format_src_loc({loc, File, LineNo, ColumnNo}) ->
             if
                 LineNo >= 1 andalso LineNo =< N ->
                     Line = string:trim(lists:nth(LineNo, ?assert_type(Lines, nonempty_list(string()))), trailing),
-                    ColumnSpace = lists:duplicate(?assert_type(ColumnNo - 1, non_neg_integer()), $\s),
-                    utils:sformat("%~5.B| ~s~n%     | ~s^", LineNo, Line, ColumnSpace);
+                    case {EndLine, EndCol} of
+                        {-1, -1} ->
+                            % Point location: single ^
+                            ColumnSpace = lists:duplicate(?assert_type(ColumnNo - 1, non_neg_integer()), $\s),
+                            utils:sformat("%~5.B| ~s~n%     | ~s^", LineNo, Line, ColumnSpace);
+                        {LineNo, EC} when EC >= ColumnNo ->
+                            % Same-line span: ^^^ underline
+                            ColumnSpace = lists:duplicate(?assert_type(ColumnNo - 1, non_neg_integer()), $\s),
+                            SpanLen = max(1, EC - ColumnNo),
+                            Underline = lists:duplicate(SpanLen, $^),
+                            utils:sformat("%~5.B| ~s~n%     | ~s~s", LineNo, Line, ColumnSpace, Underline);
+                        _ ->
+                            % Multi-line span or point fallback: single ^
+                            ColumnSpace = lists:duplicate(?assert_type(ColumnNo - 1, non_neg_integer()), $\s),
+                            utils:sformat("%~5.B| ~s~n%     | ~s^", LineNo, Line, ColumnSpace)
+                    end;
                 true ->
                     ErrMsg
             end

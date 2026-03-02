@@ -270,7 +270,7 @@ extract_loc(TermList) when is_list(TermList) ->
         {M, L} = extract_loc(T),
         {maps:merge(MapAcc, M), LocsAcc ++ L}
     end, {#{}, []}, TermList);
-extract_loc({loc, _, _, _} = Loc) ->
+extract_loc({loc, _, _, _, _, _} = Loc) ->
     {#{}, [Loc]};
 extract_loc(Term) when is_tuple(Term) ->
     case Term of

@@ -25,7 +25,7 @@ ety_attrs_from_lines(Path, Lines) -> ety_attrs_from_lines(Path, 1, Lines).
 collect_ety_attrs(_Path, _N, []) -> [];
 collect_ety_attrs(Path, N, [Line | RestLines]) ->
     Rest = collect_ety_attrs(Path, N + 1, RestLines),
-    case parse_ety_attr({loc, Path, N, 1}, Line) of
+    case parse_ety_attr({loc, Path, N, 1, -1, -1}, Line) of
         no_attr -> Rest;
         {ok, R} -> [R | Rest]
     end.
@@ -42,7 +42,7 @@ ety_attrs_from_lines(Path, Lineno, Lines) ->
 
 -spec parse_ety_attr(ast:loc(), string()) -> no_attr | {ok, ety_attr()}.
 parse_ety_attr(Loc, S) ->
-    {loc, _, N, _} = Loc,
+    {loc, _, N, _, _, _} = Loc,
     case S of
        "%-etylizer" ++ Rest ->
            case string:trim(Rest) of

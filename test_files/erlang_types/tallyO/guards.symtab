@@ -8,10 +8,10 @@
       [
 
        {named,
-      {loc,"test_files/etylizer-mini/src/ast_erl.erl",349,29},
+      {loc,"test_files/etylizer-mini/src/ast_erl.erl",349,29,-1,-1},
       {ty_ref,ast_erl,gen_tuple,1},
       [{named,
-        {loc,"test_files/etylizer-mini/src/ast_erl.erl",349,39},
+        {loc,"test_files/etylizer-mini/src/ast_erl.erl",349,39,-1,-1},
         {ty_ref,ast_erl,guard_test,0},
         []}]}
 

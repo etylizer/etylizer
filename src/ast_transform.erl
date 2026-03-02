@@ -32,7 +32,9 @@
           % depends on annotations being transformed before function definitions
           nonexhaustive_funs = sets:new() :: sets:set({atom(), arity()}),
           % Extra type forms generated for record override variants (e.g., #rec{field :: any()})
-          extra_forms = [] :: [ast:form()]
+          extra_forms = [] :: [ast:form()],
+          % Map from token start positions to end positions, for span computation
+          end_pos_map = #{} :: parse:end_pos_map()
         }).
 -type ctx() :: #ctx{}.
 
@@ -57,6 +59,7 @@ trans(Path, Forms, Mode) ->
 
 -spec trans(string(), [ast_erl:form()], trans_mode(), funenv()) -> [ast:form()].
 trans(Path, Forms, Mode, FunEnv) ->
+    EndPosMap = parse:build_end_pos_map(Path),
     ModName = ast_utils:modname_from_path(Path),
     {RevNewForms, FinalCtx} =
         lists:foldl(
@@ -68,7 +71,8 @@ trans(Path, Forms, Mode, FunEnv) ->
                     NewForm -> {[NewForm | NewForms], Ctx}
                 end
             end,
-            {[], #ctx{ path = Path, module_name = ModName, funenv = FunEnv, records = #{} }},
+            {[], #ctx{ path = Path, module_name = ModName, funenv = FunEnv, records = #{},
+                        end_pos_map = EndPosMap }},
             Forms
             ),
     lists:reverse(RevNewForms) ++ FinalCtx#ctx.extra_forms.
@@ -172,7 +176,15 @@ trans_form(Ctx, Form, Mode) ->
     end.
 
 -spec to_loc(ctx(), ast_erl:anno()) -> ast:loc().
-to_loc(Ctx, Anno) -> ast:to_loc(Ctx#ctx.path, Anno).
+to_loc(Ctx, Anno) ->
+    Path = Ctx#ctx.path,
+    Line = utils:with_default(erl_anno:line(Anno), -1),
+    Col = utils:with_default(erl_anno:column(Anno), -1),
+    {EndLine, EndCol} = case maps:find({Line, Col}, Ctx#ctx.end_pos_map) of
+        {ok, End} -> End;
+        error -> {-1, -1}
+    end,
+    {loc, Path, Line, Col, EndLine, EndCol}.
 
 -spec trans_spec_ty(ctx(), ast:loc(), [ast_erl:ty_full_fun()]) -> ast:ty_scheme().
 trans_spec_ty(Ctx, Loc, FunTys) ->
@@ -512,7 +524,8 @@ trans_exp(Ctx, Env, Exp) ->
         {cons, Anno, E1, E2} ->
             {[NewE1, NewE2], NewEnv} = trans_exps(Ctx, Env, [E1, E2]),
             ?LOG_TRACE("cons, NewEnv=~w", NewEnv),
-            {{cons, to_loc(Ctx, Anno), NewE1, NewE2}, NewEnv};
+            Loc = span_from_children(to_loc(Ctx, Anno), [NewE1, NewE2]),
+            {{cons, Loc, NewE1, NewE2}, NewEnv};
         {'fun', Anno, {function, Name, Arity}} ->
             % FIXME: should we check whether the reference is valid?
             {{fun_ref, to_loc(Ctx, Anno), {ref, Name, Arity}}, Env};
@@ -547,9 +560,9 @@ trans_exp(Ctx, Env, Exp) ->
             LocName = to_loc(Ctx, AnnoName),
             {NewArgs, NewEnv} = trans_exps(Ctx, Env, Args),
             ?LOG_TRACE("Env after args: ~w", NewEnv),
-            Loc = to_loc(Ctx, Anno),
+            Loc = span_from_children(to_loc(Ctx, Anno), NewArgs),
             {{call, Loc,
-              {var, LocName, resolve_name(LocName, Ctx, Env, FunName, arity(Loc, Args))},
+              {var, LocName, resolve_name(LocName, Ctx, Env, FunName, arity(to_loc(Ctx, Anno), Args))},
               NewArgs},
              NewEnv};
         {call, Anno, {remote, _, {'atom', _, Mod}, {'atom', AnnoFunName, Fun}}, Args} ->
@@ -557,18 +570,21 @@ trans_exp(Ctx, Env, Exp) ->
             % FIXME: should we check whether the reference is valid?
             LocName = to_loc(Ctx, AnnoFunName),
             {NewArgs, NewEnv} = trans_exps(Ctx, Env, Args),
-            {{call, to_loc(Ctx, Anno),
+            Loc = span_from_children(to_loc(Ctx, Anno), NewArgs),
+            {{call, Loc,
                 {var, LocName, {qref, Mod, Fun, length(Args)}},
                  NewArgs},
              NewEnv};
         {call, Anno, {remote, _, ModExp, FunExp}, Args} ->
             {[NewModExp, NewFunExp], Env1} = trans_exps(Ctx, Env, [ModExp, FunExp]),
             {NewArgs, NewEnv} = trans_exps(Ctx, Env1, Args),
-            {{call_remote, to_loc(Ctx, Anno), NewModExp, NewFunExp, NewArgs}, NewEnv};
+            Loc = span_from_children(to_loc(Ctx, Anno), [NewModExp, NewFunExp | NewArgs]),
+            {{call_remote, Loc, NewModExp, NewFunExp, NewArgs}, NewEnv};
         {call, Anno, FunExp, Args} ->
             {NewFunExp, Env1} = trans_exp(Ctx, Env, FunExp),
             {NewArgs, NewEnv} = trans_exps(Ctx, Env1, Args),
-            {{call, to_loc(Ctx, Anno), NewFunExp, NewArgs}, NewEnv};
+            Loc = span_from_children(to_loc(Ctx, Anno), [NewFunExp | NewArgs]),
+            {{call, Loc, NewFunExp, NewArgs}, NewEnv};
         {'if', Anno, Clauses} ->
             {NewIfClauses, NewEnv} = trans_if_clauses(Ctx, Env, Clauses),
             {{'if', to_loc(Ctx, Anno), NewIfClauses}, NewEnv};
@@ -592,11 +608,13 @@ trans_exp(Ctx, Env, Exp) ->
             {{bin, to_loc(Ctx, Anno), NewElems}, NewEnv};
         {map, Anno, MapAssocs} ->
             {NewMapAssocs, NewEnv} = trans_map_assocs(Ctx, Env, MapAssocs),
-            {{map_create, to_loc(Ctx, Anno), NewMapAssocs}, NewEnv};
+            Loc = span_from_children(to_loc(Ctx, Anno), NewMapAssocs),
+            {{map_create, Loc, NewMapAssocs}, NewEnv};
         {map, Anno, E, MapAssocs} ->
             {NewE, Env1} = trans_exp(Ctx, Env, E),
             {NewMapAssocs, Env2} = trans_map_assocs(Ctx, Env1, MapAssocs),
-            {{map_update, to_loc(Ctx, Anno), NewE, NewMapAssocs}, Env2};
+            Loc = span_from_children(to_loc(Ctx, Anno), [NewE | NewMapAssocs]),
+            {{map_update, Loc, NewE, NewMapAssocs}, Env2};
         {match, Anno, Pat, E} ->
             % If a match expression appears as a single expression or as the last expression
             % in a sequence, than it is not removed by shallow_remove_match. In this case,
@@ -617,10 +635,12 @@ trans_exp(Ctx, Env, Exp) ->
         {nil, Anno} -> {{nil, to_loc(Ctx, Anno)}, Env};
         {op, Anno, Op, L, R} ->
             {[NewL, NewR], NewEnv} = trans_exps(Ctx, Env, [L, R]),
-            {{op, to_loc(Ctx, Anno), Op, NewL, NewR}, NewEnv};
+            Loc = span_from_children(to_loc(Ctx, Anno), [NewL, NewR]),
+            {{op, Loc, Op, NewL, NewR}, NewEnv};
         {op, Anno, Op, E} ->
             {NewE, NewEnv} = trans_exp(Ctx, Env, E),
-            {{op, to_loc(Ctx, Anno), Op, NewE}, NewEnv};
+            Loc = span_from_children(to_loc(Ctx, Anno), [NewE]),
+            {{op, Loc, Op, NewE}, NewEnv};
         {'maybe', _Anno, _Exps} ->
             trans_maybe(Ctx, Env, Exp, none);
         {'maybe', Anno, Exps, Else = {'else', _ElseAnno, _Cs0}} ->
@@ -677,7 +697,8 @@ trans_exp(Ctx, Env, Exp) ->
             {{record_update, to_loc(Ctx, Anno), NewE, Name, NewFields}, NewEnv};
         {tuple, Anno, Args} ->
             {NewArgs, NewEnv} = trans_exps(Ctx, Env, Args),
-            {{tuple, to_loc(Ctx, Anno), NewArgs}, NewEnv};
+            Loc = span_from_children(to_loc(Ctx, Anno), NewArgs),
+            {{tuple, Loc, NewArgs}, NewEnv};
         {'try', Anno, Body, CaseClauses, CatchClauses, AfterBody} ->
             % transform try-of into try without an of section to simplify constraint generation
             RewrittenBody = case CaseClauses of
@@ -1150,6 +1171,18 @@ parse_type(Ctx, Src) ->
     end.
 
 
+% Extend a base loc to cover all children's locs (taking the max end position).
+-spec span_from_children(ast:loc(), [tuple()]) -> ast:loc().
+span_from_children(Loc, []) -> Loc;
+span_from_children(Loc, Children) ->
+    ChildLocs = [ast:loc_of(C) || C <- Children, is_tuple(C), tuple_size(C) >= 2,
+                 is_tuple(element(2, C)), element(1, element(2, C)) =:= loc],
+    case ChildLocs of
+        [] -> Loc;
+        _ ->
+            lists:foldl(fun(CL, Acc) -> ast:loc_span(Acc, CL) end, Loc, ChildLocs)
+    end.
+
 -ifdef(TEST).
 
 test_ctx() ->
@@ -1191,7 +1224,7 @@ is_error_clause(Body) ->
 % transform a function to be exhaustive by construction (user-specified flag)
 -spec add_exhaustive_clause(ctx(), arity()) -> ast:fun_clause().
 add_exhaustive_clause(Ctx, Arity) ->
-    Loc = {loc, Ctx#ctx.path, 0, 0}, % dummy location TODO loc?
+    Loc = {loc, Ctx#ctx.path, 0, 0, -1, -1}, % dummy location TODO loc?
     ErrorCall = {'call', Loc, {var, Loc, {qref, erlang, error, 1}},
                 [{'atom', Loc, exhaustive}]},
     {fun_clause, Loc, [{wildcard, Loc} || _ <- lists:seq(1, Arity)],
@@ -1294,7 +1327,7 @@ rewrite_dispatched_clauses(Clauses, PositionTypes) ->
     % Build outer single fun clause with a distinct location to avoid aliasing
     % with the first case clause's location (which would confuse intersect_unmatched
     % sublocation expansion when checking intersection type specs).
-    OuterL = case L of {loc, File, Line, _Col} -> {loc, File, Line, 0} end,
+    OuterL = case L of {loc, File, Line, _Col, EL, EC} -> {loc, File, Line, 0, EL, EC} end,
     OuterPats = [{var, OuterL, {local_bind, V}} || V <- FreshVars],
     CaseExp = {'case', OuterL, ScrutExp, CaseClauses},
     [{fun_clause, OuterL, OuterPats, [], [CaseExp]}].
