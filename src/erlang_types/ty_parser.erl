@@ -959,7 +959,7 @@ check_pairs([{K1, {node, N1}}, {K2, {node, N2}} | Rest]) ->
   (ast_ty()) -> ast_ty().
 replace_locs(Term) ->
   utils:everywhere(fun
-    ({loc, _, _, _}) -> {ok, {loc, "AUTO", -1, -1}};
+    ({loc, _, _, _, _, _}) -> {ok, {loc, "AUTO", -1, -1, -1, -1}};
     (_) -> error 
   end, Term).
 

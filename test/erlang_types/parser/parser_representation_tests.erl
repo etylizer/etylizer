@@ -107,7 +107,7 @@ share_same_name_after_unparse_test() ->
     end,
     #{ 
       {ty_key,'.','a',0} => 
-      {ty_scheme,[], {tuple,[ {named,{loc,"AUTO", -1, -1},{ty_ref,'.','a',0},[]} ]}}
+      {ty_scheme,[], {tuple,[ {named,ast:loc_auto(),{ty_ref,'.','a',0},[]} ]}}
      }).
 
 % TODO
@@ -210,7 +210,7 @@ parse_bug2_test() ->
 % (which includes itself for recursive types) still tried to look it up.
 parse_consed_self_ref_test() ->
   {ok, [SymTab]} = file:consult("test_files/erlang_types/parser/erl_parse_symtab"),
-  Loc = {loc, "AUTO", -1, -1},
+  Loc = {loc, "AUTO", -1, -1, -1, -1},
   Ty = {union,[{tuple,[{singleton,ok},
                 {named, Loc, {ty_ref,erl_parse,abstract_form,0}, []}]},
         {tuple,[{singleton,error},

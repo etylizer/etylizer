@@ -104,7 +104,7 @@ cross_union2_test() ->
     assert_list_of_sets(Expected, L).
 
 -spec mk_loc(integer()) -> ast:loc().
-mk_loc(I) -> {loc, "test", I, I}.
+mk_loc(I) -> {loc, "test", I, I, -1, -1}.
 
 -spec mk_stc(integer(), integer()) -> constr:simp_constr_subty().
 mk_stc(I1, I2) -> {scsubty, mk_loc(I1), {singleton, I1}, {singleton, I2}}.

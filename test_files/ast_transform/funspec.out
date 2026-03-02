@@ -1,9 +1,9 @@
-[{attribute,{loc,[],0,0},module,funspec},
- {attribute,{loc,[],0,0},compile,export_all},
- {attribute,{loc,[],0,0},compile,nowarn_export_all},
- {attribute,{loc,[],0,0},
+[{attribute,{loc,[],0,0,-1,-1},module,funspec},
+ {attribute,{loc,[],0,0,-1,-1},compile,export_all},
+ {attribute,{loc,[],0,0,-1,-1},compile,nowarn_export_all},
+ {attribute,{loc,[],0,0,-1,-1},
             spec,foo,1,
             {ty_scheme,[{'Y',{predef_alias,number}},{'_X',{predef,atom}}],
                        {intersection,[{fun_full,[{tuple,[{var,'_X'},{predef,integer}]}],{var,'_X'}},{fun_full,[{tuple,[{var,'_X'},{list,{var,'Y'}}]}],{var,'Y'}}]}},
             without_mod},
- {function,{loc,[],0,0},foo,1,[{fun_clause,{loc,[],0,0},[{wildcard,{loc,[],0,0}}],[],[{atom,{loc,[],0,0},ok}]}]}].
+ {function,{loc,[],0,0,-1,-1},foo,1,[{fun_clause,{loc,[],0,0,-1,-1},[{wildcard,{loc,[],0,0,-1,-1}}],[],[{atom,{loc,[],0,0,-1,-1},ok}]}]}].

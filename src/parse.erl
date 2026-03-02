@@ -10,8 +10,11 @@
     parse_file/2,
     parse_file_or_die/1,
     parse_file_or_die/2,
-    parse_transform/2
+    parse_transform/2,
+    build_end_pos_map/1
 ]).
+
+-export_type([end_pos_map/0]).
 
 -define(TABLE, parse_result).
 -define(FORMS, forms).
@@ -122,3 +125,33 @@ parse_transform(Forms, _Opts) ->
             ?LOG_ERROR("Error exit in parse_transform: ~p", E),
             Forms
     end.
+
+% Maps token start positions to end positions, obtained by scanning the source.
+-type end_pos_map() :: #{{integer(), integer()} => {integer(), integer()}}.
+
+-spec build_end_pos_map(string()) -> end_pos_map().
+build_end_pos_map(Path) ->
+    case file:read_file(Path) of
+        {ok, Bin} ->
+            Content = unicode:characters_to_list(Bin),
+            case erl_scan:string(Content, {1,1}, [text]) of
+                {ok, Tokens, _} ->
+                    build_map_from_tokens(Tokens);
+                {error, _, _} ->
+                    #{}
+            end;
+        {error, _} ->
+            #{}
+    end.
+
+-spec build_map_from_tokens([erl_scan:token()]) -> end_pos_map().
+build_map_from_tokens(Tokens) ->
+    lists:foldl(fun(Token, Acc) ->
+        Anno = element(2, Token),
+        case {erl_anno:location(Anno), erl_anno:end_location(Anno)} of
+            {{SL, SC}, {EL, EC}} when is_integer(SL), is_integer(SC),
+                                      is_integer(EL), is_integer(EC) ->
+                maps:put({SL, SC}, {EL, EC}, Acc);
+            _ -> Acc
+        end
+    end, #{}, Tokens).

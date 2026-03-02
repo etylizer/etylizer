@@ -155,8 +155,8 @@ normalize_for_hash(Term) ->
 normalize_macro_args({call, Loc, {var, VLoc, {qref, log, macro_log, 5}},
                       [_File, _Line, Level, Fmt, Args]}) ->
     {ok, {call, Loc, {var, VLoc, {qref, log, macro_log, 5}},
-          [{string, {loc, "", 0, 0}, ""},
-           {integer, {loc, "", 0, 0}, 0},
+          [{string, {loc, "", 0, 0, -1, -1}, ""},
+           {integer, {loc, "", 0, 0, -1, -1}, 0},
            Level, Fmt, Args]}};
 normalize_macro_args(_) -> error.
 

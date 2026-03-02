@@ -60,7 +60,7 @@ extract_tests(Path) ->
         {ok, AllAttrs} ->
             LinenoAndResults = lists:filtermap(fun (A) ->
                 case A of
-                    {etylizer, {loc, _, N, _}, Test} ->
+                    {etylizer, {loc, _, N, _, _, _}, Test} ->
                         case Test of
                             {test, good} -> {true, {N, good}};
                             {test, bad, Msg} -> {true, {N, {bad, Msg}}};

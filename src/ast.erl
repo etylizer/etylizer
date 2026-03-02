@@ -162,8 +162,9 @@
 ]).
 
 -export([
-    format_loc/1, to_loc/2, loc_auto/0, min_loc/2, leq_loc/2, maybe_predef_name/1, is_predef_name/1, is_predef_alias_name/1,
-    local_varname_from_any_ref/1, get_fun_name/1, loc_exp/1
+    format_loc/1, to_loc/2, to_loc/4, loc_auto/0, min_loc/2, leq_loc/2, maybe_predef_name/1, is_predef_name/1, is_predef_alias_name/1,
+    local_varname_from_any_ref/1, get_fun_name/1, loc_exp/1,
+    loc_start/1, loc_end/1, loc_span/2, loc_set_end/3, loc_of/1, merge_locs/1
 ]).
 
 % General
@@ -176,24 +177,92 @@
 -type any_ref() :: global_ref() | local_ref().
 -type local_bind() :: {local_bind, local_varname()}. % bind a new local variable
 -type local_ref_bind() :: local_ref() | local_bind().
--type loc() :: {loc, string(), integer(), integer()}. % file, line, column
+-type loc() :: {loc, string(), integer(), integer(), integer(), integer()}. % file, start_line, start_col, end_line, end_col
 
 -spec format_loc(loc()) -> string().
-format_loc({loc, "AUTO", -1, -1}) -> "auto";
-format_loc({loc, Path, Line, Col}) -> utils:sformat("~s:~w:~w", [Path, Line, Col]).
+format_loc({loc, "AUTO", -1, -1, -1, -1}) -> "auto";
+format_loc({loc, Path, Line, Col, EndLine, EndCol}) ->
+    case {EndLine, EndCol} of
+        {-1, -1} -> utils:sformat("~s:~w:~w", [Path, Line, Col]);
+        {Line, _} -> utils:sformat("~s:~w:~w-~w", [Path, Line, Col, EndCol]);
+        _ -> utils:sformat("~s:~w:~w-~w:~w", [Path, Line, Col, EndLine, EndCol])
+    end.
 
 -spec to_loc(string(), ast_erl:anno()) -> loc().
 to_loc(Path, Anno) ->
     Line = utils:with_default(erl_anno:line(Anno), -1),
     Col = utils:with_default(erl_anno:column(Anno), -1),
-    {loc, Path, Line, Col}.
+    {loc, Path, Line, Col, -1, -1}.
+
+-spec to_loc(string(), ast_erl:anno(), integer(), integer()) -> loc().
+to_loc(Path, Anno, EndLine, EndCol) ->
+    Line = utils:with_default(erl_anno:line(Anno), -1),
+    Col = utils:with_default(erl_anno:column(Anno), -1),
+    {loc, Path, Line, Col, EndLine, EndCol}.
 
 -spec loc_auto() -> loc().
-loc_auto() -> {loc, "AUTO", -1, -1}.
+loc_auto() -> {loc, "AUTO", -1, -1, -1, -1}.
+
+-spec loc_start(loc()) -> {integer(), integer()}.
+loc_start({loc, _, StartLine, StartCol, _, _}) -> {StartLine, StartCol}.
+
+-spec loc_end(loc()) -> {integer(), integer()}.
+loc_end({loc, _, _, _, EndLine, EndCol}) -> {EndLine, EndCol}.
+
+-spec loc_set_end(loc(), integer(), integer()) -> loc().
+loc_set_end({loc, File, SL, SC, _, _}, EndLine, EndCol) ->
+    {loc, File, SL, SC, EndLine, EndCol}.
+
+-spec loc_span(loc(), loc()) -> loc().
+loc_span({loc, File, SL1, SC1, EL1, EC1}, {loc, _, SL2, SC2, EL2, EC2}) ->
+    % Min start
+    {MinSL, MinSC} = case leq_pos(SL1, SC1, SL2, SC2) of
+        true -> {SL1, SC1};
+        false -> {SL2, SC2}
+    end,
+    % Max end
+    {MaxEL, MaxEC} = max_end({EL1, EC1}, {EL2, EC2}),
+    {loc, File, MinSL, MinSC, MaxEL, MaxEC}.
+
+-spec loc_of(tuple()) -> loc().
+loc_of(Node) -> element(2, Node).
+
+-spec merge_locs([loc()]) -> [loc()].
+merge_locs([]) -> [];
+merge_locs(Locs) ->
+    Sorted = lists:sort(fun(A, B) -> leq_loc(A, B) end, Locs),
+    merge_sorted_locs(Sorted).
+
+-spec merge_sorted_locs([loc()]) -> [loc()].
+merge_sorted_locs([]) -> [];
+merge_sorted_locs([L]) -> [L];
+merge_sorted_locs([L1, L2 | Rest]) ->
+    case locs_overlap_or_adjacent(L1, L2) of
+        true -> merge_sorted_locs([loc_span(L1, L2) | Rest]);
+        false -> [L1 | merge_sorted_locs([L2 | Rest])]
+    end.
+
+-spec locs_overlap_or_adjacent(loc(), loc()) -> boolean().
+locs_overlap_or_adjacent({loc, File1, _, _, EL1, EC1}, {loc, File2, SL2, SC2, _, _}) ->
+    File1 =:= File2 andalso
+    (EL1 =:= -1 orelse leq_pos(SL2, SC2, EL1, EC1)).
+
+-spec leq_pos(integer(), integer(), integer(), integer()) -> boolean().
+leq_pos(L1, C1, L2, C2) ->
+    L1 < L2 orelse (L1 =:= L2 andalso C1 =< C2).
+
+-spec max_end({integer(), integer()}, {integer(), integer()}) -> {integer(), integer()}.
+max_end({-1, -1}, {EL, EC}) -> {EL, EC};
+max_end({EL, EC}, {-1, -1}) -> {EL, EC};
+max_end({EL1, EC1}, {EL2, EC2}) ->
+    case leq_pos(EL1, EC1, EL2, EC2) of
+        true -> {EL2, EC2};
+        false -> {EL1, EC1}
+    end.
 
 % leq(L1, L2) yields true of L1 <= L2.
 -spec leq_loc(loc(), loc()) -> boolean().
-leq_loc({loc, _, Line1, Col1}, {loc, _, Line2, Col2}) ->
+leq_loc({loc, _, Line1, Col1, _, _}, {loc, _, Line2, Col2, _, _}) ->
     case utils:compare(Line1, Line2) of
         less -> true;
         greater -> false;
@@ -357,11 +426,12 @@ get_fun_name({function, _Loc, Name, Arity, _}) -> utils:sformat("~w/~w", Name, A
 -type exps() :: [exp()].
 
 -spec loc_exp(exp()) -> loc().
-loc_exp({_, L}) -> L;
-loc_exp({_, L, _}) -> L;
-loc_exp({_, L, _, _}) -> L;
-loc_exp({_, L, _, _, _}) -> L;
-loc_exp({_, L, _, _, _, _}) -> L.
+loc_exp({_, L}) when element(1, L) =:= loc -> L;
+loc_exp({_, L, _}) when element(1, L) =:= loc -> L;
+loc_exp({_, L, _, _}) when element(1, L) =:= loc -> L;
+loc_exp({_, L, _, _, _}) when element(1, L) =:= loc -> L;
+loc_exp({_, L, _, _, _, _}) when element(1, L) =:= loc -> L;
+loc_exp({_, L, _, _, _, _, _}) when element(1, L) =:= loc -> L.
 
 -type qual_zip_gen() ::  {zip, loc(), [generators()]}. 
 -type qual_list_strict_gen() ::  {generate_strict, loc(), pat(), exp()}.

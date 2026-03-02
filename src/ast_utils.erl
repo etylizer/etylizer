@@ -15,7 +15,7 @@
 modname_from_path(Path) -> list_to_atom(filename:basename(Path, ".erl")).
 
 -spec loc_replacer(dynamic()) -> {ok, dynamic()} | error.
-loc_replacer({loc, _, _, _}) -> {ok, {loc, "", 0, 0}};
+loc_replacer({loc, _, _, _, _, _}) -> {ok, {loc, "", 0, 0, -1, -1}};
 loc_replacer(_) -> error.
 
 -spec remove_locs(dynamic()) -> dynamic().

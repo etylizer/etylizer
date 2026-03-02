@@ -113,4 +113,4 @@ find_subst(X = [{Low, High} | OtherTests], [TallySubst | Others], AllTally) ->
 base_subst({tally_subst, S, _}) -> S;
 base_subst(S) -> S.
 
-loc_auto() -> {loc, "AUTO", -1, -1}.
+loc_auto() -> {loc, "AUTO", -1, -1, -1, -1}.
