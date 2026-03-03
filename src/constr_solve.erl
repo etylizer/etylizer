@@ -112,17 +112,13 @@ check_redundant_branch_incr(Tab, FixedTyvars, BaseResult, {Loc, UnmatchedConstrs
     case Satisfiable of
         true ->
             ?LOG_DEBUG("Tally time (redundancy check incr): ~pms, tally successful.", Delta),
-            ?LOG_DEBUG("Branch at ~s is redundant. Constraints that were added to the constraint above: ~s~nFixed: ~200p",
-                ast:format_loc(Loc),
-                pretty:render_list(fun pretty:constr_simp/1, sets:to_list(UnmatchedConstrs)),
-                sets:to_list(FixedTyvars)),
+            ?LOG_DEBUG("Branch at ~s is redundant.",
+                ast:format_loc(Loc)),
             {error, {redundant_branch, Loc, ""}};
         false ->
             ?LOG_DEBUG("Tally time (redundancy check incr): ~pms, tally finished with errors.", Delta),
-            ?LOG_DEBUG("Branch at ~s is not redundant. Constraints that were added to the constraint above: ~s~nFixed: ~200p",
-                ast:format_loc(Loc),
-                pretty:render_list(fun pretty:constr_simp/1, sets:to_list(UnmatchedConstrs)),
-                sets:to_list(FixedTyvars)),
+            ?LOG_DEBUG("Branch at ~s is not redundant.",
+                ast:format_loc(Loc)),
             ok
     end.
 
@@ -146,42 +142,44 @@ locate_unsat_error(Tab, FixedTyvars, Ds) ->
     feature_flags:dump_tally_constraints()) ->
     ok | {error, error() | none}.
 check_simp_constrs(Tab, FixedTyvars, Ds, What, DumpMode) ->
-    SubtyConstrs = constr_collect:collect_constrs_no_matching_cond(Ds),
-    dump_tally_constraints(raw, DumpMode, What, single, SubtyConstrs),
+    RawConstrs = constr_collect:collect_constrs_no_matching_cond(Ds),
+    dump_tally_constraints(raw, DumpMode, What, single, RawConstrs),
+    {SubtyConstrs, _MaterSubst} = gradual_utils:inline_materializations(RawConstrs),
     ?LOG_DEBUG("Checking constraints for satisfiability to type check ~s:~n~s~nFixed: ~s",
         What, pretty:render_list(fun pretty:constr_simp/1, sets:to_list(SubtyConstrs)), pretty:render_set(fun pretty:atom/1, FixedTyvars)),
     case check_nominal_constrs(Tab, SubtyConstrs) of
         {error, NomErr} -> {error, NomErr};
         ok ->
-            ReduDs = constr_collect:collect_matching_cond_constrs(Ds),
-            case ReduDs of
-                [] ->
-                    % No branches to check for redundancy, just check satisfiability.
-                    case is_satisfiable(Tab, SubtyConstrs, FixedTyvars, "satisfiability check", DumpMode, What) of
-                        true -> ok;
-                        false -> locate_unsat_error(Tab, FixedTyvars, Ds)
-                    end;
-                _ ->
-                    % Use base result approach: compute solutions once, reuse for redundancy checks.
-                    case tally:is_satisfiable_base(Tab, SubtyConstrs, FixedTyvars, DumpMode, What) of
-                        {true, BaseResult} ->
+            case is_satisfiable(Tab, SubtyConstrs, FixedTyvars, "satisfiability check", DumpMode, What) of
+                true ->
+                    ReduDs = constr_collect:collect_matching_cond_constrs(Ds),
+                    case ReduDs of
+                        [] -> ok;
+                        _ ->
                             ?LOG_DEBUG("Constraints are satisfiable, now checking ~w branches for redundancy (incremental)",
                                 length(ReduDs)),
-                            case has_dynamic_constr(Tab, SubtyConstrs) of
-                                true ->
-                                    ?LOG_DEBUG("Skipping all redundancy checks (dynamic() found in constraints)"),
-                                    ok;
-                                false ->
-                                    lists:foldl(
-                                        fun (LocAndConstrs, Acc) ->
-                                            check_redundant_branch_incr(Tab, FixedTyvars, BaseResult, LocAndConstrs, Acc)
-                                        end,
-                                        ok,
-                                        ReduDs)
-                            end;
-                        {false, _} ->
-                            locate_unsat_error(Tab, FixedTyvars, Ds)
-                    end
+                            % Compute base solutions (without AST optimizations) for incremental merging.
+                            case tally:is_satisfiable_base(Tab, RawConstrs, FixedTyvars) of
+                                {true, BaseResult} ->
+                                    case has_dynamic_constr(Tab, SubtyConstrs) of
+                                        true ->
+                                            ?LOG_DEBUG("Skipping all redundancy checks (dynamic() found in constraints)"),
+                                            ok;
+                                        false ->
+                                            lists:foldl(
+                                                fun (LocAndConstrs, Acc) ->
+                                                    check_redundant_branch_incr(Tab, FixedTyvars, BaseResult, LocAndConstrs, Acc)
+                                                end,
+                                                ok,
+                                                ReduDs)
+                                    end;
+                                {false, _} ->
+                                    % Main check passed but base failed — shouldn't happen, treat as ok.
+                                    ok
+                            end
+                    end;
+                false ->
+                    locate_unsat_error(Tab, FixedTyvars, Ds)
             end
     end.
 

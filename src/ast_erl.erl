@@ -356,7 +356,7 @@
 -type if_clause()          :: {clause, anno(), Pats::[],           Guards::[guard()], Body::exps()}.
 
 % 8.6  Guards
--type guard() :: nonempty_list(guard_test()).
+-type guard() :: etylizer:list1star(guard_test(), guard_test()).
 -type guard_test_bitstring_constr() :: gen_bitstring_constr(guard_test(), guard_test()).
 -type guard_test_cons() :: gen_cons(guard_test()).
 -type guard_test_funcall() :: gen_funcall(guard_test()).
