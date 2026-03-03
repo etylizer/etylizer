@@ -280,3 +280,40 @@ case_34(_Term, _Tag) -> other.
 case_35({ok, _}, _Tag) -> ok;
 case_35(error, _Tag) -> error.
 
+-spec case_multi_01a(a | b | c) -> 1 | 2 | 3.
+case_multi_01a(X) ->
+    case X of
+        a -> 1;
+        b -> 2;
+        c -> 3
+    end.
+
+-spec case_multi_01b(a | b | c) -> 1 | 2 | 3.
+case_multi_01b(X) ->
+    case X of
+        a -> 1;
+        Y ->
+            case Y of
+                b -> 2;
+                Z -> case Z of
+                         c -> 3
+                     end
+            end
+    end.
+
+-spec case_multi_01c
+    (a) -> 1;
+    (b) -> 2;
+    (c) -> 3.
+case_multi_01c(X) ->
+    case X of
+        a -> 1;
+        Y ->
+            case Y of
+                b -> 2;
+                Z -> case Z of
+                         c -> 3
+                     end
+            end
+    end.
+

@@ -1165,6 +1165,12 @@ scrut_constrs_compact(Ctx, {tuple, L, Args}, T) ->
         false ->
             exp_constrs(Ctx, {tuple, L, Args}, T)
     end;
+scrut_constrs_compact(Ctx, {var, L, AnyRef}, {var, AlphaName}) ->
+    % Scrutinee is a single variable and target is the case Alpha.
+    % Materialize directly into Alpha, skipping the intermediate variable.
+    Msg = utils:sformat("var ~s", pretty:render(pretty:ref(AnyRef))),
+    Locs = mk_locs(Msg, L),
+    {sets:from_list([{cvarmater, Locs, AnyRef, AlphaName}], [{version, 2}]), #{}};
 scrut_constrs_compact(Ctx, Scrut, T) ->
     exp_constrs(Ctx, Scrut, T).
 

@@ -41,13 +41,13 @@ check_simp_constrs_return_unmatched(Tab, FixedTyvars, Ds, What, DumpMode) ->
     % in all sets for all intersection types, the branch at this location never matches,
     % so it's an error.
     case lists:foldl(
-        fun ({I, {SwitchedOffBranches, SubtyConstrs}}, Acc) ->
+        fun ({I, {SwitchedOffBranches, RawConstrs}}, Acc) ->
             case Acc of
                 false ->
-                    dump_tally_constraints(raw, DumpMode, What, {conjunction, I, N}, SubtyConstrs),
+                    dump_tally_constraints(raw, DumpMode, What, {conjunction, I, N}, RawConstrs),
                     ?LOG_DEBUG("Checking conjunction ~w/~w for satisfiability:~n~s",
-                        I, N, pretty:render_constr(SubtyConstrs)),
-                    case is_satisfiable(Tab, SubtyConstrs, FixedTyvars, "satisfiability check", DumpMode, What) of
+                        I, N, pretty:render_constr(RawConstrs)),
+                    case is_satisfiable(Tab, RawConstrs, FixedTyvars, "satisfiability check", DumpMode, What) of
                         false -> false;
                         true -> {true, SwitchedOffBranches}
                     end;

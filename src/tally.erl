@@ -22,7 +22,7 @@
 -type monomorphic_variables() :: sets:set(ast:ty_varname()).
 -type tally_res() :: {error, [{error, string()}]} | nonempty_list(subst:t()).
 -type constraints_partition() :: #{[ast:ty_var()] => [{ast:ty(), ast:ty()}]}.
--type base_sat_result() :: {etally:solutions(), etally:monomorphic_variables()}.
+-type base_sat_result() :: {etally:solutions(), etally:monomorphic_variables(), subst:base_subst()}.
 
 -spec is_satisfiable(symtab:t(), constr:collected_constrs(), monomorphic_variables()) ->
     {false, [{error, string()}]} | {true, term()}.
@@ -104,19 +104,34 @@ is_satisfiable_base(SymTab, Constraints, FixedVars) ->
     feature_flags:dump_tally_constraints(), string()) ->
     {false, [{error, string()}]} | {true, base_sat_result()}.
 is_satisfiable_base(SymTab, Constraints, FixedVars, DumpMode, FunName) ->
+    is_satisfiable_base(SymTab, Constraints, FixedVars, #{}, DumpMode, FunName).
+
+% Like is_satisfiable_base/3 but accepts an external materialization substitution
+% from pre-inlined constraints. Merged into the delta substitution for incremental checks.
+-spec is_satisfiable_base(symtab:t(), constr:collected_constrs(), monomorphic_variables(), subst:base_subst(),
+    feature_flags:dump_tally_constraints(), string()) ->
+    {false, [{error, string()}]} | {true, base_sat_result()}.
+is_satisfiable_base(SymTab, Constraints, FixedVars, ExternalMaterSubst, DumpMode, FunName) ->
     ty_parser:set_symtab(SymTab),
     Ctx = gradual_utils:new_ctx(),
-    {_, {InlinedConstrs, _, _, _}} = timer:tc(fun() -> gradual_utils:preprocess_constrs(Constraints, Ctx) end),
+    {_, {InlinedConstrs, _, _, MaterSubst}} = timer:tc(fun() -> gradual_utils:preprocess_constrs(Constraints, Ctx) end),
     InternalRawConstraints =
     lists:map( fun ({scsubty, _, S, T}) -> {S, T} end,
                lists:sort( fun ({scsubty, _, S, T}, {scsubty, _, X, Y}) ->
                                    (erts_debug:size({S, T})) < erts_debug:size(({X, Y})) end,
                            sets:to_list(InlinedConstrs))),
-    % Skip clean_cons and eliminate_hubs here: these transformations can substitute
-    % variables that delta constraints (from redundancy checks) still reference.
-    % The base solutions must preserve all variable constraints for correct incremental merging.
-    TrivFiltered = lists:filter(fun({T1, T2}) -> not is_trivially_true(T1, T2) end, InternalRawConstraints),
+    % Skip clean_cons here: it replaces variables with any/none based on polarity,
+    % which is lossy and could break delta constraint references.
+    % Eliminate hub variables: unlike clean_cons, this substitutes variables with their
+    % actual bounds (e.g. $0 -> a|b|c), which is lossless.
+    TrivFiltered0 = lists:filter(fun({T1, T2}) -> not is_trivially_true(T1, T2) end, InternalRawConstraints),
+    {AfterLB, LBSubst} = eliminate_hubs_subst(lower, TrivFiltered0, FixedVars),
+    {TrivFiltered, UBSubst} = eliminate_hubs_subst(upper, AfterLB, FixedVars),
     dump_simplified_constraints(DumpMode, FunName, TrivFiltered),
+    % Merge all substitutions for delta constraint resolution:
+    % ExternalMaterSubst from pre-inlining, MaterSubst from preprocess_constrs,
+    % and hub substitutions from eliminate_hubs.
+    DeltaSubst = maps:merge(ExternalMaterSubst, maps:merge(MaterSubst, maps:merge(LBSubst, UBSubst))),
     ParsedConstraints = [{ty_parser:parse(T1), ty_parser:parse(T2)} || {T1, T2} <- TrivFiltered],
     InternalConstraints = [{L, R} || {L, R} <- ParsedConstraints,
                                      not ty_node:is_empty(L), not ty_node:leq(ty_node:any(), R)],
@@ -124,20 +139,21 @@ is_satisfiable_base(SymTab, Constraints, FixedVars, DumpMode, FunName) ->
     MonomorphicTallyVariables = maps:from_list([{ty_variable:new_with_name(Var), []} || Var <- sets:to_list(FixedVars)]),
     case etally:is_tally_satisfiable_with_solutions(InternalConstraints, MonomorphicTallyVariables) of
         false -> {false, []};
-        {true, Solutions} -> {true, {Solutions, MonomorphicTallyVariables}}
+        {true, Solutions} -> {true, {Solutions, MonomorphicTallyVariables, DeltaSubst}}
     end.
 
 % Checks satisfiability incrementally by merging delta constraints into pre-computed base solutions.
 -spec is_satisfiable_incremental(symtab:t(), base_sat_result(), constr:collected_constrs(), monomorphic_variables()) ->
     boolean().
-is_satisfiable_incremental(SymTab, {BaseSolutions, MonoVars}, DeltaConstrs, _FixedVars) ->
+is_satisfiable_incremental(SymTab, {BaseSolutions, MonoVars, BaseSubst}, DeltaConstrs, _FixedVars) ->
     ty_parser:set_symtab(SymTab),
     Ctx = gradual_utils:new_ctx(),
     {InlinedDelta, _, _, _} = gradual_utils:preprocess_constrs(DeltaConstrs, Ctx),
     DeltaRaw = lists:map(fun ({scsubty, _, S, T}) -> {S, T} end, sets:to_list(InlinedDelta)),
-    % Skip clean_cons: delta constraints (after materialization inlining) are between
-    % concrete types with no free type variables, so cleaning is a no-op.
-    TrivFiltered = lists:filter(fun({T1, T2}) -> not is_trivially_true(T1, T2) end, DeltaRaw),
+    % Apply base substitution: resolve references to base variables that were
+    % eliminated during is_satisfiable_base (via materialization inlining and hub elimination).
+    DeltaResolved = [{subst:apply_base(BaseSubst, S), subst:apply_base(BaseSubst, T)} || {S, T} <- DeltaRaw],
+    TrivFiltered = lists:filter(fun({T1, T2}) -> not is_trivially_true(T1, T2) end, DeltaResolved),
     ParsedDelta = [{ty_parser:parse(T1), ty_parser:parse(T2)} || {T1, T2} <- TrivFiltered],
     InternalDelta = [{L, R} || {L, R} <- ParsedDelta,
                                not ty_node:is_empty(L), not ty_node:leq(ty_node:any(), R)],
@@ -306,6 +322,13 @@ compose_subst(Subst, N) ->
 % Mode = upper: eliminate variables with pure upper bounds (V ⊆ T), substitute V = intersection(UBs)
 -spec eliminate_hubs(lower | upper, [{ast:ty(), ast:ty()}], monomorphic_variables()) -> [{ast:ty(), ast:ty()}].
 eliminate_hubs(Mode, Constrs, FixedVars) ->
+    {Result, _Subst} = eliminate_hubs_subst(Mode, Constrs, FixedVars),
+    Result.
+
+% Like eliminate_hubs/3 but also returns the substitution applied to eliminated variables.
+-spec eliminate_hubs_subst(lower | upper, [{ast:ty(), ast:ty()}], monomorphic_variables()) ->
+    {[{ast:ty(), ast:ty()}], subst:base_subst()}.
+eliminate_hubs_subst(Mode, Constrs, FixedVars) ->
     % Step 1: Find pure bound constraints where V is free
     BoundMap = lists:foldl(fun(Constr, Acc) ->
         case bound_var(Mode, Constr) of
@@ -332,7 +355,7 @@ eliminate_hubs(Mode, Constrs, FixedVars) ->
     end, BoundMap),
 
     case maps:size(Eliminable) of
-        0 -> Constrs;
+        0 -> {Constrs, #{}};
         _ ->
             % Step 3: Build substitution V -> union/intersection(bounds)
             Combiner = case Mode of lower -> union; upper -> intersection end,
@@ -348,7 +371,7 @@ eliminate_hubs(Mode, Constrs, FixedVars) ->
             EliminatedVarSet = sets:from_list(maps:keys(Eliminable)),
 
             % Step 4: Apply substitution and remove pure bound constraints for eliminated vars
-            lists:filtermap(fun(Constr) ->
+            Result = lists:filtermap(fun(Constr) ->
                 {T1, T2} = Constr,
                 case bound_var(Mode, Constr) of
                     {ok, V, _} ->
@@ -358,7 +381,8 @@ eliminate_hubs(Mode, Constrs, FixedVars) ->
                         end;
                     none -> subst_constr(Subst, T1, T2)
                 end
-            end, Constrs)
+            end, Constrs),
+            {Result, Subst}
     end.
 
 % Extract the bound variable and bound type from a constraint, depending on mode.
