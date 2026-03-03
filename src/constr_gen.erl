@@ -22,7 +22,9 @@
           symtab :: symtab:t(),
           exhaustiveness_mode :: feature_flags:exhaustiveness_mode(),
           % functions where exhaustiveness is disabled at the constraint generation level
-          disable_exhaustiveness = sets:new() :: sets:set({atom(), arity()})
+          disable_exhaustiveness = sets:new() :: sets:set({atom(), arity()}),
+          % true when generating constraints inside a guard expression
+          in_guard = false :: boolean()
         }).
 -type ctx() :: #ctx{}.
 
@@ -220,6 +222,37 @@ exp_constrs_2(Ctx, E, T) ->
             {Alpha, ArgCs, ArgEnv} = exp_constrs_tyof(Ctx, Arg),
             MsgTy = utils:sformat("type of op ~w", Op),
             {sets:union(ArgCs, utils:single({cop, mk_locs(MsgTy, L), Op, 1, {fun_full, [Alpha], T}})), ArgEnv};
+        {op, L, Op, Lhs, Rhs} when Op =:= '=='; Op =:= '=:=';
+                                     Op =:= '/='; Op =:= '=/=';
+                                     Op =:= '>'; Op =:= '<';
+                                     Op =:= '>='; Op =:= '=<' ->
+            % For comparison/equality operators, skip the function type machinery entirely.
+            % Their type is fun((any(), any()) -> boolean()), so the only useful
+            % constraint is that the result type is boolean(). The refinement
+            % (narrowing variables) is handled separately by guard_test_env/refine_eq_env
+            % and comparison_refine_env.
+            {_Alpha1, Cs1, Env1} = exp_constrs_tyof(Ctx, Lhs),
+            {_Alpha2, Cs2, Env2} = exp_constrs_tyof(Ctx, Rhs),
+            BoolCs = utils:single({csubty, mk_locs("comparison result", L), {predef_alias, boolean}, T}),
+            Cs2WithEnv = case maps:size(Env1) of
+                0 -> Cs2;
+                _ -> sets:from_list([{cdef, mk_locs("op lhs vars", L), Env1, Cs2}])
+            end,
+            {sets:union([Cs1, Cs2WithEnv, BoolCs]), intersect_envs(Env1, Env2)};
+        {op, L, Op, Lhs, Rhs} when (Op =:= 'andalso' orelse Op =:= 'orelse'),
+                                     Ctx#ctx.in_guard ->
+            % In guard context, andalso/orelse result is always boolean.
+            % Skip the intersection function type (fun((false,any())->false) /\ fun((true,a)->a))
+            % and just constrain the result to boolean(). Guard sub-expressions already
+            % produce boolean from their own semantics.
+            {_Alpha1, Cs1, Env1} = exp_constrs_tyof(Ctx, Lhs),
+            {_Alpha2, Cs2, Env2} = exp_constrs_tyof(Ctx, Rhs),
+            BoolCs = utils:single({csubty, mk_locs("boolean shortcircuit", L), {predef_alias, boolean}, T}),
+            Cs2WithEnv = case maps:size(Env1) of
+                0 -> Cs2;
+                _ -> sets:from_list([{cdef, mk_locs("op lhs vars", L), Env1, Cs2}])
+            end,
+            {sets:union([Cs1, Cs2WithEnv, BoolCs]), intersect_envs(Env1, Env2)};
         {op, L, Op, Lhs, Rhs} ->
             {Alpha1, Cs1, Env1} = exp_constrs_tyof(Ctx, Lhs),
             {Alpha2, Cs2, Env2} = exp_constrs_tyof(Ctx, Rhs),
@@ -888,6 +921,39 @@ var_funcall_constrs(Ctx, L, Var, Args, T) ->
 -spec funcall_constrs_with_tyscm(ctx(), ast:loc(), ast:exp_var(), ast:ty_scheme(), [ast:exp()], ast:ty()) -> constr:constrs().
 funcall_constrs_with_tyscm(Ctx, L, Var, TyScm, Args, T) ->
     {Mono, _, _} = typing_common:mono_ty(L, TyScm, none, fun(_, none) -> {fresh_ty_varname(Ctx), none} end, Ctx#ctx.symtab),
+    case Ctx#ctx.in_guard of
+        true -> guard_funcall_constrs(Ctx, L, Var, Mono, Args, T);
+        false -> normal_funcall_constrs(Ctx, L, Var, Mono, Args, T)
+    end.
+
+% In guard context, BIF calls are total: exceptions cause guard failure.
+% We skip the domain check (don't constrain args against parameter types)
+% and use the union of return types as the result. This avoids expensive
+% intersection function type subtyping in tally.
+-spec guard_funcall_constrs(ctx(), ast:loc(), ast:exp_var(), ast:ty(), [ast:exp()], ast:ty()) -> constr:constrs().
+guard_funcall_constrs(Ctx, L, Var, Mono, Args, T) ->
+    % Extract return types from all overloads
+    ReturnTys = case Mono of
+        {fun_full, _, ResTy} -> [ResTy];
+        {intersection, FunTys} ->
+            [ResTy || {fun_full, _, ResTy} <- FunTys]
+    end,
+    ResultTy = ast_lib:mk_union(ReturnTys),
+    FunName = pretty:render_var(Var),
+    ResConstr = {csubty, mk_locs(utils:sformat("result of calling ~s", FunName), L), ResultTy, T},
+    % Typecheck argument expressions (generates their own constraints)
+    % but don't constrain arg types against the function's parameter types.
+    ArgCs = lists:foldl(
+        fun(Arg, AccCs) ->
+            {_Ty, Cs, _Env} = exp_constrs_tyof(Ctx, Arg),
+            sets:union(AccCs, Cs)
+        end,
+        sets:new([{version, 2}]),
+        Args),
+    sets:add_element(ResConstr, ArgCs).
+
+-spec normal_funcall_constrs(ctx(), ast:loc(), ast:exp_var(), ast:ty(), [ast:exp()], ast:ty()) -> constr:constrs().
+normal_funcall_constrs(Ctx, L, Var, Mono, Args, T) ->
     case Mono of
         {fun_full, ArgTys0, ResTy} when length(Args) =:= length(ArgTys0) ->
             % When the return type is concrete (no poly vars), parameter poly vars
@@ -1023,10 +1089,11 @@ receive_clause_constrs(Ctx, {case_clause, L, Pat, Guards, Exps}, T) ->
     %      recv_05_fail won't fail if we do
     VarEnv = maps:merge(DynamicPatEnv, GuardEnv),
     % Generate guard constraints to evaluate to boolean()
+    GuardCtx = Ctx#ctx{in_guard = true},
     GuardCs = sets:union(
         lists:map(
             fun(Guard) ->
-                {Cs, _} = exps_constrs(Ctx, L, Guard, {predef_alias, boolean}),
+                {Cs, _} = exps_constrs(GuardCtx, L, Guard, {predef_alias, boolean}),
                 Cs
             end,
             Guards)),
@@ -1232,11 +1299,12 @@ case_clause_constrs(Ctx, TyScrut, Scrut, ScrutEnv, NeedsUnmatchedCheck, LowersBe
     % Merge pattern/guard environment with variables bound in body
     CompleteBodyEnv = intersect_envs(BodyEnv, InnerSafeEnv),
 
+    GuardCtx = Ctx#ctx{in_guard = true},
     CGuards =
         sets:union(
           lists:map(
             fun(Guard) ->
-                    {GuardCs, _GuardEnv} = exps_constrs(Ctx, L, Guard, {predef_alias, boolean}),
+                    {GuardCs, _GuardEnv} = exps_constrs(GuardCtx, L, Guard, {predef_alias, boolean}),
                     GuardCs
             end,
             Guards)),

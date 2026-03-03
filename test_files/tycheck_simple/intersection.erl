@@ -122,11 +122,11 @@ foo4_b(X) ->
         _ -> X
     end.
 
--spec inter_with_guard_constraints_fail(any()) -> integer(); (any()) -> integer().
-inter_with_guard_constraints_fail(X) ->
+% With guard BIF extension, abs is total in guards. is_integer(Y) narrows
+% Y to integer, so this passes.
+-spec inter_with_guard_constraints(any()) -> integer(); (any()) -> integer().
+inter_with_guard_constraints(X) ->
     case X of
-        % should fail because Y does not have type integer
-        % in the guard but abs requires a number
         Y when abs(Y) > 2 andalso is_integer(Y) -> Y;
         _ -> 42
     end.
