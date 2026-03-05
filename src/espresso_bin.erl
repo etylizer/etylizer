@@ -2,6 +2,8 @@
 -export([get_path/0]).
 -on_load(ensure_cached/0).
 
+-include("etylizer.hrl").
+
 %% @doc Returns the path to the espresso binary in the user cache directory.
 %% On module load, copies the binary from _build/espresso if not already cached.
 
@@ -18,6 +20,6 @@ ensure_cached() ->
         true -> ok;
         false ->
             filelib:ensure_dir(Path),
-            {ok, _} = file:copy("_build/espresso", Path),
-            ok = file:change_mode(Path, 8#755)
+            ?assert_pattern({ok, _}, file:copy("_build/espresso", Path)),
+            ?assert_pattern(ok, __Y, file:change_mode(Path, 8#755))
     end.

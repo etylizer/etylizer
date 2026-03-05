@@ -299,7 +299,7 @@ refs_equal(Ref1, Ref2) ->
 normalize_ref({ty_ref, M, N, A}) -> {M, N, A};
 normalize_ref({ty_qref, M, N, A}) -> {M, N, A}.
 
--spec solve_simp_constrs(symtab:t(), constr:subty_constrs(), string()) -> error | nonempty_list(subst:t()).
+-spec solve_simp_constrs(symtab:t(), constr:simp_constrs(), string()) -> error | nonempty_list(subst:t()).
 solve_simp_constrs(Tab, Ds, What) ->
     SubtyConstrs = constr_collect:collect_constrs_no_matching_cond(Ds),
     {Res, Delta} = utils:timing(fun() -> tally:tally(Tab, SubtyConstrs) end),

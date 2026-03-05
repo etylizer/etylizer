@@ -6,7 +6,8 @@
 
 -export_type([
     t/0,
-    base_subst/0
+    base_subst/0,
+    tally_subst/0
 ]).
 
 -export([
@@ -48,6 +49,7 @@ clean(T, Fixed, SymTab) ->
     true = ty_node:leq(X, ty_parser:parse(T)),
     Res.
 
+-spec clean_cons([{ast:ty(), ast:ty()}], sets:set(ast:ty_varname()), symtab:t()) -> [{ast:ty(), ast:ty()}].
 clean_cons(CList, Fixed, SymTab) ->
     Unfold = fun(Ty) -> ast_utils:unfold_ty(SymTab, Ty) end,
     UnfoldedCList = [{Unfold(C1), Unfold(C2)} || {C1, C2} <- CList],
@@ -139,7 +141,7 @@ from_list(L) -> maps:from_list(L).
 -spec empty() -> t().
 empty() -> #{}.
 
--spec mk_tally_subst(sets:set(ast:ty_varname()), base_subst()) -> t().
+-spec mk_tally_subst(sets:set(ast:ty_varname()), base_subst()) -> tally_subst().
 mk_tally_subst(Fixed, Base) -> {tally_subst, Base, Fixed}.
 
 clean_type(Ty, Fix, SymTab) ->
