@@ -1119,7 +1119,16 @@ case_clause_env(Ctx, L, TyScrut, Scrut, Pat, Guards) ->
     {Lower, Upper} = pat_guard_lower_upper(Ctx#ctx.symtab, Pat, Guards, Scrut),
     Ti = ast_lib:mk_intersection([TyScrut, Upper]),
     {Ci0, Gamma0} = pat_env(Ctx, L, Ti, pat_of_exp(Scrut)),
-    {Ci1, Gamma1} = pat_guard_env(Ctx, L, Ti, Pat, Guards),
+    % Skip pattern decomposition when the pattern has no variables,
+    % since no environment bindings would be produced.
+    % But still include guard refinements, as guards may refine outer variables.
+    {Ci1, Gamma1} =
+        case pat_has_vars(Pat) of
+            false ->
+                {EnvGuards, _} = guard_seq_env(Guards),
+                {sets:new([{version, 2}]), EnvGuards};
+            true -> pat_guard_env(Ctx, L, Ti, Pat, Guards)
+        end,
     Gamma2 = intersect_envs(Gamma1, Gamma0),
     {Lower, Upper, sets:union(Ci0, Ci1), Gamma2}.
 
