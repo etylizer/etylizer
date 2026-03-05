@@ -203,6 +203,23 @@ parse_bug2_test() ->
     ok
                  end).
 
+% Regression test: parsing erl_parse:parse_form/1 return type crashed because
+% two nodes in the same SCC had identical descriptors after prior consing steps.
+% The first was stored in LocalDefinitions, the second was "consed" to it.
+% During consing, the node was removed from ResultMapping, but its reverse graph
+% (which includes itself for recursive types) still tried to look it up.
+parse_consed_self_ref_test() ->
+  {ok, [SymTab]} = file:consult("test_files/erlang_types/parser/erl_parse_symtab"),
+  Loc = {loc, "AUTO", -1, -1},
+  Ty = {union,[{tuple,[{singleton,ok},
+                {named, Loc, {ty_ref,erl_parse,abstract_form,0}, []}]},
+        {tuple,[{singleton,error},
+                {named, Loc, {ty_ref,erl_parse,error_info,0}, []}]}]},
+  with_symtab(fun() ->
+    ty_parser:parse(Ty),
+    ok
+  end, SymTab).
+
 dnf_explosion_test_() ->
   {timeout, 45, fun() ->
   % extract the DNF for the map part of a type
