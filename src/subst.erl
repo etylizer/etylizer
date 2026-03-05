@@ -6,7 +6,8 @@
 
 -export_type([
     t/0,
-    base_subst/0
+    base_subst/0,
+    tally_subst/0
 ]).
 
 -export([
@@ -48,6 +49,7 @@ clean(T, Fixed, SymTab) ->
     true = ty_node:leq(X, ty_parser:parse(T)),
     Res.
 
+-spec clean_cons([{ast:ty(), ast:ty()}], sets:set(ast:ty_varname()), symtab:t()) -> [{ast:ty(), ast:ty()}].
 clean_cons(CList, Fixed, SymTab) ->
     Unfold = fun(Ty) -> ast_utils:unfold_ty(SymTab, Ty) end,
     UnfoldedCList = [{Unfold(C1), Unfold(C2)} || {C1, C2} <- CList],
@@ -139,7 +141,7 @@ from_list(L) -> maps:from_list(L).
 -spec empty() -> t().
 empty() -> #{}.
 
--spec mk_tally_subst(sets:set(ast:ty_varname()), base_subst()) -> t().
+-spec mk_tally_subst(sets:set(ast:ty_varname()), base_subst()) -> tally_subst().
 mk_tally_subst(Fixed, Base) -> {tally_subst, Base, Fixed}.
 
 clean_type(Ty, Fix, SymTab) ->
@@ -181,6 +183,8 @@ collect_vars_clist(L, CPos, Pos, Fix) when is_list(L) ->
         maps:merge_with(fun combine_vars/3, M1, M2)
                 end, Pos, L).
 
+-spec collect_vars(ast:ty() | {ty_hole}, 0 | 1, #{ast:ty_varname() => [0 | 1]}, sets:set(ast:ty_varname())) ->
+    #{ast:ty_varname() => [0 | 1]}.
 collect_vars(M = {map, _}, CPos, Pos, Fix) ->
     collect_vars(ty_parser:rewrite_map_to_representation(M), CPos, Pos, Fix);
 collect_vars({K, Components}, CPos, Pos, Fix) when K == union; K == intersection; K == tuple ->

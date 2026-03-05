@@ -30,6 +30,8 @@
 %  * erl shell stops on end of column limit
 %
 
+-etylizer({disable_exhaustiveness_toplevel, [color/2]}).
+
 -include("etylizer.hrl").
 
 -type history() :: list(nonempty_list(string())).
@@ -534,6 +536,5 @@ replace_at(List, Index, Value) ->
 color(Str, red) -> "\e[0;31m" ++ Str ++ "\e[0m";
 color(Str, green) -> "\e[0;32m" ++ Str ++ "\e[0m";
 color(Str, yellow) -> "\e[0;33m" ++ Str ++ "\e[0m";
-color(Str, teal) -> "\e[0;36m" ++ Str ++ "\e[0m";
-color(_, _) -> error(badarg). % FIXME TE mark as non-exhaustive
+color(Str, teal) -> "\e[0;36m" ++ Str ++ "\e[0m".
 

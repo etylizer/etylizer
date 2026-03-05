@@ -6,8 +6,10 @@
     parse_ety_attr/2,
     ety_attrs_from_file/1
    ]).
-    
+
 -type ety_attr() :: {etylizer, ast:loc(), term()}.
+
+-include("etylizer.hrl").
 
 -spec ety_attrs_from_file(file:filename()) -> t:opt([ety_attr()], string()).
 ety_attrs_from_file(Path) ->
@@ -43,9 +45,10 @@ parse_ety_attr(Loc, S) ->
        "%-etylizer" ++ Rest ->
            case string:trim(Rest) of
                TermStr = ("(" ++ _) ->
-                   case erl_scan:string(TermStr, N) of
+                   case erl_scan:string(TermStr, ?assert_type(N, erl_anno:location())) of
                        {ok, Toks, _} ->
-                           case erl_parse:parse_term(Toks) of
+                           ParseResult = ?assert_type(erl_parse:parse_term(?assert_type(Toks, dynamic())), dynamic()),
+                           case ParseResult of
                                {ok, Term} -> {ok, {etylizer, Loc, Term}};
                                {error, E} -> throw({bad_attr, E})
                             end;

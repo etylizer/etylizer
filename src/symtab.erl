@@ -36,6 +36,8 @@
 ]).
 -endif.
 
+-include("etylizer.hrl").
+
 -type fun_env() :: #{ ast:global_ref() => ast:ty_scheme() }.
 -type ty_key() :: {ty_key, Module::atom(), Name::atom(), Arity::arity()}.
 -type ty_env() :: #{ ty_key() => ast:ty_scheme() }.
@@ -53,6 +55,7 @@
 
 -type t() :: #tab{}.
 
+-spec get_types(t()) -> ty_env().
 get_types(#tab{types = Types}) -> Types.
 
 -spec is_nominal(ast:ty_ref(), t()) -> boolean().
@@ -295,7 +298,7 @@ maybe_add_qref(ref, Module, Name, Arity, Type, Forms, Tab) ->
         false -> NewTab
     end.
 
--spec create_ref_tuple(ref(), atom(), arity()) -> tuple().
+-spec create_ref_tuple(ref(), atom(), arity()) -> ast:global_ref().
 create_ref_tuple(ref, Name, Arity) ->
     {ref, Name, Arity};
 create_ref_tuple({qref, Module}, Name, Arity) ->

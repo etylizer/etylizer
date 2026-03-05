@@ -5,6 +5,8 @@
 
 -export_type([graph/1]).
 
+-include("etylizer.hrl").
+
 -type digraph(_V) :: digraph:graph().
 -type table(_V) :: ets:table().
 % A graph consists of a diagraph and a table mapping extern vertices of
@@ -25,7 +27,7 @@ with_graph(F) ->
 -spec add_vertex(graph(V), V) -> ok.
 add_vertex({G, Tab}, ExternV) ->
     InternV = digraph:add_vertex(G),
-    InternV = digraph:add_vertex(G, InternV, ExternV),
+    _ = digraph:add_vertex(G, InternV, ExternV),
     ets:insert(Tab, {ExternV, InternV}),
     ok.
 
@@ -41,7 +43,7 @@ get_intern(Tab, V) ->
 get_extern(G, InternV) ->
     case digraph:vertex(G, InternV) of
         false -> errors:bug("no such vertex: ~w", InternV);
-        {_, ExternV} -> ExternV
+        {_, ExternV} -> ?assert_type(ExternV, dynamic())
     end.
 
 % add_edge(G, V1, V2) adds an edge from V1 to V2 to graph G. Does nothing if
