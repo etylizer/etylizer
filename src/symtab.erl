@@ -174,18 +174,35 @@ std_symtab(SearchPath, OverlaySymtab) ->
                     stdtypes:builtin_ops()),
     Tab = #tab { funs = Funs, ops = Ops, types = #{}, records = #{}, modules = #{}, nominals = sets:new([{version, 2}]) },
     ExtTab = extend_symtab_with_module_list(Tab, SearchPath, [erlang], OverlaySymtab),
+    % Merge overlay types into the main symtab so they are available for type resolution
+    ExtTab2 = ExtTab#tab { types = maps:merge(ExtTab#tab.types, OverlaySymtab#tab.types) },
     ?LOG_DEBUG("Done building symtab for standard library"),
-    ExtTab.
+    ExtTab2.
 
 -spec overlay_symtab([ast:form()]) -> t().
 overlay_symtab(OverlayForms) ->
     ?LOG_DEBUG("Building symtab for overlay file ..."),
+    ModuleName = lists:foldl(fun(Form, Acc) ->
+        case Form of
+            {attribute, _, module, M} -> M;
+            _ -> Acc
+        end
+    end, undefined, OverlayForms),
     lists:foldl(fun(Form, Tab) ->
         case Form of
             {attribute, _, spec, Name, Arity, T, _} ->
                 ?LOG_DEBUG("Overlay added for ~w/~p", Name, Arity),
                 [Module, FunName] = string:split(atom_to_list(Name), ":"),
                 Tab#tab { funs = maps:put(create_ref_tuple({qref, list_to_atom(Module)}, list_to_atom(FunName), Arity), T, Tab#tab.funs) };
+            {attribute, _, type, Visibility, {Name, TyScm = {ty_scheme, TyVars, _}}} when ModuleName =/= undefined ->
+                Arity = length(TyVars),
+                Key = {ty_key, ModuleName, Name, Arity},
+                ?LOG_DEBUG("Overlay type added: ~w/~p", Name, Arity),
+                Tab1 = Tab#tab { types = maps:put(Key, TyScm, Tab#tab.types) },
+                case Visibility of
+                    nominal -> Tab1#tab { nominals = sets:add_element(Key, Tab1#tab.nominals) };
+                    _ -> Tab1
+                end;
             _ -> Tab
         end
     end,
