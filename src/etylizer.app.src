@@ -6,8 +6,7 @@
   ]},
   {applications,
    [kernel,
-    stdlib,
-    getopt
+    stdlib
    ]},
   {licenses, ["BSD-3-Clause"]},
   {links, [{"GitHub", "https://github.com/etylizer/etylizer"}]}
