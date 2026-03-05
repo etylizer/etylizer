@@ -50,7 +50,7 @@ fresh_vars(Ctx, N) ->
                 if
                     J > N -> [];
                     true ->
-                        ArgJ = list_to_atom(utils:sformat("A~w", J)),
+                        ArgJ = list_to_atom(utils:sformat("$A~w", J)),
                         X = {ArgJ, I},
                         [X | Loop(J + 1)]
                 end
@@ -405,7 +405,11 @@ exp_constrs(Ctx, E, T) ->
             errors:unsupported(L, "try expression", []);
         {var, L, AnyRef} ->
             Msg = utils:sformat("var ~s", pretty:render(pretty:ref(AnyRef))),
-            utils:single({cvar, mk_locs(Msg, L), AnyRef, T});
+            AlphaName = fresh_ty_varname(Ctx),
+            Locs = mk_locs(Msg, L),
+            Mater = {cvarmater, Locs, AnyRef, AlphaName},
+            Link = {csubty, Locs, {var, AlphaName}, T},
+            sets:from_list([Mater, Link]);
         X -> errors:uncovered_case(?FILE, ?LINE, X)
     end.
 

@@ -40,7 +40,7 @@ test_tally(ConstrList, ExpectedSubst, FixedVars, Symtab) ->
        )),
 
     % symtab is parsed before tally
-    Res = tally:tally(symtab:empty(), Constrs, sets:from_list(FixedVars)),
+    Res = tally:tally(symtab:from_types(Symtab), Constrs, sets:from_list(FixedVars)),
 
     case Res of
       [_ | _] -> 

@@ -14,7 +14,7 @@
 
 -type constr_blocks() :: list(constr_block()).
 
--type constr_block() :: {constr_error_kind(), ast:loc(), string(), constr:subty_constrs()}.
+-type constr_block() :: {constr_error_kind(), ast:loc(), string(), constr:collected_constrs()}.
 
 -spec loc_of_block(constr_block()) -> ast:loc().
 loc_of_block({_, L, _, _}) -> L.
@@ -43,6 +43,7 @@ simp_constrs_to_blocks(Ds) ->
 simp_constr_to_blocks(D) ->
     case D of
         {scsubty, L, _, _} -> [{tyerror, L, "subty", utils:single(D)}];
+        {scmater, L, _T, _Alpha} -> [{tyerror, L, "subty", utils:single(D)}];
         {sccase, {_LocScrut, DsScrut}, {LocExhaus, DsExhaust}, Branches} ->
             BranchBlocks =
                 utils:concat_map(Branches,

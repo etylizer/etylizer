@@ -72,6 +72,10 @@ parse_args(Args) ->
             "Change the mode of how to check for exhaustiveness. Currently, " ++
             "the checker can either globally enable or disable exhaustiveness." ++
             "Default: enabled (enabled, disabled)."},
+         {gradual_mode, undefined, "gradual-mode", string,
+            "Choose how to handle functions without type specs. " ++
+            "'dynamic' assigns dynamic types, 'infer' infers types. " ++
+            "Default: dynamic (dynamic, infer)."},
          {only, $o, "only", string,
             "Only type check these functions (given as module:name/arity or name/arity or just the name)"},
          {ignore, $i, "ignore", string,
@@ -83,7 +87,9 @@ parse_args(Args) ->
          {log_level,  $l,   "level",    string,
             "Minimal log level (trace2,trace,debug,info,note,warn)"},
          {type_overlay, undefined, "type-overlay", string,
-            "Overlays for fun and type specs"}
+            "Overlays for fun and type specs"},
+        {check_exports, undefined, "check-exports", undefined,
+            "Check that all exported functions have a type spec."}
         ],
     Opts = case getopt:parse(OptSpecList, Args) of
         {error, {Reason, Data}} ->
@@ -122,7 +128,11 @@ parse_args(Args) ->
                         {exhaustiveness_mode, "enabled"} -> Opts#opts{ exhaustiveness_mode = enabled };
                         {exhaustiveness_mode, "disabled"} -> Opts#opts{ exhaustiveness_mode = disabled };
                         {exhaustiveness_mode, M} -> utils:quit(2, "Invalid exhaustiveness mode: " ++ M ++ "~n");
+                        {gradual_mode, "dynamic"} -> Opts#opts{ gradual_typing_mode = dynamic };
+                        {gradual_mode, "infer"} -> Opts#opts{ gradual_typing_mode = infer };
+                        {gradual_mode, M} -> utils:quit(2, "Invalid gradual mode: " ++ M ++ "~n");
                         no_deps -> Opts#opts{ no_deps = true };
+                        check_exports -> Opts#opts{ check_exports = true };
                         {type_overlay, S} -> Opts#opts{ type_overlay = S };
                         help -> Opts#opts{ help = true }
                     end
@@ -157,7 +167,7 @@ doWork(Opts) ->
       ?LOG_TRACE("Check if espresso executable is available"),
       {ok, _} = file:read_file_info(get_espresso_binary()),
 
-      ?LOG_INFO("Initializing ETS tables"),
+      ?LOG_TRACE("Initializing ETS tables"),
       parse_cache:init(Opts),
       stdtypes:init(),
       try
@@ -183,7 +193,7 @@ doWork(Opts) ->
                       % only typecheck the files given
                       cm_depgraph:new(SourceList);
                   false ->
-                      ?LOG_NOTE("Entry points: ~p, now building dependency graph", SourceList),
+                      ?LOG_DEBUG("Entry points: ~p, now building dependency graph", SourceList),
                       G = cm_depgraph:build_dep_graph(
                           SourceList,
                           SearchPath),
@@ -219,7 +229,7 @@ get_espresso_binary() ->
 main(Args) ->
     Opts = parse_args(Args),
     log:init(Opts#opts.log_level),
-    ?LOG_INFO("Parsed commandline options as ~200p", Opts),
+    ?LOG_DEBUG("Parsed commandline options as ~200p", Opts),
     try doWork(Opts)
     catch throw:{etylizer, K, Msg}:S ->
             Raw = erl_error:format_exception(throw, K, S),

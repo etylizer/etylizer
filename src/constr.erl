@@ -10,6 +10,7 @@
     constr/0,
     constr_subty/0,
     constr_var/0,
+    constr_var_mater/0,
     constr_def/0,
     constr_case_branch/0,
     case_branch_payload/0,
@@ -19,9 +20,12 @@
     simp_constr/0,
     simp_constrs_loc/0,
     simp_constr_subty/0,
+    simp_constr_mater/0,
     simp_constr_case/0,
     simp_constr_case_branch/0,
-    subty_constrs/0
+    subty_constrs/0,
+    collected_constrs/0,
+    mater_constrs/0
 ]).
 
 -export([
@@ -39,15 +43,18 @@
 
 % Constraints
 -type constrs() :: sets:set(constr()).
--type constr() :: constr_subty() | constr_var() | constr_op() | constr_def()
+-type constr() :: constr_subty() | constr_var() | constr_var_mater() | constr_op() | constr_def()
                 | constr_case().
 
 -type simp_constrs() :: sets:set(simp_constr()).
 -type simp_constrs_loc() :: {ast:loc(), simp_constrs()}.
--type simp_constr() :: simp_constr_subty() | simp_constr_case().
+-type simp_constr() :: simp_constr_subty() | simp_constr_mater() | simp_constr_case().
 -type subty_constrs() :: sets:set(constr:simp_constr_subty()).
+-type collected_constrs() :: sets:set(simp_constr_subty() | simp_constr_mater()).
+-type mater_constrs() :: sets:set(simp_constr_mater()).
 
 -type simp_constr_subty() :: {scsubty, ast:loc(), ast:ty(), ast:ty()}.
+-type simp_constr_mater() :: {scmater, ast:loc(), ast:ty(), ast:ty_varname()}.
 -type simp_constr_case() ::
     {sccase, Scrutiny::simp_constrs_loc(), Exhaustiveness::simp_constrs_loc(),
         [simp_constr_case_branch()]}.
@@ -58,6 +65,7 @@
 
 -type constr_subty() :: {csubty, locs(), ast:ty(), ast:ty()}.
 -type constr_var() :: {cvar, locs(), ast:any_ref(), ast:ty()}.
+-type constr_var_mater() :: {cvarmater, locs(), ast:any_ref(), ast:ty_varname()}.
 -type constr_op() :: {cop, locs(), atom(), arity(), ast:ty()}.
 -type constr_def() :: {cdef, locs(), constr_env(), constrs()}.
 
@@ -66,6 +74,7 @@ locs_of_constr(C) ->
     case C of
         {csubty, Locs, _, _} -> Locs;
         {cvar, Locs, _, _} -> Locs;
+        {cvarmater, Locs, _, _} -> Locs;
         {cop, Locs, _, _, _} -> Locs;
         {cdef, Locs, _, _} -> Locs;
         {ccase, Locs, _, _, _} -> Locs

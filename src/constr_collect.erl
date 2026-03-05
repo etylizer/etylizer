@@ -20,16 +20,17 @@
   
 % Collect all constraints but ignore all branch matching condition constraints.
 % Always return the body constraints for the branches.
--spec collect_constrs_no_matching_cond(constr:simp_constrs()) -> constr:subty_constrs().
+-spec collect_constrs_no_matching_cond(constr:simp_constrs()) -> constr:collected_constrs().
 collect_constrs_no_matching_cond(Ds) -> collect_constrs_no_matching_cond(Ds, sets:new([{version, 2}])).
 
--spec collect_constrs_no_matching_cond(constr:simp_constrs(), constr:subty_constrs())
-    -> constr:subty_constrs().
+-spec collect_constrs_no_matching_cond(constr:simp_constrs(), constr:collected_constrs())
+    -> constr:collected_constrs().
 collect_constrs_no_matching_cond(Ds, OuterAcc) ->
     lists:foldl(
         fun (D, InnerAcc1) ->
             case D of
                 {scsubty, _, _, _} -> sets:add_element(D, InnerAcc1);
+                {scmater, _, _, _} -> sets:add_element(D, InnerAcc1);
                 {sccase, {_, DsScrut}, {_, DsExhaust}, Branches} ->
                     lists:foldl(
                         fun ({sccase_branch, {_, Guards}, _Cond, {_, Body}, {_, Result}}, InnerAcc2) ->
@@ -45,17 +46,18 @@ collect_constrs_no_matching_cond(Ds, OuterAcc) ->
         OuterAcc,
         sets:to_list(Ds)).
 
--spec collect_matching_cond_constrs(constr:simp_constrs()) -> list({ast:loc(), constr:subty_constrs()}).
+-spec collect_matching_cond_constrs(constr:simp_constrs()) -> list({ast:loc(), constr:collected_constrs()}).
 collect_matching_cond_constrs(Ds) -> collect_matching_cond_constrs(Ds, []).
 
 % Collect only the matching condition constraints.
--spec collect_matching_cond_constrs(constr:simp_constrs(), list({ast:loc(), constr:subty_constrs()}))
-    -> list({ast:loc(), constr:subty_constrs()}).
+-spec collect_matching_cond_constrs(constr:simp_constrs(), list({ast:loc(), constr:collected_constrs()}))
+    -> list({ast:loc(), constr:collected_constrs()}).
 collect_matching_cond_constrs(Ds, OuterAcc) ->
     lists:reverse(lists:foldl(
         fun (D, InnerAcc1) ->
             case D of
                 {scsubty, _, _, _} -> InnerAcc1;
+                {scmater, _, _, _} -> InnerAcc1;
                 {sccase, {_, DsScrut}, {_, DsExhaust}, Branches} ->
                     lists:foldl(
                         fun ({sccase_branch, {_, Guards}, Cond, {_, Body}, {_, Result}}, InnerAcc2) ->
@@ -76,7 +78,7 @@ collect_matching_cond_constrs(Ds, OuterAcc) ->
         OuterAcc,
         sets:to_list(Ds))).
 
--type all_combinations() :: [{sets:set(ast:loc()), constr:subty_constrs()}].
+-type all_combinations() :: [{sets:set(ast:loc()), constr:collected_constrs()}].
 
 % Collects all possible combinations of constraints "branch taken" / "branch not taken".
 % Each combination has attached the set of locations of branches not taken.
@@ -88,6 +90,8 @@ collect_constrs_all_combinations(Ds) ->
 collect_constr_all_combinations(D) ->
     case D of
         {scsubty, _, _, _} ->
+            [{sets:new([{version, 2}]), utils:single(D)}];
+        {scmater, _, _, _} ->
             [{sets:new([{version, 2}]), utils:single(D)}];
         {sccase, {_, DsScrut}, {_, DsExhaust}, Branches} ->
             ScrutCombs = collect_constrs_all_combinations(DsScrut),

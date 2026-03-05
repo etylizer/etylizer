@@ -11,11 +11,13 @@
 
 -export([
     apply/3,
+    apply_base/2,
     from_list/1,
     empty/0,
     extend/3,
     mk_tally_subst/2,
     base_subst/1,
+    collect_vars/4,
     clean_cons/3
 ]).
 
@@ -37,10 +39,19 @@ base_subst({tally_subst, S, _}) -> S;
 base_subst(S) -> S.
 
 -spec clean(ast:ty(), sets:set(ast:ty_varname()), term()) -> ast:ty().
-clean(T, Fixed, SymTab) -> clean(T, Fixed, SymTab, #{}).
+clean(T, Fixed, SymTab) ->
+    % clean
+    Cleaned = clean_type(T, Fixed, SymTab),
+    % simplify by converting into internal type and back (processes any() and none() replacements)
+    Res = ty_parser:unparse(X = ty_parser:parse(Cleaned)),
+    % FIXME remove sanity at some point
+    true = ty_node:leq(X, ty_parser:parse(T)),
+    Res.
 
 clean_cons(CList, Fixed, SymTab) ->
-    VarPositions = collect_vars_clist(CList, 0, #{}, Fixed, SymTab, #{}),
+    Unfold = fun(Ty) -> ast_utils:unfold_ty(SymTab, Ty) end,
+    UnfoldedCList = [{Unfold(C1), Unfold(C2)} || {C1, C2} <- CList],
+    VarPositions = collect_vars_clist(UnfoldedCList, 0, #{}, Fixed),
 
     Apply = fun(Ty) -> maps:fold(
         fun(VariableName, VariablePositions, Tyy) ->
@@ -53,16 +64,6 @@ clean_cons(CList, Fixed, SymTab) ->
             end,
 
     [{Apply(C1), Apply(C2)} || {C1, C2} <- CList].
-
--spec clean(ast:ty(), sets:set(ast:ty_varname()), term(), term()) -> ast:ty().
-clean(T, Fixed, SymTab, Memo) ->
-    % clean
-    Cleaned = clean_type(T, Fixed, SymTab, Memo),
-    % simplify by converting into internal type and back (processes any() and none() replacements)
-    Res = ty_parser:unparse(X = ty_parser:parse(Cleaned)),
-    % FIXME remove sanity at some point
-    true = ty_node:leq(X, ty_parser:parse(T)),
-    Res.
 
 -type clean_mode() :: {clean, symtab:t()} | no_clean.
 
@@ -141,11 +142,12 @@ empty() -> #{}.
 -spec mk_tally_subst(sets:set(ast:ty_varname()), base_subst()) -> t().
 mk_tally_subst(Fixed, Base) -> {tally_subst, Base, Fixed}.
 
-clean_type(Ty, Fix, SymTab, Memo) ->
+clean_type(Ty, Fix, SymTab) ->
     %% collect ALL vars in all positions
     %% if a var is only in co variant position, replace with 0
     %% if a var is only in contra variant position, replace with 1
-    VarPositions = collect_vars(Ty, 0, #{}, Fix, SymTab, Memo),
+    UnfoldedTy = ast_utils:unfold_ty(SymTab, Ty),
+    VarPositions = collect_vars(UnfoldedTy, 0, #{}, Fix),
 
     NoVarsDnf = maps:fold(
         fun(VariableName, VariablePositions, Tyy) ->
@@ -170,64 +172,57 @@ clean_type(Ty, Fix, SymTab, Memo) ->
 combine_vars(_K, V1, V2) ->
     lists:uniq(V1 ++ V2).
 
-collect_vars_clist(L, CPos, Pos, Fix, SymTab, Memo) when is_list(L) ->
-    lists:foldl(fun({C1, C2}, Acc) -> 
-        M1 = collect_vars(C1, CPos, Acc, Fix, SymTab, Memo),
-        M2 = collect_vars(C2, 1-CPos, Acc, Fix, SymTab, Memo),
+% Operates on unfolded types (named types already resolved, recursive refs are {ty_hole}).
+% Callers must unfold via ast_utils:unfold_ty/2 before calling.
+collect_vars_clist(L, CPos, Pos, Fix) when is_list(L) ->
+    lists:foldl(fun({C1, C2}, Acc) ->
+        M1 = collect_vars(C1, CPos, Acc, Fix),
+        M2 = collect_vars(C2, 1-CPos, Acc, Fix),
         maps:merge_with(fun combine_vars/3, M1, M2)
                 end, Pos, L).
 
-collect_vars(M = {map, _}, CPos, Pos, Fix, SymTab, Memo) ->
-    collect_vars(ty_parser:rewrite_map_to_representation(M), CPos, Pos, Fix, SymTab, Memo);
-collect_vars({K, Components}, CPos, Pos, Fix, SymTab, Memo) when K == union; K == intersection; K == tuple ->
-    VPos = lists:map(fun(Ty) -> collect_vars(Ty, CPos, Pos, Fix, SymTab, Memo) end, Components),
+collect_vars(M = {map, _}, CPos, Pos, Fix) ->
+    collect_vars(ty_parser:rewrite_map_to_representation(M), CPos, Pos, Fix);
+collect_vars({K, Components}, CPos, Pos, Fix) when K == union; K == intersection; K == tuple ->
+    VPos = lists:map(fun(Ty) -> collect_vars(Ty, CPos, Pos, Fix) end, Components),
     lists:foldl(fun(FPos, Current) -> maps:merge_with(fun combine_vars/3, FPos, Current) end, #{}, VPos);
-collect_vars({fun_full, Components, Target}, CPos, Pos, Fix, SymTab, Memo) ->
-    VPos = lists:map(fun(Ty) -> collect_vars(Ty, 1 - CPos, Pos, Fix, SymTab, Memo) end, Components),
+collect_vars({fun_full, Components, Target}, CPos, Pos, Fix) ->
+    VPos = lists:map(fun(Ty) -> collect_vars(Ty, 1 - CPos, Pos, Fix) end, Components),
     M1 = lists:foldl(fun(FPos, Current) -> maps:merge_with(fun combine_vars/3, FPos, Current) end, #{}, VPos),
-    M2 = collect_vars(Target, CPos, Pos, Fix, SymTab, Memo),
+    M2 = collect_vars(Target, CPos, Pos, Fix),
     maps:merge_with(fun combine_vars/3, M1, M2);
-collect_vars({negation, Ty}, CPos, Pos, Fix, SymTab, Memo) -> collect_vars(Ty, 1 - CPos, Pos, Fix, SymTab, Memo);
-collect_vars({predef, _}, _CPos, Pos, _, _, _) -> Pos;
-collect_vars({predef_alias, _}, _CPos, Pos, _, _, _) -> Pos;
-collect_vars({singleton, _}, _CPos, Pos, _, _, _) -> Pos;
-collect_vars({range, _, _}, _CPos, Pos, _, _, _) -> Pos;
-collect_vars({_, any}, _CPos, Pos, _, _, _) -> Pos;
-collect_vars({empty_list}, _CPos, Pos, _, _, _) -> Pos;
-collect_vars({bitstring}, _CPos, Pos, _, _, _) -> Pos;
-collect_vars({map_any}, _CPos, Pos, _, _, _) -> Pos;
-collect_vars({tuple_any}, _CPos, Pos, _, _, _) -> Pos;
-collect_vars({fun_simple}, _CPos, Pos, _, _, _) -> Pos;
-collect_vars({mu_var, _Name}, _CPos, Pos, _, _, _) -> Pos;
-collect_vars({nonempty_improper_list, A, B}, CPos, Pos, Fix, SymTab, Memo) ->
-    M1 = collect_vars(A, CPos, Pos, Fix, SymTab, Memo),
-    M2 = collect_vars(B, CPos, Pos, Fix, SymTab, Memo),
+collect_vars({negation, Ty}, CPos, Pos, Fix) -> collect_vars(Ty, 1 - CPos, Pos, Fix);
+collect_vars({predef, _}, _CPos, Pos, _) -> Pos;
+collect_vars({predef_alias, _}, _CPos, Pos, _) -> Pos;
+collect_vars({singleton, _}, _CPos, Pos, _) -> Pos;
+collect_vars({range, _, _}, _CPos, Pos, _) -> Pos;
+collect_vars({_, any}, _CPos, Pos, _) -> Pos;
+collect_vars({empty_list}, _CPos, Pos, _) -> Pos;
+collect_vars({bitstring}, _CPos, Pos, _) -> Pos;
+collect_vars({map_any}, _CPos, Pos, _) -> Pos;
+collect_vars({tuple_any}, _CPos, Pos, _) -> Pos;
+collect_vars({fun_simple}, _CPos, Pos, _) -> Pos;
+collect_vars({mu_var, _Name}, _CPos, Pos, _) -> Pos;
+collect_vars({ty_hole}, _CPos, Pos, _) -> Pos;
+collect_vars({nonempty_improper_list, A, B}, CPos, Pos, Fix) ->
+    M1 = collect_vars(A, CPos, Pos, Fix),
+    M2 = collect_vars(B, CPos, Pos, Fix),
     maps:merge_with(fun combine_vars/3, M1, M2);
-collect_vars({nonempty_list, A}, CPos, Pos, Fix, SymTab, Memo) ->
-    collect_vars(A, CPos, Pos, Fix, SymTab, Memo);
-collect_vars({list, A}, CPos, Pos, Fix, SymTab, Memo) ->
-    collect_vars(A, CPos, Pos, Fix, SymTab, Memo);
-collect_vars({named, Loc, Ref, Args}, CPos, Pos, Fix, SymTab, Memo) -> 
-    case Memo of
-        #{{Ref, Args} := []} -> Pos;
-        _ ->
-            ({ty_scheme, Vars, Ty}) = symtab:lookup_ty(Ref, Loc, SymTab),
-            Map = subst:from_list(lists:zip([V || {V, _Bound} <- Vars], Args)),
-            % we can do this since recursive variables should not descend "into" a named type
-            GotTy = subst:apply(Map, Ty, no_clean),
-            collect_vars(GotTy, CPos, Pos, Fix, SymTab, Memo#{{Ref, Args} => []})
-    end;
-collect_vars({mu, _MuVar, A}, CPos, Pos, Fix, SymTab, Memo) -> % skip recursion variables
-    collect_vars(A, CPos, Pos, Fix, SymTab, Memo); 
-collect_vars({cons, A, B}, CPos, Pos, Fix, SymTab, Memo) ->
-    M1 = collect_vars(A, CPos, Pos, Fix, SymTab, Memo),
-    M2 = collect_vars(B, CPos, Pos, Fix, SymTab, Memo),
+collect_vars({nonempty_list, A}, CPos, Pos, Fix) ->
+    collect_vars(A, CPos, Pos, Fix);
+collect_vars({list, A}, CPos, Pos, Fix) ->
+    collect_vars(A, CPos, Pos, Fix);
+collect_vars({mu, _MuVar, A}, CPos, Pos, Fix) -> % skip recursion variables
+    collect_vars(A, CPos, Pos, Fix);
+collect_vars({cons, A, B}, CPos, Pos, Fix) ->
+    M1 = collect_vars(A, CPos, Pos, Fix),
+    M2 = collect_vars(B, CPos, Pos, Fix),
     maps:merge_with(fun combine_vars/3, M1, M2);
-collect_vars({improper_list, A, B}, CPos, Pos, Fix, SymTab, Memo) ->
-    M1 = collect_vars(A, CPos, Pos, Fix, SymTab, Memo),
-    M2 = collect_vars(B, CPos, Pos, Fix, SymTab, Memo),
+collect_vars({improper_list, A, B}, CPos, Pos, Fix) ->
+    M1 = collect_vars(A, CPos, Pos, Fix),
+    M2 = collect_vars(B, CPos, Pos, Fix),
     maps:merge_with(fun combine_vars/3, M1, M2);
-collect_vars({var, Name}, CPos, Pos, Fix, _SymTab, _Memo) ->
+collect_vars({var, Name}, CPos, Pos, Fix) ->
     Z = case sets:is_element(Name, Fix) of
         true -> Pos;
         _ ->
@@ -235,7 +230,7 @@ collect_vars({var, Name}, CPos, Pos, Fix, _SymTab, _Memo) ->
             Pos#{Name => lists:uniq(AllPositions ++ [CPos])}
     end,
     Z;
-collect_vars(Ty, _, _, _, _, _) ->
+collect_vars(Ty, _, _, _) ->
     logger:error("Unhandled collect vars branch: ~p", [Ty]),
     errors:bug("Unhandled collect vars branch: ~p", [Ty]).
 

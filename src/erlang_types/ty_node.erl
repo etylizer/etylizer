@@ -398,7 +398,9 @@ unparse(Node = {node, Id}, Cache) ->
 -spec substitute(type(), #{variable() => type()}) -> type().
 substitute(Node, Varmap) ->
   T1 = ty_parser:unparse(Node),
-  Subst = #{begin {{var, Name}, _} = ty_variable:unparse(K, #{}), Name end => ty_parser:unparse(V) || K := V <- Varmap},
+  % Filter out frame variables (dynamic()) which unparse to {predef, dynamic} instead of {var, _}
+  Subst = #{begin {{var, Name}, _} = ty_variable:unparse(K, #{}), Name end => ty_parser:unparse(V)
+            || K := V <- Varmap, not ty_variable:is_frame(K)},
   Res = subst:apply(Subst, T1, no_clean),
   ty_parser:parse(Res).
 

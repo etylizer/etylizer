@@ -424,7 +424,7 @@ loc_exp(X) -> element(2, X).
 % Predefined types, including any() and none(). It's guaranteed that the predefined type
 % is valid. Predefined types do not include tuples and lists, these types have their
 % own representation.
--type predef_name() :: any | none | pid | port | reference | float | integer | atom.
+-type predef_name() :: any | none | pid | port | reference | float | integer | atom | dynamic.
 -type ty_predef() :: {predef, predef_name()}.
 
 -spec is_predef_name(atom()) -> boolean().
@@ -438,6 +438,7 @@ is_predef_name(N) ->
         float -> true;
         integer -> true;
         atom -> true;
+        dynamic -> true;
         _ -> false
     end.
 
