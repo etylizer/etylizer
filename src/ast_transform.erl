@@ -534,6 +534,10 @@ trans_exp(Ctx, Env, Exp) ->
         {op, Anno, Op, E} ->
             {NewE, NewEnv} = trans_exp(Ctx, Env, E),
             {{op, to_loc(Ctx, Anno), Op, NewE}, NewEnv};
+        {'maybe', _Anno, _Exps} ->
+            trans_maybe(Ctx, Env, Exp, none);
+        {'maybe', Anno, Exps, Else = {'else', _ElseAnno, _Cs0}} ->
+            trans_maybe(Ctx, Env, {'maybe', Anno, Exps}, Else);
         {'receive', Anno, CaseClauses} ->
             {NewClauses, NewEnv} = trans_case_clauses(Ctx, Env, CaseClauses),
             {{'receive', to_loc(Ctx, Anno), NewClauses}, NewEnv};
@@ -596,6 +600,65 @@ trans_exp(Ctx, Env, Exp) ->
             Loc = to_loc(Ctx, Anno),
             {{var, Loc, {local_ref, varenv_local:lookup(Loc, Name, Env)}}, Env};
         X -> errors:uncovered_case(?FILE, ?LINE, Ctx#ctx.path, X)
+    end.
+
+-spec mk_maybe_expr
+    (ast_erl:anno(), ast_erl:exps(), none) -> ast_erl:exp_maybe();
+    (ast_erl:anno(), ast_erl:exps(), {'else', ast_erl:anno(), [ast_erl:maybe_else_clause()]}) -> ast_erl:exp_maybe_else().
+mk_maybe_expr(A, M, none) -> {'maybe', A, M}; 
+mk_maybe_expr(A, M, Else) -> {'maybe', A, M, Else}.
+
+-spec trans_maybe(ctx(), varenv_local:t(), ast_erl:exp(), none | {'else', ast_erl:anno(), [ast_erl:maybe_else_clause()]}) -> {ast:exp(), varenv_local:t()}.
+trans_maybe(Ctx, Env, {'maybe', Anno, [Exp]}, Else) -> 
+    case Exp of
+        {'maybe_match', L, P, E} ->
+            case Else of
+                none ->
+                    % validate that P can match E's type, then return E
+                    FreshVar = {var, L, '$maybe'},
+                    SuccessClause = {clause, L, [{match, L, P, FreshVar}], [], [FreshVar]},
+                    FailClause = {clause, L, [FreshVar], [], [FreshVar]},
+                    Case = {'case', L, E, [SuccessClause, FailClause]},
+                    trans_exp(Ctx, Env, Case);
+                {'else', _ElseAnno, Cs0} ->
+                    FreshVar = {var, Anno, '$maybe'},
+                    SuccessClause = {clause, Anno, [{match, Anno, P, FreshVar}], [], [FreshVar]},
+                    Case = {'case', Anno, E, [SuccessClause | Cs0]},
+                    trans_exp(Ctx, Env, Case)
+            end;
+        _ ->
+            case Else of
+                none ->
+                    trans_exp(Ctx, Env, Exp);
+                {'else', _ElseAnno, Cs0} ->
+                    % else clauses are semantically unreachable without ?=,
+                    % but we keep them so the type checker sees all branches
+                    SuccessClause = {clause, Anno, [{var, Anno, '_'}], [], [Exp]},
+                    Case = {'case', Anno, Exp, [SuccessClause | Cs0]},
+                    trans_exp(Ctx, Env, Case)
+            end
+    end;
+trans_maybe(Ctx, Env, {'maybe', Anno, [Exp | Exps]}, Else) -> 
+    case Exp of
+        {'maybe_match', L, P, E} -> 
+            % pattern matches -> continue with remaining Exps
+            SuccessClause = {clause, L, [P], [], [mk_maybe_expr(Anno, Exps, Else)]},
+            
+            % pattern doesn't match -> return original E or do the else clauses
+            FailClauses =
+            case Else of
+                % need to create a fresh variable to avoid binding variables by accident
+                none ->
+                    FreshVar = {var, L, '$maybe'},
+                    [{clause, L, [FreshVar], [], [FreshVar]}];
+                {'else', _ElseAnno, Cs0} -> Cs0
+            end,
+            NewExp = {'case', L, E, [SuccessClause | FailClauses]},
+            trans_exp(Ctx, Env, NewExp);
+        _ -> 
+            NewExp = {block, Anno, [Exp, mk_maybe_expr(Anno, Exps, Else)]},
+            % not a maybe match, then it's just a block
+            trans_exp(Ctx, Env, NewExp)
     end.
 
 -spec trans_exp_bin_elem(ctx(), varenv_local:t(), ast_erl:exp_bitstring_elem()) ->
@@ -895,3 +958,4 @@ arity(Loc, L) ->
     if Len < 256 -> Len;
        true -> errors:ty_error(Loc, "too many arguments: ~w", Len)
     end.
+

@@ -64,6 +64,7 @@
     exp_map_update/0,
     exp_map_compr/0,
     exp_match/0,
+    exp_maybe_match/0,
     exp_nil/0,
     exp_binop/0,
     exp_unop/0,
@@ -76,6 +77,8 @@
     exp_tuple/0,
     exp_try/0,
     exp_var/0,
+    exp_maybe/0,
+    exp_maybe_else/0,
     exp/0,
     exps/0,
     qual_list_gen/0,
@@ -95,6 +98,7 @@
     catch_clause/0,
     fun_clause/0,
     if_clause/0,
+    maybe_else_clause/0,
     guard/0,
     guard_test_bitstring_constr/0,
     guard_test_cons/0,
@@ -270,6 +274,7 @@
 -type exp_map_update() :: gen_map_update(exp()).
 -type exp_map_compr() :: {mc, anno(), map_assoc_opt(), [qualifier()]}.
 -type exp_match() :: {match, anno(), pat(), exp()}.
+-type exp_maybe_match() :: {maybe_match, anno(), pat(), exp()}.
 -type gen_nil() ::  {nil, anno()}.
 -type exp_nil() :: gen_nil().
 -type gen_binop(T) :: {op, anno(), Op::binop(), T, T}.
@@ -293,6 +298,8 @@
                     After::exps()}.
 -type gen_var() :: {var, anno(), Var::atom()}.
 -type exp_var() :: gen_var().
+-type exp_maybe() :: {'maybe', anno(), exps()}.
+-type exp_maybe_else() :: {'maybe', anno(), exps(), {'else', anno(), Clauses :: [maybe_else_clause()]}}.
 
 -type exp() :: atomic_lit() | exp_bitstring_compr() | exp_bitstring_constr() | exp_block()
     | exp_case() | exp_catch() | exp_cons() | exp_fun_ref() | exp_fun_qref() | exp_fun()
@@ -300,7 +307,8 @@
     | exp_map_create() | exp_map_update() | exp_map_compr()
     | exp_match() | exp_nil() | exp_binop() | exp_unop()
     | exp_recv() | exp_recv_after() | exp_record_create() | exp_record_access()
-    | exp_record_index() | exp_record_update() | exp_tuple() | exp_try() | exp_var().
+    | exp_record_index() | exp_record_update() | exp_tuple() | exp_try() | exp_var() 
+    | exp_maybe() | exp_maybe_else() | exp_maybe_match().
 
 -type exps() :: [exp()].
 
@@ -331,9 +339,10 @@
                                  % - P is a pattern
                                  % - S is a wildcard or variable for the stacktrace.
 
--type case_clause()  :: {clause, anno(), Pats::list1(pat()), Guards::[guard()], Body::exps()}.
--type fun_clause()   :: {clause, anno(), Pats::[pat()],      Guards::[guard()], Body::exps()}.
--type if_clause()    :: {clause, anno(), Pats::[],           Guards::[guard()], Body::exps()}.
+-type maybe_else_clause()  :: {clause, anno(), Pats::list1(pat()), Guards::[guard()], Body::exps()}.
+-type case_clause()        :: {clause, anno(), Pats::list1(pat()), Guards::[guard()], Body::exps()}.
+-type fun_clause()         :: {clause, anno(), Pats::[pat()],      Guards::[guard()], Body::exps()}.
+-type if_clause()          :: {clause, anno(), Pats::[],           Guards::[guard()], Body::exps()}.
 
 % 8.6  Guards
 -type guard() :: list1(guard_test()).
