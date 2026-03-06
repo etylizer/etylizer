@@ -115,7 +115,7 @@ more_general(Loc, Ts1, Ts2, Tab) ->
     Result =
         case SatisfyRes of
             {false, _} -> false;
-            _ -> true
+            {true, _} -> true
         end,
     ?LOG_DEBUG("T1=~s (Mono1=~s) is more general than T2=~s (Mono2=~s): ~s",
         pretty:render_tyscheme(Ts1), pretty:render_ty(Mono1),
