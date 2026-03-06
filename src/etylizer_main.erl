@@ -1,6 +1,5 @@
 -module(etylizer_main).
 -export([
-    get_espresso_binary/0,
     main/1
 ]).
 
@@ -159,14 +158,7 @@ fix_load_path(Opts) ->
 
 -spec doWork(#opts{}) -> [file:filename()].
 doWork(Opts) ->
-    % erlang_types needs to know the path of espresso
-    % save that in persistent_term
-    persistent_term:put(espresso_root, Opts#opts.espresso_root),
-
     global_state:with_new_state(fun() ->
-      ?LOG_TRACE("Check if espresso executable is available"),
-      {ok, _} = file:read_file_info(get_espresso_binary()),
-
       ?LOG_TRACE("Initializing ETS tables"),
       parse_cache:init(Opts),
       stdtypes:init(),
@@ -207,23 +199,6 @@ doWork(Opts) ->
           stdtypes:cleanup()
       end
                                 end).
-
-% different path for testing environment
--ifdef(TEST).
-get_espresso_binary() ->
-    Path = "_build/espresso",
-    {ok, _} = file:read_file_info(Path),
-    Path.
--else.
-get_espresso_binary() ->
-    Path = case (catch persistent_term:get(espresso_root)) of
-        {_, _} -> filename:join([filename:dirname(escript:script_name()), "espresso"]); % default
-        empty -> filename:join([filename:dirname(escript:script_name()), "espresso"]); % default
-        Root -> filename:join([Root, "espresso"])
-    end,
-    {ok, _} = file:read_file_info(Path),
-    Path.
--endif.
 
 -spec main([string()]) -> ok.
 main(Args) ->

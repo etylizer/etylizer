@@ -152,11 +152,6 @@ check_decls_in_files(Files, What, NoInfer) ->
 simple_test_() ->
   % The following functions are currently excluded from being tested.
   WhatNot = [
-    % TODO slow
-    "use_atom",
-    "inter_01",
-    "inter_02",
-    "inter_04_ok",
     % TODO binary pattern element size verification
     "b4_fail",
     % TODO better redundancy check detection for dynamic()
