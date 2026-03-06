@@ -61,6 +61,8 @@
     fun_types/0
 ]).
 
+-include("etylizer.hrl").
+
 %% Builtin types
 
 -spec is_tlist(ast:ty()) -> boolean().
@@ -356,8 +358,10 @@ builtin_ops() ->
                           tfun([tnonempty_list(tvar(a)), tnonempty_list(tvar(a))], tnonempty_list(tvar(a)))
                                ])
                        )},
-        {'--', 2, tyscm([a], tfun([tlist(tvar(a)), tlist(tvar(a))], tlist(tvar(a))))}
-        % {'!', 2,   FIXME
+        {'--', 2, tyscm([a], tfun([tlist(tvar(a)), tlist(tvar(a))], tlist(tvar(a))))},
+        % receiver must evaluate to a pid, an alias (reference), a port, a registered name (atom), or a tuple {Name,Node}. 
+        % Name is an atom and Node is a node name, also an atom.
+        {'!', 2, tyscm([a], tfun([tunion([{predef, pid}, {predef, reference}, {predef, port}, {predef, atom}, {tuple, [{predef, atom}, {predef, atom}]}]), tvar(a)], tvar(a)))}
     ].
 
 %% Types for builtin functions
@@ -393,13 +397,13 @@ builtin_funs() ->
         _ -> ok
     end,
     Dir = utils:assert_no_error(code:lib_dir(erts)),
-    Path = filename:join([Dir, "src", "erlang.erl"]),
-    Hash = utils:hash_file(Path),
+    Path = ?assert_type(filename:join([Dir, "src", "erlang.erl"]), string()),
+    Hash = utils:assert_no_error( utils:hash_file(Path)),
     case ets:lookup(?TABLE, Key) of
-        [{_, {StoredHash, Result}}] when Hash =:= StoredHash -> Result;
+        [{_, {StoredHash, Result}}] when Hash =:= StoredHash -> ?assert_type(Result, fun_types());
         [] ->
             X = mk_builtin_funs(Path),
-            true = ets:insert(?TABLE, {Key, {Hash, X}}),
+            ets:insert(?TABLE, {Key, {Hash, X}}),
             X;
         Y -> ?ABORT("Unexpected entry in stdtypes_table: ~p", Y)
     end.
