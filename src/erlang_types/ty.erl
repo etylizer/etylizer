@@ -2,12 +2,12 @@
 
 -compile([export_all, nowarn_export_all]).
 
+-include("erlang_types.hrl").
+
 -export_type([type/0]).
 
 -type type() :: ty_node:type().
--type monomorphic_variables() :: etally:monomorphic_variables().
 -type set_of_constraint_sets() :: constraint_set:set_of_constraint_sets().
--type variable() :: ty_variable:type().
 
 -spec compare(T, T) -> eq | lt | gt when T :: type().
 compare(A, B) -> ty_node:compare(A, B).

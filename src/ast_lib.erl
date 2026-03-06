@@ -54,6 +54,7 @@ mk_intersection(Tys) ->
             end
     end.
 
+-spec mk_diff(ast:ty(), ast:ty()) -> ast:ty().
 mk_diff(T1, T2) ->
    mk_intersection([T1, mk_negation(T2)]).
 

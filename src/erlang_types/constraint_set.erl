@@ -2,10 +2,24 @@
 
 -define(LAZY(Term), fun() -> Term end).
 
+% utility
+-export([
+    sat/0,
+    unsat/0,
+    singleton/1,
+    len/1,
+    map/2,
+    fold/3,
+    any/2,
+    all/2,
+    filter/2
+]).
+
 -export([
   meet/3,
   join/3,
-  saturate/3
+  saturate/3,
+  is_trivial_sat/1
 ]).
 
 -export_type([
@@ -13,13 +27,51 @@
   constraint_set/0
 ]).
 
-% not opaque: we match on unsatisfiable and satisfiable constraint sets [] and [[]]
--type set_of_constraint_sets() :: [constraint_set()].
--type monomorphic_variables() :: etally:monomorphic_variables().
--type constraint_set() :: [constraint()].
--type constraint() :: {ty_variable:type(), ty:type(), ty:type()}.
+% API
+-include("constraints.hrl").
+-include("etylizer.hrl").
+
 -type cache() :: #{ty:type() => []}.
 
+
+-spec is_trivial_sat(set_of_constraint_sets()) -> boolean().
+is_trivial_sat([[]]) -> true;
+is_trivial_sat(_) -> false.
+
+-spec sat() -> set_of_constraint_sets().
+sat() -> [[]].
+
+-spec unsat() -> set_of_constraint_sets().
+unsat() -> [].
+
+-spec singleton(constraint_set()) -> set_of_constraint_sets().
+singleton(Cs) -> [Cs].
+
+-spec len(set_of_constraint_sets()) -> non_neg_integer().
+len(Cs) -> length(Cs).
+
+-spec fold(fun((constraint_set(), Acc) -> Acc), Acc, S) -> Acc when S :: set_of_constraint_sets().
+fold(F, Accumulator, Socs) ->
+    lists:foldl(fun(Cs, Acc) -> F(Cs, Acc) end, Accumulator, Socs).
+
+-spec map(fun((constraint_set()) -> B), S) -> [B] when S :: set_of_constraint_sets().
+map(F, Socs) ->
+    lists:map(fun(Cs) -> F(Cs) end, Socs).
+
+-spec any(fun((constraint_set()) -> boolean()), set_of_constraint_sets()) -> boolean().
+any(Pred, Socs) ->
+    lists:any(Pred, Socs).
+
+-spec all(fun((constraint_set()) -> boolean()), set_of_constraint_sets()) -> boolean().
+all(Pred, Socs) ->
+    lists:all(Pred, Socs).
+
+-spec filter(fun((constraint_set()) -> boolean()), S) -> S when S :: set_of_constraint_sets().
+filter(Pred, Socs) ->
+    lists:filter(Pred, Socs).
+
+
+% sets of constraint sets
 
 -spec meet(S, S, monomorphic_variables()) -> S when S :: set_of_constraint_sets().
 meet([], _, _) -> [];
@@ -71,10 +123,13 @@ join(_Set1, [[]], _Fixed) -> [[]];
 join([], Set, _Fixed) -> Set;
 join(Set, [], _Fixed) -> Set;
 join(S1, S2, Fixed) ->
-  MayAdd = fun (S, Con) -> (not is_unsatisfiable(Con, Fixed)) andalso (not (has_smaller_constraint(Con, S))) end,
-  S22 = lists:filter(fun(C) -> MayAdd(S1, C) end, S2),
-  S11 = lists:filter(fun(C) -> MayAdd(S22, C) end, S1),
+  S22 = lists:filter(fun(Cs) -> may_add(S1, Cs, Fixed) end, S2),
+  S11 = lists:filter(fun(Cs) -> may_add(S22, Cs, Fixed) end, S1),
   assert_all_cs_sorted((lists:usort(S11 ++ S22))).
+
+-spec may_add(set_of_constraint_sets_rep(), constraint_set(), monomorphic_variables()) -> boolean().
+may_add(S, Con, Fixed) ->
+    (not is_unsatisfiable(Con, Fixed)) andalso (not (has_smaller_constraint(Con, S))).
 
 % step 2. from merge phase
 % step 1. happens by construction automatically
@@ -95,29 +150,36 @@ saturate(C, FixedVariables, Cache) ->
   end.
 
 % helper functions
--spec join_constraint_sets(Cs, Cs, monomorphic_variables()) -> unsatisfiable | Cs when Cs :: constraint_set().
+-spec join_constraint_sets(Cs, Cs, monomorphic_variables()) -> Cs when Cs :: constraint_set().
 join_constraint_sets([], L, _) -> L;
 join_constraint_sets(L, [], _) -> L;
 join_constraint_sets(LeftAll = [NextLeft = {V1, T1, T2} | C1], RightAll = [NextRight = {V2, S1, S2} | C2], Fixed) ->
-  ReturnIfUnsat = fun (_Cs, unsatisfiable) -> unsatisfiable; (Cs, Other) -> Cs ++ Other end,
+  % ReturnIfUnsat = fun (_Cs, unsatisfiable) -> unsatisfiable; (Cs, Other) -> Cs ++ Other end,
   case ty_variable:compare(V1, V2) of
     eq ->
-      Lower = ty:union(T1, S1),
-      Upper = ty:intersect(T2, S2),
-      ReturnIfUnsat([{V1, Lower, Upper}], join_constraint_sets(C1, C2, Fixed));
-      % TODO user_04 is much slower because a lot of ty:normalize checks are used, investigate
-      % if the new lower bound is not subtype of the new upper bound, 
-      % the whole constraint set is unsatisfiable
-      % we can't use a subtype check here, as we need to consider polymorphic variables properly
-      % case ty:normalize(ty:difference(Lower, Upper), Fixed) of
-      %   [] -> unsatisfiable;
-      %   _ -> ReturnIfUnsat([{V1, Lower, Upper}], join_constraint_sets(C1, C2, Fixed))
-      % end;
+      join_var_eq(V1, T1, S1, T2, S2, C1, C2, Fixed);
     lt ->
-      ReturnIfUnsat([NextLeft], join_constraint_sets(C1, RightAll, Fixed));
+      % ReturnIfUnsat([NextLeft], join_constraint_sets(C1, RightAll, Fixed));
+      [NextLeft] ++ join_constraint_sets(C1, RightAll, Fixed);
     gt ->
-      ReturnIfUnsat([NextRight], join_constraint_sets(C2, LeftAll, Fixed))
+      % ReturnIfUnsat([NextRight], join_constraint_sets(C2, LeftAll, Fixed))
+      [NextRight] ++ join_constraint_sets(C2, LeftAll, Fixed)
   end.
+
+-spec join_var_eq(variable(), Ty, Ty, Ty, Ty, Cs, Cs, monomorphic_variables()) -> Cs when Ty :: ty:type(), Cs :: constraint_set().
+join_var_eq(Var, T1, S1, T2, S2, C1, C2, Fixed) ->
+  Lower = ty:union(T1, S1),
+  Upper = ty:intersect(T2, S2),
+  %ReturnIfUnsat([{Var, Lower, Upper}], join_constraint_sets(C1, C2, Fixed)).
+  [{Var, Lower, Upper}] ++ join_constraint_sets(C1, C2, Fixed).
+  % TODO user_04 is much slower because a lot of ty:normalize checks are used, investigate
+  % if the new lower bound is not subtype of the new upper bound, 
+  % the whole constraint set is unsatisfiable
+  % we can't use a subtype check here, as we need to consider polymorphic variables properly
+  % case ty:normalize(ty:difference(Lower, Upper), Fixed) of
+  %   [] -> unsatisfiable;
+  %   _ -> ReturnIfUnsat([{V1, Lower, Upper}], join_constraint_sets(C1, C2, Fixed))
+  % end;
 
 -spec is_unsatisfiable
   (constraint(), monomorphic_variables()) -> boolean();
@@ -175,16 +237,19 @@ pick_bounds_in_c([{Var, S, T} | Cs], Memo) ->
 
 -spec minimize(S) -> S when S :: set_of_constraint_sets().
 minimize(S) -> minimize(S, S).
+
+-spec minimize(S, S) -> S when S :: set_of_constraint_sets().
 minimize([], Result) -> Result;
 minimize([Cs | Others], All) ->
   NewS = All -- [Cs],
   case has_smaller_constraint(Cs, NewS) of
     true ->
-      true = length(NewS) < length(All),
+      ?assert_pattern(true, length(NewS) < length(All)),
       minimize(NewS, NewS);
     _ -> minimize(Others, All)
   end.
 
+-spec assert_all_cs_sorted(S) -> S when S :: set_of_constraint_sets().
 assert_all_cs_sorted(S) ->
     % Verify all constraint sets are sorted by sorting them and checking for equality
     lists:foreach(fun(ConstraintSet) ->
@@ -218,7 +283,7 @@ smaller_test() ->
     Beta = ty_variable:new_with_name(beta),
     C1 = [{Beta, ty:empty(), ty:empty()}],
     % β < α according to variable order and constraint sets are ordered
-    C2 = [{Beta, ty:empty(), ty:empty()}, {Alpha, Beta, ty:any()}],
+    C2 = [{Beta, ty:empty(), ty:empty()}, {Alpha, ty:variable(Beta), ty:any()}],
 
     true = is_smaller(C1, C2),
     false = is_smaller(C2, C1)
