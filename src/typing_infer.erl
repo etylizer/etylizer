@@ -40,7 +40,7 @@ infer(Ctx, Decls) ->
         case Decls of
             [{function, L, _, _, _} | _] -> L
         end,
-    {Cs, Env} = constr_gen:gen_constrs_fun_group(Ctx#ctx.exhaustiveness_mode, Ctx#ctx.symtab, Decls),
+    {Cs, Env} = constr_gen:gen_constrs_fun_group(Ctx#ctx.exhaustiveness_mode, Ctx#ctx.symtab, Ctx#ctx.disable_exhaustiveness, Decls),
     case Ctx#ctx.sanity of
         {ok, TyMap} -> constr_gen:sanity_check(Cs, TyMap);
         error -> ok
@@ -115,7 +115,7 @@ more_general(Loc, Ts1, Ts2, Tab) ->
     Result =
         case SatisfyRes of
             {false, _} -> false;
-            _ -> true
+            {true, _} -> true
         end,
     ?LOG_DEBUG("T1=~s (Mono1=~s) is more general than T2=~s (Mono2=~s): ~s",
         pretty:render_tyscheme(Ts1), pretty:render_ty(Mono1),

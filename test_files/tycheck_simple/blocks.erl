@@ -29,3 +29,19 @@ block_02_fail() ->
 block_03() ->
     _ = 1 + 3,
     _ = 4.
+
+% #22
+-spec block_04() -> boolean().
+block_04() ->
+    begin
+        A = 1,
+        is_integer(A)
+    end
+        orelse
+        is_float(A).
+
+% #230
+-spec block_05() -> any().
+block_05() ->
+    Now = {_Mega, _Sec, _Micro} = erlang:timestamp(),
+    Now.

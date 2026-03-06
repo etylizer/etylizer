@@ -15,14 +15,15 @@
 ]).
 
 -export_type([type/0]).
+
+-include("erlang_types.hrl").
+-include("etylizer.hrl").
+
 -type type() :: {ty_function, [?NODE:type()], ?NODE:type()}.
--type ast_ty() :: ast:ty().
--type all_variables_cache() :: ?NODE:all_variables_cache().
--type variable() :: ty_variable:type().
 
 -spec compare(type(), type()) -> lt | gt | eq.
 compare({ty_function, Domains1, Codomain1}, {ty_function, Domains2, Codomain2}) ->
-  true = length(Domains1) =:= length(Domains2),
+  ?assert_pattern(true, length(Domains1) =:= length(Domains2)),
   utils:compare(
     fun(Node1, Node2) -> 
       ?NODE:compare(Node1, Node2) end,
@@ -46,7 +47,7 @@ domain({ty_function, Domains, _}) ->
 -spec codomain(type()) -> ?NODE:type().
 codomain({ty_function, _, Codomain}) when not is_list(Codomain) -> Codomain.
 
--spec unparse(type(), T) -> {ast_ty(), T}.
+-spec unparse(type(), T) -> {ast_ty(), T} when T :: unparse_cache().
 unparse({ty_function, Refs, Codomain}, ST0) ->
   {All, ST3} = lists:foldl(
                  fun(R, {Cs, ST1}) -> {C, ST2} = ty_node:unparse(R, ST1), {Cs ++ [C], ST2} end, 

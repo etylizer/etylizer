@@ -49,7 +49,7 @@ check_all_report(Ctx, FileName, Env, Decls) ->
 
 % Checks a function against its spec, skips timeouts and does not report errors.
 -spec check_report(ctx(), ast:fun_decl(), ast:ty_scheme()) -> success | timeout.
-check_report(Ctx, Decl = {function, Loc, Name, Arity, _}, PolyTy) ->
+check_report(Ctx, Decl = {function, Loc, Name, Arity, Clauses}, PolyTy) ->
     ?LOG_INFO("Type checking ~w/~w at ~s against type ~s",
               Name, Arity, ast:format_loc(Loc), pretty:render_tyscheme(PolyTy)),
     Timeout = Ctx#ctx.report_timeout,
@@ -76,7 +76,8 @@ check_report(Ctx, Decl = {function, Loc, Name, Arity, _}, PolyTy) ->
                     end
               end,
               AltTys),
-            UnmatchedEverywhere = sets:intersection(UnmatchedList),
+
+            UnmatchedEverywhere = intersect_unmatched(Clauses, UnmatchedList),
             case sets:to_list(UnmatchedEverywhere) of
                 [] -> success;
                 [First | _Rest] -> report_tyerror(FunStr, redundant_branch, First, "")
@@ -109,7 +110,7 @@ check_all(Ctx, FileName, Env, Decls) ->
     end.
 
 % Ensures that a mono type used as a spec is supported. Throws a ty_error if not.
--spec ensure_type_supported(ast:loc(), ast:ty()) -> ok.
+-spec ensure_type_supported(ast:loc(), ast:ty()) -> _.
 ensure_type_supported(Loc, T) ->
     utils:everywhere(
         fun(InnerT) ->
@@ -130,7 +131,7 @@ ensure_type_supported(Loc, T) ->
 % The type scheme comes from a type annotation, that it has the form
 % FORALL A . T1 /\ ... /\/ Tn where the Ti are function types
 -spec check(ctx(), ast:fun_decl(), ast:ty_scheme()) -> ok.
-check(Ctx, Decl = {function, Loc, Name, Arity, _}, PolyTy) ->
+check(Ctx, Decl = {function, Loc, Name, Arity, Clauses}, PolyTy) ->
     ?LOG_INFO("Type checking ~w/~w at ~s against type ~s",
               Name, Arity, ast:format_loc(Loc), pretty:render_tyscheme(PolyTy)),
     FunStr = utils:sformat("~w/~w", Name, Arity),
@@ -162,7 +163,8 @@ check(Ctx, Decl = {function, Loc, Name, Arity, _}, PolyTy) ->
             end
       end,
       AltTys),
-    UnmatchedEverywhere = sets:intersection(UnmatchedList),
+
+    UnmatchedEverywhere = intersect_unmatched(Clauses, UnmatchedList),
     case sets:to_list(UnmatchedEverywhere) of
         [] ->
             ?LOG_INFO("Type ok for ~w/~w at ~s", Name, Arity, ast:format_loc(Loc)),
@@ -170,6 +172,7 @@ check(Ctx, Decl = {function, Loc, Name, Arity, _}, PolyTy) ->
         [First | _Rest] ->
             report_tyerror(FunStr, redundant_branch, First, "")
     end.
+
 
 -type unmatched_branch_mode() ::
     unmatched_branch_fail       % throw a type error if a branch never matches
@@ -183,7 +186,7 @@ check_alt(Ctx, Decl = {function, Loc, Name, Arity, _}, FunTy, BranchMode, Fixed)
     FunStr = utils:sformat("~w/~w at ~s", Name, Arity, ast:format_loc(Loc)),
     ?LOG_INFO("Checking function ~s against type ~s",
                FunStr, pretty:render_ty(FunTy)),
-    Cs = constr_gen:gen_constrs_annotated_fun(Ctx#ctx.exhaustiveness_mode ,Ctx#ctx.symtab, FunTy, Decl),
+    Cs = constr_gen:gen_constrs_annotated_fun(Ctx#ctx.exhaustiveness_mode, Ctx#ctx.symtab, Ctx#ctx.disable_exhaustiveness, FunTy, Decl),
     case Ctx#ctx.sanity of
         {ok, TyMap} -> constr_gen:sanity_check(Cs, TyMap);
         error -> ok
@@ -250,3 +253,47 @@ report_tyerror(FunName, Kind, Loc, Hint) ->
         "" -> errors:ty_error(Loc, "in ~s, ~s~n~s", [FunName, tyerror_msg(Kind), SrcCtx]);
         _ -> errors:ty_error(Loc, "in ~s, ~s~n~s~n~n  ~s", [FunName, tyerror_msg(Kind), SrcCtx, Hint])
     end.
+
+-spec intersect_unmatched([ast:fun_clause()], [sets:set(ast:loc())]) -> sets:set(ast:loc()).
+intersect_unmatched(Clauses, UnmatchedList) ->
+    {SublocationMap, _} = extract_loc(Clauses),
+    UnmatchedListTransitive = lists:map(
+      fun(UnmatchedSet) ->
+          sets:fold(fun(LLoc, Acc) ->
+              Sublocs = sets:from_list(maps:get(LLoc, SublocationMap, [])),
+              sets:union(Acc, Sublocs)
+          end, UnmatchedSet, UnmatchedSet)
+      end,
+      UnmatchedList),
+    sets:intersection(UnmatchedListTransitive).
+
+% Single-pass traversal that returns {Map, Locs} where Map maps each branching
+% location to all descendant locations, and Locs is the list of all locations
+% found in the subtree (so parents can populate their entry without re-traversing).
+-spec extract_loc(any()) -> {#{ast:loc() => [ast:loc()]}, [ast:loc()]}.
+extract_loc(TermList) when is_list(TermList) ->
+    lists:foldl(fun(T, {MapAcc, LocsAcc}) ->
+        {M, L} = extract_loc(T),
+        {maps:merge(MapAcc, M), LocsAcc ++ L}
+    end, {#{}, []}, TermList);
+extract_loc({loc, _, _, _} = Loc) ->
+    {#{}, [Loc]};
+extract_loc(Term) when is_tuple(Term) ->
+    case Term of
+        {'case', Loc, Expr, Clauses} ->
+            {Map, ChildLocs} = extract_loc([Expr, Clauses]),
+            {maps:put(Loc, ChildLocs, Map), [Loc | ChildLocs]};
+        {'fun', Loc, _, Clauses} ->
+            {Map, ChildLocs} = extract_loc(Clauses),
+            {maps:put(Loc, ChildLocs, Map), [Loc | ChildLocs]};
+        {case_clause, Loc, Pat, _Guards, Body} ->
+            {Map, ChildLocs} = extract_loc([Pat, Body]),
+            {maps:put(Loc, ChildLocs, Map), [Loc | ChildLocs]};
+        {fun_clause, Loc, Pats, _Guards, Body} ->
+            {Map, ChildLocs} = extract_loc([Pats, Body]),
+            {maps:put(Loc, ChildLocs, Map), [Loc | ChildLocs]};
+        _ ->
+            extract_loc(tuple_to_list(Term))
+    end;
+extract_loc(_) ->
+    {#{}, []}.
