@@ -19,15 +19,16 @@
   has_negative_only_line/1
 ]).
 
+-include("erlang_types.hrl").
+
 -export_type([type/0]).
 
 -opaque type() :: 0 | 1.
--type set_of_constraint_sets() :: constraint_set:set_of_constraint_sets().
--type ast_ty() :: ast:ty().
 
+-spec reorder(X) -> X when X :: type().
 reorder(X) -> X.
 -spec compare(T, T) -> eq | lt | gt when T :: type().
-compare(X, X) -> eq; compare(1, 0) -> gt; compare(0, 1) -> lt.
+compare(0, 0) -> eq; compare(1, 1) -> eq; compare(1, 0) -> gt; compare(0, 1) -> lt.
 -spec empty() -> type().
 empty() -> 0.
 -spec any() -> type().
@@ -45,18 +46,18 @@ is_any(1) -> true; is_any(_) -> false.
 -spec is_empty(type(), T) -> {boolean(), T}.
 is_empty(0, S) -> {true, S}; is_empty(_, S) -> {false, S}.
 
--spec normalize(type(), _, T) -> {set_of_constraint_sets(), T}.
+-spec normalize(type(), _, T) -> {constraint_set:set_of_constraint_sets(), T}.
 normalize(Dnf, _, ST) ->
   case is_empty(Dnf, #{}) of
-    {true, _} -> {[[]], ST};
-    {false, _} -> {[], ST}
+    {true, _} -> {constraint_set:sat(), ST};
+    {false, _} -> {constraint_set:unsat(), ST}
   end.
 
 -spec unparse(type(), T) -> {ast_ty(), T}.
 unparse(0, ST) -> {{predef, none}, ST};
 unparse(1, ST) -> {{predef, any}, ST}.
  
--spec all_variables(type(), _) -> sets:set().
+-spec all_variables(type(), all_variables_cache()) -> sets:set(variable()).
 all_variables(_, _) -> sets:new().
 
 -spec has_negative_only_line(type()) -> boolean().

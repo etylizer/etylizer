@@ -248,13 +248,13 @@ extend_symtab_with_fun_env(Env, Tab) -> Tab#tab { funs = maps:merge(Tab#tab.funs
 
 
 -spec maybe_add_qref(ref(), ast:mod_name(), atom(), arity(), ast:ty_scheme(), ast:forms(), t()) -> t().
-maybe_add_qref({qref, _}, Module, Name, Arity, Type, _, Tab) -> 
+maybe_add_qref({qref, _}, Module, Name, Arity, Type, _, Tab) ->
     Tab#tab { funs = maps:put(create_ref_tuple({qref, Module}, Name, Arity), Type, Tab#tab.funs) };
-maybe_add_qref(ref, Module, Name, Arity, Type, Forms, Tab) -> 
+maybe_add_qref(ref, Module, Name, Arity, Type, Forms, Tab) ->
     NewTab = Tab#tab { funs = maps:put(create_ref_tuple(ref, Name, Arity), Type, Tab#tab.funs) },
     case is_exported(Forms, Name, Arity) of
         true -> NewTab#tab { funs = maps:put(create_ref_tuple({qref, Module}, Name, Arity), Type, NewTab#tab.funs) };
-        false -> NewTab 
+        false -> NewTab
     end.
 
 -spec create_ref_tuple(ref(), atom(), arity()) -> tuple().
