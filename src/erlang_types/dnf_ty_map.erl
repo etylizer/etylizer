@@ -20,7 +20,7 @@ is_empty_line({Pos, Neg, T}, ST) ->
   dnf_ty_tuple:phi(ty_tuple:components(BigS), Neg, ST).
 
 -spec normalize_line({[T], [T], ?LEAF:type()}, monomorphic_variables(), S) -> {set_of_constraint_sets(), S} when T :: ?ATOM:type().
-normalize_line({[], [], _T}, _Fixed, _ST) -> error(todo);
+normalize_line({[], [], T}, Fixed, ST) -> ?LEAF:normalize(T, Fixed, ST);
 normalize_line({[], Neg = [_ | _], T}, Fixed, ST) ->
   % TODO test case for tally map for this branch
   P1 = ty:tuples(ty_tuples:singleton(2, dnf_ty_tuple:any())),
