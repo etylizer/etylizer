@@ -3,7 +3,8 @@
 -export([
     check_forms/6,
     new_ctx/3,
-    new_ctx/7
+    new_ctx/7,
+    disable_exhaustiveness_from_forms/1
 ]).
 
 -include("log.hrl").
@@ -18,6 +19,20 @@ new_ctx(Tab, Overlay, Sanity, ReportMode, ReportTimeout, ExhaustivenessMode, Gra
     Ctx = #ctx{ symtab = Tab, overlay_symtab = Overlay, sanity = Sanity, gradual_typing_mode = GradualTypingMode, report_mode = ReportMode, report_timeout = ReportTimeout, exhaustiveness_mode = ExhaustivenessMode },
     Ctx.
 
+% extracts the set of functions with disabled exhaustiveness from forms.
+-spec disable_exhaustiveness_from_forms(ast:forms()) -> sets:set({atom(), arity()}).
+disable_exhaustiveness_from_forms(Forms) ->
+    lists:foldl(
+      fun(Form, Acc) ->
+          case Form of
+              {attribute, _, etylizer, {disable_exhaustiveness, ListOfFuns}} ->
+                  sets:union(Acc, sets:from_list(ListOfFuns));
+              _ -> Acc
+          end
+      end,
+      sets:new(),
+      Forms).
+
 % Checks all forms of a module
 -spec check_forms(ctx(), string(), ast:forms(), sets:set(string()), sets:set(string()), boolean()) -> ok.
 check_forms(Ctx, FileName, Forms, Only, Ignore, CheckExports) ->
@@ -29,7 +44,8 @@ check_forms(Ctx, FileName, Forms, Only, Ignore, CheckExports) ->
             ?LOG_DEBUG("Skipping check for exported functions in ~s", FileName)
     end,
     ExtTab = symtab:extend_symtab(FileName, Forms, Ctx#ctx.symtab, Ctx#ctx.overlay_symtab),
-    ExtCtx = Ctx#ctx { symtab = ExtTab },
+    DisableExhaustiveness = disable_exhaustiveness_from_forms(Forms),
+    ExtCtx = Ctx#ctx { symtab = ExtTab, disable_exhaustiveness = DisableExhaustiveness },
     ?LOG_DEBUG("Only: ~200p", sets:to_list(Only)),
     ?LOG_DEBUG("Ignore: ~200p", sets:to_list(Ignore)),
     % Split in functions with and without tyspec

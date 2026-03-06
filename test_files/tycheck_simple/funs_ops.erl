@@ -41,6 +41,22 @@ fun_ref_03_fail() -> some_fun("foo", "42").
 -spec fun_ref_04() -> string().
 fun_ref_04() -> ?MODULE:some_fun("foo", 42).
 
+% if we want to refine some variables, it should happen inside guards (see fun_ref_06)
+% the theory currently does not support variable refinements in any expression (here, scrutinee)
+-spec fun_ref_05_fail(atom() | fun((atom()) -> atom()), atom()) -> atom().
+fun_ref_05_fail(AF, A) ->
+    case is_function(AF, 1) of
+        true -> AF(A);
+        false -> A
+    end.
+
+-spec fun_ref_06(atom() | fun((atom()) -> atom()), atom()) -> atom().
+fun_ref_06(AF, A) ->
+    case AF of
+        _ when is_function(AF, 1) -> AF(A);
+        _ -> A
+    end.
+
 %%%%%%%%%%%%%%%%%%%%%%%% OPERATORS %%%%%%%%%%%%%%%%%%%%%%%
 
 -spec op_01() -> integer().

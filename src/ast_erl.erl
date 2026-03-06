@@ -7,17 +7,21 @@
 -export_type([
     anno/0,
     fun_with_arity/0,
+    ty_with_arity/0,
     export_form/0,
     export_type_form/0,
     import_form/0,
     file_form/0,
     mod_form/0,
+    behavior_form/0,
+    other_attr_form/0,
     fun_decl/0,
     fun_spec_q/0,
     fun_spec_unq/0,
     fun_spec/0,
     record_decl/0,
     type_decl/0,
+    tydef/0,
     wild_attr/0,
     eof/0,
     warnings_errors/0,
@@ -34,13 +38,14 @@
     pat_bitstring/0,
     pat_bitstring_elem/0,
     pat_compound/0,
+    pat_nil/0,
     pat_cons/0,
     pat_map/0,
-    pat_nil/0,
+    pat_map_assoc/0,
     pat_binop/0,
     pat_unop/0,
-    pat_record_fld_idx/0,
     pat_record/0,
+    pat_record_fld_idx/0,
     pat_tuple/0,
     pat_wildcard/0,
     pat_var/0,
@@ -81,9 +86,14 @@
     exp_maybe_else/0,
     exp/0,
     exps/0,
+    qual_zip_gen/0,
+    qual_list_strict_gen/0,
     qual_list_gen/0,
-    qual_map_gen/0,
     qual_bitstring_gen/0,
+    qual_bitstring_strict_gen/0,
+    qual_map_gen/0,
+    qual_map_strict_gen/0,
+    generators/0,
     qualifier/0,
     bitstring_tyspec/0,
     bitstring_tyspec_list/0,
@@ -92,13 +102,13 @@
     map_assoc/0,
     binop/0,
     unop/0,
-    case_clause/0,
+    catch_clause/0,
     exc_type_pat/0,
     catch_clause_header/0,
-    catch_clause/0,
+    maybe_else_clause/0,
+    case_clause/0,
     fun_clause/0,
     if_clause/0,
-    maybe_else_clause/0,
     guard/0,
     guard_test_bitstring_constr/0,
     guard_test_cons/0,
@@ -120,6 +130,7 @@
     ty_bitstring/0,
     ty_empty_list/0,
     ty_list/0,
+    ty_full_fun/0,
     ty_fun_unconstrained_ty/0,
     ty_fun_constrained_ty/0,
     ty_fun_constraint/0,
@@ -144,9 +155,7 @@
     ty_union/0,
     ty_var/0,
     ty_user/0,
-    ty_full_fun/0,
-    ty/0,
-    tydef/0
+    ty/0
 ]).
 
 -export([
@@ -190,7 +199,7 @@
                                                               [ty_full_fun()]}}.
 -type fun_spec() :: fun_spec_q() | fun_spec_unq().
 -type record_decl() :: {attribute, anno(), record, {Name::atom(),[record_field()]}}.
--type type_decl() :: {attribute, anno(), type|opaque, tydef()}.
+-type type_decl() :: {attribute, anno(), type|opaque|nominal, tydef()}.
 -type tydef() :: {Name::atom(), Rhs::ty(), [ty_var()]}.
 -type wild_attr() :: {attribute, anno(), atom(), term()}.
 -type eof() :: {eof, anno()}.
@@ -312,10 +321,16 @@
 
 -type exps() :: [exp()].
 
+-type qual_zip_gen() ::  {zip, anno(), [generators()]}. 
+-type qual_list_strict_gen() ::  {generate_strict, anno(), pat(), exp()}.
 -type qual_list_gen() ::  {generate, anno(), pat(), exp()}.
 -type qual_bitstring_gen() ::  {b_generate, anno(), pat(), exp()}.
--type qual_map_gen() ::  {m_generate, anno(), {map_field_exact, anno(), pat(), pat()}, exp()}.
--type qualifier() :: exp() | qual_list_gen() | qual_bitstring_gen() | qual_map_gen().
+-type qual_bitstring_strict_gen() ::  {b_generate_strict, anno(), pat(), exp()}.
+-type qual_map_gen() ::  {m_generate, anno(), KeyPat::pat(), ValPath::pat(), exp()}.
+-type qual_map_strict_gen() ::  {m_generate_strict, anno(), KeyPat::pat(), ValPath::pat(), exp()}.
+-type generators() :: qual_zip_gen() | qual_list_strict_gen() | qual_list_gen() 
+    | qual_bitstring_gen() | qual_bitstring_strict_gen() | qual_map_gen() | qual_map_strict_gen().
+-type qualifier() :: exp() | generators().
 
 -type bitstring_tyspec() :: atom() | {atom(), Value::integer()}.
 -type bitstring_tyspec_list() :: [bitstring_tyspec()].

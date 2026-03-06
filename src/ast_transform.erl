@@ -6,6 +6,11 @@
 
 -export_type([trans_mode/0]).
 
+-ifdef(TEST).
+-include_lib("eunit/include/eunit.hrl").
+-endif.
+
+
 -compile([nowarn_shadow_vars]).
 
 -include("log.hrl").
@@ -16,7 +21,16 @@
           funenv :: funenv(),
           % The records seen so far. We need the record definitions to rewrite record types
           % into tuple types.
-          records :: #{ atom() => records:record_ty() }
+          records :: #{ atom() => records:record_ty() },
+          % Default expressions for record fields, used to fill in omitted fields during
+          % record construction.
+          record_defaults = #{} :: #{ atom() => #{ atom() => ast:exp() } },
+          % functions for which exhaustiveness has been added at the function clause level
+          % via a -etylizer({disable_exhaustiveness_toplevel, [...]}) user-specified attribute
+          % depends on annotations being transformed before function definitions
+          nonexhaustive_funs = sets:new() :: sets:set({atom(), arity()}),
+          % Extra type forms generated for record override variants (e.g., #rec{field :: any()})
+          extra_forms = [] :: [ast:form()]
         }).
 -type ctx() :: #ctx{}.
 
@@ -42,11 +56,12 @@ trans(Path, Forms, Mode) ->
 -spec trans(string(), [ast_erl:form()], trans_mode(), funenv()) -> [ast:form()].
 trans(Path, Forms, Mode, FunEnv) ->
     ModName = ast_utils:modname_from_path(Path),
-    {RevNewForms, _} =
+    {RevNewForms, FinalCtx} =
         lists:foldl(
             fun(F, {NewForms, Ctx}) ->
                 case trans_form(Ctx, F, Mode) of
                     error -> {NewForms, Ctx};
+                    {error, NewCtx} -> {NewForms, NewCtx};
                     {NewForm, NewCtx} -> {[NewForm | NewForms], NewCtx};
                     NewForm -> {[NewForm | NewForms], Ctx}
                 end
@@ -54,7 +69,7 @@ trans(Path, Forms, Mode, FunEnv) ->
             {[], #ctx{ path = Path, module_name = ModName, funenv = FunEnv, records = #{} }},
             Forms
             ),
-    lists:reverse(RevNewForms).
+    lists:reverse(RevNewForms) ++ FinalCtx#ctx.extra_forms.
 
 -spec build_funenv(file:filename(), [ast_erl:form()]) -> funenv().
 build_funenv(Path, Forms) ->
@@ -79,7 +94,7 @@ build_funenv(Path, Forms) ->
             varenv:insert_if_absent({Name, Arity}, {extern, erlang}, E)
         end, Env1, stdtypes:builtin_funs()).
 
--spec trans_form(ctx(), ast_erl:form(), trans_mode()) -> {ast:form(), ctx()} | ast:form() | error.
+-spec trans_form(ctx(), ast_erl:form(), trans_mode()) -> {ast:form(), ctx()} | ast:form() | error | {error, ctx()}.
 trans_form(Ctx, Form, Mode) ->
     R =
         case Form of
@@ -88,13 +103,24 @@ trans_form(Ctx, Form, Mode) ->
             {attribute, Anno, import, X} -> {attribute, to_loc(Ctx, Anno), import, X};
             {attribute, Anno, module, X} -> {attribute, to_loc(Ctx, Anno), module, X};
             {attribute, Anno, compile, X} -> {attribute, to_loc(Ctx, Anno), compile, X};
+            {attribute, Anno, etylizer, EtylizerOpt} ->
+                case EtylizerOpt of
+                    {disable_exhaustiveness_toplevel, ListOfFuns} ->
+                        % add functions where an exhaustive header are added in the transform phase
+                        {error, Ctx#ctx { nonexhaustive_funs = sets:union(Ctx#ctx.nonexhaustive_funs, sets:from_list(ListOfFuns)) }};
+                    {disable_exhaustiveness, ListOfFuns} ->
+                        {attribute, to_loc(Ctx, Anno), etylizer, {disable_exhaustiveness, ListOfFuns}};
+                    _ ->
+                        error
+                end;
             {attribute, _, file, _} -> error;
             {attribute, _, behaviour, _} -> error;
             {attribute, _, behavior, _} -> error;
             {function, Anno, Name, Arity, Clauses} ->
                 case Mode of
                     full ->
-                        {function, to_loc(Ctx, Anno), Name, Arity, trans_fun_clauses(Ctx, Clauses)};
+                        DisableExhaustive = sets:is_element({Name, Arity}, Ctx#ctx.nonexhaustive_funs),
+                        {function, to_loc(Ctx, Anno), Name, Arity, trans_fun_clauses(Ctx, Clauses, {DisableExhaustive, Arity})};
                     flat ->
                         error
                 end;
@@ -108,22 +134,39 @@ trans_form(Ctx, Form, Mode) ->
                 Loc = to_loc(Ctx, Anno),
                 {attribute, Loc, callback, Name, Arity, trans_spec_ty(Ctx, Loc, FunTys),
                  without_mod};
-            {attribute, Anno, record, {Name, Fields}} ->
-                % FIXME: this is a dirty hack to work around #152 (support for recursive record
-                % types). We temporarly register the name of the record with an empty record
+            {attribute, Anno, record, {Name, Fields}} when is_atom(Name) ->
+                % We temporarily register the name of the record with an empty record
                 % type, so that fields of the record can refer to the record itself.
+                % Self-references in field types emit named references (see trans_ty).
                 EmptyRecordTy = {Name, []},
                 TmpCtx = Ctx#ctx { records = maps:put(Name, EmptyRecordTy, Ctx#ctx.records) },
                 NewFields = trans_record_fields(TmpCtx, varenv:empty("type variable"), Fields),
                 NewForm = {attribute, to_loc(TmpCtx, Anno), record, {Name, NewFields}},
                 RecordTy = records:record_ty_from_decl(Name, NewFields),
-                NewCtx = Ctx#ctx { records = maps:put(Name, RecordTy, Ctx#ctx.records) },
+                FieldDefaults = extract_field_defaults(NewFields),
+                % Generate type forms for override variants created during field processing
+                OverrideVariants = collect_record_variants(Name),
+                Loc = to_loc(Ctx, Anno),
+                VariantForms = lists:map(
+                    fun ({VariantName, VOverrides}) ->
+                        VariantBody = records:encode_record_ty(RecordTy, VOverrides),
+                        {attribute, Loc, type, transparent,
+                            {VariantName, {ty_scheme, [], VariantBody}}}
+                    end,
+                    OverrideVariants),
+                NewCtx = Ctx#ctx {
+                    records = maps:put(Name, RecordTy, Ctx#ctx.records),
+                    record_defaults = maps:put(Name, FieldDefaults, Ctx#ctx.record_defaults),
+                    extra_forms = Ctx#ctx.extra_forms ++ VariantForms
+                },
                 ?LOG_TRACE("Registered new record type: ~200p", RecordTy),
                 {NewForm, NewCtx};
             {attribute, Anno, type, Def} ->
                 {attribute, to_loc(Ctx, Anno), type, transparent, trans_tydef(Ctx, Def)};
             {attribute, Anno, opaque, Def} ->
                 {attribute, to_loc(Ctx, Anno), type, opaque, trans_tydef(Ctx, Def)};
+            {attribute, Anno, nominal, Def} ->
+                {attribute, to_loc(Ctx, Anno), type, nominal, trans_tydef(Ctx, Def)};
             {attribute, Anno, Other, _} ->
                 ?LOG_TRACE("Ignoring attribute ~w at ~s", Other, ast:format_loc(to_loc(Ctx, Anno))),
                 error;
@@ -264,17 +307,33 @@ trans_ty(Ctx, Env, Ty) ->
             eval_const_ty(Ty, to_loc(Ctx, Anno));
         {type, Anno, record, [{'atom', _, Name} | Fields]} ->
             Loc = to_loc(Ctx, Anno),
-            Overrides =
-                lists:map(
-                    fun ({type, _, field_type, [{'atom', _, FieldName}, FieldTy]}) ->
-                            {FieldName, trans_ty(Ctx, Env, FieldTy)}
-                    end,
-                    Fields),
             case maps:find(Name, Ctx#ctx.records) of
                 error ->
                     errors:name_error(Loc, "record ~w not defined", [Name]);
                 {ok, RecTy} ->
-                    records:encode_record_ty(RecTy, Overrides)
+                    case Fields of
+                        [] ->
+                            % Use named reference (enables recursive records)
+                            RecRef = {ty_ref, Ctx#ctx.module_name, records:record_type_name(Name), 0},
+                            {named, Loc, RecRef, []};
+                        _ ->
+                            Overrides =
+                                lists:map(
+                                    fun ({type, _, field_type, [{'atom', _, FieldName}, FieldTy]}) ->
+                                            {FieldName, trans_ty(Ctx, Env, FieldTy)}
+                                    end,
+                                    Fields),
+                            case RecTy of
+                                {Name, []} ->
+                                    % Self-referencing record with field overrides.
+                                    % Emit a named reference to an override variant type.
+                                    VariantName = store_record_variant(Name, Overrides),
+                                    VariantRef = {ty_ref, Ctx#ctx.module_name, VariantName, 0},
+                                    {named, Loc, VariantRef, []};
+                                _ ->
+                                    records:encode_record_ty(RecTy, Overrides)
+                            end
+                    end
             end;
         {type, _, tuple, any} -> {tuple_any};
         {type, _, tuple, ArgTys} -> {tuple, trans_tys(Ctx, Env, ArgTys)};
@@ -452,11 +511,27 @@ trans_exp(Ctx, Env, Exp) ->
             {[NewModE, NewNameE, NewArityE], NewEnv} = trans_exps(Ctx, Env, [ModE, NameE, ArityE]),
             {{fun_ref_dyn, to_loc(Ctx, Anno), {qref_dyn, NewModE, NewNameE, NewArityE}}, NewEnv};
         {'fun', Anno, {clauses, FunClauses}} ->
-            {{'fun', to_loc(Ctx, Anno), no_name, trans_fun_clauses(Ctx, Env, FunClauses)}, Env};
+            {{'fun', to_loc(Ctx, Anno), no_name, trans_fun_clauses_no_exhaust(Ctx, Env, FunClauses)}, Env};
         {named_fun, Anno, Name, FunClauses} ->
             {NewName, NewEnv} = varenv_local:insert(Name, Env),
             {{'fun', to_loc(Ctx, Anno), {local_bind, NewName},
-              trans_fun_clauses(Ctx, NewEnv, FunClauses)}, Env};
+            trans_fun_clauses_no_exhaust(Ctx, NewEnv, FunClauses)}, Env};
+        % annotate type
+        {call, _, {'atom', _, '::'}, [Exp0, {string, Anno, TypeStr}]} -> 
+            case parse_type(Ctx, TypeStr) of
+                error -> errors:ty_error(to_loc(Ctx, Anno), "Invalid type annotation");
+                {ok, TypeOfExp} -> 
+                    {NewExp, NewEnv} = trans_exp(Ctx, Env, Exp0), 
+                    {{annotate, to_loc(Ctx, Anno), NewExp, TypeOfExp}, NewEnv}
+            end;
+        % force type
+        {call, _, {'atom', _, ':::'}, [Exp0, {string, Anno, TypeStr}]} -> 
+            case parse_type(Ctx, TypeStr) of
+                error -> errors:ty_error(to_loc(Ctx, Anno), "Invalid type assert");
+                {ok, TypeOfExp} -> 
+                    {NewExp, NewEnv} = trans_exp(Ctx, Env, Exp0), 
+                    {{assert, to_loc(Ctx, Anno), NewExp, TypeOfExp}, NewEnv}
+            end;
         {call, Anno, {'atom', AnnoName, FunName}, Args} -> % special case
             LocName = to_loc(Ctx, AnnoName),
             {NewArgs, NewEnv} = trans_exps(Ctx, Env, Args),
@@ -565,7 +640,9 @@ trans_exp(Ctx, Env, Exp) ->
                     end
                   end
                  ),
-            {{record_create, to_loc(Ctx, Anno), Name, NewFields}, NewEnv};
+            % fill in default expressions for omitted fields
+            AllFields = fill_record_defaults(Ctx, Name, to_loc(Ctx, Anno), NewFields),
+            {{record_create, to_loc(Ctx, Anno), Name, AllFields}, NewEnv};
         {record_field, Anno, E, Name, {'atom', _, Field}} ->
             {NewE, NewEnv} = trans_exp(Ctx, Env, E),
             % record field access
@@ -591,11 +668,26 @@ trans_exp(Ctx, Env, Exp) ->
             {NewArgs, NewEnv} = trans_exps(Ctx, Env, Args),
             {{tuple, to_loc(Ctx, Anno), NewArgs}, NewEnv};
         {'try', Anno, Body, CaseClauses, CatchClauses, AfterBody} ->
-            {NewBody, Env1} = trans_exp_seq(Ctx, Env, Body),
-            {NewCaseClauses, _} = trans_case_clauses(Ctx, Env1, CaseClauses),
+            % transform try-of into try without an of section to simplify constraint generation
+            RewrittenBody = case CaseClauses of
+                [] -> Body; % no of section
+                _ ->
+                    {InitExprs, LastExpr} = case Body of
+                        [] -> {[], {atom, Anno, undefined}}; % empty body edge case
+                        [Single] -> {[], Single}; % single expression
+                        _ -> {lists:droplast(Body), lists:last(Body)}
+                    end,
+                    CaseExp = {'case', Anno, LastExpr, CaseClauses},
+                    % wrap in block: begin InitExprs..., case LastExpr of Clauses end end
+                    [{block, Anno, InitExprs ++ [CaseExp]}]
+            end,
+
+            {TransformedBody, _UnusedEnv} = trans_exp_seq(Ctx, Env, RewrittenBody),
+            % catch clauses use original Env  since try body vars are unsafe
             NewCatchClauses = trans_catch_clauses(Ctx, Env, CatchClauses),
             NewAfterBody = trans_exp_seq_noenv(Ctx, Env, AfterBody),
-            {{'try', to_loc(Ctx, Anno), NewBody, NewCaseClauses, NewCatchClauses, NewAfterBody},
+            % cases field is always empty after transformation
+            {{'try', to_loc(Ctx, Anno), TransformedBody, [], NewCatchClauses, NewAfterBody},
              Env};
         {var, Anno, Name} ->
             Loc = to_loc(Ctx, Anno),
@@ -842,11 +934,39 @@ trans_catch_clause(Ctx, Env, C) ->
         Z -> errors:uncovered_case(?FILE, ?LINE, Z)
     end.
 
--spec trans_fun_clauses(ctx(), [ast_erl:fun_clause()]) -> [ast:fun_clause()].
-trans_fun_clauses(Ctx, Cs) -> trans_fun_clauses(Ctx, varenv_local:empty(), Cs).
+-spec trans_fun_clauses(ctx(), [ast_erl:fun_clause()], {boolean(), arity()}) -> [ast:fun_clause()].
+trans_fun_clauses(Ctx, Cs, DisableExhaustiveCtx) -> trans_fun_clauses(Ctx, varenv_local:empty(), Cs, DisableExhaustiveCtx).
 
--spec trans_fun_clauses(ctx(), varenv_local:t(), [ast_erl:fun_clause()]) -> [ast:fun_clause()].
-trans_fun_clauses(Ctx, Env, Cs) -> lists:map(fun(C) -> trans_fun_clause(Ctx, Env, C) end, Cs).
+-spec trans_fun_clauses_no_exhaust(ctx(), varenv_local:t(), [ast_erl:fun_clause()]) -> [ast:fun_clause()].
+trans_fun_clauses_no_exhaust(Ctx, Env, Cs) -> 
+    trans_fun_clauses(Ctx, Env, Cs, {false, 0}).
+
+-spec trans_fun_clauses(ctx(), varenv_local:t(), [ast_erl:fun_clause()], {boolean(), arity()}) -> [ast:fun_clause()].
+trans_fun_clauses(Ctx, Env, Cs, {DisableExhaustive, Arity}) -> 
+    Clauses = lists:map(fun(C) -> trans_fun_clause(Ctx, Env, C) end, Cs),
+
+    FilteredClauses =  case Clauses of
+        [_] -> Clauses;
+        [_|_] -> 
+            {fun_clause, Loc, _, _, Body} = lists:nth(length(Clauses), Clauses),
+            case is_error_clause(Body) of 
+                true -> 
+                    ?LOG_DEBUG("Exhaustiveness heuristic triggered: removing last error clause at ~p", Loc),
+                    lists:sublist(Clauses, length(Clauses) - 1);
+                false -> Clauses
+            end
+    end,
+    FilteredClauses,
+
+    % if this function is marked as not exhaustive, 
+    % we add a dummy function header to that clause
+    % so that the type system does not complain
+    case DisableExhaustive of
+        true -> FilteredClauses ++ [add_exhaustive_clause(Ctx, Arity)];
+        false -> FilteredClauses 
+    end.
+
+
 
 -spec trans_fun_clause(ctx(), varenv_local:t(), ast_erl:fun_clause()) -> ast:fun_clause().
 trans_fun_clause(Ctx, Env, C) ->
@@ -896,18 +1016,22 @@ trans_qualifiers(Ctx, Env, Qs) ->
     -> {ast:qualifier(), varenv_local:t()}.
 trans_qualifier(Ctx, Env, Q) ->
     case Q of
-        {K, Anno, Pat, Exp} when (K == generate_strict orelse K == generate orelse K == b_generate) -> % generator "Pat <- Exp"
+         % generator patterns for lists and bitstrings Pat <- / <:- / <= / <:= Exp
+        {K, Anno, Pat, Exp} when 
+              (K == generate orelse K == generate_strict orelse K == b_generate orelse K == b_generate_strict) ->
             NewExp = trans_exp_noenv(Ctx, Env, Exp),
             {NewPat, NewEnv} = trans_pat(Ctx, Env, Pat, shadow),
             {{K, to_loc(Ctx, Anno), NewPat, NewExp}, NewEnv};
+         % map generate patterns  KeyPattern := ValuePattern <- / <:- MapExpression
+        {K, Anno, {map_field_exact, _Anno2, KeyPat, ValPat}, Exp} when (K == m_generate orelse K == m_generate_strict)->
+            NewExp = trans_exp_noenv(Ctx, Env, Exp),
+            {NewK, NewEnv1} = trans_pat(Ctx, Env, KeyPat, shadow),
+            {NewV, NewEnv2} = trans_pat(Ctx, NewEnv1, ValPat, shadow),
+            {{K, to_loc(Ctx, Anno), NewK, NewV, NewExp}, NewEnv2};
+        % zip generator
         {zip, Anno, Qs} -> 
             {NewQ, NewEnv} = trans_qualifiers(Ctx, Env, Qs),
             {{zip, to_loc(Ctx, Anno), NewQ}, NewEnv};
-        {m_generate, Anno, {map_field_exact, _Anno2, K, V}, Exp} ->
-            NewExp = trans_exp_noenv(Ctx, Env, Exp),
-            {NewK, NewEnv1} = trans_pat(Ctx, Env, K, shadow),
-            {NewV, NewEnv2} = trans_pat(Ctx, NewEnv1, V, shadow),
-            {{m_generate, to_loc(Ctx, Anno), NewK, NewV, NewExp}, NewEnv2};
         Exp -> % filter
             trans_exp(Ctx, Env, Exp)
     end.
@@ -931,6 +1055,45 @@ trans_map_assoc(Ctx, Env, Assoc) ->
                 end,
             {{NewK, to_loc(Ctx, Anno), NewExpKey, NewExpVal}, Env2};
         X -> errors:uncovered_case(?FILE, ?LINE, X)
+    end.
+
+% Extracts default expressions from transformed record field declarations.
+% Returns a map from field name to the default expression.
+-spec extract_field_defaults([ast:record_field()]) -> #{ atom() => ast:exp() }.
+extract_field_defaults(Fields) ->
+    lists:foldl(
+        fun({record_field, _Loc, _Name, _Ty, no_default}, Acc) -> Acc;
+           ({record_field, _Loc, Name, _Ty, DefaultExp}, Acc) -> maps:put(Name, DefaultExp, Acc)
+        end,
+        #{},
+        Fields).
+
+% Fills in default expressions for record fields that are omitted during record creation.
+% For each field in the record definition that is not explicitly given and has a default
+% expression, a record_field entry with the default expression is appended.
+-spec fill_record_defaults(ctx(), atom(), ast:loc(),
+    [{record_field, ast:loc(), atom(), ast:exp()}]) ->
+    [{record_field, ast:loc(), atom(), ast:exp()}].
+fill_record_defaults(Ctx, RecName, Loc, GivenFields) ->
+    case maps:find(RecName, Ctx#ctx.record_defaults) of
+        error ->
+            % Record not known yet (shouldn't happen for well-formed code)
+            GivenFields;
+        {ok, Defaults} ->
+            GivenNames = sets:from_list(
+                [N || {record_field, _, N, _} <- GivenFields],
+                [{version, 2}]),
+            DefaultFields =
+                maps:fold(
+                    fun(FieldName, DefaultExp, Acc) ->
+                        case sets:is_element(FieldName, GivenNames) of
+                            true -> Acc;
+                            false -> [{record_field, Loc, FieldName, DefaultExp} | Acc]
+                        end
+                    end,
+                    [],
+                    Defaults),
+            GivenFields ++ DefaultFields
     end.
 
 -spec trans_record_fields(ctx(), tyenv(), [ast_erl:record_field()]) -> [ast:record_field()].
@@ -960,3 +1123,87 @@ arity(Loc, L) ->
        true -> errors:ty_error(Loc, "too many arguments: ~w", Len)
     end.
 
+% similar to what Gradualizer does
+% ctx used for locations
+-spec parse_type(ctx(), string()) -> error | {ok, ast:ty()}.
+parse_type(Ctx, Src) ->
+    AttrSrc = "-type t() :: " ++ Src ++ ".",
+    {ok, Tokens, _EndLocation} = erl_scan:string(AttrSrc),
+    % the variables in the outer function -type definition are not in scope in the annotation
+    % at some point, we could extend this like Haskell's ScopeTypeVariables, if there is any need
+    case erl_parse:parse_form(Tokens) of
+        {ok, {attribute, _, type, Def = {t, _Type, []}}} ->
+            {_, {ty_scheme, [], TyNew}} = trans_tydef(Ctx, Def),
+            {ok, TyNew};
+        _ -> error
+    end.
+
+
+-ifdef(TEST).
+
+test_ctx() ->
+    #ctx{ path = ".", module_name = ast_transform, funenv = varenv:empty("function"), records = #{} }.
+
+parse_type_test() ->
+    Ctx = test_ctx(),
+    {ok, {predef_alias, string}} = parse_type(Ctx, "string()"),
+    {ok, {singleton, a}} = parse_type(Ctx, "a"),
+
+    % user types are supported (no locations, though)
+    {ok, {named, _, _, [{named, _, _, _}]}} = parse_type(Ctx, "parser(command())"),
+
+    % type error
+    error = parse_type(Ctx, "not a type"),
+
+    % free type variables not supported
+    ?assertThrow({etylizer, name_error, _}, parse_type(Ctx, "A")),
+
+    % type variables are only bound in the -spec annotation
+    % therefore, no type variables are supported in annotations
+    ?assertThrow({etylizer, name_error, _}, parse_type(Ctx, "fun((A) -> A)")),
+
+    ok.
+
+-endif.
+
+% useful to check for erlang:error(_) function clauses
+-spec is_error_clause([ast:exp()]) -> boolean().
+is_error_clause(Body) ->
+    case Body of
+        [{'call', _, {var, _, {ref, error, 1}}, _}] -> true;
+        [{'call', _, {var, _, {ref, error, 2}}, _}] -> true;
+        [{'call', _, {var, _, {qref, erlang, error, 1}}, _}] -> true;
+        [{'call', _, {var, _, {qref, erlang, error, 2}}, _}] -> true;
+        _ -> false
+    end.
+
+% transform a function to be exhaustive by construction (user-specified flag)
+-spec add_exhaustive_clause(ctx(), arity()) -> ast:fun_clause().
+add_exhaustive_clause(Ctx, Arity) ->
+    Loc = {loc, Ctx#ctx.path, 0, 0}, % dummy location TODO loc?
+    ErrorCall = {'call', Loc, {var, Loc, {qref, erlang, error, 1}},
+                [{'atom', Loc, exhaustive}]},
+    {fun_clause, Loc, [{wildcard, Loc} || _ <- lists:seq(1, Arity)],
+        [],
+        [ErrorCall]}.
+
+% Stores a record override variant in the process dictionary for later retrieval.
+% Used when a self-referencing record has field overrides (e.g., #rr{name :: any()}).
+% Returns the generated variant type name.
+-spec store_record_variant(atom(), [records:record_field()]) -> atom().
+store_record_variant(RecName, Overrides) ->
+    ListKey = {etylizer_record_variants, RecName},
+    Existing = case get(ListKey) of undefined -> []; L -> L end,
+    N = length(Existing) + 1,
+    VariantName = list_to_atom("$record$" ++ atom_to_list(RecName) ++ "$v" ++ integer_to_list(N)),
+    put(ListKey, [{VariantName, Overrides} | Existing]),
+    VariantName.
+
+% Collects and removes all record override variants from the process dictionary.
+-spec collect_record_variants(atom()) -> [{atom(), [records:record_field()]}].
+collect_record_variants(RecName) ->
+    ListKey = {etylizer_record_variants, RecName},
+    case erase(ListKey) of
+        undefined -> [];
+        Variants -> Variants
+    end.

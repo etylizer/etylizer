@@ -153,3 +153,10 @@ list_pattern_12(S) ->
     "trace2" -> bad2;
     _ -> bad
   end.
+
+-spec list_01_fail(
+        fun((nonempty_list(A), list(A)) -> A),
+        {list(Item), list(Item)}) -> Item.
+list_01_fail(_Fun, {[],[]}) -> error(todo); % both R and F are non-empty in the next branch
+list_01_fail(Fun, {R,F}) when is_list(R), is_list(F) -> Fun(R, F).
+

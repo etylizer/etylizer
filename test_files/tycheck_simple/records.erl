@@ -1,4 +1,4 @@
--module(maps).
+-module(records).
 
 -compile(export_all).
 -compile(nowarn_export_all).
@@ -136,13 +136,34 @@ get_name_from_invoice_02(X) -> X#invoice.person#person.name.
 -spec get_name_from_invoice_02_fail(#invoice{ person :: #person { name :: integer() }}) -> string().
 get_name_from_invoice_02_fail(X) -> X#invoice.person#person.name.
 
+%%%%%%%%%%%%%%%%%%%%%%%% DEFAULT VALUES %%%%%%%%%%%%%%%%%%%%%%%
+
+% Omitting a field with a default value should work
+-spec default_01() -> #item{}.
+default_01() -> #item{value=1, label="hello"}.
+
+% Providing all fields including the defaulted one should also work
+-spec default_02() -> #item{}.
+default_02() -> #item{value=1, label="hello", count=5}.
+
+% Omitting a field without a default should fail
+-spec default_03_fail() -> #item{}.
+default_03_fail() -> #item{value=1}.
+
 %% recursive
 
-% Deactived because of #152
-%-record(rr, {name :: string(), recursive :: [#rr{}] }).
-%
-%-spec add1(string(), #rr{}) -> #rr{}.
-%add1(Name, R) -> #rr{name=Name, recursive=[R]}.
-%
-%-spec add2(string(), #rr{}) -> #rr{}.
-%add2(Name, R) -> R#rr{ recursive = [#rr{name=Name, recursive=[]} | R#rr.recursive]}.
+-record(rr, {name :: string(), recursive :: [#rr{}] }).
+-spec add1(string(), #rr{}) -> #rr{}.
+add1(Name, R) -> #rr{name=Name, recursive=[R]}.
+
+-spec add2(string(), #rr{}) -> #rr{}.
+add2(Name, R) -> R#rr{ recursive = [#rr{name=Name, recursive=[]} | R#rr.recursive]}.
+
+-record(rr2, {name :: string(), recursive :: [#rr2{name :: any()}] }).
+-spec add3(string(), #rr2{}) -> #rr2{}.
+add3(Name, R) -> #rr2{name=Name, recursive=[R]}.
+
+% while the definition is OK, the usage is not and causes a type error
+-record(rr3, {name :: string(), recursive :: [#rr3{name :: integer()}] }).
+-spec add4_fail(string(), #rr3{}) -> #rr3{}.
+add4_fail(Name, R) -> #rr3{name=Name, recursive=[R]}.

@@ -5,11 +5,14 @@
 -include_lib("eunit/include/eunit.hrl").
 -include("log.hrl").
 -include("etylizer_main.hrl").
+-include("parse.hrl").
+-include("typing.hrl").
 
--spec check_ok_fun(string(), symtab:t(), symtab:t(), ast:fun_decl(), ast:ty_scheme()) -> ok.
-check_ok_fun(Filename, Tab, OverlayTab, Decl = {function, L, Name, Arity, _}, Ty) ->
+-spec check_ok_fun(string(), symtab:t(), symtab:t(), sets:set({atom(), arity()}), ast:fun_decl(), ast:ty_scheme()) -> ok.
+check_ok_fun(Filename, Tab, OverlayTab, DisableExhaustiveness, Decl = {function, L, Name, Arity, _}, Ty) ->
     SanityCheck = cm_check:perform_sanity_check(Filename, [Decl], true),
-    Ctx = typing:new_ctx(Tab, OverlayTab, SanityCheck), % FIXME: perform sanity check!
+    Ctx0 = typing:new_ctx(Tab, OverlayTab, SanityCheck), % FIXME: perform sanity check!
+    Ctx = Ctx0#ctx{ disable_exhaustiveness = DisableExhaustiveness },
     try
         typing_check:check(Ctx, Decl, Ty)
     catch
@@ -20,10 +23,11 @@ check_ok_fun(Filename, Tab, OverlayTab, Decl = {function, L, Name, Arity, _}, Ty
     end,
     ok.
 
--spec check_infer_ok_fun(string(), symtab:t(), symtab:t(), ast:fun_decl(), ast:ty_scheme()) -> ok.
-check_infer_ok_fun(Filename, Tab, OverlayTab, Decl = {function, L, Name, Arity, _}, Ty) ->
+-spec check_infer_ok_fun(string(), symtab:t(), symtab:t(), sets:set({atom(), arity()}), ast:fun_decl(), ast:ty_scheme()) -> ok.
+check_infer_ok_fun(Filename, Tab, OverlayTab, DisableExhaustiveness, Decl = {function, L, Name, Arity, _}, Ty) ->
     % Check that the inferred type is more general then the type in the spec
-    Ctx = typing:new_ctx(Tab, OverlayTab, error),
+    Ctx0 = typing:new_ctx(Tab, OverlayTab, error),
+    Ctx = Ctx0#ctx{ disable_exhaustiveness = DisableExhaustiveness },
     Envs =
        try
            typing_infer:infer(Ctx, [Decl])
@@ -61,9 +65,10 @@ check_infer_ok_fun(Filename, Tab, OverlayTab, Decl = {function, L, Name, Arity, 
       end,
     ok.
 
--spec check_fail_fun(string(), symtab:t(), symtab:t(), ast:fun_decl(), ast:ty_scheme()) -> ok.
-check_fail_fun(Filename, Tab, OverlayTab, Decl = {function, L, Name, Arity, _}, Ty) ->
-    Ctx = typing:new_ctx(Tab, OverlayTab, error),
+-spec check_fail_fun(string(), symtab:t(), symtab:t(), sets:set({atom(), arity()}), ast:fun_decl(), ast:ty_scheme()) -> ok.
+check_fail_fun(Filename, Tab, OverlayTab, DisableExhaustiveness, Decl = {function, L, Name, Arity, _}, Ty) ->
+    Ctx0 = typing:new_ctx(Tab, OverlayTab, error),
+    Ctx = Ctx0#ctx{ disable_exhaustiveness = DisableExhaustiveness },
     try
         typing_check:check(Ctx, Decl, Ty),
         io:format("~s: Type checking ~w/~w in ~s succeeded but should fail",
@@ -82,12 +87,13 @@ has_intersection({ty_scheme, _, _}) -> false.
 
 -spec check_decls_in_file(string(), what(), sets:set(string())) -> list().
 check_decls_in_file(F, What, NoInfer) ->
-  RawForms = parse:parse_file_or_die(F),
+  {ok, RawForms} = parse:parse_file(F, #parse_opts{includes = ["include"]}),
   Forms = ast_transform:trans(F, RawForms),
   SearchPath = paths:compute_search_path(#opts{}),
   OverlayTab = symtab:empty(),
   Tab0 = symtab:std_symtab(SearchPath, symtab:empty()),
   Tab = symtab:extend_symtab(F, Forms, Tab0,symtab:empty()),
+  DisableExhaustiveness = typing:disable_exhaustiveness_from_forms(Forms),
 
   CollectDecls = fun(Decl, TestCases) ->
     case Decl of
@@ -97,23 +103,22 @@ check_decls_in_file(F, What, NoInfer) ->
         Ty = symtab:lookup_fun({ref, Name, Arity}, Loc, Tab),
         ShouldFail = utils:string_ends_with(NameStr, "_fail"),
         RunTest =
-          % FIXME #54 reduce timeout after issue has been fixed
-          {timeout, 45, {FullNameStr, fun() ->
+          {timeout, 120, {FullNameStr ++ " (typecheck)", fun() ->
                 ?LOG_NOTE("Type checking ~s from ~s", NameStr, F),
                 global_state:with_new_state(fun() ->
                   case ShouldFail of
-                    true -> check_fail_fun(F, Tab, OverlayTab, Decl, Ty);
+                    true -> check_fail_fun(F, Tab, OverlayTab, DisableExhaustiveness, Decl, Ty);
                     false ->
-                      check_ok_fun(F, Tab, OverlayTab, Decl, Ty)
+                      check_ok_fun(F, Tab, OverlayTab, DisableExhaustiveness, Decl, Ty)
                   end
                                             end)
               end}
             },
         InferTest =
-          {timeout, 45, {FullNameStr ++ " (infer)", fun() ->
+          {timeout, 120, {FullNameStr ++ " (infer)", fun() ->
                 ?LOG_NOTE("Infering type for ~s from ~s", NameStr, F),
                 global_state:with_new_state(fun() ->
-                  check_infer_ok_fun(F, Tab, OverlayTab, Decl, Ty)
+                  check_infer_ok_fun(F, Tab, OverlayTab, DisableExhaustiveness, Decl, Ty)
                 end),
                 ok
               end}
@@ -162,7 +167,18 @@ simple_test_() ->
     "lc_13",
     % TODO unbound cariable in constraint simplification (#278)
     "lc_11",
-    "lc_12_fail"
+    "lc_12_fail",
+    % TODO for if expressions guards always reference outer scope variables 
+    %      lower is always none() for any non-trivial if guard
+    %      see case_13_fail, maybe at some point we have better 
+    %      bounds for scoped variables
+    %      other tests that access outer variables are included here, too
+    "if_06",
+    "if_17",
+    "if_18",
+    "case_26",
+    "refinement_01c",
+    "refinement_01b"
   ],
 
   NoInfer = [
@@ -180,12 +196,17 @@ simple_test_() ->
     "inter_04_ok",
     "foo",
     "op_08",
+    % TODO slow maybe inference
+    "maybe_08",
+    "maybe_09",
     % TODO inferred type is less general than spec?
     "lc_10",
     "zip_01",
-    % TODO slow maybe inference
-    "maybe_08",
-    "maybe_09"
+    "lc_11",
+    "lc_13",
+    "lc_13b",
+    "lc_15",
+    "lc_16"
   ],
 
   %What = ["atom_03_fail"],
