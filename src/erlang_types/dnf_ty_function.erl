@@ -11,9 +11,9 @@
 
 -include("dnf/bdd.hrl").
 
--spec is_empty_line({[T], [T], ?LEAF:type()}, T) -> {boolean(), T} when T :: ?ATOM:type().
+-spec is_empty_line({[T], [T], ?LEAF:type()}, S) -> {boolean(), S} when S :: is_empty_cache(), T :: ?ATOM:type().
 is_empty_line({AllPos, Neg, T}, ST) ->
-  T = ?LEAF:any(), % sanity
+  ?assert_pattern(T, ?LEAF:any()), % sanity
   % continue searching for any arrow ∈ N such that the line becomes empty
   lists:foldl(
     fun
@@ -24,7 +24,7 @@ is_empty_line({AllPos, Neg, T}, ST) ->
     Neg
   ).
 
--spec is_empty_cont([T], T, ST) -> {boolean(), ST} when T :: ?ATOM:type().
+-spec is_empty_cont([T], T, ST) -> {boolean(), ST} when ST :: is_empty_cache(), T :: ?ATOM:type().
 is_empty_cont(Ps, NegatedFun, ST0) ->
   %% ∃ Ts-->T2 ∈ N s.t.
   %%    Ts is in the domains of the function
@@ -40,7 +40,7 @@ is_empty_cont(Ps, NegatedFun, ST0) ->
 
 % optimized phi' (4.10) from paper covariance and contravariance
 % justification for this version of phi can be found in `prop_phi_function.erl`
--spec explore_function(Ty, Ty, [?ATOM:type()], S) -> {boolean(), S} when Ty :: ty_node:type().
+-spec explore_function(Ty, Ty, [?ATOM:type()], S) -> {boolean(), S} when S :: is_empty_cache(), Ty :: ty_node:type().
 explore_function(_T1, _T2, [], ST) -> {true, ST};
 explore_function(T1, T2, [Function | Ps], ST0) ->
   {S1, S2} = {ty_function:domain(Function), ty_function:codomain(Function)},
@@ -49,7 +49,8 @@ explore_function(T1, T2, [Function | Ps], ST0) ->
     phi(?NODE:difference(T1, S1), T2, Ps, ST1)
   end.
 
--spec phi(Ty, Ty, [?ATOM:type()], S) -> {boolean(), S} when Ty :: ty_node:type().
+-spec phi(Ty, Ty, [?ATOM:type()], S) -> 
+    {boolean(), S} when S :: is_empty_cache(), Ty :: ty_node:type().
 phi(T1, T2, [], ST0) ->
   maybe
     {false, ST1} ?= ?NODE:is_empty(T1, ST0),
@@ -72,9 +73,10 @@ phi(T1, T2, [Function | Ps], ST0) ->
     end
   end.
 
--spec normalize_line({[T], [T], ?LEAF:type()}, monomorphic_variables(), T) -> {set_of_constraint_sets(), T} when T :: ?ATOM:type().
+-spec normalize_line({[T], [T], ?LEAF:type()}, monomorphic_variables(), S) -> 
+    {set_of_constraint_sets(), S} when S :: normalize_cache(), T :: ?ATOM:type().
 normalize_line({Pos, Neg, T}, Fixed, ST) ->
-  T = ?LEAF:any(), % sanity
+  ?assert_pattern(T, ?LEAF:any()), % sanity
   S = lists:foldl(fun ty_node:union/2, ty_node:empty(), [ty_function:domain(FF) || FF <- Pos]),
   normalize_line_cont(S, Pos, Neg, Fixed, ST).
 
@@ -82,7 +84,8 @@ normalize_line({Pos, Neg, T}, Fixed, ST) ->
 % domains_to_tuple(Domains) ->
 %   ty_node:make(dnf_ty_variable:leaf(ty_rec:tuples(ty_tuples:singleton(length(Domains), dnf_ty_tuple:singleton(ty_tuple:tuple(Domains)))))).
 
--spec normalize_line_cont(ty_node:type(), [T], [T], monomorphic_variables(), ST) -> {set_of_constraint_sets(), ST} when T :: ?ATOM:type().
+-spec normalize_line_cont(ty_node:type(), [T], [T], monomorphic_variables(), ST) -> 
+    {set_of_constraint_sets(), ST} when ST :: normalize_cache(), T :: ?ATOM:type().
 normalize_line_cont(_, _, [], _Fixed, ST) -> {[], ST}; % non-empty
 normalize_line_cont(S, P, [Function | N], Fixed, ST) ->
   T1 = ty_function:domain(Function),
@@ -104,7 +107,8 @@ normalize_line_cont(S, P, [Function | N], Fixed, ST) ->
   {constraint_set:join(R1, R2, Fixed), ST2}.
 
 
--spec explore_function_norm(ty_node:type(), ty_node:type(), [T], monomorphic_variables(), S) -> {set_of_constraint_sets(), S} when T :: ?ATOM:type().
+-spec explore_function_norm(ty_node:type(), ty_node:type(), [T], monomorphic_variables(), S) -> 
+    {set_of_constraint_sets(), S} when S :: normalize_cache(), T :: ?ATOM:type().
 explore_function_norm(BigT1, T2, [], Fixed, ST0) ->
   {NT1, ST1} = ty_node:normalize(BigT1, Fixed, ST0),
   {NT2, ST2} = ty_node:normalize(T2, Fixed, ST1),
@@ -123,14 +127,17 @@ explore_function_norm(T1, T2, [Function | P], Fixed, ST0) ->
     constraint_set:join(NT2,
       constraint_set:meet(NS1, NS2, Fixed), Fixed), Fixed), ST4}.
 
--spec all_variables_line([T], [T], ?LEAF:type(), cache()) -> sets:set(variable()) when T :: ?ATOM:type().
+-spec all_variables_line([T], [T], ?LEAF:type(), all_variables_cache()) -> sets:set(variable()) when T :: ?ATOM:type().
 all_variables_line(P, N, Leaf, Cache) ->
-  Leaf = ty_bool:any(),
+  ?assert_pattern(Leaf, ty_bool:any()),
   sets:union(
      [ty_function:all_variables(F, Cache) || F <- P]
   ++ [ty_function:all_variables(F, Cache) || F <- N]
   ).
 
+-spec unparse_any() -> ast:ty_fun().
 unparse_any() -> {fun_simple}.
+
+-spec unparse_any(non_neg_integer()) -> ast:ty_fun().
 unparse_any(Size) ->
-  {fun_full, [{predef, empty} || _ <- lists:seq(1, Size)], {predef, any}}.
+  {fun_full, [{predef, none} || _ <- lists:seq(1, Size)], {predef, any}}.

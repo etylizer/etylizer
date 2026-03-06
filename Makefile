@@ -9,13 +9,14 @@ all: build check test
 espresso:
 	cd c_src/espresso && make
 
-release: espresso
+release:
 	$(REBAR) as prod escriptize
-	cp _build/espresso _build/prod/bin/espresso
 
-build: espresso
+build:
 	$(REBAR) escriptize
-	cp _build/espresso _build/default/bin/espresso
+
+build-repl:
+	$(REBAR) as repl escriptize
 
 clean:
 	$(REBAR) clean
@@ -29,11 +30,12 @@ unit-tests: build
 
 test: unit-tests testtest
 	@echo "Checking syntax transformation for source code of type checker ..."
-	./_build/default/bin/etylizer --sanity --no-type-checking -I ./src ./src/*.erl
+	./_build/default/bin/etylizer --sanity --no-type-checking -I ./include -I ./src ./src/*.erl
 	@echo "Running case study ..."
-	ETYLIZER_CASE_STUDY_LOGLEVEL=warn test_files/etylizer-mini/check-orddict.sh
-	ETYLIZER_CASE_STUDY_LOGLEVEL=warn test_files/etylizer-mini/check-std.sh
-	ETYLIZER_CASE_STUDY_LOGLEVEL=warn test_files/etylizer-mini/check.sh
+	test_files/etylizer-mini/check-stdlib.sh
+	test_files/etylizer-mini/check-jsone.sh
+	ETYLIZER_CASE_STUDY_LOGLEVEL=warn test_files/etylizer-mini/check-ety.sh
+
 
 testtest:
 	@echo "Running unit tests for tests ..."
@@ -42,6 +44,8 @@ testtest:
 
 check:
 	$(REBAR) as test dialyzer
+	@echo "Run etylizer to type check erlang_types library..."
+	./typecheck_erlang_types
 
 gradualize:
 	cd src && gradualizer --fmt_location brief *.erl

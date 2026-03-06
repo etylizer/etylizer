@@ -10,9 +10,10 @@
     global_ref/0,
     global_ref_dyn/0,
     ty_varname/0,
+    unique_tok/0,
+    local_varname/0,
     local_ref/0,
     any_ref/0,
-    bounded_tyvar/0,
     local_bind/0,
     local_ref_bind/0,
     loc/0,
@@ -21,12 +22,14 @@
     export_form/0,
     export_type_form/0,
     import_form/0,
+    mod_name/0,
     mod_form/0,
     fun_decl/0,
     fun_spec/0,
     record_decl/0,
     record_field/0,
     type_decl/0,
+    tydef/0,
     form/0,
     forms/0,
     rep_atom/0,
@@ -38,11 +41,13 @@
     pat_bitstring/0,
     pat_bitstring_elem/0,
     pat_compound/0,
-    pat_cons/0,
-    pat_map/0,
     pat_nil/0,
-    pat_record_fld_idx/0,
+    pat_cons/0,
+    pat_op/0,
+    pat_map/0,
+    pat_map_assoc/0,
     pat_record/0,
+    pat_record_fld_idx/0,
     pat_tuple/0,
     pat_wildcard/0,
     pat_var/0,
@@ -55,6 +60,8 @@
     exp_catch/0,
     exp_cons/0,
     exp_fun_ref/0,
+    exp_fun_ref_dyn/0,
+    rec_fun_name/0,
     exp_fun/0,
     exp_funcall/0,
     exp_if/0,
@@ -74,11 +81,18 @@
     exp_tuple/0,
     exp_try/0,
     exp_var/0,
+    exp_annotate/0,
+    exp_assert/0,
     exp/0,
     exps/0,
+    qual_zip_gen/0,
+    qual_list_strict_gen/0,
     qual_list_gen/0,
-    qual_map_gen/0,
     qual_bitstring_gen/0,
+    qual_bitstring_strict_gen/0,
+    qual_map_gen/0,
+    qual_map_strict_gen/0,
+    generators/0,
     qualifier/0,
     bitstring_tyspec/0,
     bitstring_tyspec_list/0,
@@ -87,8 +101,10 @@
     map_assoc/0,
     binop/0,
     unop/0,
-    case_clause/0,
     catch_clause/0,
+    exc_type_pat/0,
+    stacktrace_pat/0,
+    case_clause/0,
     fun_clause/0,
     if_clause/0,
     guard/0,
@@ -106,11 +122,15 @@
     guard_test_tuple/0,
     guard_test_var/0,
     guard_test/0,
-    mod_name/0,
     ty_singleton/0,
     ty_bitstring/0,
     ty_empty_list/0,
     ty_list/0,
+    ty_cons/0,
+    ty_nonempty_list/0,
+    ty_improper_list/0,
+    ty_nonempty_improper_list/0,
+    ty_some_list/0,
     ty_simple_fun/0,
     ty_any_arg_fun/0,
     ty_full_fun/0,
@@ -121,8 +141,14 @@
     ty_map_assoc_opt/0,
     ty_map_assoc_req/0,
     ty_map_assoc/0,
+    predef_name/0,
     ty_predef/0,
+    predef_alias_name/0,
+    ty_predef_alias/0,
+    ty_ref/0,
     ty_named/0,
+    ty_mu/0,
+    ty_mu_var/0,
     ty_tuple_any/0,
     ty_tuple/0,
     ty_var/0,
@@ -130,23 +156,13 @@
     ty_intersection/0,
     ty_negation/0,
     ty/0,
-    ty_scheme/0,
-    tydef/0,
-    ty_ref/0,
     ty_constraint/0,
-    unique_tok/0,
-    local_varname/0,
-    predef_alias_name/0
-]).
-
-% extension of the Erlang AST
--export_type([
-    ty_mu/0,
-    ty_mu_var/0
+    bounded_tyvar/0,
+    ty_scheme/0
 ]).
 
 -export([
-    format_loc/1, to_loc/2, loc_auto/0, min_loc/2, leq_loc/2, is_predef_name/1, is_predef_alias_name/1,
+    format_loc/1, to_loc/2, loc_auto/0, min_loc/2, leq_loc/2, maybe_predef_name/1, is_predef_name/1, is_predef_alias_name/1,
     local_varname_from_any_ref/1, get_fun_name/1, loc_exp/1
 ]).
 
@@ -314,10 +330,17 @@ get_fun_name({function, _Loc, Name, Arity, _}) -> utils:sformat("~w/~w", Name, A
                                [{record_field, loc(), Field::atom(), exp()}]}.
 -type gen_tuple(T) ::  {tuple, loc(), [T]}.
 -type exp_tuple() ::  gen_tuple(exp()).
+% Note: In the internal AST, the Cases field is always empty ([]) after transformation.
+% During AST transformation, try-of expressions are transformed to try-case:
+%   try Exp of Pat -> Body end  becomes  try case Exp of Pat -> Body end end
+% This simplifies constraint generation and ensures proper variable scoping.
 -type exp_try() :: {'try', loc(), exps(), Cases::[case_clause()], Catches::[catch_clause()],
                     After::exps()}.
 -type gen_var() :: {var, loc(), any_ref()}.
 -type exp_var() :: gen_var().
+
+-type exp_annotate() :: {annotate, loc(), exp(), ty()}.
+-type exp_assert() :: {assert, loc(), exp(), ty()}.
 
 % There is no match expression, because match expressions are represented as case expressions.
 -type exp() :: atomic_lit() | exp_bitstring_compr() | exp_bitstring_constr() | exp_block()
@@ -326,7 +349,8 @@ get_fun_name({function, _Loc, Name, Arity, _}) -> utils:sformat("~w/~w", Name, A
     | exp_map_create() | exp_map_update() | exp_map_compr()
     | exp_nil() | exp_binop() | exp_unop() | exp_recv() | exp_recv_after() | exp_record_create()
     | exp_record_access() | exp_record_index() | exp_record_update() | exp_tuple() | exp_try()
-    | exp_var().
+    | exp_var()
+    | exp_annotate() | exp_assert().
 
 -type exps() :: [exp()].
 
@@ -337,8 +361,11 @@ loc_exp(X) -> element(2, X).
 -type qual_list_strict_gen() ::  {generate_strict, loc(), pat(), exp()}.
 -type qual_list_gen() ::  {generate, loc(), pat(), exp()}.
 -type qual_bitstring_gen() ::  {b_generate, loc(), pat(), exp()}.
+-type qual_bitstring_strict_gen() ::  {b_generate_strict, loc(), pat(), exp()}.
 -type qual_map_gen() ::  {m_generate, loc(), KeyPat::pat(), ValPath::pat(), exp()}.
--type generators() :: qual_zip_gen() | qual_list_strict_gen() | qual_list_gen() | qual_bitstring_gen() | qual_map_gen().
+-type qual_map_strict_gen() ::  {m_generate_strict, loc(), KeyPat::pat(), ValPath::pat(), exp()}.
+-type generators() :: qual_zip_gen() | qual_list_strict_gen() | qual_list_gen() 
+    | qual_bitstring_gen() | qual_bitstring_strict_gen() | qual_map_gen() | qual_map_strict_gen().
 -type qualifier() :: exp() | generators().
 
 -type bitstring_tyspec() :: atom() | {atom(), Value::integer()}.
@@ -440,6 +467,20 @@ is_predef_name(N) ->
         integer -> true;
         atom -> true;
         dynamic -> true;
+        _ -> false
+    end.
+
+-spec maybe_predef_name(atom()) -> {true, predef_name()} | false.
+maybe_predef_name(N) ->
+    case N of
+        any -> {true, any};
+        none -> {true, none};
+        pid -> {true, pid};
+        port -> {true, port};
+        reference -> {true, reference};
+        float -> {true, float};
+        integer -> {true, integer};
+        atom -> {true, atom};
         _ -> false
     end.
 

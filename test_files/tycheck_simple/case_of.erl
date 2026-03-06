@@ -114,3 +114,141 @@ pin(L) ->
 -spec case_14(_, _) -> ok | nok.
 case_14(X, X) -> ok;
 case_14(_, _) -> nok.
+
+% scoping of variables outside of the case expression if they are safe
+-spec case_15() -> ok.
+case_15() ->
+    case foo of _ -> S = ok end,
+    S.
+
+-spec case_16_fail() -> ok.
+case_16_fail() ->
+    case ok of _ -> S = foo end,
+    S.
+
+% safe variable scope
+-spec case_17(foo | bar) -> ok.
+case_17(X) ->
+    case X of foo -> S = ok; bar -> S = ok end,
+    S.
+
+% S has type foo | bar
+-spec case_18(foo | bar) -> foo | bar.
+case_18(X) ->
+    case X of 
+        foo -> S = foo; 
+        bar -> S = bar
+    end,
+    S.
+
+% S has type foo
+-spec case_19(foo | bar) -> foo | bar.
+case_19(X) ->
+    case X of 
+        foo -> S = foo; 
+        bar -> S = foo
+    end,
+    S.
+
+% S has type foo | fail
+-spec case_20_fail(foo | bar) -> foo | bar.
+case_20_fail(X) ->
+    case X of 
+        foo -> S = foo; 
+        bar -> S = fail
+    end,
+    S.
+
+% S has type foo | bar
+% the case expression is exhaustive
+-spec case_21_fail(foo | bar) -> foo.
+case_21_fail(X) ->
+    case X of
+        S when S == foo -> S;
+        S when S == bar -> foo
+    end,
+    S.
+
+% disabled until == refinement
+% S has type foo | bar
+% the case expression is exhaustive
+-spec case_22(foo | bar) -> foo | bar.
+case_22(X) ->
+    case X of
+        S when S == foo -> S;
+        S when S == bar -> foo
+    end,
+    S.
+
+% disabled until == refinement
+-spec case_23(foo | bar) -> ok.
+case_23(X) ->
+    case X of
+        S when S == foo -> ok;
+        S when S == bar -> ok
+    end.
+
+-spec case_24(integer()) -> integer().
+case_24(X) ->
+    case X of
+        Y when is_integer(Y) -> Y
+    end.
+
+% begin scoping
+-spec case_25() -> ok.
+case_25() ->
+    begin case foo of _ -> S = ok end end,
+    S.
+
+% exhaustiveness with variables from outer scope
+-spec case_26(integer()) -> ok.
+case_26(X) ->
+    case {} of _ when is_integer(X) -> ok end.
+
+% Tests that guard {S, complex} == {foo, complex} correctly refines S to foo
+-spec case_27(foo | bar) -> foo | bar.
+case_27(X) ->
+    case X of
+        S when {S, complex} == {foo, complex} -> S;
+        S -> S
+    end,
+    S.
+
+-spec case_28_fail(foo | bar) -> bar.
+case_28_fail(X) ->
+    case X of
+        S when {S, complex} == {foo, complex} -> S;
+        S -> S
+    end,
+    S.
+
+% symmetry
+-spec case_29(foo | bar) -> foo | bar.
+case_29(X) ->
+    case X of
+        S when {foo, complex} == {S, complex} -> S;
+        S -> S
+    end,
+    S.
+
+-spec case_30_fail(foo | bar) -> bar.
+case_30_fail(X) ->
+    case X of
+        S when {foo, complex} == {S, complex} -> S;
+        S -> S
+    end,
+    S.
+
+% #295 variable bound in case scrutinee should be visible in clause bodies
+-spec case_31() -> ok.
+case_31() ->
+    case U = ok of
+        _ -> U
+    end.
+
+-spec case_32(boolean()) -> ok | error.
+case_32(X) ->
+    case X of
+        true -> throw(ok);
+        false -> error
+    end.

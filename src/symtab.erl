@@ -227,7 +227,7 @@ extend_symtab_internal(Filename, Forms, RefType, Tab, OverlaySymtab) ->
                             % if fun is exported
                             maybe_add_qref(RefType, ModuleName, Name, Arity, T, Forms, AccTab);
                         {ok, OverlayT} ->
-                            ?LOG_INFO("Overlay found for ~w:~w/~p", ModuleName, Name, Arity),
+                            ?LOG_DEBUG("Overlay found for ~w:~w/~p", ModuleName, Name, Arity),
                             AccTab#tab { funs = maps:put(create_ref_tuple(RefType, Name, Arity), OverlayT, AccTab#tab.funs) }
                     end;
                 {attribute, _, type, _, {Name, TyScm = {ty_scheme, TyVars, _}}} ->
@@ -235,26 +235,32 @@ extend_symtab_internal(Filename, Forms, RefType, Tab, OverlaySymtab) ->
                     AccTab#tab { types = maps:put({ty_key, ModuleName, Name, Arity}, TyScm, AccTab#tab.types) };
                 {attribute, _, record, {RecordName, Fields}} ->
                     RecordTy = records:record_ty_from_decl(RecordName, Fields),
-                    AccTab#tab { records = maps:put(RecordName, RecordTy, AccTab#tab.records) };
+                    RecTypeName = records:record_type_name(RecordName),
+                    RecTupleType = records:encode_record_ty(RecordTy),
+                    RecTyScheme = {ty_scheme, [], RecTupleType},
+                    AccTab#tab {
+                        records = maps:put(RecordName, RecordTy, AccTab#tab.records),
+                        types = maps:put({ty_key, ModuleName, RecTypeName, 0}, RecTyScheme, AccTab#tab.types)
+                    };
                 _ ->
                     AccTab
             end
         end,
-        Tab#tab { modules = maps:put(ModuleName, Filename, Tab#tab.modules) },
-        Forms).
+Tab#tab { modules = maps:put(ModuleName, Filename, Tab#tab.modules) },
+Forms).
 
 -spec extend_symtab_with_fun_env(fun_env(), t()) -> t().
 extend_symtab_with_fun_env(Env, Tab) -> Tab#tab { funs = maps:merge(Tab#tab.funs, Env) }.
 
 
 -spec maybe_add_qref(ref(), ast:mod_name(), atom(), arity(), ast:ty_scheme(), ast:forms(), t()) -> t().
-maybe_add_qref({qref, _}, Module, Name, Arity, Type, _, Tab) -> 
+maybe_add_qref({qref, _}, Module, Name, Arity, Type, _, Tab) ->
     Tab#tab { funs = maps:put(create_ref_tuple({qref, Module}, Name, Arity), Type, Tab#tab.funs) };
-maybe_add_qref(ref, Module, Name, Arity, Type, Forms, Tab) -> 
+maybe_add_qref(ref, Module, Name, Arity, Type, Forms, Tab) ->
     NewTab = Tab#tab { funs = maps:put(create_ref_tuple(ref, Name, Arity), Type, Tab#tab.funs) },
     case is_exported(Forms, Name, Arity) of
         true -> NewTab#tab { funs = maps:put(create_ref_tuple({qref, Module}, Name, Arity), Type, NewTab#tab.funs) };
-        false -> NewTab 
+        false -> NewTab
     end.
 
 -spec create_ref_tuple(ref(), atom(), arity()) -> tuple().
@@ -307,4 +313,3 @@ retrieve_forms_for_source({Kind, Src, Includes}) ->
 from_types(Types) when is_list(Types) -> (empty())#tab{types = maps:from_list(Types)};
 from_types(Types) when is_map(Types) -> (empty())#tab{types = Types}.
 -endif.
-
