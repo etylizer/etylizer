@@ -115,20 +115,23 @@ everywhere(F, T) ->
     end.
 
 % Generically transforms the term given and collects all results T
-% where the given function returns {ok, T} for a term. No recursive calls
-% are made for such terms
--spec everything(fun((term()) -> t:opt(T)), term()) -> [T].
+% where the given function returns {ok, T} or {rec, T} for a term.
+% {ok, T} collects T and stops recursion; {rec, T} collects T and continues recursion.
+-spec everything(fun((term()) -> t:opt(T) | {rec, T}), term()) -> [T].
 everything(F, T) ->
     TransList = fun(L) -> lists:flatmap(fun(X) -> everything(F, X) end, L) end,
+    Recurse = fun() ->
+        case T of
+            X when is_list(X) -> TransList(X);
+            X when is_tuple(X) -> TransList(tuple_to_list(X));
+            X when is_map(X) -> TransList(maps:to_list(X));
+            _ -> []
+        end
+    end,
     case F(T) of
-        error ->
-            case T of
-                X when is_list(X) -> TransList(X);
-                X when is_tuple(X) -> TransList(tuple_to_list(X));
-                X when is_map(X) -> TransList(maps:to_list(X));
-                _ -> []
-            end;
-        {ok, X} -> [X]
+        error -> Recurse();
+        {ok, X} -> [X];
+        {rec, X} -> [X | Recurse()]
     end.
 
 -spec if_true(boolean(), fun(() -> _T)) -> ok.
