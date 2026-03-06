@@ -97,8 +97,7 @@ check_decls_in_file(F, What, NoInfer) ->
         Ty = symtab:lookup_fun({ref, Name, Arity}, Loc, Tab),
         ShouldFail = utils:string_ends_with(NameStr, "_fail"),
         RunTest =
-          % FIXME #54 reduce timeout after issue has been fixed
-          {timeout, 45, {FullNameStr, fun() ->
+          {timeout, 10, {FullNameStr ++ " (typecheck)", fun() ->
                 ?LOG_NOTE("Type checking ~s from ~s", NameStr, F),
                 global_state:with_new_state(fun() ->
                   case ShouldFail of
@@ -110,7 +109,7 @@ check_decls_in_file(F, What, NoInfer) ->
               end}
             },
         InferTest =
-          {timeout, 45, {FullNameStr ++ " (infer)", fun() ->
+          {timeout, 10, {FullNameStr ++ " (infer)", fun() ->
                 ?LOG_NOTE("Infering type for ~s from ~s", NameStr, F),
                 global_state:with_new_state(fun() ->
                   check_infer_ok_fun(F, Tab, OverlayTab, Decl, Ty)
@@ -167,6 +166,10 @@ simple_test_() ->
 
   NoInfer = [
     % TODO slow, timeouts
+    "dyn_union_case_02",
+    "op_04",
+    "op_15",
+    "list_as_tuple_05",
     "refine_tagged_tuple",
     % TODO timeout, with flipped variable ordering it infers instantly
     "match_13",

@@ -15,10 +15,11 @@
 -spec int_to_hex(integer()) -> string().
 int_to_hex(I) -> integer_to_list(I, 16).
 
+% OTP has no function to get an OS-independent temporary directory
 -spec tmp_dir() -> string().
 tmp_dir() ->
     F =
-        fun F([]) -> ".";
+        fun F([]) -> "/tmp";
             F([V | Vs]) ->
                 case os:getenv(V) of
                     false -> F(Vs);

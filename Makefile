@@ -9,13 +9,11 @@ all: build check test
 espresso:
 	cd c_src/espresso && make
 
-release: espresso
+release:
 	$(REBAR) as prod escriptize
-	cp _build/espresso _build/prod/bin/espresso
 
-build: espresso
+build:
 	$(REBAR) escriptize
-	cp _build/espresso _build/default/bin/espresso
 
 clean:
 	$(REBAR) clean
@@ -29,7 +27,7 @@ unit-tests: build
 
 test: unit-tests testtest
 	@echo "Checking syntax transformation for source code of type checker ..."
-	./_build/default/bin/etylizer --sanity --no-type-checking -I ./src ./src/*.erl
+	./_build/default/bin/etylizer --sanity --no-type-checking -I ./include -I ./src ./src/*.erl
 	@echo "Running case study ..."
 	ETYLIZER_CASE_STUDY_LOGLEVEL=warn test_files/etylizer-mini/check-orddict.sh
 	ETYLIZER_CASE_STUDY_LOGLEVEL=warn test_files/etylizer-mini/check-std.sh
