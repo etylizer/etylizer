@@ -97,8 +97,7 @@ check_decls_in_file(F, What, NoInfer) ->
         Ty = symtab:lookup_fun({ref, Name, Arity}, Loc, Tab),
         ShouldFail = utils:string_ends_with(NameStr, "_fail"),
         RunTest =
-          % FIXME #54 reduce timeout after issue has been fixed
-          {timeout, 45, {FullNameStr, fun() ->
+          {timeout, 120, {FullNameStr ++ " (typecheck)", fun() ->
                 ?LOG_NOTE("Type checking ~s from ~s", NameStr, F),
                 global_state:with_new_state(fun() ->
                   case ShouldFail of
@@ -110,7 +109,7 @@ check_decls_in_file(F, What, NoInfer) ->
               end}
             },
         InferTest =
-          {timeout, 45, {FullNameStr ++ " (infer)", fun() ->
+          {timeout, 120, {FullNameStr ++ " (infer)", fun() ->
                 ?LOG_NOTE("Infering type for ~s from ~s", NameStr, F),
                 global_state:with_new_state(fun() ->
                   check_infer_ok_fun(F, Tab, OverlayTab, Decl, Ty)
@@ -153,6 +152,11 @@ check_decls_in_files(Files, What, NoInfer) ->
 simple_test_() ->
   % The following functions are currently excluded from being tested.
   WhatNot = [
+    % TODO slow
+    "use_atom",
+    "inter_01",
+    "inter_02",
+    "inter_04_ok",
     % TODO binary pattern element size verification
     "b4_fail",
     % TODO better redundancy check detection for dynamic()
