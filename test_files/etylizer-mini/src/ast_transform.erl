@@ -56,10 +56,6 @@ trans(Path, Forms, Mode, FunEnv) ->
             ),
     lists:reverse(RevNewForms).
 
--spec assert_funs(term()) -> [ast_erl:fun_with_arity()].
-assert_funs([]) -> [];
-assert_funs([{A, I} | Xs]) when is_atom(A) andalso is_integer(I) -> [{A, I} | assert_funs(Xs)];
-assert_funs(_) -> error(cast_error).
 
 -spec build_funenv(file:filename(), [ast_erl:form()]) -> funenv().
 build_funenv(Path, Forms) ->
@@ -67,14 +63,13 @@ build_funenv(Path, Forms) ->
     lists:foldl(
       fun(Form, E) ->
           case Form of
-              % change: we have to "help" the type system with the types of the Variables
-              {attribute, Anno, import, {ModName, Funs}} when is_atom(ModName) andalso is_list(Funs) -> % change
-                  Funss = assert_funs(Funs), % change: why is this needed?
+              % overlap type error
+              {attribute, Anno, import, {ModName, Funs}} ->
                   lists:foldl(
                     fun(F, E0) ->
                         varenv:insert(ast:to_loc(Path, Anno), F, {extern, ModName}, E0)
                     end,
-                    E, Funss);
+                    E, Funs);
               {function, Anno, Name, Arity, _Clauses} ->
                   varenv:insert(ast:to_loc(Path, Anno), {Name, Arity}, intern, E);
               _ -> E
@@ -829,15 +824,18 @@ trans_qualifiers(Ctx, Env, Qs) ->
     -> {ast:qualifier(), varenv_local:t()}.
 trans_qualifier(Ctx, Env, Q) ->
     case Q of
-        {K, Anno, Pat, Exp} when (K == generate orelse K == b_generate) -> % generator "Pat <- Exp"
+         % generator patterns for lists and bitstrings Pat <- / <:- / <= / <:= Exp
+        {K, Anno, Pat, Exp} when 
+              (K == generate orelse K == generate_strict orelse K == b_generate orelse K == b_generate_strict) ->
             NewExp = trans_exp_noenv(Ctx, Env, Exp),
             {NewPat, NewEnv} = trans_pat(Ctx, Env, Pat, shadow),
             {{K, to_loc(Ctx, Anno), NewPat, NewExp}, NewEnv};
-        {m_generate, Anno, {map_field_exact, _Anno2, K, V}, Exp} ->
+         % map generate patterns  KeyPattern := ValuePattern <- / <:- MapExpression
+        {K, Anno, {map_field_exact, _Anno2, K, V}, Exp} when (K == m_generate orelse K == m_generate_strict)->
             NewExp = trans_exp_noenv(Ctx, Env, Exp),
             {NewK, NewEnv1} = trans_pat(Ctx, Env, K, shadow),
             {NewV, NewEnv2} = trans_pat(Ctx, NewEnv1, V, shadow),
-            {{m_generate, to_loc(Ctx, Anno), NewK, NewV, NewExp}, NewEnv2};
+            {{K, to_loc(Ctx, Anno), NewK, NewV, NewExp}, NewEnv2};
         Exp -> % filter
             trans_exp(Ctx, Env, Exp)
     end.
@@ -859,8 +857,8 @@ trans_map_assoc(Ctx, Env, Assoc) ->
                     map_field_assoc -> map_field_opt;
                     map_field_exact -> map_field_req
                 end,
-            {{NewK, to_loc(Ctx, Anno), NewExpKey, NewExpVal}, Env2};
-        X -> errors:uncovered_case(?FILE, ?LINE, X)
+            {{NewK, to_loc(Ctx, Anno), NewExpKey, NewExpVal}, Env2}
+        % X -> errors:uncovered_case(?FILE, ?LINE, X) refinement on K
     end.
 
 -spec trans_record_fields(ctx(), tyenv(), [ast_erl:record_field()]) -> [ast:record_field()].

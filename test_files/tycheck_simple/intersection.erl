@@ -192,3 +192,11 @@ branch_unmatched_in_all_intersections_fail(X) ->
         2 -> 20;
         3 -> 30
     end.
+
+-spec branch_unmatched_in_nested_expression_fail(foo) -> boolean(); (bar) -> boolean().
+branch_unmatched_in_nested_expression_fail(foo) ->
+    case bar of
+        [] -> true;
+        _  -> false
+    end;
+branch_unmatched_in_nested_expression_fail(_) -> true.
