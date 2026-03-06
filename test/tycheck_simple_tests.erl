@@ -5,6 +5,7 @@
 -include_lib("eunit/include/eunit.hrl").
 -include("log.hrl").
 -include("etylizer_main.hrl").
+-include("parse.hrl").
 
 -spec check_ok_fun(string(), symtab:t(), symtab:t(), ast:fun_decl(), ast:ty_scheme()) -> ok.
 check_ok_fun(Filename, Tab, OverlayTab, Decl = {function, L, Name, Arity, _}, Ty) ->
@@ -82,7 +83,7 @@ has_intersection({ty_scheme, _, _}) -> false.
 
 -spec check_decls_in_file(string(), what(), sets:set(string())) -> list().
 check_decls_in_file(F, What, NoInfer) ->
-  RawForms = parse:parse_file_or_die(F),
+  {ok, RawForms} = parse:parse_file(F, #parse_opts{includes = ["include"]}),
   Forms = ast_transform:trans(F, RawForms),
   SearchPath = paths:compute_search_path(#opts{}),
   OverlayTab = symtab:empty(),
