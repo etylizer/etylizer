@@ -27,8 +27,10 @@
     replace/2,
     fold_with_context/3,
     compare/3,
+    compare_multiple/1,
     update_ets_from_map/2,
-    format_tally_config/3
+    format_tally_config/3,
+    flatten/1
 ]).
 
 % quit exits the erlang program with the given exit code. No stack trace is produced,
@@ -229,6 +231,14 @@ compare(I1, I2) ->
             end
     end.
 
+-spec compare_multiple([{fun((T, T) -> lt | gt | eq), T, T}]) -> lt | gt | eq.
+compare_multiple([]) -> eq;
+compare_multiple([{Cmp, V1, V2} | Rest]) ->
+    maybe 
+        eq ?= Cmp(V1, V2),
+        compare_multiple(Rest)
+    end.
+
 -spec with_default(T | undefined, T) -> T.
 with_default(undefined, Def) -> Def;
 with_default(X, _) -> X.
@@ -403,3 +413,15 @@ format_tally_config(Constraints, FixedVars, Symtab) ->
     ++ io_lib:format("~p.", [symtab:get_types(Symtab)])
     ++ "\n" 
     ++ io_lib:format("~p.", [FixedVars]).
+
+-spec flatten(deep_list(A)) -> [A].
+flatten(L) -> do_flatten(L, []).
+
+-type deep_list(A) :: [etylizer:without(A, list()) | deep_list(A)].
+-spec do_flatten(deep_list(A), [A]) -> [A].
+do_flatten([H|T], Tail) when is_list(H) ->
+    do_flatten(H, do_flatten(T, Tail));
+do_flatten([H|T], Tail) ->
+    [H|do_flatten(T, Tail)];
+do_flatten([], Tail) ->
+    Tail.

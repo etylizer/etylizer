@@ -2,6 +2,8 @@
 
 -compile([export_all, nowarn_export_all]).
 
+-include("etylizer.hrl").
+
 % TODO 
 % the mixing of {local_ref, ...} and {node, ...} inside a BDD structure
 % creates very ugly side effects and results in a complex implementation
@@ -58,9 +60,9 @@
 -type ty_rec() :: ?TY:type().
 -type ast_ty() :: ast:ty(). 
 -type ety_ty_scheme() :: ast:ty_scheme().
--type ety_ref() :: term(). %TODO etylizer reference
+-type ety_ref() :: ast:ty_ref(). %TODO etylizer reference
 -type ety_args() :: term(). %TODO [ast:ty()]
--type database() :: {term(), term()}. 
+-type database() :: {#{temporary_ref() => ty_rec()}, #{ty_rec() => temporary_ref()}}. 
 -type local_cache() :: #{{Ref :: ety_ref(), Args :: ety_args()} => temporary_ref()}. % the local cache should only consist of temporary references
 -type queue() :: queue:queue({temporary_ref(), ast_ty()}).
 
@@ -81,19 +83,22 @@ clean() ->
   end,
   logger:debug("~p state cleaned", [?MODULE]).
 
+-spec set_symtab(symtab:t()) -> _.
 set_symtab(SymTab) ->
   Types = symtab:get_types(SymTab),
   maps:foreach(fun(K, V) -> ty_parser:extend_symtab(K, V) end, Types).
 
+-spec lookup_ref(temporary_ref()) -> type(). 
 lookup_ref(Ref) ->
   % we have already created the node beforehand, it needs to exist
-  [{Ref, Node}] = ets:lookup(?LOCAL_TO_NODE_MAPPING, Ref),
-  Node.
+  [{_, Node}] = ?assert_pattern([{Ref, _}], ets:lookup(?LOCAL_TO_NODE_MAPPING, Ref)),
+  ?assert_type(Node, type()).
 
+-spec create_ref(temporary_ref()) -> _.
 create_ref(Ref) ->
   % we have already created the node beforehand, it needs to exist
   case ets:lookup(?LOCAL_TO_NODE_MAPPING, Ref) of
-    [] -> true = ets:insert_new(?LOCAL_TO_NODE_MAPPING, [{Ref, ty_node:new_ty_node()}]);
+    [] -> ?assert_pattern(true, ets:insert_new(?LOCAL_TO_NODE_MAPPING, [{Ref, ty_node:new_ty_node()}]));
     _ -> ok
   end.
 
@@ -272,6 +277,7 @@ parse(RawTy) ->
 
   FinalResult.
 
+-spec is_not_defined(_, _) -> _.
 is_not_defined(Node, Rec) ->
   case ets:lookup(ty_node_system, Node) of
     [] -> true;
@@ -282,7 +288,7 @@ is_not_defined(Node, Rec) ->
 -spec unparse_mapping(type()) -> {hit, ast_ty()} | no_hit.
 unparse_mapping(Node) ->
   case ets:lookup(?UNPARSE_NAMED_MAPPING, Node) of
-    [{Node, Res}] -> {hit, Res};
+    [{Node, Res}] -> {hit, ?assert_type(Res, ast_ty())};
     _ -> no_hit
   end.
 
@@ -351,9 +357,10 @@ new_local_ref(RawTerm) ->
   % therefore, generate a unique reference and save in a hash table to lookup
   Reff = case ets:lookup(?TERMREFS, Term) of
     [{Term, Ref}] -> 
-      Ref;
+      ?assert_type(Ref, temporary_ref());
     _ -> 
-      ets:insert(?TERMREFS, {Term, UniqueRef = new_local_ref()}),
+      UniqueRef = new_local_ref(),
+      ets:insert(?TERMREFS, {Term, UniqueRef}),
       UniqueRef
   end,
   % additionally, if that generated reference was unified at the last step,
@@ -361,7 +368,7 @@ new_local_ref(RawTerm) ->
   % to be able to hit the global cache 
   % (no unified discarded reference appears in the global cache)
   Final = case ets:lookup(?UNIFY, Reff) of
-    [{Reff, UnifiedRef}] -> UnifiedRef;
+    [{Reff, UnifiedRef}] -> ?assert_type(UnifiedRef, temporary_ref());
     _ -> Reff 
   end,
 
@@ -388,18 +395,13 @@ extend_symtab({_, Namespace, Type, ArgsCount}, RawTyScheme) ->
 -spec lookup_ty(ety_ref()) -> ety_ty_scheme().
 lookup_ty({ty_qref, A, B, C}) ->
   Ref = {A, B, C},
-  [{_, Scheme}] = ets:lookup(?SYMTAB, Ref),
-  Scheme;
+  [{_, Scheme}] = ?assert_pattern([{_, _}], ets:lookup(?SYMTAB, Ref)),
+  ?assert_type(Scheme, ety_ty_scheme());
 lookup_ty({ty_ref, A, B, C}) ->
   Ref = {A, B, C},
   % io:format(user,"Lookup: ~p~nin~n~p~n", [Ref, ets:tab2list(?SYMTAB)]),
-  [{_, Scheme}] = ets:lookup(?SYMTAB, Ref),
-  Scheme;
-lookup_ty({R, A, B, C}) ->
-  error(R),
-  Ref = {A, B, C},
-  [{_, Scheme}] = ets:lookup(?SYMTAB, Ref),
-  Scheme.
+  [{_, Scheme}] = ?assert_pattern([{_, _}], ets:lookup(?SYMTAB, Ref)),
+  ?assert_type(Scheme, ety_ty_scheme()).
 
 -spec group(#{A => list(X)}, A, X) -> #{A := list(X)}.
 group(M, Key, Value) ->
@@ -428,7 +430,7 @@ do_convert({X = {named, _, Ref, Args}, R = {IdTy, _}}, Q, Cache) ->
       NewTy = convert_back(debruijn(subst:apply(Map, Ty, no_clean))),
       
       % sanity
-      false = maps:is_key({Ref, Args}, Cache),
+      ?assert_pattern(false, maps:is_key({Ref, Args}, Cache)),
 
       NewRef = new_local_ref(X),
       case ets:lookup(?CACHE, NewRef) of 
@@ -445,7 +447,7 @@ do_convert({X = {named, _, Ref, Args}, R = {IdTy, _}}, Q, Cache) ->
 
 % entrypoint for recursion: local equation
 do_convert({AstTy = {mu, RecVar = {mu_var, Name}, Ty}, R}, Q, Cache) ->
-  true = is_atom(Name),
+  ?assert_pattern(true, is_atom(Name)),
 
   NewRef = new_local_ref(AstTy),
   % all binders should be unique, 
@@ -461,8 +463,7 @@ do_convert({AstTy = {mu, RecVar = {mu_var, Name}, Ty}, R}, Q, Cache) ->
 
 % exit for recursion: local equation variable
 do_convert({AstTy = {mu_var, Name}, R = {IdTy, _}}, Q, Cache) ->
-  true = is_atom(Name),
-
+  ?assert_pattern(true, is_atom(Name)),
 
   #{AstTy := Ref} = Cache,
   % We are allowed to load the memoized ref
@@ -605,7 +606,9 @@ queue_if_new(Element, Queue) ->
       {Id, queue:in({Id, Element}, Queue)};
     % if already known, don't process and return a real reference
     [{Id, Node}] -> 
-      {Node, Queue}
+      {?assert_type(Node, type()), Queue};
+    _ -> 
+      error(invariant)
   end.
 
 -spec unify(temporary_ref(), database()) -> {temporary_ref(), #{temporary_ref() => ty_rec()}}.
@@ -635,14 +638,14 @@ unify(Ref, {IdToTy, TyToIds}) ->
 unparse(Node) ->
   Z = case ets:lookup(?UNPARSE_CACHE, Node) of
     [{_, Ref}] -> 
-      persistent_term:get(Ref);
+      ?assert_type(persistent_term:get(Ref), ast_ty());
     _ ->
       {R, _} = ty_node:unparse(Node, #{}),
 
       Ref = make_ref(),
       persistent_term:put(Ref, R),
       % inserting R into ets (as a value) is extremely slow if R is a big term
-      true = ets:insert_new(?UNPARSE_CACHE, {Node, Ref}),
+      ?assert_pattern(true, ets:insert_new(?UNPARSE_CACHE, {Node, Ref})),
       
       R
   end,
@@ -727,7 +730,7 @@ convert_back({mu, _, Body}, Env, Counter) ->
   {ConvertedBody, NewCounter} = convert_back(Body, NewEnv, Counter + 1),
   {{mu, {mu_var, Name}, ConvertedBody}, NewCounter};
 convert_back({mu_var, Index}, Env, Counter) ->
-  Name = lists:nth(list_to_integer(atom_to_list(Index)) + 1, Env),
+  Name = lists:nth(?assert_type(list_to_integer(atom_to_list(Index)) + 1, pos_integer()), ?assert_type(Env, [ast:ty_varname(), ...])),
   {{mu_var, Name}, Counter};
 convert_back({var, Name}, _Env, Counter) ->
   {{var, Name}, Counter};
@@ -798,14 +801,17 @@ convert_back_assocs([{Kind, K, V}|Rest], Env, Counter) ->
 make_fresh_name(Counter) ->
   list_to_atom("$var_" ++ integer_to_list(Counter)).
 
+-spec assert_replaced_refs_have_good_order(#{temporary_ref() => type()}) -> ok.
 assert_replaced_refs_have_good_order(Refs) ->
   validate_map(Refs),
   ok.
 
+-spec validate_map(#{temporary_ref() => type()}) -> boolean().
 validate_map(Map) ->
   Pairs = lists:keysort(1, maps:to_list(Map)),
   check_pairs(Pairs).
 
+-spec check_pairs([{temporary_ref(), type()}]) -> boolean().
 check_pairs([]) -> true;
 check_pairs([_]) -> true;
 check_pairs([{K1, {node, N1}}, {K2, {node, N2}} | Rest]) ->
@@ -813,15 +819,18 @@ check_pairs([{K1, {node, N1}}, {K2, {node, N2}} | Rest]) ->
     true when N1 < N2 -> check_pairs([{K2, {node, N2}} | Rest]);
     true -> false;  % K1 < K2 but N1 >= N2
     false -> check_pairs([{K2, {node, N2}} | Rest])  % K1 >= K2, no requirement
-  end;
-check_pairs(_) -> false.  % invalid value format
+  end.
 
+-spec replace_locs
+  (ety_ty_scheme()) -> ety_ty_scheme();
+  (ast_ty()) -> ast_ty().
 replace_locs(Term) ->
   utils:everywhere(fun
     ({loc, _, _, _}) -> {ok, {loc, "AUTO", -1, -1}};
     (_) -> error 
   end, Term).
 
+-spec rewrite_map_to_representation(ast_ty()) -> ast_ty().
 rewrite_map_to_representation({map, AssocList}) ->
   {_, TupPart, FunPart} = lists:foldl(
     fun({Association, Key, Val}, {PrecedenceDomain, Tuples, Functions}) ->

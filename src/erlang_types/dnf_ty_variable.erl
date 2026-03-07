@@ -47,13 +47,13 @@ tuple_to_map({leaf, Internal}) -> {leaf, ty_rec:tuple_to_map(Internal)}.
 % Subtyping
 % =============
 
--spec is_empty_line({[T], [T], ?LEAF:type()}, S) -> {boolean(), S} when T :: ?ATOM:type().
+-spec is_empty_line({[T], [T], ?LEAF:type()}, S) -> {boolean(), S} when S :: is_empty_cache(), T :: ?ATOM:type().
 is_empty_line({AllPos, Neg, T}, ST) ->
-  case {AllPos, Neg, ?LEAF:is_literal_empty(T)} of
+  case {AllPos, Neg, ty_rec:is_literal_empty(T)} of
     {_, _, true} -> 
       {true, ST};
     {_PositiveVariables, _NegativeVariables, false} -> % ignore variables for emptiness
-      ?LEAF:is_empty(T, ST)
+      ty_rec:is_empty(T, ST)
   end.
 
 % =============
@@ -61,7 +61,8 @@ is_empty_line({AllPos, Neg, T}, ST) ->
 % =============
 
 % (NTLV rule)
--spec normalize_line({[T], [T], ?LEAF:type()}, monomorphic_variables(), S) -> {set_of_constraint_sets(), S} when T :: ?ATOM:type().
+-spec normalize_line({[T], [T], ?LEAF:type()}, monomorphic_variables(), S) -> 
+    {set_of_constraint_sets(), S} when S :: normalize_cache(),T :: ?ATOM:type().
 normalize_line({[], [], TyRec}, Fixed, ST) ->
   ty_rec:normalize(TyRec, Fixed, ST);
 normalize_line({PVar, NVar, TyRec}, Fixed, ST) ->
@@ -83,9 +84,10 @@ normalize_line({PVar, NVar, TyRec}, Fixed, ST) ->
 
 % assumption: PVars U NVars is not empty
 -type tagged_variable() :: {pos | neg | {delta, pos | neg}, ?ATOM:type()}.
--spec smallest([T], [T], monomorphic_variables()) -> {tagged_variable(), [tagged_variable()]}.
+-spec smallest([T], [T], monomorphic_variables()) -> 
+    {tagged_variable(), [tagged_variable()]} when T :: ?ATOM:type().
 smallest(PositiveVariables, NegativeVariables, FixedVariables) ->
-  true = (length(PositiveVariables) + length(NegativeVariables)) > 0,
+  ?assert_pattern(true, (length(PositiveVariables) + length(NegativeVariables)) > 0),
 
   % fixed variables are higher order than all non-fixed ones, will be picked last
   PositiveVariablesTagged = [{pos, V} || V <- PositiveVariables, not maps:is_key(V, FixedVariables)],
@@ -96,11 +98,14 @@ smallest(PositiveVariables, NegativeVariables, FixedVariables) ->
     [{{delta, pos}, V} || V <- PositiveVariables, maps:is_key(V, FixedVariables)],
 
   Sort = fun({_, V}, {_, V2}) -> ty_variable:leq(V, V2) end,
-  [X | Z] = lists:sort(Sort, PositiveVariablesTagged++NegativeVariablesTagged) ++ lists:sort(Sort, RestTagged),
+  [X | Z] = 
+  ?assert_pattern([_ | _], 
+                  lists:sort(Sort, PositiveVariablesTagged++NegativeVariablesTagged) ++ 
+                  lists:sort(Sort, RestTagged)),
 
   {X, Z}.
 
--spec single(boolean(), [T], [T], ?LEAF:type()) -> bdd().
+-spec single(boolean(), [T], [T], ?LEAF:type()) -> bdd() when T :: ?ATOM:type().
 single(Pol, VPos, VNeg, Ty) ->
   AccP = lists:foldl(fun(Var, TTy) -> 
     VVar = dnf_ty_variable:singleton(Var),
@@ -118,7 +123,7 @@ single(Pol, VPos, VNeg, Ty) ->
     _ -> S
   end.
 
--spec all_variables_line([T], [T], ?LEAF:type(), cache()) -> sets:set(variable()) when T :: ?ATOM:type().
+-spec all_variables_line([T], [T], ?LEAF:type(), all_variables_cache()) -> sets:set(variable()) when T :: ?ATOM:type().
 all_variables_line(P, N, Leaf, Cache) ->
   sets:union([sets:from_list(P),
               sets:from_list(N),

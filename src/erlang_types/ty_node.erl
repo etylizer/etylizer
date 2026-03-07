@@ -48,24 +48,18 @@
 
 
 -export_type([
-  type/0, 
-  cache/0,
-  all_variables_cache/0
+  type/0
 ]).
 
--opaque type() :: {node, term()}.
--opaque cache() :: #{type() => boolean()}.
--opaque all_variables_cache() :: #{type() => _}.
--type normalize_cache() :: #{{type_descriptor(), monomorphic_variables()} => boolean()}.
--type type_descriptor() :: dnf_ty_variable:type().
+-behaviour(global_state).
+
+-include("erlang_types.hrl").
+-include("etylizer.hrl").
+
+-type type() :: {node, integer()}.
 -type temporary_type() :: {local_ref, term()}. % used in ty_parser
 -type set_of_constraint_sets() :: constraint_set:set_of_constraint_sets().
--type monomorphic_variables() :: etally:monomorphic_variables().
--type ast_mu_var() :: ast:ty_mu_var().
--type ast_ty() :: ast:ty().
--type variable() :: ty_variable:type().
 
--behaviour(global_state).
 
 -define(ID, ty_node_id).
 -define(SYSTEM, ty_node_system).
@@ -122,7 +116,8 @@ compare(N = {node, _}, L = {local_ref, _}) ->
 make(Ty) ->
   Res = ets:lookup(?UNIQUETABLE, Ty),
   case Res of
-    [{_, Ref}] -> Ref;
+    [{_, Ref}] -> ?assert_type(Ref, type());
+    [_ | _] -> error(invariant); % single result
     _ -> define(new_ty_node(), Ty)
   end.
 
@@ -130,7 +125,8 @@ make(Ty) ->
 is_consed(Ty) ->
   Res = ets:lookup(?UNIQUETABLE, Ty),
   case Res of
-    [{Ty, Node}] -> {true, Node};
+    [{Ty, Node}] -> {true, ?assert_type(Node, type())};
+    [_ | _] -> error(invariant); % single result
     _ -> false
   end.
 
@@ -150,9 +146,8 @@ new_ty_node() ->
 define(Reference, Node) ->
   % io:format(user,"  +++++++++++++~nStore: ~p~n~p~n  +++++++++++++~n", [Reference, Node]),
   dnf_ty_variable:assert_valid(Node),
-  [] = ets:lookup(?SYSTEM, Reference),
-  [] = ets:lookup(?UNIQUETABLE, {Node, Reference}),
-  ets:insert(?SYSTEM, {Reference, Node}),
+  ?assert_pattern([], ets:lookup(?SYSTEM, Reference)),
+  ?assert_pattern([], ets:lookup(?UNIQUETABLE, {Node, Reference})), ets:insert(?SYSTEM, {Reference, Node}),
   ets:insert(?UNIQUETABLE, {Node, Reference}),
   Reference.
 
@@ -173,21 +168,24 @@ force_load(Reference = {node, Id}, Node) ->
 
 -spec load(type()) -> type_descriptor().
 load(TyNode) ->
-  [{TyNode, Ty}] = ets:lookup(?SYSTEM, TyNode),
-  Ty.
+  case ets:lookup(?SYSTEM, TyNode) of
+    [{_, Ty}] -> ?assert_type(Ty, type_descriptor());
+    _ -> error(invariant)
+  end.
   
 -spec leq(T, T) -> boolean() when T :: type().
 leq(T1, T2) ->
   is_empty(difference(T1, T2)).
 
--spec leq(T, T, ST) -> {boolean(), ST} when T :: type().
+-spec leq(T, T, ST) -> {boolean(), ST} when T :: type(), ST :: is_empty_cache().
 leq(T1, T2, Cache) ->
   is_empty(difference(T1, T2), Cache).
 
 -spec is_empty(type()) -> boolean().
 is_empty(TyNode) ->
   case ets:lookup(?CACHE, TyNode) of
-    [{_, R}] -> R;
+    [{_, R}] -> ?assert_type(R, boolean());
+    [_ | _] -> error(invariant);
     [] ->
       % T0 = os:system_time(microsecond),
       {Result, LocalCache} = is_empty(TyNode, #{}),
@@ -204,7 +202,7 @@ is_empty(TyNode) ->
 %   implement backtracking-free algorithm after finding a test case
 %   where caching *during* the recursive computation would benefit
 %   the time to solve
--spec is_empty(type(), cache()) -> {boolean(), cache()}.
+-spec is_empty(type(), S) -> {boolean(), S} when S :: is_empty_cache().
 is_empty(TyNode, LocalCache) ->
   Ty = load(TyNode),
 
@@ -279,7 +277,7 @@ do_dump([Ty | T], Res) ->
     false -> 
       Rec = load(Ty),
       MoreTys = utils:everything(
-        fun(E = {node, _}) -> {ok, E};(_) -> error end,
+        fun(E = {node, Id}) when is_integer(Id) -> {ok, E}; (_) -> error end,
         Rec
       ),
       do_dump(T ++ MoreTys, Res#{Ty => Rec})
@@ -309,7 +307,8 @@ dump_list(List) ->
 -spec normalize(type(), monomorphic_variables()) -> set_of_constraint_sets().
 normalize(TyNode, FixedVariables) ->
   Z = case ets:lookup(?NORMCACHE, {TyNode, FixedVariables}) of
-    [{_, Result}] -> Result;
+    [{_, Result}] -> ?assert_type(Result, set_of_constraint_sets());
+    [_ | _] -> error(invariant);
     [] ->
       % T0 = os:system_time(millisecond),
       {Result, _LocalCache} = normalize(TyNode, FixedVariables, #{}),
@@ -325,7 +324,8 @@ normalize(TyNode, FixedVariables) ->
   end,
   Z.
 
--spec normalize(type(), monomorphic_variables(), ST) -> {set_of_constraint_sets(), ST} when ST :: normalize_cache().
+-spec normalize(type(), monomorphic_variables(), ST) -> 
+    {set_of_constraint_sets(), ST} when ST :: normalize_cache().
 normalize(TyNode, FixedVariables, Cache) ->
   Ty = load(TyNode),
 
@@ -355,7 +355,7 @@ normalize(TyNode, FixedVariables, Cache) ->
       end
   end.
 
--spec unparse(type(), ST) -> {ast_ty(), ST} when ST :: #{type() => ast_mu_var()}.
+-spec unparse(type(), ST) -> {ast_ty(), ST} when ST :: unparse_cache().
 unparse(Node = {node, Id}, Cache) -> 
   case ty_parser:unparse_mapping(Node) of
     {hit, Result} -> 
@@ -369,7 +369,7 @@ unparse(Node = {node, Id}, Cache) ->
           RecVar = {mu_var, erlang:list_to_atom("$node_" ++ integer_to_list(Id))},
 
           % sanity
-          false = maps:is_key(Node, Cache),
+          ?assert_pattern(false, maps:is_key(Node, Cache)),
           NewCache = Cache#{Node => RecVar},
 
           % load and continue
@@ -399,8 +399,16 @@ unparse(Node = {node, Id}, Cache) ->
 substitute(Node, Varmap) ->
   T1 = ty_parser:unparse(Node),
   % Filter out frame variables (dynamic()) which unparse to {predef, dynamic} instead of {var, _}
-  Subst = #{begin {{var, Name}, _} = ty_variable:unparse(K, #{}), Name end => ty_parser:unparse(V)
-            || K := V <- Varmap, not ty_variable:is_frame(K)},
+  Subst =
+   maps:fold(
+    fun(K, V, Acc) ->
+            case ty_variable:is_frame(K) of
+                {true, _} -> Acc;
+                {false, NotFrame} ->
+                    {{var, Name}, _} = ty_variable:unparse(NotFrame, #{}),
+                    Acc#{Name => ty_parser:unparse(V)}
+            end
+    end, #{}, Varmap),
   Res = subst:apply(Subst, T1, no_clean),
   ty_parser:parse(Res).
 
@@ -417,11 +425,13 @@ all_variables(Ty, Cache) ->
   end.
 
 % helper functions
--spec opcache(term(), fun(() -> A)) -> A.
+%-spec opcache(term(), fun(() -> A)) -> A. % TODO scoped variables extension for annotations
+-spec opcache(term(), fun(() -> type())) -> type().
 opcache(Key, F) ->
   % process dict faster but we can't erase just parts of it, only everything
   case ets:lookup(?OPCACHE, Key) of
-    [{_, Result}] -> Result;
+    [{_, Result}] -> ?assert_type(Result, type()); 
+    [_ | _] -> error(invariant);
     [] ->
       R = F(),
       ets:insert(?OPCACHE, [{Key, R}]),
@@ -431,4 +441,4 @@ opcache(Key, F) ->
 -spec next_id() -> pos_integer().
 next_id() ->
   NextId = ets:update_counter(?ID, id, 1),
-  NextId.
+  ?assert_type(NextId, pos_integer()).
