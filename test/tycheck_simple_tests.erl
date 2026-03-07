@@ -164,7 +164,10 @@ simple_test_() ->
     %      bounds for scoped variables
     "if_06",
     "if_17",
-    "if_18"
+    "if_18",
+    "case_26",
+    "refinement_01c",
+    "refinement_01b"
   ],
 
   NoInfer = [
@@ -191,7 +194,9 @@ simple_test_() ->
     "op_08",
     % TODO slow maybe inference
     "maybe_08",
-    "maybe_09"
+    "maybe_09",
+    % TODO slow list inference (nonempty_string)
+    "refinement_string"
   ],
 
   %What = ["atom_03_fail"],
