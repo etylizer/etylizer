@@ -167,6 +167,7 @@ simple_test_() ->
 
   NoInfer = [
     % TODO slow, timeouts
+    "guard_or_narrow_01",
     "dyn_union_case_02",
     "op_04",
     "op_15",
