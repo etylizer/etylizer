@@ -451,29 +451,101 @@ process_qualifiers(Ctx, Loc, [Q | Qs], Env, Cs) ->
         {generate_strict, LGen, Pat, Exp} ->
             Alpha = fresh_tyvar(Ctx),
             ExpCs = exp_constrs(Ctx, Exp, stdtypes:tlist(Alpha)),
+
+            % For strict generators, the list element type must be a subtype of the pattern type
+            TyPat = ty_of_pat(Ctx#ctx.symtab, Env, Pat, upper),
+            StrictCs = sets:from_list([
+                {csubty, mk_locs("strict list generator", LGen), Alpha, TyPat}
+            ]),
+
             {PatCs, PatEnv} = pat_env(Ctx, LGen, Alpha, Pat),
             NewEnv = intersect_envs(Env, PatEnv),
-            process_qualifiers(Ctx, Loc, Qs, NewEnv, sets:union([Cs, ExpCs, PatCs]));
+            process_qualifiers(Ctx, Loc, Qs, NewEnv, sets:union([Cs, ExpCs, PatCs, StrictCs]));
         % list generator: Pat <- Exp
-        % FIXME we treat relaxed generators as strict currently
         {generate, LGen, Pat, Exp} ->
-            process_qualifiers(Ctx, Loc, [{generate_strict, LGen, Pat, Exp} | Qs], Env, Cs);
+            Alpha = fresh_tyvar(Ctx), % list elements
+            Beta = fresh_tyvar(Ctx), % pattern
+
+            ExpCs = exp_constrs(Ctx, Exp, stdtypes:tlist(Alpha)),
+
+            TyPat = ty_of_pat(Ctx#ctx.symtab, Env, Pat, upper),
+            {PatCs, PatEnv} = pat_env(Ctx, LGen, Beta, Pat),
+
+            GeneratorC = [
+                          {csubty, mk_locs("pattern lower bound", LGen), ast_lib:mk_intersection([Alpha, TyPat]), Beta},
+                          {csubty, mk_locs("pattern upper bound", LGen), Beta, Alpha}
+                         ],
+            NewEnv = intersect_envs(Env, PatEnv),
+            process_qualifiers(Ctx, Loc, Qs, NewEnv, sets:union([Cs, ExpCs, PatCs, sets:from_list(GeneratorC)]));
         {zip, LGen, NestedQualifiers} ->
             {NewEnv, NewCs} = process_qualifiers(Ctx, LGen, NestedQualifiers, Env, Cs),
             process_qualifiers(Ctx, Loc, Qs, NewEnv, NewCs);
+        % Pat <= Exp
         {b_generate, _, _, _} ->
             errors:unsupported(Loc, "generator ~w", Q);
-        {m_generate, _, _, _} ->
+        % Pat <:= Exp
+        {b_generate_strict, _, _, _} ->
             errors:unsupported(Loc, "generator ~w", Q);
+        % strict map generator: KeyPat := ValPat <:- Exp
+        {m_generate_strict, LGen, KeyPat, ValPat, Exp} ->
+            KeyAlpha = fresh_tyvar(Ctx),
+            ValAlpha = fresh_tyvar(Ctx),
+            ExpCs = exp_constrs(Ctx, Exp, stdtypes:tmap(KeyAlpha, ValAlpha)),
+
+            % For strict generators, the map element types must be subtypes of the pattern types
+            TyKeyPat = ty_of_pat(Ctx#ctx.symtab, Env, KeyPat, upper),
+            TyValPat = ty_of_pat(Ctx#ctx.symtab, Env, ValPat, upper),
+            StrictCs = sets:from_list([
+                {csubty, mk_locs("strict map generator key", LGen), KeyAlpha, TyKeyPat},
+                {csubty, mk_locs("strict map generator value", LGen), ValAlpha, TyValPat}
+            ]),
+
+            {KeyPatCs, KeyPatEnv} = pat_env(Ctx, LGen, KeyAlpha, KeyPat),
+            {ValPatCs, ValPatEnv} = pat_env(Ctx, LGen, ValAlpha, ValPat),
+            PatEnv = maps:merge(KeyPatEnv, ValPatEnv),
+            NewEnv = intersect_envs(Env, PatEnv),
+            process_qualifiers(Ctx, Loc, Qs, NewEnv, sets:union([Cs, ExpCs, KeyPatCs, ValPatCs, StrictCs]));
+        % map generator: KeyPat := ValPat <- Exp
+        {m_generate, LGen, KeyPat, ValPat, Exp} ->
+            KeyAlpha = fresh_tyvar(Ctx), % map key type
+            ValAlpha = fresh_tyvar(Ctx), % map value type
+            KeyBeta = fresh_tyvar(Ctx), % key pattern type
+            ValBeta = fresh_tyvar(Ctx), % value pattern type
+
+            ExpCs = exp_constrs(Ctx, Exp, stdtypes:tmap(KeyAlpha, ValAlpha)),
+
+            % Get upper bounds for filtering
+            TyKeyPat = ty_of_pat(Ctx#ctx.symtab, Env, KeyPat, upper),
+            TyValPat = ty_of_pat(Ctx#ctx.symtab, Env, ValPat, upper),
+
+            {KeyPatCs, KeyPatEnv} = pat_env(Ctx, LGen, KeyBeta, KeyPat),
+            {ValPatCs, ValPatEnv} = pat_env(Ctx, LGen, ValBeta, ValPat),
+
+            % Filtering constraints for both key and value
+            GeneratorC = [
+                          {csubty, mk_locs("key pattern lower bound", LGen), ast_lib:mk_intersection([KeyAlpha, TyKeyPat]), KeyBeta},
+                          {csubty, mk_locs("key pattern upper bound", LGen), KeyBeta, KeyAlpha},
+                          {csubty, mk_locs("value pattern lower bound", LGen), ast_lib:mk_intersection([ValAlpha, TyValPat]), ValBeta},
+                          {csubty, mk_locs("value pattern upper bound", LGen), ValBeta, ValAlpha}
+                         ],
+            PatEnv = maps:merge(KeyPatEnv, ValPatEnv),
+            NewEnv = intersect_envs(Env, PatEnv),
+            process_qualifiers(Ctx, Loc, Qs, NewEnv, sets:union([Cs, ExpCs, KeyPatCs, ValPatCs, sets:from_list(GeneratorC)]));
         % Filter expression
         % be careful here,
         % the catch-all will handle cases that are not supposed to be filters
         % this can happen when a new feature is introduced (e.g. zip, strict_generate)
         Filter ->
             % apply current environment to filter expression
-            FilterCs = sets:from_list([{cdef, mk_locs("filter", Loc), Env,
-                                      exps_constrs(Ctx, Loc, [Filter], stdtypes:tbool())}]),
-            process_qualifiers(Ctx, Loc, Qs, Env, sets:union(Cs, FilterCs))
+            FilterExpCs = exps_constrs(Ctx, Loc, [Filter], stdtypes:tbool()),
+            FilterCs = sets:from_list([{cdef, mk_locs("filter", Loc), Env, FilterExpCs}]),
+
+            % treat filter as if it is a guard to refine existing variable types
+            % guard_seq_env cannot be applied to any expression,
+            % but the default case is unsafe, so we do it anyway
+            {GuardEnv, _} = guard_seq_env([[Filter]]),
+            NewEnv = intersect_envs(Env, GuardEnv),
+            process_qualifiers(Ctx, Loc, Qs, NewEnv, sets:union(Cs, FilterCs))
     end.
 
 -spec gen_funcall_constrs(ctx(), ast:loc(), ast:exp(), [ast:exp()], ast:ty()) -> constr:constrs().

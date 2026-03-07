@@ -218,8 +218,25 @@ resolve_ety_ty(_, intersection, Tys) ->
         _ -> {intersection, Tys}
     end;
 resolve_ety_ty(_, without, [T, U]) -> {intersection, [T, {negation, U}]};
+resolve_ety_ty(_, mu, [Body]) ->
+    Name = list_to_atom("$mu_" ++ integer_to_list(erlang:unique_integer([positive]))),
+    {mu, {mu_var, Name}, replace_mu_var(Body, Name)};
+resolve_ety_ty(_, mu_var, []) -> {mu_var, '$mu_placeholder'};
 resolve_ety_ty(L, Name, _) ->
     errors:ty_error(L, "Invalid use of builtin type etylizer:~w", Name).
+
+-spec replace_mu_var(ast:ty(), atom()) -> ast:ty().
+replace_mu_var({mu_var, '$mu_placeholder'}, Name) -> {mu_var, Name};
+replace_mu_var(T, Name) when is_tuple(T) ->
+    list_to_tuple(replace_mu_var_list(tuple_to_list(T), Name));
+replace_mu_var(L, Name) when is_list(L) ->
+    replace_mu_var_list(L, Name);
+replace_mu_var(T, _Name) -> T.
+
+-spec replace_mu_var_list([term()], atom()) -> [term()].
+replace_mu_var_list([], _Name) -> [];
+replace_mu_var_list([H | T], Name) ->
+    [replace_mu_var(H, Name) | replace_mu_var_list(T, Name)].
 
 -spec eval_const_ty(erl_parse:abstract_expr(), ast:loc()) -> {singleton, integer()}.
 eval_const_ty(Ty, Loc) ->
@@ -919,18 +936,22 @@ trans_qualifiers(Ctx, Env, Qs) ->
     -> {ast:qualifier(), varenv_local:t()}.
 trans_qualifier(Ctx, Env, Q) ->
     case Q of
-        {K, Anno, Pat, Exp} when (K == generate_strict orelse K == generate orelse K == b_generate) -> % generator "Pat <- Exp"
+         % generator patterns for lists and bitstrings Pat <- / <:- / <= / <:= Exp
+        {K, Anno, Pat, Exp} when
+              (K == generate orelse K == generate_strict orelse K == b_generate orelse K == b_generate_strict) ->
             NewExp = trans_exp_noenv(Ctx, Env, Exp),
             {NewPat, NewEnv} = trans_pat(Ctx, Env, Pat, shadow),
             {{K, to_loc(Ctx, Anno), NewPat, NewExp}, NewEnv};
+         % map generate patterns  KeyPattern := ValuePattern <- / <:- MapExpression
+        {K, Anno, {map_field_exact, _Anno2, KeyPat, ValPat}, Exp} when (K == m_generate orelse K == m_generate_strict)->
+            NewExp = trans_exp_noenv(Ctx, Env, Exp),
+            {NewK, NewEnv1} = trans_pat(Ctx, Env, KeyPat, shadow),
+            {NewV, NewEnv2} = trans_pat(Ctx, NewEnv1, ValPat, shadow),
+            {{K, to_loc(Ctx, Anno), NewK, NewV, NewExp}, NewEnv2};
+        % zip generator
         {zip, Anno, Qs} ->
             {NewQ, NewEnv} = trans_qualifiers(Ctx, Env, Qs),
             {{zip, to_loc(Ctx, Anno), NewQ}, NewEnv};
-        {m_generate, Anno, {map_field_exact, _Anno2, K, V}, Exp} ->
-            NewExp = trans_exp_noenv(Ctx, Env, Exp),
-            {NewK, NewEnv1} = trans_pat(Ctx, Env, K, shadow),
-            {NewV, NewEnv2} = trans_pat(Ctx, NewEnv1, V, shadow),
-            {{m_generate, to_loc(Ctx, Anno), NewK, NewV, NewExp}, NewEnv2};
         Exp -> % filter
             trans_exp(Ctx, Env, Exp)
     end.
