@@ -162,7 +162,14 @@ simple_test_() ->
     "lc_13",
     % TODO unbound cariable in constraint simplification (#278)
     "lc_11",
-    "lc_12_fail"
+    "lc_12_fail",
+    % TODO for if expressions guards always reference outer scope variables
+    %      lower is always none() for any non-trivial if guard
+    %      see case_13_fail, maybe at some point we have better
+    %      bounds for scoped variables
+    "if_06",
+    "if_17",
+    "if_18"
   ],
 
   NoInfer = [

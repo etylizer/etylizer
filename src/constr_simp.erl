@@ -60,6 +60,8 @@ simp_constr(Ctx, C) ->
                             {local_ref, Y} ->
                                 errors:bug("Unbound variable in materialization constraint simplification ~w: ~p",
                                      [Y, Ctx#ctx.env]);
+                            {escaped_ref, _VarName, EscTyVar} ->
+                                {ty_scheme, [], {var, EscTyVar}};
                             GlobalX ->
                                 symtab:lookup_fun(GlobalX, loc(Locs), Ctx#ctx.symtab)
                         end

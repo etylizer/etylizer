@@ -91,21 +91,17 @@ gen_constrs_annotated_fun(ExhaustivenessMode ,Symtab, {fun_full, ArgTys, ResTy},
     Msg = utils:sformat("definition of ~w/~w", Name, Arity),
     utils:single({cdef, mk_locs(Msg, L), Env, BodyCs}).
 
+% constraints for a sequence of expressions
 -spec exps_constrs(ctx(), ast:loc(), [ast:exp()], ast:ty()) -> constr:constrs().
-exps_constrs(Ctx, _L, Es, T) ->
-    case lists:reverse(Es) of
-        [] -> ?ABORT("empty list of expressions");
-        [Last | Init] ->
-            Cs0 = exp_constrs(Ctx, Last, T),
-            lists:foldl(fun (E, Acc) ->
-                                Alpha = fresh_tyvar(Ctx),
-                                Cs = exp_constrs(Ctx, E, Alpha),
-                                % Question: Constraint Alpha to unit?
-                                sets:union(Acc, Cs)
-                        end,
-                        Cs0,
-                        Init)
-    end.
+exps_constrs(_Ctx, _L, [], _T) ->
+    ?ABORT("empty list of expressions");
+exps_constrs(Ctx, _L, [E], T) ->
+    exp_constrs(Ctx, E, T);
+exps_constrs(Ctx, L, [E | Rest], T) ->
+    Alpha = fresh_tyvar(Ctx),
+    Cs = exp_constrs(Ctx, E, Alpha),
+    RestCs = exps_constrs(Ctx, L, Rest, T),
+    sets:union(Cs, RestCs).
 
 -spec exp_constrs(ctx(), ast:exp(), ast:ty()) -> constr:constrs().
 exp_constrs(Ctx, E, T) ->
@@ -117,49 +113,17 @@ exp_constrs(Ctx, E, T) ->
         {'string', L, ""} -> utils:single({csubty, mk_locs("empty string literal", L), {empty_list}, T});
         {'string', L, _S} -> utils:single({csubty, mk_locs("string literal", L), {predef_alias, nonempty_string}, T});
         {bin, L, []} -> utils:single({csubty, mk_locs("empty bitstring", L), {bitstring}, T});
-        {bin, L, _Cs} -> 
-            % TODO constraints for inner binary pattern elements 
+        {bin, L, _Cs} ->
+            % TODO constraints for inner binary pattern elements
             ?LOG_WARN("Skipping verification of binary pattern elements of ~s", ast:format_loc(L)),
             utils:single({csubty, mk_locs("bitstring", L), {bitstring}, T});
         {bc, L, _E, _Qs} -> errors:unsupported(L, "bitstrings");
-        {block, L, Es} -> exps_constrs(Ctx, L, Es, T);
+        {block, L, Es} ->
+            exps_constrs(Ctx, L, Es, T);
         {'case', L, ScrutE, Clauses} ->
-            Alpha = fresh_tyvar(Ctx),
-            Cs0 = exp_constrs(Ctx, ScrutE, Alpha),
-            NeedsUnmatchedCheck = needs_unmatched_check(Clauses),
-            {BodyList, Lowers, _Uppers, CsCases} =
-                lists:foldl(fun (Clause = {case_clause, LocClause, _, _, _},
-                                 {BodyList, Lowers, Uppers, AccCs}) ->
-                                    ?LOG_TRACE("Generating constraint for case clause at ~s: Lowers=~s, Uppers=~s",
-                                               ast:format_loc(LocClause),
-                                               pretty:render_tys(Lowers),
-                                               pretty:render_tys(Uppers)),
-                                    {ThisLower, ThisUpper, ThisCs, ThisConstrBody} =
-                                        case_clause_constrs(
-                                          Ctx,
-                                          ty_without(Alpha, ast_lib:mk_union(Lowers)),
-                                          ScrutE,
-                                          NeedsUnmatchedCheck,
-                                          Lowers,
-                                          Clause,
-                                          T),
-                                    {BodyList ++ [ThisConstrBody],
-                                     Lowers ++ [ThisLower],
-                                     Uppers ++ [ThisUpper],
-                                     sets:union(ThisCs, AccCs)}
-                            end,
-                            {[], [], [], sets:new([{version, 2}])},
-                            Clauses),
-            CsScrut = sets:union(Cs0, CsCases),
-            Exhaust = 
-            case Ctx#ctx.exhaustiveness_mode of
-                enabled -> utils:single( 
-                              {csubty, mk_locs("case exhaustiveness", L), Alpha, ast_lib:mk_union(Lowers)});
-                disabled -> sets:new()
-            end,
-            sets:from_list([
-                {ccase, mk_locs("case", L), CsScrut, Exhaust, BodyList}
-            ], [{version, 2}]);
+            case_constrs(Ctx, L, ScrutE, Clauses, [], T);
+        {'case', L, ScrutE, Clauses, EscapeAnnotation} ->
+            case_constrs(Ctx, L, ScrutE, Clauses, EscapeAnnotation, T);
         {'catch', L, CatchE} ->
             Top = {predef, any},
             Cs = exp_constrs(Ctx, CatchE, Top),
@@ -200,26 +164,26 @@ exp_constrs(Ctx, E, T) ->
             {Env, Cs0} = process_qualifiers(Ctx, L, Qs, #{}, sets:new()),
             Beta = fresh_tyvar(Ctx), % element result
             % generate constraints for body expression in qualifier environment
-            BodyCs = sets:from_list([{cdef, mk_locs("list comprehension body", L), Env, 
-                                     exps_constrs(Ctx, L, [Exp], Beta)}], []),
+            ExpCs = exps_constrs(Ctx, L, [Exp], Beta),
+            BodyCs = sets:from_list([{cdef, mk_locs("list comprehension body", L), Env, ExpCs}], []),
             % comprehension result is list of body type
             ListTy = stdtypes:tlist(Beta),
             Cs1 = sets:add_element({csubty, mk_locs("list comprehension result", L), ListTy, T}, BodyCs),
             sets:union(Cs0, Cs1);
         {mc, L, K, V, Qs} ->
             {Env, Cs0} = process_qualifiers(Ctx, L, Qs, #{}, sets:new()),
-            
+
             % key and value types
             KeyAlpha = fresh_tyvar(Ctx),
             ValAlpha = fresh_tyvar(Ctx),
             KeyCs = exps_constrs(Ctx, L, [K], KeyAlpha),
             ValCs = exps_constrs(Ctx, L, [V], ValAlpha),
-            
+
             BodyCs = sets:from_list([
                 {cdef, mk_locs("map comprehension key", L), Env, KeyCs},
                 {cdef, mk_locs("map comprehension value", L), Env, ValCs}
             ], []),
-            
+
             % comprehension result is map of key/value types
             MapTy = stdtypes:tmap(KeyAlpha, ValAlpha),
             Cs1 = sets:add_element(
@@ -403,6 +367,13 @@ exp_constrs(Ctx, E, T) ->
             sets:add_element(TupleC, Cs);
         {'try', L, _Exps, _CaseClauses, _CatchClauses, _AfterBody} ->
             errors:unsupported(L, "try expression", []);
+        {var, L, EscRef = {escaped_ref, _VarName, _EscTyVar}} ->
+            Msg = utils:sformat("escaped var ~w", _VarName),
+            AlphaName = fresh_ty_varname(Ctx),
+            Locs = mk_locs(Msg, L),
+            Mater = {cvarmater, Locs, EscRef, AlphaName},
+            Link = {csubty, Locs, {var, AlphaName}, T},
+            sets:from_list([Mater, Link]);
         {var, L, AnyRef} ->
             Msg = utils:sformat("var ~s", pretty:render(pretty:ref(AnyRef))),
             AlphaName = fresh_ty_varname(Ctx),
@@ -414,7 +385,7 @@ exp_constrs(Ctx, E, T) ->
             % Γ ⊢ e : alpha   TargetType <: alpha   TargetType <: T
             % --------------------------------------- constr-downcast
             % Γ ⊢ (e ::: TargetType) : T
-            Alpha = fresh_tyvar(Ctx), 
+            Alpha = fresh_tyvar(Ctx),
             Cons = exp_constrs(Ctx, Exp, Alpha),
             DowncastConstr = {csubty, mk_locs("downcast", Loc), TargetType, Alpha},
             SubsumConstr = {csubty, mk_locs("downcast result", Loc), TargetType, T},
@@ -429,6 +400,47 @@ exp_constrs(Ctx, E, T) ->
         X -> errors:uncovered_case(?FILE, ?LINE, X)
     end.
 
+
+% Helper for case expressions (with or without escape annotations).
+-spec case_constrs(ctx(), ast:loc(), ast:exp(), [ast:case_clause()], ast:escape_annotation(), ast:ty()) -> constr:constrs().
+case_constrs(Ctx, L, ScrutE, Clauses, EscapeAnnotation, T) ->
+    Alpha = fresh_tyvar(Ctx),
+    Cs0 = exp_constrs(Ctx, ScrutE, Alpha),
+    NeedsUnmatchedCheck = needs_unmatched_check(Clauses),
+    {BodyList, Lowers, _Uppers, CsCases} =
+        lists:foldl(fun (Clause = {case_clause, LocClause, _, _, _},
+                         {BodyList, Lowers, Uppers, AccCs}) ->
+                            ?LOG_TRACE("Generating constraint for case clause at ~s: Lowers=~s, Uppers=~s",
+                                       ast:format_loc(LocClause),
+                                       pretty:render_tys(Lowers),
+                                       pretty:render_tys(Uppers)),
+                            {ThisLower, ThisUpper, ThisCs, ThisConstrBody} =
+                                case_clause_constrs(
+                                  Ctx,
+                                  ty_without(Alpha, ast_lib:mk_union(Lowers)),
+                                  ScrutE,
+                                  NeedsUnmatchedCheck,
+                                  Lowers,
+                                  Clause,
+                                  T,
+                                  EscapeAnnotation),
+                            {BodyList ++ [ThisConstrBody],
+                             Lowers ++ [ThisLower],
+                             Uppers ++ [ThisUpper],
+                             sets:union(ThisCs, AccCs)}
+                    end,
+                    {[], [], [], sets:new()},
+                    Clauses),
+    CsScrut = sets:union(Cs0, CsCases),
+    Exhaust =
+        case Ctx#ctx.exhaustiveness_mode of
+            enabled -> utils:single(
+                          {csubty, mk_locs("case exhaustiveness", L), Alpha, ast_lib:mk_union(Lowers)});
+            disabled -> sets:new()
+        end,
+    sets:from_list([
+        {ccase, mk_locs("case", L), CsScrut, Exhaust, BodyList}
+    ]).
 
 -spec process_qualifiers(ctx(), ast:loc(), [ast:qualifier()], constr:constr_env(), constr:constrs()) ->
           {constr:constr_env(), constr:constrs()}.
@@ -454,12 +466,12 @@ process_qualifiers(Ctx, Loc, [Q | Qs], Env, Cs) ->
         {m_generate, _, _, _} ->
             errors:unsupported(Loc, "generator ~w", Q);
         % Filter expression
-        % be careful here, 
+        % be careful here,
         % the catch-all will handle cases that are not supposed to be filters
         % this can happen when a new feature is introduced (e.g. zip, strict_generate)
         Filter ->
             % apply current environment to filter expression
-            FilterCs = sets:from_list([{cdef, mk_locs("filter", Loc), Env, 
+            FilterCs = sets:from_list([{cdef, mk_locs("filter", Loc), Env,
                                       exps_constrs(Ctx, Loc, [Filter], stdtypes:tbool())}]),
             process_qualifiers(Ctx, Loc, Qs, Env, sets:union(Cs, FilterCs))
     end.
@@ -473,7 +485,7 @@ gen_funcall_constrs(Ctx, L, FunExp, Args, T) ->
                     Cs = exp_constrs(Ctx, ArgExp, Alpha),
                     {sets:union(AccCs, Cs), [Alpha | AccTys]}
             end,
-            {sets:new([{version, 2}]), []},
+            {sets:new(), []},
             Args),
     Beta = fresh_tyvar(Ctx),
     FunTy = {fun_full, ArgTys, Beta},
@@ -529,6 +541,7 @@ funcall_constrs_with_tyscm(Ctx, L, Var, TyScm, Args, T) ->
 var_as_global_ref({var, _, Ref}) ->
     case Ref of
         {local_ref, _} -> error;
+        {escaped_ref, _, _} -> error;
         _ -> {ok, Ref}
     end.
 
@@ -538,14 +551,20 @@ ty_without(T1, T2) -> ast_lib:mk_intersection([T1, ast_lib:mk_negation(T2)]).
 -spec needs_unmatched_check(list(ast:case_clause())) -> boolean().
 needs_unmatched_check(Clauses) ->
     case Clauses of
-        [{case_clause, _, Pat, [], _}] ->
-            case Pat of
-                {wildcard, _} -> false;
-                {var, _, _} -> false;
-                _ -> true
-            end;
+        [{case_clause, _, Pat, [], _}] -> not is_irrefutable_pat(Pat);
         _ -> true
     end.
+
+% Checks whether a pattern always matches any value. This is important for
+% match-to-case rewrites: `X = Expr` becomes `case Expr of {match, MV, X} -> MV end`.
+% The match pattern is irrefutable (two variables), so no exhaustiveness/redundancy
+% constraints (bodyCond) are needed. Without this, bodyCond would duplicate the
+% scrutiny's nested case constraints, causing a combinatorial explosion.
+-spec is_irrefutable_pat(ast:pat()) -> boolean().
+is_irrefutable_pat({wildcard, _}) -> true;
+is_irrefutable_pat({var, _, _}) -> true;
+is_irrefutable_pat({match, _, P1, P2}) -> is_irrefutable_pat(P1) andalso is_irrefutable_pat(P2);
+is_irrefutable_pat(_) -> false.
 
 % Computes the redudance constraints of a case clause. The clause is redudandant iff the
 % constraints are satisfiable.
@@ -579,10 +598,11 @@ case_clause_unmatched_constraints(Ctx, LowersBefore, Upper, Scrut) ->
 %   constr:constrs(): constraints result from the guarded pattern of the clause
 %   constr:constr_case_branch(): the body of the case
 -spec case_clause_constrs(
-    ctx(), ast:ty(), ast:exp(), boolean(), list(ast:ty()), ast:case_clause(), ast:ty()
+    ctx(), ast:ty(), ast:exp(), boolean(), list(ast:ty()), ast:case_clause(), ast:ty(),
+    ast:escape_annotation()
 ) -> {ast:ty(), ast:ty(), constr:constrs(), constr:constr_case_branch()}.
 case_clause_constrs(Ctx, TyScrut, Scrut, NeedsUnmatchedCheck, LowersBefore,
-    {case_clause, L, Pat, Guards, Exps}, ExpectedTy) ->
+    {case_clause, L, Pat, Guards, Exps}, ExpectedTy, EscapeAnnotation) ->
     {BodyLower, BodyUpper, BodyEnvCs, BodyEnv} =
         case_clause_env(Ctx, L, TyScrut, Scrut, Pat, Guards),
     {_, _, GuardEnvCs, GuardEnv} = case_clause_env(Ctx, L, TyScrut, Scrut, Pat, []),
@@ -595,12 +615,27 @@ case_clause_constrs(Ctx, TyScrut, Scrut, NeedsUnmatchedCheck, LowersBefore,
         pretty:render_constr(BodyEnvCs)
     ),
     Beta = fresh_tyvar(Ctx),
-    InnerCs = exps_constrs(Ctx, L, Exps, Beta),
+    BodyCs = exps_constrs(Ctx, L, Exps, Beta),
+    % Add escape constraints: for each escaping variable, materialize its type
+    % in this branch and flow it into the shared escape type variable.
+    EscCs = lists:foldl(
+        fun({VarName, EscTyVar}, Acc) ->
+            EscAlpha = fresh_ty_varname(Ctx),
+            Locs = mk_locs("escape var", L),
+            Mater = {cvarmater, Locs, {local_ref, VarName}, EscAlpha},
+            Link = {csubty, Locs, {var, EscAlpha}, {var, EscTyVar}},
+            sets:add_element(Link, sets:add_element(Mater, Acc))
+        end,
+        sets:new(),
+        EscapeAnnotation),
+    InnerCs = sets:union(BodyCs, EscCs),
+
     CGuards =
         sets:union(
           lists:map(
             fun(Guard) ->
-                    exps_constrs(Ctx, L, Guard, {predef_alias, boolean})
+                    GuardCs = exps_constrs(Ctx, L, Guard, {predef_alias, boolean}),
+                    GuardCs
             end,
             Guards)),
     RedundancyCs =
@@ -611,7 +646,7 @@ case_clause_constrs(Ctx, TyScrut, Scrut, NeedsUnmatchedCheck, LowersBefore,
         end,
     RL =
         case Exps of
-            [] -> L;
+            % [] -> L; % dialyzer says this can't happen
             [E | _] -> ast:loc_exp(E)
         end,
     ResultLocs = mk_locs("case result", RL),
@@ -624,14 +659,21 @@ case_clause_constrs(Ctx, TyScrut, Scrut, NeedsUnmatchedCheck, LowersBefore,
 
 % helper function for case_clause_constrs
 -spec case_clause_env(ctx(), ast:loc(), ast:ty(), ast:exp(), ast:pat(), [ast:guard()]) ->
-          {ast:ty(), ast:ty(), constr:constrs(), symtab:fun_env()}.
+          {ast:ty(), ast:ty(), constr:constrs(), constr:constr_env()}.
 case_clause_env(Ctx, L, TyScrut, Scrut, Pat, Guards) ->
     {Lower, Upper} = pat_guard_lower_upper(Ctx#ctx.symtab, Pat, Guards, Scrut),
     Ti = ast_lib:mk_intersection([TyScrut, Upper]),
     {Ci0, Gamma0} = pat_env(Ctx, L, Ti, pat_of_exp(Scrut)),
     {Ci1, Gamma1} = pat_guard_env(Ctx, L, Ti, Pat, Guards),
     Gamma2 = intersect_envs(Gamma1, Gamma0),
-    {Lower, Upper, sets:union(Ci0, Ci1), Gamma2}.
+    % When the scrutiny is an escaped variable, add it to the env
+    % so that it gets narrowed by the case pattern matching.
+    Gamma3 = case Scrut of
+        {var, _, {escaped_ref, _, _} = EscRef} ->
+            intersect_envs(Gamma2, #{EscRef => Ti});
+        _ -> Gamma2
+    end,
+    {Lower, Upper, sets:union(Ci0, Ci1), Gamma3}.
 
 % ⌊ p when g ⌋_e and ⌈ p when g ⌉_e
 -spec pat_guard_lower_upper(symtab:t(), ast:pat(), [ast:guard()], ast:exp()) -> {ast:ty(), ast:ty()}.
@@ -728,7 +770,8 @@ bound_vars_pat(P) ->
              );
         {wildcard, _L} -> sets:new([{version, 2}]);
         {var, _L, {local_bind, V}} -> sets:from_list([V], [{version, 2}]);
-        {var, _L, {local_ref, _V}} -> sets:new([{version, 2}])
+        {var, _L, {local_ref, _V}} -> sets:new();
+        {var, _L, {escaped_ref, _V, _}} -> sets:new()
     end.
 
 

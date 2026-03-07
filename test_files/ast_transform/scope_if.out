@@ -14,7 +14,8 @@
                                                     [{case_clause,{loc,[],0,0},
                                                                   {match,{loc,[],0,0},{var,{loc,[],0,0},{local_bind,{'$X_0',0}}},{var,{loc,[],0,0},{local_bind,{'A',0}}}},
                                                                   [],
-                                                                  [{var,{loc,[],0,0},{local_ref,{'$X_0',0}}}]}]}]},
+                                                                  [{var,{loc,[],0,0},{local_ref,{'$X_0',0}}}]}],
+                                                    [{{'$X_0',0},'$esc_$X_0_0'},{{'A',0},'$esc_A_0'}]}]},
                                 {if_clause,{loc,[],0,0},
                                            [[{atom,{loc,[],0,0},true}]],
                                            [{'case',{loc,[],0,0},
@@ -22,5 +23,6 @@
                                                     [{case_clause,{loc,[],0,0},
                                                                   {match,{loc,[],0,0},{var,{loc,[],0,0},{local_bind,{'$X_0',0}}},{var,{loc,[],0,0},{local_bind,{'A',0}}}},
                                                                   [],
-                                                                  [{var,{loc,[],0,0},{local_ref,{'$X_0',0}}}]}]}]}]},
-                         {var,{loc,[],0,0},{local_ref,{'A',0}}}]}]}].
+                                                                  [{var,{loc,[],0,0},{local_ref,{'$X_0',0}}}]}],
+                                                    [{{'$X_0',0},'$esc_$X_0_0'},{{'A',0},'$esc_A_0'}]}]}]},
+                         {var,{loc,[],0,0},{escaped_ref,{'A',0},'$esc_A_0'}}]}]}].
