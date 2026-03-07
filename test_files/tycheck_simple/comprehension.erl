@@ -62,9 +62,30 @@ lc_11(Alts) -> [{S, A} || A <- Alts, S=A].
 -spec lc_12_fail(list(T)) -> list({T, T}).
 lc_12_fail(Alts) -> [{S, A} || A <- Alts, S=A].
 
--spec lc_13() -> [integer()].
-lc_13() -> 
+-spec lc_13_fail() -> [integer()].
+lc_13_fail() -> 
   [X || X <- [1,a,2,b,3], X > 3].
+
+-spec lc_13b() -> [integer()].
+lc_13b() -> 
+  [X || X <- [1,a,2,b,3], is_integer(X)].
+
+-spec lc_14(list(boolean())) -> list(boolean()).
+lc_14(Alts) -> [S || A <- Alts, case A of S -> S end].
+
+-spec lc_15([{fun_full, [A], B} | {other_type}]) -> [{A, B}].
+lc_15(Funs) -> [{A, B} || {fun_full, [A], B} <- Funs].
+
+-spec lc_15s_fail([{fun_full, [A], B} | {other_type}]) -> [{A, B}].
+lc_15s_fail(Funs) -> [{A, B} || {fun_full, [A], B} <:- Funs].
+
+-spec lc_16([{f, a} | b]) -> [a].
+lc_16(Funs) -> [A || {f, A} <- Funs].
+
+% strict list generator with constant pattern
+-spec lc_17_fail([atom()]) -> [ok].
+lc_17_fail(L) ->
+  [ok || ok <:- L].
 
 -spec mc_01() -> #{atom() => integer()}.
 mc_01() -> 
@@ -73,6 +94,18 @@ mc_01() ->
 -spec mc_02_fail() -> #{atom() => integer()}.
 mc_02_fail() -> 
   #{K => V || {K, V} <- [{hello, ok}]}.
+
+-spec mc_03() -> #{atom() => atom()}.
+mc_03() -> 
+  #{K => V || K := V <- #{foo => bar}}.
+
+-spec mc_04(#{atom() => atom()}) -> #{atom() => ok}.
+mc_04(M) -> 
+  #{K => ok || K := ok <- M}.
+
+-spec mc_05_fail(#{atom() => atom()}) -> #{atom() => ok}.
+mc_05_fail(M) ->
+  #{K => ok || K := ok <:- M}. % strictness causes exception
 
 -spec zip_01() -> [{integer(), atom(), integer()}].
 zip_01() ->

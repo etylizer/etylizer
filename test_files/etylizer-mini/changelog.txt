@@ -21,3 +21,4 @@ Document all changes necessary to get the source code working
 - build_funenv needs held with type guards, needs varenv instantiation
 - removed diff_terms/3, unused and buggy
 - mk_builtin_funs needs additional is_list guard and needs precise filtermap spec
+- ast_transform:trans_map_assoc has refinement now, branch redundant

@@ -158,11 +158,6 @@ simple_test_() ->
     % TODO better redundancy check detection for dynamic()
     "refine_times_02_fail",
     "refine_times_03_fail",
-    % TODO refinement for list comprehensions doesn't work (#279)
-    "lc_13",
-    % TODO unbound cariable in constraint simplification (#278)
-    "lc_11",
-    "lc_12_fail",
     % TODO for if expressions guards always reference outer scope variables
     %      lower is always none() for any non-trivial if guard
     %      see case_13_fail, maybe at some point we have better
@@ -184,6 +179,8 @@ simple_test_() ->
     "match_13",
     % TODO slow (tuple-encoded lists) inference #255
     % reason: recursive types parsing and unparsing in solving step (missing proper substitution implementation)
+    "list_as_tuple_12",
+    "list_as_tuple_rep_02",
     "list_as_tuple_08",
     "list_pattern_11",
     "list_pattern_10_fail_h",
@@ -192,9 +189,6 @@ simple_test_() ->
     "inter_04_ok",
     "foo",
     "op_08",
-    % TODO inferred type is less general than spec?
-    "lc_10",
-    "zip_01",
     % TODO slow maybe inference
     "maybe_08",
     "maybe_09"

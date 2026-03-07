@@ -113,9 +113,9 @@ parse(RawTy) ->
   % create a reference, check if it is inside the cache
   LocalRef = new_local_ref(Ty),
 
-  FinalResult = 
+  FinalResult =
   case ets:lookup(?CACHE, LocalRef) of
-    [{LocalRef, Node}] -> 
+    [{LocalRef, Node}] ->
       Node;
     _ ->
       % 1. Convert to temporary local representation
@@ -724,8 +724,8 @@ convert_back(Type) ->
   Result.
 
 -spec convert_back(ast_ty(), var_env(), non_neg_integer()) -> {ast_ty(), non_neg_integer()}.
-convert_back({mu, _, Body}, Env, Counter) ->
-  Name = make_fresh_name(Counter),
+convert_back({mu, _, Body} = MuTy, Env, Counter) ->
+  Name = make_fresh_name(Counter, MuTy),
   NewEnv = [Name | Env],
   {ConvertedBody, NewCounter} = convert_back(Body, NewEnv, Counter + 1),
   {{mu, {mu_var, Name}, ConvertedBody}, NewCounter};
@@ -797,9 +797,10 @@ convert_back_assocs([{Kind, K, V}|Rest], Env, Counter) ->
   {ConvertedRest, NewCounter} = convert_back_assocs(Rest, Env, Counter2),
   {[{Kind, ConvertedK, ConvertedV}|ConvertedRest], NewCounter}.
 
--spec make_fresh_name(non_neg_integer()) -> ast:ty_varname().
-make_fresh_name(Counter) ->
-  list_to_atom("$var_" ++ integer_to_list(Counter)).
+% we need to hash the body of the mu type otherwise the caching thinks two mu vars are the same just by looking at their counter
+-spec make_fresh_name(non_neg_integer(), ast_ty()) -> ast:ty_varname().
+make_fresh_name(Counter, MuTy) ->
+  list_to_atom("$var_" ++ integer_to_list(Counter) ++ "_" ++ integer_to_list(erlang:phash2(MuTy))).
 
 -spec assert_replaced_refs_have_good_order(#{temporary_ref() => type()}) -> ok.
 assert_replaced_refs_have_good_order(Refs) ->

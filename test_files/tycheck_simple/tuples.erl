@@ -80,6 +80,21 @@ list_as_tuple_07_fail() ->
   Fun = fun _F({_, Vs}) -> list_as_tuple_07_h(Vs) end,
   Fun({x, nil}).
 
+% lc_16: filter+extract from a tlist
+-spec list_as_tuple_09(tlist({f, a} | b)) -> tlist(a).
+list_as_tuple_09(nil) -> nil;
+list_as_tuple_09({{f, A}, Rest}) -> {A, list_as_tuple_09(Rest)};
+list_as_tuple_09({_, Rest}) -> list_as_tuple_09(Rest).
+
+% identity map over tlist
+-spec list_as_tuple_10(tlist(boolean())) -> tlist(boolean()).
+list_as_tuple_10(nil) -> nil;
+list_as_tuple_10({X, Rest}) -> {X, list_as_tuple_10(Rest)}.
+
+-spec list_as_tuple_12(etylizer:mu(nil | {boolean(), etylizer:mu_var()})) -> etylizer:mu(nil | {boolean(), etylizer:mu_var()}).
+list_as_tuple_12(nil) -> nil;
+list_as_tuple_12({X, Rest}) -> {X, list_as_tuple_12(Rest)}.
+
 -spec list_as_tuple_08(tlist(V)) -> {ok, V} | error | error2.
 list_as_tuple_08(nil) -> error;
 list_as_tuple_08({V, nil}) -> {ok, V};
@@ -89,3 +104,10 @@ list_as_tuple_08({_ , Rest}) ->
         _ -> error
     end.
 
+-spec list_as_tuple_rep_01(tlist(b)) -> tlist(a).
+list_as_tuple_rep_01({_, Rest}) -> {a, list_as_tuple_rep_01(Rest)};
+list_as_tuple_rep_01(nil) -> nil.
+
+-spec list_as_tuple_rep_02(etylizer:mu(nil | {b, etylizer:mu_var()})) -> etylizer:mu(nil | {a, etylizer:mu_var()}).
+list_as_tuple_rep_02({_, Rest}) -> {a, list_as_tuple_rep_02(Rest)};
+list_as_tuple_rep_02(_) -> nil.
