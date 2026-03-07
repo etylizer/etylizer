@@ -11,5 +11,10 @@
                                [{block,{loc,[],0,0},
                                        [{'case',{loc,[],0,0},
                                                 {integer,{loc,[],0,0},1},
-                                                [{case_clause,{loc,[],0,0},{var,{loc,[],0,0},{local_bind,{'X',0}}},[],[{var,{loc,[],0,0},{local_ref,{'X',0}}}]}]}]}]},
-                         {var,{loc,[],0,0},{local_ref,{'X',0}}}]}]}].
+                                                [{case_clause,{loc,[],0,0},
+                                                              {match,{loc,[],0,0},{var,{loc,[],0,0},{local_bind,{'$X_0',0}}},{var,{loc,[],0,0},{local_bind,{'X',0}}}},
+                                                              [],
+                                                              [{var,{loc,[],0,0},{local_ref,{'$X_0',0}}}]}],
+                                                [{{'$X_0',0},'$esc_$X_0_0'},{{'X',0},'$esc_X_0'}]},
+                                        {var,{loc,[],0,0},{escaped_ref,{'X',0},'$esc_X_0'}}]}]},
+                         {var,{loc,[],0,0},{escaped_ref,{'X',0},'$esc_X_0'}}]}]}].

@@ -114,3 +114,75 @@ pin(L) ->
 -spec case_14(_, _) -> ok | nok.
 case_14(X, X) -> ok;
 case_14(_, _) -> nok.
+
+% scoping of variables outside of the case expression if they are safe
+-spec case_15() -> ok.
+case_15() ->
+    case foo of _ -> S = ok end,
+    S.
+
+-spec case_16_fail() -> ok.
+case_16_fail() ->
+    case ok of _ -> S = foo end,
+    S.
+
+% safe variable scope
+-spec case_17(foo | bar) -> ok.
+case_17(X) ->
+    case X of foo -> S = ok; bar -> S = ok end,
+    S.
+
+% S has type foo | bar
+-spec case_18(foo | bar) -> foo | bar.
+case_18(X) ->
+    case X of 
+        foo -> S = foo; 
+        bar -> S = bar
+    end,
+    S.
+
+% S has type foo
+-spec case_19(foo | bar) -> foo | bar.
+case_19(X) ->
+    case X of 
+        foo -> S = foo; 
+        bar -> S = foo
+    end,
+    S.
+
+% S has type foo | fail
+-spec case_20_fail(foo | bar) -> foo | bar.
+case_20_fail(X) ->
+    case X of 
+        foo -> S = foo; 
+        bar -> S = fail
+    end,
+    S.
+
+-spec case_24(integer()) -> integer().
+case_24(X) ->
+    case X of
+        Y when is_integer(Y) -> Y
+    end.
+
+% begin scoping
+-spec case_25() -> ok.
+case_25() ->
+    begin case foo of _ -> S = ok end end,
+    S.
+
+% #295 variable bound in case scrutinee should be visible in clause bodies
+-spec case_31() -> ok.
+case_31() ->
+    case U = ok of
+        _ -> U
+    end.
+
+% escaped variable should be narrowed by subsequent case matching
+-spec case_32(a | b | c) -> b | c.
+case_32(X) ->
+    Y = X,
+    case Y of
+        a -> b;
+        _ -> Y
+    end.

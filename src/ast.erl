@@ -10,9 +10,11 @@
     global_ref/0,
     global_ref_dyn/0,
     ty_varname/0,
+    unique_tok/0,
+    local_varname/0,
     local_ref/0,
+    escaped_ref/0,
     any_ref/0,
-    bounded_tyvar/0,
     local_bind/0,
     local_ref_bind/0,
     loc/0,
@@ -21,12 +23,15 @@
     export_form/0,
     export_type_form/0,
     import_form/0,
+    mod_name/0,
     mod_form/0,
+    compile_form/0,
     fun_decl/0,
     fun_spec/0,
     record_decl/0,
     record_field/0,
     type_decl/0,
+    tydef/0,
     form/0,
     forms/0,
     rep_atom/0,
@@ -38,11 +43,13 @@
     pat_bitstring/0,
     pat_bitstring_elem/0,
     pat_compound/0,
-    pat_cons/0,
-    pat_map/0,
     pat_nil/0,
-    pat_record_fld_idx/0,
+    pat_cons/0,
+    pat_op/0,
+    pat_map/0,
+    pat_map_assoc/0,
     pat_record/0,
+    pat_record_fld_idx/0,
     pat_tuple/0,
     pat_wildcard/0,
     pat_var/0,
@@ -51,10 +58,13 @@
     exp_bitstring_constr/0,
     exp_bitstring_elem/0,
     exp_block/0,
+    escape_annotation/0,
     exp_case/0,
     exp_catch/0,
     exp_cons/0,
     exp_fun_ref/0,
+    exp_fun_ref_dyn/0,
+    rec_fun_name/0,
     exp_fun/0,
     exp_funcall/0,
     exp_if/0,
@@ -78,9 +88,14 @@
     exp_assert/0,
     exp/0,
     exps/0,
+    qual_zip_gen/0,
+    qual_list_strict_gen/0,
     qual_list_gen/0,
-    qual_map_gen/0,
     qual_bitstring_gen/0,
+    qual_bitstring_strict_gen/0,
+    qual_map_gen/0,
+    qual_map_strict_gen/0,
+    generators/0,
     qualifier/0,
     bitstring_tyspec/0,
     bitstring_tyspec_list/0,
@@ -89,8 +104,10 @@
     map_assoc/0,
     binop/0,
     unop/0,
-    case_clause/0,
     catch_clause/0,
+    exc_type_pat/0,
+    stacktrace_pat/0,
+    case_clause/0,
     fun_clause/0,
     if_clause/0,
     guard/0,
@@ -108,11 +125,15 @@
     guard_test_tuple/0,
     guard_test_var/0,
     guard_test/0,
-    mod_name/0,
     ty_singleton/0,
     ty_bitstring/0,
     ty_empty_list/0,
     ty_list/0,
+    ty_cons/0,
+    ty_nonempty_list/0,
+    ty_improper_list/0,
+    ty_nonempty_improper_list/0,
+    ty_some_list/0,
     ty_simple_fun/0,
     ty_any_arg_fun/0,
     ty_full_fun/0,
@@ -123,8 +144,14 @@
     ty_map_assoc_opt/0,
     ty_map_assoc_req/0,
     ty_map_assoc/0,
+    predef_name/0,
     ty_predef/0,
+    predef_alias_name/0,
+    ty_predef_alias/0,
+    ty_ref/0,
     ty_named/0,
+    ty_mu/0,
+    ty_mu_var/0,
     ty_tuple_any/0,
     ty_tuple/0,
     ty_var/0,
@@ -132,24 +159,14 @@
     ty_intersection/0,
     ty_negation/0,
     ty/0,
-    ty_scheme/0,
-    tydef/0,
-    ty_ref/0,
     ty_constraint/0,
-    unique_tok/0,
-    local_varname/0,
-    predef_alias_name/0
-]).
-
-% extension of the Erlang AST
--export_type([
-    ty_mu/0,
-    ty_mu_var/0
+    bounded_tyvar/0,
+    ty_scheme/0
 ]).
 
 -export([
     format_loc/1, to_loc/2, loc_auto/0, min_loc/2, leq_loc/2, is_predef_name/1, is_predef_alias_name/1,
-    local_varname_from_any_ref/1, get_fun_name/1, loc_exp/1
+    local_varname_from_any_ref/1, escape_tyvar_name/1, get_fun_name/1, loc_exp/1
 ]).
 
 % General
@@ -159,7 +176,8 @@
 -type unique_tok() :: integer().
 -type local_varname() :: {atom(), unique_tok()}.
 -type local_ref() :: {local_ref, local_varname()}. % refer to an existing local variable
--type any_ref() :: global_ref() | local_ref().
+-type escaped_ref() :: {escaped_ref, local_varname(), ty_varname()}. % refer to a variable that escaped a case/if scope
+-type any_ref() :: global_ref() | local_ref() | escaped_ref().
 -type local_bind() :: {local_bind, local_varname()}. % bind a new local variable
 -type local_ref_bind() :: local_ref() | local_bind().
 -type loc() :: {loc, string(), integer(), integer()}. % file, line, column
@@ -202,8 +220,13 @@ min_loc(L1, L2) ->
 local_varname_from_any_ref(Ref) ->
     case Ref of
         {local_ref, V} -> {true, V};
+        {escaped_ref, V, _} -> {true, V};
         _ -> false
     end.
+
+-spec escape_tyvar_name(local_varname()) -> ty_varname().
+escape_tyvar_name({Name, Tok}) ->
+    list_to_atom("$esc_" ++ atom_to_list(Name) ++ "_" ++ integer_to_list(Tok)).
 
 % 8.1  Module Declarations and Forms
 -type fun_with_arity() :: {atom(), arity()}.
@@ -278,7 +301,11 @@ get_fun_name({function, _Loc, Name, Arity, _}) -> utils:sformat("~w/~w", Name, A
 -type exp_bitstring_constr() :: gen_bitstring_constr(exp(), exp()).
 -type exp_bitstring_elem() :: gen_bitstring_elem(exp(), exp()).
 -type exp_block() :: {block, loc(), exps()}.
--type exp_case() :: {'case', loc(), exp(), [case_clause()]}.
+% Escape annotation: variables that escape the case scope (bound in all branches).
+% Each entry maps the original local_varname to a deterministic type variable name.
+-type escape_annotation() :: [{local_varname(), ty_varname()}].
+-type exp_case() :: {'case', loc(), exp(), [case_clause()]}
+                  | {'case', loc(), exp(), [case_clause()], escape_annotation()}.
 -type exp_catch() :: {'catch', loc(), exp()}.
 -type gen_cons(T) :: {cons, loc(), Head::T, Tail::T}.
 -type exp_cons() :: gen_cons(exp()).
@@ -342,8 +369,11 @@ loc_exp(X) -> element(2, X).
 -type qual_list_strict_gen() ::  {generate_strict, loc(), pat(), exp()}.
 -type qual_list_gen() ::  {generate, loc(), pat(), exp()}.
 -type qual_bitstring_gen() ::  {b_generate, loc(), pat(), exp()}.
+-type qual_bitstring_strict_gen() ::  {b_generate_strict, loc(), pat(), exp()}.
 -type qual_map_gen() ::  {m_generate, loc(), KeyPat::pat(), ValPath::pat(), exp()}.
--type generators() :: qual_zip_gen() | qual_list_strict_gen() | qual_list_gen() | qual_bitstring_gen() | qual_map_gen().
+-type qual_map_strict_gen() ::  {m_generate_strict, loc(), KeyPat::pat(), ValPath::pat(), exp()}.
+-type generators() :: qual_zip_gen() | qual_list_strict_gen() | qual_list_gen() 
+    | qual_bitstring_gen() | qual_bitstring_strict_gen() | qual_map_gen() | qual_map_strict_gen().
 -type qualifier() :: exp() | generators().
 
 -type bitstring_tyspec() :: atom() | {atom(), Value::integer()}.

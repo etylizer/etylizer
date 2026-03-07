@@ -295,7 +295,9 @@ ref(AnyRef) ->
         {ty_ref, Mod, Name, Arity} -> qarity(Mod, Name, Arity);
         {ty_qref, Mod, Name, Arity} -> qarity(Mod, Name, Arity);
         {local_ref, {Name, Tok}} ->
-            beside(atom(Name), text("@"), text(utils:sformat("~w", Tok)))
+            beside(atom(Name), text("@"), text(utils:sformat("~w", Tok)));
+        {escaped_ref, {Name, Tok}, _EscTyVar} ->
+            beside(atom(Name), text("@"), text(utils:sformat("~w'", Tok)))
     end.
 
 -spec constr_env(constr:constr_env()) -> doc().
