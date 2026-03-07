@@ -20,7 +20,9 @@ jobs:
     - uses: actions/checkout@v2
     - run: make build
 
-  test:
+  verify-dialyzer:
+    name: "verify: dialyzer"
+    needs: build
     runs-on: ubuntu-latest
     strategy:
       matrix:
@@ -32,19 +34,11 @@ jobs:
     steps:
     - uses: actions/checkout@v2
     - run: make build
-    - name: Unit Tests
-      run: make test
-        # TODO
-        #    - name: Coverage
-        #      run: make coverage
-        #    - name: Send Coverage
-        #      env:
-        #        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        #      run: ./rebar3 as test coveralls send
-        #
-        #
+    - run: rebar3 as test dialyzer
 
-  verify:
+  verify-typecheck:
+    name: "verify: typecheck"
+    needs: build
     runs-on: ubuntu-latest
     strategy:
       matrix:
@@ -55,5 +49,121 @@ jobs:
 
     steps:
     - uses: actions/checkout@v2
-    - name: Dialyzer
-      run: make check
+    - run: make build
+    - run: ./typecheck_erlang_types
+
+  verify-syntax-transformation:
+    name: "verify: syntax transformation"
+    needs: build
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        erlang: [ 28 ]
+
+    container:
+      image: erlang:${{ matrix.erlang }}
+
+    steps:
+    - uses: actions/checkout@v2
+    - run: make build
+    - run: ./_build/default/bin/etylizer --sanity --no-type-checking -I ./include -I ./src ./src/*.erl
+
+  test-typecheck:
+    name: "test: typecheck"
+    needs: build
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        erlang: [ 28 ]
+
+    container:
+      image: erlang:${{ matrix.erlang }}
+
+    steps:
+    - uses: actions/checkout@v2
+    - run: make build
+    - run: ./run_test.escript typecheck
+
+  test-infer:
+    name: "test: infer"
+    needs: build
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        erlang: [ 28 ]
+
+    container:
+      image: erlang:${{ matrix.erlang }}
+
+    steps:
+    - uses: actions/checkout@v2
+    - run: make build
+    - run: ./run_test.escript infer
+
+  test-property-based:
+    name: "test: property-based tests"
+    needs: build
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        erlang: [ 28 ]
+
+    container:
+      image: erlang:${{ matrix.erlang }}
+
+    steps:
+    - uses: actions/checkout@v2
+    - run: make build
+    - run: rebar3 proper
+
+  test-unit-test-tests:
+    name: "test: unit-test tests"
+    needs: build
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        erlang: [ 28 ]
+
+    container:
+      image: erlang:${{ matrix.erlang }}
+
+    steps:
+    - uses: actions/checkout@v2
+    - run: make build
+    - run: make testtest
+
+  test-unit-tests:
+    name: "test: unit-tests"
+    needs: build
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        erlang: [ 28 ]
+
+    container:
+      image: erlang:${{ matrix.erlang }}
+
+    steps:
+    - uses: actions/checkout@v2
+    - run: make build
+    - run: rebar3 eunit
+
+  case-study:
+    name: "case study"
+    needs: build
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        erlang: [ 28 ]
+
+    container:
+      image: erlang:${{ matrix.erlang }}
+
+    steps:
+    - uses: actions/checkout@v2
+    - run: make build
+    - name: Cache espresso binary
+      run: ./run_test.escript "case_01 (typecheck)"
+    - run: ETYLIZER_CASE_STUDY_LOGLEVEL=warn test_files/etylizer-mini/check-orddict.sh
+    - run: ETYLIZER_CASE_STUDY_LOGLEVEL=warn test_files/etylizer-mini/check-std.sh
+    - run: ETYLIZER_CASE_STUDY_LOGLEVEL=warn test_files/etylizer-mini/check.sh
