@@ -1193,6 +1193,35 @@ guard_lower_envs(Tests) ->
 guard_seq_lower_envs([]) -> [{#{}, safe}];
 guard_seq_lower_envs(Guards) -> lists:flatmap(fun guard_lower_envs/1, Guards).
 
+% Flips a comparison operator: N op X becomes X flip(op) N.
+-spec flip_comparison_op(atom()) -> atom().
+flip_comparison_op('>') -> '<';
+flip_comparison_op('<') -> '>';
+flip_comparison_op('>=') -> '=<';
+flip_comparison_op('=<') -> '>='.
+
+% Refinement heuristic for < > <= >= operators and constant types.
+% For integer constants, returns an integer range (e.g. X > 2 gives 3..*).
+-spec comparison_refine_env(atom(), ast:local_varname(), ast:exp()) -> {constr:constr_env(), safe | unsafe}.
+comparison_refine_env(Op, X, ConstExp) ->
+    % operators work for any term
+    % we can refine only on the integer part
+    TyOther = fun(Ty) -> stdtypes:tunion(
+                         Ty,
+                         ty_without({predef, any}, {predef, integer})
+                         ) end,
+    case ty_of_const_exp(ConstExp) of
+        {ok, {singleton, N}} when is_integer(N) ->
+            Ty = case Op of
+                '>'  -> TyOther(stdtypes:trange(N + 1, '*'));
+                '>=' -> TyOther(stdtypes:trange(N, '*'));
+                '<'  -> TyOther(stdtypes:trange('*', N - 1));
+                '=<' -> TyOther(stdtypes:trange('*', N))
+            end,
+            {#{{local_ref, X} => Ty}, safe};
+        _ -> {#{}, unsafe}
+    end.
+
 % env(g)
 -spec guard_seq_env([ast:guard()]) -> {constr:constr_env(), safe | unsafe}.
 guard_seq_env(Guards) ->
@@ -1244,6 +1273,14 @@ guard_test_env(G) ->
                     {EnvLeft, StatusLeft} = guard_test_env(Left),
                     {EnvRight, StatusRight} = guard_test_env(Right),
                     {union_envs(EnvLeft, EnvRight), merge_status(StatusLeft, StatusRight)};
+                (Op =:= '==') orelse (Op =:= '=:=') ->
+                    refine_eq_env(Op, Left, Right);
+                (Op =:= '>') orelse (Op =:= '<') orelse (Op =:= '>=') orelse (Op =:= '=<') ->
+                    case {Left, Right} of
+                        {{var, _, {local_ref, X}}, E} -> comparison_refine_env(Op, X, E);
+                        {E, {var, _, {local_ref, X}}} -> comparison_refine_env(flip_comparison_op(Op), X, E);
+                        _ -> Default
+                    end;
                 true -> Default
             end;
         {op, _L, 'not', Exp} ->
@@ -1252,6 +1289,74 @@ guard_test_env(G) ->
         {'atom', _Loc, true} ->
             {#{}, safe};
         _ -> Default
+    end.
+
+% Best-effort recursive refine variable types from an equality guard Left == Right or Left =:= Right.
+% Variables in Left are refined to a possibly constant type of the corresponding part of Right, and vice versa.
+% For == with numeric constants, we return unsafe because == has loose numeric comparison (1 == 1.0 is true).
+-spec refine_eq_env(atom(), ast:exp(), ast:exp()) -> {constr:constr_env(), safe | unsafe}.
+refine_eq_env(Op, Left, Right) ->
+    case {Left, Right} of
+        {{var, _, {local_ref, X}}, _} ->
+            case ty_of_const_exp(Right) of
+                {ok, Ty} ->
+                    case eq_status(Op, Ty) of
+                        safe -> {#{{local_ref, X} => Ty}, safe};
+                        unsafe -> {#{}, unsafe}
+                    end;
+                error -> {#{}, unsafe}
+            end;
+        {_, {var, _, {local_ref, X}}} ->
+            case ty_of_const_exp(Left) of
+                {ok, Ty} ->
+                    case eq_status(Op, Ty) of
+                        safe -> {#{{local_ref, X} => Ty}, safe};
+                        unsafe -> {#{}, unsafe}
+                    end;
+                error -> {#{}, unsafe}
+            end;
+        {{tuple, _, LeftElems}, {tuple, _, RightElems}}
+                when length(LeftElems) =:= length(RightElems) ->
+            lists:foldl(
+                fun({L, R}, {EnvAcc, StatusAcc}) ->
+                    {Env, Status} = refine_eq_env(Op, L, R),
+                    {intersect_envs(Env, EnvAcc), merge_status(Status, StatusAcc)}
+                end,
+                {#{}, safe},
+                lists:zip(LeftElems, RightElems));
+        _ ->
+            % safe if both constant structurally equal
+            case {ty_of_const_exp(Left), ty_of_const_exp(Right)} of
+                {{ok, T}, {ok, T}} -> {#{}, safe};
+                _ -> {#{}, unsafe}
+            end
+    end.
+
+% For =:= (strict equality), refinement is always safe.
+% For == (loose equality), refinement is unsafe when the constant is numeric,
+% because == treats integers and floats as equal (e.g. 1 == 1.0).
+-spec eq_status(atom(), ast:ty()) -> safe | unsafe.
+eq_status('=:=', _) -> safe;
+eq_status('==', {singleton, N}) when is_integer(N); is_float(N) -> unsafe;
+eq_status('==', _) -> safe.
+
+% Returns the type of a constant (variable-free) expression, or error if not constant.
+-spec ty_of_const_exp(ast:exp()) -> t:opt(ast:ty()).
+ty_of_const_exp(E) ->
+    case E of
+        {'atom', _, A} -> {ok, {singleton, A}};
+        {'integer', _, I} -> {ok, {singleton, I}};
+        {'char', _, C} -> {ok, {singleton, C}};
+        {'string', _, ""} -> {ok, {empty_list}};
+        {'string', _, _} -> {ok, {predef_alias, nonempty_string}};
+        {nil, _} -> {ok, {empty_list}};
+        {tuple, _, Elems} ->
+            TysOpt = lists:map(fun ty_of_const_exp/1, Elems),
+            case lists:all(fun(R) -> R =/= error end, TysOpt) of
+                true -> {ok, {tuple, lists:map(fun({ok, T}) -> T end, TysOpt)}};
+                false -> error
+            end;
+        _ -> error
     end.
 
 merge_status(safe, safe) -> safe;
