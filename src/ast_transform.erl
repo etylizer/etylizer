@@ -93,6 +93,19 @@ trans_form(Ctx, Form, Mode) ->
             {attribute, Anno, import, X} -> {attribute, to_loc(Ctx, Anno), import, X};
             {attribute, Anno, module, X} -> {attribute, to_loc(Ctx, Anno), module, X};
             {attribute, Anno, compile, X} -> {attribute, to_loc(Ctx, Anno), compile, X};
+            {attribute, Anno, etylizer, EtylizerOpt} ->
+                case EtylizerOpt of
+                    {functions_exhaustive, off} ->
+                        {attribute, to_loc(Ctx, Anno), etylizer, EtylizerOpt};
+                    {functions_exhaustive, off, _Funs} ->
+                        {attribute, to_loc(Ctx, Anno), etylizer, EtylizerOpt};
+                    {functions_redundant, off} ->
+                        {attribute, to_loc(Ctx, Anno), etylizer, EtylizerOpt};
+                    {functions_redundant, off, _Funs} ->
+                        {attribute, to_loc(Ctx, Anno), etylizer, EtylizerOpt};
+                    _ ->
+                        error
+                end;
             {attribute, _, file, _} -> error;
             {attribute, _, behaviour, _} -> error;
             {attribute, _, behavior, _} -> error;
@@ -640,7 +653,7 @@ trans_exp(Ctx, Env, Exp) ->
             end,
 
             {TransformedBody, _UnusedEnv} = trans_exp_seq(Ctx, Env, RewrittenBody),
-            % catch clauses use original Env  since try body vars are unsafe
+            % catch clauses use original Env since try body vars are unsafe
             NewCatchClauses = trans_catch_clauses(Ctx, Env, CatchClauses),
             NewAfterBody = trans_exp_seq_noenv(Ctx, Env, AfterBody),
             % cases field is always empty after transformation
@@ -901,7 +914,8 @@ trans_catch_clause(Ctx, Env, C) ->
 trans_fun_clauses(Ctx, Cs) -> trans_fun_clauses(Ctx, varenv_local:empty(), Cs).
 
 -spec trans_fun_clauses(ctx(), varenv_local:t(), [ast_erl:fun_clause()]) -> [ast:fun_clause()].
-trans_fun_clauses(Ctx, Env, Cs) -> lists:map(fun(C) -> trans_fun_clause(Ctx, Env, C) end, Cs).
+trans_fun_clauses(Ctx, Env, Cs) ->
+    lists:map(fun(C) -> trans_fun_clause(Ctx, Env, C) end, Cs).
 
 -spec trans_fun_clause(ctx(), varenv_local:t(), ast_erl:fun_clause()) -> ast:fun_clause().
 trans_fun_clause(Ctx, Env, C) ->

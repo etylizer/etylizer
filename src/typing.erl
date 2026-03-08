@@ -1,9 +1,10 @@
 -module(typing).
 
 -export([
-    check_forms/6,
+    check_forms/6, check_forms/7,
     new_ctx/3,
-    new_ctx/7
+    new_ctx/7,
+    resolve_disabled_funs/2
 ]).
 
 -include("log.hrl").
@@ -18,9 +19,44 @@ new_ctx(Tab, Overlay, Sanity, ReportMode, ReportTimeout, ExhaustivenessMode, Gra
     Ctx = #ctx{ symtab = Tab, overlay_symtab = Overlay, sanity = Sanity, gradual_typing_mode = GradualTypingMode, report_mode = ReportMode, report_timeout = ReportTimeout, exhaustiveness_mode = ExhaustivenessMode },
     Ctx.
 
+% Resolves the set of functions for which a feature is disabled from forms.
+% Parses -etylizer({Feature, off}) for module-level and
+% -etylizer({Feature, off, [fun/arity]}) for function-level.
+-spec resolve_disabled_funs(atom(), ast:forms()) -> sets:set({atom(), arity()}).
+resolve_disabled_funs(Feature, Forms) ->
+    {ModuleOff, PerFunOff} = lists:foldl(
+      fun(Form, {MO, PF}) ->
+          case Form of
+              {attribute, _, etylizer, {F, off}} when F =:= Feature ->
+                  {true, PF};
+              {attribute, _, etylizer, {F, off, Funs}} when F =:= Feature ->
+                  {MO, sets:union(PF, sets:from_list(Funs))};
+              _ -> {MO, PF}
+          end
+      end,
+      {false, sets:new()},
+      Forms),
+    case ModuleOff of
+        true ->
+            % Module-level off: all functions are disabled
+            lists:foldl(
+                fun(Form, Acc) ->
+                    case Form of
+                        {function, _, Name, Arity, _} -> sets:add_element({Name, Arity}, Acc);
+                        _ -> Acc
+                    end
+                end, sets:new(), Forms);
+        false ->
+            PerFunOff
+    end.
+
 % Checks all forms of a module
 -spec check_forms(ctx(), string(), ast:forms(), sets:set(string()), sets:set(string()), boolean()) -> ok.
 check_forms(Ctx, FileName, Forms, Only, Ignore, CheckExports) ->
+    check_forms(Ctx, FileName, Forms, Only, Ignore, CheckExports, {sets:new(), sets:new()}).
+
+-spec check_forms(ctx(), string(), ast:forms(), sets:set(string()), sets:set(string()), boolean(), {sets:set({atom(), arity()}), sets:set({atom(), arity()})}) -> ok.
+check_forms(Ctx, FileName, Forms, Only, Ignore, CheckExports, {CliNoExhaustiveness, CliNoRedundancy}) ->
     case CheckExports orelse Ctx#ctx.gradual_typing_mode =:= infer of
         true ->
             ?LOG_DEBUG("Checking whether exported functions in ~s have a type spec", FileName),
@@ -29,7 +65,9 @@ check_forms(Ctx, FileName, Forms, Only, Ignore, CheckExports) ->
             ?LOG_DEBUG("Skipping check for exported functions in ~s", FileName)
     end,
     ExtTab = symtab:extend_symtab(FileName, Forms, Ctx#ctx.symtab, Ctx#ctx.overlay_symtab),
-    ExtCtx = Ctx#ctx { symtab = ExtTab },
+    DisableExhaustiveness = sets:union(resolve_disabled_funs(functions_exhaustive, Forms), CliNoExhaustiveness),
+    DisableRedundancy = sets:union(resolve_disabled_funs(functions_redundant, Forms), CliNoRedundancy),
+    ExtCtx = Ctx#ctx { symtab = ExtTab, disable_exhaustiveness = DisableExhaustiveness, disable_redundancy = DisableRedundancy },
     ?LOG_DEBUG("Only: ~200p", sets:to_list(Only)),
     ?LOG_DEBUG("Ignore: ~200p", sets:to_list(Ignore)),
     % Split in functions with and without tyspec

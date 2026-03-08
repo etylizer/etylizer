@@ -6,11 +6,13 @@
 -include("log.hrl").
 -include("etylizer_main.hrl").
 -include("parse.hrl").
+-include("typing.hrl").
 
--spec check_ok_fun(string(), symtab:t(), symtab:t(), ast:fun_decl(), ast:ty_scheme()) -> ok.
-check_ok_fun(Filename, Tab, OverlayTab, Decl = {function, L, Name, Arity, _}, Ty) ->
+-spec check_ok_fun(string(), symtab:t(), symtab:t(), sets:set({atom(), arity()}), sets:set({atom(), arity()}), ast:fun_decl(), ast:ty_scheme()) -> ok.
+check_ok_fun(Filename, Tab, OverlayTab, DisableExhaustiveness, DisableRedundancy, Decl = {function, L, Name, Arity, _}, Ty) ->
     SanityCheck = cm_check:perform_sanity_check(Filename, [Decl], true),
-    Ctx = typing:new_ctx(Tab, OverlayTab, SanityCheck), % FIXME: perform sanity check!
+    Ctx0 = typing:new_ctx(Tab, OverlayTab, SanityCheck), % FIXME: perform sanity check!
+    Ctx = Ctx0#ctx{ disable_exhaustiveness = DisableExhaustiveness, disable_redundancy = DisableRedundancy },
     try
         typing_check:check(Ctx, Decl, Ty)
     catch
@@ -21,10 +23,11 @@ check_ok_fun(Filename, Tab, OverlayTab, Decl = {function, L, Name, Arity, _}, Ty
     end,
     ok.
 
--spec check_infer_ok_fun(string(), symtab:t(), symtab:t(), ast:fun_decl(), ast:ty_scheme()) -> ok.
-check_infer_ok_fun(Filename, Tab, OverlayTab, Decl = {function, L, Name, Arity, _}, Ty) ->
+-spec check_infer_ok_fun(string(), symtab:t(), symtab:t(), sets:set({atom(), arity()}), sets:set({atom(), arity()}), ast:fun_decl(), ast:ty_scheme()) -> ok.
+check_infer_ok_fun(Filename, Tab, OverlayTab, DisableExhaustiveness, DisableRedundancy, Decl = {function, L, Name, Arity, _}, Ty) ->
     % Check that the inferred type is more general then the type in the spec
-    Ctx = typing:new_ctx(Tab, OverlayTab, error),
+    Ctx0 = typing:new_ctx(Tab, OverlayTab, error),
+    Ctx = Ctx0#ctx{ disable_exhaustiveness = DisableExhaustiveness, disable_redundancy = DisableRedundancy },
     Envs =
        try
            typing_infer:infer(Ctx, [Decl])
@@ -62,9 +65,10 @@ check_infer_ok_fun(Filename, Tab, OverlayTab, Decl = {function, L, Name, Arity, 
       end,
     ok.
 
--spec check_fail_fun(string(), symtab:t(), symtab:t(), ast:fun_decl(), ast:ty_scheme()) -> ok.
-check_fail_fun(Filename, Tab, OverlayTab, Decl = {function, L, Name, Arity, _}, Ty) ->
-    Ctx = typing:new_ctx(Tab, OverlayTab, error),
+-spec check_fail_fun(string(), symtab:t(), symtab:t(), sets:set({atom(), arity()}), sets:set({atom(), arity()}), ast:fun_decl(), ast:ty_scheme()) -> ok.
+check_fail_fun(Filename, Tab, OverlayTab, DisableExhaustiveness, DisableRedundancy, Decl = {function, L, Name, Arity, _}, Ty) ->
+    Ctx0 = typing:new_ctx(Tab, OverlayTab, error),
+    Ctx = Ctx0#ctx{ disable_exhaustiveness = DisableExhaustiveness, disable_redundancy = DisableRedundancy },
     try
         typing_check:check(Ctx, Decl, Ty),
         io:format("~s: Type checking ~w/~w in ~s succeeded but should fail",
@@ -89,6 +93,8 @@ check_decls_in_file(F, What, NoInfer) ->
   OverlayTab = symtab:empty(),
   Tab0 = symtab:std_symtab(SearchPath, symtab:empty()),
   Tab = symtab:extend_symtab(F, Forms, Tab0,symtab:empty()),
+  DisableExhaustiveness = typing:resolve_disabled_funs(functions_exhaustive, Forms),
+  DisableRedundancy = typing:resolve_disabled_funs(functions_redundant, Forms),
 
   CollectDecls = fun(Decl, TestCases) ->
     case Decl of
@@ -102,9 +108,9 @@ check_decls_in_file(F, What, NoInfer) ->
                 ?LOG_NOTE("Type checking ~s from ~s", NameStr, F),
                 global_state:with_new_state(fun() ->
                   case ShouldFail of
-                    true -> check_fail_fun(F, Tab, OverlayTab, Decl, Ty);
+                    true -> check_fail_fun(F, Tab, OverlayTab, DisableExhaustiveness, DisableRedundancy, Decl, Ty);
                     false ->
-                      check_ok_fun(F, Tab, OverlayTab, Decl, Ty)
+                      check_ok_fun(F, Tab, OverlayTab, DisableExhaustiveness, DisableRedundancy, Decl, Ty)
                   end
                                             end)
               end}
@@ -113,7 +119,7 @@ check_decls_in_file(F, What, NoInfer) ->
           {timeout, 10, {FullNameStr ++ " (infer)", fun() ->
                 ?LOG_NOTE("Infering type for ~s from ~s", NameStr, F),
                 global_state:with_new_state(fun() ->
-                  check_infer_ok_fun(F, Tab, OverlayTab, Decl, Ty)
+                  check_infer_ok_fun(F, Tab, OverlayTab, DisableExhaustiveness, DisableRedundancy, Decl, Ty)
                 end),
                 ok
               end}
@@ -177,6 +183,7 @@ simple_test_() ->
     "op_04",
     "op_15",
     "list_as_tuple_05",
+    "refine_01",
     "refine_tagged_tuple",
     % TODO timeout, with flipped variable ordering it infers instantly
     "match_13",

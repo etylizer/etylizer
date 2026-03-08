@@ -186,7 +186,9 @@ check_alt(Ctx, Decl = {function, Loc, Name, Arity, _}, FunTy, BranchMode, Fixed)
     FunStr = utils:sformat("~w/~w at ~s", Name, Arity, ast:format_loc(Loc)),
     ?LOG_INFO("Checking function ~s against type ~s",
                FunStr, pretty:render_ty(FunTy)),
-    Cs = constr_gen:gen_constrs_annotated_fun(Ctx#ctx.exhaustiveness_mode ,Ctx#ctx.symtab, FunTy, Decl),
+    DisableExhaustiveness = sets:is_element({Name, Arity}, Ctx#ctx.disable_exhaustiveness),
+    DisableRedundancy = sets:is_element({Name, Arity}, Ctx#ctx.disable_redundancy),
+    Cs = constr_gen:gen_constrs_annotated_fun(Ctx#ctx.exhaustiveness_mode, Ctx#ctx.symtab, {DisableExhaustiveness, DisableRedundancy}, FunTy, Decl),
     case Ctx#ctx.sanity of
         {ok, TyMap} -> constr_gen:sanity_check(Cs, TyMap);
         error -> ok

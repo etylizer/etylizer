@@ -30,7 +30,9 @@
     compare_multiple/1,
     update_ets_from_map/2,
     format_tally_config/3,
-    flatten/1
+    flatten/1,
+    parse_fun_id/1,
+    parse_fun_ids/1
 ]).
 
 % quit exits the erlang program with the given exit code. No stack trace is produced,
@@ -425,3 +427,20 @@ do_flatten([H|T], Tail) ->
     [H|do_flatten(T, Tail)];
 do_flatten([], Tail) ->
     Tail.
+
+% Parses a string like "name/arity" into {atom(), arity()}.
+-spec parse_fun_id(string()) -> {atom(), arity()}.
+parse_fun_id(S) ->
+    case string:split(S, "/") of
+        [NameStr, ArityStr] ->
+            Name = list_to_atom(NameStr),
+            Arity = list_to_integer(ArityStr),
+            {Name, Arity};
+        _ ->
+            quit(2, "Invalid function identifier: ~s (expected name/arity)~n", S)
+    end.
+
+% Parses a list of "name/arity" strings into a set of {atom(), arity()}.
+-spec parse_fun_ids([string()]) -> sets:set({atom(), arity()}).
+parse_fun_ids(Ids) ->
+    sets:from_list(lists:map(fun parse_fun_id/1, Ids)).

@@ -59,8 +59,8 @@ QF="" run_ety src/records.erl
 QF=""
 QF=$QF" -i expand_predef_alias/1" # to)
 QF=$QF" -i builtin_ops/0" # to)
-QF=$QF" -i mk_builtin_funs/1" # to)
-QF=$QF" -i builtin_funs/0" # 4)
+QF=$QF" -i mk_builtin_funs/1" # 5)
+QF=$QF" -i builtin_funs/0" # 5)
 run_ety src/stdtypes.erl
 
 QF=""
@@ -103,11 +103,7 @@ QF=$QF" -i trans_pat/4" # 4)
 QF=$QF" -i trans_exp/3" # to)
 QF=$QF" -i trans/4" # to) tally v1 is faster check why
 QF=$QF" -i trans_catch_clause/3" # 3)
-QF=$QF" -i trans_case_clause/3" # 120s
-QF=$QF" -i trans_map_assoc/3" # 200s
-QF=$QF" -i build_funenv/2" # to)
-QF=$QF" -i trans_pat_bin_elem/4" # to)
-QF=$QF" -i trans_case_clauses/3" # to)
-QF=$QF" -i trans_fun_clause/3" # to)
-# QF=$QF" -i mk_builtin_funs/2" # 5) implemented assert fun
+QF=$QF" -i build_funenv/2" # 5) implemented assert fun
+QF=$QF" -i mk_builtin_funs/2" # 5) implemented assert fun
+QF=$QF" -i assert_funs/1" # 5) type overlap
 run_ety src/ast_transform.erl

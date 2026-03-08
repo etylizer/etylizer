@@ -9,6 +9,9 @@
 
 -export_type([type/0]).
 
+% invariants
+-etylizer({functions_exhaustive, off, [unparse/2]}).
+
 -include("erlang_types.hrl").
 -include("etylizer.hrl").
 
@@ -31,6 +34,5 @@ equal(P1, P2) -> ty_tuple:equal(P1, P2).
 unparse({ty_tuple, 2, [List, Termination]}, ST0) ->
   {L1, ST1} = ty_node:unparse(List, ST0),
   {L2, ST2} = ty_node:unparse(Termination, ST1),
-  {{cons, L1, L2}, ST2};
-unparse(_, _) -> error(invariant).
+  {{cons, L1, L2}, ST2}.
 
