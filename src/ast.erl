@@ -343,6 +343,10 @@ get_fun_name({function, _Loc, Name, Arity, _}) -> utils:sformat("~w/~w", Name, A
                                [{record_field, loc(), Field::atom(), exp()}]}.
 -type gen_tuple(T) ::  {tuple, loc(), [T]}.
 -type exp_tuple() ::  gen_tuple(exp()).
+% Note: In the internal AST, the Cases field is always empty ([]) after transformation.
+% During AST transformation, try-of expressions are transformed to try-case:
+%   try Exp of Pat -> Body end  becomes  try case Exp of Pat -> Body end end
+% This simplifies constraint generation and ensures proper variable scoping.
 -type exp_try() :: {'try', loc(), exps(), Cases::[case_clause()], Catches::[catch_clause()],
                     After::exps()}.
 -type gen_var() :: {var, loc(), any_ref()}.
