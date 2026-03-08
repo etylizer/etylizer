@@ -3,7 +3,7 @@
 -include("log.hrl").
 
 -export([
-         gen_constrs_fun_group/3, gen_constrs_annotated_fun/4,
+         gen_constrs_fun_group/4, gen_constrs_annotated_fun/5,
          sanity_check/2
         ]).
 
@@ -19,14 +19,17 @@
 -record(ctx,
         { var_counter :: counters:counters_ref(),
           symtab :: symtab:t(),
-          exhaustiveness_mode :: feature_flags:exhaustiveness_mode()
+          exhaustiveness_mode :: feature_flags:exhaustiveness_mode(),
+          % functions where exhaustiveness is disabled at the constraint generation level
+          disable_exhaustiveness = sets:new() :: sets:set({atom(), arity()})
         }).
 -type ctx() :: #ctx{}.
 
--spec new_ctx(symtab:t(), feature_flags:exhaustiveness_mode()) -> ctx().
-new_ctx(Symtab, ExhaustivenessMode) ->
+-spec new_ctx(symtab:t(), feature_flags:exhaustiveness_mode(), sets:set({atom(), arity()})) -> ctx().
+new_ctx(Symtab, ExhaustivenessMode, DisableExhaustiveness) ->
     Counter = counters:new(2, []),
-    Ctx = #ctx{ var_counter = Counter, symtab = Symtab, exhaustiveness_mode = ExhaustivenessMode },
+    Ctx = #ctx{ var_counter = Counter, symtab = Symtab, exhaustiveness_mode = ExhaustivenessMode,
+                disable_exhaustiveness = DisableExhaustiveness },
     Ctx.
 
 -spec fresh_ty_varname(ctx()) -> ast:ty_varname().
@@ -61,11 +64,11 @@ fresh_vars(Ctx, N) ->
 mk_locs(Label, X) -> {Label, utils:single(X)}.
 
 % Inference for a group of mutually recursive functions without type annotations.
--spec gen_constrs_fun_group(feature_flags:exhaustiveness_mode(), symtab:t(), [ast:fun_decl()]) -> {constr:constrs(), constr:constr_env()}.
-gen_constrs_fun_group(ExhaustivenessMode, Symtab, Decls) ->
-    Ctx = new_ctx(Symtab, ExhaustivenessMode),
+-spec gen_constrs_fun_group(feature_flags:exhaustiveness_mode(), symtab:t(), sets:set({atom(), arity()}), [ast:fun_decl()]) -> {constr:constrs(), constr:constr_env()}.
+gen_constrs_fun_group(ExhaustivenessMode, Symtab, DisableExhaustiveness, Decls) ->
     lists:foldl(
       fun({function, L, Name, Arity, FunClauses}, {Cs, Env}) ->
+              Ctx = new_ctx(Symtab, is_exhaustiveness_disabled_for_fun(Name, Arity, ExhaustivenessMode, DisableExhaustiveness), DisableExhaustiveness),
               Exp = {'fun', L, no_name, FunClauses},
               Alpha = fresh_tyvar(Ctx),
               ThisCs = exp_constrs(Ctx, Exp, Alpha),
@@ -77,9 +80,9 @@ gen_constrs_fun_group(ExhaustivenessMode, Symtab, Decls) ->
 % This function is invoked for each branch of the intersection type in the type spec.
 % The idea is that we can give better error messages by pointing out which part of the
 % intersection did not type check.
--spec gen_constrs_annotated_fun(feature_flags:exhaustiveness_mode(), symtab:t(), ast:ty_full_fun(), ast:fun_decl()) -> constr:constrs().
-gen_constrs_annotated_fun(ExhaustivenessMode ,Symtab, {fun_full, ArgTys, ResTy}, {function, L, Name, Arity, FunClauses}) ->
-    Ctx = new_ctx(Symtab, ExhaustivenessMode),
+-spec gen_constrs_annotated_fun(feature_flags:exhaustiveness_mode(), symtab:t(), sets:set({atom(), arity()}), ast:ty_full_fun(), ast:fun_decl()) -> constr:constrs().
+gen_constrs_annotated_fun(ExhaustivenessMode, Symtab, DisableExhaustiveness, {fun_full, ArgTys, ResTy}, {function, L, Name, Arity, FunClauses}) ->
+    Ctx = new_ctx(Symtab, is_exhaustiveness_disabled_for_fun(Name, Arity, ExhaustivenessMode, DisableExhaustiveness), DisableExhaustiveness),
     {Args, Body} = fun_clauses_to_exp(Ctx, L, FunClauses),
     if length(Args) =/= length(ArgTys) orelse length(Args) =/= Arity ->
             errors:ty_error(L, "Arity mismatch for function ~w", Name);
@@ -128,6 +131,58 @@ exp_constrs(Ctx, E, T) ->
             Top = {predef, any},
             Cs = exp_constrs(Ctx, CatchE, Top),
             sets:add_element({csubty, mk_locs("result of catch", L), Top, T}, Cs);
+        {'try', L, Body, [], CatchClauses, AfterBody} ->
+            % 'of clauses' are always [] after AST transformation.
+
+            % discard env, no variable is safe after try
+            TryResultTy = fresh_tyvar(Ctx),
+            TryBodyCs = exps_constrs(Ctx, L, Body, TryResultTy),
+
+            % Process catch clauses
+            {CatchBodyList, CatchCs} =
+                case CatchClauses of
+                    [] -> {[], sets:new()};
+                    _ ->
+                        {CBList, CCs} =
+                            lists:foldl(
+                                fun(CatchClause, {AccBodyList, AccCs}) ->
+                                    {ThisCs, ThisBody, _ThisEnv} =
+                                        catch_clause_constrs(Ctx, CatchClause, T),
+                                    {AccBodyList ++ [ThisBody],
+                                     sets:union(ThisCs, AccCs)}
+                                end,
+                                {[], sets:new()},
+                                CatchClauses),
+                        {CBList, CCs}
+                end,
+
+            % after section, result is discarded
+            AfterCs = case AfterBody of
+                [] -> sets:new();
+                _ ->
+                    AfterTy = fresh_tyvar(Ctx),
+                    ACs = exps_constrs(Ctx, L, AfterBody, AfterTy),
+                    ACs
+            end,
+
+            % Try body result is one branch, catch clauses are other branches
+            % Try body is a branch that always succeeds (no guard)
+            TryResCs = utils:single({csubty, mk_locs("try body result", L), TryResultTy, T}),
+            TryBodyPayload = constr:mk_case_branch_payload(
+                {#{}, sets:new()},         % Guard (always true, no env)
+                {#{}, TryBodyCs},          % Body constraints
+                none,                      % No redundancy check
+                TryResCs),                 % Result constraint
+            TryBodyBranch = {ccase_branch, mk_locs("try body", L), TryBodyPayload},
+            AllBodyList = [TryBodyBranch | CatchBodyList],
+
+            AllCs = sets:union([TryBodyCs, CatchCs, AfterCs]),
+
+            % Result: create the ccase constraint
+            ResultCs = sets:from_list([{ccase, mk_locs("try-catch", L), AllCs,
+                                       sets:new(), AllBodyList}]),
+
+            ResultCs;
         {cons, L, Head, Tail} ->
             Alpha = fresh_tyvar(Ctx),
             C1 = exp_constrs(Ctx, Head, Alpha),
@@ -365,8 +420,6 @@ exp_constrs(Ctx, E, T) ->
                   Args),
             TupleC = {csubty, mk_locs("tuple constructor", L), {tuple, Tys}, T},
             sets:add_element(TupleC, Cs);
-        {'try', L, _Exps, _CaseClauses, _CatchClauses, _AfterBody} ->
-            errors:unsupported(L, "try expression", []);
         {var, L, EscRef = {escaped_ref, _VarName, _EscTyVar}} ->
             Msg = utils:sformat("escaped var ~w", _VarName),
             AlphaName = fresh_ty_varname(Ctx),
@@ -729,6 +782,83 @@ case_clause_constrs(Ctx, TyScrut, Scrut, NeedsUnmatchedCheck, LowersBefore,
     AllCs = sets:union([BodyEnvCs, GuardEnvCs]),
     {BodyLower, BodyUpper, AllCs, ConstrBody}.
 
+% Generates constraints for a catch clause in a try-catch expression.
+% Parameters:
+%   ctx(): context
+%   ast:catch_clause(): the catch clause
+%   ast:ty(): expected type from outer context
+% Result:
+%   constr:constrs(): constraints from the catch clause pattern and guards
+%   constr:constr_case_branch(): the body of the catch clause
+%   constr:constr_env(): environment from catch clause body (unsafe outside try-catch)
+-spec catch_clause_constrs(ctx(), ast:catch_clause(), ast:ty()) ->
+    {constr:constrs(), constr:constr_case_branch(), constr:constr_env()}.
+catch_clause_constrs(Ctx, {catch_clause, L, ExcType, Pat, Stack, Guards, Body}, ExpectedTy) ->
+    % Create environment from exception type, pattern, and stacktrace bindings
+    {PatCs, PatEnv0} = catch_clause_pat_env(Ctx, L, ExcType, Pat, Stack),
+
+    % Apply guards to refine the environment (guards only refine, no constraints)
+    {GuardEnv, _GuardStatus} = guard_seq_env(Guards),
+    PatEnv = intersect_envs(PatEnv0, GuardEnv),
+
+    % Generate constraints for body in the refined environment
+    Beta = fresh_tyvar(Ctx),
+    InnerCs0 = sets:union(PatCs, sets:new([{version, 2}])),
+    BodyCs = exps_constrs(Ctx, L, Body, Beta),
+    InnerCs = sets:union(BodyCs, InnerCs0),
+
+    % Result type constraint
+    ResultLocs = mk_locs("catch clause result", L),
+    ResultCs = utils:single({csubty, ResultLocs, Beta, ExpectedTy}),
+
+    % Create branch payload with pattern environment
+    % The pattern environment needs to be wrapped in cdef
+    BodyWithEnv = sets:from_list([{cdef, mk_locs("catch clause", L), PatEnv, InnerCs}], [{version, 2}]),
+    Payload = constr:mk_case_branch_payload(
+        {GuardEnv, sets:new()},  % Guard constraints (guards don't generate constraints)
+        {#{}, BodyWithEnv},      % Body constraints with env
+        none,                     % No redundancy check for catch
+        ResultCs),                % Result constraint
+    ConstrBody = {ccase_branch, mk_locs("catch clause", L), Payload},
+
+    % Return pattern constraints (like case_clause_constrs returns pattern/guard constraints)
+    {PatCs, ConstrBody, #{}}.
+
+% Helper for catch_clause_constrs: generate environment from exception pattern
+-spec catch_clause_pat_env(ctx(), ast:loc(), ast:exc_type_pat(), ast:pat(), ast:stacktrace_pat()) ->
+    {constr:constrs(), constr:constr_env()}.
+catch_clause_pat_env(Ctx, L, ExcType, Pat, Stack) ->
+    % Exception type can be a variable, wildcard, or atom (throw/error/exit)
+    ExcTypeEnv = case ExcType of
+        {var, _VarLoc, {local_bind, Name}} ->
+            % Exception type is bound to a variable - it's an atom (throw/error/exit)
+            % Use explicit union type since there's no predef_alias for exception classes
+            ExcTypeAtom = {union, [{singleton, throw}, {singleton, error}, {singleton, exit}]},
+            #{{local_ref, Name} => ExcTypeAtom};
+        _ ->
+            % Wildcard or atom - no binding
+            #{}
+    end,
+
+    % Stacktrace can be a variable or wildcard
+    StackEnv = case Stack of
+        {var, _StackLoc, {local_bind, StackName}} ->
+            % Stacktrace is bound to a variable - type is any() (list of stack frames)
+            StackTy = {predef, any},
+            #{{local_ref, StackName} => StackTy};
+        _ ->
+            % Wildcard - no binding
+            #{}
+    end,
+
+    % Pattern binds the exception value - we use `any()` as exception value type
+    ExceptionValueTy = {predef, any},
+    {PatCs, PatEnv} = pat_env(Ctx, L, ExceptionValueTy, Pat),
+
+    % Merge all environments
+    CombinedEnv = maps:merge(maps:merge(ExcTypeEnv, StackEnv), PatEnv),
+    {PatCs, CombinedEnv}.
+
 % helper function for case_clause_constrs
 -spec case_clause_env(ctx(), ast:loc(), ast:ty(), ast:exp(), ast:pat(), [ast:guard()]) ->
           {ast:ty(), ast:ty(), constr:constrs(), constr:constr_env()}.
@@ -885,6 +1015,8 @@ ty_of_pat(Symtab, Env, P, Mode) ->
         {op, _, '++', [P1, P2]} ->
             ast_lib:mk_intersection([ty_of_pat(Symtab, Env, P1, Mode), ty_of_pat(Symtab, Env, P2, Mode),
                                  {predef_alias, string}]);
+        {op, _, '-', [{integer, _L2, I}]} ->
+            {singleton, -I};
         {op, _, '-', [SubP]} ->
             ast_lib:mk_intersection([ty_of_pat(Symtab, Env, SubP, Mode), {predef_alias, number}]);
         {op, L, Op, _} -> errors:unsupported(L, "operator ~w in patterns", Op);
@@ -1349,6 +1481,7 @@ ty_of_const_exp(E) ->
         {'char', _, C} -> {ok, {singleton, C}};
         {'string', _, ""} -> {ok, {empty_list}};
         {'string', _, _} -> {ok, {predef_alias, nonempty_string}};
+        {op, _, '-', {'integer', _, I}} -> {ok, {singleton, -I}};
         {nil, _} -> {ok, {empty_list}};
         {tuple, _, Elems} ->
             TysOpt = lists:map(fun ty_of_const_exp/1, Elems),
@@ -1516,4 +1649,11 @@ sanity_check(Cs, Spec) ->
             ok;
         false ->
             ?ABORT("Sanity check failed: ~s", "invalid constraint generated")
+    end.
+
+-spec is_exhaustiveness_disabled_for_fun(atom(), arity(), feature_flags:exhaustiveness_mode(), sets:set({atom(), arity()})) -> feature_flags:exhaustiveness_mode().
+is_exhaustiveness_disabled_for_fun(Name, Arity, ExhaustivenessMode, DisableExhaustiveness) ->
+    case sets:is_element({Name, Arity}, DisableExhaustiveness) of
+        true -> disabled;
+        _ -> ExhaustivenessMode
     end.
