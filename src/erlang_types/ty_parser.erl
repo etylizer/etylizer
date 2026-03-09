@@ -49,7 +49,12 @@
 -define(UNPARSE_NAMED_QUEUE, ty_parser_unparse_queue).
 -define(UNPARSE_NAMED_FINISHED, ty_parser_unparse_finish).
 
--define(ALL_ETS, [?CACHE, ?SYMTAB, ?TERMREFS, ?UNIFY, ?UNPARSE_CACHE, ?UNPARSE_NAMED_QUEUE, ?UNPARSE_NAMED_FINISHED, ?UNPARSE_NAMED_MAPPING, ?LOCAL_TO_NODE_MAPPING]).
+% set of nominal type keys (from symtab)
+-define(NOMINALS, ty_parser_nominals).
+% derivation map: {NomKey1, NomKey2} means NomKey1's body contains NomKey2
+-define(NOMINAL_DERIVES, ty_parser_nominal_derives).
+
+-define(ALL_ETS, [?CACHE, ?SYMTAB, ?TERMREFS, ?UNIFY, ?UNPARSE_CACHE, ?UNPARSE_NAMED_QUEUE, ?UNPARSE_NAMED_FINISHED, ?UNPARSE_NAMED_MAPPING, ?LOCAL_TO_NODE_MAPPING, ?NOMINALS, ?NOMINAL_DERIVES]).
 
 -define(TY, dnf_ty_variable).
 -define(NODE, ty_node).
@@ -138,7 +143,61 @@ clean() ->
 set_symtab(SymTab) ->
   Types = symtab:get_types(SymTab),
   % elp:ignore W0034
-  [ty_parser:extend_symtab(K, V) || {K, V} <- maps:to_list(Types)].
+  [ty_parser:extend_symtab(K, V) || {K, V} <- maps:to_list(Types)],
+  % Store nominal type keys for wrapping during parsing
+  Nominals = symtab:get_nominals(SymTab),
+  ets:delete_all_objects(?NOMINALS),
+  NomList = sets:to_list(Nominals),
+  lists:foreach(fun(Key) -> ets:insert(?NOMINALS, {Key}) end, NomList),
+  % Build and store derivation map for nominal types
+  ets:delete_all_objects(?NOMINAL_DERIVES),
+  build_and_store_derivation_map(SymTab, NomList).
+
+-spec build_and_store_derivation_map(symtab:t(), [symtab:ty_key()]) -> ok.
+build_and_store_derivation_map(Tab, NomKeys) ->
+  lists:foreach(fun({ty_key, M, N, A} = Key) ->
+    Ref = {ty_ref, M, N, A},
+    Derives = find_derived_nominals(Tab, Key, Ref, sets:new()),
+    lists:foreach(fun(DerivedKey) ->
+      ets:insert(?NOMINAL_DERIVES, {{Key, DerivedKey}})
+    end, sets:to_list(Derives))
+  end, NomKeys),
+  ok.
+
+-spec find_derived_nominals(symtab:t(), symtab:ty_key(), ast:ty_ref(), sets:set(symtab:ty_key())) -> sets:set(symtab:ty_key()).
+find_derived_nominals(Tab, Key, Ref, Visited) ->
+  case sets:is_element(Key, Visited) of
+    true -> sets:new();
+    false ->
+      {ty_scheme, Vars, Body} = symtab:lookup_ty(Ref, ast:loc_auto(), Tab),
+      VarNames = [V || {V, _Bound} <- Vars],
+      Args = [{predef, any} || _ <- VarNames],
+      SubstBody = case length(VarNames) =:= length(Args) andalso Args =/= [] of
+        true ->
+          Map = subst:from_list(lists:zip(VarNames, Args)),
+          subst:apply(Map, Body, no_clean);
+        false -> Body
+      end,
+      Visited1 = sets:add_element(Key, Visited),
+      DirectNominals = collect_nominal_refs(Tab, SubstBody),
+      sets:fold(fun(DerivedKey, Acc) ->
+        {ty_key, DM, DN, DA} = DerivedKey,
+        Transitive = find_derived_nominals(Tab, DerivedKey, {ty_ref, DM, DN, DA}, Visited1),
+        sets:union(sets:add_element(DerivedKey, Transitive), Acc)
+      end, DirectNominals, DirectNominals)
+  end.
+
+-spec collect_nominal_refs(symtab:t(), ast:ty()) -> sets:set(symtab:ty_key()).
+collect_nominal_refs(Tab, Ty) ->
+  Refs = utils:everything(
+    fun ({named, _, Ref, _}) ->
+      case symtab:is_nominal(Ref, Tab) of
+        true -> {ok, symtab:ref_to_key(Ref)};
+        false -> error
+      end;
+      (_) -> error
+    end, Ty),
+  sets:from_list(Refs).
 
 -spec lookup_ref(temporary_ref()) -> type(). 
 lookup_ref(Ref) ->
@@ -452,6 +511,28 @@ new_local_ref(RawTerm) ->
 
   Final.
 
+-spec nominal_derives_from(ty_nominal:nominal_key(), ty_nominal:nominal_key()) -> boolean().
+nominal_derives_from({M1, N1, A1}, {M2, N2, A2}) ->
+  ets:member(?NOMINAL_DERIVES, {{ty_key, M1, N1, A1}, {ty_key, M2, N2, A2}}).
+
+% Wrap each leaf of a dnf_ty_variable BDD with a nominal tag at the dnf_ty_nominal level.
+-spec wrap_nominal_tag(ty_nominal:type(), dnf_ty_variable:type()) -> dnf_ty_variable:type().
+wrap_nominal_tag(NomTag, {leaf, NomBdd}) ->
+  {leaf, dnf_ty_nominal:nominal(NomTag, NomBdd)};
+wrap_nominal_tag(NomTag, {node, Var, Pos, Neg}) ->
+  {node, Var, wrap_nominal_tag(NomTag, Pos), wrap_nominal_tag(NomTag, Neg)}.
+
+-spec is_nominal_ref(ety_ref()) -> boolean().
+is_nominal_ref({ty_ref, M, N, A}) ->
+  ets:member(?NOMINALS, {ty_key, M, N, A});
+is_nominal_ref({ty_qref, M, N, A}) ->
+  ets:member(?NOMINALS, {ty_key, M, N, A});
+is_nominal_ref(_) -> false.
+
+-spec ref_to_nominal_key(ety_ref()) -> ty_nominal:nominal_key().
+ref_to_nominal_key({ty_ref, M, N, A}) -> {M, N, A};
+ref_to_nominal_key({ty_qref, M, N, A}) -> {M, N, A}.
+
 -spec extend_symtab(ast:ty_ref(), ety_ty_scheme()) -> _.
 extend_symtab({_, Namespace, Type, ArgsCount}, RawTyScheme) ->
   Ref = {Namespace, Type, ArgsCount},
@@ -523,7 +604,14 @@ do_convert_named_new(X, Ref, Args, R, Q, Cache) ->
   case ets:lookup(?CACHE, NewRef) of
     [] ->
       % create a new reference (ref args pair), memoize, and add continue converting
-      {InternalTy, NewQ, {R0, R1}, C0} = do_convert({NewTy, R}, Q, Cache#{{Ref, Args} => NewRef}),
+      {InternalTy0, NewQ, {R0, R1}, C0} = do_convert({NewTy, R}, Q, Cache#{{Ref, Args} => NewRef}),
+      % If the type is nominal, wrap with a nominal tag at the dnf_ty_nominal level
+      InternalTy = case is_nominal_ref(Ref) of
+        true ->
+          NomTag = ty_nominal:new(ref_to_nominal_key(Ref)),
+          wrap_nominal_tag(NomTag, InternalTy0);
+        false -> InternalTy0
+      end,
       {InternalTy, NewQ, {R0#{NewRef => InternalTy}, group(R1, InternalTy, NewRef)}, C0};
     [{NewRef, CachedNode}] ->
       % reuse type representation of the global cache

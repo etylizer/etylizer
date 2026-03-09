@@ -159,7 +159,7 @@ force_load(Reference = {node, Id}, Node) ->
   % update counter
   CurrentId = ets:update_counter(?ID, id, 0),
   case CurrentId < Id of
-    true -> 
+    true ->
       ets:update_counter(?ID, id, (Id - CurrentId + 1));
     _ -> ok
   end,
