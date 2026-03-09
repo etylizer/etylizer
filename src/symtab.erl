@@ -8,6 +8,7 @@
 
 -export_type([
     t/0,
+    ty_key/0,
     fun_env/0,
     ty_env/0,
     record_env/0,
@@ -26,7 +27,11 @@
     empty/0,
     extend_symtab_with_module_list/4,
     dump_symtab/2, overlay_symtab/1,
-    get_types/1
+    get_types/1,
+    has_any_nominals/1,
+    is_nominal/2,
+    get_nominals/1,
+    ref_to_key/1
 ]).
 
 -ifdef(TEST). % for tally tests
@@ -48,13 +53,29 @@
               ops :: op_env(),
               types :: ty_env(),
               records :: record_env(),
-              modules :: mod_env()
+              modules :: mod_env(),
+              nominals :: sets:set(ty_key())
 }).
 
 -type t() :: #tab{}.
 
 -spec get_types(t()) -> ty_env().
 get_types(#tab{types = Types}) -> Types.
+
+-spec ref_to_key(ast:ty_ref()) -> ty_key().
+ref_to_key({ty_ref, M, N, A}) -> {ty_key, M, N, A};
+ref_to_key({ty_qref, M, N, A}) -> {ty_key, M, N, A}.
+
+-spec has_any_nominals(t()) -> boolean().
+has_any_nominals(Tab) ->
+    sets:size(Tab#tab.nominals) > 0.
+
+-spec is_nominal(ast:ty_ref(), t()) -> boolean().
+is_nominal(Ref, Tab) ->
+    sets:is_element(ref_to_key(Ref), Tab#tab.nominals).
+
+-spec get_nominals(t()) -> sets:set(ty_key()).
+get_nominals(#tab{nominals = Nominals}) -> Nominals.
 
 -spec dump_symtab(string(), t()) -> ok.
 dump_symtab(Msg, Tab) ->
@@ -119,11 +140,7 @@ lookup_ty(Ref, Loc, Tab) ->
 
 -spec find_ty(ast:ty_ref(), t()) -> t:opt(ast:ty_scheme()).
 find_ty(Ref, Tab) ->
-    TyRef = case Ref of
-                {ty_ref, M, N, A} -> {ty_key, M, N, A};
-                {ty_qref, M, N ,A} -> {ty_key, M, N, A}
-            end ,
-    maps:find(TyRef, Tab#tab.types).
+    maps:find(ref_to_key(Ref), Tab#tab.types).
 
 -spec lookup_record(atom(), ast:loc(), t()) -> records:record_ty().
 lookup_record(Name, Loc, Tab) ->
@@ -151,7 +168,7 @@ symbols_for_module(Mod, Tab) ->
         ).
 
 -spec empty() -> t().
-empty() -> #tab { funs = #{}, ops = #{}, types = #{}, records = #{}, modules = #{} }.
+empty() -> #tab { funs = #{}, ops = #{}, types = #{}, records = #{}, modules = #{}, nominals = sets:new() }.
 
 -spec std_symtab(paths:search_path(), t()) -> t().
 std_symtab(SearchPath, OverlaySymtab) ->
@@ -178,7 +195,7 @@ build_std_symtab(SearchPath, OverlaySymtab) ->
         lists:foldl(fun({Name, Arity, T}, Map) -> maps:put({Name, Arity}, T, Map) end,
                     #{},
                     stdtypes:builtin_ops()),
-    Tab = #tab { funs = Funs, ops = Ops, types = #{}, records = #{}, modules = #{} },
+    Tab = #tab { funs = Funs, ops = Ops, types = #{}, records = #{}, modules = #{}, nominals = sets:new() },
     ExtTab = extend_symtab_with_module_list(Tab, SearchPath, [erlang], OverlaySymtab),
     % Merge overlay types into the main symtab so they are available for type resolution
     ExtTab2 = ExtTab#tab { types = maps:merge(ExtTab#tab.types, OverlaySymtab#tab.types) },
@@ -203,9 +220,9 @@ overlay_symtab(OverlayForms) ->
 -spec overlay_process_form(ast:form(), t(), atom() | undefined) -> t().
 overlay_process_form({attribute, _, spec, Name, Arity, T, _}, Tab, _ModuleName) ->
     overlay_add_spec(Name, Arity, T, Tab);
-overlay_process_form({attribute, _, type, _Visibility, {Name, TyScm = {ty_scheme, TyVars, _}}}, Tab, ModuleName) when ModuleName =/= undefined ->
+overlay_process_form({attribute, _, type, Visibility, {Name, TyScm = {ty_scheme, TyVars, _}}}, Tab, ModuleName) when ModuleName =/= undefined ->
     Arity = length(TyVars),
-    overlay_add_type(ModuleName, Name, Arity, TyScm, Tab);
+    overlay_add_type(ModuleName, Name, Arity, TyScm, Visibility, Tab);
 overlay_process_form(_, Tab, _ModuleName) -> Tab.
 
 -spec overlay_add_spec(atom(), arity(), ast:ty_scheme(), t()) -> t().
@@ -214,11 +231,15 @@ overlay_add_spec(Name, Arity, T, Tab) ->
     [Module, FunName] = string:split(atom_to_list(Name), ":"),
     Tab#tab { funs = maps:put(create_ref_tuple({qref, list_to_atom(Module)}, list_to_atom(FunName), Arity), T, Tab#tab.funs) }.
 
--spec overlay_add_type(atom(), atom(), arity(), ast:ty_scheme(), t()) -> t().
-overlay_add_type(ModuleName, Name, Arity, TyScm, Tab) ->
+-spec overlay_add_type(atom(), atom(), arity(), ast:ty_scheme(), atom(), t()) -> t().
+overlay_add_type(ModuleName, Name, Arity, TyScm, Visibility, Tab) ->
     Key = {ty_key, ModuleName, Name, Arity},
     ?LOG_DEBUG("Overlay type added: ~w/~p", Name, Arity),
-    Tab#tab { types = maps:put(Key, TyScm, Tab#tab.types) }.
+    Tab1 = Tab#tab { types = maps:put(Key, TyScm, Tab#tab.types) },
+    case Visibility of
+        nominal -> Tab1#tab { nominals = sets:add_element(Key, Tab1#tab.nominals) };
+        _ -> Tab1
+    end.
 
 -type ref() :: ref | {qref, ModuleName::atom()}.
 
@@ -262,8 +283,8 @@ extend_symtab_internal(Filename, Forms, RefType, Tab, OverlaySymtab) ->
 -spec extend_process_form(ast:form(), t(), ref(), atom(), ast:forms(), t()) -> t().
 extend_process_form({attribute, _, spec, Name, Arity, T, _}, AccTab, RefType, ModuleName, Forms, OverlaySymtab) ->
     extend_add_spec(Name, Arity, T, AccTab, RefType, ModuleName, Forms, OverlaySymtab);
-extend_process_form({attribute, _, type, _, {Name, TyScm = {ty_scheme, TyVars, _}}}, AccTab, _RefType, ModuleName, _Forms, _OverlaySymtab) ->
-    extend_add_type(Name, TyScm, TyVars, ModuleName, AccTab);
+extend_process_form({attribute, _, type, Visibility, {Name, TyScm = {ty_scheme, TyVars, _}}}, AccTab, _RefType, ModuleName, _Forms, _OverlaySymtab) ->
+    extend_add_type(Name, TyScm, TyVars, ModuleName, Visibility, AccTab);
 extend_process_form({attribute, _, record, {RecordName, Fields}}, AccTab, _RefType, ModuleName, _Forms, _OverlaySymtab) ->
     extend_add_record(RecordName, Fields, ModuleName, AccTab);
 extend_process_form(_, AccTab, _RefType, _ModuleName, _Forms, _OverlaySymtab) ->
@@ -284,10 +305,15 @@ extend_add_spec(Name, Arity, T, AccTab, RefType, ModuleName, Forms, OverlaySymta
             AccTab#tab { funs = maps:put(create_ref_tuple(RefType, Name, Arity), OverlayT, AccTab#tab.funs) }
     end.
 
--spec extend_add_type(atom(), ast:ty_scheme(), [{atom(), any()}], atom(), t()) -> t().
-extend_add_type(Name, TyScm, TyVars, ModuleName, AccTab) ->
+-spec extend_add_type(atom(), ast:ty_scheme(), [{atom(), any()}], atom(), atom(), t()) -> t().
+extend_add_type(Name, TyScm, TyVars, ModuleName, Visibility, AccTab) ->
     Arity = length(TyVars),
-    AccTab#tab { types = maps:put({ty_key, ModuleName, Name, Arity}, TyScm, AccTab#tab.types) }.
+    Key = {ty_key, ModuleName, Name, Arity},
+    AccTab1 = AccTab#tab { types = maps:put(Key, TyScm, AccTab#tab.types) },
+    case Visibility of
+        nominal -> AccTab1#tab { nominals = sets:add_element(Key, AccTab1#tab.nominals) };
+        _ -> AccTab1
+    end.
 
 -spec extend_add_record(atom(), list(), atom(), t()) -> t().
 extend_add_record(RecordName, Fields, ModuleName, AccTab) ->
