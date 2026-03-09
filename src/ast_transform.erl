@@ -168,6 +168,8 @@ trans_form(Ctx, Form, Mode) ->
                 {attribute, to_loc(Ctx, Anno), type, transparent, trans_tydef(Ctx, Def)};
             {attribute, Anno, opaque, Def} ->
                 {attribute, to_loc(Ctx, Anno), type, opaque, trans_tydef(Ctx, Def)};
+            {attribute, Anno, nominal, Def} ->
+                {attribute, to_loc(Ctx, Anno), type, nominal, trans_tydef(Ctx, Def)};
             {attribute, Anno, Other, _} ->
                 ?LOG_TRACE("Ignoring attribute ~w at ~s", Other, ast:format_loc(to_loc(Ctx, Anno))),
                 error;
