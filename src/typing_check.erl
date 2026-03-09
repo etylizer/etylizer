@@ -39,8 +39,10 @@ check_all_report(Ctx, FileName, Env, Decls) ->
                     io:format(user,"Error: ~s:~w/~w (~p ms)~n  ~s~n", [F(FileName), Name, Arity, ?TIME(T0), Msg]);
                 throw:{etylizer, unsupported, Msg} -> 
                     io:format(user,"Unsupported: ~s:~w/~w~n  ~s~n", [F(FileName), Name, Arity, Msg]);
-                throw:{etylizer, Type, _Msg} -> 
-                    io:format(user,"Error: (~p) ~s:~w/~w (~p ms)~n", [Type, F(FileName), Name, Arity, ?TIME(T0)])
+                throw:{etylizer, Type, _Msg} ->
+                    io:format(user,"Error: (~p) ~s:~w/~w (~p ms)~n", [Type, F(FileName), Name, Arity, ?TIME(T0)]);
+                _:T ->
+                    io:format(user,"Other: (~p) ~s:~w/~w (~p ms)~n", [{T}, F(FileName), Name, Arity, ?TIME(T0)])
             end
         end,
         Decls
@@ -132,7 +134,7 @@ ensure_type_supported(Loc, T) ->
 % FORALL A . T1 /\ ... /\/ Tn where the Ti are function types
 -spec check(ctx(), ast:fun_decl(), ast:ty_scheme()) -> ok.
 check(Ctx, Decl = {function, Loc, Name, Arity, Clauses}, PolyTy) ->
-    ?LOG_INFO("Type checking ~w/~w at ~s against type ~s",
+    ?LOG_INFO("Type checking ~w/~w at ~s against type~n~s",
               Name, Arity, ast:format_loc(Loc), pretty:render_tyscheme(PolyTy)),
     FunStr = utils:sformat("~w/~w", Name, Arity),
     {MonoTy, Fixed, _} = typing_common:mono_ty(Loc, PolyTy, Ctx#ctx.symtab),
@@ -184,7 +186,7 @@ check(Ctx, Decl = {function, Loc, Name, Arity, Clauses}, PolyTy) ->
 check_alt(Ctx, Decl = {function, Loc, Name, Arity, _}, FunTy, BranchMode, Fixed) ->
     FunStrShort = utils:sformat("~w/~w", Name, Arity),
     FunStr = utils:sformat("~w/~w at ~s", Name, Arity, ast:format_loc(Loc)),
-    ?LOG_INFO("Checking function ~s against type ~s",
+    ?LOG_INFO("Checking function ~s against type~n~s",
                FunStr, pretty:render_ty(FunTy)),
     DisableExhaustiveness = sets:is_element({Name, Arity}, Ctx#ctx.disable_exhaustiveness),
     DisableRedundancy = sets:is_element({Name, Arity}, Ctx#ctx.disable_redundancy),
@@ -215,14 +217,14 @@ check_alt(Ctx, Decl = {function, Loc, Name, Arity, _}, FunTy, BranchMode, Fixed)
         end,
     case Res of
         ok ->
-            ?LOG_INFO("Success: function ~w/~w at ~s has type ~s.",
+            ?LOG_INFO("Success: function ~w/~w at ~s has type~n~s.",
                        Name,
                        Arity,
                        ast:format_loc(Loc),
                        pretty:render_ty(FunTy)),
             {ok, sets:new([{version, 2}])};
         {ok, Unmatched} ->
-            ?LOG_INFO("Success: function ~w/~w at ~s has type ~s. Unmatched branches: ~s",
+            ?LOG_INFO("Success: function ~w/~w at ~s has type~n~s~nUnmatched branches: ~s",
                        Name,
                        Arity,
                        ast:format_loc(Loc),
@@ -232,7 +234,7 @@ check_alt(Ctx, Decl = {function, Loc, Name, Arity, _}, FunTy, BranchMode, Fixed)
         {error, Err} ->
             case Err of
                 none ->
-                    errors:ty_error(Loc, "function ~w/~w failed to type check against type ~s~n~s",
+                    errors:ty_error(Loc, "function ~w/~w failed to type check against type~n~s~n~s",
                             [Name, Arity, pretty:render_ty(FunTy),
                                 typing_common:format_src_loc(Loc)]);
                 {Kind, Loc2, Hint} ->

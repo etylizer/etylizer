@@ -9,161 +9,74 @@ jobs:
 
   build:
     runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        erlang: [ 28 ]
-
     container:
-      image: erlang:${{ matrix.erlang }}
-
+      image: erlang:28
     steps:
     - uses: actions/checkout@v2
     - run: make build
 
-  verify-dialyzer:
-    name: "verify: dialyzer"
+  verify:
+    name: "verify: ${{ matrix.name }}"
     needs: build
     runs-on: ubuntu-latest
+    container:
+      image: erlang:28
     strategy:
       matrix:
-        erlang: [ 28 ]
-
-    container:
-      image: erlang:${{ matrix.erlang }}
-
+        include:
+          - name: dialyzer
+            cmd: rebar3 as test dialyzer
+          - name: typecheck
+            cmd: ./typecheck_erlang_types
+          - name: syntax transformation
+            cmd: ./_build/default/bin/etylizer --sanity --no-type-checking -I ./include -I ./src ./src/*.erl
     steps:
     - uses: actions/checkout@v2
     - run: make build
-    - run: rebar3 as test dialyzer
+    - run: ${{ matrix.cmd }}
 
-  verify-typecheck:
-    name: "verify: typecheck"
+  test:
+    name: "test: ${{ matrix.name }}"
     needs: build
     runs-on: ubuntu-latest
+    container:
+      image: erlang:28
     strategy:
       matrix:
-        erlang: [ 28 ]
-
-    container:
-      image: erlang:${{ matrix.erlang }}
-
+        include:
+          - name: typecheck
+            cmd: ./run_test.escript typecheck
+          - name: infer
+            cmd: ./run_test.escript infer
+          - name: property-based
+            cmd: rebar3 proper
+          - name: unit-test tests
+            cmd: make testtest
+          - name: unit-tests
+            cmd: rebar3 eunit
     steps:
     - uses: actions/checkout@v2
     - run: make build
-    - run: ./typecheck_erlang_types
-
-  verify-syntax-transformation:
-    name: "verify: syntax transformation"
-    needs: build
-    runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        erlang: [ 28 ]
-
-    container:
-      image: erlang:${{ matrix.erlang }}
-
-    steps:
-    - uses: actions/checkout@v2
-    - run: make build
-    - run: ./_build/default/bin/etylizer --sanity --no-type-checking -I ./include -I ./src ./src/*.erl
-
-  test-typecheck:
-    name: "test: typecheck"
-    needs: build
-    runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        erlang: [ 28 ]
-
-    container:
-      image: erlang:${{ matrix.erlang }}
-
-    steps:
-    - uses: actions/checkout@v2
-    - run: make build
-    - run: ./run_test.escript typecheck
-
-  test-infer:
-    name: "test: infer"
-    needs: build
-    runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        erlang: [ 28 ]
-
-    container:
-      image: erlang:${{ matrix.erlang }}
-
-    steps:
-    - uses: actions/checkout@v2
-    - run: make build
-    - run: ./run_test.escript infer
-
-  test-property-based:
-    name: "test: property-based tests"
-    needs: build
-    runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        erlang: [ 28 ]
-
-    container:
-      image: erlang:${{ matrix.erlang }}
-
-    steps:
-    - uses: actions/checkout@v2
-    - run: make build
-    - run: rebar3 proper
-
-  test-unit-test-tests:
-    name: "test: unit-test tests"
-    needs: build
-    runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        erlang: [ 28 ]
-
-    container:
-      image: erlang:${{ matrix.erlang }}
-
-    steps:
-    - uses: actions/checkout@v2
-    - run: make build
-    - run: make testtest
-
-  test-unit-tests:
-    name: "test: unit-tests"
-    needs: build
-    runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        erlang: [ 28 ]
-
-    container:
-      image: erlang:${{ matrix.erlang }}
-
-    steps:
-    - uses: actions/checkout@v2
-    - run: make build
-    - run: rebar3 eunit
+    - run: ${{ matrix.cmd }}
 
   case-study:
-    name: "case study"
+    name: "case study: ${{ matrix.name }}"
     needs: build
     runs-on: ubuntu-latest
+    container:
+      image: erlang:28
     strategy:
       matrix:
-        erlang: [ 28 ]
-
-    container:
-      image: erlang:${{ matrix.erlang }}
-
+        include:
+          - name: stdlib
+            cmd: test_files/etylizer-mini/check-stdlib.sh
+          - name: jsone
+            cmd: test_files/etylizer-mini/check-jsone.sh
+          - name: ety
+            cmd: test_files/etylizer-mini/check-ety.sh
     steps:
     - uses: actions/checkout@v2
     - run: make build
     - name: Cache espresso binary
       run: ./run_test.escript "case_01 (typecheck)"
-    - run: ETYLIZER_CASE_STUDY_LOGLEVEL=warn test_files/etylizer-mini/check-orddict.sh
-    - run: ETYLIZER_CASE_STUDY_LOGLEVEL=warn test_files/etylizer-mini/check-std.sh
-    - run: ETYLIZER_CASE_STUDY_LOGLEVEL=warn test_files/etylizer-mini/check.sh
+    - run: ETYLIZER_CASE_STUDY_LOGLEVEL=warn ${{ matrix.cmd }}
