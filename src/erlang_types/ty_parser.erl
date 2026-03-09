@@ -496,9 +496,25 @@ do_convert({{predef, T}, R}, Q, Cache) when T == pid; T == port; T == reference;
 do_convert({{map_any}, R}, Q, Cache) ->
   {?TY:map(dnf_ty_map:any()), Q, R, Cache};
 
-% bitstrings
+% bitstrings: rewrite to 1-bit cons cells + empty_bitstring predefined
+% bitstring() = mu X. empty_bitstring | <<0..1 | X>>
 do_convert({{bitstring}, R}, Q, Cache) ->
-  {?TY:bitstring(dnf_ty_bitstring:any()), Q, R, Cache};
+  do_convert({{bitstring, 0, 1}, R}, Q, Cache);
+do_convert({{bitstring, 0, 0}, R}, Q, Cache) ->
+  do_convert({{empty_bitstring}, R}, Q, Cache);
+do_convert({{bitstring, M, 0}, R}, Q, Cache) when M > 0 ->
+  % Exactly M bits: M cons cells ending in empty_bitstring
+  Term = bits_cons(M, {empty_bitstring}),
+  do_convert({Term, R}, Q, Cache);
+do_convert({{bitstring, M, N}, R}, Q, Cache) when N > 0 ->
+  % M + K*N bits: M head bits + recursive tail of N-bit groups
+  RVar = {mu_var, list_to_atom(integer_to_list(erlang:unique_integer()))},
+  Tail = {mu, RVar, {union, [{empty_bitstring}, bits_cons(N, RVar)]}},
+  Term = bits_cons(M, Tail),
+  do_convert({Term, R}, Q, Cache);
+% empty bitstring <<>>
+do_convert({{empty_bitstring}, R}, Q, Cache) ->
+  {?TY:predefined(dnf_ty_predefined:predefined(empty_bitstring)), Q, R, Cache};
 
 % atoms
 do_convert({{singleton, Atom}, R}, Q, Cache) when is_atom(Atom) ->
@@ -597,9 +613,22 @@ do_convert({{cons, A, B}, R}, Q, Cache) ->
 
   {?TY:list(dnf_ty_list:singleton(ty_list:list([T1, T2]))), Q1, R, Cache};
 
+do_convert({{bitstring_cons, A, B}, R}, Q, Cache) ->
+  {T1, Q0} = queue_if_new(A, Q),
+  {T2, Q1} = queue_if_new(B, Q0),
+  {?TY:bitstring(dnf_ty_bitstring:singleton(ty_bitstring:bitstring_cons([T1, T2]))), Q1, R, Cache};
+
 do_convert(T, _Q, _) ->
   % io:format(user,"~p~n", [T]),
   erlang:error({"Transformation from ast:ty() to ty_rec:ty() not implemented or malformed type", T}).
+
+% Build N nested bitstring_cons cells with {range, 0, 1} heads (1-bit cons cells).
+% bits_cons(0, Tail) = Tail
+% bits_cons(3, Tail) = <<0..1 | <<0..1 | <<0..1 | Tail>>>>
+-spec bits_cons(non_neg_integer(), ast_ty()) -> ast_ty().
+bits_cons(0, Tail) -> Tail;
+bits_cons(N, Tail) when N > 0 ->
+  {bitstring_cons, {range, 0, 1}, bits_cons(N - 1, Tail)}.
 
 -spec queue_if_new(ast_ty(), queue()) -> {type() | temporary_ref(), queue()}.
 queue_if_new(Element, Queue) ->
@@ -675,6 +704,9 @@ debruijn({mu_var, Name}, Env) ->
 % other cases
 debruijn({singleton, _} = T, _Env) -> T;
 debruijn({bitstring}, _Env) -> {bitstring};
+debruijn({bitstring, M, N}, _Env) -> {bitstring, M, N};
+debruijn({empty_bitstring}, _Env) -> {empty_bitstring};
+debruijn({bitstring_cons, H, T}, Env) -> {bitstring_cons, debruijn(H, Env), debruijn(T, Env)};
 debruijn({empty_list}, _Env) -> {empty_list};
 debruijn({cons, U, L}, Env) -> {cons, debruijn(U, Env), debruijn(L, Env)};
 debruijn({list, U}, Env) -> {list, debruijn(U, Env)};
@@ -756,6 +788,7 @@ convert_back(Type, Env, Counter) when is_tuple(Type) ->
       {ConvertedArg, NewCounter} = convert_back(Arg, Env, Counter),
       {list_to_tuple([Constructor, ConvertedArg]), NewCounter};
     Constructor when Constructor =:= cons;
+                     Constructor =:= bitstring_cons;
                      Constructor =:= improper_list;
                      Constructor =:= nonempty_improper_list ->
       [Constructor, Arg, Arg2] = tuple_to_list(Type),
