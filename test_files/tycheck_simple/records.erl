@@ -136,6 +136,20 @@ get_name_from_invoice_02(X) -> X#invoice.person#person.name.
 -spec get_name_from_invoice_02_fail(#invoice{ person :: #person { name :: integer() }}) -> string().
 get_name_from_invoice_02_fail(X) -> X#invoice.person#person.name.
 
+%%%%%%%%%%%%%%%%%%%%%%%% DEFAULT VALUES %%%%%%%%%%%%%%%%%%%%%%%
+
+% Omitting a field with a default value should work
+-spec default_01() -> #item{}.
+default_01() -> #item{value=1, label="hello"}.
+
+% Providing all fields including the defaulted one should also work
+-spec default_02() -> #item{}.
+default_02() -> #item{value=1, label="hello", count=5}.
+
+% Omitting a field without a default should fail
+-spec default_03_fail() -> #item{}.
+default_03_fail() -> #item{value=1}.
+
 %% recursive
 
 % Deactived because of #152
