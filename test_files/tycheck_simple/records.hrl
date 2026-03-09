@@ -6,3 +6,7 @@
                label :: string(),
                count = 0 :: integer()}).
 
+-record(config, {host :: string(),
+                 port :: string(),
+                 path :: string()}).
+

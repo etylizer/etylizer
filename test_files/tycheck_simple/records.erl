@@ -150,6 +150,20 @@ default_02() -> #item{value=1, label="hello", count=5}.
 -spec default_03_fail() -> #item{}.
 default_03_fail() -> #item{value=1}.
 
+%%%%%%%%%%%%%%%%%%%%%%%% WILDCARD FIELD (record_field_other) %%%%%%%%%%%%%%%%%%%%%%%
+
+% Using _ = Expr fills all unspecified fields
+-spec wildcard_01() -> #config{}.
+wildcard_01() -> #config{host = "localhost", _ = "default"}.
+
+% All fields explicitly given, _ = Expr is a no-op
+-spec wildcard_02() -> #config{}.
+wildcard_02() -> #config{host = "localhost", port = "80", path = "/", _ = "unused"}.
+
+% _ = Expr with wrong type for the remaining fields should fail
+-spec wildcard_03_fail() -> #config{}.
+wildcard_03_fail() -> #config{host = "localhost", _ = 42}.
+
 %% recursive
 
 -record(rr, {name :: string(), recursive :: [#rr{}] }).

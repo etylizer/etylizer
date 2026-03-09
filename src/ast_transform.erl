@@ -654,8 +654,9 @@ trans_exp(Ctx, Env, Exp) ->
                     end
                   end
                  ),
-            % fill in default expressions for omitted fields
-            AllFields = fill_record_defaults(Ctx, Name, to_loc(Ctx, Anno), NewFields),
+            % expand _ = Expr into individual fields, then fill in defaults for the rest
+            ExpandedFields = expand_record_field_other(Ctx, Name, NewFields),
+            AllFields = fill_record_defaults(Ctx, Name, to_loc(Ctx, Anno), ExpandedFields),
             {{record_create, to_loc(Ctx, Anno), Name, AllFields}, NewEnv};
         {record_field, Anno, E, Name, {'atom', _, Field}} ->
             {NewE, NewEnv} = trans_exp(Ctx, Env, E),
@@ -1048,6 +1049,39 @@ trans_map_assoc(Ctx, Env, Assoc) ->
                 end,
             {{NewK, to_loc(Ctx, Anno), NewExpKey, NewExpVal}, Env2};
         X -> errors:uncovered_case(?FILE, ?LINE, X)
+    end.
+
+% Expands record_field_other (the _ = Expr syntax) into individual record_field entries
+% for each field not explicitly given. The record_field_other entry is removed.
+-spec expand_record_field_other(ctx(), atom(), [ast:exp_record_create_field()]) ->
+    [{record_field, ast:loc(), atom(), ast:exp()}].
+expand_record_field_other(Ctx, RecName, Fields) ->
+    % Split into explicit fields and the optional wildcard
+    {Explicit, Other} = lists:partition(
+        fun({record_field, _, _, _}) -> true;
+           ({record_field_other, _, _}) -> false
+        end,
+        Fields),
+    case Other of
+        [] -> Explicit;
+        [{record_field_other, Loc, Exp}] ->
+            case maps:find(RecName, Ctx#ctx.records) of
+                error -> Explicit;
+                {ok, {_, DefFields}} ->
+                    GivenNames = sets:from_list(
+                        [N || {record_field, _, N, _} <- Explicit],
+                        [{version, 2}]),
+                    WildcardFields =
+                        lists:filtermap(
+                            fun({FieldName, _}) ->
+                                case sets:is_element(FieldName, GivenNames) of
+                                    true -> false;
+                                    false -> {true, {record_field, Loc, FieldName, Exp}}
+                                end
+                            end,
+                            DefFields),
+                    Explicit ++ WildcardFields
+            end
     end.
 
 % Extracts default expressions from transformed record field declarations.
