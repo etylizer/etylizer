@@ -116,7 +116,20 @@ exp_constrs(Ctx, E, T) ->
         {bin, L, BinElems} ->
             {ElemCs, ResultTy} = bin_expr_constrs(Ctx, L, BinElems),
             sets:add_element({csubty, mk_locs("bitstring", L), ResultTy, T}, ElemCs);
-        {bc, L, _E, _Qs} -> errors:unsupported(L, "bitstrings");
+        {bc, L, Exp, Qs} ->
+            {Env, Cs0} = process_qualifiers(Ctx, L, Qs, #{}, sets:new()),
+            Beta = fresh_tyvar(Ctx),
+            ExpCs = sets:add_element({csubty, mk_locs("binary comprehension body", L), Beta, {bitstring}},
+                                     exps_constrs(Ctx, L, [Exp], Beta)),
+            BodyCs = sets:from_list([{cdef, mk_locs("binary comprehension body", L), Env, ExpCs}], []),
+            % the result is any number of bodies: for a body <<...>> its segments, repeated
+            ResultTy =
+                case Exp of
+                    {bin, _, BinElems} -> repeated(BinElems, exp);
+                    _ -> {bitstring}
+                end,
+            Cs1 = sets:add_element({csubty, mk_locs("binary comprehension result", L), ResultTy, T}, BodyCs),
+            sets:union(Cs0, Cs1);
         {block, L, Es} ->
             exps_constrs(Ctx, L, Es, T);
         {'case', L, ScrutE, Clauses} ->
@@ -436,9 +449,14 @@ process_qualifiers(Ctx, Loc, [Q | Qs], Env, Cs) ->
         % Pat <= Exp
         {b_generate, _, _, _} ->
             errors:unsupported(Loc, "generator ~w", Q);
-        % Pat <:= Exp
-        {b_generate_strict, _, _, _} ->
-            errors:unsupported(Loc, "generator ~w", Q);
+        % Pat <:= Exp (strict binary generator): the source has to be pieces the pattern accepts
+        {b_generate_strict, LGen, Pat = {bin, _, PatElems}, Exp} ->
+            Pieces = repeated(PatElems, lower),
+            ExpCs0 = exp_constrs(Ctx, Exp, Pieces),
+            ExpCs = sets:from_list([{cdef, mk_locs("strict binary generator source", LGen), Env, ExpCs0}]),
+            {PatCs, PatEnv} = pat_env(Ctx, LGen, fresh_tyvar(Ctx), Pat),
+            NewEnv = intersect_envs(Env, PatEnv),
+            process_qualifiers(Ctx, Loc, Qs, NewEnv, sets:union([Cs, ExpCs, PatCs]));
         % strict map generator: KeyPat := ValPat <:- Exp
         {m_generate_strict, LGen, KeyPat, ValPat, Exp} ->
             KeyAlpha = fresh_tyvar(Ctx),
@@ -1037,6 +1055,31 @@ split_rest_segment(Elems) ->
 rest_ty(Unit) ->
     X = {mu_var, list_to_atom("$rest" ++ integer_to_list(Unit))},
     {mu, X, {union, [{empty_bitstring}, bits_ty(Unit, X)]}}.
+
+% Any number of pieces, mu X. <<>> | Piece(X). A piece without bits adds nothing, so Piece(X)
+% leaves it out: X must sit below a cell.
+-spec repeated([ast:gen_bitstring_elem(ast:pat() | ast:exp(), ast:exp())], lower | exp) -> ast:ty().
+repeated(Elems, Mode) ->
+    X = {mu_var, list_to_atom("$bits" ++ integer_to_list(erlang:unique_integer([positive])))},
+    {mu, X, ast_lib:mk_union([{empty_bitstring}, nonempty_segments_ty(Elems, Mode, X)])}.
+
+% The segments, then Tail, where the segments have at least one bit
+-spec nonempty_segments_ty([ast:gen_bitstring_elem(ast:pat() | ast:exp(), ast:exp())], lower | exp, ast:ty()) ->
+    ast:ty().
+nonempty_segments_ty([], _Mode, _Tail) -> {predef, none};
+nonempty_segments_ty([{bin_element, L, {'string', _, S}, Size, Tyspecs} | Elems], Mode, Tail) ->
+    nonempty_segments_ty([{bin_element, L, {'integer', L, C}, Size, Tyspecs} || C <- S] ++ Elems, Mode, Tail);
+nonempty_segments_ty([E = {bin_element, _, _, Size, Tyspecs} | Elems], Mode, Tail) ->
+    {Seg, _, _, Unit} = analyze_bin_tyspec(Tyspecs),
+    Fixed = lists:member(Seg, [utf8, utf16, utf32, float]),
+    case segment_bits(Size, Tyspecs) of
+        % a run-time size: one unit or more, or the segment has no bits
+        run_time when not Fixed ->
+            ast_lib:mk_union([bits_ty(Unit, segments_ty(#{}, [E | Elems], Mode, Tail)),
+                              nonempty_segments_ty(Elems, Mode, Tail)]);
+        0 when not Fixed -> nonempty_segments_ty(Elems, Mode, Tail);
+        _ -> segments_ty(#{}, [E | Elems], Mode, Tail)
+    end.
 
 -spec at_run_time(upper | lower | exp, ast:ty()) -> ast:ty().
 at_run_time(upper, T) -> T;

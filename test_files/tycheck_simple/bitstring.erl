@@ -255,6 +255,44 @@ bin_kinds_01(X) when is_reference(X) -> ok.
 
 
 % ============================================================
+% === Comprehensions and generators
+% ============================================================
+
+-spec bin_comp_08() -> <<_:_*16>>.
+bin_comp_08() -> << <<X, Y>> || {X, Y} <- [{1, 2}] >>.
+
+% the body is not a bitstring
+-spec bin_comp_09_fail() -> bitstring().
+bin_comp_09_fail() -> << X || X <- [1, 2, 3] >>.
+
+-spec bin_comp_10([binary()]) -> binary().
+bin_comp_10(Bs) -> << <<B/binary, 0>> || B <- Bs >>.
+
+% bodies that can have no bits
+-spec bin_comp_11([binary()]) -> binary().
+bin_comp_11(Bs) -> << <<B/binary>> || B <- Bs >>.
+
+-spec bin_comp_11_fail([bitstring()]) -> binary().
+bin_comp_11_fail(Bs) -> << <<B/bitstring>> || B <- Bs >>.
+
+-spec bin_comp_12([integer()], non_neg_integer()) -> bitstring().
+bin_comp_12(Xs, N) -> << <<X:N>> || X <- Xs >>.
+
+-spec bin_comp_13([integer()]) -> <<>>.
+bin_comp_13(Xs) -> << <<>> || _ <- Xs >>.
+
+-spec bin_comp_14([binary()]) -> binary().
+bin_comp_14(Bs) -> << <<0:0, B/binary, 0:0, 1>> || B <- Bs >>.
+
+-spec bin_gen_01() -> [integer()].
+bin_gen_01() -> [X || <<X:16>> <:= <<1, 2, 3, 4>>].
+
+% three bytes are not pieces of 16 bits
+-spec bin_gen_01_fail() -> [integer()].
+bin_gen_01_fail() -> [X || <<X:16>> <:= <<1, 2, 3>>].
+
+
+% ============================================================
 % === Precision the checker does not have (ignored in tycheck_simple_tests)
 % ============================================================
 
@@ -300,3 +338,6 @@ bin_exp_10(B) ->
         <<"a", _/binary>> -> a
     end.
 
+% List comprehension with binary generator
+-spec bin_comp_02() -> [integer()].
+bin_comp_02() -> [X || <<X>> <= <<1, 2, 3>>].

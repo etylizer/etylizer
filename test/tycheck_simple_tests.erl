@@ -221,7 +221,9 @@ simple_test_() ->
     % matched rest (pattern)
     "b5_embed_binary",
     % feature: literals in binary expressions are their bits
-    "bin_exp_10"
+    "bin_exp_10",
+    % feature: the binary generator <=
+    "bin_comp_02"
   ],
 
 
@@ -272,6 +274,10 @@ simple_test_() ->
     "bin_exp_05",
     "bin_exp_08",
     "bin_exp_10",
+    "bin_comp_08",
+    "bin_comp_10",
+    "bin_comp_14",
+    "bin_gen_01",
     "bin_kinds_01",
     "b5_embed_binary",
     "bin_match_int_02",
@@ -279,6 +285,7 @@ simple_test_() ->
     "bin_match_literal_02",
     "bin_guard_literal_01",
     "bin_precise_01",
+    "bin_comp_02",
     "bin_let_01",
     "bin_cons_03",
     "bin_utf8_cons_01",
