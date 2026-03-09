@@ -33,6 +33,9 @@
 
 -export_type([type/0, type_record/0]).
 
+% invariants
+-etylizer({functions_exhaustive, off, [tuple_to_map/1]}).
+
 -include("erlang_types.hrl").
 -include("etylizer.hrl").
 
@@ -364,9 +367,7 @@ map(A) -> (empty0())#ty{dnf_ty_map = A}.
 tuple_to_map(#ty{ty_tuples = {_, #{2 := TupleDnf}}}) ->
   [{[T], [], _}] = ?assert_pattern([{[_], [], _}], dnf_ty_tuple:dnf(TupleDnf)),
   DnfMap = dnf_ty_map:singleton(T),
-  map(DnfMap);
-tuple_to_map(_) -> % TODO mark non-exhaustive
-    error(invariant).
+  map(DnfMap).
 
 -spec all_variables(type(), all_variables_cache()) -> sets:set(variable()).
 all_variables(any, _Cache) -> sets:new();

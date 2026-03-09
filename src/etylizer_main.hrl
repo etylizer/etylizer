@@ -25,6 +25,8 @@
                load_end = [] :: [string()],
                files = [] :: [string()],
                type_overlay = [] :: string(),
+               no_exhaustiveness = [] :: [string()],
+               no_redundancy = [] :: [string()],
                mode = prod_mode :: opts_mode() % only used internally
             }).
 

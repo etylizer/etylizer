@@ -104,8 +104,29 @@ really_parse_file(Kind, File, Opts) ->
        true -> ok
     end,
 
+    % Inject synthetic attributes from CLI flags before transform
+    ExtraForms = case IsIntern of
+        true ->
+            NoExhaust = Opts#opts.no_exhaustiveness,
+            ExhaustForms = case NoExhaust of
+                [] -> [];
+                _ ->
+                    FunIds = lists:map(fun utils:parse_fun_id/1, NoExhaust),
+                    [{attribute, 0, etylizer, {functions_exhaustive, off, FunIds}}]
+            end,
+            NoRedund = Opts#opts.no_redundancy,
+            RedundForms = case NoRedund of
+                [] -> [];
+                _ ->
+                    RedundFunIds = lists:map(fun utils:parse_fun_id/1, NoRedund),
+                    [{attribute, 0, etylizer, {functions_redundant, off, RedundFunIds}}]
+            end,
+            ExhaustForms ++ RedundForms;
+        false -> []
+    end,
+
     ?LOG_DEBUG("Transforming ~s ...", File),
-    Forms = ast_transform:trans(File, RawForms,
+    Forms = ast_transform:trans(File, ExtraForms ++ RawForms,
         if IsIntern -> full; true -> flat end),
     if  Opts#opts.dump ->
             ?LOG_NOTE("Transformed forms in ~s:~n~p", File, ast_utils:remove_locs(Forms));

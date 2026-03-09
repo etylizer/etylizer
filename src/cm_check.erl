@@ -98,11 +98,13 @@ traverse_and_check([CurrentFile | RemainingFiles], Symtab, OverlaySymtab, Search
     ExhaustivenessMode = Opts#opts.exhaustiveness_mode,
     GradualTypingMode = Opts#opts.gradual_typing_mode,
     Ctx = typing:new_ctx(ExpandedSymtab, OverlaySymtab, Sanity, ReportMode, ReportTimeout, ExhaustivenessMode, GradualTypingMode),
+    CliNoExhaustiveness = utils:parse_fun_ids(Opts#opts.no_exhaustiveness),
+    CliNoRedundancy = utils:parse_fun_ids(Opts#opts.no_redundancy),
     case Opts#opts.no_type_checking of
         true ->
             ?LOG_INFO("Not type checking ~p as requested", CurrentFile);
         false ->
-            typing:check_forms(Ctx, CurrentFile, Forms, Only, Ignore, Opts#opts.check_exports)
+            typing:check_forms(Ctx, CurrentFile, Forms, Only, Ignore, Opts#opts.check_exports, {CliNoExhaustiveness, CliNoRedundancy})
     end,
     NewIndex = cm_index:insert(CurrentFile, Forms, Index),
     traverse_and_check(RemainingFiles, Symtab, OverlaySymtab, SearchPath, Opts, NewIndex).

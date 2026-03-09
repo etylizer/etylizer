@@ -3,7 +3,7 @@
 -include("log.hrl").
 
 -export([
-         gen_constrs_fun_group/3, gen_constrs_annotated_fun/4,
+         gen_constrs_fun_group/4, gen_constrs_annotated_fun/5,
          sanity_check/2
         ]).
 
@@ -19,15 +19,18 @@
 -record(ctx,
         { var_counter :: counters:counters_ref(),
           symtab :: symtab:t(),
-          exhaustiveness_mode :: feature_flags:exhaustiveness_mode()
+          exhaustiveness_mode :: feature_flags:exhaustiveness_mode(),
+          % when true, exhaustiveness checking is disabled for the top-level function clauses
+          disable_exhaustiveness = false :: boolean(),
+          % when true, redundancy checking is disabled for the top-level function clauses
+          disable_redundancy = false :: boolean()
         }).
 -type ctx() :: #ctx{}.
 
 -spec new_ctx(symtab:t(), feature_flags:exhaustiveness_mode()) -> ctx().
 new_ctx(Symtab, ExhaustivenessMode) ->
     Counter = counters:new(2, []),
-    Ctx = #ctx{ var_counter = Counter, symtab = Symtab, exhaustiveness_mode = ExhaustivenessMode },
-    Ctx.
+    #ctx{ var_counter = Counter, symtab = Symtab, exhaustiveness_mode = ExhaustivenessMode }.
 
 -spec fresh_ty_varname(ctx()) -> ast:ty_varname().
 fresh_ty_varname(Ctx) ->
@@ -61,11 +64,15 @@ fresh_vars(Ctx, N) ->
 mk_locs(Label, X) -> {Label, utils:single(X)}.
 
 % Inference for a group of mutually recursive functions without type annotations.
--spec gen_constrs_fun_group(feature_flags:exhaustiveness_mode(), symtab:t(), [ast:fun_decl()]) -> {constr:constrs(), constr:constr_env()}.
-gen_constrs_fun_group(ExhaustivenessMode, Symtab, Decls) ->
-    Ctx = new_ctx(Symtab, ExhaustivenessMode),
+-spec gen_constrs_fun_group(feature_flags:exhaustiveness_mode(), symtab:t(), {sets:set({atom(), arity()}), sets:set({atom(), arity()})}, [ast:fun_decl()]) -> {constr:constrs(), constr:constr_env()}.
+gen_constrs_fun_group(ExhaustivenessMode, Symtab, {DisableExhaustiveness, DisableRedundancy}, Decls) ->
     lists:foldl(
       fun({function, L, Name, Arity, FunClauses}, {Cs, Env}) ->
+              Ctx0 = new_ctx(Symtab, ExhaustivenessMode),
+              Ctx = Ctx0#ctx{
+                  disable_exhaustiveness = sets:is_element({Name, Arity}, DisableExhaustiveness),
+                  disable_redundancy = sets:is_element({Name, Arity}, DisableRedundancy)
+              },
               Exp = {'fun', L, no_name, FunClauses},
               Alpha = fresh_tyvar(Ctx),
               ThisCs = exp_constrs(Ctx, Exp, Alpha),
@@ -77,9 +84,10 @@ gen_constrs_fun_group(ExhaustivenessMode, Symtab, Decls) ->
 % This function is invoked for each branch of the intersection type in the type spec.
 % The idea is that we can give better error messages by pointing out which part of the
 % intersection did not type check.
--spec gen_constrs_annotated_fun(feature_flags:exhaustiveness_mode(), symtab:t(), ast:ty_full_fun(), ast:fun_decl()) -> constr:constrs().
-gen_constrs_annotated_fun(ExhaustivenessMode ,Symtab, {fun_full, ArgTys, ResTy}, {function, L, Name, Arity, FunClauses}) ->
-    Ctx = new_ctx(Symtab, ExhaustivenessMode),
+-spec gen_constrs_annotated_fun(feature_flags:exhaustiveness_mode(), symtab:t(), {boolean(), boolean()}, ast:ty_full_fun(), ast:fun_decl()) -> constr:constrs().
+gen_constrs_annotated_fun(ExhaustivenessMode, Symtab, {DisableExhaustiveness, DisableRedundancy}, {fun_full, ArgTys, ResTy}, {function, L, Name, Arity, FunClauses}) ->
+    Ctx0 = new_ctx(Symtab, ExhaustivenessMode),
+    Ctx = Ctx0#ctx{ disable_exhaustiveness = DisableExhaustiveness, disable_redundancy = DisableRedundancy },
     {Args, Body} = fun_clauses_to_exp(Ctx, L, FunClauses),
     if length(Args) =/= length(ArgTys) orelse length(Args) =/= Arity ->
             errors:ty_error(L, "Arity mismatch for function ~w", Name);
@@ -140,17 +148,15 @@ exp_constrs(Ctx, E, T) ->
                 case CatchClauses of
                     [] -> {[], sets:new()};
                     _ ->
-                        {CBList, CCs} =
-                            lists:foldl(
-                                fun(CatchClause, {AccBodyList, AccCs}) ->
-                                    {ThisCs, ThisBody, _ThisEnv} =
-                                        catch_clause_constrs(Ctx, CatchClause, T),
-                                    {AccBodyList ++ [ThisBody],
-                                     sets:union(ThisCs, AccCs)}
-                                end,
-                                {[], sets:new()},
-                                CatchClauses),
-                        {CBList, CCs}
+                        lists:foldl(
+                            fun(CatchClause, {AccBodyList, AccCs}) ->
+                                {ThisCs, ThisBody, _ThisEnv} =
+                                    catch_clause_constrs(Ctx, CatchClause, T),
+                                {AccBodyList ++ [ThisBody],
+                                 sets:union(ThisCs, AccCs)}
+                            end,
+                            {[], sets:new()},
+                            CatchClauses)
                 end,
 
             % after section, result is discarded
@@ -158,8 +164,7 @@ exp_constrs(Ctx, E, T) ->
                 [] -> sets:new();
                 _ ->
                     AfterTy = fresh_tyvar(Ctx),
-                    ACs = exps_constrs(Ctx, L, AfterBody, AfterTy),
-                    ACs
+                    exps_constrs(Ctx, L, AfterBody, AfterTy)
             end,
 
             % Try body result is one branch, catch clauses are other branches
@@ -455,8 +460,13 @@ exp_constrs(Ctx, E, T) ->
 -spec case_constrs(ctx(), ast:loc(), ast:exp(), [ast:case_clause()], ast:escape_annotation(), ast:ty()) -> constr:constrs().
 case_constrs(Ctx, L, ScrutE, Clauses, EscapeAnnotation, T) ->
     Alpha = fresh_tyvar(Ctx),
-    Cs0 = exp_constrs(Ctx, ScrutE, Alpha),
-    NeedsUnmatchedCheck = needs_unmatched_check(Clauses),
+    % Reset disable flags for inner case expressions (only applies to top-level fun clauses)
+    InnerCtx = Ctx#ctx{ disable_exhaustiveness = false, disable_redundancy = false },
+    Cs0 = exp_constrs(InnerCtx, ScrutE, Alpha),
+    NeedsUnmatchedCheck = case Ctx#ctx.disable_redundancy of
+        true -> false;
+        false -> needs_unmatched_check(Clauses)
+    end,
     {BodyList, Lowers, _Uppers, CsCases} =
         lists:foldl(fun (Clause = {case_clause, LocClause, _, _, _},
                          {BodyList, Lowers, Uppers, AccCs}) ->
@@ -466,7 +476,7 @@ case_constrs(Ctx, L, ScrutE, Clauses, EscapeAnnotation, T) ->
                                        pretty:render_tys(Uppers)),
                             {ThisLower, ThisUpper, ThisCs, ThisConstrBody} =
                                 case_clause_constrs(
-                                  Ctx,
+                                  InnerCtx,
                                   ty_without(Alpha, ast_lib:mk_union(Lowers)),
                                   ScrutE,
                                   NeedsUnmatchedCheck,
@@ -483,10 +493,14 @@ case_constrs(Ctx, L, ScrutE, Clauses, EscapeAnnotation, T) ->
                     Clauses),
     CsScrut = sets:union(Cs0, CsCases),
     Exhaust =
-        case Ctx#ctx.exhaustiveness_mode of
-            enabled -> utils:single(
-                          {csubty, mk_locs("case exhaustiveness", L), Alpha, ast_lib:mk_union(Lowers)});
-            disabled -> sets:new()
+        case Ctx#ctx.disable_exhaustiveness of
+            true -> sets:new();
+            false ->
+                case Ctx#ctx.exhaustiveness_mode of
+                    enabled -> utils:single(
+                                  {csubty, mk_locs("case exhaustiveness", L), Alpha, ast_lib:mk_union(Lowers)});
+                    disabled -> sets:new()
+                end
         end,
     sets:from_list([
         {ccase, mk_locs("case", L), CsScrut, Exhaust, BodyList}
@@ -1021,6 +1035,8 @@ ty_of_pat(Symtab, Env, P, Mode) ->
         {op, _, '++', [P1, P2]} ->
             ast_lib:mk_intersection([ty_of_pat(Symtab, Env, P1, Mode), ty_of_pat(Symtab, Env, P2, Mode),
                                  {predef_alias, string}]);
+        {op, _, '-', [{integer, _L2, I}]} ->
+            {singleton, -I};
         {op, _, '-', [SubP]} ->
             ast_lib:mk_intersection([ty_of_pat(Symtab, Env, SubP, Mode), {predef_alias, number}]);
         {op, L, Op, _} -> errors:unsupported(L, "operator ~w in patterns", Op);
@@ -1485,6 +1501,7 @@ ty_of_const_exp(E) ->
         {'char', _, C} -> {ok, {singleton, C}};
         {'string', _, ""} -> {ok, {empty_list}};
         {'string', _, _} -> {ok, {predef_alias, nonempty_string}};
+        {op, _, '-', {'integer', _, I}} -> {ok, {singleton, -I}};
         {nil, _} -> {ok, {empty_list}};
         {tuple, _, Elems} ->
             TysOpt = lists:map(fun ty_of_const_exp/1, Elems),

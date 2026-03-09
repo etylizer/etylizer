@@ -88,7 +88,13 @@ parse_args(Args) ->
          {type_overlay, undefined, "type-overlay", string,
             "Overlays for fun and type specs"},
         {check_exports, undefined, "check-exports", undefined,
-            "Check that all exported functions have a type spec."}
+            "Check that all exported functions have a type spec."},
+        {no_exhaustiveness, undefined, "no-exhaustiveness", string,
+            "Disable exhaustiveness checking for a function (given as name/arity). "
+            "Adds a synthetic catch-all clause. May be given multiple times."},
+        {no_redundancy, undefined, "no-redundancy", string,
+            "Disable redundancy checking for a function (given as name/arity). "
+            "May be given multiple times."}
         ],
     Opts = case getopt:parse(OptSpecList, Args) of
         {error, {Reason, Data}} ->
@@ -133,6 +139,8 @@ parse_args(Args) ->
                         no_deps -> Opts#opts{ no_deps = true };
                         check_exports -> Opts#opts{ check_exports = true };
                         {type_overlay, S} -> Opts#opts{ type_overlay = S };
+                        {no_exhaustiveness, S} -> Opts#opts{ no_exhaustiveness = Opts#opts.no_exhaustiveness ++ [S] };
+                        {no_redundancy, S} -> Opts#opts{ no_redundancy = Opts#opts.no_redundancy ++ [S] };
                         help -> Opts#opts{ help = true }
                     end
                 end, #opts{ files = RestArgs}, OptList)

@@ -7,6 +7,9 @@
   unparse/2
 ]).
 
+% invariants
+-etylizer({functions_exhaustive, off, [unparse/2]}).
+
 -include("erlang_types.hrl").
 
 -export_type([type/0]).
@@ -32,9 +35,7 @@ unparse({ty_tuple, 2, [TupPart, FunPart]}, ST0) ->
   {MandatoryAndOptional, ST1} = unparse_tuple_part(TupPart, ST0),
   {Mandatory, ST2} = unparse_fun_part(FunPart, ST1),
 
-  {{map, split_into_associations(Mandatory, MandatoryAndOptional)}, ST2};
-unparse(_, _) -> % TODO mark as non-exhaustive fun
-    error(badarg).
+  {{map, split_into_associations(Mandatory, MandatoryAndOptional)}, ST2}.
 
 -spec unparse_fun_part(ty_node:type(), S) -> {ast_ty(), S} when S :: unparse_cache().
 unparse_fun_part(FunPart, ST) ->
@@ -116,16 +117,8 @@ split_into_associations(Mandatory, MandatoryAndOptional) ->
 
 -spec split_into_associations_both([ast_ty()], [ast_ty()]) -> [ast:ty_map_assoc()].
 split_into_associations_both(Funs, Tups) ->
-    RawFun = 
-    lists:map(fun({fun_full, [A], B}) -> {A, B}; (_) -> error(badarg) end, Funs),
-    % [{A, B} || {fun_full, [A], B} <- Funs],
-    RawTuple = 
-    lists:filtermap(fun({tuple, [A, B]}) -> 
-                            case not lists:member({A, B}, RawFun) of
-                                true -> {true, {A, B}};
-                                 false -> false
-                            end; (_) -> error(badarg) end, Tups),
-    % [{A, B} || {tuple, [A, B]} <- Tups, not lists:member({A, B}, RawFun)],
+    RawFun = [{A, B} || {fun_full, [A], B} <- Funs],
+    RawTuple = [{A, B} || {tuple, [A, B]} <- Tups, not lists:member({A, B}, RawFun)],
     % true = (length(Tups) - length(Funs) =:= length(RawTuple)),
     [{map_field_req, A, B} || {A, B} <- RawFun]
         ++ 
@@ -136,9 +129,8 @@ split_into_associations_only_optional(OnlyOptional) ->
     case OnlyOptional of
         {predef, none} ->
             [];
-        {union, Tuples} -> 
-            lists:map(fun({tuple, [X, Y]}) -> {map_field_opt, X, Y}; (_) -> error(badarg) end, Tuples)
-            %[{map_field_opt, X, Y} || {tuple, [X, Y]} <- Tuples];
+        {union, Tuples} ->
+            [{map_field_opt, X, Y} || {tuple, [X, Y]} <- Tuples]
         % Got -> 
         %     io:format(user,"~nGot:~p~n", [Got]),
         %     errors:bug("Internal map representation error")
