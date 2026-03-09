@@ -165,7 +165,7 @@ See also `get_bool/2`, `get_value/2`, `lookup_all/2`.
 lookup(Key, [P | Ps]) ->
     if is_atom(P), P =:= Key ->
 	    {Key, true};
-       is_tuple(P), tuple_size(P) >= 1, element(1, P) =:= Key ->
+       tuple_size(P) >= 1, element(1, P) =:= Key ->
 	    %% Note that <code>Key</code> does not have to be an atom in this case.
 	    P;
        true ->
@@ -670,7 +670,6 @@ returns:
       Rest :: [term()].
 
 split(List, Keys) ->
-    {Store, Rest} = error(mc), % split(List, #{K => [] || K <- Keys}, []),
     {Store, Rest} = split(List, #{K => [] || K <- Keys}, []),
     {[lists:reverse(map_get(K, Store)) || K <- Keys],
      lists:reverse(Rest)}.
