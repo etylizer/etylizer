@@ -28,6 +28,8 @@
         }).
 -type ctx() :: #ctx{}.
 
+-include("etylizer.hrl").
+
 -spec new_ctx(symtab:t(), feature_flags:exhaustiveness_mode()) -> ctx().
 new_ctx(Symtab, ExhaustivenessMode) ->
     Counter = counters:new(2, []),
@@ -121,12 +123,17 @@ exp_constrs(Ctx, E, T) ->
         {'float', L, _F} -> utils:single({csubty, mk_locs("float literal", L), {predef, float}, T});
         {'string', L, ""} -> utils:single({csubty, mk_locs("empty string literal", L), {empty_list}, T});
         {'string', L, _S} -> utils:single({csubty, mk_locs("string literal", L), {predef_alias, nonempty_string}, T});
-        {bin, L, []} -> utils:single({csubty, mk_locs("empty bitstring", L), {bitstring}, T});
-        {bin, L, _Cs} ->
-            % TODO constraints for inner binary pattern elements
-            ?LOG_WARN("Skipping verification of binary pattern elements of ~s", ast:format_loc(L)),
-            utils:single({csubty, mk_locs("bitstring", L), {bitstring}, T});
-        {bc, L, _E, _Qs} -> errors:unsupported(L, "bitstrings");
+        {bin, L, []} -> utils:single({csubty, mk_locs("empty bitstring", L), {bitstring, 0, 0}, T});
+        {bin, L, BinElems} ->
+            {ElemCs, ResultTy} = bin_expr_constrs(Ctx, L, BinElems),
+            sets:add_element({csubty, mk_locs("bitstring", L), ResultTy, T}, ElemCs);
+        {bc, L, Exp, Qs} ->
+            {Env, Cs0} = process_qualifiers(Ctx, L, Qs, #{}, sets:new()),
+            Beta = fresh_tyvar(Ctx),
+            ExpCs = exps_constrs(Ctx, L, [Exp], Beta),
+            BodyCs = sets:from_list([{cdef, mk_locs("binary comprehension body", L), Env, ExpCs}], []),
+            Cs1 = sets:add_element({csubty, mk_locs("binary comprehension result", L), {bitstring, 0, 8}, T}, BodyCs),
+            sets:union(Cs0, Cs1);
         {block, L, Es} ->
             exps_constrs(Ctx, L, Es, T);
         {'case', L, ScrutE, Clauses} ->
@@ -500,7 +507,7 @@ case_constrs(Ctx, L, ScrutE, Clauses, EscapeAnnotation, T) ->
                 case Ctx#ctx.exhaustiveness_mode of
                     enabled -> utils:single(
                                   {csubty, mk_locs("case exhaustiveness", L), Alpha, ast_lib:mk_union(Lowers)});
-                    disabled -> sets:new()
+                    _ -> sets:new()
                 end
         end,
     sets:from_list([
@@ -545,12 +552,30 @@ process_qualifiers(Ctx, Loc, [Q | Qs], Env, Cs) ->
         {zip, LGen, NestedQualifiers} ->
             {NewEnv, NewCs} = process_qualifiers(Ctx, LGen, NestedQualifiers, Env, Cs),
             process_qualifiers(Ctx, Loc, Qs, NewEnv, NewCs);
-        % Pat <= Exp
-        {b_generate, _, _, _} ->
-            errors:unsupported(Loc, "generator ~w", Q);
-        % Pat <:= Exp
-        {b_generate_strict, _, _, _} ->
-            errors:unsupported(Loc, "generator ~w", Q);
+        % Pat <= Exp (binary generator)
+        {b_generate, LGen, Pat, Exp} ->
+            Alpha = fresh_tyvar(Ctx),
+            Beta = fresh_tyvar(Ctx),
+            ExpCs = exp_constrs(Ctx, Exp, {bitstring}),
+            TyPat = ty_of_pat(Ctx#ctx.symtab, Env, Pat, upper),
+            {PatCs, PatEnv} = pat_env(Ctx, LGen, Beta, Pat),
+            GeneratorC = [
+                {csubty, mk_locs("binary pattern lower bound", LGen), ast_lib:mk_intersection([Alpha, TyPat]), Beta},
+                {csubty, mk_locs("binary pattern upper bound", LGen), Beta, Alpha}
+            ],
+            NewEnv = intersect_envs(Env, PatEnv),
+            process_qualifiers(Ctx, Loc, Qs, NewEnv, sets:union([Cs, ExpCs, PatCs, sets:from_list(GeneratorC)]));
+        % Pat <:= Exp (strict binary generator)
+        {b_generate_strict, LGen, Pat, Exp} ->
+            Alpha = fresh_tyvar(Ctx),
+            ExpCs = exp_constrs(Ctx, Exp, {bitstring}),
+            TyPat = ty_of_pat(Ctx#ctx.symtab, Env, Pat, upper),
+            StrictCs = sets:from_list([
+                {csubty, mk_locs("strict binary generator", LGen), Alpha, TyPat}
+            ]),
+            {PatCs, PatEnv} = pat_env(Ctx, LGen, Alpha, Pat),
+            NewEnv = intersect_envs(Env, PatEnv),
+            process_qualifiers(Ctx, Loc, Qs, NewEnv, sets:union([Cs, ExpCs, PatCs, StrictCs]));
         % strict map generator: KeyPat := ValPat <:- Exp
         {m_generate_strict, LGen, KeyPat, ValPat, Exp} ->
             KeyAlpha = fresh_tyvar(Ctx),
@@ -1099,8 +1124,8 @@ ty_of_pat(Symtab, Env, P, Mode) ->
         {'string', _L, Z} -> 
             [X|Xs] = lists:reverse(Z),
             lists:foldl(fun(E, Acc) -> {cons, {singleton, E}, Acc} end, {cons, {singleton, X}, {empty_list}}, Xs);
-        % TODO correct binary patterns
-        {bin, _L, _Elems} -> {bitstring};
+        {bin, _L, []} -> {bitstring, 0, 0};
+        {bin, _L, Elems} -> ty_of_bin_pat(Elems);
         {match, _L, P1, P2} ->
             ast_lib:mk_intersection([ty_of_pat(Symtab, Env, P1, Mode), ty_of_pat(Symtab, Env, P2, Mode)]);
         {nil, _L} -> {empty_list};
@@ -1193,6 +1218,329 @@ ty_of_pat(Symtab, Env, P, Mode) ->
             end
     end.
 
+% Compute the type of a non-empty binary pattern.
+% Builds nested bitstring_cons types for fixed-size segments,
+% enabling content-based pattern discrimination (analogous to list cons cells).
+-spec ty_of_bin_pat([ast:gen_bitstring_elem(ast:pat(), ast:exp())]) -> ast:ty().
+ty_of_bin_pat(Elems) ->
+    ty_of_bin_pat_elems(Elems).
+
+% Process binary pattern elements left-to-right, building 1-bit cons cells.
+% Each segment is decomposed into individual bits for maximum precision.
+-spec ty_of_bin_pat_elems([ast:gen_bitstring_elem(ast:pat(), ast:exp())]) -> ast:ty().
+ty_of_bin_pat_elems([]) ->
+    {empty_bitstring};
+ty_of_bin_pat_elems([Elem | Rest]) ->
+    {bin_element, _, Value, Size, TyspecList} = Elem,
+    {SegType, Signed, DefaultSize, Unit} = analyze_bin_tyspec(TyspecList),
+    case bin_elem_cons_info(SegType, Signed, DefaultSize, Size, Unit, Value) of
+        {cons, Bits} ->
+            TailTy = ty_of_bin_pat_elems(Rest),
+            build_bit_cons_from_pat(SegType, Value, Bits, TailTy);
+        rest_binary ->
+            case Value of
+                {bin, _, InnerElems} ->
+                    ty_of_bin_pat_elems(InnerElems ++ Rest);
+                _ -> {bitstring, 0, 8}
+            end;
+        rest_bitstring ->
+            case Value of
+                {bin, _, InnerElems} ->
+                    ty_of_bin_pat_elems(InnerElems ++ Rest);
+                _ -> {bitstring}
+            end;
+        variable_size ->
+            % Variable-size segment (e.g. <<X:Size>>, <<C/utf8>>):
+            % can't determine bit count, fall back to flat bitstring type
+            ty_of_bin_pat_flat([Elem | Rest])
+    end.
+
+% Determine how a binary element contributes to the cons-cell type.
+-spec bin_elem_cons_info(atom(), boolean(), integer() | default, ast:exp() | default, pos_integer(), ast:exp() | ast:pat()) ->
+    {cons, pos_integer()} | rest_binary | rest_bitstring | variable_size.
+bin_elem_cons_info(SegType, _Signed, DefaultSize, Size, Unit, Value) ->
+    case SegType of
+        integer ->
+            case {Size, DefaultSize} of
+                {default, DS} when is_integer(DS) -> {cons, DS * Unit};
+                {{integer, _, V}, _} when is_integer(V) -> {cons, V * Unit};
+                _ -> variable_size
+            end;
+        float ->
+            case {Size, DefaultSize} of
+                {default, DS} when is_integer(DS) -> {cons, DS * Unit};
+                {{integer, _, V}, _} when is_integer(V) -> {cons, V * Unit};
+                _ -> variable_size
+            end;
+        binary ->
+            case {Size, DefaultSize} of
+                {default, default} -> rest_binary;
+                {{integer, _, V}, _} when is_integer(V) -> {cons, V * Unit};
+                {default, DS} when is_integer(DS) -> {cons, DS * Unit};
+                _ -> variable_size
+            end;
+        bitstring ->
+            case {Size, DefaultSize} of
+                {default, default} -> rest_bitstring;
+                {{integer, _, V}, _} when is_integer(V) -> {cons, V * Unit};
+                {default, DS} when is_integer(DS) -> {cons, DS * Unit};
+                _ -> variable_size
+            end;
+        utf32 -> {cons, 32};
+        utf8 -> utf_cons_info(Value, fun utf8_size/1);
+        utf16 -> utf_cons_info(Value, fun utf16_size/1)
+    end.
+
+% For UTF types with literal values, compute the encoded size in bits.
+-spec utf_cons_info(ast:exp() | default, fun((integer()) -> pos_integer())) ->
+    {cons, pos_integer()} | variable_size.
+utf_cons_info({integer, _, V}, SizeFun) when is_integer(V), V >= 0 -> {cons, SizeFun(V)};
+utf_cons_info({char, _, V}, SizeFun) when is_integer(V), V >= 0 -> {cons, SizeFun(V)};
+utf_cons_info(_, _) -> variable_size.
+
+-spec utf8_size(non_neg_integer()) -> pos_integer().
+utf8_size(V) when V =< 16#7F -> 8;
+utf8_size(V) when V =< 16#7FF -> 16;
+utf8_size(V) when V =< 16#FFFF -> 24;
+utf8_size(_) -> 32.
+
+-spec utf16_size(non_neg_integer()) -> pos_integer().
+utf16_size(V) when V =< 16#FFFF -> 16;
+utf16_size(_) -> 32.
+
+% Build 1-bit cons cells for a binary pattern element.
+% For literal values, decompose into individual bits (MSB first).
+% For wildcards/variables, each bit is {range, 0, 1}.
+-spec build_bit_cons_from_pat(atom(), ast:pat(), pos_integer(), ast:ty()) -> ast:ty().
+build_bit_cons_from_pat(SegType, Value, Bits, TailTy) ->
+    case Value of
+        {'integer', _, I} ->
+            build_literal_bit_cons(encode_segment_value(SegType, I, Bits), Bits, TailTy);
+        {'char', _, C} ->
+            build_literal_bit_cons(encode_segment_value(SegType, C, Bits), Bits, TailTy);
+        {'string', _, S} ->
+            lists:foldr(
+                fun(C, Acc) -> build_literal_bit_cons(encode_segment_value(SegType, C, Bits), Bits, Acc) end,
+                TailTy, S);
+        {bin, _, InnerElems} ->
+            InnerTy = ty_of_bin_pat_elems(InnerElems),
+            take_bits(Bits, InnerTy, TailTy);
+        _ ->
+            build_wildcard_bit_cons(Bits, TailTy)
+    end.
+
+% Encode a literal value according to the segment type.
+% For integer/float, the value is used as-is (bit representation).
+% For UTF types, the value is the codepoint which must be encoded.
+-spec encode_segment_value(atom(), integer(), pos_integer()) -> integer().
+encode_segment_value(utf8, V, _Bits) -> utf8_encode(V);
+encode_segment_value(utf16, V, _Bits) -> utf16_encode(V);
+encode_segment_value(_, V, _Bits) -> V.
+
+-spec utf8_encode(non_neg_integer()) -> non_neg_integer().
+utf8_encode(V) when V =< 16#7F -> V;
+utf8_encode(V) when V =< 16#7FF ->
+    ((16#C0 bor (V bsr 6)) bsl 8) bor (16#80 bor (V band 16#3F));
+utf8_encode(V) when V =< 16#FFFF ->
+    ((16#E0 bor (V bsr 12)) bsl 16) bor
+    ((16#80 bor ((V bsr 6) band 16#3F)) bsl 8) bor
+    (16#80 bor (V band 16#3F));
+utf8_encode(V) ->
+    ((16#F0 bor (V bsr 18)) bsl 24) bor
+    ((16#80 bor ((V bsr 12) band 16#3F)) bsl 16) bor
+    ((16#80 bor ((V bsr 6) band 16#3F)) bsl 8) bor
+    (16#80 bor (V band 16#3F)).
+
+-spec utf16_encode(non_neg_integer()) -> non_neg_integer().
+utf16_encode(V) when V =< 16#FFFF -> V;
+utf16_encode(V) ->
+    U = V - 16#10000,
+    Hi = 16#D800 bor (U bsr 10),
+    Lo = 16#DC00 bor (U band 16#3FF),
+    (Hi bsl 16) bor Lo.
+
+% Take the first N bits from a cons-cell type and replace the tail.
+-spec take_bits(non_neg_integer(), ast:ty(), ast:ty()) -> ast:ty().
+take_bits(0, _InnerTy, TailTy) -> TailTy;
+take_bits(N, {bitstring_cons, Head, Rest}, TailTy) ->
+    {bitstring_cons, Head, take_bits(N - 1, Rest, TailTy)};
+take_bits(N, _, TailTy) ->
+    % Inner type ran out of cons cells or is flat — fill with wildcards
+    build_wildcard_bit_cons(N, TailTy).
+
+% Build N 1-bit cons cells for a literal integer value (MSB first).
+-spec build_literal_bit_cons(integer(), pos_integer(), ast:ty()) -> ast:ty().
+build_literal_bit_cons(V, Bits, TailTy) ->
+    % Convert to unsigned representation for bit extraction
+    UV = V band ((1 bsl Bits) - 1),
+    build_literal_bit_cons_h(UV, Bits - 1, TailTy).
+
+build_literal_bit_cons_h(_V, -1, TailTy) -> TailTy;
+build_literal_bit_cons_h(V, BitPos, TailTy) ->
+    Bit = (V bsr BitPos) band 1,
+    {bitstring_cons, {singleton, Bit}, build_literal_bit_cons_h(V, BitPos - 1, TailTy)}.
+
+% Build N 1-bit cons cells for a wildcard/variable (any bit value).
+-spec build_wildcard_bit_cons(non_neg_integer(), ast:ty()) -> ast:ty().
+build_wildcard_bit_cons(0, TailTy) -> TailTy;
+build_wildcard_bit_cons(N, TailTy) when N > 0 ->
+    {bitstring_cons, {range, 0, 1}, build_wildcard_bit_cons(N - 1, TailTy)}.
+
+% Flat (non-structural) fallback for binary patterns that can't be decomposed.
+% Flat (non-structural) fallback for binary patterns with variable-size segments.
+% Returns a flat bitstring type based on alignment and unit GCD analysis.
+-spec ty_of_bin_pat_flat([ast:gen_bitstring_elem(ast:pat(), ast:exp())]) -> ast:ty().
+ty_of_bin_pat_flat(Elems) ->
+    {TotalFixedBits, _HasRestBinary, HasRestBitstring, AllFixed} =
+        lists:foldl(
+            fun({bin_element, _, Value, Size, TyspecList}, {AccBits, AccRestBin, AccRestBits, AccFixed}) ->
+                {SegType, _Signed, DefaultSize, Unit} = analyze_bin_tyspec(TyspecList),
+                % String values contribute length(Str) repetitions
+                Multiplier = case Value of
+                    {'string', _, S} -> length(S);
+                    _ -> 1
+                end,
+                case {Size, DefaultSize, SegType} of
+                    {default, default, binary} ->
+                        {AccBits, true, AccRestBits, false};
+                    {default, default, bitstring} ->
+                        {AccBits, AccRestBin, true, false};
+                    {default, default, utf8} ->
+                        {AccBits, AccRestBin, AccRestBits, false};
+                    {default, default, utf16} ->
+                        {AccBits, AccRestBin, AccRestBits, false};
+                    {default, default, utf32} ->
+                        {AccBits + 32 * Multiplier, AccRestBin, AccRestBits, AccFixed};
+                    {default, DS, _} ->
+                        Bits = DS * Unit * Multiplier,
+                        {AccBits + Bits, AccRestBin, AccRestBits, AccFixed};
+                    {{integer, _, V}, _, _} when is_integer(V) ->
+                        Bits = V * Unit * Multiplier,
+                        {AccBits + Bits, AccRestBin, AccRestBits, AccFixed};
+                    _ ->
+                        {AccBits, AccRestBin, AccRestBits, false}
+                end
+            end,
+            {0, false, false, true},
+            Elems),
+    % Compute the unit as the GCD of all segment output alignments.
+    SegmentUnits = lists:map(
+        fun({bin_element, _, _, _, TyspecList}) ->
+            {SegType, _, _, Unit} = analyze_bin_tyspec(TyspecList),
+            case SegType of
+                utf8 -> 8;   % UTF-8 always produces whole bytes
+                utf16 -> 16; % UTF-16 produces 2 or 4 bytes
+                utf32 -> 32; % UTF-32 always produces 4 bytes
+                _ -> Unit
+            end
+        end, Elems),
+    UnitGcd = lists:foldl(fun gcd/2, 0, SegmentUnits),
+    case {AllFixed, HasRestBitstring} of
+        {true, _} -> {bitstring, TotalFixedBits, 0};
+        {false, true} -> {bitstring, TotalFixedBits, UnitGcd};
+        {false, false} when UnitGcd > 0 -> {bitstring, TotalFixedBits, UnitGcd};
+        _ -> {bitstring}
+    end.
+
+-spec gcd(non_neg_integer(), non_neg_integer()) -> non_neg_integer().
+gcd(A, 0) -> A;
+gcd(0, B) -> B;
+gcd(A, B) when A > B -> gcd(A rem B, B);
+gcd(A, B) -> gcd(A, B rem A).
+
+% Analyze a bitstring type specifier list to determine segment type, signedness, default size, and unit.
+-spec analyze_bin_tyspec(default | ast:bitstring_tyspec_list()) ->
+    {integer | float | binary | bitstring | utf8 | utf16 | utf32, boolean(), integer() | default, integer()}.
+analyze_bin_tyspec(default) -> {integer, false, 8, 1};
+analyze_bin_tyspec(TyspecList0) ->
+    TyspecList = ?assert_type(TyspecList0, ast:bitstring_tyspec_list()),
+    Type = determine_segment_type(TyspecList),
+    Signed = lists:member(signed, TyspecList),
+    TupleTyspecs = ?assert_type([X || X <- TyspecList, is_tuple(X)], [{atom(), integer()}]),
+    Unit = case lists:keyfind(unit, 1, TupleTyspecs) of
+        {unit, U} -> ?assert_type(U, integer());
+        _ -> default_unit(Type)
+    end,
+    DefaultSize = default_size(Type),
+    {Type, Signed, DefaultSize, Unit}.
+
+-spec determine_segment_type(ast:bitstring_tyspec_list()) -> integer | float | binary | bitstring | utf8 | utf16 | utf32.
+determine_segment_type([]) -> integer;
+determine_segment_type([integer | _]) -> integer;
+determine_segment_type([float | _]) -> float;
+determine_segment_type([binary | _]) -> binary;
+determine_segment_type([bytes | _]) -> binary;
+determine_segment_type([bitstring | _]) -> bitstring;
+determine_segment_type([bits | _]) -> bitstring;
+determine_segment_type([utf8 | _]) -> utf8;
+determine_segment_type([utf16 | _]) -> utf16;
+determine_segment_type([utf32 | _]) -> utf32;
+determine_segment_type([_ | Rest]) -> determine_segment_type(Rest).
+
+-spec default_unit(integer | float | binary | bitstring | utf8 | utf16 | utf32) -> integer().
+default_unit(integer) -> 1;
+default_unit(float) -> 1;
+default_unit(binary) -> 8;
+default_unit(bitstring) -> 1;
+default_unit(utf8) -> 1;
+default_unit(utf16) -> 1;
+default_unit(utf32) -> 1.
+
+-spec default_size(integer | float | binary | bitstring | utf8 | utf16 | utf32) -> integer() | default.
+default_size(integer) -> 8;
+default_size(float) -> 64;
+default_size(binary) -> default;
+default_size(bitstring) -> default;
+default_size(utf8) -> default;
+default_size(utf16) -> default;
+default_size(utf32) -> default.
+
+% Generate constraints for binary expression elements (non-empty binary construction).
+-spec bin_expr_constrs(ctx(), ast:loc(), [ast:exp_bitstring_elem()]) -> {constr:constrs(), ast:ty()}.
+bin_expr_constrs(Ctx, _L, BinElems) ->
+    Cs = lists:foldl(
+        fun({bin_element, ElemL, Value, Size, TyspecList}, AccCs) ->
+            {SegType, _Signed, _DefaultSize, Unit} = analyze_bin_tyspec(TyspecList),
+            % Generate constraint for the value expression
+            IsStringValue = case Value of
+                {'string', _, _} -> true;
+                _ -> false
+            end,
+            % Upper bound for the value expression, validating that it has the
+            % right type for the segment specifier (e.g. <<X/float>> requires X
+            % to be a number, <<X/binary>> requires X to be a binary).
+            % The precise type of the value is captured separately by exp_constrs.
+            ValueTy = case {SegType, IsStringValue} of
+                {_, true} -> {predef, any};  % strings in binaries are always valid
+                {integer, _} -> {predef, integer};
+                {float, _} -> {predef_alias, number};  % floats accept integers too
+                {binary, _} when Unit =:= 8 -> {bitstring, 0, 8};
+                {binary, _} -> {bitstring};  % binary with non-default unit accepts any bitstring
+                {bitstring, _} -> {bitstring};
+                {utf8, _} -> {predef, integer};
+                {utf16, _} -> {predef, integer};
+                {utf32, _} -> {predef, integer}
+            end,
+            Alpha = fresh_tyvar(Ctx),
+            ValCs = exp_constrs(Ctx, Value, Alpha),
+            ValConstr = {csubty, mk_locs("bin element value", ElemL), Alpha, ValueTy},
+            % Generate constraint for the size expression (if present)
+            SizeCs = case Size of
+                default -> sets:new([{version, 2}]);
+                _ ->
+                    SizeAlpha = fresh_tyvar(Ctx),
+                    SCs = exp_constrs(Ctx, Size, SizeAlpha),
+                    sets:add_element(
+                        {csubty, mk_locs("bin element size", ElemL), SizeAlpha, {predef, integer}},
+                        SCs)
+            end,
+            sets:union([AccCs, ValCs, SizeCs, sets:from_list([ValConstr])])
+        end,
+        sets:new([{version, 2}]),
+        BinElems),
+    ResultTy = ty_of_bin_pat_elems(BinElems),
+    {Cs, ResultTy}.
+
 % t // pg
 -spec pat_guard_env(ctx(), ast:loc(), ast:ty(), ast:pat(), [ast:guard()]) ->
           {constr:constrs(), constr:constr_env()}.
@@ -1211,26 +1559,17 @@ pat_env(Ctx, OuterL, T, P) ->
         {'integer', _L, _I} -> Empty;
         {'float', _L, _F} -> Empty;
         {'string', _L, _S} -> Empty;
-        % TODO correct pattern environment for binaries
-        {bin, _L, Elems} -> 
-            {Cs, Env} =
-                lists:foldl(
-                  fun (P, {Cs, Env}) ->
-                          % unused type variables
-                          Alpha = fresh_tyvar(Ctx),
-                          {ThisCs, ThisEnv} = pat_env(Ctx, OuterL, Alpha, P),
-                          {sets:union(Cs, ThisCs),
-                           intersect_envs(Env, ThisEnv)}
-                  end,
-                  {sets:new([{version, 2}]), #{}},
-                  Elems),
-            C = {csubty, mk_locs("t // <<...>>", OuterL), T, {bitstring}},
+        {bin, _L, []} ->
+            C = {csubty, mk_locs("t // <<>>", OuterL), T, {empty_bitstring}},
+            {sets:from_list([C], [{version, 2}]), #{}};
+        {bin, _L, Elems} ->
+            % Build a structural cons-based type with fresh type variables for
+            % rest segments, analogous to how list cons uses Alpha for the tail.
+            % This propagates precise tail types through pattern matching.
+            {ConsTy, Cs, Env} = bin_pat_env_elems(Ctx, OuterL, Elems),
+            C = {csubty, mk_locs("t // <<...>>", OuterL), T, ConsTy},
             {sets:add_element(C, Cs), Env};
         default -> Empty;
-        {bin_element, _L, Value, Size, _TyspecList} -> 
-            {Cs1, Env1} = pat_env(Ctx, OuterL, T, Value),
-            {Cs2, Env2} = pat_env(Ctx, OuterL, T, Size),
-            {sets:union(Cs1, Cs2), intersect_envs(Env1, Env2)};
         {match, _L, P1, P2} ->
             {Cs1, Env1} = pat_env(Ctx, OuterL, T, P1),
             {Cs2, Env2} = pat_env(Ctx, OuterL, T, P2),
@@ -1321,6 +1660,90 @@ pat_env(Ctx, OuterL, T, P) ->
             % V refers to an existing variable
             {sets:new([{version, 2}]), #{ LocalRef => T }}
     end.
+
+% Build a structural cons-based type for a binary pattern while generating
+% constraints and environment bindings. Rest segments get fresh type variables
+% so the scrutiny's tail type flows through (like Alpha2 in list cons).
+-spec bin_pat_env_elems(ctx(), ast:loc(), [ast:gen_bitstring_elem(ast:pat(), ast:exp())]) ->
+    {ast:ty(), constr:constrs(), constr:constr_env()}.
+bin_pat_env_elems(_Ctx, _OuterL, []) ->
+    {{empty_bitstring}, sets:new([{version, 2}]), #{}};
+bin_pat_env_elems(Ctx, OuterL, [Elem | Rest]) ->
+    {bin_element, _, Value, Size, TyspecList} = Elem,
+    {SegType, Signed, DefaultSize, Unit} = analyze_bin_tyspec(TyspecList),
+    case bin_elem_cons_info(SegType, Signed, DefaultSize, Size, Unit, Value) of
+        {cons, Bits} ->
+            {TailTy, TailCs, TailEnv} = bin_pat_env_elems(Ctx, OuterL, Rest),
+            ConsTy = build_bit_cons_from_pat(SegType, Value, Bits, TailTy),
+            {ElemCs, ElemEnv} = bin_elem_pat_env(Ctx, OuterL, Elem),
+            {ConsTy, sets:union(TailCs, ElemCs), intersect_envs(TailEnv, ElemEnv)};
+        rest_binary ->
+            case Value of
+                {bin, _, InnerElems} ->
+                    bin_pat_env_elems(Ctx, OuterL, InnerElems ++ Rest);
+                _ ->
+                    Alpha = fresh_tyvar(Ctx),
+                    {ValueCs, ValueEnv} = pat_env(Ctx, OuterL, Alpha, Value),
+                    SizeCs = case Size of
+                        default -> sets:new([{version, 2}]);
+                        _ -> pat_env_cs(Ctx, OuterL, {predef, integer}, Size)
+                    end,
+                    {Alpha, sets:union(ValueCs, SizeCs), ValueEnv}
+            end;
+        rest_bitstring ->
+            case Value of
+                {bin, _, InnerElems} ->
+                    bin_pat_env_elems(Ctx, OuterL, InnerElems ++ Rest);
+                _ ->
+                    Alpha = fresh_tyvar(Ctx),
+                    {ValueCs, ValueEnv} = pat_env(Ctx, OuterL, Alpha, Value),
+                    SizeCs = case Size of
+                        default -> sets:new([{version, 2}]);
+                        _ -> pat_env_cs(Ctx, OuterL, {predef, integer}, Size)
+                    end,
+                    {Alpha, sets:union(ValueCs, SizeCs), ValueEnv}
+            end;
+        variable_size ->
+            % Can't decompose: fall back to flat type, process all elements
+            FlatTy = ty_of_bin_pat_flat([Elem | Rest]),
+            {Cs, Env} = lists:foldl(
+                fun(E, {AccCs, AccEnv}) ->
+                    {ThisCs, ThisEnv} = bin_elem_pat_env(Ctx, OuterL, E),
+                    {sets:union(AccCs, ThisCs), intersect_envs(AccEnv, ThisEnv)}
+                end,
+                {sets:new([{version, 2}]), #{}},
+                [Elem | Rest]),
+            {FlatTy, Cs, Env}
+    end.
+
+% Helper: get just the constraints from pat_env (discard env).
+-spec pat_env_cs(ctx(), ast:loc(), ast:ty(), ast:pat()) -> constr:constrs().
+pat_env_cs(Ctx, OuterL, T, P) ->
+    {Cs, _} = pat_env(Ctx, OuterL, T, P),
+    Cs.
+
+% Process a single bin_element in a binary pattern, computing proper types for Value and Size.
+-spec bin_elem_pat_env(ctx(), ast:loc(), ast:gen_bitstring_elem(ast:pat(), ast:exp())) ->
+    {constr:constrs(), constr:constr_env()}.
+bin_elem_pat_env(Ctx, OuterL, {bin_element, _L, Value, Size, TyspecList}) ->
+    {SegType, Signed, _, Unit} = analyze_bin_tyspec(TyspecList),
+    ValueTy = case SegType of
+        integer when Signed -> {predef, integer};
+        integer -> {predef_alias, non_neg_integer};  % non_neg_integer for unsigned
+        float -> {predef, float};
+        binary when Unit =:= 8 -> {bitstring, 0, 8};
+        binary -> {bitstring};  % binary with non-default unit accepts any bitstring
+        bitstring -> {bitstring};
+        utf8 -> {predef, integer};
+        utf16 -> {predef, integer};
+        utf32 -> {predef, integer}
+    end,
+    {Cs1, Env1} = pat_env(Ctx, OuterL, ValueTy, Value),
+    {Cs2, Env2} = case Size of
+        default -> {sets:new([{version, 2}]), #{}};
+        _ -> pat_env(Ctx, OuterL, {predef, integer}, Size)
+    end,
+    {sets:union(Cs1, Cs2), intersect_envs(Env1, Env2)}.
 
 % (| e |)
 -spec pat_of_exp(ast:exp()) -> ast:pat().

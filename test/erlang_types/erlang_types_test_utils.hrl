@@ -1,8 +1,8 @@
 -define(LOAD, begin [code:ensure_loaded(M) || M <- [
-    persistent_term, constraint_set, dnf_ty_atom, dnf_ty_bitstring,
-    dnf_ty_function, dnf_ty_interval, dnf_ty_list, dnf_ty_map, dnf_ty_predefined,
-    dnf_ty_tuple, dnf_ty_variable, global_state, ty_bool, ty_function, ty_functions, 
-    ty_node, ty_parser, ty_rec, ty_tuple, ty_tuples, ty_variable,
+    persistent_term, constraint_set, dnf_ty_atom,
+    dnf_ty_function, dnf_ty_interval, dnf_ty_list, dnf_ty_bitstring, dnf_ty_map, dnf_ty_predefined,
+    dnf_ty_tuple, dnf_ty_variable, global_state, ty_bool, ty_function, ty_functions,
+    ty_node, ty_parser, ty_rec, ty_tuple, ty_tuples, ty_variable, ty_bitstring,
     ty, tarjan, utils
   ]]end).
 
@@ -41,6 +41,11 @@ p(A, B) -> {tuple, [A, B]}.
 p(A) when not is_list(A) -> {tuple, [A]};
 p(A) when is_list(A) -> {tuple, A}.
 tbitstring() -> {bitstring}.
+tbinary() -> {bitstring, 0, 8}.
+tnonempty_binary() -> {bitstring, 8, 8}.
+tnonempty_bitstring() -> {bitstring, 1, 1}.
+tempty_bitstring() -> {bitstring, 0, 0}.
+tbitstring_m_n(M, N) -> {bitstring, M, N}.
 ttuple_any() -> {tuple_any}.
 ttuple(Types) -> {tuple, Types}.
 ttuple1(Type) -> {tuple, [Type]}.
