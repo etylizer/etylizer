@@ -271,3 +271,36 @@ mater_trans_01(F) -> F.
 -spec mater_trans_02(fun((dynamic()) -> fun((dynamic()) -> dynamic()))) ->
     fun((integer()) -> fun((atom()) -> boolean())).
 mater_trans_02(F) -> F.
+
+% Dynamic call with 0 args
+-spec dyn_call_01(atom(), atom()) -> integer().
+dyn_call_01(M, F) ->
+  M:F().
+
+% Dynamic call with 1 arg
+-spec dyn_call_02(atom(), atom(), integer()) -> integer().
+dyn_call_02(M, F, Arg) ->
+  M:F(Arg).
+
+% Dynamic call with 2 args
+-spec dyn_call_03(atom(), atom(), integer(), atom()) -> integer().
+dyn_call_03(M, F, Arg1, Arg2) ->
+  M:F(Arg1, Arg2).
+
+% Dynamic call result bound to variable, 0 args
+-spec dyn_call_eval_01(atom(), atom()) -> integer().
+dyn_call_eval_01(M, F) ->
+  Res = M:F(),
+  Res.
+
+% Dynamic call result bound to variable, 1 arg
+-spec dyn_call_eval_02(atom(), atom(), integer()) -> integer().
+dyn_call_eval_02(M, F, Arg) ->
+  Res = M:F(Arg),
+  Res.
+
+% Dynamic call result bound to variable, 2 args
+-spec dyn_call_eval_03(atom(), atom(), integer(), atom()) -> integer().
+dyn_call_eval_03(M, F, Arg1, Arg2) ->
+  Res = M:F(Arg1, Arg2),
+  Res.
