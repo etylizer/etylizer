@@ -358,8 +358,10 @@ builtin_ops() ->
                           tfun([tnonempty_list(tvar(a)), tnonempty_list(tvar(a))], tnonempty_list(tvar(a)))
                                ])
                        )},
-        {'--', 2, tyscm([a], tfun([tlist(tvar(a)), tlist(tvar(a))], tlist(tvar(a))))}
-        % {'!', 2,   FIXME
+        {'--', 2, tyscm([a], tfun([tlist(tvar(a)), tlist(tvar(a))], tlist(tvar(a))))},
+        % receiver must evaluate to a pid, an alias (reference), a port, a registered name (atom), or a tuple {Name,Node}.
+        % Name is an atom and Node is a node name, also an atom.
+        {'!', 2, tyscm([a], tfun([tunion([{predef, pid}, {predef, reference}, {predef, port}, {predef, atom}, {tuple, [{predef, atom}, {predef, atom}]}]), tvar(a)], tvar(a)))}
     ].
 
 %% Types for builtin functions
