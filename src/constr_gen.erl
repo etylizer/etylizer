@@ -213,8 +213,8 @@ exp_constrs(Ctx, E, T) ->
             var_funcall_constrs(Ctx, L, Var, Args, T);
         {call, L, FunExp, Args} ->
             gen_funcall_constrs(Ctx, L, FunExp, Args, T);
-        {call_remote, L, _ModExp, _FunExp, _Args} ->
-            errors:unsupported(L, "function calls with dynamically computed modules");
+        {call_remote, L, ModExp, FunExp, Args} ->
+            dyncall_constrs(Ctx, L, ModExp, FunExp, Args, T);
         ({'if', _, _} = IfExp) ->
             exp_constrs(Ctx, if_exp_to_case_exp(IfExp), T);
         {lc, L, Exp, Qs} ->
@@ -680,6 +680,22 @@ var_as_global_ref({var, _, Ref}) ->
         {escaped_ref, _, _} -> error;
         _ -> {ok, Ref}
     end.
+
+% Generates constraints for a dynamic function call (Mod:Fun(Args)).
+% Arguments are constrained to dynamic(), result is dynamic().
+-spec dyncall_constrs(ctx(), ast:loc(), ast:exp(), ast:exp(), [ast:exp()], ast:ty()) -> constr:constrs().
+dyncall_constrs(Ctx, L, ModExp, FunExp, Args, T) ->
+    ModCs = exp_constrs(Ctx, ModExp, {predef, dynamic}),
+    FunCs = exp_constrs(Ctx, FunExp, {predef, dynamic}),
+    ArgCs = lists:foldr(
+        fun(ArgExp, AccCs) ->
+            Cs = exp_constrs(Ctx, ArgExp, {predef, dynamic}),
+            sets:union(AccCs, Cs)
+        end,
+        sets:new([{version, 2}]),
+        Args),
+    ResultCs = utils:single({csubty, mk_locs("result of dynamic call", L), {predef, dynamic}, T}),
+    sets:union([ModCs, FunCs, ArgCs, ResultCs]).
 
 -spec ty_without(ast:ty(), ast:ty()) -> ast:ty().
 ty_without(T1, T2) -> ast_lib:mk_intersection([T1, ast_lib:mk_negation(T2)]).
