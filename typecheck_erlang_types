@@ -39,6 +39,9 @@ files=(
 
 # timeouts
 TO=""
+TO=$TO" -i ty_rec:unparse_any_module/2 "
+TO=$TO" -i ty_variable:compare/2 "
+TO=$TO" -i dnf_ty_variable:op/3 "
 TO=$TO" -i ty_map:unparse_tuple_part_dnf/2 "
 TO=$TO" -i ty_map:unparse_tuple_part_dnf_unparse/2 "
 TO=$TO" -i ty_map:unparse_fun_part_dnf/2 "

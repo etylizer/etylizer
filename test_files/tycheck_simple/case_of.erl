@@ -252,3 +252,12 @@ case_32(X) ->
         a -> b;
         _ -> Y
     end.
+
+
+-spec case_33_fail(fun((atom() | reference(), term()) -> [tuple()]), term()) -> term().
+case_33_fail(F, Ref) ->
+  [{Ref, Node}] =
+  case F(myetstable, Ref) of
+      __Z = [{Ref, _}] -> __Z; _ -> error(badarg)
+  end,
+  Node.

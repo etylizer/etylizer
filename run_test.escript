@@ -1,35 +1,38 @@
 #!/usr/bin/env escript
 %% run_test.escript
-%% Usage: escript run_test.escript <pattern>
+%% Usage: escript run_test.escript <pattern> [<pattern2>]
+%%
+%% All patterns must match (AND). Use multiple args to combine filters.
 %%
 %% Examples:
 %%   escript run_test.escript case_01
 %%   escript run_test.escript "guards.erl/case_01"
 %%   escript run_test.escript "(typecheck)"
 %%   escript run_test.escript "(infer)"
+%%   escript run_test.escript bin_cons "(typecheck)"
 
 -mode(compile).
 
-main([Pattern]) ->
+main(Patterns) when length(Patterns) >= 1 ->
     compile_project(),
     setup_paths(),
     io:format("Evaluating generator...~n"),
     Tests = tycheck_simple_tests:simple_test_(),
-    Filtered = filter_tests(Tests, Pattern),
+    Filtered = lists:foldl(fun(Pat, Acc) -> filter_tests(Acc, Pat) end, Tests, Patterns),
     case Filtered of
         [] ->
-            io:format("No tests matching ~p~n", [Pattern]),
+            io:format("No tests matching ~p~n", [Patterns]),
             halt(1);
         _ ->
             io:format("Running ~b test(s) matching ~p~n",
-                       [count(Filtered), Pattern]),
+                       [count(Filtered), Patterns]),
             case eunit:test(Filtered, [verbose]) of
                 ok -> halt(0);
                 _  -> halt(2)
             end
     end;
 main(_) ->
-    io:format("Usage: escript run_test.escript <pattern>~n"),
+    io:format("Usage: escript run_test.escript <pattern> [<pattern2>]~n"),
     halt(1).
 
 compile_project() ->
