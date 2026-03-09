@@ -24,7 +24,12 @@
           records :: #{ atom() => records:record_ty() },
           % Default expressions for record fields, used to fill in omitted fields during
           % record construction.
-          record_defaults = #{} :: #{ atom() => #{ atom() => ast:exp() } }
+          record_defaults = #{} :: #{ atom() => #{ atom() => ast:exp() } },
+          % Extra type forms generated for record override variants (e.g., #rec{field :: any()})
+          extra_forms = [] :: [ast:form()],
+          % ETS table for accumulating record override variants during type transformation.
+          % Used because trans_ty cannot thread state through its return value.
+          record_variants :: ets:table() | undefined
         }).
 -type ctx() :: #ctx{}.
 
@@ -50,7 +55,8 @@ trans(Path, Forms, Mode) ->
 -spec trans(string(), [ast_erl:form()], trans_mode(), funenv()) -> [ast:form()].
 trans(Path, Forms, Mode, FunEnv) ->
     ModName = ast_utils:modname_from_path(Path),
-    {RevNewForms, _} =
+    VarTab = ets:new(record_variants, [bag]),
+    {RevNewForms, FinalCtx} =
         lists:foldl(
             fun(F, {NewForms, Ctx}) ->
                 case trans_form(Ctx, F, Mode) of
@@ -59,10 +65,12 @@ trans(Path, Forms, Mode, FunEnv) ->
                     NewForm -> {[NewForm | NewForms], Ctx}
                 end
             end,
-            {[], #ctx{ path = Path, module_name = ModName, funenv = FunEnv, records = #{} }},
+            {[], #ctx{ path = Path, module_name = ModName, funenv = FunEnv, records = #{},
+                        record_variants = VarTab }},
             Forms
             ),
-    lists:reverse(RevNewForms).
+    ets:delete(VarTab),
+    lists:reverse(RevNewForms) ++ FinalCtx#ctx.extra_forms.
 
 -spec build_funenv(file:filename(), [ast_erl:form()]) -> funenv().
 build_funenv(Path, Forms) ->
@@ -130,18 +138,29 @@ trans_form(Ctx, Form, Mode) ->
                 {attribute, Loc, callback, Name, Arity, trans_spec_ty(Ctx, Loc, FunTys),
                  without_mod};
             {attribute, Anno, record, {Name, Fields}} when is_atom(Name) ->
-                % FIXME: this is a dirty hack to work around #152 (support for recursive record
-                % types). We temporarly register the name of the record with an empty record
+                % We temporarily register the name of the record with an empty record
                 % type, so that fields of the record can refer to the record itself.
+                % Self-references in field types emit named references (see trans_ty).
                 EmptyRecordTy = {Name, []},
                 TmpCtx = Ctx#ctx { records = maps:put(Name, EmptyRecordTy, Ctx#ctx.records) },
                 NewFields = trans_record_fields(TmpCtx, varenv:empty("type variable"), Fields),
                 NewForm = {attribute, to_loc(TmpCtx, Anno), record, {Name, NewFields}},
                 RecordTy = records:record_ty_from_decl(Name, NewFields),
                 FieldDefaults = extract_field_defaults(NewFields),
+                % Generate type forms for override variants created during field processing
+                OverrideVariants = collect_record_variants(Ctx, Name),
+                Loc = to_loc(Ctx, Anno),
+                VariantForms = lists:map(
+                    fun ({VariantName, VOverrides}) ->
+                        VariantBody = records:encode_record_ty(RecordTy, VOverrides),
+                        {attribute, Loc, type, transparent,
+                            {VariantName, {ty_scheme, [], VariantBody}}}
+                    end,
+                    OverrideVariants),
                 NewCtx = Ctx#ctx {
                     records = maps:put(Name, RecordTy, Ctx#ctx.records),
-                    record_defaults = maps:put(Name, FieldDefaults, Ctx#ctx.record_defaults)
+                    record_defaults = maps:put(Name, FieldDefaults, Ctx#ctx.record_defaults),
+                    extra_forms = Ctx#ctx.extra_forms ++ VariantForms
                 },
                 ?LOG_TRACE("Registered new record type: ~200p", RecordTy),
                 {NewForm, NewCtx};
@@ -306,17 +325,33 @@ trans_ty(Ctx, Env, Ty) ->
             eval_const_ty(Ty, to_loc(Ctx, Anno));
         {type, Anno, record, [{'atom', _, Name} | Fields]} ->
             Loc = to_loc(Ctx, Anno),
-            Overrides =
-                lists:map(
-                    fun ({type, _, field_type, [{'atom', _, FieldName}, FieldTy]}) ->
-                            {FieldName, trans_ty(Ctx, Env, FieldTy)}
-                    end,
-                    Fields),
             case maps:find(Name, Ctx#ctx.records) of
                 error ->
                     errors:name_error(Loc, "record ~w not defined", [Name]);
                 {ok, RecTy} ->
-                    records:encode_record_ty(RecTy, Overrides)
+                    case Fields of
+                        [] ->
+                            % Use named reference (enables recursive records)
+                            RecRef = {ty_ref, Ctx#ctx.module_name, records:record_type_name(Name), 0},
+                            {named, Loc, RecRef, []};
+                        _ ->
+                            Overrides =
+                                lists:map(
+                                    fun ({type, _, field_type, [{'atom', _, FieldName}, FieldTy]}) ->
+                                            {FieldName, trans_ty(Ctx, Env, FieldTy)}
+                                    end,
+                                    Fields),
+                            case RecTy of
+                                {Name, []} ->
+                                    % Self-referencing record with field overrides.
+                                    % Emit a named reference to an override variant type.
+                                    VariantName = store_record_variant(Ctx, Name, Overrides),
+                                    VariantRef = {ty_ref, Ctx#ctx.module_name, VariantName, 0},
+                                    {named, Loc, VariantRef, []};
+                                _ ->
+                                    records:encode_record_ty(RecTy, Overrides)
+                            end
+                    end
             end;
         {type, _, tuple, any} -> {tuple_any};
         {type, _, tuple, ArgTys} -> {tuple, trans_tys(Ctx, Env, ArgTys)};
@@ -1096,11 +1131,30 @@ parse_type(Ctx, Src) ->
         _ -> error
     end.
 
+% Stores a record override variant in the ETS table for later retrieval.
+% Used when a self-referencing record has field overrides (e.g., #rr{name :: any()}).
+% Returns the generated variant type name.
+-spec store_record_variant(ctx(), atom(), [records:record_field()]) -> atom().
+store_record_variant(Ctx, RecName, Overrides) ->
+    Tab = Ctx#ctx.record_variants,
+    N = length(ets:lookup(Tab, RecName)) + 1,
+    VariantName = list_to_atom("$record$" ++ atom_to_list(RecName) ++ "$v" ++ integer_to_list(N)),
+    ets:insert(Tab, {RecName, VariantName, Overrides}),
+    VariantName.
+
+% Collects and removes all record override variants for a record from the ETS table.
+-spec collect_record_variants(ctx(), atom()) -> [{atom(), [records:record_field()]}].
+collect_record_variants(Ctx, RecName) ->
+    Tab = Ctx#ctx.record_variants,
+    Results = [{VName, Ov} || {_, VName, Ov} <- ets:lookup(Tab, RecName)],
+    ets:delete(Tab, RecName),
+    Results.
 
 -ifdef(TEST).
 
 test_ctx() ->
-    #ctx{ path = ".", module_name = ast_transform, funenv = varenv:empty("function"), records = #{} }.
+    #ctx{ path = ".", module_name = ast_transform, funenv = varenv:empty("function"), records = #{},
+          record_variants = ets:new(test_record_variants, [bag]) }.
 
 parse_type_test() ->
     Ctx = test_ctx(),

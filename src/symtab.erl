@@ -248,7 +248,13 @@ extend_symtab_internal(Filename, Forms, RefType, Tab, OverlaySymtab) ->
                     AccTab#tab { types = maps:put({ty_key, ModuleName, Name, Arity}, TyScm, AccTab#tab.types) };
                 {attribute, _, record, {RecordName, Fields}} ->
                     RecordTy = records:record_ty_from_decl(RecordName, Fields),
-                    AccTab#tab { records = maps:put(RecordName, RecordTy, AccTab#tab.records) };
+                    RecTypeName = records:record_type_name(RecordName),
+                    RecTupleType = records:encode_record_ty(RecordTy),
+                    RecTyScheme = {ty_scheme, [], RecTupleType},
+                    AccTab#tab {
+                        records = maps:put(RecordName, RecordTy, AccTab#tab.records),
+                        types = maps:put({ty_key, ModuleName, RecTypeName, 0}, RecTyScheme, AccTab#tab.types)
+                    };
                 _ ->
                     AccTab
             end
