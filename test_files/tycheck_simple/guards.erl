@@ -98,6 +98,9 @@ guard_outer_refine_01(X, Y) ->
 guard_not_or_precise_01({X, Y}) when not (is_atom(X) orelse is_atom(Y)) -> X + Y;
 guard_not_or_precise_01({X, _}) -> X.
 
+-spec guard_11(boolean()) -> integer().
+guard_11(Boolean) when is_boolean(Boolean) -> 0.
+
 -spec refinement_01(integer()) -> 1.
 refinement_01(X) ->
     case X of

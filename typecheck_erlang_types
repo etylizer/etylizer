@@ -3,9 +3,6 @@ set -e
 TYPE_LIB="./src/erlang_types/"
 
 files=(
-    "constraint_set.erl"
-    "dnf_ty_atom.erl"
-    "dnf_ty_bitstring.erl"
     "dnf_ty_function.erl"
     "dnf_ty_interval.erl"
     "dnf_ty_list.erl"
@@ -102,6 +99,7 @@ for file in "${files[@]}"; do
         -i 'dnf_ty_predefined:is_empty/2' \
         -i 'dnf_ty_predefined:unparse/2' \
         -i 'ty_node:compare/2' \
+        -i "dnf_ty_interval:'_collect_port_output'/2" \
         -i 'dnf_ty_interval:compare_int/2' \
         -i 'dnf_ty_interval:unparse_single/1' \
         -i 'dnf_ty_tuple:reorder_if_needed/5' \
