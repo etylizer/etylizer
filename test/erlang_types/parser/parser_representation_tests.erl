@@ -8,7 +8,7 @@ variable_test() ->
     Ty = ty_parser:parse({var, alpha}),
     Tyy = ty_node:dump(Ty),
     #{{node, 1} := {node, _, {leaf, Any}, {leaf, Empty}}} = Tyy,
-    gt = ty_rec:compare(Any, Empty),
+    gt = dnf_ty_nominal:compare(Any, Empty),
     ok
   end).
 
