@@ -240,7 +240,7 @@ extend_symtab_internal(Filename, Forms, RefType, Tab, OverlaySymtab) ->
                             % if fun is exported
                             maybe_add_qref(RefType, ModuleName, Name, Arity, T, Forms, AccTab);
                         {ok, OverlayT} ->
-                            ?LOG_INFO("Overlay found for ~w:~w/~p", ModuleName, Name, Arity),
+                            ?LOG_DEBUG("Overlay found for ~w:~w/~p", ModuleName, Name, Arity),
                             AccTab#tab { funs = maps:put(create_ref_tuple(RefType, Name, Arity), OverlayT, AccTab#tab.funs) }
                     end;
                 {attribute, _, type, _, {Name, TyScm = {ty_scheme, TyVars, _}}} ->
