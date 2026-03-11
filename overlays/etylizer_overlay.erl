@@ -58,7 +58,8 @@
 -spec 'erlang:hd'(nonempty_list(A)) -> A.
 'erlang:hd'(_List) -> error(overlay).
 
--spec 'lists:flatten'(DeepList) -> [A] when DeepList :: [A | DeepList].
+-type deepList(A) :: [A | deepList(A)].
+-spec 'lists:flatten'(deepList(A)) -> [A].
 'lists:flatten'(_) -> error(overlay).
 
 % TODO bdd.hrl:espresso_split_line_into_elements_and_result/1: why is string() not compatible with [chardata()]?

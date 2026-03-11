@@ -135,16 +135,16 @@ compare(#ty{
         ty_functions = F2, dnf_ty_map = M2
     }) ->
     
-    utils:compare_multiple([
-        {fun dnf_ty_predefined:compare/2, P1, P2},
-        {fun dnf_ty_atom:compare/2, A1, A2},
-        {fun dnf_ty_interval:compare/2, I1, I2},
-        {fun dnf_ty_list:compare/2, L1, L2},
-        {fun dnf_ty_bitstring:compare/2, B1, B2},
-        {fun ty_tuples:compare/2, T1, T2},
-        {fun ty_functions:compare/2, F1, F2},
-        {fun dnf_ty_map:compare/2, M1, M2}
-    ]).
+    maybe
+        eq ?= dnf_ty_predefined:compare(P1, P2),
+        eq ?= dnf_ty_atom:compare(A1, A2),
+        eq ?= dnf_ty_interval:compare(I1, I2),
+        eq ?= dnf_ty_list:compare(L1, L2),
+        eq ?= dnf_ty_bitstring:compare(B1, B2),
+        eq ?= ty_tuples:compare(T1, T2),
+        eq ?= ty_functions:compare(F1, F2),
+        dnf_ty_map:compare(M1, M2)
+    end.
 
 -spec equal(type(), type()) -> boolean().
 equal(Ty1, Ty2) -> compare(Ty1, Ty2) =:= eq.
@@ -499,22 +499,24 @@ unparse_h(#ty{
 unparse_any(_, _, {predef, none}) -> {predef, none};
 unparse_any(false, dnf_ty_predefined, Result) -> Result;
 unparse_any(false, _, Result) when Result /= {predef, any} -> Result;
-unparse_any(_, dnf_ty_predefined, {predef, any}) -> {union, [{empty_list}, {predef, float}, {predef, pid}, {predef, port}, {predef, reference}]};
-unparse_any(_, dnf_ty_predefined, Result) -> Result;
-unparse_any(_, dnf_ty_atom, {predef, any}) -> {predef, atom};
-unparse_any(_, dnf_ty_atom, Result) -> ast_lib:mk_intersection([{predef, atom}, Result]);
-unparse_any(_, dnf_ty_interval, {predef, any}) -> {predef, integer};
-unparse_any(_, dnf_ty_interval, Result) -> ast_lib:mk_intersection([{predef, integer}, Result]);
-unparse_any(_, dnf_ty_list, {predef, any}) -> {improper_list, {predef, any}, {predef, any}}; % TODO double-check
-unparse_any(_, dnf_ty_list, Result) -> ast_lib:mk_intersection([{improper_list, {predef, any}, {predef, any}}, Result]);
-unparse_any(_, dnf_ty_bitstring, {predef, any}) -> {bitstring};
-unparse_any(_, dnf_ty_bitstring, Result) -> ast_lib:mk_intersection([{bitstring}, Result]);
-unparse_any(_, ty_tuples, {predef, any}) -> {tuple_any};
-unparse_any(_, ty_tuples, Result) -> ast_lib:mk_intersection([{tuple_any}, Result]);
-% unparse_any(_, ty_functions, {predef_any}) -> {fun_simple}; % TODO check why can never match
-unparse_any(_, ty_functions, Result) -> ast_lib:mk_intersection([{fun_simple}, Result]);
-unparse_any(_, dnf_ty_map, {predef, any}) -> {map_any};
-unparse_any(_, dnf_ty_map, Result) -> ast_lib:mk_intersection([{map_any}, Result]).
+unparse_any(_, Module, Result) -> unparse_any_module(Module, Result).
+
+-spec unparse_any_module(type_module(), ast_ty()) -> ast_ty().
+unparse_any_module(dnf_ty_predefined, {predef, any}) -> {union, [{empty_list}, {predef, float}, {predef, pid}, {predef, port}, {predef, reference}]};
+unparse_any_module(dnf_ty_predefined, Result) -> Result;
+unparse_any_module(dnf_ty_atom, {predef, any}) -> {predef, atom};
+unparse_any_module(dnf_ty_atom, Result) -> ast_lib:mk_intersection([{predef, atom}, Result]);
+unparse_any_module(dnf_ty_interval, {predef, any}) -> {predef, integer};
+unparse_any_module(dnf_ty_interval, Result) -> ast_lib:mk_intersection([{predef, integer}, Result]);
+unparse_any_module(dnf_ty_list, {predef, any}) -> {improper_list, {predef, any}, {predef, any}};
+unparse_any_module(dnf_ty_list, Result) -> ast_lib:mk_intersection([{improper_list, {predef, any}, {predef, any}}, Result]);
+unparse_any_module(dnf_ty_bitstring, {predef, any}) -> {bitstring};
+unparse_any_module(dnf_ty_bitstring, Result) -> ast_lib:mk_intersection([{bitstring}, Result]);
+unparse_any_module(ty_tuples, {predef, any}) -> {tuple_any};
+unparse_any_module(ty_tuples, Result) -> ast_lib:mk_intersection([{tuple_any}, Result]);
+unparse_any_module(ty_functions, Result) -> ast_lib:mk_intersection([{fun_simple}, Result]);
+unparse_any_module(dnf_ty_map, {predef, any}) -> {map_any};
+unparse_any_module(dnf_ty_map, Result) -> ast_lib:mk_intersection([{map_any}, Result]).
 % unparse_any(_, Module, _) -> 
 %   error({no_unparse_implemented, Module}).
 

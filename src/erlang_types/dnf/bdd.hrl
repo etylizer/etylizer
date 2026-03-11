@@ -76,21 +76,27 @@ reorder({node, Atom, Pos, Neg}) ->
 
 -spec reorder_if_needed(?ATOM:type() | undefined, ?ATOM:type() | undefined, ?ATOM:type(), type(), type()) -> type().
 reorder_if_needed(PosAtom, NegAtom, Atom, OrderedPos, OrderedNeg) ->
-    % Determine if we need to push this node down
-    Z = case {PosAtom, NegAtom} of
-        {undefined, undefined} -> {node, Atom, OrderedPos, OrderedNeg};
-        _ ->
-            case PosAtom /= undefined andalso ?ATOM:compare(Atom, PosAtom) /= lt of
+    Z = case PosAtom of
+        undefined -> reorder_check_neg(NegAtom, Atom, OrderedPos, OrderedNeg);
+        PA ->
+            case ?ATOM:compare(Atom, PA) /= lt of
                 true -> push_down(Atom, OrderedPos, OrderedNeg);
-                _ ->
-                    case NegAtom /= undefined andalso ?ATOM:compare(Atom, NegAtom) /= lt of
-                        true -> push_down(Atom, OrderedPos, OrderedNeg);
-                        _ -> {node, Atom, OrderedPos, OrderedNeg}
-                    end
+                false -> reorder_check_neg(NegAtom, Atom, OrderedPos, OrderedNeg)
             end
     end,
     assert_valid(Z),
     Z.
+
+-spec reorder_check_neg(?ATOM:type() | undefined, ?ATOM:type(), type(), type()) -> type().
+reorder_check_neg(NegAtom, Atom, OrderedPos, OrderedNeg) ->
+    case NegAtom of
+        undefined -> {node, Atom, OrderedPos, OrderedNeg};
+        NA ->
+            case ?ATOM:compare(Atom, NA) /= lt of
+                true -> push_down(Atom, OrderedPos, OrderedNeg);
+                false -> {node, Atom, OrderedPos, OrderedNeg}
+            end
+    end.
 
 -spec push_down(?ATOM:type(), bdd(), bdd()) -> bdd().
 push_down(TopAtom, Pos, Neg) ->
@@ -317,7 +323,7 @@ minimize_node_dnf(Dnf) ->
 
     % convert all lines using the variable indices
     AllLines = '_minimize_all_lines_from_dnf'(Dnf, VariableIndices, AllOutputs, I, O),
-    StrInput = ".i " ++ integer_to_list(I) ++ "\n.o " ++ integer_to_list(O) ++ "\n" ++ utils:flatten(lists:join("\n", AllLines)),
+    StrInput = ".i " ++ integer_to_list(I) ++ "\n.o " ++ integer_to_list(O) ++ "\n" ++ lists:flatten(lists:join("\n", AllLines)),
     Result = '_minimize_espresso'(StrInput),
     '_minimize_get_result'(Result, I, O, RevVariableIndices, ReverseAllOutputs).
 
@@ -359,7 +365,7 @@ minimize_node_dnf(Dnf) ->
 
         NewTWithoutOutputs = ?assert_type(tuple_to_list(NewMinTerm1), [string()]),
         Outputs = ?assert_type(tuple_to_list(MinTermOutputsFin), [string()]),
-        [utils:flatten(NewTWithoutOutputs ++ " " ++ Outputs)] ++ All % TODO lists:flatten overlay
+        [lists:flatten(NewTWithoutOutputs ++ " " ++ Outputs)] ++ All
     end, [], Dnf).
 
 % "01-1001 1" -> {"01-1001", "1"}
@@ -394,9 +400,9 @@ espresso_split_line_into_elements_and_result(LineStr) ->
 '_collect_port_output'(Port, Acc) ->
     receive
         {Port, {data, Data}} ->
-            '_collect_port_output'(Port, [Acc, Data]);
+            '_collect_port_output'(Port, Acc ++ Data);
         {Port, {exit_status, 0}} ->
-            lists:flatten(Acc);
+            Acc;
         {Port, {exit_status, Status}} ->
             error({espresso_exit, Status})
     end.

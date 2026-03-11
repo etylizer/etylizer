@@ -1648,7 +1648,9 @@ var_test_env(FunExp, X, RestArgs) ->
                                     _ -> ?LOG_INFO("Unsupported type test ~w", Name)
                                 end,
                                 Default
-                        end
+                        end;
+                    {_Name, _Arity} ->
+                        Default
                 end;
             _ ->
                 Default

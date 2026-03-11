@@ -32,25 +32,55 @@ new_ctx(Tab, Env, Sanity) ->
 simp_constrs(Ctx, Cs) ->
     sets:union(lists:map(fun (C) -> simp_constr(Ctx, C) end, sets:to_list(Cs))).
 
+-spec lookup_var_ty(ctx(), ast:any_ref(), constr:locs(), string()) -> ast:ty_scheme().
+lookup_var_ty(Ctx, X, Locs, Context) ->
+    case maps:find(X, Ctx#ctx.env) of
+        {ok, U} -> U;
+        error ->
+            case X of
+                {local_ref, Y} ->
+                    errors:bug("Unbound variable in " ++ Context ++ " ~w: ~p",
+                         [Y, Ctx#ctx.env]);
+                GlobalX ->
+                    symtab:lookup_fun(GlobalX, loc(Locs), Ctx#ctx.symtab)
+            end
+    end.
+
+-spec simp_cvar(ctx(), constr:locs(), ast:any_ref(), ast:ty()) -> constr:simp_constrs().
+simp_cvar(Ctx, Locs, X, T) ->
+    PolyTy = lookup_var_ty(Ctx, X, Locs, "constraint simplification"),
+    utils:single({scsubty, loc(Locs), fresh_ty_scheme(Ctx, PolyTy), T}).
+
+-spec simp_cop(ctx(), constr:locs(), atom(), arity(), ast:ty()) -> constr:simp_constrs().
+simp_cop(Ctx, Locs, OpName, OpArity, T) ->
+    PolyTy = symtab:lookup_op(OpName, OpArity, loc(Locs), Ctx#ctx.symtab),
+    utils:single({scsubty, loc(Locs), fresh_ty_scheme(Ctx, PolyTy), T}).
+
+-spec simp_cdef(ctx(), constr:constr_env(), constr:constrs()) -> constr:simp_constrs().
+simp_cdef(Ctx, Env, Cs) ->
+    NewCtx = extend_env(Ctx, Env),
+    simp_constrs(NewCtx, Cs).
+
+-spec simp_ccase(ctx(), constr:locs(), constr:constrs(), constr:constrs(), [constr:constr_case_branch()]) -> constr:simp_constrs().
+simp_ccase(Ctx, Locs, CsScrut, CsExhaust, Bodies) ->
+    case Ctx#ctx.sanity of
+        {ok, TyMap0} -> constr_gen:sanity_check(CsScrut, TyMap0);
+        error -> ok
+    end,
+    DsScrut = simp_constrs(Ctx, CsScrut),
+    LocsScrut = loc(CsScrut),
+    DsExhaust = simp_constrs(Ctx, CsExhaust),
+    L = lists:map(fun (Body) -> simp_case_branch(Ctx, Body) end, Bodies),
+    utils:single({sccase, {LocsScrut, DsScrut}, {loc(Locs), DsExhaust}, L}).
+
 -spec simp_constr(ctx(), constr:constr()) -> constr:simp_constrs().
 simp_constr(Ctx, C) ->
     ?LOG_TRACE("simp_constr, C=~w", C),
     case C of
-        {csubty, Locs, T1, T2} -> utils:single({scsubty, loc(Locs), T1, T2});
+        {csubty, Locs, T1, T2} ->
+            utils:single({scsubty, loc(Locs), T1, T2});
         {cvar, Locs, X, T} ->
-            PolyTy =
-                case maps:find(X, Ctx#ctx.env) of
-                    {ok, U} -> U;
-                    error ->
-                        case X of
-                            {local_ref, Y} ->
-                                errors:bug("Unbound variable in constraint simplification ~w: ~p",
-                                     [Y, Ctx#ctx.env]);
-                            GlobalX ->
-                                symtab:lookup_fun(GlobalX, loc(Locs), Ctx#ctx.symtab)
-                        end
-                end,
-            utils:single({scsubty, loc(Locs), fresh_ty_scheme(Ctx, PolyTy), T});
+            simp_cvar(Ctx, Locs, X, T);
         {cvarmater, Locs, X, Alpha} ->
             PolyTy =
                 case maps:find(X, Ctx#ctx.env) of
@@ -71,23 +101,11 @@ simp_constr(Ctx, C) ->
                 {scmater, Loc, fresh_ty_scheme(Ctx, PolyTy), Alpha}
             ]);
         {cop, Locs, OpName, OpArity, T} ->
-            PolyTy = symtab:lookup_op(OpName, OpArity, loc(Locs), Ctx#ctx.symtab),
-            utils:single({scsubty, loc(Locs), fresh_ty_scheme(Ctx, PolyTy), T});
+            simp_cop(Ctx, Locs, OpName, OpArity, T);
         {cdef, _Locs, Env, Cs} ->
-            NewCtx = extend_env(Ctx, Env),
-            simp_constrs(NewCtx, Cs);
+            simp_cdef(Ctx, Env, Cs);
         {ccase, Locs, CsScrut, CsExhaust, Bodies} ->
-            case Ctx#ctx.sanity of
-                {ok, TyMap0} ->
-                    constr_gen:sanity_check(CsScrut, TyMap0);
-                error -> ok
-            end,
-            DsScrut = simp_constrs(Ctx, CsScrut),
-            LocsScrut = loc(CsScrut),
-            DsExhaust = simp_constrs(Ctx, CsExhaust),
-            L = lists:map(fun (Body) -> simp_case_branch(Ctx, Body) end, Bodies),
-            utils:single({sccase, {LocsScrut, DsScrut}, {loc(Locs), DsExhaust}, L});
-        X -> errors:uncovered_case(?FILE, ?LINE, X)
+            simp_ccase(Ctx, Locs, CsScrut, CsExhaust, Bodies)
     end.
 
 -spec simp_case_branch(ctx(), constr:constr_case_branch()) -> constr:simp_constr_case_branch().
@@ -184,20 +202,17 @@ extend_env(Ctx, Env) ->
         pretty:render_poly_env(NewEnv)),
     Ctx#ctx { env = NewEnv }.
 
--spec sanity_check(any(), ast_check:ty_map()) -> ok.
-sanity_check(Ds, Spec) ->
-    case sets:is_set(Ds) of
-        false ->
-            ?ABORT("Expected set of simple constraints, got ~w", Ds);
+-spec sanity_check_one(constr:simp_constr(), ast_check:ty_map()) -> ok.
+sanity_check_one(D, Spec) ->
+    case ast_check:check_against_type(Spec, constr, simp_constr, D) of
         true ->
-            lists:foreach(
-            fun(D) ->
-                    case ast_check:check_against_type(Spec, constr, simp_constr, D) of
-                        true ->
-                            ?LOG_DEBUG("Sanity check OK");
-                        false ->
-                            ?ABORT("Invalid simple constraint generated: ~w", D)
-                    end
-            end,
-            sets:to_list(Ds))
+            ?LOG_DEBUG("Sanity check OK");
+        false ->
+            ?ABORT("Invalid simple constraint generated: ~w", D)
     end.
+
+-spec sanity_check(constr:simp_constrs(), ast_check:ty_map()) -> ok.
+sanity_check(Ds, Spec) ->
+    lists:foreach(
+        fun(D) -> sanity_check_one(D, Spec) end,
+        sets:to_list(Ds)).

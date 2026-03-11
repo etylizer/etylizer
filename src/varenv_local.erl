@@ -85,6 +85,7 @@ find_ref(Name, {_, Map, _, Escaped}) ->
 % All variables kept must have the same unique name. It's a bug if this is not the case.
 % The list of varenvs must not be empty
 -spec merge_envs([t()]) -> t().
+merge_envs([]) -> errors:bug("merge_envs called with empty list");
 merge_envs([Init | Rest]) ->
     Combiner =
         fun (K, V1, V2) ->

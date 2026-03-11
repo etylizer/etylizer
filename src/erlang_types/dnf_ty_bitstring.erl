@@ -28,7 +28,9 @@
 -spec reorder(X) -> X when X :: type().
 reorder(X) -> X.
 -spec compare(T, T) -> eq | lt | gt when T :: type().
-compare(0, 0) -> eq; compare(1, 1) -> eq; compare(1, 0) -> gt; compare(0, 1) -> lt.
+compare(X, Y) when X < Y -> lt;
+compare(X, Y) when X > Y -> gt;
+compare(_, _) -> eq.
 -spec empty() -> type().
 empty() -> 0.
 -spec any() -> type().
@@ -38,7 +40,7 @@ union(X, Y) -> erlang:max(X, Y).
 -spec intersect(T, T) -> T when T :: type().
 intersect(X, Y) -> erlang:min(X, Y).
 -spec difference(T, T) -> T when T :: type().
-difference(_, 1) -> 0; difference(X, _) -> X.
+difference(_, 1) -> 0; difference(X, _Y) -> X.
 -spec negate(T) -> T when T :: type().
 negate(1) -> 0; negate(0) -> 1.
 -spec is_any(type()) -> boolean().

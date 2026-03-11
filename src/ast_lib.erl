@@ -42,7 +42,6 @@ mk_intersection(Tys) ->
                 lists:filter(
                     fun(T) ->
                         case T of
-                            [] -> false;
                             {predef, any} -> false;
                             {negation, {predef, none}} -> false;
                             _ -> true
@@ -80,7 +79,6 @@ mk_union(Tys) ->
                     fun(T) ->
                         case T of
                             {predef, none} -> false;
-                            [] -> errors:bug(utils:sformat("~w", Tys));
                             _ -> true
                         end
                     end,

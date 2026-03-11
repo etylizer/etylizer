@@ -84,13 +84,25 @@ traverse_and_check([], _, _, _, _, Index) ->
     Index;
 
 traverse_and_check([CurrentFile | RemainingFiles], Symtab, OverlaySymtab, SearchPath, Opts, Index) ->
+    {Forms, _ExpandedSymtab} = check_single_file(CurrentFile, Symtab, OverlaySymtab, SearchPath, Opts, Index),
+    NewIndex = cm_index:insert(CurrentFile, Forms, Index),
+    traverse_and_check(RemainingFiles, Symtab, OverlaySymtab, SearchPath, Opts, NewIndex).
+
+-spec check_single_file(
+    file:filename(), symtab:t(), symtab:t(), paths:search_path(), cmd_opts(), cm_index:index())
+    -> {ast:forms(), symtab:t()}.
+check_single_file(CurrentFile, Symtab, OverlaySymtab, SearchPath, Opts, _Index) ->
     ?LOG_DEBUG("Checking ~s", CurrentFile),
     Forms = parse_cache:parse(intern, CurrentFile),
     ModName = ast_utils:modname_from_path(CurrentFile),
     Referenced = lists:filter(fun (M) -> M =/= ModName end, ast_utils:referenced_modules(Forms)),
     ?LOG_DEBUG("Referenced from ~s: ~200p", CurrentFile, Referenced),
     ExpandedSymtab = symtab:extend_symtab_with_module_list(Symtab, SearchPath, Referenced, OverlaySymtab),
+    do_type_check(CurrentFile, Forms, ExpandedSymtab, OverlaySymtab, Opts),
+    {Forms, ExpandedSymtab}.
 
+-spec do_type_check(file:filename(), ast:forms(), symtab:t(), symtab:t(), cmd_opts()) -> ok.
+do_type_check(CurrentFile, Forms, ExpandedSymtab, OverlaySymtab, Opts) ->
     Only = sets:from_list(Opts#opts.type_check_only, [{version, 2}]),
     Ignore = sets:from_list(Opts#opts.type_check_ignore,[{version, 2}]),
     Sanity = perform_sanity_check(CurrentFile, Forms, Opts#opts.sanity),
@@ -107,8 +119,7 @@ traverse_and_check([CurrentFile | RemainingFiles], Symtab, OverlaySymtab, Search
         false ->
             typing:check_forms(Ctx, CurrentFile, Forms, Only, Ignore, Opts#opts.check_exports, {CliNoExhaustiveness, CliNoRedundancy})
     end,
-    NewIndex = cm_index:insert(CurrentFile, Forms, Index),
-    traverse_and_check(RemainingFiles, Symtab, OverlaySymtab, SearchPath, Opts, NewIndex).
+    ok.
 
 -spec perform_sanity_check(file:filename(), ast:forms(), boolean()) -> {ok, ast_check:ty_map()} | error.
 perform_sanity_check(CurrentFile, Forms, DoCheck) ->
