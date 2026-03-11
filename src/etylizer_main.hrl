@@ -1,6 +1,7 @@
 -type opts_mode() :: prod_mode | test_mode.
 
 -record(opts, {log_level = default :: log:log_level() | default,
+               log_file = "etylizer.log" :: string(),
                help = false :: boolean(),
                dump_raw = false :: boolean(),
                dump = false :: boolean(),

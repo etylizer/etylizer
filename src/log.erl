@@ -3,8 +3,7 @@
 % @doc Logging module. The logging module that comes with Erlang with too difficult
 % to setup.
 
--export([
-    init/1, allow/1, macro_log/5, parse_level/1]).
+-export([init/1, init/2, allow/1, macro_log/5, parse_level/1]).
 -export_type([log_level/0]).
 
 -type log_level() :: trace2 | trace | debug | info | note | warn | error | abort.
@@ -22,12 +21,15 @@ num_level(L) ->
         trace2 -> 7
     end.
 
--spec init(log_level() | default) -> ok.
-init(L1) ->
+init(L) ->
+    init(L, "etylizer.log").
+
+-spec init(log_level() | default, string()) -> ok.
+init(L1, LogFile) ->
     L = get_log_level(L1),
     ets:new(log_config, [named_table, protected, set]),
     ets:insert(log_config, {level, L}),
-    Pid = spawn_link(fun file_logger/0),
+    Pid = spawn_link(fun() -> file_logger(LogFile) end),
     ets:insert(log_config, {logger_pid, Pid}),
     ok.
 
@@ -63,9 +65,9 @@ get_logger_pid() ->
         [{_, Pid}] -> Pid
     end.
 
--spec file_logger() -> ok.
-file_logger() ->
-    {ok, F} = file:open("etylizer.log", [write]),
+-spec file_logger(string()) -> ok.
+file_logger(LogFile) ->
+    {ok, F} = file:open(LogFile, [write]),
     Loop =
         fun Loop() ->
                 receive

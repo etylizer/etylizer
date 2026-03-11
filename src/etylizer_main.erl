@@ -108,6 +108,8 @@ cmd_spec() ->
                   end
               end},
               help => "Minimal log level (trace2,trace,debug,info,note,warn)"},
+            #{name => log_file, long => "-log-file",
+              help => "Path to the log file (default: etylizer.log)"},
             #{name => type_overlay, long => "-type-overlay",
               help => "Overlays for fun and type specs"},
             #{name => check_exports, long => "-check-exports", type => boolean, default => false,
@@ -135,6 +137,7 @@ parse_args(Args) ->
     Opts = #opts{
         help = maps:get(help, ArgMap),
         log_level = maps:get(log_level, ArgMap, default),
+        log_file = maps:get(log_file, ArgMap, "etylizer.log"),
         dump_raw = maps:get(dump_raw, ArgMap),
         dump = maps:get(dump, ArgMap),
         sanity = maps:get(sanity, ArgMap),
@@ -227,7 +230,7 @@ doWork(Opts) ->
 -spec main([string()]) -> ok.
 main(Args) ->
     Opts = parse_args(Args),
-    log:init(Opts#opts.log_level),
+    log:init(Opts#opts.log_level, Opts#opts.log_file),
     ?LOG_DEBUG("Parsed commandline options as ~200p", Opts),
     try doWork(Opts)
     catch throw:{etylizer, K, Msg}:S ->
