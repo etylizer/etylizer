@@ -6,6 +6,8 @@
 -export([init/1, init/2, allow/1, macro_log/5, parse_level/1]).
 -export_type([log_level/0]).
 
+-include("etylizer.hrl").
+
 -type log_level() :: trace2 | trace | debug | info | note | warn | error | abort.
 
 -spec num_level(log_level()) -> integer().
@@ -62,12 +64,13 @@ get_logger_pid() ->
     Table = ets:whereis(log_config),
     case ets:lookup(Table, logger_pid) of
         [] -> none;
-        [{_, Pid}] -> Pid
+        [{_, Pid}] -> ?assert_type(Pid, pid());
+        _ -> none
     end.
 
 -spec file_logger(string()) -> ok.
 file_logger(LogFile) ->
-    {ok, F} = file:open(LogFile, [write]),
+    {ok, F} = ?assert_pattern({ok, _}, file:open(LogFile, [write])),
     Loop =
         fun Loop() ->
                 receive
@@ -90,8 +93,8 @@ allow(L) ->
         case Table of
             undefined -> lazy_init();
             T ->
-                [{_, X}] = ets:lookup(T, level),
-                X
+                [{_, X}] = ?assert_pattern([{_, _}], ets:lookup(T, level)),
+                ?assert_type(X, log_level())
         end,
     num_level(L) =< num_level(MaxL).
 

@@ -178,14 +178,14 @@ search_failing_prefix(L, F, Pred, Left, Right) ->
     end.
 
 -spec locate_tyerror(symtab:t(), sets:set(ast:ty_varname()), constr_error_locs:constr_blocks())
-    -> ok | {error, error() | none}.
+    -> {error, error() | none}.
 locate_tyerror(Tab, FreeSet, Blocks) ->
     Extract = fun({_Kind, _Span, _What, Ds}) -> Ds end,
     Pred = fun(Ds) -> is_satisfiable(Tab, Ds, FreeSet, "error location") end,
     {Kind, Span, _What, _Ds} = search_failing_prefix(Blocks, Extract, Pred),
     {error, {Kind, Span, ""}}.
 
--spec format_tally_error([string()]) -> string().
+-spec format_tally_error([{error, string()}]) -> string().
 format_tally_error([]) -> "(no specific error messages)";
 format_tally_error(ErrList) ->
     {ErrListShort, N} = utils:shorten(ErrList, 20),
@@ -210,7 +210,7 @@ is_satisfiable(Tab, Constrs, Fixed, What) ->
             true
     end.
 
--spec solve_simp_constrs(symtab:t(), constr:subty_constrs(), string()) -> error | nonempty_list(subst:t()).
+-spec solve_simp_constrs(symtab:t(), constr:simp_constrs(), string()) -> error | nonempty_list(subst:t()).
 solve_simp_constrs(Tab, Ds, What) ->
     SubtyConstrs = constr_collect:collect_constrs_no_matching_cond(Ds),
     {Res, Delta} = utils:timing(fun() -> tally:tally(Tab, SubtyConstrs) end),

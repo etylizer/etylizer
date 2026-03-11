@@ -57,7 +57,7 @@
 -include("etylizer.hrl").
 
 -type type() :: {node, integer()}.
--type temporary_type() :: {local_ref, term()}. % used in ty_parser
+-type temporary_type() :: {local_ref, integer()}. % used in ty_parser
 -type set_of_constraint_sets() :: constraint_set:set_of_constraint_sets().
 
 

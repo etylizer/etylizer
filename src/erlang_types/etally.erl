@@ -3,7 +3,7 @@
 -define(TY, ty_node).
 
 
--export_type([monomorphic_variables/0]).
+-export_type([monomorphic_variables/0, tally_solutions/0, tally_solutions_nonempty/0]).
 
 -export([
   tally/1,
@@ -24,6 +24,7 @@
 -type input_constraint() :: {ty:type(), ty:type()}.
 -type input_constraints() :: [input_constraint()].
 -type tally_solutions() :: [#{variable() => ty:type()}].
+-type tally_solutions_nonempty() :: [#{variable() => ty:type()}, ...].
 
 % early return if constraints are found to be satisfiable
 % does not solve the equations

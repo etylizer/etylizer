@@ -256,8 +256,9 @@ get_fun_name({function, _Loc, Name, Arity, _}) -> utils:sformat("~w/~w", Name, A
 
 % Attribute "-file(File,Line)" ignored.
 % Wild attributes ignored.
+-type etylizer_form() :: {attribute, loc(), etylizer, term()}.
 -type form() :: export_form() | export_type_form() | import_form() | mod_form() | compile_form()
-    | fun_decl() | fun_spec() | record_decl() | type_decl().
+    | fun_decl() | fun_spec() | record_decl() | type_decl() | etylizer_form().
 -type forms() :: [form()].
 
 % 8.2  Atomic Literals

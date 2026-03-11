@@ -29,10 +29,10 @@
 -type dep_graph() :: {
     sets:set(file:filename()),
     % Maps a file F to all files that F directly or indirectly depends on.
-    #{file:filename() => {sets:set(file:filename())}},
+    #{file:filename() => sets:set(file:filename())},
     % Separate mapping module name -> module names, always in sync with the mapping
     % filename -> filenames.
-    #{atom() => {sets:set(atom())}}
+    #{atom() => sets:set(atom())}
 }.
 
 -spec new() -> dep_graph().

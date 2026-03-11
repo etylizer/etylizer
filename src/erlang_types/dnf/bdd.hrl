@@ -23,6 +23,8 @@
     has_negative_only_line/1
 ]).
 
+-etylizer({functions_exhaustive, off, [convert_back_to_repr/5]}).
+
 -include("erlang_types.hrl").
 
 -export_type([type/0]).
@@ -325,25 +327,25 @@ minimize_node_dnf(Dnf) ->
         lists:foldl(fun(Term, Env2) -> Env2#{Term => []} end, Env, Pos ++ Neg)
     end, #{}, Dnf).
 
--spec '_minimize_outputs_from_dnf'(dnf()) -> {#{?LEAF:type() => integer()}, #{integer() => ?LEAF:type()}}.
+-spec '_minimize_outputs_from_dnf'(dnf()) -> {#{?LEAF:type() => pos_integer()}, #{pos_integer() => ?LEAF:type()}}.
 '_minimize_outputs_from_dnf'(Dnf) ->
     {All, Reverse, _} = lists:foldl(fun({_, _, T}, {Env, RevEnv, Index}) ->
         case Env of
             #{T := _} -> {Env, RevEnv, Index};
-            _ -> {Env#{T => Index}, RevEnv#{Index => T}, Index + 1}
+            _ -> {Env#{T => Index}, RevEnv#{Index => T}, ?assert_type(Index + 1, pos_integer())}
         end
     end, {#{}, #{}, 1}, Dnf),
     {All, Reverse}.
 
--spec '_minimize_indices_from_variables'(#{?ATOM:type() => []}) -> {#{?ATOM:type() => integer()}, #{integer() => ?ATOM:type()}}.
+-spec '_minimize_indices_from_variables'(#{?ATOM:type() => []}) -> {#{?ATOM:type() => pos_integer()}, #{pos_integer() => ?ATOM:type()}}.
 '_minimize_indices_from_variables'(AllVariables) ->
     {_, VarInd, RevVarInd} = maps:fold(
         fun(K, _V, {Index, Vars, RevVars}) ->
-            {Index+1, Vars#{K => Index}, RevVars#{Index => K}}
+            {?assert_type(Index+1, pos_integer()), Vars#{K => Index}, RevVars#{Index => K}}
         end, {1, #{}, #{}}, AllVariables),
     {VarInd, RevVarInd}.
 
--spec '_minimize_all_lines_from_dnf'(dnf(), #{?ATOM:type() => integer()}, #{?LEAF:type() => integer()}, non_neg_integer(), non_neg_integer()) -> [string()].
+-spec '_minimize_all_lines_from_dnf'(dnf(), #{?ATOM:type() => pos_integer()}, #{?LEAF:type() => pos_integer()}, non_neg_integer(), non_neg_integer()) -> [string()].
 '_minimize_all_lines_from_dnf'(Dnf, VariableIndices, AllOutputs, I, O) ->
     lists:foldl(fun({Pos, Neg, T}, All) ->
         % variables
@@ -355,8 +357,8 @@ minimize_node_dnf(Dnf) ->
         MinTermOutputs = list_to_tuple(lists:duplicate(O, "0")),
         MinTermOutputsFin = erlang:setelement(maps:get(T, AllOutputs), MinTermOutputs, "1"),
 
-        NewTWithoutOutputs = tuple_to_list(NewMinTerm1),
-        Outputs = tuple_to_list(MinTermOutputsFin),
+        NewTWithoutOutputs = ?assert_type(tuple_to_list(NewMinTerm1), [string()]),
+        Outputs = ?assert_type(tuple_to_list(MinTermOutputsFin), [string()]),
         [utils:flatten(NewTWithoutOutputs ++ " " ++ Outputs)] ++ All % TODO lists:flatten overlay
     end, [], Dnf).
 
@@ -368,7 +370,7 @@ espresso_split_line_into_elements_and_result(LineStr) ->
         _ -> error(badarg) % TODO mark non-exhaustive
     end.
 
--spec '_minimize_get_result'(string(), non_neg_integer(), non_neg_integer(), #{integer() => ?ATOM:type()}, #{integer() => ?LEAF:type()}) -> dnf().
+-spec '_minimize_get_result'(string(), non_neg_integer(), non_neg_integer(), #{pos_integer() => ?ATOM:type()}, #{pos_integer() => ?LEAF:type()}) -> dnf().
 '_minimize_get_result'(Result, I, O, RevVariableIndices, ReverseAllOutputs) ->
     OnlyResultLines = extract_integer_lines(Result, I + 1 + O),
 
@@ -388,7 +390,7 @@ espresso_split_line_into_elements_and_result(LineStr) ->
     port_command(Port, ?assert_type([StrInput, "\n.e\n"], iodata())),
     '_collect_port_output'(Port, []).
 
--spec '_collect_port_output'(port(), iolist()) -> string().
+-spec '_collect_port_output'(port(), string()) -> string().
 '_collect_port_output'(Port, Acc) ->
     receive
         {Port, {data, Data}} ->
@@ -399,7 +401,7 @@ espresso_split_line_into_elements_and_result(LineStr) ->
             error({espresso_exit, Status})
     end.
 
--spec replace_index(string(), [A], Line, #{A => integer()}) -> Line.
+-spec replace_index(string(), A, tuple(), #{A => pos_integer()}) -> tuple().
 replace_index(Val, Term, CurrentLine, VariableIndices) ->
     erlang:setelement(maps:get(Term, VariableIndices), CurrentLine, Val).
 
@@ -438,9 +440,7 @@ convert_back_to_repr({[$- | Rest], Outputs}, IndexToTerms, IndexToOutput, Curren
 convert_back_to_repr({[$1 | Rest], Outputs}, IndexToTerms, IndexToOutput, CurrentIndex, {Pos, Neg, to_replace}) ->
     convert_back_to_repr({Rest, Outputs}, IndexToTerms, IndexToOutput, CurrentIndex + 1, {Pos ++ [maps:get(CurrentIndex, IndexToTerms)], Neg, to_replace});
 convert_back_to_repr({[$0 | Rest], Outputs}, IndexToTerms, IndexToOutput, CurrentIndex, {Pos, Neg, to_replace}) ->
-    convert_back_to_repr({Rest, Outputs}, IndexToTerms, IndexToOutput, CurrentIndex + 1, {Pos, Neg ++ [maps:get(CurrentIndex, IndexToTerms)], to_replace});
-convert_back_to_repr(_, _, _, _, _) ->
-    error(badarg).
+    convert_back_to_repr({Rest, Outputs}, IndexToTerms, IndexToOutput, CurrentIndex + 1, {Pos, Neg ++ [maps:get(CurrentIndex, IndexToTerms)], to_replace}).
 
 -spec has_negative_only_line(type()) -> boolean().
 has_negative_only_line(T) ->

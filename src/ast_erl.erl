@@ -182,7 +182,7 @@
 
 
 % 8.1  Module Declarations and Forms
--type anno() :: any(). % Should be erl_anno:anno() but ast_check.erl cannot handle this.
+-type anno() :: erl_anno:anno().
 -type fun_with_arity() :: {atom(), integer()}.
 -type ty_with_arity() :: {atom(), integer()}.
 -type export_form() :: {attribute, anno(), export, [fun_with_arity()]}.

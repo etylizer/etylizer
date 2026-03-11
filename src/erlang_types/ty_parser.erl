@@ -60,10 +60,13 @@
 -type ty_rec() :: ?TY:type().
 -type ast_ty() :: ast:ty(). 
 -type ety_ty_scheme() :: ast:ty_scheme().
--type ety_ref() :: ast:ty_ref(). %TODO etylizer reference
--type ety_args() :: term(). %TODO [ast:ty()]
--type database() :: {#{temporary_ref() => ty_rec()}, #{ty_rec() => temporary_ref()}}. 
--type local_cache() :: #{{Ref :: ety_ref(), Args :: ety_args()} => temporary_ref()}. % the local cache should only consist of temporary references
+-type ety_ref() :: ast:ty_ref() | mu_var. % also used as mu_var key in local_cache
+-type ety_args() :: [ast:ty()].
+-type database() :: {#{temporary_ref() => ty_rec()}, #{ty_rec() => [temporary_ref()]}}.
+% the local cache should only consist of temporary references
+% it is used both for recursive variable recursion
+% and named type recursion at the same time
+-type local_cache() :: #{ast:ty_mu_var() | {Ref :: ety_ref(), Args :: ety_args()} => temporary_ref()}.
 -type queue() :: queue:queue({temporary_ref(), ast_ty()}).
 
 % global state

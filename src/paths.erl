@@ -14,6 +14,7 @@
 
 -include("log.hrl").
 -include("etylizer_main.hrl").
+-include("etylizer.hrl").
 
 % An entry in the search path is a kind (local, dep, or otp), a source directory and a list
 % of include directories.
@@ -131,7 +132,7 @@ find_include_dirs(RootDir, SubDirs) ->
 -spec find_otp_paths() -> {search_path(), [file:filename()]}.
 find_otp_paths() ->
     RootDir = code:lib_dir(),
-    {ok, Dirs} = file:list_dir(RootDir),
+    {ok, Dirs} = ?assert_pattern({ok, _}, file:list_dir(RootDir)),
     IncDirs = find_include_dirs(RootDir, Dirs),
     Sp = lists:flatmap(fun(Path) -> standard_path_entries(otp, RootDir, Path, IncDirs) end, Dirs),
     {Sp, IncDirs}.
@@ -144,7 +145,7 @@ find_dependency_roots(ProjectDir, OtpIncDirs) ->
         RebarConfig = filename:join([ProjectDir, "rebar.config"]),
         case filelib:is_dir(ProjectBuildDir) of
             true ->
-                {ok, PathList} = file:list_dir(ProjectLibDir),
+                {ok, PathList} = ?assert_pattern({ok, _}, file:list_dir(ProjectLibDir)),
                 IncDirs = find_include_dirs(ProjectLibDir, PathList) ++ OtpIncDirs,
                 Sp = lists:flatmap(fun(Path) -> standard_path_entries(dep, ProjectLibDir, Path, IncDirs) end, PathList),
                 {Sp, IncDirs};
@@ -228,7 +229,7 @@ find_module_path(SearchPath, Module) ->
     end,
     Key = {SearchPath, Module},
     case ets:lookup(?TABLE, Key) of
-        [{_, Result}] -> Result;
+        [{_, Result}] -> ?assert_type(Result, search_path_entry());
         [] ->
             X = really_find_module_path(SearchPath, Module),
             true = ets:insert(?TABLE, {Key, X}),
