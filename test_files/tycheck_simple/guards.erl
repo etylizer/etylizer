@@ -141,7 +141,7 @@ refinement_05(X) when not(X > 0) -> 0.
 % we dont (cant) refine floats
 -spec refinement_06(float()) -> float().
 refinement_06(X) when not(X > 0.5) -> X;
-refinement_06(X) -> 5.0.
+refinement_06(_X) -> 5.0.
 
 % X is float(). X == 0 is true when X is 0.0 (loose equality).
 -spec refinement_loose_eq(float()) -> float().

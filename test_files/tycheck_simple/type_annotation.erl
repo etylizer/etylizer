@@ -2,6 +2,7 @@
 
 -compile(export_all).
 -compile(nowarn_export_all).
+-compile(nowarn_unused_type).
 
 -include("etylizer.hrl").
 
