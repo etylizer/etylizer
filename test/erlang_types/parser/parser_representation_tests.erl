@@ -202,3 +202,22 @@ parse_bug2_test() ->
     [ty_parser:parse(RawTy) || RawTy <- ListToParse],
     ok
                  end).
+
+
+% Minimal reproduction of the consed self-ref.
+% A recursive named type whose tuple has two fields that both reference itself
+% via different list types (list vs nonempty_list | []) triggers the same crash:
+% after consing, the two list-of-self fields produce identical descriptors in the
+% same SCC, and the self-referencing node is looked up after being removed from
+% ResultMapping.
+parse_consed_self_ref_nosymtab_test() ->
+  with_symtab(
+    fun() ->
+      ty_parser:parse(tnamed(expr)),
+      ok
+    end,
+    #{
+      {ty_key, '.', expr, 0} => {ty_scheme, [],
+        {tuple, [{list, tnamed(expr)},
+                 {union, [{nonempty_list, tnamed(expr)}, {empty_list}]}]}}
+    }).

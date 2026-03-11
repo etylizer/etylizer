@@ -207,11 +207,11 @@ ty(Prec, T) ->
             beside(text("mu "), atom(Name));
         {var, Name} ->
             atom(Name);
-        _ -> ty_compound(Prec, T)
+        _ -> ty_list_or_fun(Prec, T)
     end.
 
--spec ty_compound(integer(), ast:ty()) -> doc().
-ty_compound(Prec, T) ->
+-spec ty_list_or_fun(integer(), ast:ty()) -> doc().
+ty_list_or_fun(Prec, T) ->
     case T of
         {cons, A, B} ->
             beside(text("["), ty(A), text(" @ "), ty(B), text("]"));
@@ -231,11 +231,11 @@ ty_compound(Prec, T) ->
                             parens(comma_sep(lists:map(fun ty/1, Args))),
                             text(" -> "),
                             ty(Res))));
-        _ -> ty_named(Prec, T)
+        _ -> ty_composite(Prec, T)
     end.
 
--spec ty_named(integer(), ast:ty()) -> doc().
-ty_named(Prec, T) ->
+-spec ty_composite(integer(), ast:ty()) -> doc().
+ty_composite(Prec, T) ->
     case T of
         {map, Assocs} ->
             AssocsP =
@@ -386,7 +386,7 @@ constr(X) ->
         true ->
             constr_set(?assert_type(X, sets:set(all_constrs())));
         false ->
-            constr_nonrec(?assert_type(X, constr:simp_constr() | constr:constr()))
+            constr_single(?assert_type(X, constr:simp_constr() | constr:constr()))
     end.
 
 -spec constr_list(list(all_constrs())) -> doc().
@@ -397,53 +397,53 @@ constr_list(X) ->
 constr_set(X) ->
     braces(comma_sep(lists:map(fun constr/1, sets:to_list(X)))).
 
--spec constr_nonrec(constr:simp_constr() | constr:constr()) -> doc().
-constr_nonrec({scsubty, _, _, _} = X) -> constr_simp(?assert_type(X, constr:simp_constr()));
-constr_nonrec({sccase, _, _, _} = X) -> constr_simp(?assert_type(X, constr:simp_constr()));
-constr_nonrec({scmater, _, _, _} = X) -> constr_simp(?assert_type(X, constr:simp_constr()));
-constr_nonrec(X) -> constr_constr(?assert_type(X, constr:constr())).
+-spec constr_single(constr:simp_constr() | constr:constr()) -> doc().
+constr_single({scsubty, _, _, _} = X) -> constr_simp(?assert_type(X, constr:simp_constr()));
+constr_single({sccase, _, _, _} = X) -> constr_simp(?assert_type(X, constr:simp_constr()));
+constr_single({scmater, _, _, _} = X) -> constr_simp(?assert_type(X, constr:simp_constr()));
+constr_single(X) -> constr_unsimplified(?assert_type(X, constr:constr())).
 
--spec constr_constr(constr:constr()) -> doc().
-constr_constr({csubty, _, _, _} = X) -> constr_constr_simple(X);
-constr_constr({cvar, _, _, _} = X) -> constr_constr_simple(X);
-constr_constr({cvarmater, _, _, _} = X) -> constr_constr_simple(X);
-constr_constr(X) -> constr_constr_compound(X).
+-spec constr_unsimplified(constr:constr()) -> doc().
+constr_unsimplified({csubty, _, _, _} = X) -> constr_leaf(X);
+constr_unsimplified({cvar, _, _, _} = X) -> constr_leaf(X);
+constr_unsimplified({cvarmater, _, _, _} = X) -> constr_leaf(X);
+constr_unsimplified(X) -> constr_nested(X).
 
--spec constr_constr_simple(constr:constr_subty() | constr:constr_var() | constr:constr_var_mater()) -> doc().
-constr_constr_simple({csubty, Locs, T1, T2}) ->
+-spec constr_leaf(constr:constr_subty() | constr:constr_var() | constr:constr_var_mater()) -> doc().
+constr_leaf({csubty, Locs, T1, T2}) ->
     brackets(comma_sep([text("csubty"),
                         locs(Locs),
                         ty(T1),
                         ty(T2)]));
-constr_constr_simple({cvar, Locs, Ref, T}) ->
+constr_leaf({cvar, Locs, Ref, T}) ->
     brackets(comma_sep([text("cvar"),
                         locs(Locs),
                         ref(Ref),
                         ty(T)]));
-constr_constr_simple({cvarmater, Locs, Ref, Alpha}) ->
+constr_leaf({cvarmater, Locs, Ref, Alpha}) ->
     brackets(comma_sep([text("cvarmater"),
                         locs(Locs),
                         ref(Ref),
                         text(atom_to_list(Alpha))])).
 
--spec constr_constr_compound(constr:constr_op() | constr:constr_def() | constr:constr_case()) -> doc().
-constr_constr_compound({cop, Locs, Name, Arity, T}) ->
+-spec constr_nested(constr:constr_op() | constr:constr_def() | constr:constr_case()) -> doc().
+constr_nested({cop, Locs, Name, Arity, T}) ->
     brackets(comma_sep([text("cop"),
                         locs(Locs),
                         beside(atom(Name), text("/"), text(integer_to_list(Arity))),
                         ty(T)]));
-constr_constr_compound({cdef, _, _, _} = X) -> constr_constr_cdef(X);
-constr_constr_compound({ccase, _, _, _, _} = X) -> constr_constr_ccase(X).
+constr_nested({cdef, _, _, _} = X) -> constr_cdef(X);
+constr_nested({ccase, _, _, _, _} = X) -> constr_ccase(X).
 
--spec constr_constr_cdef(constr:constr_def()) -> doc().
-constr_constr_cdef({cdef, Locs, Env, Cs}) ->
+-spec constr_cdef(constr:constr_def()) -> doc().
+constr_cdef({cdef, Locs, Env, Cs}) ->
     brackets(comma_sep([text("cdef"),
                         locs(Locs),
                         constr_env(Env),
                         constr(Cs)])).
 
--spec constr_constr_ccase(constr:constr_case()) -> doc().
-constr_constr_ccase({ccase, Locs, CsScrut, CsExhaust, Bodies}) ->
+-spec constr_ccase(constr:constr_case()) -> doc().
+constr_ccase({ccase, Locs, CsScrut, CsExhaust, Bodies}) ->
     brackets(comma_sep([text("ccase"),
                         locs(Locs),
                         kv("scrutiny", constr(CsScrut)),
@@ -456,15 +456,15 @@ constr_simp({scsubty, Loc, T1, T2}) ->
                         loc(Loc),
                         ty(T1),
                         ty(T2)]));
-constr_simp({sccase, _, _, _} = X) -> constr_simp_case(X);
+constr_simp({sccase, _, _, _} = X) -> constr_sccase(X);
 constr_simp({scmater, Loc, T, Alpha}) ->
     brackets(comma_sep([text("scmater"),
                         loc(Loc),
                         ty(T),
                         text(atom_to_list(Alpha))])).
 
--spec constr_simp_case(constr:simp_constr_case()) -> doc().
-constr_simp_case({sccase, {LocScrut, CsScrut}, {LocExhaust, CsExhaust}, Bodies}) ->
+-spec constr_sccase(constr:simp_constr_case()) -> doc().
+constr_sccase({sccase, {LocScrut, CsScrut}, {LocExhaust, CsExhaust}, Bodies}) ->
     brackets(comma_sep([text("sccase"),
                         kv("scrutinyLoc", loc(LocScrut)),
                         kv("scrutiny", constr(CsScrut)),
