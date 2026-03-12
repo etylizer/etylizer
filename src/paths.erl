@@ -157,7 +157,7 @@ find_dependency_roots(ProjectDir, OtpIncDirs) ->
                 end
         end
         catch _:_:_ -> 
-            ?LOG_WARN("Could not find dependency roots. Assuming no dependencies."),
+            ?LOG_DEBUG("Could not find dependency roots. Assuming no dependencies."),
             {[], []}
     end.
 

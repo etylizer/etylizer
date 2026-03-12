@@ -3,8 +3,12 @@
 -include("log.hrl").
 -include_lib("eunit/include/eunit.hrl").
 
+mk_full_spec() ->
+    {Spec, _} = ast_check:parse_spec("src/ast_erl.erl"),
+    Spec.
+
 mk_test_ty(T) ->
-    Loc = {1,1},
+    Loc = erl_anno:new({1,1}),
     {type,
      Loc,
      tuple,
@@ -17,13 +21,13 @@ mk_test_ty(T) ->
        [T]}]}.
 
 inst_ty_test() ->
-    Loc = {1,1},
+    Loc = erl_anno:new({1,1}),
     TyArg = {user_type, Loc, guard_test,[]},
     TyVar = {var, Loc, 'T'},
     ?assertEqual(mk_test_ty(TyArg), ast_check:inst_ty(['T'], [TyArg], mk_test_ty(TyVar))).
 
 lookup_ty_test() ->
-    Loc = {1,1},
+    Loc = erl_anno:new({1,1}),
     TyArg = {user_type, Loc, guard_test,[]},
     TyVar = {var, Loc, 'T'},
     Attr = {attribute,
@@ -35,22 +39,17 @@ lookup_ty_test() ->
     ?assertEqual(mk_test_ty(TyArg), ast_check:lookup_ty_or_die(M, ast_erl, 'gen_funcall', [TyArg])).
 
 lookup_ty_realworld_test() ->
-    Forms = parse:parse_file_or_die("src/ast_erl.erl"),
-    M = ast_check:prepare_spec(ast_erl, Forms),
-    ?LOG_TRACE("Forms = ~p", Forms),
-    ?LOG_TRACE("M = ~p", M),
-    TyArg = {user_type, {1,1}, guard_test,[]},
+    M = mk_full_spec(),
+    TyArg = {user_type, erl_anno:new({1,1}), guard_test,[]},
     T = ast_check:lookup_ty_or_die(M, ast_erl, 'gen_funcall', [TyArg]),
     ?assertMatch({type, _, tuple, _}, T).
 
 check_realworld_test() ->
-    Forms = parse:parse_file_or_die("src/ast_erl.erl"),
-    M = ast_check:prepare_spec(ast_erl, Forms),
+    M = mk_full_spec(),
     true = ast_check:check(M, ast_erl, "test_files/ast_check_test.erl").
 
 check_against(TyName, X) ->
-    Forms = parse:parse_file_or_die("src/ast_erl.erl"),
-    M = ast_check:prepare_spec(ast_erl, Forms),
+    M = mk_full_spec(),
     Ty = ast_check:lookup_ty_or_die(M, ast_erl, TyName, []),
     true = ast_check:check_against_type(M, ast_erl, Ty, X).
 

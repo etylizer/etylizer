@@ -4,6 +4,7 @@
 
 -include_lib("eunit/include/eunit.hrl").
 -include("log.hrl").
+-include("parse.hrl").
 
 % -spec unconsult(file:filename(), term()) -> ok | {error, any()}.
 % unconsult(F, T) ->
@@ -33,7 +34,8 @@ diff_terms(T1, T2, Del) ->
 -spec check_test_spec(file:filename(), test_utils:test_spec()) -> ok.
 check_test_spec(Path, {good, Lineno, RawForms}) ->
     Forms = ast_utils:remove_locs(ast_transform:trans(Path, RawForms)),
-    {Spec, Mod} = ast_check:parse_spec("src/ast.erl"),
+    Opts = #parse_opts{includes = ["include", "src", "src/erlang_types", "src/erlang_types/dnf", "src/erlang_types/utils"]},
+    {Spec, Mod} = ast_check:parse_spec("src/ast.erl", Opts),
     Result = ast_check:check_against_type(Spec, Mod, forms, Forms),
     case Result of
         true -> ok;
