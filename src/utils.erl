@@ -5,6 +5,8 @@
 -include_lib("kernel/include/file.hrl").
 -include("log.hrl").
 
+-etylizer({functions_exhaustive, off, [compare/3]}). % assumes equal length lists
+
 -export([
     quit/3, quit/2,
     everywhere/2, everything/2,
@@ -35,6 +37,7 @@
     parse_fun_ids/1
 ]).
 
+-include("etylizer.hrl").
 % quit exits the erlang program with the given exit code. No stack trace is produced,
 % so don't use this function for aborting because of a bug.
 -spec quit(non_neg_integer(), string(), [_]) -> no_return().
@@ -103,7 +106,9 @@ is_char(X) -> is_string([X]).
 % - If the function given returns {rec, X}, then the term is replaced
 %   by X, and recursive traversal is done.
 % - If the funtion returns error, then everywhere traverses the term recursively.
--spec everywhere(fun((term()) -> t:opt(term())), T) -> T.
+% -spec everywhere(fun((term()) -> t:opt(term())), T) -> T.
+% we can't assert the result type T without scoped variables
+-spec everywhere(fun((any()) -> {rec, any()} | t:opt(any())), any()) -> dynamic().
 everywhere(F, T) ->
     TransList = fun(L) -> lists:map(fun(X) -> everywhere(F, X) end, L) end,
     case F(T) of
@@ -145,7 +150,7 @@ if_true(B, Action) ->
     end,
     ok.
 
--spec file_get_lines(file:filename()) -> {ok, [string()]} | {error, _Why}.
+-spec file_get_lines(file:filename()) -> {ok, [string()]} | {error, term()}.
 file_get_lines(Path) ->
     case file:open(Path, [read]) of
         {error, X} -> {error, X};
@@ -180,7 +185,7 @@ replicate(N, X) -> [X | replicate(N - 1, X)].
 string_ends_with(S, Suffix) ->
     string:find(S, Suffix, trailing) =:= Suffix.
 
--spec shorten(list(), integer()) -> {list(), integer()}.
+-spec shorten(list(T), integer()) -> {list(T), integer()}.
 shorten(L, N) when N < 0 -> {[], length(L)};
 shorten([], _) -> {[], 0};
 shorten([X | Xs], N) ->
@@ -207,7 +212,7 @@ with_index(Start, L) ->
 
 -spec mkdirs(file:filename()) -> ok | {error, string()}.
 mkdirs(D) ->
-    ok = filelib:ensure_dir(filename:join(D, "XXX")). % only creates the parent!
+    ?assert_pattern(ok, filelib:ensure_dir(filename:join(D, "XXX"))). % only creates the parent!
 
 -spec hash_sha1(iodata()) -> string().
 hash_sha1(Data) ->
@@ -344,7 +349,8 @@ compare(Cmp, [T1 | Ts1], [T2 | Ts2]) ->
 replace(Term, Mapping) ->
     replace_term(Term, Mapping).
 
--spec replace_term(A, #{term() => term()}) -> A.
+-spec replace_term(dynamic(), #{term() => term()}) -> dynamic().
+%-spec replace_term(A, #{term() => term()}) -> A. % rank-2 types needed
 replace_term({node, _} = Ref, Mapping) ->
     case maps:find(Ref, Mapping) of
         {ok, NewTerm} -> NewTerm;
@@ -365,7 +371,7 @@ replace_term(Term, _Mapping) ->
     Term.
 
 
--spec update_ets_from_map(term(), #{term() => term()}) -> _.
+-spec update_ets_from_map(atom(), #{term() => term()}) -> _.
 update_ets_from_map(EtsTable, LocalMap) ->
   % Filter LocalMap to only new/changed entries
   ChangedEntries = maps:fold(

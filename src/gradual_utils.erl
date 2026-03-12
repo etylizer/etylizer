@@ -86,8 +86,8 @@ replace_dynamic(Ty, Ctx) ->
   end, Ty).
 
 % This postprocess step refers to the work of Petrucciani in his PhD thesis (chapter 10.4.2)
--spec postprocess(subst:t(), constr:subty_constrs(), constr:subty_constrs(), symtab:t()) ->
-    subst:t().
+-spec postprocess(subst:tally_subst(), constr:subty_constrs(), constr:mater_constrs(), symtab:t()) ->
+    subst:tally_subst().
 postprocess({tally_subst, S, Fixed}, Constrs, Maters, SymTab) ->
     ?LOG_DEBUG("Postprocessing tally substitution:~nSubstitution:~n~s~nConstraints:~n~s~nMaterialization constraints:~n~s",
         pretty:render_subst(S),
@@ -188,7 +188,7 @@ collect_pos_neg_tyvars(Ty, SymTab) ->
       sets:new(),
       VarPositions).
 
--spec compose(subst:t(), subst:base_subst()) -> subst:t().
+-spec compose(subst:tally_subst(), subst:base_subst()) -> subst:tally_subst().
 compose({tally_subst, S, Fixed}, Sigma2) ->
         S1 = apply_subst(S, Sigma2),
         {tally_subst, S1, sets:union(Fixed, sets:from_list([N || {var, N} <- maps:values(Sigma2)]))}.

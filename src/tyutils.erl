@@ -17,13 +17,13 @@ free_in_ty(T) ->
                          end, T),
     sets:from_list(L, [{version, 2}]).
 
--spec free_in_subty_constr(constr:simp_constr()) -> sets:set(ast:ty_varname()).
+-spec free_in_subty_constr(constr:simp_constr_subty()) -> sets:set(ast:ty_varname()).
 free_in_subty_constr(C) ->
     case C of
         {scsubty, _Locs, T1, T2} -> sets:union(free_in_ty(T1), free_in_ty(T2))
     end.
 
--spec free_in_subty_constrs(constr:simp_constrs()) -> sets:set(ast:ty_varname()).
+-spec free_in_subty_constrs(constr:subty_constrs()) -> sets:set(ast:ty_varname()).
 free_in_subty_constrs(Cs) ->
     sets:fold(
         fun (C, Acc) -> sets:union(Acc, free_in_subty_constr(C)) end,

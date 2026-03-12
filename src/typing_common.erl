@@ -11,6 +11,7 @@
 
 -include("log.hrl").
 -include("typing.hrl").
+-include("etylizer.hrl").
 
 -spec format_src_loc(ast:loc()) -> string().
 format_src_loc({loc, File, LineNo, ColumnNo}) ->
@@ -21,8 +22,8 @@ format_src_loc({loc, File, LineNo, ColumnNo}) ->
             N = length(Lines),
             if
                 LineNo >= 1 andalso LineNo =< N ->
-                    Line = string:trim(lists:nth(LineNo, Lines), trailing),
-                    ColumnSpace = lists:duplicate(ColumnNo - 1, $\s),
+                    Line = string:trim(lists:nth(LineNo, ?assert_type(Lines, nonempty_list(string()))), trailing),
+                    ColumnSpace = lists:duplicate(?assert_type(ColumnNo - 1, non_neg_integer()), $\s),
                     utils:sformat("%~5.B| ~s~n%     | ~s^", LineNo, Line, ColumnSpace);
                 true ->
                     ErrMsg
@@ -80,7 +81,7 @@ order_bounds(BoundedTyvars) ->
                     end,
                     BoundedTyvars),
                 L = graph:topsort(G),
-                ?LOG_TRACE("Graph: ~200p, L: ~200p", graph:to_list(G, fun atom_to_list/1), L),
+                ?LOG_TRACE("Graph: ~200p, L: ~200p", graph:to_list(G, fun erlang:atom_to_list/1), L),
                 L
             end),
     case VarOrder of
