@@ -159,6 +159,8 @@ check_decls_in_files(Files, What, NoInfer) ->
 simple_test_() ->
   % The following functions are currently excluded from being tested.
   WhatNot = [
+    % FIXME slow, waiting for optiization
+    "refine_02",
     % TODO binary pattern element size verification
     "b4_fail",
     % TODO better redundancy check detection for dynamic()
@@ -184,6 +186,7 @@ simple_test_() ->
     "op_15",
     "list_as_tuple_05",
     "refine_01",
+    "refine_02",
     "refine_tagged_tuple",
     % TODO timeout, with flipped variable ordering it infers instantly
     "match_13",

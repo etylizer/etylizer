@@ -172,7 +172,7 @@ parse(RawTy) ->
             false ->
               ToDefineTy = maps:get(DefineOrReplace, ResultMapping0),
               case is_consed(ToDefineTy, LocalDefinitions0) of
-                {true, N} -> 
+                {true, N} ->
                   ToDefine = DefineOrReplace,
 
                   NodeContainedIn = maps:get(ToDefine, RevGraph, []),
@@ -182,17 +182,22 @@ parse(RawTy) ->
                   % remove ToDefine from result mapping, its already consed
                   SmallerResultMapping = maps:remove(ToDefine, ResultMapping0),
 
-                  FinalResultMapping = lists:foldl(fun(E, Acc0) -> 
-                    Val = maps:get(E, Acc0),
-                    dnf_ty_variable:assert_valid(Val),
+                  FinalResultMapping = lists:foldl(fun(E, Acc0) ->
+                    case maps:find(E, Acc0) of
+                      error ->
+                        % E was already consed/removed in a prior step within this SCC
+                        Acc0;
+                      {ok, Val} ->
+                        dnf_ty_variable:assert_valid(Val),
 
-                    % just a syntactical replacement is not valid here
-                    % e.g. replacing {node, 80} by {node, 1} 
-                    % might need to trigger a reorder of the BDD
-                    % also, remove duplicate nodes after local unification
-                    Fin = utils:replace(Val, #{ToDefine => N}),
-                    dnf_ty_variable:assert_valid(FinalReordered = dnf_ty_variable:reorder(Fin)),
-                    Acc0#{E => FinalReordered} 
+                        % just a syntactical replacement is not valid here
+                        % e.g. replacing {node, 80} by {node, 1}
+                        % might need to trigger a reorder of the BDD
+                        % also, remove duplicate nodes after local unification
+                        Fin = utils:replace(Val, #{ToDefine => N}),
+                        dnf_ty_variable:assert_valid(FinalReordered = dnf_ty_variable:reorder(Fin)),
+                        Acc0#{E => FinalReordered}
+                    end
                   end, SmallerResultMapping, NodeContainedIn),
 
                   NewReplacedRef = case ReplacedRef0 of ToDefine -> N; _ -> ReplacedRef0 end,

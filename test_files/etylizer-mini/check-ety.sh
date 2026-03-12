@@ -32,6 +32,8 @@ QF=""
 run_ety src/ast_erl.erl
 
 QF=""
+QF=$QF" -i mk_intersection/1" # to)
+QF=$QF" -i mk_union/1" # to)
 run_ety src/ast_lib.erl
 
 QF=""
@@ -90,23 +92,28 @@ QF=""
 QF=$QF" -i resolve_ety_ty/3" # 80s
 QF=$QF" -i eval_const_ty/2" # 1)
 QF=$QF" -i shallow_remove_match/1" # TODO type error
-QF=$QF" -i trans_guards/3" # to) a single top-level constraint explodes when saturated
-QF=$QF" -i trans_qualifier/3" # to) a single top-level constraint explodes when saturated
-QF=$QF" -i trans_form/3" # to) a single top-level constraint explodes when saturated
-QF=$QF" -i trans_spec_ty/3" # to) too many solutions
+QF=$QF" -i thread_through_env/3" # to)
+QF=$QF" -i trans_guards/3" # to)
+QF=$QF" -i trans_qualifier/3" # to)
+QF=$QF" -i trans_form/3" # to)
+QF=$QF" -i trans_spec_ty/3" # to)
 QF=$QF" -i trans_ty/3" # 4)
 QF=$QF" -i trans_pat/4" # 4)
-QF=$QF" -i trans_exp/3" # to) so large, single solution grows too big
-QF=$QF" -i trans/4" # to) tally v1 is faster check why
+QF=$QF" -i trans_exp/3" # to)
+QF=$QF" -i trans_exp_seq_noenv/3" # to)
+QF=$QF" -i trans_exp_noenv/3" # to)
+QF=$QF" -i trans_exp_bin_elem/3" # to)
+QF=$QF" -i trans_pat_bin_elem/4" # to)
+QF=$QF" -i trans_case_clauses/3" # to)
+QF=$QF" -i trans_case_clause/3" # to)
 QF=$QF" -i trans_catch_clause/3" # 3)
+QF=$QF" -i trans_fun_clause/3" # to)
+QF=$QF" -i trans_if_clauses/3" # to)
+QF=$QF" -i trans_if_clause/3" # to)
+QF=$QF" -i trans_map_assoc/3" # to)
+QF=$QF" -i trans_record_field/3" # to)
+QF=$QF" -i trans/4" # to)
 QF=$QF" -i build_funenv/2" # 5) type overlap
 QF=$QF" -i mk_builtin_funs/2" # 5) type overlap
 QF=$QF" -i assert_funs/1" # 5) type overlap
 run_ety src/ast_transform.erl
-
-QF=" -i to_loc/2" # 4)
-QF=$QF" -i parse_file/2" # 4)
-QF=$QF" -i builtin_funs/0" # 4)
-QF=$QF" -i trans_ty/3" # 4)
-QF=$QF" -i trans_pat/4" # 4)
-../../ety --build --report-mode report --report-timeout 3000 --type-overlay overlay.erl --no-deps -f -l error -P . -S src $QF

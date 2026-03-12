@@ -2,6 +2,7 @@
 
 -compile([nowarn_shadow_vars]).
 
+
 -export([
          arity/2,
 %         constr/1,
@@ -33,7 +34,6 @@
          ref/1
         ]).
 
-
 -ifdef(TEST).
 -export([
     ty/1,
@@ -41,8 +41,9 @@
 ]).
 -endif.
 
-
 -import(prettypr, [text/1]).
+
+-include("etylizer.hrl").
 
 -type doc() :: prettypr:document().
 
@@ -171,40 +172,21 @@ ty(T) -> ty(1, T).
 -spec ty(integer(), ast:ty()) -> doc().
 ty(Prec, T) ->
     case T of
-        {dynamic} -> text("dynamic()");
         {singleton, A} ->
             case A of
                 _ when is_atom(A) -> atom(A);
-                _ when is_integer(A) -> integer(A);
-                _ -> text([$$, A]) % must be a char
+                _ when is_integer(A) -> integer(A) % char() is a subtype of integer()
             end;
-        % TODO full bitstring support
         {bitstring} ->
             text("bitstring()");
         % {binary, I, J} ->
         %     text(utils:sformat("<<_:~w, _:_*~w>>", I, J));
+        {binary, M, N} ->
+            text(utils:sformat("<<_:~w, _:_*~w>>", M, N));
         {empty_list} ->
             text("[]");
-        {cons, A, B} ->
-            beside(text("["), ty(A), text(" @ "), ty(B), text("]"));
-        {list, U} ->
-            beside(text("list("), ty(U), text(")"));
-        {nonempty_list, U} ->
-            beside(text("nonempty_list"), parens(ty(U)));
-        {improper_list, U, V} ->
-            beside(text("improper_list"), parens(comma(ty(U), ty(V))));
-        {nonempty_improper_list, U, V} ->
-            beside(text("nonempty_improper_list"), parens(comma(ty(U), ty(V))));
         {fun_simple} ->
             text("fun()");
-        {fun_any_arg, U} ->
-            beside(text("fun((...) -> "), ty(U), text(")"));
-        {fun_full, Args, Res} ->
-            beside(text("fun"),
-                   parens(beside(
-                            parens(comma_sep(lists:map(fun ty/1, Args))),
-                            text(" -> "),
-                            ty(Res))));
         {range, '*', '*'} ->
             text("integer()");
         {range, '*', J} ->
@@ -215,6 +197,46 @@ ty(Prec, T) ->
             text(utils:sformat("~w..~w", I, J));
         {map_any} ->
             text("#{}");
+        {predef, Name} ->
+            beside(atom(Name), text("()"));
+        {predef_alias, Name} ->
+            beside(atom(Name), text("()"));
+        {tuple_any} ->
+            text("tuple()");
+        {mu_var, Name} ->
+            beside(text("mu "), atom(Name));
+        {var, Name} ->
+            atom(Name);
+        _ -> ty_list_or_fun(Prec, T)
+    end.
+
+-spec ty_list_or_fun(integer(), ast:ty()) -> doc().
+ty_list_or_fun(Prec, T) ->
+    case T of
+        {cons, A, B} ->
+            beside(text("["), ty(A), text(" @ "), ty(B), text("]"));
+        {list, U} ->
+            beside(text("list("), ty(U), text(")"));
+        {nonempty_list, U} ->
+            beside(text("nonempty_list"), parens(ty(U)));
+        {improper_list, U, V} ->
+            beside(text("improper_list"), parens(comma(ty(U), ty(V))));
+        {nonempty_improper_list, U, V} ->
+            beside(text("nonempty_improper_list"), parens(comma(ty(U), ty(V))));
+        {fun_any_arg, U} ->
+            beside(text("fun((...) -> "), ty(U), text(")"));
+        {fun_full, Args, Res} ->
+            beside(text("fun"),
+                   parens(beside(
+                            parens(comma_sep(lists:map(fun ty/1, Args))),
+                            text(" -> "),
+                            ty(Res))));
+        _ -> ty_composite(Prec, T)
+    end.
+
+-spec ty_composite(integer(), ast:ty()) -> doc().
+ty_composite(Prec, T) ->
+    case T of
         {map, Assocs} ->
             AssocsP =
                 lists:map(
@@ -229,18 +251,6 @@ ty(Prec, T) ->
                   Assocs
                  ),
             beside(text("#"), brackets(comma_sep(AssocsP)));
-        {predef, Name} ->
-            beside(atom(Name), text("()"));
-        {predef_alias, Name} ->
-            beside(atom(Name), text("()"));
-        {record, Name, Fields} ->
-            FieldsP =
-                lists:map(
-                  fun({FieldName, U}) ->
-                          beside(atom(FieldName), text(" :: "), ty(U))
-                  end,
-                  Fields),
-            beside(text("#" ++ atom_to_list(Name)), brackets(comma_sep(FieldsP)));
         {mu, Var, Ty} ->
             beside(ty(Var), text("."), ty(Ty));
         {named, _Loc, Ref, Args} ->
@@ -251,14 +261,8 @@ ty(Prec, T) ->
                         beside(atom(Mod), text(":"), atom(Name))
                 end,
             beside(RefP, parens(comma_sep(lists:map(fun ty/1, Args))));
-        {tuple_any} ->
-            text("tuple()");
         {tuple, Args} ->
             brackets(comma_sep(lists:map(fun ty/1, Args)));
-        {mu_var, Name} ->
-            beside(text("mu "), atom(Name));
-        {var, Name} ->
-            atom(Name);
         {union, []} ->
             text("none()");
         {union, Args} ->
@@ -314,50 +318,59 @@ constr_env(Env) ->
 
 -spec constr_bodies([constr:constr_case_branch()]) -> doc().
 constr_bodies(L) ->
-    braces(
-      comma_sep(
-        lists:map(
-          fun({ccase_branch, Locs, Payload}) ->
-                {GuardEnv, GuardCs} = constr:case_branch_guard(Payload),
-                {BodyEnv, BodyCs} = constr:case_branch_body(Payload),
-                ResultCs = constr:case_branch_result(Payload),
-                BodyCondCs = constr:case_branch_bodyCond(Payload),
-                PrettyBodyCond =
-                    case BodyCondCs of
-                        none -> text("none");
-                        X -> constr(X)
-                    end,
-                brackets(comma_sep([locs(Locs),
-                    kv("guardEnv", constr_env(GuardEnv)),
-                    kv("guardCs", constr(GuardCs)),
-                    kv("bodyEnv", constr_env(BodyEnv)),
-                    kv("bodyCs", constr(BodyCs)),
-                    kv("bodyCond", PrettyBodyCond),
-                    kv("resultCs", constr(ResultCs))]))
-          end,
-          L))).
+    braces(comma_sep(lists:map(fun constr_body/1, L))).
+
+-spec constr_body(constr:constr_case_branch()) -> doc().
+constr_body({ccase_branch, Locs, Payload}) ->
+    GuardPart = constr_body_guard(Payload),
+    BodyPart = constr_body_body(Payload),
+    brackets(comma_sep([locs(Locs)] ++ GuardPart ++ BodyPart)).
+
+-spec constr_body_guard(constr:case_branch_payload()) -> [doc()].
+constr_body_guard(Payload) ->
+    {GuardEnv, GuardCs} = constr:case_branch_guard(Payload),
+    [kv("guardEnv", constr_env(GuardEnv)),
+     kv("guardCs", constr(GuardCs))].
+
+-spec constr_body_body(constr:case_branch_payload()) -> [doc()].
+constr_body_body(Payload) ->
+    {BodyEnv, BodyCs} = constr:case_branch_body(Payload),
+    [kv("bodyEnv", constr_env(BodyEnv)),
+     kv("bodyCs", constr(BodyCs))] ++ constr_body_cond_result(Payload).
+
+-spec constr_body_cond_result(constr:case_branch_payload()) -> [doc()].
+constr_body_cond_result(Payload) ->
+    ResultCs = constr:case_branch_result(Payload),
+    BodyCondCs = constr:case_branch_bodyCond(Payload),
+    PrettyBodyCond =
+        case BodyCondCs of
+            none -> text("none");
+            X -> constr(X)
+        end,
+    [kv("bodyCond", PrettyBodyCond),
+     kv("resultCs", constr(ResultCs))].
 
 -spec sconstr_bodies([constr:simp_constr_case_branch()]) -> doc().
 sconstr_bodies(L) ->
-    braces(
-      comma_sep(
-        lists:map(
-          fun({sccase_branch, {GuardsLoc, Guards}, Cond, {BodyLoc, Body}, {ResultLoc, Result}}) ->
-                PrettyCond =
-                    case Cond of
-                        none -> [text("none")];
-                        {L2, X} -> [kv("condLoc", loc(L2)), kv("cond", constr(X))]
-                    end,
-                brackets(comma_sep([
-                    kv("guardLoc", loc(GuardsLoc)),
-                    kv("guard", constr(Guards))] ++ PrettyCond ++ [
-                    kv("bodyLoc", loc(BodyLoc)),
-                    kv("body", constr(Body)),
-                    kv("resultLoc", loc(ResultLoc)),
-                    kv("result", constr(Result))
-                    ]))
-          end,
-          L))).
+    braces(comma_sep(lists:map(fun sconstr_body/1, L))).
+
+-spec sconstr_body(constr:simp_constr_case_branch()) -> doc().
+sconstr_body({sccase_branch, {GuardsLoc, Guards}, Cond, {BodyLoc, Body}, {ResultLoc, Result}}) ->
+    GuardPart = [kv("guardLoc", loc(GuardsLoc)), kv("guard", constr(Guards))],
+    CondPart = sconstr_body_cond(Cond),
+    BodyPart = sconstr_body_rest(BodyLoc, Body, ResultLoc, Result),
+    brackets(comma_sep(GuardPart ++ CondPart ++ BodyPart)).
+
+-spec sconstr_body_cond(none | {ast:loc(), constr:simp_constrs()}) -> [doc()].
+sconstr_body_cond(none) -> [text("none")];
+sconstr_body_cond({L2, X}) -> [kv("condLoc", loc(L2)), kv("cond", constr(X))].
+
+-spec sconstr_body_rest(ast:loc(), constr:simp_constrs(), ast:loc(), constr:simp_constrs()) -> [doc()].
+sconstr_body_rest(BodyLoc, Body, ResultLoc, Result) ->
+    [kv("bodyLoc", loc(BodyLoc)),
+     kv("body", constr(Body)),
+     kv("resultLoc", loc(ResultLoc)),
+     kv("result", constr(Result))].
 
 -spec kv(string(), doc()) -> doc().
 kv(K, V) -> beside(text(K), text(":"), V).
@@ -366,65 +379,98 @@ kv(K, V) -> beside(text(K), text(":"), V).
                      | sets:set(all_constrs()) | list(all_constrs()).
 
 -spec constr(all_constrs()) -> doc().
+constr(X) when is_list(X) ->
+    constr_list(X);
 constr(X) ->
-   case {sets:is_set(X), is_list(X)} of
-       {true, _} ->
-           braces(comma_sep(lists:map(fun constr/1, sets:to_list(X))));
-       {false, true} ->
-           brackets(comma_sep(lists:map(fun constr/1, X)));
-       {false, false} ->
-           case X of
-               {csubty, Locs, T1, T2} ->
-                   brackets(comma_sep([text("csubty"),
-                                       locs(Locs),
-                                       ty(T1),
-                                       ty(T2)]));
-               {scsubty, Loc, T1, T2} ->
-                   brackets(comma_sep([text("scsubty"),
-                                       loc(Loc),
-                                       ty(T1),
-                                       ty(T2)]));
-               {cvar, Locs, Ref, T} ->
-                   brackets(comma_sep([text("cvar"),
-                                       locs(Locs),
-                                       ref(Ref),
-                                       ty(T)]));
-               {cvarmater, Locs, Ref, Alpha} ->
-                   brackets(comma_sep([text("cvarmater"),
-                                       locs(Locs),
-                                       ref(Ref),
-                                       text(atom_to_list(Alpha))]));
-               {cop, Locs, Name, Arity, T} ->
-                   brackets(comma_sep([text("cop"),
-                                       locs(Locs),
-                                       beside(atom(Name), text("/"), text(integer_to_list(Arity))),
-                                       ty(T)]));
-               {cdef, Locs, Env, Cs} ->
-                   brackets(comma_sep([text("cdef"),
-                                       locs(Locs),
-                                       constr_env(Env),
-                                       constr(Cs)]));
-               {ccase, Locs, CsScrut, CsExhaust, Bodies} ->
-                   brackets(comma_sep([text("ccase"),
-                                       locs(Locs),
-                                       kv("scrutiny", constr(CsScrut)),
-                                       kv("exhaust", constr(CsExhaust)),
-                                       constr_bodies(Bodies)]));
-               {sccase, {LocScrut, CsScrut}, {LocExhaust, CsExhaust}, Bodies} ->
-                   brackets(comma_sep([text("sccase"),
-                                       kv("scrutinyLoc", loc(LocScrut)),
-                                       kv("scrutiny", constr(CsScrut)),
-                                       kv("exhaustLoc", loc(LocExhaust)),
-                                       kv("exhaust", constr(CsExhaust)),
-                                       sconstr_bodies(Bodies)]))
-               ;
-               {scmater, Loc, T, Alpha} ->
-                   brackets(comma_sep([text("scmater"),
-                                       loc(Loc),
-                                       ty(T),
-                                       text(atom_to_list(Alpha))]))
-           end
-   end.
+    case sets:is_set(X) of
+        true ->
+            constr_set(?assert_type(X, sets:set(all_constrs())));
+        false ->
+            constr_single(?assert_type(X, constr:simp_constr() | constr:constr()))
+    end.
+
+-spec constr_list(list(all_constrs())) -> doc().
+constr_list(X) ->
+    brackets(comma_sep(lists:map(fun constr/1, X))).
+
+-spec constr_set(sets:set(all_constrs())) -> doc().
+constr_set(X) ->
+    braces(comma_sep(lists:map(fun constr/1, sets:to_list(X)))).
+
+-spec constr_single(constr:simp_constr() | constr:constr()) -> doc().
+constr_single({scsubty, _, _, _} = X) -> constr_simp(?assert_type(X, constr:simp_constr()));
+constr_single({sccase, _, _, _} = X) -> constr_simp(?assert_type(X, constr:simp_constr()));
+constr_single({scmater, _, _, _} = X) -> constr_simp(?assert_type(X, constr:simp_constr()));
+constr_single(X) -> constr_unsimplified(?assert_type(X, constr:constr())).
+
+-spec constr_unsimplified(constr:constr()) -> doc().
+constr_unsimplified({csubty, _, _, _} = X) -> constr_leaf(X);
+constr_unsimplified({cvar, _, _, _} = X) -> constr_leaf(X);
+constr_unsimplified({cvarmater, _, _, _} = X) -> constr_leaf(X);
+constr_unsimplified(X) -> constr_nested(X).
+
+-spec constr_leaf(constr:constr_subty() | constr:constr_var() | constr:constr_var_mater()) -> doc().
+constr_leaf({csubty, Locs, T1, T2}) ->
+    brackets(comma_sep([text("csubty"),
+                        locs(Locs),
+                        ty(T1),
+                        ty(T2)]));
+constr_leaf({cvar, Locs, Ref, T}) ->
+    brackets(comma_sep([text("cvar"),
+                        locs(Locs),
+                        ref(Ref),
+                        ty(T)]));
+constr_leaf({cvarmater, Locs, Ref, Alpha}) ->
+    brackets(comma_sep([text("cvarmater"),
+                        locs(Locs),
+                        ref(Ref),
+                        text(atom_to_list(Alpha))])).
+
+-spec constr_nested(constr:constr_op() | constr:constr_def() | constr:constr_case()) -> doc().
+constr_nested({cop, Locs, Name, Arity, T}) ->
+    brackets(comma_sep([text("cop"),
+                        locs(Locs),
+                        beside(atom(Name), text("/"), text(integer_to_list(Arity))),
+                        ty(T)]));
+constr_nested({cdef, _, _, _} = X) -> constr_cdef(X);
+constr_nested({ccase, _, _, _, _} = X) -> constr_ccase(X).
+
+-spec constr_cdef(constr:constr_def()) -> doc().
+constr_cdef({cdef, Locs, Env, Cs}) ->
+    brackets(comma_sep([text("cdef"),
+                        locs(Locs),
+                        constr_env(Env),
+                        constr(Cs)])).
+
+-spec constr_ccase(constr:constr_case()) -> doc().
+constr_ccase({ccase, Locs, CsScrut, CsExhaust, Bodies}) ->
+    brackets(comma_sep([text("ccase"),
+                        locs(Locs),
+                        kv("scrutiny", constr(CsScrut)),
+                        kv("exhaust", constr(CsExhaust)),
+                        constr_bodies(Bodies)])).
+
+-spec constr_simp(constr:simp_constr()) -> doc().
+constr_simp({scsubty, Loc, T1, T2}) ->
+    brackets(comma_sep([text("scsubty"),
+                        loc(Loc),
+                        ty(T1),
+                        ty(T2)]));
+constr_simp({sccase, _, _, _} = X) -> constr_sccase(X);
+constr_simp({scmater, Loc, T, Alpha}) ->
+    brackets(comma_sep([text("scmater"),
+                        loc(Loc),
+                        ty(T),
+                        text(atom_to_list(Alpha))])).
+
+-spec constr_sccase(constr:simp_constr_case()) -> doc().
+constr_sccase({sccase, {LocScrut, CsScrut}, {LocExhaust, CsExhaust}, Bodies}) ->
+    brackets(comma_sep([text("sccase"),
+                        kv("scrutinyLoc", loc(LocScrut)),
+                        kv("scrutiny", constr(CsScrut)),
+                        kv("exhaustLoc", loc(LocExhaust)),
+                        kv("exhaust", constr(CsExhaust)),
+                        sconstr_bodies(Bodies)])).
 
 -spec locs(constr:locs()) -> doc().
 locs({Msg, Locs}) ->

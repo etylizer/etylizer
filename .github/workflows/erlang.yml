@@ -9,16 +9,18 @@ jobs:
 
   build:
     runs-on: ubuntu-latest
+    timeout-minutes: 1
     container:
       image: erlang:28
     steps:
-    - uses: actions/checkout@v2
+    - uses: actions/checkout@v4
     - run: make build
 
   verify:
     name: "verify: ${{ matrix.name }}"
     needs: build
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     container:
       image: erlang:28
     strategy:
@@ -31,7 +33,7 @@ jobs:
           - name: syntax transformation
             cmd: ./_build/default/bin/etylizer --sanity --no-type-checking -I ./include -I ./src ./src/*.erl
     steps:
-    - uses: actions/checkout@v2
+    - uses: actions/checkout@v4
     - run: make build
     - run: ${{ matrix.cmd }}
 
@@ -39,6 +41,7 @@ jobs:
     name: "test: ${{ matrix.name }}"
     needs: build
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     container:
       image: erlang:28
     strategy:
@@ -55,7 +58,7 @@ jobs:
           - name: unit-tests
             cmd: rebar3 eunit
     steps:
-    - uses: actions/checkout@v2
+    - uses: actions/checkout@v4
     - run: make build
     - run: ${{ matrix.cmd }}
 
@@ -63,6 +66,7 @@ jobs:
     name: "case study: ${{ matrix.name }}"
     needs: build
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     container:
       image: erlang:28
     strategy:
@@ -75,7 +79,7 @@ jobs:
           - name: ety
             cmd: test_files/etylizer-mini/check-ety.sh
     steps:
-    - uses: actions/checkout@v2
+    - uses: actions/checkout@v4
     - run: make build
     - name: Cache espresso binary
       run: ./run_test.escript "case_01 (typecheck)"
