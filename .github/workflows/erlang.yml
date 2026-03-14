@@ -29,13 +29,39 @@ jobs:
           - name: dialyzer
             cmd: rebar3 as test dialyzer
           - name: typecheck
-            cmd: ./typecheck_erlang_types
+            cmd: ./typecheck_erlang_types --report-mode report --report-timeout 30000 2>&1 | tee /tmp/typecheck_report.log
           - name: syntax transformation
             cmd: ./_build/default/bin/etylizer --sanity --no-type-checking -I ./include -I ./src ./src/*.erl
     steps:
     - uses: actions/checkout@v4
     - run: make build
     - run: ${{ matrix.cmd }}
+    - name: Upload typecheck report
+      if: matrix.name == 'typecheck'
+      uses: actions/upload-artifact@v4
+      with:
+        name: typecheck-pr
+        path: /tmp/typecheck_report.log
+
+  typecheck-base:
+    name: "typecheck (base)"
+    needs: build
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    container:
+      image: erlang:28
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        ref: ${{ github.event.pull_request.base.sha }}
+    - run: make build
+    - run: ./typecheck_erlang_types --report-mode report --report-timeout 30000 2>&1 | tee /tmp/typecheck_report.log || true
+    - name: Upload typecheck report
+      uses: actions/upload-artifact@v4
+      with:
+        name: typecheck-base
+        path: /tmp/typecheck_report.log
 
   test:
     name: "test: ${{ matrix.name }}"
@@ -48,9 +74,11 @@ jobs:
       matrix:
         include:
           - name: typecheck
-            cmd: ./run_test.escript typecheck
+            cmd: ./run_test.escript typecheck 2>&1 | tee /tmp/test_report.log
+            artifact: test-typecheck-pr
           - name: infer
-            cmd: ./run_test.escript infer
+            cmd: ./run_test.escript infer 2>&1 | tee /tmp/test_report.log
+            artifact: test-infer-pr
           - name: property-based
             cmd: rebar3 proper
           - name: unit-test tests
@@ -61,6 +89,105 @@ jobs:
     - uses: actions/checkout@v4
     - run: make build
     - run: ${{ matrix.cmd }}
+    - name: Upload test report
+      if: matrix.artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: ${{ matrix.artifact }}
+        path: /tmp/test_report.log
+
+  test-base:
+    name: "test (base): ${{ matrix.name }}"
+    needs: build
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    container:
+      image: erlang:28
+    strategy:
+      matrix:
+        include:
+          - name: typecheck
+            cmd: ./run_test.escript typecheck 2>&1 | tee /tmp/test_report.log
+            artifact: test-typecheck-base
+          - name: infer
+            cmd: ./run_test.escript infer 2>&1 | tee /tmp/test_report.log
+            artifact: test-infer-base
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        ref: ${{ github.event.pull_request.base.sha }}
+    - run: make build
+    - run: ${{ matrix.cmd }} || true
+    - name: Upload test report
+      uses: actions/upload-artifact@v4
+      with:
+        name: ${{ matrix.artifact }}
+        path: /tmp/test_report.log
+
+  ci-stats:
+    name: "CI stats"
+    needs: [verify, typecheck-base, test, test-base]
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+    - uses: actions/download-artifact@v4
+      with:
+        path: /tmp/artifacts
+    - name: Generate stats
+      run: |
+        echo "## Typecheck Statistics" > /tmp/ci_stats.md
+        echo "" >> /tmp/ci_stats.md
+        .github/scripts/typecheck_stats.sh \
+          /tmp/artifacts/typecheck-pr/typecheck_report.log \
+          /tmp/artifacts/typecheck-base/typecheck_report.log \
+          >> /tmp/ci_stats.md
+        echo "" >> /tmp/ci_stats.md
+        echo "## Test Statistics: typecheck" >> /tmp/ci_stats.md
+        echo "" >> /tmp/ci_stats.md
+        .github/scripts/typecheck_stats.sh \
+          /tmp/artifacts/test-typecheck-pr/test_report.log \
+          /tmp/artifacts/test-typecheck-base/test_report.log \
+          >> /tmp/ci_stats.md
+        echo "" >> /tmp/ci_stats.md
+        echo "## Test Statistics: infer" >> /tmp/ci_stats.md
+        echo "" >> /tmp/ci_stats.md
+        .github/scripts/typecheck_stats.sh \
+          /tmp/artifacts/test-infer-pr/test_report.log \
+          /tmp/artifacts/test-infer-base/test_report.log \
+          >> /tmp/ci_stats.md
+    - name: Post stats to PR
+      uses: actions/github-script@v7
+      with:
+        script: |
+          const fs = require('fs');
+          const statsFile = '/tmp/ci_stats.md';
+          if (!fs.existsSync(statsFile)) return;
+          const body = fs.readFileSync(statsFile, 'utf8');
+          const { data: comments } = await github.rest.issues.listComments({
+            owner: context.repo.owner,
+            repo: context.repo.repo,
+            issue_number: context.issue.number,
+          });
+          const existing = comments.find(c =>
+            c.user.type === 'Bot' && c.body.includes('## Typecheck Statistics')
+          );
+          if (existing) {
+            await github.rest.issues.updateComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              comment_id: existing.id,
+              body,
+            });
+          } else {
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              body,
+            });
+          }
 
   case-study:
     name: "case study: ${{ matrix.name }}"
