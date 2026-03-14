@@ -59,8 +59,6 @@ lookup_field_index({RecName, DefFields}, FieldName, L) ->
     case utils:assocs_find_index(FieldName, DefFields) of
         error ->
             errors:ty_error(L, "Field ~w not defined for record ~w", [FieldName, RecName]);
-        {ok, untyped, _} ->
-            errors:ty_error(L, "No type for field ~w of record ~w", [FieldName, RecName]);
         {ok, FieldTy, I} ->
             {FieldTy, I}
     end.

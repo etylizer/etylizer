@@ -32,7 +32,6 @@
     compare_multiple/1,
     update_ets_from_map/2,
     format_tally_config/3,
-    flatten/1,
     parse_fun_id/1,
     parse_fun_ids/1
 ]).
@@ -196,7 +195,7 @@ shorten([X | Xs], N) ->
 map_flip(L, F) -> lists:map(F, L).
 
 -spec concat_map([A], fun((A) -> [B])) -> [B].
-concat_map(L, F) -> lists:concat(lists:map(F, L)).
+concat_map(L, F) -> lists:flatmap(F, L).
 
 -spec foreach([T], fun((T) -> any())) -> ok.
 foreach(L, F) -> lists:foreach(F, L).
@@ -419,18 +418,6 @@ format_tally_config(Constraints, FixedVars, Symtab) ->
     ++ io_lib:format("~p.", [symtab:get_types(Symtab)])
     ++ "\n" 
     ++ io_lib:format("~p.", [FixedVars]).
-
--spec flatten(deep_list(A)) -> [A].
-flatten(L) -> do_flatten(L, []).
-
--type deep_list(A) :: [etylizer:without(A, list()) | deep_list(A)].
--spec do_flatten(deep_list(A), [A]) -> [A].
-do_flatten([H|T], Tail) when is_list(H) ->
-    do_flatten(H, do_flatten(T, Tail));
-do_flatten([H|T], Tail) ->
-    [H|do_flatten(T, Tail)];
-do_flatten([], Tail) ->
-    Tail.
 
 % Parses a string like "name/arity" into {atom(), arity()}.
 -spec parse_fun_id(string()) -> {atom(), arity()}.

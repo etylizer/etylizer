@@ -195,21 +195,30 @@ overlay_symtab(OverlayForms) ->
         end
     end, undefined, OverlayForms),
     lists:foldl(fun(Form, Tab) ->
-        case Form of
-            {attribute, _, spec, Name, Arity, T, _} ->
-                ?LOG_DEBUG("Overlay added for ~w/~p", Name, Arity),
-                [Module, FunName] = string:split(atom_to_list(Name), ":"),
-                Tab#tab { funs = maps:put(create_ref_tuple({qref, list_to_atom(Module)}, list_to_atom(FunName), Arity), T, Tab#tab.funs) };
-            {attribute, _, type, _Visibility, {Name, TyScm = {ty_scheme, TyVars, _}}} when ModuleName =/= undefined ->
-                Arity = length(TyVars),
-                Key = {ty_key, ModuleName, Name, Arity},
-                ?LOG_DEBUG("Overlay type added: ~w/~p", Name, Arity),
-                Tab#tab { types = maps:put(Key, TyScm, Tab#tab.types) };
-            _ -> Tab
-        end
+        overlay_process_form(Form, Tab, ModuleName)
     end,
     empty(),
     OverlayForms).
+
+-spec overlay_process_form(ast:form(), t(), atom() | undefined) -> t().
+overlay_process_form({attribute, _, spec, Name, Arity, T, _}, Tab, _ModuleName) ->
+    overlay_add_spec(Name, Arity, T, Tab);
+overlay_process_form({attribute, _, type, _Visibility, {Name, TyScm = {ty_scheme, TyVars, _}}}, Tab, ModuleName) when ModuleName =/= undefined ->
+    Arity = length(TyVars),
+    overlay_add_type(ModuleName, Name, Arity, TyScm, Tab);
+overlay_process_form(_, Tab, _ModuleName) -> Tab.
+
+-spec overlay_add_spec(atom(), arity(), ast:ty_scheme(), t()) -> t().
+overlay_add_spec(Name, Arity, T, Tab) ->
+    ?LOG_DEBUG("Overlay added for ~w/~p", Name, Arity),
+    [Module, FunName] = string:split(atom_to_list(Name), ":"),
+    Tab#tab { funs = maps:put(create_ref_tuple({qref, list_to_atom(Module)}, list_to_atom(FunName), Arity), T, Tab#tab.funs) }.
+
+-spec overlay_add_type(atom(), atom(), arity(), ast:ty_scheme(), t()) -> t().
+overlay_add_type(ModuleName, Name, Arity, TyScm, Tab) ->
+    Key = {ty_key, ModuleName, Name, Arity},
+    ?LOG_DEBUG("Overlay type added: ~w/~p", Name, Arity),
+    Tab#tab { types = maps:put(Key, TyScm, Tab#tab.types) }.
 
 -type ref() :: ref | {qref, ModuleName::atom()}.
 
@@ -245,38 +254,51 @@ extend_symtab_internal(Filename, Forms, RefType, Tab, OverlaySymtab) ->
     ModuleName = ast_utils:modname_from_path(Filename),
     lists:foldl(
         fun(Form, AccTab) ->
-            case Form of
-                {attribute, _, spec, Name, Arity, T, _} ->
-                    Ref = create_ref_tuple(RefType, Name, Arity),
-                    case find_fun(Ref, OverlaySymtab) of
-                        error ->
-                            ?LOG_TRACE("No Overlay found for ~w:~w/~p", ModuleName, Name, Arity),
-                            % if we are in local ref mode,
-                            % we might need to extend the symtab with the global ref, too,
-                            % if fun is exported
-                            maybe_add_qref(RefType, ModuleName, Name, Arity, T, Forms, AccTab);
-                        {ok, OverlayT} ->
-                            ?LOG_DEBUG("Overlay found for ~w:~w/~p", ModuleName, Name, Arity),
-                            AccTab#tab { funs = maps:put(create_ref_tuple(RefType, Name, Arity), OverlayT, AccTab#tab.funs) }
-                    end;
-                {attribute, _, type, _, {Name, TyScm = {ty_scheme, TyVars, _}}} ->
-                    Arity = length(TyVars),
-                    AccTab#tab { types = maps:put({ty_key, ModuleName, Name, Arity}, TyScm, AccTab#tab.types) };
-                {attribute, _, record, {RecordName, Fields}} ->
-                    RecordTy = records:record_ty_from_decl(RecordName, Fields),
-                    RecTypeName = records:record_type_name(RecordName),
-                    RecTupleType = records:encode_record_ty(RecordTy),
-                    RecTyScheme = {ty_scheme, [], RecTupleType},
-                    AccTab#tab {
-                        records = maps:put(RecordName, RecordTy, AccTab#tab.records),
-                        types = maps:put({ty_key, ModuleName, RecTypeName, 0}, RecTyScheme, AccTab#tab.types)
-                    };
-                _ ->
-                    AccTab
-            end
+            extend_process_form(Form, AccTab, RefType, ModuleName, Forms, OverlaySymtab)
         end,
         Tab#tab { modules = maps:put(ModuleName, Filename, Tab#tab.modules) },
         Forms).
+
+-spec extend_process_form(ast:form(), t(), ref(), atom(), ast:forms(), t()) -> t().
+extend_process_form({attribute, _, spec, Name, Arity, T, _}, AccTab, RefType, ModuleName, Forms, OverlaySymtab) ->
+    extend_add_spec(Name, Arity, T, AccTab, RefType, ModuleName, Forms, OverlaySymtab);
+extend_process_form({attribute, _, type, _, {Name, TyScm = {ty_scheme, TyVars, _}}}, AccTab, _RefType, ModuleName, _Forms, _OverlaySymtab) ->
+    extend_add_type(Name, TyScm, TyVars, ModuleName, AccTab);
+extend_process_form({attribute, _, record, {RecordName, Fields}}, AccTab, _RefType, ModuleName, _Forms, _OverlaySymtab) ->
+    extend_add_record(RecordName, Fields, ModuleName, AccTab);
+extend_process_form(_, AccTab, _RefType, _ModuleName, _Forms, _OverlaySymtab) ->
+    AccTab.
+
+-spec extend_add_spec(atom(), arity(), ast:ty_scheme(), t(), ref(), atom(), ast:forms(), t()) -> t().
+extend_add_spec(Name, Arity, T, AccTab, RefType, ModuleName, Forms, OverlaySymtab) ->
+    Ref = create_ref_tuple(RefType, Name, Arity),
+    case find_fun(Ref, OverlaySymtab) of
+        error ->
+            ?LOG_TRACE("No Overlay found for ~w:~w/~p", ModuleName, Name, Arity),
+            % if we are in local ref mode,
+            % we might need to extend the symtab with the global ref, too,
+            % if fun is exported
+            maybe_add_qref(RefType, ModuleName, Name, Arity, T, Forms, AccTab);
+        {ok, OverlayT} ->
+            ?LOG_DEBUG("Overlay found for ~w:~w/~p", ModuleName, Name, Arity),
+            AccTab#tab { funs = maps:put(create_ref_tuple(RefType, Name, Arity), OverlayT, AccTab#tab.funs) }
+    end.
+
+-spec extend_add_type(atom(), ast:ty_scheme(), [{atom(), any()}], atom(), t()) -> t().
+extend_add_type(Name, TyScm, TyVars, ModuleName, AccTab) ->
+    Arity = length(TyVars),
+    AccTab#tab { types = maps:put({ty_key, ModuleName, Name, Arity}, TyScm, AccTab#tab.types) }.
+
+-spec extend_add_record(atom(), list(), atom(), t()) -> t().
+extend_add_record(RecordName, Fields, ModuleName, AccTab) ->
+    RecordTy = records:record_ty_from_decl(RecordName, Fields),
+    RecTypeName = records:record_type_name(RecordName),
+    RecTupleType = records:encode_record_ty(RecordTy),
+    RecTyScheme = {ty_scheme, [], RecTupleType},
+    AccTab#tab {
+        records = maps:put(RecordName, RecordTy, AccTab#tab.records),
+        types = maps:put({ty_key, ModuleName, RecTypeName, 0}, RecTyScheme, AccTab#tab.types)
+    }.
 
 -spec extend_symtab_with_fun_env(fun_env(), t()) -> t().
 extend_symtab_with_fun_env(Env, Tab) -> Tab#tab { funs = maps:merge(Tab#tab.funs, Env) }.

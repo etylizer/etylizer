@@ -56,6 +56,12 @@ infer(Ctx, Decls) ->
             end,
             Decls),
 
+    SolveRes = simplify_and_log(SimpCtx, Cs, Ctx, Funs),
+    ResultEnvs = build_result_envs(SolveRes, Decls, Env, Ctx),
+    check_result_envs(ResultEnvs, Loc, FunsStr).
+
+-spec simplify_and_log(term(), term(), ctx(), [string()]) -> term().
+simplify_and_log(SimpCtx, Cs, Ctx, Funs) ->
     SimpConstrs = constr_simp:simp_constrs(SimpCtx, Cs),
     case Ctx#ctx.sanity of
         {ok, TyMap2} -> constr_simp:sanity_check(SimpConstrs, TyMap2);
@@ -65,29 +71,32 @@ infer(Ctx, Decls) ->
     ?LOG_DEBUG("Simplified constraint set for a group of mutually recursive functions ~s, now " ++
                 "checking constraints for solvability.~nConstraints:~n~s",
                 FunNamesStr, pretty:render_constr(SimpConstrs)),
-    SolveRes = constr_solve:solve_simp_constrs(Tab, SimpConstrs, "inference"),
-    ResultEnvs =
-        case SolveRes of
-            error -> [];
-            Substs ->
-                utils:map_flip(Substs,
-                    fun(Subst) ->
-                            ResultEnv = maps:from_list(utils:map_flip(
-                                Decls,
-                                fun({function, _Loc, Name, Arity, _}) ->
-                                        Ref = {ref, Name, Arity},
-                                        case maps:find(Ref, Env) of
-                                            error ->
-                                                errors:bug("Function ~w/~w not found in env",
-                                                            [Name, Arity]);
-                                            {ok, T} ->
-                                                {Ref, generalize(subst:apply(Subst, T, {clean, Ctx#ctx.symtab}))}
-                                        end
-                                end)),
-                            ?LOG_DEBUG("Environment:~n~s", [pretty:render_fun_env(ResultEnv)]),
-                            ResultEnv
-                    end)
-        end, % of case
+    Tab = Ctx#ctx.symtab,
+    constr_solve:solve_simp_constrs(Tab, SimpConstrs, "inference").
+
+-spec build_result_envs(term(), [ast:fun_decl()], map(), ctx()) -> [symtab:fun_env()].
+build_result_envs(error, _Decls, _Env, _Ctx) -> [];
+build_result_envs(Substs, Decls, Env, Ctx) ->
+    utils:map_flip(Substs,
+        fun(Subst) ->
+                ResultEnv = maps:from_list(utils:map_flip(
+                    Decls,
+                    fun({function, _Loc, Name, Arity, _}) ->
+                            Ref = {ref, Name, Arity},
+                            case maps:find(Ref, Env) of
+                                error ->
+                                    errors:bug("Function ~w/~w not found in env",
+                                                [Name, Arity]);
+                                {ok, T} ->
+                                    {Ref, generalize(subst:apply(Subst, T, {clean, Ctx#ctx.symtab}))}
+                            end
+                    end)),
+                ?LOG_DEBUG("Environment:~n~s", [pretty:render_fun_env(ResultEnv)]),
+                ResultEnv
+        end).
+
+-spec check_result_envs([symtab:fun_env()], ast:loc(), string()) -> [symtab:fun_env()].
+check_result_envs(ResultEnvs, Loc, FunsStr) ->
     case length(ResultEnvs) of
         0 ->
             errors:ty_error(Loc,
@@ -109,8 +118,8 @@ more_general(Loc, Ts1, Ts2, Tab) ->
     {Mono1, _, Next} = typing_common:mono_ty(Loc, Ts1, 0, Tab),
     % Arbitrary instantiation of Ts2, the type variables A2 are fix
     {Mono2, A2, _} = typing_common:mono_ty(Loc, Ts2, Next, Tab),
-    C = {scsubty, sets:new([{version, 2}]), Mono1, Mono2},
-    {SatisfyRes, Delta} = utils:timing(fun() -> tally:is_satisfiable(Tab, sets:from_list([C], [{version, 2}]), A2) end),
+    C = {scsubty, Loc, Mono1, Mono2},
+    {SatisfyRes, Delta} = utils:timing(fun() -> tally:is_satisfiable(Tab, sets:from_list([C]), A2) end),
     ?LOG_DEBUG("Tally time: ~pms", Delta),
     Result =
         case SatisfyRes of
@@ -138,9 +147,9 @@ ftv(T) ->
         utils:everything(
           fun(X) ->
                   case X of
-                      {var, Alpha} -> {ok, Alpha};
+                      {var, Alpha} when is_atom(Alpha) -> {ok, Alpha};
                       _ -> error
                   end
           end,
           T),
-    sets:from_list(L, [{version, 2}]).
+    sets:from_list(L).
