@@ -199,7 +199,7 @@
                                                               [ty_full_fun()]}}.
 -type fun_spec() :: fun_spec_q() | fun_spec_unq().
 -type record_decl() :: {attribute, anno(), record, {Name::atom(),[record_field()]}}.
--type type_decl() :: {attribute, anno(), type|opaque, tydef()}.
+-type type_decl() :: {attribute, anno(), type|opaque|nominal, tydef()}.
 -type tydef() :: {Name::atom(), Rhs::ty(), [ty_var()]}.
 -type wild_attr() :: {attribute, anno(), atom(), term()}.
 -type eof() :: {eof, anno()}.

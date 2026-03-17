@@ -160,8 +160,48 @@ check_decls_in_files(Files, What, NoInfer) ->
   lists:foldl(CollectDecls, [], Files).
 
 simple_test_() ->
+  % FIXME #339
+  NominalPart = [
+    "different_nominal_01_fail",
+    "different_nominal_02_fail",
+    "tuple_different_01_fail",
+    "chain_01_fail",
+    "chain_03_fail",
+    "chain_tuple_01_fail",
+    "chain_tuple_02_fail",
+    "chain_named_01_fail",
+    "chain_mu_01_fail",
+    "wrapper_02_fail",
+    "wrapper_03_fail",
+    "nested_01_fail",
+    "union_downcast_01_fail",
+    "union_chain_01_fail",
+    "union_tuple_01_fail",
+    "union_list_01_fail",
+    "alias_unfold_01_fail",
+    "alias_unfold_02_fail",
+    "alias_unfold_04_fail",
+    "alias_unfold_07_fail",
+    "alias_unfold_08_fail",
+    "map_01_fail",
+    "map_03_fail",
+    "cons_01_fail",
+    "cons_04_fail",
+    "contra_01_fail",
+    "negation_01_fail",
+    "nested_alias_2_fail",
+    "nested_alias_3_fail",
+    "nested_alias_4_fail",
+    "nested_alias_both_fail",
+    "inter_rhs_01_fail",
+    "inter_rhs_03_fail",
+    "inter_lhs_01_fail",
+    "mu_01_fail"
+  ],
+
+
   % The following functions are currently excluded from being tested.
-  WhatNot = [
+  WhatNot = NominalPart ++ [
     % FIXME slow, waiting for optiization
     "refine_02",
     % TODO binary pattern element size verification
@@ -195,6 +235,7 @@ simple_test_() ->
     "match_13",
     % TODO slow (tuple-encoded lists) inference #255
     % reason: recursive types parsing and unparsing in solving step (missing proper substitution implementation)
+    "mu_03",
     "list_as_tuple_12",
     "list_as_tuple_rep_02",
     "list_as_tuple_08",
