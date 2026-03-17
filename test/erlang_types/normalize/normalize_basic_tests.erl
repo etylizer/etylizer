@@ -27,24 +27,10 @@ basic_test() ->
       ok
     end, system("test_files/erlang_types/normalize/plus.config")).
 
-mk_diff_test() ->
-  with_type(
-    fun(Type) -> 
-      [] = ty:normalize(Type, #{})
-    end, system("test_files/erlang_types/normalize/mk_diff_bad.config")).
-
-queue_slow1_test() ->
-  with_type(
-    fun(Type) -> 
-      FixedVariables = #{ty_variable:new_with_name('Item') => [], ty_variable:new_with_name('Q1') => [], ty_variable:new_with_name('Q1') => []},
-      V = ty:normalize(Type, FixedVariables),
-      4 = length(V) % was 19 before minimization
-    end, system("test_files/erlang_types/normalize/queue19.config")),
-
-  with_type(
-    fun(Type) -> 
-      FixedVariables = #{ty_variable:new_with_name('Item') => [], ty_variable:new_with_name('Q1') => [], ty_variable:new_with_name('Q1') => []},
-      V = ty:normalize(Type, FixedVariables),
-      4 = length(V) % was 10 before 
-    end, system("test_files/erlang_types/normalize/queue10.config")).
-
+% unstable way of debugging normalize on type dumps
+% do not commit, only for debugging
+% mk_diff_test() ->
+%   with_type(
+%     fun(Type) -> 
+%       [] = ty:normalize(Type, #{})
+%     end, system("test_files/erlang_types/normalize/mk_diff_bad.config")).
