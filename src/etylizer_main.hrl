@@ -5,6 +5,7 @@
                help = false :: boolean(),
                dump_raw = false :: boolean(),
                dump = false :: boolean(),
+               dump_transformed = false :: boolean(),
                sanity = false :: boolean(),
                force = false :: boolean(),
                no_type_checking = false :: boolean(),
