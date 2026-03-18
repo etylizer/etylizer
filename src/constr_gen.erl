@@ -367,24 +367,9 @@ exp_constrs(Ctx, E, T) ->
         {nil, L} ->
             utils:single({csubty, mk_locs("result of nil", L), {empty_list}, T});
         {op, L, Op, Lhs, Rhs} ->
-            {LhsTy, Cs1} = exp_constrs_tyof(Ctx, Lhs),
-            {RhsTy, Cs2} = exp_constrs_tyof(Ctx, Rhs),
-            Beta = fresh_tyvar(Ctx),
-            MsgTy = utils:sformat("type of op ~w", Op),
-            MsgRes = utils:sformat("result of op ~w", Op),
-            OpCs = sets:from_list(
-                     [{cop, mk_locs(MsgTy, L), Op, 2, {fun_full, [LhsTy, RhsTy], Beta}},
-                      {csubty, mk_locs(MsgRes, L), Beta, T}], [{version, 2}]),
-            sets:union([Cs1, Cs2, OpCs]);
+            op_constrs(Ctx, L, Op, [Lhs, Rhs], T);
         {op, L, Op, Arg} ->
-            {ArgTy, ArgCs} = exp_constrs_tyof(Ctx, Arg),
-            Beta = fresh_tyvar(Ctx),
-            MsgTy = utils:sformat("type of op ~w", Op),
-            MsgRes = utils:sformat("result of op ~w", Op),
-            OpCs = sets:from_list(
-                     [{cop, mk_locs(MsgTy, L), Op, 1, {fun_full, [ArgTy], Beta}},
-                      {csubty, mk_locs(MsgRes, L), Beta, T}], [{version, 2}]),
-            sets:union(ArgCs, OpCs);
+            op_constrs(Ctx, L, Op, [Arg], T);
         {'receive', L, CaseClauses} ->
             receive_constrs(Ctx, L, CaseClauses, T);
         {receive_after, L, CaseClauses, TimeoutExp, AfterBody} ->
@@ -684,6 +669,34 @@ process_qualifiers(Ctx, Loc, [Q | Qs], Env, Cs) ->
             NewEnv = intersect_envs(Env, GuardEnv),
             process_qualifiers(Ctx, Loc, Qs, NewEnv, sets:union(Cs, FilterCs))
     end.
+
+% An operator whose type is a single arrow is treated like the call of a function with a
+% known type (see funcall_constrs_with_tyscm_tyof): the operands are checked against the
+% parameter types. Overloaded operators are resolved by tally.
+-spec op_constrs(ctx(), ast:loc(), atom(), [ast:exp()], ast:ty()) -> constr:constrs().
+op_constrs(Ctx, L, Op, Args, T) ->
+    Arity = length(Args),
+    TyScm = symtab:lookup_op(Op, Arity, L, Ctx#ctx.symtab),
+    {Mono, _, _} = typing_common:mono_ty(L, TyScm, none, fun(_, none) -> {fresh_ty_varname(Ctx), none} end, Ctx#ctx.symtab),
+    MsgRes = utils:sformat("result of op ~w", Op),
+    case Mono of
+        {fun_full, ParamTys, ResTy} when length(ParamTys) =:= Arity ->
+            ArgCs = [arg_constrs(Ctx, Arg, P) || {Arg, P} <- lists:zip(Args, ParamTys)],
+            sets:add_element({csubty, mk_locs(MsgRes, L), ResTy, T}, sets:union([sets:new() | ArgCs]));
+        _ ->
+            {ArgTys, ArgCs} = lists:unzip([exp_constrs_tyof(Ctx, Arg) || Arg <- Args]),
+            Beta = fresh_tyvar(Ctx),
+            MsgTy = utils:sformat("type of op ~w", Op),
+            OpCs = sets:from_list(
+                     [{cop, mk_locs(MsgTy, L), Op, Arity, {fun_full, ArgTys, Beta}},
+                      {csubty, mk_locs(MsgRes, L), Beta, T}], [{version, 2}]),
+            sets:union([OpCs | ArgCs])
+    end.
+
+% Constraints for an argument with the expected type T. Against any() there is nothing to check.
+-spec arg_constrs(ctx(), ast:exp(), ast:ty()) -> constr:constrs().
+arg_constrs(Ctx, Arg, {predef, any}) -> element(2, exp_constrs_tyof(Ctx, Arg));
+arg_constrs(Ctx, Arg, T) -> exp_constrs(Ctx, Arg, T).
 
 -spec gen_funcall_constrs_tyof(ctx(), ast:exp(), [ast:exp()]) -> {ast:ty(), constr:constrs()}.
 gen_funcall_constrs_tyof(Ctx, FunExp, Args) ->
