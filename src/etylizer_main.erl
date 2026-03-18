@@ -51,6 +51,8 @@ cmd_spec() ->
               help => "Force type-checking"},
             #{name => help, short => $h, long => "-help", type => boolean, default => false,
               help => "Output help message"},
+            #{name => version, long => "-version", type => boolean, default => false,
+              help => "Display version and exit"},
             #{name => check_ast, short => $c, long => "-check-ast",
               help => "Check that all files match the AST type defined in the file given"},
             #{name => dump_raw, long => "-dump-raw", type => boolean, default => false,
@@ -120,6 +122,8 @@ cmd_spec() ->
               help => "Disable exhaustiveness checking for a function (name/arity). May be given multiple times."},
             #{name => no_redundancy, long => "-no-redundancy", action => append, default => [],
               help => "Disable redundancy checking for a function (name/arity). May be given multiple times."},
+            #{name => verbose, short => $v, long => "-verbose", type => boolean, default => false,
+              help => "Verbose output (e.g. preprocessor warnings)"},
             #{name => files, nargs => list, required => false, default => [],
               help => "Files to type check"}
         ]
@@ -138,6 +142,7 @@ parse_args(Args) ->
     end,
     Opts = #opts{
         help = maps:get(help, ArgMap),
+        version = maps:get(version, ArgMap, false),
         log_level = maps:get(log_level, ArgMap, default),
         log_file = maps:get(log_file, ArgMap, "etylizer.log"),
         dump_raw = maps:get(dump_raw, ArgMap),
@@ -165,13 +170,22 @@ parse_args(Args) ->
         no_exhaustiveness = maps:get(no_exhaustiveness, ArgMap),
         no_redundancy = maps:get(no_redundancy, ArgMap),
         files = maps:get(files, ArgMap),
-        type_overlay = maps:get(type_overlay, ArgMap, [])
+        type_overlay = maps:get(type_overlay, ArgMap, []),
+        verbose = maps:get(verbose, ArgMap, false)
     },
     if
         Opts#opts.help ->
             io:format("~ts", [argparse:help(Command, ParseOpts)]),
-            utils:quit(2, "Aborting~n");
+            utils:quit(0, "");
         true -> ok
+    end,
+    case Opts#opts.version of
+        true ->
+            ok = application:load(etylizer),
+            {ok, Vsn} = application:get_key(etylizer, vsn),
+            io:format("etylizer ~s~n", [Vsn]),
+            utils:quit(0, "");
+        false -> ok
     end,
     Opts.
 
@@ -228,6 +242,7 @@ doWork(Opts) ->
               AstPath ->
                   {Spec, Module} = ast_check:parse_spec(AstPath),
                   ParseOpts = #parse_opts{
+                      verbose = Opts#opts.verbose,
                       includes = Opts#opts.includes,
                       defines = Opts#opts.defines
                   },

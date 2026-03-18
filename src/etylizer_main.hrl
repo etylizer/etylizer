@@ -3,6 +3,7 @@
 -record(opts, {log_level = default :: log:log_level() | default,
                log_file = "etylizer.log" :: string(),
                help = false :: boolean(),
+               version = false :: boolean(),
                dump_raw = false :: boolean(),
                dump = false :: boolean(),
                dump_transformed = false :: boolean(),
@@ -27,6 +28,7 @@
                load_end = [] :: [string()],
                files = [] :: [string()],
                type_overlay = [] :: string(),
+               verbose = false :: boolean(),
                no_exhaustiveness = [] :: [string()],
                no_redundancy = [] :: [string()],
                mode = prod_mode :: opts_mode() % only used internally
