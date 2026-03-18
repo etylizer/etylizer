@@ -1003,14 +1003,7 @@ optimize_dispatched_clauses(Clauses) ->
             HasComplex = lists:any(fun(complex) -> true; (_) -> false end, PositionTypes),
             case {HasDirect, HasComplex} of
                 {true, true} ->
-                    case complex_has_catchall(Clauses, PositionTypes) of
-                        true -> Clauses;
-                        false ->
-                            case guards_ref_direct_vars(Clauses, PositionTypes) of
-                                true -> Clauses;
-                                false -> rewrite_dispatched_clauses(Clauses, PositionTypes)
-                            end
-                    end;
+                    rewrite_dispatched_clauses(Clauses, PositionTypes);
                 _ -> Clauses
             end
     end.
@@ -1033,26 +1026,6 @@ classify_positions(Clauses, Arity) ->
                 false -> complex
             end
         end, lists:seq(1, Arity)).
-
-% Check if any complex position has a catch-all pattern in some clause.
--spec complex_has_catchall([ast:fun_clause()], [direct | complex]) -> boolean().
-complex_has_catchall(Clauses, PositionTypes) ->
-    IndexedTypes = lists:zip(lists:seq(1, length(PositionTypes)), PositionTypes),
-    lists:any(
-        fun({I, complex}) ->
-            lists:any(
-                fun({fun_clause, _, Pats, _, _}) ->
-                    pat_is_catchall(lists:nth(I, Pats))
-                end, Clauses);
-           ({_, direct}) -> false
-        end, IndexedTypes).
-
--spec pat_is_catchall(ast:pat()) -> boolean().
-pat_is_catchall({var, _, {local_bind, _}}) -> true;
-pat_is_catchall({wildcard, _}) -> true;
-pat_is_catchall({record, _, _, Fields}) ->
-    lists:all(fun({record_field, _, _, Pat}) -> pat_is_catchall(Pat) end, Fields);
-pat_is_catchall(_) -> false.
 
 % Rewrite multi-clause function into single-clause with case on complex positions only.
 -spec rewrite_dispatched_clauses([ast:fun_clause()], [direct | complex]) -> [ast:fun_clause()].
@@ -1102,10 +1075,13 @@ rewrite_dispatched_clauses(Clauses, PositionTypes) ->
             {case_clause, CL, CasePat, NewGuards, NewBody}
         end, Clauses),
 
-    % Build outer single fun clause
-    OuterPats = [{var, L, {local_bind, V}} || V <- FreshVars],
-    CaseExp = {'case', L, ScrutExp, CaseClauses},
-    [{fun_clause, L, OuterPats, [], [CaseExp]}].
+    % Build outer single fun clause with a distinct location to avoid aliasing
+    % with the first case clause's location (which would confuse intersect_unmatched
+    % sublocation expansion when checking intersection type specs).
+    OuterL = case L of {loc, File, Line, _Col} -> {loc, File, Line, 0} end,
+    OuterPats = [{var, OuterL, {local_bind, V}} || V <- FreshVars],
+    CaseExp = {'case', OuterL, ScrutExp, CaseClauses},
+    [{fun_clause, OuterL, OuterPats, [], [CaseExp]}].
 
 % Substitute local variable references in AST terms.
 -spec subst_local_refs(term(), #{ast:local_varname() => ast:local_varname()}) -> term().
@@ -1125,42 +1101,6 @@ subst_local_refs(Term, _) -> Term.
 subst_local_refs_list([], _) -> [];
 subst_local_refs_list([H|T], SubstMap) ->
     [subst_local_refs(H, SubstMap) | subst_local_refs_list(T, SubstMap)].
-
-% Check if any guard in any clause references a variable from a direct position.
--spec guards_ref_direct_vars([ast:fun_clause()], [direct | complex]) -> boolean().
-guards_ref_direct_vars(Clauses, PositionTypes) ->
-    DirectIndices = [I || {I, direct} <- lists:zip(lists:seq(1, length(PositionTypes)), PositionTypes)],
-    lists:any(
-        fun({fun_clause, _, Pats, Guards, _}) ->
-            case Guards of
-                [] -> false;
-                _ ->
-                    DirectVars = sets:from_list(
-                        lists:filtermap(
-                            fun(I) ->
-                                case lists:nth(I, Pats) of
-                                    {var, _, {local_bind, V}} -> {true, V};
-                                    _ -> false
-                                end
-                            end, DirectIndices),
-                        [{version, 2}]),
-                    has_local_ref(Guards, DirectVars)
-            end
-        end, Clauses).
-
-% Walk an AST term and check if it contains any {local_ref, V} where V is in VarSet.
--spec has_local_ref(term(), sets:set(ast:local_varname())) -> boolean().
-has_local_ref({local_ref, V}, VarSet) -> sets:is_element(V, VarSet);
-has_local_ref(T, VarSet) when is_tuple(T) ->
-    has_local_ref_list(tuple_to_list(T), VarSet);
-has_local_ref([H|T], VarSet) ->
-    has_local_ref(H, VarSet) orelse has_local_ref(T, VarSet);
-has_local_ref(_, _) -> false.
-
--spec has_local_ref_list([term()], sets:set(ast:local_varname())) -> boolean().
-has_local_ref_list([], _) -> false;
-has_local_ref_list([H|T], VarSet) ->
-    has_local_ref(H, VarSet) orelse has_local_ref_list(T, VarSet).
 
 -spec trans_if_clauses(ctx(), varenv_local:t(), [ast_erl:if_clause()])
                       -> {[ast:if_clause()], varenv_local:t()}.
