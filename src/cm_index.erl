@@ -13,7 +13,7 @@
     insert/3,
     insert/4,
     insert_fun_index/5,
-    changed_functions/3,
+    changed_functions/4,
     prune/2
 ]).
 
@@ -23,8 +23,8 @@
 -include("etylizer_main.hrl").
 -include("etylizer.hrl").
 
-% Per-function hashes: {atom(), arity()} => {BodyHash, SpecHash} | {failed, SpecHash}
--type fun_index_entry() :: #{{atom(), arity()} => {string(), string()} | {failed, string()}}.
+% Per-function hashes: {atom(), arity()} => {BodyHash, SpecHash} | {failed, BodyHash, SpecHash}
+-type fun_index_entry() :: #{{atom(), arity()} => {string(), string()} | {failed, string(), string()}}.
 
 % File index entry: {FileHash, InterfaceHash, DeclsHash, FunIndex}
 -type file_index_entry() :: {string(), string(), string(), fun_index_entry()}.
@@ -43,7 +43,7 @@
 %    index()
 %}.
 
--define(INDEX_VERSION, 3).
+-define(INDEX_VERSION, 4).
 
 -spec empty_index(file:filename()) -> index().
 empty_index(RebarLockFile) ->
@@ -115,9 +115,16 @@ has_exported_interface_changed(Path, Forms, {_, Index}) ->
 
 % @doc Compute which functions in a file need rechecking.
 % Returns {all | [{atom(), arity()}], DeclsChanged :: boolean()}.
--spec changed_functions(file:filename(), cm_fun_deps:module_info(), index()) ->
+% OnlyRecheckChanged=false (default): previously-failed functions are always
+% retried, even when body and spec are unchanged. This is the right behavior
+% for batch/CI runs — a transient or context-dependent failure should not be
+% baked into the index.
+% OnlyRecheckChanged=true: only retry failed functions when body or spec
+% changed. Used by watch-mode drivers (ety-watch) where re-running an
+% unchanged failed function on every save is noise.
+-spec changed_functions(file:filename(), cm_fun_deps:module_info(), index(), boolean()) ->
     {all | [ast:fun_with_arity()], boolean()}.
-changed_functions(Path, ModInfo, {_, Index}) ->
+changed_functions(Path, ModInfo, {_, Index}, OnlyRecheckChanged) ->
     NewDeclsHash = ?assert_type(maps:get(decls_hash, ModInfo), string()),
     NewFuns = ?assert_type(maps:get(funs, ModInfo), #{cm_fun_deps:fun_id() => cm_fun_deps:fun_info()}),
     case maps:find(Path, Index) of
@@ -140,9 +147,13 @@ changed_functions(Path, ModInfo, {_, Index}) ->
                                 error ->
                                     % New function
                                     [{Name, Arity} | Acc];
-                                {ok, {failed, _}} ->
-                                    % Previously failed, needs retry
-                                    [{Name, Arity} | Acc];
+                                {ok, {failed, OldBodyHash, OldSpecHash}} ->
+                                    BodyChanged = NewBodyHash =/= OldBodyHash,
+                                    SpecChanged = NewSpecHash =/= OldSpecHash,
+                                    case {OnlyRecheckChanged, BodyChanged, SpecChanged} of
+                                        {true, false, false} -> Acc;
+                                        _ -> [{Name, Arity} | Acc]
+                                    end;
                                 {ok, {OldBodyHash, OldSpecHash}} ->
                                     BodyChanged = NewBodyHash =/= OldBodyHash,
                                     SpecChanged = NewSpecHash =/= OldSpecHash,
@@ -219,13 +230,12 @@ insert_fun_index(Path, Forms, ModInfo, FailedFuns, {DepVersions, Index}) ->
     FailedSet = sets:from_list(FailedFuns, [{version, 2}]),
     FunIndex = maps:fold(
         fun({_Mod, Name, Arity}, FunInfo, Acc) ->
+            BodyHash = ?assert_type(maps:get(body_hash, FunInfo), string()),
+            SpecHash = ?assert_type(maps:get(spec_hash, FunInfo), string()),
             case sets:is_element({Name, Arity}, FailedSet) of
                 true ->
-                    SpecHash = ?assert_type(maps:get(spec_hash, FunInfo), string()),
-                    maps:put({Name, Arity}, {failed, SpecHash}, Acc);
+                    maps:put({Name, Arity}, {failed, BodyHash, SpecHash}, Acc);
                 false ->
-                    BodyHash = ?assert_type(maps:get(body_hash, FunInfo), string()),
-                    SpecHash = ?assert_type(maps:get(spec_hash, FunInfo), string()),
                     maps:put({Name, Arity}, {BodyHash, SpecHash}, Acc)
             end
         end, maps:new(), Funs),
