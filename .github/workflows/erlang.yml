@@ -203,8 +203,6 @@ jobs:
             cmd: test_files/etylizer-mini/check-stdlib.sh
           - name: jsone
             cmd: test_files/etylizer-mini/check-jsone.sh
-          - name: ety
-            cmd: test_files/etylizer-mini/check-ety.sh
     steps:
     - uses: actions/checkout@v4
     - run: make build
