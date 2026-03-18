@@ -228,7 +228,7 @@ dump_transformed_ast(Opts) ->
         end, FunDecls)
     end, Opts#opts.files).
 
--spec doWork(#opts{}) -> [file:filename()].
+-spec doWork(#opts{}) -> cm_check:check_list().
 doWork(Opts) ->
     global_state:with_new_state(fun() ->
       ?LOG_TRACE("Initializing ETS tables"),
@@ -273,7 +273,7 @@ doWork(Opts) ->
                   ?LOG_INFO("Performing type checking"),
                   CheckList = cm_check:perform_type_checks(
                       SearchPath, cm_depgraph:all_sources(DepGraph), DepGraph, Opts),
-                  case {DepGraphOrigin, CheckList} of
+                  case {DepGraphOrigin, [F || {F, _} <- CheckList]} of
                       {cached, Changed = [_ | _]} ->
                           % bring the cached graph up to date with the changed files
                           cm_depgraph:save_depgraph(paths:depgraph_file_name(Opts), SourceList,
