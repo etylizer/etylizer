@@ -26,7 +26,11 @@
     empty/0,
     extend_symtab_with_module_list/4,
     dump_symtab/2, overlay_symtab/1,
-    get_types/1
+    get_types/1,
+    has_any_nominals/1,
+    is_nominal/2,
+    ty_has_dynamic/2,
+    ref_to_key/1
 ]).
 
 -ifdef(TEST). % for tally tests
@@ -48,13 +52,28 @@
               ops :: op_env(),
               types :: ty_env(),
               records :: record_env(),
-              modules :: mod_env()
+              modules :: mod_env(),
+              nominals :: sets:set(ty_key()),
+              % Precomputed: which named types transitively contain dynamic().
+              dynamic_types :: #{ty_key() => boolean()}
 }).
 
 -type t() :: #tab{}.
 
 -spec get_types(t()) -> ty_env().
 get_types(#tab{types = Types}) -> Types.
+
+-spec ref_to_key(ast:ty_ref()) -> ty_key().
+ref_to_key({ty_ref, M, N, A}) -> {ty_key, M, N, A};
+ref_to_key({ty_qref, M, N, A}) -> {ty_key, M, N, A}.
+
+-spec has_any_nominals(t()) -> boolean().
+has_any_nominals(Tab) ->
+    sets:size(Tab#tab.nominals) > 0.
+
+-spec is_nominal(ast:ty_ref(), t()) -> boolean().
+is_nominal(Ref, Tab) ->
+    sets:is_element(ref_to_key(Ref), Tab#tab.nominals).
 
 -spec dump_symtab(string(), t()) -> ok.
 dump_symtab(Msg, Tab) ->
@@ -119,11 +138,7 @@ lookup_ty(Ref, Loc, Tab) ->
 
 -spec find_ty(ast:ty_ref(), t()) -> t:opt(ast:ty_scheme()).
 find_ty(Ref, Tab) ->
-    TyRef = case Ref of
-                {ty_ref, M, N, A} -> {ty_key, M, N, A};
-                {ty_qref, M, N ,A} -> {ty_key, M, N, A}
-            end ,
-    maps:find(TyRef, Tab#tab.types).
+    maps:find(ref_to_key(Ref), Tab#tab.types).
 
 -spec lookup_record(atom(), ast:loc(), t()) -> records:record_ty().
 lookup_record(Name, Loc, Tab) ->
@@ -151,7 +166,7 @@ symbols_for_module(Mod, Tab) ->
         ).
 
 -spec empty() -> t().
-empty() -> #tab { funs = #{}, ops = #{}, types = #{}, records = #{}, modules = #{} }.
+empty() -> #tab { funs = #{}, ops = #{}, types = #{}, records = #{}, modules = #{}, nominals = sets:new(), dynamic_types = #{} }.
 
 -spec std_symtab(paths:search_path(), t()) -> t().
 std_symtab(SearchPath, OverlaySymtab) ->
@@ -178,12 +193,15 @@ build_std_symtab(SearchPath, OverlaySymtab) ->
         lists:foldl(fun({Name, Arity, T}, Map) -> maps:put({Name, Arity}, T, Map) end,
                     #{},
                     stdtypes:builtin_ops()),
-    Tab = #tab { funs = Funs, ops = Ops, types = #{}, records = #{}, modules = #{} },
+    Tab = #tab { funs = Funs, ops = Ops, types = #{}, records = #{}, modules = #{}, nominals = sets:new(), dynamic_types = #{} },
     ExtTab = extend_symtab_with_module_list(Tab, SearchPath, [erlang], OverlaySymtab),
     % Merge overlay types into the main symtab so they are available for type resolution
-    ExtTab2 = ExtTab#tab { types = maps:merge(ExtTab#tab.types, OverlaySymtab#tab.types) },
+    ExtTab2 = ExtTab#tab {
+        types = maps:merge(ExtTab#tab.types, OverlaySymtab#tab.types),
+        dynamic_types = maps:merge(ExtTab#tab.dynamic_types, OverlaySymtab#tab.dynamic_types)
+    },
     ?LOG_DEBUG("Done building symtab for standard library"),
-    ExtTab2.
+    update_dynamic_types(ExtTab2).
 
 -spec overlay_symtab([ast:form()]) -> t().
 overlay_symtab(OverlayForms) ->
@@ -194,18 +212,19 @@ overlay_symtab(OverlayForms) ->
             _ -> Acc
         end
     end, undefined, OverlayForms),
-    lists:foldl(fun(Form, Tab) ->
-        overlay_process_form(Form, Tab, ModuleName)
+    Tab = lists:foldl(fun(Form, Acc) ->
+        overlay_process_form(Form, Acc, ModuleName)
     end,
     empty(),
-    OverlayForms).
+    OverlayForms),
+    update_dynamic_types(Tab).
 
 -spec overlay_process_form(ast:form(), t(), atom() | undefined) -> t().
 overlay_process_form({attribute, _, spec, Name, Arity, T, _}, Tab, _ModuleName) ->
     overlay_add_spec(Name, Arity, T, Tab);
-overlay_process_form({attribute, _, type, _Visibility, {Name, TyScm = {ty_scheme, TyVars, _}}}, Tab, ModuleName) when ModuleName =/= undefined ->
+overlay_process_form({attribute, _, type, Visibility, {Name, TyScm = {ty_scheme, TyVars, _}}}, Tab, ModuleName) when ModuleName =/= undefined ->
     Arity = length(TyVars),
-    overlay_add_type(ModuleName, Name, Arity, TyScm, Tab);
+    overlay_add_type(ModuleName, Name, Arity, TyScm, Visibility, Tab);
 overlay_process_form(_, Tab, _ModuleName) -> Tab.
 
 -spec overlay_add_spec(atom(), arity(), ast:ty_scheme(), t()) -> t().
@@ -214,11 +233,15 @@ overlay_add_spec(Name, Arity, T, Tab) ->
     [Module, FunName] = string:split(atom_to_list(Name), ":"),
     Tab#tab { funs = maps:put(create_ref_tuple({qref, list_to_atom(Module)}, list_to_atom(FunName), Arity), T, Tab#tab.funs) }.
 
--spec overlay_add_type(atom(), atom(), arity(), ast:ty_scheme(), t()) -> t().
-overlay_add_type(ModuleName, Name, Arity, TyScm, Tab) ->
+-spec overlay_add_type(atom(), atom(), arity(), ast:ty_scheme(), atom(), t()) -> t().
+overlay_add_type(ModuleName, Name, Arity, TyScm, Visibility, Tab) ->
     Key = {ty_key, ModuleName, Name, Arity},
     ?LOG_DEBUG("Overlay type added: ~w/~p", Name, Arity),
-    Tab#tab { types = maps:put(Key, TyScm, Tab#tab.types) }.
+    Tab1 = Tab#tab { types = maps:put(Key, TyScm, Tab#tab.types) },
+    case Visibility of
+        nominal -> Tab1#tab { nominals = sets:add_element(Key, Tab1#tab.nominals) };
+        _ -> Tab1
+    end.
 
 -type ref() :: ref | {qref, ModuleName::atom()}.
 
@@ -252,18 +275,19 @@ extend_symtab_internal(Filename, Forms, RefType, Tab, OverlaySymtab) ->
             errors:some_error("File ~s does not exist", [Filename])
     end,
     ModuleName = ast_utils:modname_from_path(Filename),
-    lists:foldl(
+    Result = lists:foldl(
         fun(Form, AccTab) ->
             extend_process_form(Form, AccTab, RefType, ModuleName, Forms, OverlaySymtab)
         end,
         Tab#tab { modules = maps:put(ModuleName, Filename, Tab#tab.modules) },
-        Forms).
+        Forms),
+    update_dynamic_types(Result).
 
 -spec extend_process_form(ast:form(), t(), ref(), atom(), ast:forms(), t()) -> t().
 extend_process_form({attribute, _, spec, Name, Arity, T, _}, AccTab, RefType, ModuleName, Forms, OverlaySymtab) ->
     extend_add_spec(Name, Arity, T, AccTab, RefType, ModuleName, Forms, OverlaySymtab);
-extend_process_form({attribute, _, type, _, {Name, TyScm = {ty_scheme, TyVars, _}}}, AccTab, _RefType, ModuleName, _Forms, _OverlaySymtab) ->
-    extend_add_type(Name, TyScm, TyVars, ModuleName, AccTab);
+extend_process_form({attribute, _, type, Visibility, {Name, TyScm = {ty_scheme, TyVars, _}}}, AccTab, _RefType, ModuleName, _Forms, _OverlaySymtab) ->
+    extend_add_type(Name, TyScm, TyVars, ModuleName, Visibility, AccTab);
 extend_process_form({attribute, _, record, {RecordName, Fields}}, AccTab, _RefType, ModuleName, _Forms, _OverlaySymtab) ->
     extend_add_record(RecordName, Fields, ModuleName, AccTab);
 extend_process_form(_, AccTab, _RefType, _ModuleName, _Forms, _OverlaySymtab) ->
@@ -284,10 +308,15 @@ extend_add_spec(Name, Arity, T, AccTab, RefType, ModuleName, Forms, OverlaySymta
             AccTab#tab { funs = maps:put(create_ref_tuple(RefType, Name, Arity), OverlayT, AccTab#tab.funs) }
     end.
 
--spec extend_add_type(atom(), ast:ty_scheme(), [{atom(), any()}], atom(), t()) -> t().
-extend_add_type(Name, TyScm, TyVars, ModuleName, AccTab) ->
+-spec extend_add_type(atom(), ast:ty_scheme(), [{atom(), any()}], atom(), atom(), t()) -> t().
+extend_add_type(Name, TyScm, TyVars, ModuleName, Visibility, AccTab) ->
     Arity = length(TyVars),
-    AccTab#tab { types = maps:put({ty_key, ModuleName, Name, Arity}, TyScm, AccTab#tab.types) }.
+    Key = {ty_key, ModuleName, Name, Arity},
+    AccTab1 = AccTab#tab { types = maps:put(Key, TyScm, AccTab#tab.types) },
+    case Visibility of
+        nominal -> AccTab1#tab { nominals = sets:add_element(Key, AccTab1#tab.nominals) };
+        _ -> AccTab1
+    end.
 
 -spec extend_add_record(atom(), list(), atom(), t()) -> t().
 extend_add_record(RecordName, Fields, ModuleName, AccTab) ->
@@ -359,9 +388,84 @@ retrieve_forms_for_source({Kind, Src, Includes}) ->
         _ -> parse_cache:parse({extern, Includes}, Src)
     end.
 
+% @doc Checks whether a type AST contains dynamic(), either directly or inside named types.
+-spec ty_has_dynamic(ast:ty(), t()) -> boolean().
+ty_has_dynamic(Ty, Tab) ->
+    DynTypes = Tab#tab.dynamic_types,
+    Matches = utils:everything(
+        fun ({predef, dynamic}) -> {ok, true};
+            ({named, _, Ref, _}) ->
+                case maps:get(ref_to_key(Ref), DynTypes, false) of
+                    true -> {ok, true};
+                    false -> error  % descend into Args
+                end;
+            (_) -> error
+        end, Ty),
+    length(Matches) > 0.
+
+% @doc Compute dynamic_types for any types not yet checked.
+-spec update_dynamic_types(t()) -> t().
+update_dynamic_types(Tab) ->
+    AllKeys = maps:keys(Tab#tab.types),
+    Known = Tab#tab.dynamic_types,
+    NewKeys = [K || K <- AllKeys, not maps:is_key(K, Known)],
+    case NewKeys of
+        [] -> Tab;
+        _ ->
+            NewKnown = lists:foldl(
+                fun(Key, Acc) -> compute_ty_dynamic(Key, Tab, Acc, sets:new([{version, 2}])) end,
+                Known, NewKeys),
+            Tab#tab{dynamic_types = NewKnown}
+    end.
+
+% DFS with cycle detection to determine if a named type transitively contains dynamic.
+-spec compute_ty_dynamic(ty_key(), t(), #{ty_key() => boolean()}, sets:set(ty_key())) ->
+    #{ty_key() => boolean()}.
+compute_ty_dynamic(Key, Tab, Known, Visiting) ->
+    case maps:find(Key, Known) of
+        {ok, _} -> Known;
+        error ->
+            case sets:is_element(Key, Visiting) of
+                true -> maps:put(Key, false, Known);  % cycle — no dynamic on this path
+                false ->
+                    case maps:find(Key, Tab#tab.types) of
+                        {ok, {ty_scheme, _Vars, Body}} ->
+                            Visiting2 = sets:add_element(Key, Visiting),
+                            {HasDyn, Known2} = body_has_dynamic(Body, Tab, Known, Visiting2),
+                            maps:put(Key, HasDyn, Known2);
+                        error ->
+                            maps:put(Key, false, Known)
+                    end
+            end
+    end.
+
+% Check if a type body contains dynamic directly or via named type references.
+-spec body_has_dynamic(ast:ty(), t(), #{ty_key() => boolean()}, sets:set(ty_key())) ->
+    {boolean(), #{ty_key() => boolean()}}.
+body_has_dynamic(Body, Tab, Known, Visiting) ->
+    DirectMatches = utils:everything(
+        fun ({predef, dynamic}) -> {ok, true}; (_) -> error end, Body),
+    case length(DirectMatches) > 0 of
+        true -> {true, Known};
+        false ->
+            NamedRefs = utils:everything(
+                fun ({named, _, Ref, _}) -> {ok, Ref}; (_) -> error end, Body),
+            check_named_refs(NamedRefs, Tab, Known, Visiting)
+    end.
+
+-spec check_named_refs([ast:ty_ref()], t(), #{ty_key() => boolean()}, sets:set(ty_key())) ->
+    {boolean(), #{ty_key() => boolean()}}.
+check_named_refs([], _Tab, Known, _Visiting) -> {false, Known};
+check_named_refs([Ref | Rest], Tab, Known, Visiting) ->
+    Key = ref_to_key(Ref),
+    Known2 = compute_ty_dynamic(Key, Tab, Known, Visiting),
+    case maps:get(Key, Known2, false) of
+        true -> {true, Known2};
+        false -> check_named_refs(Rest, Tab, Known2, Visiting)
+    end.
+
 -ifdef(TEST).
 -spec from_types(any()) -> t().
-from_types(Types) when is_list(Types) -> (empty())#tab{types = maps:from_list(Types)};
-from_types(Types) when is_map(Types) -> (empty())#tab{types = Types}.
+from_types(Types) when is_list(Types) -> update_dynamic_types((empty())#tab{types = maps:from_list(Types)});
+from_types(Types) when is_map(Types) -> update_dynamic_types((empty())#tab{types = Types}).
 -endif.
-

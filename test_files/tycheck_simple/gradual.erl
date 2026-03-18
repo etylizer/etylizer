@@ -166,6 +166,7 @@ refine_exhaustive_04({X}) -> X.
 
 % Refine dynamic in tuple union
 -type dyn_alias() :: dynamic().
+-type dyn_nested() :: {integer(), dyn_alias()}.
 -type spec_union() :: {dyn_alias() | err}.
 
 -spec refine_union_alias(union()) -> ok.
@@ -304,3 +305,20 @@ dyn_call_eval_02(M, F, Arg) ->
 dyn_call_eval_03(M, F, Arg1, Arg2) ->
   Res = M:F(Arg1, Arg2),
   Res.
+
+% dynamic hidden behind a named type alias — the case branch with atom()
+% must NOT be reported as redundant because dyn_alias() = dynamic().
+-spec named_dyn_case_01(dyn_alias()) -> integer().
+named_dyn_case_01(X) ->
+    case X of
+        Y when is_integer(Y) -> Y;
+        _ -> 0
+    end.
+
+% dynamic hidden one level deeper — dyn_nested() = {integer(), dyn_alias()}
+-spec named_dyn_case_02(dyn_nested()) -> integer().
+named_dyn_case_02(X) ->
+    case X of
+        {N, _} when is_integer(N) -> N;
+        _ -> 0
+    end.
