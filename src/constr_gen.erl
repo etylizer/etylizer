@@ -129,6 +129,12 @@ exp_constrs(Ctx, E, T) ->
         {bc, L, _E, _Qs} -> errors:unsupported(L, "bitstrings");
         {block, L, Es} ->
             exps_constrs(Ctx, L, Es, T);
+        {'case', _L, ScrutE, [{case_clause, _, {wildcard, _}, [], [BodyE]}]}
+                when BodyE =:= ScrutE ->
+            % Maybe artifact: case E of _ -> E end (from non-match final expression
+            % in maybe blocks). Scrutinee and body are structurally identical.
+            % Type-check once with the target type.
+            exp_constrs(Ctx, BodyE, T);
         {'case', L, ScrutE, Clauses} ->
             case_constrs(Ctx, L, ScrutE, Clauses, [], T);
         {'case', L, ScrutE, Clauses, EscapeAnnotation} ->
