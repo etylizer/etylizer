@@ -760,23 +760,39 @@ receive_clause_constrs(Ctx, {case_clause, L, Pat, Guards, Exps}, T) ->
     InnerCs = sets:union([GuardCs, BodyCs, ResultCs]),
     utils:single({cdef, mk_locs("receive clause", L), VarEnv, InnerCs}).
 
+% Single-branch case expressions without binary patterns never need redundancy
+% checks: with no prior branches, a branch cannot be made unreachable, and
+% pattern-mismatch is already caught by the exhaustiveness constraint.
+% Binary patterns are excluded because the exhaustiveness check is disabled for
+% them, making the redundancy check the only safety net.
+% Assert-pattern cases (from ?assert_pattern macro) also skip redundancy: the user
+% explicitly asserts the pattern matches, so redundancy checking is wasteful.
 -spec needs_unmatched_check(list(ast:case_clause())) -> boolean().
 needs_unmatched_check(Clauses) ->
     case Clauses of
-        [{case_clause, _, Pat, [], _}] -> not is_irrefutable_pat(Pat);
+        [{case_clause, _, Pat, _, _}] -> has_bin_pat(Pat);
         _ -> true
     end.
 
-% Checks whether a pattern always matches any value. This is important for
-% match-to-case rewrites: `X = Expr` becomes `case Expr of {match, MV, X} -> MV end`.
-% The match pattern is irrefutable (two variables), so no exhaustiveness/redundancy
-% constraints (bodyCond) are needed. Without this, bodyCond would duplicate the
-% scrutiny's nested case constraints, causing a combinatorial explosion.
--spec is_irrefutable_pat(ast:pat()) -> boolean().
-is_irrefutable_pat({wildcard, _}) -> true;
-is_irrefutable_pat({var, _, _}) -> true;
-is_irrefutable_pat({match, _, P1, P2}) -> is_irrefutable_pat(P1) andalso is_irrefutable_pat(P2);
-is_irrefutable_pat(_) -> false.
+% Checks if a pattern contains a binary/bitstring sub-pattern.
+-spec has_bin_pat(ast:pat()) -> boolean().
+has_bin_pat({bin, _, _}) -> true;
+has_bin_pat({tuple, _, Ps}) -> lists:any(fun has_bin_pat/1, Ps);
+has_bin_pat({cons, _, P1, P2}) -> has_bin_pat(P1) orelse has_bin_pat(P2);
+has_bin_pat({match, _, P1, P2}) -> has_bin_pat(P1) orelse has_bin_pat(P2);
+has_bin_pat(_) -> false.
+
+% Detects the ?assert_pattern macro expansion:
+%   case Expr of __Z = Pattern -> __Z; _ -> error(exhaustiveness_violated) end
+% The last branch always calls error(exhaustiveness_violated) with that specific atom.
+-spec is_assert_pattern_case(list(ast:case_clause())) -> boolean().
+is_assert_pattern_case(Clauses) when length(Clauses) >= 2 ->
+    case lists:last(Clauses) of
+        {case_clause, _, _, [],
+         [{call, _, _, [{atom, _, exhaustiveness_violated}]}]} -> true;
+        _ -> false
+    end;
+is_assert_pattern_case(_) -> false.
 
 % Computes the redudance constraints of a case clause. The clause is redudandant iff the
 % constraints are satisfiable.
