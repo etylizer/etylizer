@@ -17,6 +17,7 @@
 
 -include("log.hrl").
 -include("etylizer_main.hrl").
+-include("etylizer.hrl").
 
 -type index() :: {
     % OTP version and hash of rebar.lock
@@ -54,7 +55,7 @@ load_index(RebarLockFile, Path, Mode) ->
             case file:consult(Path) of
                 {ok, [{etylizer_index, ?INDEX_VERSION, Index}]} ->
                     ?LOG_TRACE("Loading index from ~p", Path),
-                    Index;
+                    ?assert_type(Index, index());
                 {ok, []} ->
                     BadIndex(utils:sformat("Empty index at ~p", Path));
                 {ok, _} ->
@@ -86,7 +87,7 @@ has_file_changed(Path, {_, Index}) ->
         error ->
             true;
         {ok, {OldFileHash, _}} ->
-            {ok, Content} = file:read_file(Path),
+            {ok, Content} = ?assert_type(file:read_file(Path), {ok, binary()}),
             NewHash = utils:hash_sha1(Content),
             NewHash =/= OldFileHash
     end.
@@ -99,13 +100,13 @@ has_exported_interface_changed(Path, Forms, {_, Index}) ->
         {ok, {_, OldInterfaceHash}} ->
             Interface = cm_module_interface:extract_interface_declaration(Forms),
             ?LOG_DEBUG("Interface of ~p: ~200p", Path, Interface),
-            NewHash = utils:hash_sha1(io_lib:write(Interface)),
+            Written = ?assert_type(io_lib:write(Interface), iodata()),
+            NewHash = utils:hash_sha1(Written),
             OldInterfaceHash =/= NewHash
     end.
 
 -spec get_external_deps(file:filename()) -> {string(), string()}.
 get_external_deps(RebarLockFile) ->
-    OtpVersion = erlang:system_info(otp_release),
     RebarHash =
         case utils:hash_file(RebarLockFile) of
             {error, _} ->
@@ -118,6 +119,7 @@ get_external_deps(RebarLockFile) ->
                 end;
             H -> H
         end,
+    OtpVersion = ?assert_type(erlang:system_info(otp_release), string()),
     {OtpVersion, RebarHash}.
 
 -spec has_external_dep_changed(file:filename(), index()) -> {boolean(), index()}.
