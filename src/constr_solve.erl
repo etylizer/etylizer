@@ -77,22 +77,44 @@ has_dynamic_constr(Tab, Constrs) ->
         end,
         sets:to_list(Constrs)).
 
--spec check_redundant_branch(symtab:t(), sets:set(ast:ty_varname()), constr:subty_constrs(),
-    {ast:loc(), constr:subty_constrs()}, ok | {error, error()}) -> ok | {error, error()}.
-check_redundant_branch(_Tab, _FixedTyvars, _SubtyConstrs, _LocAndConstrs, Acc = {error, _}) -> Acc;
-check_redundant_branch(Tab, FixedTyvars, SubtyConstrs, {Loc, UnmatchedConstrs}, ok) ->
-    All = sets:union(UnmatchedConstrs, SubtyConstrs),
-    case is_satisfiable(Tab, All, FixedTyvars, "redundancy check") of
+% Nominal types present and structural check passed: check nominal compatibility.
+% Short-circuits on the common case: the flattened constraint set is a superset of every branch combination. 
+% Nominal checks are monotonic. 
+% If no conflict exists in the flattened set, no combination can have one either. 
+% Only when the flattened check finds a conflict do we enumerate combinations to rule out false positives
+% caused by mixing constraints from mutually exclusive branches.
+-spec check_nominal_after_structural(symtab:t(), constr:simp_constrs(), constr:collected_constrs()) ->
+    ok | {error, error()}.
+check_nominal_after_structural(Tab, Ds, SubtyConstrs) ->
+    case constr_solve_nominal:check_nominal_constrs(Tab, SubtyConstrs) of
+        ok -> ok;
+        {error, _} ->
+            SubtyConstrsDisj = constr_collect:collect_constrs_all_combinations(Ds),
+            ?LOG_DEBUG("Nominal conflict on flattened set, checking ~w combinations", length(SubtyConstrsDisj)),
+            constr_solve_nominal:check_nominal_combinations_only(Tab, SubtyConstrsDisj)
+    end.
+
+-spec check_redundant_branch_incr(symtab:t(), sets:set(ast:ty_varname()),
+    tally:base_sat_result(),
+    {ast:loc(), constr:collected_constrs()}, ok | {error, error()}) -> ok | {error, error()}.
+check_redundant_branch_incr(_Tab, _FixedTyvars, _BaseResult, _LocAndConstrs, Acc = {error, _}) -> Acc;
+check_redundant_branch_incr(Tab, FixedTyvars, BaseResult, {Loc, UnmatchedConstrs}, ok) ->
+    {Satisfiable, Delta} = utils:timing(fun() ->
+        tally:is_satisfiable_incremental(Tab, BaseResult, UnmatchedConstrs, FixedTyvars)
+    end),
+    case Satisfiable of
         true ->
+            ?LOG_DEBUG("Tally time (redundancy check incr): ~pms, tally successful.", Delta),
             ?LOG_DEBUG("Branch at ~s is redundant. Constraints that were added to the constraint above: ~s~nFixed: ~200p",
                 ast:format_loc(Loc),
-                pretty:render_constr(UnmatchedConstrs),
+                pretty:render_list(fun pretty:constr_simp/1, sets:to_list(UnmatchedConstrs)),
                 sets:to_list(FixedTyvars)),
             {error, {redundant_branch, Loc, ""}};
         false ->
+            ?LOG_DEBUG("Tally time (redundancy check incr): ~pms, tally finished with errors.", Delta),
             ?LOG_DEBUG("Branch at ~s is not redundant. Constraints that were added to the constraint above: ~s~nFixed: ~200p",
                 ast:format_loc(Loc),
-                pretty:render_constr(UnmatchedConstrs),
+                pretty:render_list(fun pretty:constr_simp/1, sets:to_list(UnmatchedConstrs)),
                 sets:to_list(FixedTyvars)),
             ok
     end.
@@ -119,26 +141,46 @@ check_simp_constrs(Tab, FixedTyvars, Ds, What) ->
     SubtyConstrs = constr_collect:collect_constrs_no_matching_cond(Ds),
     ?LOG_DEBUG("Checking constraints for satisfiability to type check ~s:~n~s~nFixed: ~s",
         What, pretty:render_constr(SubtyConstrs), pretty:render_set(fun pretty:atom/1, FixedTyvars)),
-    case is_satisfiable(Tab, SubtyConstrs, FixedTyvars, "satisfiability check") of
+    % Check for nominal conflicts if needed
+    NomCheck = case symtab:has_any_nominals(Tab) andalso constr_solve_nominal:has_nominal_constrs(Tab, SubtyConstrs) of
         true ->
-            % check for redundant branches
-            ReduDs = constr_collect:collect_matching_cond_constrs(Ds),
-            ?LOG_DEBUG("Constraints are satisfiable, now checking ~w branches for redundancy",
-                length(ReduDs)),
-            case has_dynamic_constr(Tab, SubtyConstrs) of
-                true ->
-                    ?LOG_DEBUG("Skipping all redundancy checks (dynamic() found in constraints)"),
-                    ok;
-                false ->
-                    lists:foldl(
-                        fun (LocAndConstrs, Acc) ->
-                            check_redundant_branch(Tab, FixedTyvars, SubtyConstrs, LocAndConstrs, Acc)
-                        end,
-                        ok,
-                        ReduDs)
-            end;
+            check_nominal_after_structural(Tab, Ds, SubtyConstrs);
         false ->
-            locate_unsat_error(Tab, FixedTyvars, Ds)
+            ok
+    end,
+    case NomCheck of
+        {error, _} = NomErr -> NomErr;
+        ok ->
+            ReduDs = constr_collect:collect_matching_cond_constrs(Ds),
+            case ReduDs of
+                [] ->
+                    % No branches to check for redundancy, just check satisfiability.
+                    case is_satisfiable(Tab, SubtyConstrs, FixedTyvars, "satisfiability check") of
+                        true -> ok;
+                        false -> locate_unsat_error(Tab, FixedTyvars, Ds)
+                    end;
+                _ ->
+                    % Use base result approach: compute solutions once, reuse for redundancy checks.
+                    case tally:is_satisfiable_base(Tab, SubtyConstrs, FixedTyvars) of
+                        {true, BaseResult} ->
+                            ?LOG_DEBUG("Constraints are satisfiable, now checking ~w branches for redundancy (incremental)",
+                                length(ReduDs)),
+                            case has_dynamic_constr(Tab, SubtyConstrs) of
+                                true ->
+                                    ?LOG_DEBUG("Skipping all redundancy checks (dynamic() found in constraints)"),
+                                    ok;
+                                false ->
+                                    lists:foldl(
+                                        fun (LocAndConstrs, Acc) ->
+                                            check_redundant_branch_incr(Tab, FixedTyvars, BaseResult, LocAndConstrs, Acc)
+                                        end,
+                                        ok,
+                                        ReduDs)
+                            end;
+                        {false, _} ->
+                            locate_unsat_error(Tab, FixedTyvars, Ds)
+                    end
+            end
     end.
 
 % search_failing_prefix(L, F, Pred, Acc).
