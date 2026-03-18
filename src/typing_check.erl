@@ -17,37 +17,43 @@
 -include("typing.hrl").
 
 % Checks all functions against their specs, only print a report.
+% Returns the list of functions that failed type checking.
 -spec check_all_report(
         ctx(), string(), symtab:fun_env(), [{ast:fun_decl(), ast:ty_scheme()}]
-       ) -> ok.
+       ) -> [{atom(), arity()}].
 check_all_report(Ctx, FileName, Env, Decls) ->
     ?LOG_NOTE("Checking ~w functions in ~s against their specs", length(Decls), FileName),
     ExtSymtab = symtab:extend_symtab_with_fun_env(Env, Ctx#ctx.symtab),
     ExtCtx = Ctx#ctx { symtab = ExtSymtab },
     F = fun(FN) -> filename:basename(filename:rootname(FN)) end,
-    lists:foreach(
-        fun({Decl, Ty}) -> 
+    lists:filtermap(
+        fun({Decl, Ty}) ->
             {function, _, Name, Arity, _} = Decl,
             T0 = erlang:system_time(millisecond),
             try check_report(ExtCtx, Decl, Ty) of
-                success -> 
-                    io:format(user,"Ok: ~s:~w/~w (~p ms)~n", [F(FileName), Name, Arity, ?TIME(T0)]);
-                timeout -> 
-                    io:format(user,"Timeout: ~s:~w/~w (~p ms)~n", [F(FileName), Name, Arity, ?TIME(T0)])
-            catch 
-                throw:{etylizer, ty_error, Msg} -> 
-                    io:format(user,"Error: ~s:~w/~w (~p ms)~n  ~s~n", [F(FileName), Name, Arity, ?TIME(T0), Msg]);
-                throw:{etylizer, unsupported, Msg} -> 
-                    io:format(user,"Unsupported: ~s:~w/~w~n  ~s~n", [F(FileName), Name, Arity, Msg]);
+                success ->
+                    io:format(user,"Ok: ~s:~w/~w (~p ms)~n", [F(FileName), Name, Arity, ?TIME(T0)]),
+                    false;
+                timeout ->
+                    io:format(user,"Timeout: ~s:~w/~w (~p ms)~n", [F(FileName), Name, Arity, ?TIME(T0)]),
+                    {true, {Name, Arity}}
+            catch
+                throw:{etylizer, ty_error, Msg} ->
+                    io:format(user,"Error: ~s:~w/~w (~p ms)~n  ~s~n", [F(FileName), Name, Arity, ?TIME(T0), Msg]),
+                    {true, {Name, Arity}};
+                throw:{etylizer, unsupported, Msg} ->
+                    io:format(user,"Unsupported: ~s:~w/~w~n  ~s~n", [F(FileName), Name, Arity, Msg]),
+                    {true, {Name, Arity}};
                 throw:{etylizer, Type, _Msg} ->
-                    io:format(user,"Error: (~p) ~s:~w/~w (~p ms)~n", [Type, F(FileName), Name, Arity, ?TIME(T0)]);
+                    io:format(user,"Error: (~p) ~s:~w/~w (~p ms)~n", [Type, F(FileName), Name, Arity, ?TIME(T0)]),
+                    {true, {Name, Arity}};
                 _:T ->
-                    io:format(user,"Other: (~p) ~s:~w/~w (~p ms)~n", [{T}, F(FileName), Name, Arity, ?TIME(T0)])
+                    io:format(user,"Other: (~p) ~s:~w/~w (~p ms)~n", [{T}, F(FileName), Name, Arity, ?TIME(T0)]),
+                    {true, {Name, Arity}}
             end
         end,
         Decls
-    ),
-    ok.
+    ).
 
 % Checks a function against its spec, skips timeouts and does not report errors.
 -spec check_report(ctx(), ast:fun_decl(), ast:ty_scheme()) -> success | timeout.
