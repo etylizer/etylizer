@@ -463,7 +463,7 @@ case_constrs(Ctx, L, ScrutE, Clauses, EscapeAnnotation, T) ->
     Alpha = fresh_tyvar(Ctx),
     % Reset disable flags for inner case expressions (only applies to top-level fun clauses)
     InnerCtx = Ctx#ctx{ disable_exhaustiveness = false, disable_redundancy = false },
-    Cs0 = exp_constrs(InnerCtx, ScrutE, Alpha),
+    Cs0 = scrut_constrs_compact(InnerCtx, ScrutE, Alpha),
     NeedsUnmatchedCheck = case Ctx#ctx.disable_redundancy of
         true -> false;
         false -> needs_unmatched_check(Clauses)
@@ -792,7 +792,33 @@ is_irrefutable_pat(_) -> false.
     constr:constr_case_branch_cond().
 case_clause_unmatched_constraints(Ctx, LowersBefore, Upper, Scrut) ->
     Ui = ast_lib:mk_union([ast_lib:mk_negation(Upper) | LowersBefore]),
-    exp_constrs(Ctx, Scrut, Ui).
+    scrut_constrs_compact(Ctx, Scrut, Ui).
+
+% Like exp_constrs but optimized for scrutiny expressions that are tuples of
+% variables. For each variable element, directly materializes it into the tuple
+% type, skipping the intermediate fresh type variable that exp_constrs creates.
+% Falls back to exp_constrs for non-tuple or non-variable-only scrutinies.
+-spec scrut_constrs_compact(ctx(), ast:exp(), ast:ty()) -> constr:constrs().
+scrut_constrs_compact(Ctx, {tuple, L, Args}, T) ->
+    case lists:all(fun({var, _, _}) -> true; (_) -> false end, Args) of
+        true ->
+            {Tys, Cs} = lists:foldr(
+                fun({var, VL, AnyRef}, {AccTys, AccCs}) ->
+                    AlphaName = fresh_ty_varname(Ctx),
+                    Msg = utils:sformat("var ~s", pretty:render(pretty:ref(AnyRef))),
+                    Locs = mk_locs(Msg, VL),
+                    Mater = {cvarmater, Locs, AnyRef, AlphaName},
+                    {[{var, AlphaName} | AccTys], sets:add_element(Mater, AccCs)}
+                end,
+                {[], sets:new([{version, 2}])},
+                Args),
+            TupleC = {csubty, mk_locs("tuple constructor", L), {tuple, Tys}, T},
+            sets:add_element(TupleC, Cs);
+        false ->
+            exp_constrs(Ctx, {tuple, L, Args}, T)
+    end;
+scrut_constrs_compact(Ctx, Scrut, T) ->
+    exp_constrs(Ctx, Scrut, T).
 
 % Parameters:
 %   ctx(): context
