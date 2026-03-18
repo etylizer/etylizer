@@ -5,12 +5,8 @@
 -export([
     compute_search_path/1,
     generate_input_file_list/1,
-    depgraph_file_name/1,
-    fun_depgraph_file_name/1,
-    std_symtab_file_name/1,
     index_file_name/1,
     find_module_path/2,
-    clear_module_cache/0,
     rebar_lock_file/1,
     rebar_config_from_lock_file/1
 ]).
@@ -214,21 +210,6 @@ index_file_name(Opts) ->
     D = etylizer_dir(Opts),
     filename:join(D, "index").
 
--spec depgraph_file_name(cmd_opts()) -> file:filename().
-depgraph_file_name(Opts) ->
-    D = etylizer_dir(Opts),
-    filename:join(D, "depgraph").
-
--spec fun_depgraph_file_name(cmd_opts()) -> file:filename().
-fun_depgraph_file_name(Opts) ->
-    D = etylizer_dir(Opts),
-    filename:join(D, "fun_depgraph").
-
--spec std_symtab_file_name(cmd_opts()) -> file:filename().
-std_symtab_file_name(Opts) ->
-    D = etylizer_dir(Opts),
-    filename:join(D, "std_symtab.config").
-
 -spec rebar_lock_file(cmd_opts()) -> file:filename().
 rebar_lock_file(Opts) ->
     RootDir = root_dir(Opts),
@@ -240,27 +221,18 @@ rebar_config_from_lock_file(F) ->
 
 -define(TABLE, mod_table).
 
-% @doc Clear the module path cache. Must be called between independent runs
-% to avoid stale path entries (e.g., paths pointing to deleted temp directories).
--spec clear_module_cache() -> ok.
-clear_module_cache() ->
-    case ets:whereis(?TABLE) of
-        undefined -> ok;
-        _ -> ets:delete(?TABLE)
-    end,
-    ok.
-
 -spec find_module_path(search_path(), atom()) -> search_path_entry().
 find_module_path(SearchPath, Module) ->
     case ets:whereis(?TABLE) of
         undefined -> ets:new(?TABLE, [set, named_table, {keypos, 1}]);
         _ -> ok
     end,
-    case ets:lookup(?TABLE, Module) of
+    Key = {SearchPath, Module},
+    case ets:lookup(?TABLE, Key) of
         [{_, Result}] -> ?assert_type(Result, search_path_entry());
         [] ->
             X = really_find_module_path(SearchPath, Module),
-            true = ets:insert(?TABLE, {Module, X}),
+            true = ets:insert(?TABLE, {Key, X}),
             X;
         Y -> ?ABORT("Unexpected entry in mod_table: ~p", Y)
     end.

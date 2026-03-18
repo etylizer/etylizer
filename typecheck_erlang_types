@@ -108,6 +108,7 @@ for file in "${files[@]}"; do
         -I ./erlang_types/dnf \
         -l error \
         --type-overlay overlays/etylizer_overlay.erl \
+        -f \
         --no-deps "$TYPE_LIB""$file" \
         $TO \
         -i 'ty_parser:convert/3' \
