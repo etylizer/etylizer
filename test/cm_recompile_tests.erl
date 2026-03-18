@@ -56,17 +56,18 @@ get_files_with_version(Dir, Version) ->
         end,
         Files).
 
--type tycheck_mode() :: tycheck | dont_tycheck.
+-type tycheck_mode() :: tycheck | dont_tycheck | #opts{}.
 
 -spec run_typechecker(file:name(), tycheck_mode()) -> [file:name()].
 run_typechecker(SrcDir, Mode) ->
-    Opts = #opts{
+    Opts = case Mode of
+               #opts{} -> Mode;
+               _ -> #opts{no_type_checking = (Mode =:= dont_tycheck)}
+           end,
+    etylizer_main:doWork(Opts#opts{
         files = [filename:join(SrcDir, "main.erl")],
-        project_root = SrcDir,
-        mode = test_mode,
-        no_type_checking = (Mode =:= dont_tycheck)
-    },
-    etylizer_main:doWork(Opts).
+        project_root = SrcDir
+    }).
 
 -spec test_recompile_version(
     file:name(), file:name(), integer(), string(), [string()] | type_error, tycheck_mode()
@@ -120,18 +121,21 @@ test_recompile_dont_tycheck(Dir, VersionMap) ->
 
 -spec test_recompile(file:name(), changes_map(), tycheck_mode()) -> ok.
 test_recompile(Dir, VersionMap, Mode) ->
-    Versions = lists:sort(maps:keys(VersionMap)),
+    test_runs(Dir, [{V, maps:get(V, VersionMap), Mode} || V <- lists:sort(maps:keys(VersionMap))]).
+
+-spec test_runs(file:name(), [{integer(), [string()] | type_error, tycheck_mode()}]) -> ok.
+test_runs(Dir, Runs) ->
     tmp:with_tmp_dir(Dir, "root", delete,
         fun(TargetDir) ->
             lists:foreach(
-                fun(V) ->
+                fun({V, Expected, Mode}) ->
                     test_recompile_version(TargetDir,
                         filename:join("test_files/recompilation/", Dir),
                         V,
                         "rebar.lock_1",
-                        maps:get(V, VersionMap),
+                        Expected,
                         Mode)
-                end, Versions)
+                end, Runs)
         end).
 
 test_rebar_changes() ->
@@ -188,6 +192,21 @@ file_changes_test_() ->
      ?_timeout(?_test(test_recompile("transitive-reference",
         #{1 => ["main.erl", "m2.erl", "m3.erl", "m4.erl"],
           2 => ["main.erl", "m2.erl", "m3.erl", "m4.erl"]}))),
-     ?_timeout(?_test(test_rebar_changes()))
+     ?_timeout(?_test(test_rebar_changes())),
+     % other options: everything is checked again
+     ?_timeout(?_test(test_runs("simple",
+        [{1, ["main.erl"], tycheck}, {1, [], tycheck},
+         {1, ["main.erl"], #opts{no_exhaustiveness = ["main/0"]}},
+         {1, [], #opts{no_exhaustiveness = ["main/0"]}}]))),
+     % files recorded without type checking are checked again
+     ?_timeout(?_test(test_runs("file_changes",
+        [{1, ["bar.erl", "foo.erl", "main.erl"], tycheck},
+         {2, ["bar.erl", "foo.erl", "main.erl"], dont_tycheck},
+         {2, ["bar.erl", "foo.erl", "main.erl"], tycheck}]))),
+     % other defines also rebuild the dependency graph
+     ?_timeout(?_test(test_runs("options_change",
+        [{1, ["foo.erl", "main.erl"], tycheck},
+         {2, ["main.erl"], #opts{defines = [{'V', "2"}]}},
+         {3, ["foo.erl", "main.erl"], #opts{defines = [{'V', "2"}]}}])))
     ].
 

@@ -13,7 +13,6 @@ check(File, Assertions) ->
     Opts = #opts{
         files = [?DIR ++ File],
         project_root = ?DIR,
-        mode = test_mode,
         force = true,
         assertions = case Assertions of undefined -> undefined; _ -> ?DIR ++ Assertions end
     },

@@ -13,7 +13,6 @@ check(File, Overlays) ->
     Opts = #opts{
         files = [?DIR ++ File],
         project_root = ?DIR,
-        mode = test_mode,
         force = true,
         type_overlay = [?DIR ++ O || O <- Overlays]
     },
