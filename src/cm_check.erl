@@ -52,7 +52,9 @@ check_list(SourceList, DepGraph, Opts) ->
                 [{F, all} || F <- SourceList];
             false ->
                 Entries = lists:flatmap(
-                    fun(Path) -> check_entries(Path, Index, DepGraph) end, SourceList),
+                    fun(Path) ->
+                        check_entries(Path, Index, DepGraph, Opts#opts.only_recheck_changed)
+                    end, SourceList),
                 [{F, whole_file_if_inferring(Filter, Opts)}
                  || {F, Filter} <- merge_check_entries(Entries), lists:member(F, SourceList)]
         end,
@@ -65,13 +67,14 @@ whole_file_if_inferring([_ | _], #opts{gradual_typing_mode = infer}) -> all;
 whole_file_if_inferring(Filter, _) -> Filter.
 
 % What has to be checked because of the given file
--spec check_entries(file:filename(), cm_index:index(), cm_depgraph:dep_graph()) -> check_list().
-check_entries(Path, Index, DepGraph) ->
+-spec check_entries(file:filename(), cm_index:index(), cm_depgraph:dep_graph(), boolean()) ->
+    check_list().
+check_entries(Path, Index, DepGraph, OnlyRecheckChanged) ->
     case cm_index:has_file_changed(Path, Index) of
         false -> [];
         true ->
             Forms = parse_cache:parse(intern, Path),
-            case cm_index:changed_functions(Path, Forms, Index) of
+            case cm_index:changed_functions(Path, Forms, Index, OnlyRecheckChanged) of
                 all ->
                     % The files using the module only depend on its exported interface
                     Deps = case cm_index:has_exported_interface_changed(Path, Forms, Index) of

@@ -10,7 +10,7 @@
     has_file_changed/2,
     has_exported_interface_changed/3,
     has_external_dep_changed/2,
-    changed_functions/3,
+    changed_functions/4,
     callers/2,
     insert/6
 ]).
@@ -121,16 +121,27 @@ analyze(Path, Forms) ->
 % The functions of a file to recheck: all of them if the file is new or its
 % declarations changed. Otherwise the functions that are new, changed or failed,
 % and those among them with a new or changed spec.
--spec changed_functions(file:filename(), ast:forms(), index()) ->
+% OnlyRecheckChanged=false (default): previously-failed functions are always
+% retried, even when body and spec are unchanged. This is the right behavior
+% for batch/CI runs — a transient or context-dependent failure should not be
+% baked into the index.
+% OnlyRecheckChanged=true: only retry failed functions when body or spec
+% changed. Used by watch-mode drivers (ety-watch) where re-running an
+% unchanged failed function on every save is noise.
+-spec changed_functions(file:filename(), ast:forms(), index(), boolean()) ->
     all | {[ast:fun_with_arity()], [ast:fun_with_arity()]}.
-changed_functions(Path, Forms, {_, Index}) ->
+changed_functions(Path, Forms, {_, Index}, OnlyRecheckChanged) ->
     #module_info{decls_hash = DeclsHash, funs = Funs} = analyze(Path, Forms),
     case maps:find(Path, Index) of
         {ok, {_, _, #module_info{decls_hash = OldDeclsHash, funs = OldFuns}, Failed}}
                 when OldDeclsHash =:= DeclsHash ->
             New = maps:to_list(Funs),
+            Retry = case OnlyRecheckChanged of
+                true -> [];
+                false -> Failed
+            end,
             Changed = [F || {F, Info} <- New,
-                            lists:member(F, Failed) orelse maps:find(F, OldFuns) =/= {ok, Info}],
+                            lists:member(F, Retry) orelse maps:find(F, OldFuns) =/= {ok, Info}],
             SpecChanged = [F || {F, #fun_info{spec_hash = SpecHash}} <- New,
                                 old_spec_hash(F, OldFuns) =/= SpecHash],
             {Changed, SpecChanged};
