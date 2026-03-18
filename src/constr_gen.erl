@@ -112,6 +112,40 @@ exps_constrs(Ctx, L, [E | Rest], T) ->
     RestCs = exps_constrs(Ctx, L, Rest, T),
     sets:union(Cs, RestCs).
 
+% Like exp_constrs, but returns the TYPE of the expression directly instead of
+% constraining it against a target T. For simple expressions (variables, literals),
+% this avoids creating an intermediate fresh type variable. Falls back to creating
+% a fresh variable for complex expressions.
+-spec exp_constrs_tyof(ctx(), ast:exp()) -> {ast:ty(), constr:constrs()}.
+exp_constrs_tyof(Ctx, E) ->
+    case E of
+        {'atom', _L, A} -> {{singleton, A}, sets:new([{version, 2}])};
+        {'char', _L, C} -> {{singleton, C}, sets:new([{version, 2}])};
+        {'integer', _L, I} -> {{singleton, I}, sets:new([{version, 2}])};
+        {'float', _L, _F} -> {{predef, float}, sets:new([{version, 2}])};
+        {nil, _L} -> {{empty_list}, sets:new([{version, 2}])};
+        {map_create, _L, []} -> {{map, []}, sets:new([{version, 2}])};
+        {tuple, _L, Es} ->
+            {Cs, ElemTys} = lists:foldr(
+                fun(Elem, {AccCs, AccTys}) ->
+                    {Ty, ECs} = exp_constrs_tyof(Ctx, Elem),
+                    {sets:union(AccCs, ECs), [Ty | AccTys]}
+                end,
+                {sets:new([{version, 2}]), []},
+                Es),
+            {{tuple, ElemTys}, Cs};
+        {var, L, AnyRef} ->
+            AlphaName = fresh_ty_varname(Ctx),
+            Msg = utils:sformat("var ~s", pretty:render(pretty:ref(AnyRef))),
+            Locs = mk_locs(Msg, L),
+            Mater = {cvarmater, Locs, AnyRef, AlphaName},
+            {{var, AlphaName}, utils:single(Mater)};
+        _ ->
+            Alpha = fresh_tyvar(Ctx),
+            Cs = exp_constrs(Ctx, E, Alpha),
+            {Alpha, Cs}
+    end.
+
 -spec exp_constrs(ctx(), ast:exp(), ast:ty()) -> constr:constrs().
 exp_constrs(Ctx, E, T) ->
     case E of
@@ -187,12 +221,10 @@ exp_constrs(Ctx, E, T) ->
 
             ResultCs;
         {cons, L, Head, Tail} ->
-            Alpha = fresh_tyvar(Ctx),
-            C1 = exp_constrs(Ctx, Head, Alpha),
-            Beta = fresh_tyvar(Ctx),
-            C2 = exp_constrs(Ctx, Tail, Beta),
+            {HeadTy, C1} = exp_constrs_tyof(Ctx, Head),
+            {TailTy, C2} = exp_constrs_tyof(Ctx, Tail),
             Cs = sets:union(C1, C2),
-            ListC = {csubty, mk_locs("cons constructor", L), {cons, Alpha, Beta}, T},
+            ListC = {csubty, mk_locs("cons constructor", L), {cons, HeadTy, TailTy}, T},
             sets:add_element(ListC, Cs);
         {fun_ref, L, GlobalRef} ->
             utils:single({cvar, mk_locs("function ref", L), GlobalRef, T});
@@ -290,10 +322,8 @@ exp_constrs(Ctx, E, T) ->
         {nil, L} ->
             utils:single({csubty, mk_locs("result of nil", L), {empty_list}, T});
         {op, L, Op, Lhs, Rhs} ->
-            Alpha1 = fresh_tyvar(Ctx),
-            Cs1 = exp_constrs(Ctx, Lhs, Alpha1),
-            Alpha2 = fresh_tyvar(Ctx),
-            Cs2 = exp_constrs(Ctx, Rhs, Alpha2),
+            {Alpha1, Cs1} = exp_constrs_tyof(Ctx, Lhs),
+            {Alpha2, Cs2} = exp_constrs_tyof(Ctx, Rhs),
             Beta = fresh_tyvar(Ctx),
             MsgTy = utils:sformat("type of op ~w", Op),
             MsgRes = utils:sformat("result of op ~w", Op),
@@ -302,8 +332,7 @@ exp_constrs(Ctx, E, T) ->
                       {csubty, mk_locs(MsgRes, L), Beta, T}], [{version, 2}]),
             sets:union([Cs1, Cs2, OpCs]);
         {op, L, Op, Arg} ->
-            Alpha = fresh_tyvar(Ctx),
-            ArgCs = exp_constrs(Ctx, Arg, Alpha),
+            {Alpha, ArgCs} = exp_constrs_tyof(Ctx, Arg),
             Beta = fresh_tyvar(Ctx),
             MsgTy = utils:sformat("type of op ~w", Op),
             MsgRes = utils:sformat("result of op ~w", Op),
@@ -415,9 +444,8 @@ exp_constrs(Ctx, E, T) ->
             {Tys, Cs} =
                 lists:foldr(
                   fun(Arg, {Tys, Cs}) ->
-                          Alpha = fresh_tyvar(Ctx),
-                          ThisCs = exp_constrs(Ctx, Arg, Alpha),
-                          {[Alpha | Tys], sets:union(Cs, ThisCs)}
+                          {ArgTy, ThisCs} = exp_constrs_tyof(Ctx, Arg),
+                          {[ArgTy | Tys], sets:union(Cs, ThisCs)}
                   end,
                   {[], sets:new([{version, 2}])},
                   Args),
@@ -618,9 +646,8 @@ gen_funcall_constrs(Ctx, L, FunExp, Args, T) ->
     {ArgCs, ArgTys} =
         lists:foldr(
             fun(ArgExp, {AccCs, AccTys}) ->
-                    Alpha = fresh_tyvar(Ctx),
-                    Cs = exp_constrs(Ctx, ArgExp, Alpha),
-                    {sets:union(AccCs, Cs), [Alpha | AccTys]}
+                    {Ty, Cs} = exp_constrs_tyof(Ctx, ArgExp),
+                    {sets:union(AccCs, Cs), [Ty | AccTys]}
             end,
             {sets:new(), []},
             Args),
