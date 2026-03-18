@@ -247,7 +247,8 @@ tyerror_msg(Kind) ->
     case Kind of
         tyerror -> "expression failed to type check";
         redundant_branch -> "this branch never matches";
-        non_exhaustive_case -> "not all cases are covered"
+        non_exhaustive_case -> "not all cases are covered";
+        nominal_incompatible -> "incompatible nominal types"
     end.
 
 -spec report_tyerror(string(), constr_error_locs:constr_error_kind(), ast:loc(), string()) -> no_return().
