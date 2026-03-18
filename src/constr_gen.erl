@@ -872,7 +872,14 @@ case_clause_constrs(Ctx, TyScrut, Scrut, NeedsUnmatchedCheck, LowersBefore,
     {case_clause, L, Pat, Guards, Exps}, ExpectedTy) ->
     {BodyLower, BodyUpper, BodyEnvCs, BodyEnv} =
         case_clause_env(Ctx, L, TyScrut, Scrut, Pat, Guards),
-    {_, _, GuardEnvCs, GuardEnv} = case_clause_env(Ctx, L, TyScrut, Scrut, Pat, []),
+    % skip generating guard env vars to reduce the variable count when guards are empty
+    {GuardEnvCs, GuardEnv} =
+        case Guards of
+            [] -> {sets:new(), #{}};
+            _ ->
+                {_, _, GCs, GEnv} = case_clause_env(Ctx, L, TyScrut, Scrut, Pat, []),
+                {GCs, GEnv}
+        end,
     ?LOG_TRACE("TyScrut=~s, Scrut=~w, GuardEnv=~s, GuardEnvCs=~s, BodyEnv=~s, BodyEnvCs=~s",
         pretty:render_ty(TyScrut),
         Scrut,
