@@ -814,7 +814,7 @@ case_clause_unmatched_constraints(Ctx, LowersBefore, Upper, Scrut) ->
     ast:escape_annotation()
 ) -> {ast:ty(), ast:ty(), constr:constrs(), constr:constr_case_branch()}.
 case_clause_constrs(Ctx, TyScrut, Scrut, NeedsUnmatchedCheck, LowersBefore,
-    {case_clause, L, Pat, Guards, Exps}, ExpectedTy, EscapeAnnotation) ->
+    {case_clause, L, Pat, Guards, Exps}, ExpectedTy, _EscapeAnnotation) ->
     {BodyLower, BodyUpper, BodyEnvCs, BodyEnv} =
         case_clause_env(Ctx, L, TyScrut, Scrut, Pat, Guards),
     {_, _, GuardEnvCs, GuardEnv} = case_clause_env(Ctx, L, TyScrut, Scrut, Pat, []),
@@ -826,21 +826,9 @@ case_clause_constrs(Ctx, TyScrut, Scrut, NeedsUnmatchedCheck, LowersBefore,
         pretty:render_mono_env(BodyEnv),
         pretty:render_constr(BodyEnvCs)
     ),
-    Beta = fresh_tyvar(Ctx),
-    BodyCs = exps_constrs(Ctx, L, Exps, Beta),
-    % Add escape constraints: for each escaping variable, materialize its type
-    % in this branch and flow it into the shared escape type variable.
-    EscCs = lists:foldl(
-        fun({VarName, EscTyVar}, Acc) ->
-            EscAlpha = fresh_ty_varname(Ctx),
-            Locs = mk_locs("escape var", L),
-            Mater = {cvarmater, Locs, {local_ref, VarName}, EscAlpha},
-            Link = {csubty, Locs, {var, EscAlpha}, {var, EscTyVar}},
-            sets:add_element(Link, sets:add_element(Mater, Acc))
-        end,
-        sets:new(),
-        EscapeAnnotation),
-    InnerCs = sets:union(BodyCs, EscCs),
+    % Pass ExpectedTy directly as the target for the body expression,
+    % eliminating the intermediate Beta variable and its result constraint.
+    InnerCs = exps_constrs(Ctx, L, Exps, ExpectedTy),
 
     CGuards =
         sets:union(
@@ -856,15 +844,8 @@ case_clause_constrs(Ctx, TyScrut, Scrut, NeedsUnmatchedCheck, LowersBefore,
                 case_clause_unmatched_constraints(Ctx, LowersBefore, BodyUpper, Scrut);
             true -> none
         end,
-    RL =
-        case Exps of
-            % [] -> L; % dialyzer says this can't happen
-            [E | _] -> ast:loc_exp(E)
-        end,
-    ResultLocs = mk_locs("case result", RL),
-    ResultCs = utils:single({csubty, ResultLocs, Beta, ExpectedTy}),
     Payload = constr:mk_case_branch_payload(
-        {GuardEnv, CGuards}, {BodyEnv, InnerCs}, RedundancyCs, ResultCs),
+        {GuardEnv, CGuards}, {BodyEnv, InnerCs}, RedundancyCs, sets:new([{version, 2}])),
     ConstrBody = {ccase_branch, mk_locs("case branch", L), Payload},
     AllCs = sets:union([BodyEnvCs, GuardEnvCs]),
     {BodyLower, BodyUpper, AllCs, ConstrBody}.
