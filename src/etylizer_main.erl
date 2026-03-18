@@ -119,6 +119,10 @@ cmd_spec() ->
               help => "Disable exhaustiveness checking for a function (name/arity). May be given multiple times."},
             #{name => no_redundancy, long => "-no-redundancy", action => append, default => [],
               help => "Disable redundancy checking for a function (name/arity). May be given multiple times."},
+            #{name => only_recheck_changed, long => "-only-recheck-changed", type => boolean, default => false,
+              help => "Skip rechecking previously-failed functions whose body and spec are unchanged. "
+                      "Default behavior is to always retry failed functions. Intended for watch-mode "
+                      "drivers (e.g. ety-watch) where re-running an unchanged failed function is noise."},
             #{name => verbose, short => $v, long => "-verbose", type => boolean, default => false,
               help => "Verbose output (e.g. preprocessor warnings)"},
             #{name => metrics_file, long => "-metrics-file",
@@ -167,6 +171,7 @@ parse_args(Args) ->
         load_end = maps:get(load_end, ArgMap),
         no_exhaustiveness = maps:get(no_exhaustiveness, ArgMap),
         no_redundancy = maps:get(no_redundancy, ArgMap),
+        only_recheck_changed = maps:get(only_recheck_changed, ArgMap),
         files = maps:get(files, ArgMap),
         type_overlay = maps:get(type_overlay, ArgMap, []),
         verbose = maps:get(verbose, ArgMap, false),
