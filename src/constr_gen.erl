@@ -653,7 +653,17 @@ var_funcall_constrs(Ctx, L, Var, Args, T) ->
 funcall_constrs_with_tyscm(Ctx, L, Var, TyScm, Args, T) ->
     {Mono, _, _} = typing_common:mono_ty(L, TyScm, none, fun(_, none) -> {fresh_ty_varname(Ctx), none} end, Ctx#ctx.symtab),
     case Mono of
-        {fun_full, ArgTys, ResTy} when length(Args) =:= length(ArgTys) ->
+        {fun_full, ArgTys0, ResTy} when length(Args) =:= length(ArgTys0) ->
+            % When the return type is concrete (no poly vars), parameter poly vars
+            % are dead: they don't appear in the return type and can't flow to the
+            % caller. Replace them with any() to eliminate wasted variables.
+            % This commonly helps with error/1, throw/1, exit/1 (return no_return()).
+            ResTyUnfolded = ast_utils:unfold_ty(Ctx#ctx.symtab, ResTy),
+            ArgTys = case res_ty_is_concrete(ResTyUnfolded) of
+                true ->
+                    [case Ty of {var, _} -> {predef, any}; _ -> Ty end || Ty <- ArgTys0];
+                false -> ArgTys0
+            end,
             FunName = pretty:render_var(Var),
             ResConstr =
                 {csubty,
@@ -667,12 +677,41 @@ funcall_constrs_with_tyscm(Ctx, L, Var, TyScm, Args, T) ->
                 end,
                 utils:single(ResConstr),
                 lists:zip(Args, ArgTys)),
-            ?LOG_DEBUG("Generating specialized constraints for call of fun ~s with type ~s (type scheme: ~s)",
-                FunName, pretty:render_ty(Mono), pretty:render_tyscheme(TyScm)),
             Res;
         _ ->
             gen_funcall_constrs(Ctx, L, Var, Args, T)
     end.
+
+% Checks if a return type is concrete (no type variables).
+% Used to determine if parameter poly vars are dead and can be replaced.
+% Descends into compound types (tuples, lists, unions, etc.) to detect
+% cases like {ok, integer()} or [atom()] as concrete.
+% Named types should be unfolded via ast_utils:unfold_ty/2 before calling.
+-spec res_ty_is_concrete(ast:ty()) -> boolean().
+res_ty_is_concrete({var, _}) -> false;
+res_ty_is_concrete({predef, _}) -> true;
+res_ty_is_concrete({predef_alias, _}) -> true;
+res_ty_is_concrete({singleton, _}) -> true;
+res_ty_is_concrete({empty_list}) -> true;
+res_ty_is_concrete({tuple_any}) -> true;
+res_ty_is_concrete({tuple, Tys}) -> lists:all(fun res_ty_is_concrete/1, Tys);
+res_ty_is_concrete({list, Ty}) -> res_ty_is_concrete(Ty);
+res_ty_is_concrete({nonempty_list, Ty}) -> res_ty_is_concrete(Ty);
+res_ty_is_concrete({cons, H, T}) -> res_ty_is_concrete(H) andalso res_ty_is_concrete(T);
+res_ty_is_concrete({improper_list, H, T}) -> res_ty_is_concrete(H) andalso res_ty_is_concrete(T);
+res_ty_is_concrete({nonempty_improper_list, H, T}) -> res_ty_is_concrete(H) andalso res_ty_is_concrete(T);
+res_ty_is_concrete({union, Tys}) -> lists:all(fun res_ty_is_concrete/1, Tys);
+res_ty_is_concrete({intersection, Tys}) -> lists:all(fun res_ty_is_concrete/1, Tys);
+res_ty_is_concrete({negation, Ty}) -> res_ty_is_concrete(Ty);
+res_ty_is_concrete({map, Assocs}) ->
+    lists:all(fun({_, K, V}) -> res_ty_is_concrete(K) andalso res_ty_is_concrete(V) end, Assocs);
+res_ty_is_concrete({map_any}) -> true;
+res_ty_is_concrete({range, _, _}) -> true;
+res_ty_is_concrete({bitstring, _, _}) -> true;
+res_ty_is_concrete({bitstring}) -> true;
+res_ty_is_concrete({fun_full, ArgTys, ResTy}) ->
+    lists:all(fun res_ty_is_concrete/1, ArgTys) andalso res_ty_is_concrete(ResTy);
+res_ty_is_concrete(_) -> false.
 
 -spec var_as_global_ref(ast:exp_var()) -> t:opt(ast:global_ref()).
 var_as_global_ref({var, _, Ref}) ->
