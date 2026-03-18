@@ -827,8 +827,9 @@ case_clause_constrs(Ctx, TyScrut, Scrut, NeedsUnmatchedCheck, LowersBefore,
         pretty:render_mono_env(BodyEnv),
         pretty:render_constr(BodyEnvCs)
     ),
-    Beta = fresh_tyvar(Ctx),
-    BodyCs = exps_constrs(Ctx, L, Exps, Beta),
+    % Pass ExpectedTy directly as the target for the body expression,
+    % eliminating the intermediate Beta variable and its result constraint.
+    BodyCs = exps_constrs(Ctx, L, Exps, ExpectedTy),
     InnerCs = BodyCs,
 
     CGuards =
@@ -845,15 +846,8 @@ case_clause_constrs(Ctx, TyScrut, Scrut, NeedsUnmatchedCheck, LowersBefore,
                 case_clause_unmatched_constraints(Ctx, LowersBefore, BodyUpper, Scrut);
             true -> none
         end,
-    RL =
-        case Exps of
-            % [] -> L; % dialyzer says this can't happen
-            [E | _] -> ast:loc_exp(E)
-        end,
-    ResultLocs = mk_locs("case result", RL),
-    ResultCs = utils:single({csubty, ResultLocs, Beta, ExpectedTy}),
     Payload = constr:mk_case_branch_payload(
-        {GuardEnv, CGuards}, {BodyEnv, InnerCs}, RedundancyCs, ResultCs),
+        {GuardEnv, CGuards}, {BodyEnv, InnerCs}, RedundancyCs, sets:new([{version, 2}])),
     ConstrBody = {ccase_branch, mk_locs("case branch", L), Payload},
     AllCs = sets:union([BodyEnvCs, GuardEnvCs]),
     {BodyLower, BodyUpper, AllCs, ConstrBody}.
