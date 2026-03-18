@@ -232,7 +232,7 @@ dump_transformed_ast(Opts) ->
         end, FunDecls)
     end, Opts#opts.files).
 
--spec doWork(#opts{}) -> [file:filename()].
+-spec doWork(#opts{}) -> cm_check:check_list().
 doWork(Opts) ->
     global_state:with_new_state(fun() ->
       ?LOG_TRACE("Initializing ETS tables"),

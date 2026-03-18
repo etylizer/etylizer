@@ -76,7 +76,7 @@ check(Dir, Defines) ->
         mode = test_mode,
         defines = Defines
     },
-    lists:sort([filename:basename(F) || F <- etylizer_main:doWork(Opts)]).
+    lists:sort([filename:basename(F) || {F, _} <- etylizer_main:doWork(Opts)]).
 
 % a module that becomes reachable is checked in the same run
 new_dependency_test_() ->

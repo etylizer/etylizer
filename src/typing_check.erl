@@ -19,15 +19,22 @@
 -include("etylizer.hrl").
 
 % Checks all functions against their specs, only print a report.
+% Returns the functions that got no ok verdict: with the report that was printed, or
+% timeout.
 -spec check_all_report(
         ctx(), string(), symtab:fun_env(), [{ast:fun_decl(), ast:ty_scheme()}]
-       ) -> ok.
+       ) -> [{ast:fun_with_arity(), string() | timeout}].
 check_all_report(Ctx, FileName, Env, Decls) ->
     ?LOG_NOTE("Checking ~w functions in ~s against their specs", length(Decls), FileName),
     ExtSymtab = symtab:extend_symtab_with_fun_env(Env, Ctx#ctx.symtab),
     ExtCtx = Ctx#ctx { symtab = ExtSymtab },
     F = fun(FN) -> filename:basename(filename:rootname(FN)) end,
-    lists:foreach(
+    Print = fun(Format, Args) ->
+                Report = lists:flatten(io_lib:format(Format, Args)),
+                io:put_chars(user, Report),
+                Report
+            end,
+    lists:filtermap(
         fun({Decl, Ty}) ->
             {function, _, Name, Arity, _, _} = Decl,
             ?METRIC_SET_FUN(list_to_atom(utils:sformat("~s:~w/~w", [F(FileName), Name, Arity]))),
@@ -36,34 +43,39 @@ check_all_report(Ctx, FileName, Env, Decls) ->
                 success ->
                     Time = ?TIME(T0),
                     ?METRIC(typecheck_time, {list_to_atom(utils:sformat("~s:~w/~w", [F(FileName), Name, Arity])), Time, ok}),
-                    io:format(user,"Ok: ~s:~w/~w (~p ms)~n", [F(FileName), Name, Arity, Time]);
+                    Print("Ok: ~s:~w/~w (~p ms)~n", [F(FileName), Name, Arity, Time]),
+                    false;
                 timeout ->
                     Time = ?TIME(T0),
                     ?METRIC(typecheck_time, {list_to_atom(utils:sformat("~s:~w/~w", [F(FileName), Name, Arity])), Time, timeout}),
-                    io:format(user,"Timeout: ~s:~w/~w (~p ms)~n", [F(FileName), Name, Arity, Time])
+                    Print("Timeout: ~s:~w/~w (~p ms)~n", [F(FileName), Name, Arity, Time]),
+                    {true, {{Name, Arity}, timeout}}
             catch
                 throw:{etylizer, ty_error, Msg} ->
                     Time = ?TIME(T0),
                     ?METRIC(typecheck_time, {list_to_atom(utils:sformat("~s:~w/~w", [F(FileName), Name, Arity])), Time, error}),
-                    io:format(user,"Error: ~s:~w/~w (~p ms)~n  ~s~n", [F(FileName), Name, Arity, Time, Msg]);
+                    {true, {{Name, Arity},
+                        Print("Error: ~s:~w/~w (~p ms)~n  ~s~n", [F(FileName), Name, Arity, Time, Msg])}};
                 throw:{etylizer, unsupported, Msg} ->
                     ?METRIC(typecheck_error, {?METRIC_FUN(), unsupported, loc_line(element(2, Decl))}),
-                    io:format(user,"Unsupported: ~s:~w/~w~n  ~s~n", [F(FileName), Name, Arity, Msg]);
+                    {true, {{Name, Arity},
+                        Print("Unsupported: ~s:~w/~w~n  ~s~n", [F(FileName), Name, Arity, Msg])}};
                 throw:{etylizer, Type, _Msg} ->
                     Time = ?TIME(T0),
                     ?METRIC(typecheck_error, {?METRIC_FUN(), Type, loc_line(element(2, Decl))}),
                     ?METRIC(typecheck_time, {list_to_atom(utils:sformat("~s:~w/~w", [F(FileName), Name, Arity])), Time, error}),
-                    io:format(user,"Error: (~p) ~s:~w/~w (~p ms)~n", [Type, F(FileName), Name, Arity, Time]);
+                    {true, {{Name, Arity},
+                        Print("Error: (~p) ~s:~w/~w (~p ms)~n", [Type, F(FileName), Name, Arity, Time])}};
                 _:T ->
                     Time = ?TIME(T0),
                     ?METRIC(typecheck_error, {?METRIC_FUN(), crash, loc_line(element(2, Decl))}),
                     ?METRIC(typecheck_time, {list_to_atom(utils:sformat("~s:~w/~w", [F(FileName), Name, Arity])), Time, error}),
-                    io:format(user,"Other: (~p) ~s:~w/~w (~p ms)~n", [{T}, F(FileName), Name, Arity, Time])
+                    {true, {{Name, Arity},
+                        Print("Other: (~p) ~s:~w/~w (~p ms)~n", [{T}, F(FileName), Name, Arity, Time])}}
             end
         end,
         Decls
-    ),
-    ok.
+    ).
 
 % Checks a function against its spec, skips timeouts and does not report errors.
 -spec check_report(ctx(), ast:fun_decl(), ast:ty_scheme()) -> success | timeout.
