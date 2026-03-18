@@ -24,7 +24,9 @@
           % when true, exhaustiveness checking is disabled for the top-level function clauses
           disable_exhaustiveness = false :: boolean(),
           % when true, redundancy checking is disabled for the top-level function clauses
-          disable_redundancy = false :: boolean()
+          disable_redundancy = false :: boolean(),
+          % true when generating constraints inside a guard expression
+          in_guard = false :: boolean()
         }).
 -type ctx() :: #ctx{}.
 
