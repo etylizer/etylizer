@@ -71,7 +71,7 @@ is_tlist({negation, {improper_list, _, _}}) -> true;
 is_tlist(_) -> false.
 
 -spec tmu(ast:ty_var(), ast:ty()) -> ast:ty().
-tmu(Var,Ty) -> {mu, Var, Ty}.
+tmu({var, Name},Ty) -> {mu, {mu_var, Name}, Ty}.
 
 -spec tinter([ast:ty()]) -> ast:ty().
 tinter(Tys) -> {intersection, Tys}.
