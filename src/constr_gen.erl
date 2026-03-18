@@ -1673,21 +1673,48 @@ var_test_env(FunExp, X, RestArgs) ->
 % end
 -spec fun_clauses_to_exp(ctx(), ast:loc(), [ast:fun_clause()]) -> {[ast:local_varname()], ast:exps()}.
 fun_clauses_to_exp(Ctx, _, FunClauses = [{fun_clause, L, Pats, [], Body}]) ->
-    % special case: only one clause, no guards, all patterns are variables
-    Vars =
-        lists:foldr(fun (Pat, Acc) ->
-                            case {Acc, Pat} of
-                                {error, _} -> error;
-                                {Vars, {var, _, {local_bind, V}}} -> [V | Vars];
-                                _ -> error
-                            end
-                    end, [], Pats),
-    case Vars of
-        error -> fun_clauses_to_exp_aux(Ctx, L, FunClauses);
-        VarList -> {VarList, Body}
+    % Single clause, no guards: classify patterns
+    {Vars, HasVar, HasComplex} = lists:foldr(
+        fun(Pat, {Acc, AnyVar, AnyComplex}) ->
+            case Pat of
+                {var, _, {local_bind, V}} -> {[{var, V} | Acc], true, AnyComplex};
+                _ -> {[complex | Acc], AnyVar, true}
+            end
+        end, {[], false, false}, Pats),
+    case {HasVar, HasComplex} of
+        {_, false} ->
+            % All variable patterns: use direct args (fast path)
+            VarList = [V || {var, V} <- Vars],
+            {VarList, Body};
+        {true, true} ->
+            % Mix of variable and complex patterns: keep var patterns as direct args,
+            % wrap complex patterns in case expressions to avoid a full tuple case.
+            {Args, CaseMatches} = lists:foldr(
+                fun({var, V}, {AccArgs, AccMatches}) ->
+                        {[V | AccArgs], AccMatches};
+                   (complex, {AccArgs, AccMatches}) ->
+                        [FreshV] = fresh_vars(Ctx, 1),
+                        {[FreshV | AccArgs], [{FreshV, L} | AccMatches]}
+                end, {[], []}, Vars),
+            % Recover the complex patterns in order
+            ComplexPats = [Pat || Pat <- Pats, not is_simple_var_pat(Pat)],
+            Matches = lists:zip(CaseMatches, ComplexPats),
+            WrappedBody = lists:foldl(
+                fun({{Var, Loc}, Pat}, B) ->
+                    [{'case', Loc, {var, Loc, {local_ref, Var}},
+                      [{case_clause, Loc, Pat, [], B}]}]
+                end, Body, Matches),
+            {Args, WrappedBody};
+        {false, true} ->
+            % All complex patterns: use the original tuple-case approach
+            fun_clauses_to_exp_aux(Ctx, L, FunClauses)
     end;
 fun_clauses_to_exp(Ctx, L, FunClauses) ->
     fun_clauses_to_exp_aux(Ctx, L, FunClauses).
+
+-spec is_simple_var_pat(ast:pat()) -> boolean().
+is_simple_var_pat({var, _, {local_bind, _}}) -> true;
+is_simple_var_pat(_) -> false.
 
 -spec fun_clauses_to_exp_aux(ctx(), ast:loc(), [ast:fun_clause()]) -> {[ast:local_varname()], ast:exps()}.
 fun_clauses_to_exp_aux(Ctx, L, FunClauses) ->
@@ -1708,11 +1735,24 @@ fun_clauses_to_exp_aux(Ctx, L, FunClauses) ->
                   Rest)
         end,
     Vars = fresh_vars(Ctx, Arity),
-    ScrutExp = {tuple, L, lists:map(fun(V) -> {var, L, {local_ref, V}} end, Vars)},
-    CaseClauses = lists:map(fun fun_clause_to_case_clause/1, FunClauses),
-    E = {'case', L, ScrutExp, CaseClauses},
-    ?LOG_TRACE("Rewrote function clauses at ~s with arguments=~w:\n~200p", ast:format_loc(L), Vars, E),
-    {Vars, [E]}.
+    case Arity of
+        1 ->
+            % Arity 1: skip tuple wrapping, case directly on the single arg
+            [Var] = Vars,
+            ScrutExp = {var, L, {local_ref, Var}},
+            CaseClauses = lists:map(
+                fun({fun_clause, CL, [Pat], Guards, Exps}) ->
+                    {case_clause, CL, Pat, Guards, Exps}
+                end, FunClauses),
+            E = {'case', L, ScrutExp, CaseClauses},
+            {Vars, [E]};
+        _ ->
+            ScrutExp = {tuple, L, lists:map(fun(V) -> {var, L, {local_ref, V}} end, Vars)},
+            CaseClauses = lists:map(fun fun_clause_to_case_clause/1, FunClauses),
+            E = {'case', L, ScrutExp, CaseClauses},
+            ?LOG_TRACE("Rewrote function clauses at ~s with arguments=~w:\n~200p", ast:format_loc(L), Vars, E),
+            {Vars, [E]}
+    end.
 
 -spec fun_clause_to_case_clause(ast:fun_clause()) -> ast:case_clause().
 fun_clause_to_case_clause({fun_clause, L, Pats, Guards, Exps}) ->
