@@ -8,6 +8,7 @@
 
 -export([
     new_ctx/0,
+    inline_materializations/1,
     preprocess_constrs/2,
     postprocess/4
 ]).
@@ -55,10 +56,30 @@ fresh_framevar(Ctx) ->
     {constr:subty_constrs(), constr:subty_constrs(), constr:mater_constrs(), subst:base_subst()}.
 preprocess_constrs(Constrs, Ctx) ->
     {SubtyConstrs, Maters} = separate_constrs(Constrs, Ctx),
-    UnificationSubst = build_unification_subst(Maters),
+    UnificationSubst0 = build_unification_subst(Maters),
+    % Compose the substitution to resolve chains (e.g. $0 -> T, $2 -> $0 /\ S)
+    % into fully resolved mappings before inlining.
+    UnificationSubst = compose_subst(UnificationSubst0),
     InlinedConstrs = inline_subst(UnificationSubst, SubtyConstrs),
     {InlinedConstrs, SubtyConstrs, Maters, UnificationSubst}.
 
+% Inline materializations into collected constraints, removing scmater entries.
+% Returns the inlined scsubty-only constraints and the composed substitution.
+-spec inline_materializations(constr:collected_constrs()) ->
+    {constr:collected_constrs(), subst:base_subst()}.
+inline_materializations(Constrs) ->
+    {SubtyConstrs, MaterConstrs} = sets:fold(
+        fun ({scsubty, _, _, _} = C, {Ss, Ms}) -> {sets:add_element(C, Ss), Ms};
+            ({scmater, _, _, _} = C, {Ss, Ms}) -> {Ss, sets:add_element(C, Ms)}
+        end,
+        {sets:new(), sets:new()},
+        Constrs),
+    MaterSubst = compose_subst(build_unification_subst(MaterConstrs)),
+    Inlined = inline_subst(MaterSubst, SubtyConstrs),
+    {Inlined, MaterSubst}.
+
+% Separate collected constraints into subtyping and materialization constraints,
+% replacing dynamic() with fresh frame variables.
 -spec separate_constrs(constr:collected_constrs(), ctx()) ->
     {constr:subty_constrs(), constr:mater_constrs()}.
 separate_constrs(Constrs, Ctx) ->
@@ -75,6 +96,17 @@ separate_constrs(Constrs, Ctx) ->
         {sets:new(), sets:new()},
         Constrs).
 
+% Apply a substitution to its own values until fixed point, resolving chains.
+% The materialization substitution is acyclic, so this always terminates.
+-spec compose_subst(subst:base_subst()) -> subst:base_subst().
+compose_subst(Subst) ->
+    Composed = maps:map(fun(_V, Ty) -> subst:apply_base(Subst, Ty) end, Subst),
+    case Composed =:= Subst of
+        true -> Subst;
+        false -> compose_subst(Composed)
+    end.
+
+% Build a unification substitution from materialization constraints.
 -spec build_unification_subst(constr:mater_constrs()) -> subst:base_subst().
 build_unification_subst(Maters) ->
     maps:from_list(lists:map(fun({scmater, _, Tau, Alpha}) -> {Alpha, Tau} end, sets:to_list(Maters))).
@@ -168,7 +200,7 @@ collect_pos_neg_constrs_tyvars(Constrs, SymTab) ->
     sets:set(ast:ty_varname()).
 compute_alpha(S, Constrs, A) ->
     % Collect all type variables which are not fixed, in the domain of the substitution
-    % or in A:  α = var(D)\(∆∪dom(σ0)∪A)
+    % or in A:  a = var(D)\(D u dom(s0) u A)
     Var_D = sets:fold(
       fun({scsubty, _, T1, T2}, Acc) ->
         sets:union(

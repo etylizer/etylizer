@@ -19,6 +19,7 @@
     mk_tally_subst/2,
     base_subst/1,
     collect_vars/4,
+    collect_vars_clist/4,
     clean_cons/3
 ]).
 
