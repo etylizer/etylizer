@@ -82,8 +82,9 @@ check_forms(Ctx, FileName, Forms, Only, Ignore, CheckExports, {CliNoExhaustivene
                     RefStr = utils:sformat("~w/~w", Name, Arity),
                     QRefStr = utils:sformat("~w:~s", ModuleName, RefStr),
                     NameStr = utils:sformat("~w", Name),
-                    X = {QRefStr, RefStr, NameStr},
-                    Check = should_check(QRefStr, RefStr, NameStr, Only, Ignore),
+                    ModStr = utils:sformat("~w", ModuleName),
+                    X = {QRefStr, RefStr, NameStr, ModStr},
+                    Check = should_check(QRefStr, RefStr, NameStr, ModStr, Only, Ignore),
                     case symtab:find_fun(Ref, ExtTab) of
                         error ->
                             if
@@ -121,11 +122,8 @@ check_forms(Ctx, FileName, Forms, Only, Ignore, CheckExports, {CliNoExhaustivene
           Forms
          ),
     % Make sure that Only does not contain an unknown function
-    {WithModuleName, WithArity, JustNames} = lists:unzip3(KnownFuns),
-    Unknowns = sets:subtract(Only,
-        sets:union([sets:from_list(WithModuleName, [{version, 2}]),
-                        sets:from_list(WithArity, [{version, 2}]),
-                        sets:from_list(JustNames, [{version, 2}])])),
+    AllKnown = lists:flatmap(fun({QRef, Ref, N, M}) -> [QRef, Ref, N, M] end, KnownFuns),
+    Unknowns = sets:subtract(Only, sets:from_list(AllKnown, [{version, 2}])),
     case sets:is_empty(Unknowns) of
         true -> ok;
         false ->
@@ -180,17 +178,19 @@ check_forms(Ctx, FileName, Forms, Only, Ignore, CheckExports, {CliNoExhaustivene
     ?LOG_INFO("Checking ~w functions in ~s against their specs finished successfully",
               length(FunsWithSpec), FileName).
 
--spec should_check(string(), string(), string(), sets:set(string()), sets:set(string())) -> boolean().
-should_check(QRefStr, RefStr, NameStr, Only, Ignore) ->
+-spec should_check(string(), string(), string(), string(), sets:set(string()), sets:set(string())) -> boolean().
+should_check(QRefStr, RefStr, NameStr, ModStr, Only, Ignore) ->
     case sets:is_empty(Only) of
         true ->
             not (sets:is_element(QRefStr, Ignore)
                     orelse sets:is_element(RefStr, Ignore)
-                    orelse sets:is_element(NameStr, Ignore));
+                    orelse sets:is_element(NameStr, Ignore)
+                    orelse sets:is_element(ModStr, Ignore));
         false ->
             sets:is_element(QRefStr, Only)
                 orelse sets:is_element(RefStr, Only)
                 orelse sets:is_element(NameStr, Only)
+                orelse sets:is_element(ModStr, Only)
     end.
 
 % Creates a dynamic type scheme for a function with the given arity.

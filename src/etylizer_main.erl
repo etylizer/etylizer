@@ -211,12 +211,14 @@ dump_transformed_ast(Opts) ->
             RefStr = utils:sformat("~w/~w", Name, Arity),
             QRefStr = utils:sformat("~w:~s", ModName, RefStr),
             NameStr = utils:sformat("~w", Name),
+            ModStr = utils:sformat("~w", ModName),
             ShouldDump = case sets:is_empty(Only) of
                 true -> true;
                 false ->
                     sets:is_element(QRefStr, Only)
                     orelse sets:is_element(RefStr, Only)
                     orelse sets:is_element(NameStr, Only)
+                    orelse sets:is_element(ModStr, Only)
             end,
             case ShouldDump of
                 false -> ok;
