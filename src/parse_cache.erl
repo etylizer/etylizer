@@ -78,6 +78,7 @@ parse(Kind, Path) ->
 make_parse_opts(Kind, Opts) ->
     case Kind of
         intern -> #parse_opts{
+                    verbose = Opts#opts.verbose,
                     includes = Opts#opts.includes,
                     defines = Opts#opts.defines
                 };

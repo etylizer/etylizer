@@ -1,6 +1,6 @@
 {application, ety_example, [
     {description, "An OTP library"},
-    {vsn, "0.1.0"},
+    {vsn, "0.1.0-rc1"},
     {registered, []},
     {applications, [
         kernel,
