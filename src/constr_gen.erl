@@ -468,29 +468,34 @@ case_constrs(Ctx, L, ScrutE, Clauses, EscapeAnnotation, T) ->
         true -> false;
         false -> needs_unmatched_check(Clauses)
     end,
-    {BodyList, Lowers, _Uppers, CsCases} =
-        lists:foldl(fun (Clause = {case_clause, LocClause, _, _, _},
-                         {BodyList, Lowers, Uppers, AccCs}) ->
+    {BodyList, Lowers, _PatLowers, _Uppers, CsCases} =
+        lists:foldl(fun (Clause = {case_clause, LocClause, Pat, _, _},
+                         {BodyList, Lowers, PatLowers, Uppers, AccCs}) ->
                             ?LOG_TRACE("Generating constraint for case clause at ~s: Lowers=~s, Uppers=~s",
                                        ast:format_loc(LocClause),
                                        pretty:render_tys(Lowers),
                                        pretty:render_tys(Uppers)),
+                            % Filter lowers that are provably disjoint from
+                            % the current pattern (different atom literals at
+                            % some tuple position). Reduces negation size.
+                            RelevantLowers = filter_relevant_lowers(PatLowers, Pat),
                             {ThisLower, ThisUpper, ThisCs, ThisConstrBody} =
                                 case_clause_constrs(
                                   InnerCtx,
-                                  ty_without(Alpha, ast_lib:mk_union(Lowers)),
+                                  ty_without(Alpha, ast_lib:mk_union(RelevantLowers)),
                                   ScrutE,
                                   NeedsUnmatchedCheck,
-                                  Lowers,
+                                  RelevantLowers,
                                   Clause,
                                   T,
                                   EscapeAnnotation),
                             {BodyList ++ [ThisConstrBody],
                              Lowers ++ [ThisLower],
+                             PatLowers ++ [{ThisLower, Pat}],
                              Uppers ++ [ThisUpper],
                              sets:union(ThisCs, AccCs)}
                     end,
-                    {[], [], [], sets:new()},
+                    {[], [], [], [], sets:new()},
                     Clauses),
     CsScrut = sets:union(Cs0, CsCases),
     Exhaust =
@@ -777,6 +782,61 @@ is_irrefutable_pat({wildcard, _}) -> true;
 is_irrefutable_pat({var, _, _}) -> true;
 is_irrefutable_pat({match, _, P1, P2}) -> is_irrefutable_pat(P1) andalso is_irrefutable_pat(P2);
 is_irrefutable_pat(_) -> false.
+
+% Filter previous clause lowers, removing those provably disjoint from the
+% current clause's pattern. Two tuple patterns are disjoint if they have different
+% structural kinds (e.g. different tuple arities, tuple vs atom) or if same-arity
+% tuples differ at some element position.
+% This reduces the negation size in scrutiny and bodyCond constraints,
+% avoiding BDD blowup for functions with many clauses dispatching on atom arguments.
+-spec filter_relevant_lowers([{ast:ty(), ast:pat()}], ast:pat()) -> [ast:ty()].
+filter_relevant_lowers(LowersWithPats, CurrentPat) ->
+    [Lower || {Lower, Pat} <- LowersWithPats, not pats_disjoint(Pat, CurrentPat)].
+
+% Classify a pattern into a structural kind for disjointness checking.
+% Two patterns with different non-unknown kinds are provably disjoint.
+-spec pat_structural_kind(ast:pat()) ->
+    {tuple, non_neg_integer()} | {atom, atom()} | {integer, integer()} | nil | cons | unknown.
+pat_structural_kind({tuple, _, Ps}) -> {tuple, length(Ps)};
+pat_structural_kind({atom, _, A}) -> {atom, A};
+pat_structural_kind({integer, _, I}) -> {integer, I};
+pat_structural_kind({char, _, C}) -> {integer, C};
+pat_structural_kind({nil, _}) -> nil;
+pat_structural_kind({cons, _, _, _}) -> cons;
+pat_structural_kind(_) -> unknown.
+
+% Two patterns are provably disjoint if:
+% - They have different structural kinds (tuple vs atom, different tuple arities, etc.)
+% - They are same-arity tuples with a disjoint element at some position
+% - A match pattern (P1 = P2) is disjoint from Q if either P1 or P2 is disjoint from Q
+% Conservative: returns false if uncertain.
+-spec pats_disjoint(ast:pat(), ast:pat()) -> boolean().
+pats_disjoint({match, _, P1, P2}, Other) ->
+    pats_disjoint(P1, Other) orelse pats_disjoint(P2, Other);
+pats_disjoint(Other, {match, _, P1, P2}) ->
+    pats_disjoint(Other, P1) orelse pats_disjoint(Other, P2);
+pats_disjoint({tuple, _, Ps1}, {tuple, _, Ps2}) when length(Ps1) == length(Ps2) ->
+    lists:any(fun pat_elems_disjoint/1, lists:zip(Ps1, Ps2));
+pats_disjoint(P1, P2) ->
+    case {pat_structural_kind(P1), pat_structural_kind(P2)} of
+        {unknown, _} -> false;
+        {_, unknown} -> false;
+        {K1, K2} -> K1 =/= K2
+    end.
+
+-spec pat_elems_disjoint({ast:pat(), ast:pat()}) -> boolean().
+pat_elems_disjoint({{match, _, P1, P2}, Other}) ->
+    pat_elems_disjoint({P1, Other}) orelse pat_elems_disjoint({P2, Other});
+pat_elems_disjoint({Other, {match, _, P1, P2}}) ->
+    pat_elems_disjoint({Other, P1}) orelse pat_elems_disjoint({Other, P2});
+pat_elems_disjoint({{tuple, _, Ps1}, {tuple, _, Ps2}}) when length(Ps1) == length(Ps2) ->
+    lists:any(fun pat_elems_disjoint/1, lists:zip(Ps1, Ps2));
+pat_elems_disjoint({P1, P2}) ->
+    case {pat_structural_kind(P1), pat_structural_kind(P2)} of
+        {unknown, _} -> false;
+        {_, unknown} -> false;
+        {K1, K2} -> K1 =/= K2
+    end.
 
 % Computes the redudance constraints of a case clause. The clause is redudandant iff the
 % constraints are satisfiable.
