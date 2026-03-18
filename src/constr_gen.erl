@@ -24,7 +24,9 @@
           % when true, exhaustiveness checking is disabled for the top-level function clauses
           disable_exhaustiveness = false :: boolean(),
           % when true, redundancy checking is disabled for the top-level function clauses
-          disable_redundancy = false :: boolean()
+          disable_redundancy = false :: boolean(),
+          % true when generating constraints inside a guard expression
+          in_guard = false :: boolean()
         }).
 -type ctx() :: #ctx{}.
 
@@ -289,6 +291,33 @@ exp_constrs(Ctx, E, T) ->
             sets:add_element(ResultC, Cs2);
         {nil, L} ->
             utils:single({csubty, mk_locs("result of nil", L), {empty_list}, T});
+        {op, L, Op, Lhs, Rhs} when Op =:= '=='; Op =:= '=:=';
+                                     Op =:= '/='; Op =:= '=/=';
+                                     Op =:= '>'; Op =:= '<';
+                                     Op =:= '>='; Op =:= '=<' ->
+            % For comparison/equality operators, skip the function type machinery entirely.
+            % Their type is fun((any(), any()) -> boolean()), so the only useful
+            % constraint is that the result type is boolean(). The refinement
+            % (narrowing variables) is handled separately by guard_test_env/refine_eq_env
+            % and comparison_refine_env.
+            Alpha1 = fresh_tyvar(Ctx),
+            Cs1 = exp_constrs(Ctx, Lhs, Alpha1),
+            Alpha2 = fresh_tyvar(Ctx),
+            Cs2 = exp_constrs(Ctx, Rhs, Alpha2),
+            BoolCs = utils:single({csubty, mk_locs("comparison result", L), {predef_alias, boolean}, T}),
+            sets:union([Cs1, Cs2, BoolCs]);
+        {op, L, Op, Lhs, Rhs} when (Op =:= 'andalso' orelse Op =:= 'orelse'),
+                                     Ctx#ctx.in_guard ->
+            % In guard context, andalso/orelse result is always boolean.
+            % Skip the intersection function type (fun((false,any())->false) /\ fun((true,a)->a))
+            % and just constrain the result to boolean(). Guard sub-expressions already
+            % produce boolean from their own semantics.
+            Alpha1 = fresh_tyvar(Ctx),
+            Cs1 = exp_constrs(Ctx, Lhs, Alpha1),
+            Alpha2 = fresh_tyvar(Ctx),
+            Cs2 = exp_constrs(Ctx, Rhs, Alpha2),
+            BoolCs = utils:single({csubty, mk_locs("boolean shortcircuit", L), {predef_alias, boolean}, T}),
+            sets:union([Cs1, Cs2, BoolCs]);
         {op, L, Op, Lhs, Rhs} ->
             Alpha1 = fresh_tyvar(Ctx),
             Cs1 = exp_constrs(Ctx, Lhs, Alpha1),
@@ -652,6 +681,40 @@ var_funcall_constrs(Ctx, L, Var, Args, T) ->
 -spec funcall_constrs_with_tyscm(ctx(), ast:loc(), ast:exp_var(), ast:ty_scheme(), [ast:exp()], ast:ty()) -> constr:constrs().
 funcall_constrs_with_tyscm(Ctx, L, Var, TyScm, Args, T) ->
     {Mono, _, _} = typing_common:mono_ty(L, TyScm, none, fun(_, none) -> {fresh_ty_varname(Ctx), none} end, Ctx#ctx.symtab),
+    case Ctx#ctx.in_guard of
+        true -> guard_funcall_constrs(Ctx, L, Var, Mono, Args, T);
+        false -> normal_funcall_constrs(Ctx, L, Var, TyScm, Mono, Args, T)
+    end.
+
+% In guard context, BIF calls are total: exceptions cause guard failure.
+% We skip the domain check (don't constrain args against parameter types)
+% and use the union of return types as the result. This avoids expensive
+% intersection function type subtyping in tally.
+-spec guard_funcall_constrs(ctx(), ast:loc(), ast:exp_var(), ast:ty(), [ast:exp()], ast:ty()) -> constr:constrs().
+guard_funcall_constrs(Ctx, L, Var, Mono, Args, T) ->
+    % Extract return types from all overloads
+    ReturnTys = case Mono of
+        {fun_full, _, ResTy} -> [ResTy];
+        {intersection, FunTys} ->
+            [ResTy || {fun_full, _, ResTy} <- FunTys]
+    end,
+    ResultTy = ast_lib:mk_union(ReturnTys),
+    FunName = pretty:render_var(Var),
+    ResConstr = {csubty, mk_locs(utils:sformat("result of calling ~s", FunName), L), ResultTy, T},
+    % Typecheck argument expressions (generates their own constraints)
+    % but don't constrain arg types against the function's parameter types.
+    ArgCs = lists:foldl(
+        fun(Arg, AccCs) ->
+            Alpha = fresh_tyvar(Ctx),
+            ThisCs = exp_constrs(Ctx, Arg, Alpha),
+            sets:union(AccCs, ThisCs)
+        end,
+        sets:new([{version, 2}]),
+        Args),
+    sets:add_element(ResConstr, ArgCs).
+
+-spec normal_funcall_constrs(ctx(), ast:loc(), ast:exp_var(), ast:ty_scheme(), ast:ty(), [ast:exp()], ast:ty()) -> constr:constrs().
+normal_funcall_constrs(Ctx, L, Var, TyScm, Mono, Args, T) ->
     case Mono of
         {fun_full, ArgTys, ResTy} when length(Args) =:= length(ArgTys) ->
             FunName = pretty:render_var(Var),
@@ -746,10 +809,11 @@ receive_clause_constrs(Ctx, {case_clause, L, Pat, Guards, Exps}, T) ->
     % Unguarded variables remain dynamic().
     VarEnv = maps:merge(DynamicPatEnv, GuardEnv),
     % Generate guard constraints to evaluate to boolean()
+    GuardCtx = Ctx#ctx{in_guard = true},
     GuardCs = sets:union(
         lists:map(
             fun(Guard) ->
-                exps_constrs(Ctx, L, Guard, {predef_alias, boolean})
+                exps_constrs(GuardCtx, L, Guard, {predef_alias, boolean})
             end,
             Guards)),
     % Generate body constraints
@@ -842,11 +906,12 @@ case_clause_constrs(Ctx, TyScrut, Scrut, NeedsUnmatchedCheck, LowersBefore,
         EscapeAnnotation),
     InnerCs = sets:union(BodyCs, EscCs),
 
+    GuardCtx = Ctx#ctx{in_guard = true},
     CGuards =
         sets:union(
           lists:map(
             fun(Guard) ->
-                    GuardCs = exps_constrs(Ctx, L, Guard, {predef_alias, boolean}),
+                    GuardCs = exps_constrs(GuardCtx, L, Guard, {predef_alias, boolean}),
                     GuardCs
             end,
             Guards)),
@@ -895,11 +960,12 @@ catch_clause_constrs(Ctx, {catch_clause, L, ExcType, Pat, Stack, Guards, Body}, 
     InnerCs = sets:union(BodyCs, InnerCs0),
 
     % Generate guard constraints (guards must be boolean)
+    GuardCtx = Ctx#ctx{in_guard = true},
     CGuards =
         sets:union(
           lists:map(
             fun(Guard) ->
-                    exps_constrs(Ctx, L, Guard, {predef_alias, boolean})
+                    exps_constrs(GuardCtx, L, Guard, {predef_alias, boolean})
             end,
             Guards)),
 
