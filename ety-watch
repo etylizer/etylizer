@@ -1,0 +1,662 @@
+#!/usr/bin/env bash
+# ety-watch: Watch mode for etylizer - re-runs type checking on file changes.
+
+set -euo pipefail
+
+# ─── Constants & Defaults ────────────────────────────────────────────────────
+
+SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" &>/dev/null && pwd)"
+VERSION="0.1.0"
+
+DEFAULT_CMD="./typecheck_etylizer.sh"
+DEFAULT_DIRS="src,include,overlays"
+DEFAULT_POLL_INTERVAL=1
+DEFAULT_DEBOUNCE_MS=500
+DEFAULT_REPORT_TIMEOUT=8000
+
+CMD="$DEFAULT_CMD"
+WATCH_DIRS="$DEFAULT_DIRS"
+POLL_INTERVAL="$DEFAULT_POLL_INTERVAL"
+DEBOUNCE_MS="$DEFAULT_DEBOUNCE_MS"
+REPORT_TIMEOUT="$DEFAULT_REPORT_TIMEOUT"
+USE_COLOR="auto"
+USE_BELL=1
+USE_NOTIFY=1
+QUIET=0
+CLEAR=0
+ONCE=0
+EXTRA_ARGS=()
+
+# ─── State ───────────────────────────────────────────────────────────────────
+
+INOTIFY_PID=""
+TYPECHECK_PID=""
+TMPFILE=""
+SENTINEL=""
+WATCH_FIFO=""
+PREV_STATUS=""  # "ok" or "errors"
+HAS_INOTIFYWAIT=0
+
+# ─── Argument Parsing ────────────────────────────────────────────────────────
+
+usage() {
+    cat <<'EOF'
+Usage: ./ety-watch [OPTIONS] [-- EXTRA_ETY_ARGS...]
+
+Watch for .erl/.hrl file changes and re-run etylizer type checking.
+
+Options:
+  --cmd CMD          Type-check command (default: ./typecheck_etylizer.sh)
+  --dirs D1,D2,...   Directories to watch (default: src,include,overlays)
+  --poll-interval N  Poll interval in seconds for fallback mode (default: 1)
+  --debounce N       Debounce window in ms (default: 500)
+  --report-timeout N Per-function timeout in ms (default: 5000)
+  --no-color         Disable colors
+  --no-bell          Disable terminal bell
+  --no-notify        Disable desktop notifications
+  -q, --quiet        Only show errors/timeouts and summary (hide OK lines)
+  --clear            Clear terminal before each run
+  --once             Run once and exit (exit code reflects result)
+  -h, --help         Show usage
+
+Extra args after -- are passed through to etylizer.
+Example: ./ety-watch -- -o typing
+EOF
+}
+
+parse_args() {
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            --cmd)       CMD="$2"; shift 2 ;;
+            --dirs)      WATCH_DIRS="$2"; shift 2 ;;
+            --poll-interval) POLL_INTERVAL="$2"; shift 2 ;;
+            --debounce)  DEBOUNCE_MS="$2"; shift 2 ;;
+            --report-timeout) REPORT_TIMEOUT="$2"; shift 2 ;;
+            --no-color)  USE_COLOR="never"; shift ;;
+            --no-bell)   USE_BELL=0; shift ;;
+            --no-notify) USE_NOTIFY=0; shift ;;
+            -q|--quiet)  QUIET=1; shift ;;
+            --clear)     CLEAR=1; shift ;;
+            --once)      ONCE=1; shift ;;
+            -h|--help)   usage; exit 0 ;;
+            --)          shift; EXTRA_ARGS=("$@"); break ;;
+            *)           echo "Unknown option: $1" >&2; usage >&2; exit 1 ;;
+        esac
+    done
+}
+
+# ─── Color Setup ─────────────────────────────────────────────────────────────
+
+color_init() {
+    if [[ "$USE_COLOR" == "never" ]]; then
+        C_RESET="" C_RED="" C_GREEN="" C_YELLOW="" C_CYAN="" C_BOLD="" C_DIM=""
+        return
+    fi
+    if [[ "$USE_COLOR" == "auto" ]] && ! [[ -t 1 ]]; then
+        C_RESET="" C_RED="" C_GREEN="" C_YELLOW="" C_CYAN="" C_BOLD="" C_DIM=""
+        return
+    fi
+    C_RESET=$'\033[0m'
+    C_RED=$'\033[31m'
+    C_GREEN=$'\033[32m'
+    C_YELLOW=$'\033[33m'
+    C_CYAN=$'\033[36m'
+    C_BOLD=$'\033[1m'
+    C_DIM=$'\033[2m'
+}
+
+# ─── Terminal Title & Notifications ──────────────────────────────────────────
+
+set_title() {
+    # Set terminal title via OSC escape
+    if [[ -t 1 ]]; then
+        printf '\033]0;%s\007' "$1"
+    fi
+}
+
+notify() {
+    local urgency="$1"
+    local summary="$2"
+    local body="${3:-}"
+    if [[ "$USE_NOTIFY" -eq 1 ]] && command -v notify-send &>/dev/null; then
+        notify-send -u "$urgency" "$summary" "$body" 2>/dev/null || true
+    fi
+}
+
+bell() {
+    if [[ "$USE_BELL" -eq 1 ]] && [[ -t 1 ]]; then
+        printf '\a'
+    fi
+}
+
+# ─── Output Formatting ──────────────────────────────────────────────────────
+
+BAR="━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+
+print_header() {
+    local timestamp="$1"
+    local trigger="${2:-initial run}"
+    echo ""
+    echo "${C_DIM}${BAR}${C_RESET}"
+    printf "  ${C_BOLD}ety-watch${C_RESET}  |  %s  |  %s\n" "$timestamp" "$trigger"
+    echo "${C_DIM}${BAR}${C_RESET}"
+}
+
+print_footer() {
+    local ok_count="$1"
+    local err_count="$2"
+    local timeout_count="$3"
+    local elapsed="$4"
+
+    echo "${C_DIM}${BAR}${C_RESET}"
+
+    local status_parts=()
+    if [[ "$ok_count" -gt 0 ]]; then
+        status_parts+=("${C_GREEN}${ok_count} ok${C_RESET}")
+    fi
+    if [[ "$err_count" -gt 0 ]]; then
+        status_parts+=("${C_RED}${C_BOLD}${err_count} error${C_RESET}")
+    fi
+    if [[ "$timeout_count" -gt 0 ]]; then
+        status_parts+=("${C_YELLOW}${timeout_count} timeout${C_RESET}")
+    fi
+
+    local status_str=""
+    local sep=""
+    for part in "${status_parts[@]}"; do
+        status_str+="${sep}${part}"
+        sep=", "
+    done
+    printf "  RESULT: %s  |  %s\n" "$status_str" "$elapsed"
+    echo "${C_DIM}${BAR}${C_RESET}"
+}
+
+# ─── Output Parsing ─────────────────────────────────────────────────────────
+
+# ─── Type Check Runner ──────────────────────────────────────────────────────
+
+run_typecheck() {
+    local trigger="${1:-initial run}"
+    local timestamp
+    timestamp="$(date +%H:%M:%S)"
+
+    if [[ "$CLEAR" -eq 1 ]]; then
+        clear
+    fi
+
+    print_header "$timestamp" "$trigger"
+
+    set_title "[...] ety-watch"
+
+    # Counters
+    local ok_count=0
+    local err_count=0
+    local timeout_count=0
+    local unsupported_count=0
+    local other_count=0
+    local in_error_msg=0
+    local suppress_continuation=0
+    local msg_color=""
+    local had_parseable_output=0
+    local exit_code=0
+    local buffered_lines=()
+
+    # Regex patterns stored in variables to avoid bash parsing issues with parens
+    local re_ok='^Ok: (.+) \(([0-9]+) ms\)$'
+    local re_err_typed='^Error: \(([^)]+)\) (.+) \(([0-9]+) ms\)$'
+    local re_err='^Error: (.+) \(([0-9]+) ms\)$'
+    local re_timeout='^Timeout: (.+) \(([0-9]+) ms\)$'
+    local re_unsupported='^Unsupported: (.+)$'
+    local re_other='^Other: (.+)$'
+
+    local start_time
+    start_time=$(date +%s%N 2>/dev/null || date +%s)
+
+    # Stream output line by line using process substitution.
+    # The sentinel __ETY_EXIT:N carries the command's exit code.
+    while IFS= read -r line; do
+        # Extract exit code from sentinel
+        if [[ "$line" == __ETY_EXIT:* ]]; then
+            exit_code="${line#__ETY_EXIT:}"
+            continue
+        fi
+
+        # Parse and display each line as it arrives
+        if [[ "$line" =~ $re_ok ]]; then
+            had_parseable_output=1
+            in_error_msg=0
+            ok_count=$((ok_count + 1))
+            local func="${BASH_REMATCH[1]}"
+            local ms="${BASH_REMATCH[2]}"
+            if [[ "$QUIET" -eq 0 ]]; then
+                printf "  ${C_GREEN}[OK]${C_RESET}          %-45s ${C_DIM}(%s ms)${C_RESET}\n" "$func" "$ms"
+            fi
+
+        elif [[ "$line" =~ $re_err_typed ]]; then
+            had_parseable_output=1
+            in_error_msg=0
+            suppress_continuation=0
+            err_count=$((err_count + 1))
+            local err_type="${BASH_REMATCH[1]}"
+            local func="${BASH_REMATCH[2]}"
+            local ms="${BASH_REMATCH[3]}"
+            printf "  ${C_RED}${C_BOLD}[ERROR]${C_RESET}       %-45s ${C_DIM}(%s ms)${C_RESET}\n" "$func" "$ms"
+            printf "                ${C_DIM}type: %s${C_RESET}\n" "$err_type"
+            in_error_msg=1
+            msg_color="$C_RED"
+
+        elif [[ "$line" =~ $re_err ]]; then
+            had_parseable_output=1
+            in_error_msg=0
+            suppress_continuation=0
+            err_count=$((err_count + 1))
+            local func="${BASH_REMATCH[1]}"
+            local ms="${BASH_REMATCH[2]}"
+            printf "  ${C_RED}${C_BOLD}[ERROR]${C_RESET}       %-45s ${C_DIM}(%s ms)${C_RESET}\n" "$func" "$ms"
+            in_error_msg=1
+            msg_color="$C_RED"
+
+        elif [[ "$line" =~ $re_timeout ]]; then
+            had_parseable_output=1
+            in_error_msg=0
+            timeout_count=$((timeout_count + 1))
+            local func="${BASH_REMATCH[1]}"
+            local ms="${BASH_REMATCH[2]}"
+            printf "  ${C_YELLOW}[TIMEOUT]${C_RESET}     %-45s ${C_DIM}(%s ms)${C_RESET}\n" "$func" "$ms"
+
+        elif [[ "$line" =~ $re_unsupported ]]; then
+            had_parseable_output=1
+            in_error_msg=1
+            unsupported_count=$((unsupported_count + 1))
+            local func="${BASH_REMATCH[1]}"
+            msg_color="$C_CYAN"
+            if [[ "$QUIET" -eq 0 ]]; then
+                suppress_continuation=0
+                printf "  ${C_CYAN}[UNSUPPORTED]${C_RESET} %s\n" "$func"
+            else
+                suppress_continuation=1
+            fi
+
+        elif [[ "$line" =~ $re_other ]]; then
+            had_parseable_output=1
+            in_error_msg=0
+            suppress_continuation=0
+            other_count=$((other_count + 1))
+            local rest="${BASH_REMATCH[1]}"
+            printf "  ${C_YELLOW}[OTHER]${C_RESET}       %s\n" "$rest"
+
+        elif [[ "$in_error_msg" -eq 1 ]] && [[ "$line" =~ ^[[:space:]] ]]; then
+            # Indented continuation of error/unsupported message
+            if [[ "$suppress_continuation" -eq 0 ]]; then
+                printf "                ${msg_color}%s${C_RESET}\n" "$line"
+            fi
+
+        else
+            in_error_msg=0
+            # Buffer non-report lines for possible build failure display
+            if [[ -n "$line" ]]; then
+                buffered_lines+=("$line")
+                if [[ "$QUIET" -eq 0 ]]; then
+                    printf "  ${C_DIM}%s${C_RESET}\n" "$line"
+                fi
+            fi
+        fi
+    done < <($CMD --report-mode report --report-timeout "$REPORT_TIMEOUT" \
+                "${EXTRA_ARGS[@]}" 2>&1; echo "__ETY_EXIT:$?")
+
+    local end_time
+    end_time=$(date +%s%N 2>/dev/null || date +%s)
+
+    # Calculate elapsed time
+    if [[ ${#start_time} -gt 10 ]]; then
+        local elapsed_ns=$((end_time - start_time))
+        local elapsed_s=$((elapsed_ns / 1000000000))
+        local elapsed_ms=$(( (elapsed_ns / 1000000) % 1000 ))
+        RUN_ELAPSED="${elapsed_s}.$(printf '%01d' $((elapsed_ms / 100)))s"
+    else
+        local elapsed_s=$((end_time - start_time))
+        RUN_ELAPSED="${elapsed_s}s"
+    fi
+
+    # Handle no report-mode output
+    if [[ "$had_parseable_output" -eq 0 ]]; then
+        if [[ "$exit_code" -ne 0 ]] && [[ ${#buffered_lines[@]} -gt 0 ]]; then
+            # Build failure: non-zero exit with non-report output
+            # Lines were already printed above if not quiet; in quiet mode, show them now
+            if [[ "$QUIET" -eq 1 ]]; then
+                echo ""
+                echo "  ${C_RED}${C_BOLD}[BUILD FAILURE]${C_RESET}"
+                for l in "${buffered_lines[@]}"; do
+                    echo "    $l"
+                done
+            fi
+            PREV_STATUS="errors"
+            set_title "[BUILD ERR] ety-watch"
+            bell
+            notify "critical" "ety-watch: Build failure" "Build failed"
+        elif [[ ${#buffered_lines[@]} -eq 0 ]]; then
+            echo "  ${C_DIM}Nothing to check.${C_RESET}"
+        fi
+        return "$exit_code"
+    fi
+
+    # Print summary footer
+    local total_errors=$((err_count + timeout_count + other_count))
+    print_footer "$ok_count" "$err_count" "$timeout_count" "${RUN_ELAPSED}"
+
+    # Status transitions & notifications
+    local new_status="ok"
+    if [[ "$total_errors" -gt 0 ]]; then
+        new_status="errors"
+    fi
+
+    if [[ "$new_status" == "errors" ]]; then
+        local err_label="${total_errors} ERR"
+        set_title "[${err_label}] ety-watch"
+        bell
+        if [[ "$PREV_STATUS" == "ok" ]]; then
+            notify "critical" "ety-watch: ${total_errors} problem(s)" \
+                "${err_count} error(s), ${timeout_count} timeout(s)"
+        fi
+    else
+        set_title "[OK] ety-watch"
+        if [[ "$PREV_STATUS" == "errors" ]]; then
+            notify "normal" "ety-watch: All clear" "All ${ok_count} functions passed"
+        fi
+    fi
+
+    PREV_STATUS="$new_status"
+
+    if [[ "$total_errors" -gt 0 ]]; then
+        return 1
+    fi
+    return 0
+}
+
+# ─── File Watching ───────────────────────────────────────────────────────────
+
+setup_watch_dirs() {
+    # Convert comma-separated dirs to array, filter to existing dirs
+    IFS=',' read -ra DIR_ARRAY <<< "$WATCH_DIRS"
+    EXISTING_DIRS=()
+    for d in "${DIR_ARRAY[@]}"; do
+        if [[ -d "$d" ]]; then
+            EXISTING_DIRS+=("$d")
+        fi
+    done
+
+    if [[ ${#EXISTING_DIRS[@]} -eq 0 ]]; then
+        echo "${C_RED}Error: No watch directories found. Checked: ${WATCH_DIRS}${C_RESET}" >&2
+        exit 1
+    fi
+}
+
+parse_event_line() {
+    local event_line="$1"
+    local event="${event_line%% *}"
+    local filepath="${event_line#* }"
+    local filename
+    filename="$(basename "$filepath")"
+    case "$event" in
+        *CREATE*|*MOVED_TO*)  echo "$filename added" ;;
+        *DELETE*|*MOVED_FROM*) echo "$filename removed" ;;
+        *)                     echo "$filename changed" ;;
+    esac
+}
+
+# Start a persistent inotifywait monitor. Events are readable from fd 3.
+start_inotify_monitor() {
+    WATCH_FIFO="$(mktemp -u)"
+    mkfifo "$WATCH_FIFO"
+
+    inotifywait -m -r -e modify,create,delete,moved_to,moved_from \
+        --include '.*\.(erl|hrl)$' \
+        --format '%e %w%f' \
+        "${EXISTING_DIRS[@]}" > "$WATCH_FIFO" 2>/dev/null &
+    INOTIFY_PID=$!
+
+    # Open FIFO once with a persistent fd
+    exec 3< "$WATCH_FIFO"
+}
+
+# Block until an inotify event arrives, then debounce.
+wait_inotify_event() {
+    local event_line=""
+    if IFS= read -r event_line <&3; then
+        local debounce_sec
+        debounce_sec=$(awk "BEGIN {printf \"%.1f\", ${DEBOUNCE_MS}/1000}")
+        while IFS= read -r -t "$debounce_sec" _ <&3; do
+            : # drain
+        done
+    fi
+    if [[ -n "$event_line" ]]; then
+        parse_event_line "$event_line"
+    else
+        echo "file change"
+    fi
+}
+
+# Non-blocking: drain any inotify events that arrived during a typecheck run.
+# Prints trigger description if events were found, nothing otherwise.
+drain_inotify_pending() {
+    local last_event="" event_line=""
+    while IFS= read -r -t 0.01 event_line <&3 2>/dev/null; do
+        [[ -n "$event_line" ]] && last_event="$event_line"
+    done
+    if [[ -n "$last_event" ]]; then
+        # Debounce: wait for more events to settle
+        local debounce_sec
+        debounce_sec=$(awk "BEGIN {printf \"%.1f\", ${DEBOUNCE_MS}/1000}")
+        while IFS= read -r -t "$debounce_sec" event_line <&3; do
+            [[ -n "$event_line" ]] && last_event="$event_line"
+        done
+        parse_event_line "$last_event"
+    fi
+}
+
+# Wait for changes using find -newer polling (fallback)
+# Also detects file additions and removals by comparing file lists.
+wait_for_changes_poll() {
+    SENTINEL="_etylizer/.watch_sentinel"
+    local filelist="_etylizer/.watch_filelist"
+    mkdir -p _etylizer
+    touch "$SENTINEL"
+
+    # Snapshot current file list for add/remove detection
+    find "${EXISTING_DIRS[@]}" \
+        \( -name '*.erl' -o -name '*.hrl' \) \
+        2>/dev/null | sort > "$filelist"
+
+    while true; do
+        sleep "$POLL_INTERVAL"
+
+        # Check for modified files
+        local changed
+        changed=$(find "${EXISTING_DIRS[@]}" \
+            -newer "$SENTINEL" \
+            \( -name '*.erl' -o -name '*.hrl' \) \
+            -print -quit 2>/dev/null || true)
+
+        if [[ -n "$changed" ]]; then
+            touch "$SENTINEL"
+            # Update file list snapshot
+            find "${EXISTING_DIRS[@]}" \
+                \( -name '*.erl' -o -name '*.hrl' \) \
+                2>/dev/null | sort > "$filelist"
+            echo "$(basename "$changed") changed"
+            return
+        fi
+
+        # Check for added/removed files
+        local current_list
+        current_list=$(find "${EXISTING_DIRS[@]}" \
+            \( -name '*.erl' -o -name '*.hrl' \) \
+            2>/dev/null | sort)
+
+        local added removed
+        added=$(comm -13 "$filelist" <(echo "$current_list") | head -1)
+        removed=$(comm -23 "$filelist" <(echo "$current_list") | head -1)
+
+        if [[ -n "$added" ]]; then
+            touch "$SENTINEL"
+            echo "$current_list" | sort > "$filelist"
+            echo "$(basename "$added") added"
+            return
+        fi
+
+        if [[ -n "$removed" ]]; then
+            touch "$SENTINEL"
+            echo "$current_list" | sort > "$filelist"
+            echo "$(basename "$removed") removed"
+            return
+        fi
+    done
+}
+
+touch_poll_sentinel() {
+    if [[ "$HAS_INOTIFYWAIT" -eq 1 ]]; then return; fi
+    SENTINEL="_etylizer/.watch_sentinel"
+    mkdir -p _etylizer
+    touch "$SENTINEL"
+}
+
+# Non-blocking: check if files changed since sentinel (for poll mode).
+check_poll_immediate() {
+    if [[ ! -f "$SENTINEL" ]]; then return; fi
+    local changed
+    changed=$(find "${EXISTING_DIRS[@]}" \
+        -newer "$SENTINEL" \
+        \( -name '*.erl' -o -name '*.hrl' \) \
+        -print -quit 2>/dev/null || true)
+    if [[ -n "$changed" ]]; then
+        touch "$SENTINEL"
+        echo "$(basename "$changed") changed"
+    fi
+}
+
+# Blocking: wait for the next file change.
+wait_for_changes() {
+    if [[ "$HAS_INOTIFYWAIT" -eq 1 ]]; then
+        wait_inotify_event
+    else
+        wait_for_changes_poll
+    fi
+}
+
+# Non-blocking: check if changes happened during a typecheck run.
+check_pending_changes() {
+    if [[ "$HAS_INOTIFYWAIT" -eq 1 ]]; then
+        drain_inotify_pending
+    else
+        check_poll_immediate
+    fi
+}
+
+# ─── Cleanup ─────────────────────────────────────────────────────────────────
+
+cleanup() {
+    # Close inotify fd if open
+    exec 3<&- 2>/dev/null || true
+
+    # Kill inotifywait if running
+    if [[ -n "$INOTIFY_PID" ]]; then
+        kill "$INOTIFY_PID" 2>/dev/null || true
+        wait "$INOTIFY_PID" 2>/dev/null || true
+    fi
+
+    # Remove FIFO
+    if [[ -n "$WATCH_FIFO" ]] && [[ -e "$WATCH_FIFO" ]]; then
+        rm -f "$WATCH_FIFO"
+    fi
+
+    # Kill typecheck if running
+    if [[ -n "$TYPECHECK_PID" ]]; then
+        kill "$TYPECHECK_PID" 2>/dev/null || true
+        wait "$TYPECHECK_PID" 2>/dev/null || true
+    fi
+
+    # Remove temp files
+    if [[ -n "$TMPFILE" ]] && [[ -f "$TMPFILE" ]]; then
+        rm -f "$TMPFILE"
+    fi
+
+    # Remove sentinel and file list
+    if [[ -n "$SENTINEL" ]] && [[ -f "$SENTINEL" ]]; then
+        rm -f "$SENTINEL"
+    fi
+    rm -f "_etylizer/.watch_filelist"
+
+    # Restore terminal title
+    set_title ""
+
+    echo ""
+    echo "ety-watch stopped."
+}
+
+# ─── Main ────────────────────────────────────────────────────────────────────
+
+main() {
+    parse_args "$@"
+    color_init
+
+    cd "$SCRIPT_DIR"
+
+    # Detect inotifywait
+    if command -v inotifywait &>/dev/null; then
+        HAS_INOTIFYWAIT=1
+    else
+        echo "${C_YELLOW}inotifywait not found. Using polling (${POLL_INTERVAL}s interval).${C_RESET}"
+        echo "${C_DIM}Install inotify-tools for event-driven watching.${C_RESET}"
+    fi
+
+    setup_watch_dirs
+
+    trap cleanup SIGINT SIGTERM EXIT
+
+    echo "${C_BOLD}ety-watch${C_RESET} v${VERSION}"
+    echo "Watching: ${EXISTING_DIRS[*]}"
+    if [[ "$HAS_INOTIFYWAIT" -eq 1 ]]; then
+        echo "Mode: inotifywait (event-driven)"
+    else
+        echo "Mode: polling (${POLL_INTERVAL}s)"
+    fi
+    echo ""
+
+    # Start persistent inotify monitor so events during typecheck are captured
+    if [[ "$HAS_INOTIFYWAIT" -eq 1 ]]; then
+        start_inotify_monitor
+    fi
+
+    # Initial run
+    touch_poll_sentinel
+    local result=0
+    run_typecheck "initial run" || result=$?
+
+    if [[ "$ONCE" -eq 1 ]]; then
+        exit "$result"
+    fi
+
+    # Watch loop
+    while true; do
+        # Check if files changed during the last typecheck run
+        local pending
+        pending=$(check_pending_changes)
+
+        if [[ -n "$pending" ]]; then
+            # Re-run immediately with the pending trigger
+            touch_poll_sentinel
+            run_typecheck "${pending}" || true
+        else
+            echo ""
+            echo "${C_DIM}Watching for changes...${C_RESET}"
+
+            local changed_file
+            changed_file=$(wait_for_changes)
+
+            touch_poll_sentinel
+            run_typecheck "${changed_file}" || true
+        fi
+    done
+}
+
+main "$@"
