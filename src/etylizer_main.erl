@@ -57,6 +57,8 @@ cmd_spec() ->
               help => "Dump the raw ast (directly after parsing) of the files given"},
             #{name => dump, short => $d, long => "-dump", type => boolean, default => false,
               help => "Dump the internal ast of the files given"},
+            #{name => dump_transformed, long => "-dump-transformed-ast", type => boolean, default => false,
+              help => "Dump functions after clause-to-case transformation (use -o to filter)"},
             #{name => sanity, long => "-sanity", type => boolean, default => false,
               help => "Perform sanity checks"},
             #{name => no_type_checking, long => "-no-type-checking", type => boolean, default => false,
@@ -140,6 +142,7 @@ parse_args(Args) ->
         log_file = maps:get(log_file, ArgMap, "etylizer.log"),
         dump_raw = maps:get(dump_raw, ArgMap),
         dump = maps:get(dump, ArgMap),
+        dump_transformed = maps:get(dump_transformed, ArgMap),
         sanity = maps:get(sanity, ArgMap),
         force = maps:get(force, ArgMap),
         no_type_checking = maps:get(no_type_checking, ArgMap),
@@ -183,6 +186,35 @@ fix_load_path(Opts) ->
             true
     end.
 
+-spec dump_transformed_ast(#opts{}) -> ok.
+dump_transformed_ast(Opts) ->
+    Only = sets:from_list(Opts#opts.type_check_only),
+    lists:foreach(fun(File) ->
+        Forms = parse_cache:parse(intern, File),
+        FunDecls = [F || F = {function, _, _, _, _} <- Forms],
+        ModName = ast_utils:modname_from_path(File),
+        lists:foreach(fun({function, L, Name, Arity, FunClauses}) ->
+            RefStr = utils:sformat("~w/~w", Name, Arity),
+            QRefStr = utils:sformat("~w:~s", ModName, RefStr),
+            NameStr = utils:sformat("~w", Name),
+            ShouldDump = case sets:is_empty(Only) of
+                true -> true;
+                false ->
+                    sets:is_element(QRefStr, Only)
+                    orelse sets:is_element(RefStr, Only)
+                    orelse sets:is_element(NameStr, Only)
+            end,
+            case ShouldDump of
+                false -> ok;
+                true ->
+                    Ctx = constr_gen:new_ctx(symtab:empty(), enabled),
+                    {Args, Body} = constr_gen:fun_clauses_to_exp(Ctx, L, FunClauses),
+                    io:format("~s(~s) ->~n", [Name, pretty:render_varnames(Args)]),
+                    io:format("~s.~n~n", [pretty:render_exps(Body, 2)])
+            end
+        end, FunDecls)
+    end, Opts#opts.files).
+
 -spec doWork(#opts{}) -> [file:filename()].
 doWork(Opts) ->
     global_state:with_new_state(fun() ->
@@ -219,8 +251,14 @@ doWork(Opts) ->
                       ?LOG_DEBUG("Reverse dependency graph: ~p", cm_depgraph:pretty_depgraph(G)),
                       G
               end,
-          ?LOG_INFO("Performing type checking"),
-          cm_check:perform_type_checks(SearchPath, cm_depgraph:all_sources(DepGraph), DepGraph, Opts)
+          case Opts#opts.dump_transformed of
+              true ->
+                  dump_transformed_ast(Opts),
+                  [];
+              false ->
+                  ?LOG_INFO("Performing type checking"),
+                  cm_check:perform_type_checks(SearchPath, cm_depgraph:all_sources(DepGraph), DepGraph, Opts)
+          end
       after
           parse_cache:cleanup(),
           stdtypes:cleanup()

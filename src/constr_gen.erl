@@ -4,7 +4,8 @@
 
 -export([
          gen_constrs_fun_group/4, gen_constrs_annotated_fun/5,
-         sanity_check/2
+         sanity_check/2,
+         new_ctx/2, fun_clauses_to_exp/3
         ]).
 
 -ifdef(TEST).
