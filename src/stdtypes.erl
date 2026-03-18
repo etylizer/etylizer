@@ -328,7 +328,7 @@ builtin_ops() ->
     % These schemes for operators are polymorphic
     AndShortcutOpTy = tyscm([a], tinter([tfun([tatom(false), tany()], tatom(false)), tfun([tatom(true), tvar(a)], tvar(a))])),
     OrShortcutOpTy = tyscm([a], tinter([tfun([tatom(true), tany()], tatom(true)), tfun([tatom(false), tvar(a)], tvar(a))])),
-    PolyOpTy = tyscm([a], tfun([tvar(a), tvar(a)], tbool())),
+    PolyOpTy = tyscm(tfun([tany(), tany()], tbool())),
     [
         {'+', 2, NumOpTy},
         {'-', 2, NumOpTy},
