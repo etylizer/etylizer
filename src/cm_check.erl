@@ -67,7 +67,8 @@ compute_check_list(SourceList, Index, DepGraph, DepsChanged, Opts) ->
         case {DepsChanged, Opts#opts.force} of
             {false, false} ->
                 ?LOG_TRACE("No external dependency has changed"),
-                create_check_list(SourceList, Index, DepGraph, FunDepGraph);
+                create_check_list(SourceList, Index, DepGraph, FunDepGraph,
+                    Opts#opts.only_recheck_changed);
             {true, _} ->
                 ?LOG_DEBUG("Some external dependency has changed, rechecking everything"),
                 [{F, all} || F <- SourceList];
@@ -157,23 +158,25 @@ analyze_files(Files) ->
         end, Files).
 
 -spec create_check_list(
-    [file:filename()], cm_index:index(), cm_depgraph:dep_graph(), cm_depgraph:fun_dep_graph()
+    [file:filename()], cm_index:index(), cm_depgraph:dep_graph(), cm_depgraph:fun_dep_graph(),
+    boolean()
 ) -> check_list().
-create_check_list(SourceList, Index, DepGraph, FunDepGraph) ->
+create_check_list(SourceList, Index, DepGraph, FunDepGraph, OnlyRecheckChanged) ->
     ModToPath = maps:from_list(
         [{ast_utils:modname_from_path(P), P} || P <- SourceList]),
     CheckEntries = lists:foldl(
         fun(Path, Acc) ->
-            process_source_file(Path, Index, DepGraph, FunDepGraph, ModToPath, Acc)
+            process_source_file(Path, Index, DepGraph, FunDepGraph, ModToPath,
+                OnlyRecheckChanged, Acc)
         end, [], SourceList),
     merge_check_entries(CheckEntries).
 
 % @doc Process a single source file and determine what needs rechecking.
 -spec process_source_file(
     file:filename(), cm_index:index(), cm_depgraph:dep_graph(),
-    cm_depgraph:fun_dep_graph(), #{atom() => file:filename()}, check_list()
+    cm_depgraph:fun_dep_graph(), #{atom() => file:filename()}, boolean(), check_list()
 ) -> check_list().
-process_source_file(Path, Index, DepGraph, FunDepGraph, ModToPath, Acc) ->
+process_source_file(Path, Index, DepGraph, FunDepGraph, ModToPath, OnlyRecheckChanged, Acc) ->
     case cm_index:has_file_changed(Path, Index) of
         false -> Acc;
         true ->
@@ -181,7 +184,8 @@ process_source_file(Path, Index, DepGraph, FunDepGraph, ModToPath, Acc) ->
             Forms = parse_cache:parse(intern, Path),
             ModName = ast_utils:modname_from_path(Path),
             ModInfo = cm_fun_deps:analyze_module(ModName, Forms),
-            {ChangedFuns, DeclsChanged} = cm_index:changed_functions(Path, ModInfo, Index),
+            {ChangedFuns, DeclsChanged} =
+                cm_index:changed_functions(Path, ModInfo, Index, OnlyRecheckChanged),
             process_changed_file(Path, Forms, ModName, ModInfo, ChangedFuns,
                 DeclsChanged, Index, DepGraph, FunDepGraph, ModToPath, Acc)
     end.
@@ -276,7 +280,7 @@ check_spec_changed(ModName, {Name, Arity}, ModInfo, Path, IndexMap) ->
                         error ->
                             % New function, treat spec as changed
                             {true, FunId};
-                        {ok, {failed, OldSpecHash}} ->
+                        {ok, {failed, _OldBodyHash, OldSpecHash}} ->
                             % Previously failed - compare spec hashes
                             case NewSpecHash =/= OldSpecHash of
                                 true -> {true, FunId};

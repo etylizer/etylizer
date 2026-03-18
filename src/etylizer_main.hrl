@@ -31,6 +31,7 @@
                metrics_file = undefined :: undefined | string(),
                no_exhaustiveness = [] :: [string()],
                no_redundancy = [] :: [string()],
+               only_recheck_changed = false :: boolean(),
                mode = prod_mode :: opts_mode() % only used internally
             }).
 
