@@ -16,6 +16,9 @@ poly_02(X) ->
     Y -> Y
   end.
 
+-spec poly_03(T, any()) -> T.
+poly_03(X, _Y) -> X.
+
 % The first branch of the case is not redundant
 -spec poly(T) -> T.
 poly(X) ->
