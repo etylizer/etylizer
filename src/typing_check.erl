@@ -208,12 +208,13 @@ check_alt(Ctx, Decl = {function, Loc, Name, Arity, _}, FunTy, BranchMode, Fixed)
                 FunStr,
                 sets:to_list(Fixed),
                 pretty:render_constr(SimpConstrs)),
+    TallyStats = Ctx#ctx.tally_stats,
     Res =
         case BranchMode of
             unmatched_branch_fail ->
-                constr_solve:check_simp_constrs(Tab, Fixed, SimpConstrs, FunStr);
+                constr_solve:check_simp_constrs(Tab, Fixed, SimpConstrs, FunStr, TallyStats);
             unmatched_branch_ignore ->
-                constr_solve:check_simp_constrs_return_unmatched(Tab, Fixed, SimpConstrs, FunStr)
+                constr_solve:check_simp_constrs_return_unmatched(Tab, Fixed, SimpConstrs, FunStr, TallyStats)
         end,
     case Res of
         ok ->

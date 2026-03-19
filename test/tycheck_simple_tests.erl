@@ -12,8 +12,9 @@
 check_ok_fun(Filename, Tab, OverlayTab, DisableExhaustiveness, DisableRedundancy, Decl = {function, L, Name, Arity, _}, Ty) ->
     Includes = ["include", "src", "src/erlang_types", "src/erlang_types/dnf", "src/erlang_types/utils"],
     SanityCheck = cm_check:perform_sanity_check(Filename, [Decl], true, Includes),
+    TallyStats = os:getenv("ETYLIZER_TALLY_STATS") =/= false,
     Ctx0 = typing:new_ctx(Tab, OverlayTab, SanityCheck), % FIXME: perform sanity check!
-    Ctx = Ctx0#ctx{ disable_exhaustiveness = DisableExhaustiveness, disable_redundancy = DisableRedundancy },
+    Ctx = Ctx0#ctx{ disable_exhaustiveness = DisableExhaustiveness, disable_redundancy = DisableRedundancy, tally_stats = TallyStats },
     try
         typing_check:check(Ctx, Decl, Ty)
     catch
@@ -27,8 +28,9 @@ check_ok_fun(Filename, Tab, OverlayTab, DisableExhaustiveness, DisableRedundancy
 -spec check_infer_ok_fun(string(), symtab:t(), symtab:t(), sets:set({atom(), arity()}), sets:set({atom(), arity()}), ast:fun_decl(), ast:ty_scheme()) -> ok.
 check_infer_ok_fun(Filename, Tab, OverlayTab, DisableExhaustiveness, DisableRedundancy, Decl = {function, L, Name, Arity, _}, Ty) ->
     % Check that the inferred type is more general then the type in the spec
+    TallyStats = os:getenv("ETYLIZER_TALLY_STATS") =/= false,
     Ctx0 = typing:new_ctx(Tab, OverlayTab, error),
-    Ctx = Ctx0#ctx{ disable_exhaustiveness = DisableExhaustiveness, disable_redundancy = DisableRedundancy },
+    Ctx = Ctx0#ctx{ disable_exhaustiveness = DisableExhaustiveness, disable_redundancy = DisableRedundancy, tally_stats = TallyStats },
     Envs =
        try
            typing_infer:infer(Ctx, [Decl])
@@ -68,8 +70,9 @@ check_infer_ok_fun(Filename, Tab, OverlayTab, DisableExhaustiveness, DisableRedu
 
 -spec check_fail_fun(string(), symtab:t(), symtab:t(), sets:set({atom(), arity()}), sets:set({atom(), arity()}), ast:fun_decl(), ast:ty_scheme()) -> ok.
 check_fail_fun(Filename, Tab, OverlayTab, DisableExhaustiveness, DisableRedundancy, Decl = {function, L, Name, Arity, _}, Ty) ->
+    TallyStats = os:getenv("ETYLIZER_TALLY_STATS") =/= false,
     Ctx0 = typing:new_ctx(Tab, OverlayTab, error),
-    Ctx = Ctx0#ctx{ disable_exhaustiveness = DisableExhaustiveness, disable_redundancy = DisableRedundancy },
+    Ctx = Ctx0#ctx{ disable_exhaustiveness = DisableExhaustiveness, disable_redundancy = DisableRedundancy, tally_stats = TallyStats },
     try
         typing_check:check(Ctx, Decl, Ty),
         io:format("~s: Type checking ~w/~w in ~s succeeded but should fail",

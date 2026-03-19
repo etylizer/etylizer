@@ -29,6 +29,7 @@
                files = [] :: [string()],
                type_overlay = [] :: string(),
                verbose = false :: boolean(),
+               tally_stats = false :: boolean(),
                no_exhaustiveness = [] :: [string()],
                no_redundancy = [] :: [string()],
                mode = prod_mode :: opts_mode() % only used internally
