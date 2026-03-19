@@ -6,6 +6,7 @@
           report_mode :: feature_flags:report_mode(),
           report_timeout :: pos_integer(),
           exhaustiveness_mode :: feature_flags:exhaustiveness_mode(),
+          tally_stats = false :: boolean(),
           % functions where exhaustiveness checking is disabled at the function clause level
           % via -etylizer({functions_exhaustive, off, [...]})
           disable_exhaustiveness = sets:new() :: sets:set({atom(), arity()}),

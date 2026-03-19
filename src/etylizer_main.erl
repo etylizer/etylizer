@@ -124,6 +124,8 @@ cmd_spec() ->
               help => "Disable redundancy checking for a function (name/arity). May be given multiple times."},
             #{name => verbose, short => $v, long => "-verbose", type => boolean, default => false,
               help => "Verbose output (e.g. preprocessor warnings)"},
+            #{name => tally_stats, long => "-tally-stats", type => boolean, default => false,
+              help => "Log polymorphic variable counts per tally invocation to stderr"},
             #{name => files, nargs => list, required => false, default => [],
               help => "Files to type check"}
         ]
@@ -171,7 +173,8 @@ parse_args(Args) ->
         no_redundancy = maps:get(no_redundancy, ArgMap),
         files = maps:get(files, ArgMap),
         type_overlay = maps:get(type_overlay, ArgMap, []),
-        verbose = maps:get(verbose, ArgMap, false)
+        verbose = maps:get(verbose, ArgMap, false),
+        tally_stats = maps:get(tally_stats, ArgMap, false)
     },
     if
         Opts#opts.help ->

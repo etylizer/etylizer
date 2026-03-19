@@ -3,7 +3,9 @@
 -export([
   tally/2,
   tally/3,
-  is_satisfiable/3
+  tally/4,
+  is_satisfiable/3,
+  is_satisfiable/4
 ]).
 
 -ifdef(TEST).
@@ -20,6 +22,11 @@
 -spec is_satisfiable(symtab:t(), constr:collected_constrs(), monomorphic_variables()) ->
     {false, [{error, string()}]} | {true, term()}.
 is_satisfiable(SymTab, Constraints, FixedVars) ->
+    is_satisfiable(SymTab, Constraints, FixedVars, false).
+
+-spec is_satisfiable(symtab:t(), constr:collected_constrs(), monomorphic_variables(), boolean()) ->
+    {false, [{error, string()}]} | {true, term()}.
+is_satisfiable(SymTab, Constraints, FixedVars, TallyStats) ->
     % uncomment to extract a tally test case config file
     % io:format(user, "~s~n", [utils:format_tally_config(sets:to_list(Constraints), FixedVars, SymTab)]),
 
@@ -37,6 +44,7 @@ is_satisfiable(SymTab, Constraints, FixedVars) ->
 
     % cleaning is OK, we only care about one solution
     FinalCons = subst:clean_cons(InternalRawConstraints, FixedVars, SymTab),
+    log_poly_vars(FinalCons, FixedVars, TallyStats),
 
     MonomorphicTallyVariables = maps:from_list([{ty_variable:new_with_name(Var), []} || Var <- sets:to_list(FixedVars)]),
 
@@ -64,10 +72,13 @@ do_satisfiable(FinalCons, MonomorphicTallyVariables) ->
     end.
 
 -spec tally(symtab:t(), constr:collected_constrs()) -> tally_res().
-tally(SymTab, Constraints) -> tally(SymTab, Constraints, sets:new()).
+tally(SymTab, Constraints) -> tally(SymTab, Constraints, sets:new(), false).
 
 -spec tally(symtab:t(), constr:collected_constrs(), sets:set(ast:ty_varname())) -> tally_res().
-tally(SymTab, Constraints, FixedVars) ->
+tally(SymTab, Constraints, FixedVars) -> tally(SymTab, Constraints, FixedVars, false).
+
+-spec tally(symtab:t(), constr:collected_constrs(), sets:set(ast:ty_varname()), boolean()) -> tally_res().
+tally(SymTab, Constraints, FixedVars, TallyStats) ->
     % uncomment to extract a tally test case config file
     % io:format(user, "~s~n", [utils:format_tally_config(sets:to_list(Constraints), FixedVars, SymTab)]),
 
@@ -82,6 +93,7 @@ tally(SymTab, Constraints, FixedVars) ->
                lists:sort( fun ({scsubty, _, S, T}, {scsubty, _, X, Y}) ->
                                    (erts_debug:size({S, T})) < erts_debug:size(({X, Y})) end,
                            sets:to_list(InlinedConstrs))),
+    log_poly_vars(InternalRawConstraints, FixedVars, TallyStats),
 
     InternalConstraints = [{ty_parser:parse(T1), ty_parser:parse(T2)} || {T1, T2} <- InternalRawConstraints],
 
@@ -110,6 +122,20 @@ tally(SymTab, Constraints, FixedVars) ->
               end,
               Sigmas)
       end.
+
+-spec log_poly_vars([{ast:ty(), ast:ty()}], monomorphic_variables(), boolean()) -> ok.
+log_poly_vars(_Constraints, _FixedVars, false) -> ok;
+log_poly_vars(Constraints, FixedVars, true) ->
+    AllPolyVars = lists:usort(lists:flatmap(
+        fun(C) -> varset(C, FixedVars) end, Constraints)),
+    Line = io_lib:format("[tally_poly_vars] ~b~n", [length(AllPolyVars)]),
+    case os:getenv("ETYLIZER_TALLY_STATS_FILE") of
+        false ->
+            io:format(standard_error, "~s", [Line]);
+        FilePath ->
+            file:write_file(FilePath, Line, [append])
+    end,
+    ok.
 
 -spec split([{ast:ty(), ast:ty()}], monomorphic_variables()) -> constraints_partition().
 split(Constrs, FixedVars) ->

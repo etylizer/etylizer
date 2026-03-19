@@ -125,9 +125,70 @@ jobs:
         name: ${{ matrix.artifact }}
         path: /tmp/test_report.log
 
+  tally:
+    name: "tally: ${{ matrix.name }}"
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    container:
+      image: erlang:28
+    strategy:
+      matrix:
+        include:
+          - name: typecheck
+            cmd: ETYLIZER_TALLY_STATS_FILE=/tmp/tally_stats.log ./typecheck_erlang_types --report-mode report --report-timeout 30000 --tally-stats
+            artifact: tally-typecheck-pr
+          - name: test-typecheck
+            cmd: ETYLIZER_TALLY_STATS_FILE=/tmp/tally_stats.log ETYLIZER_TALLY_STATS=1 ./run_test.escript typecheck
+            artifact: tally-test-typecheck-pr
+          - name: test-infer
+            cmd: ETYLIZER_TALLY_STATS_FILE=/tmp/tally_stats.log ETYLIZER_TALLY_STATS=1 ./run_test.escript infer
+            artifact: tally-test-infer-pr
+    steps:
+    - uses: actions/checkout@v4
+    - run: make build
+    - run: ${{ matrix.cmd }}
+    - uses: actions/upload-artifact@v4
+      with:
+        name: ${{ matrix.artifact }}
+        path: /tmp/tally_stats.log
+        if-no-files-found: ignore
+
+  tally-base:
+    name: "tally (base): ${{ matrix.name }}"
+    needs: build
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    container:
+      image: erlang:28
+    strategy:
+      matrix:
+        include:
+          - name: typecheck
+            cmd: ETYLIZER_TALLY_STATS_FILE=/tmp/tally_stats.log ./typecheck_erlang_types --report-mode report --report-timeout 30000 --tally-stats
+            artifact: tally-typecheck-base
+          - name: test-typecheck
+            cmd: ETYLIZER_TALLY_STATS_FILE=/tmp/tally_stats.log ETYLIZER_TALLY_STATS=1 ./run_test.escript typecheck
+            artifact: tally-test-typecheck-base
+          - name: test-infer
+            cmd: ETYLIZER_TALLY_STATS_FILE=/tmp/tally_stats.log ETYLIZER_TALLY_STATS=1 ./run_test.escript infer
+            artifact: tally-test-infer-base
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        ref: ${{ github.event.pull_request.base.sha }}
+    - run: make build
+    - run: ${{ matrix.cmd }} || true
+    - uses: actions/upload-artifact@v4
+      with:
+        name: ${{ matrix.artifact }}
+        path: /tmp/tally_stats.log
+        if-no-files-found: ignore
+
   ci-stats:
     name: "CI stats"
-    needs: [verify, typecheck-base, test, test-base]
+    needs: [verify, typecheck-base, test, test-base, tally, tally-base]
     if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
     steps:
@@ -156,6 +217,20 @@ jobs:
         .github/scripts/typecheck_stats.sh \
           /tmp/artifacts/test-infer-pr/test_report.log \
           /tmp/artifacts/test-infer-base/test_report.log \
+          >> /tmp/ci_stats.md
+        echo "" >> /tmp/ci_stats.md
+        echo "## Polymorphic Variable Statistics" >> /tmp/ci_stats.md
+        echo "" >> /tmp/ci_stats.md
+        .github/scripts/poly_vars_stats.sh \
+          "typecheck tests" \
+          /tmp/artifacts/tally-test-typecheck-pr/tally_stats.log \
+          /tmp/artifacts/tally-test-typecheck-base/tally_stats.log \
+          "infer tests" \
+          /tmp/artifacts/tally-test-infer-pr/tally_stats.log \
+          /tmp/artifacts/tally-test-infer-base/tally_stats.log \
+          "erlang_types" \
+          /tmp/artifacts/tally-typecheck-pr/tally_stats.log \
+          /tmp/artifacts/tally-typecheck-base/tally_stats.log \
           >> /tmp/ci_stats.md
     - name: Post stats to PR
       uses: actions/github-script@v7
