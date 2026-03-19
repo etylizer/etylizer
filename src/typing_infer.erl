@@ -72,7 +72,8 @@ simplify_and_log(SimpCtx, Cs, Ctx, Funs) ->
                 "checking constraints for solvability.~nConstraints:~n~s",
                 FunNamesStr, pretty:render_constr(SimpConstrs)),
     Tab = Ctx#ctx.symtab,
-    constr_solve:solve_simp_constrs(Tab, SimpConstrs, "inference").
+    TallyStats = Ctx#ctx.tally_stats,
+    constr_solve:solve_simp_constrs(Tab, SimpConstrs, "inference", TallyStats).
 
 -spec build_result_envs(term(), [ast:fun_decl()], map(), ctx()) -> [symtab:fun_env()].
 build_result_envs(error, _Decls, _Env, _Ctx) -> [];

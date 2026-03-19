@@ -110,7 +110,8 @@ do_type_check(CurrentFile, Forms, ExpandedSymtab, OverlaySymtab, Opts) ->
     ReportTimeout = Opts#opts.report_timeout,
     ExhaustivenessMode = Opts#opts.exhaustiveness_mode,
     GradualTypingMode = Opts#opts.gradual_typing_mode,
-    Ctx = typing:new_ctx(ExpandedSymtab, OverlaySymtab, Sanity, ReportMode, ReportTimeout, ExhaustivenessMode, GradualTypingMode),
+    TallyStats = Opts#opts.tally_stats,
+    Ctx = typing:new_ctx(ExpandedSymtab, OverlaySymtab, Sanity, ReportMode, ReportTimeout, ExhaustivenessMode, GradualTypingMode, TallyStats),
     CliNoExhaustiveness = utils:parse_fun_ids(Opts#opts.no_exhaustiveness),
     CliNoRedundancy = utils:parse_fun_ids(Opts#opts.no_redundancy),
     case Opts#opts.no_type_checking of

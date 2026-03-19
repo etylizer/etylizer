@@ -4,6 +4,7 @@
     check_forms/6, check_forms/7,
     new_ctx/3,
     new_ctx/7,
+    new_ctx/8,
     resolve_disabled_funs/2
 ]).
 
@@ -16,7 +17,11 @@ new_ctx(Tab, Overlay, Sanity) ->
 
 -spec new_ctx(symtab:t(), symtab:t(), t:opt(ast_check:ty_map()), feature_flags:report_mode(), pos_integer(), feature_flags:exhaustiveness_mode(), feature_flags:gradual_typing_mode()) -> ctx().
 new_ctx(Tab, Overlay, Sanity, ReportMode, ReportTimeout, ExhaustivenessMode, GradualTypingMode) ->
-    Ctx = #ctx{ symtab = Tab, overlay_symtab = Overlay, sanity = Sanity, gradual_typing_mode = GradualTypingMode, report_mode = ReportMode, report_timeout = ReportTimeout, exhaustiveness_mode = ExhaustivenessMode },
+    new_ctx(Tab, Overlay, Sanity, ReportMode, ReportTimeout, ExhaustivenessMode, GradualTypingMode, false).
+
+-spec new_ctx(symtab:t(), symtab:t(), t:opt(ast_check:ty_map()), feature_flags:report_mode(), pos_integer(), feature_flags:exhaustiveness_mode(), feature_flags:gradual_typing_mode(), boolean()) -> ctx().
+new_ctx(Tab, Overlay, Sanity, ReportMode, ReportTimeout, ExhaustivenessMode, GradualTypingMode, TallyStats) ->
+    Ctx = #ctx{ symtab = Tab, overlay_symtab = Overlay, sanity = Sanity, gradual_typing_mode = GradualTypingMode, report_mode = ReportMode, report_timeout = ReportTimeout, exhaustiveness_mode = ExhaustivenessMode, tally_stats = TallyStats },
     Ctx.
 
 % Resolves the set of functions for which a feature is disabled from forms.
