@@ -11,6 +11,8 @@
 -import(stdtypes, [tvar/1]).
 -endif.
 
+-include("metrics.hrl").
+
 -export_type([monomorphic_variables/0]).
 
 -type monomorphic_variables() :: sets:set(ast:ty_varname()).
@@ -39,6 +41,7 @@ is_satisfiable(SymTab, Constraints, FixedVars) ->
     FinalCons = subst:clean_cons(InternalRawConstraints, FixedVars, SymTab),
 
     MonomorphicTallyVariables = maps:from_list([{ty_variable:new_with_name(Var), []} || Var <- sets:to_list(FixedVars)]),
+    ?METRIC(poly_vars, {maps:size(MonomorphicTallyVariables)}),
 
     % Split constraints into independent partitions
     MM = split(FinalCons, FixedVars),
@@ -86,6 +89,7 @@ tally(SymTab, Constraints, FixedVars) ->
     InternalConstraints = [{ty_parser:parse(T1), ty_parser:parse(T2)} || {T1, T2} <- InternalRawConstraints],
 
     MonomorphicTallyVariables = maps:from_list([{ty_variable:new_with_name(Var), []} || Var <- sets:to_list(FixedVars)]),
+    ?METRIC(poly_vars, {maps:size(MonomorphicTallyVariables)}),
 
     InternalResult = etally:tally(InternalConstraints, MonomorphicTallyVariables),
 

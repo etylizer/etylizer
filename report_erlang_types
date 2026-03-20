@@ -1,0 +1,16 @@
+#!/bin/bash
+set -e
+
+./ety_metrics \
+    -P . \
+    -S ./src/erlang_types/ \
+    -I ./include \
+    -I ./src \
+    -I ./erlang_types \
+    -I ./erlang_types/dnf \
+    --type-overlay overlays/etylizer_overlay.erl \
+    -f \
+    --report-mode report --report-timeout 10000 \
+    --metrics-file erlang_types_metrics.json \
+    --no-deps \
+    "$@"
