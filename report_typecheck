@@ -3,7 +3,7 @@ set -e
 
 ./ety_metrics \
     -P . \
-    -S ./src \
+    -S ./test_files/tycheck_simple \
     -I ./include \
     -I ./src \
     -I ./erlang_types \
@@ -11,6 +11,6 @@ set -e
     --type-overlay overlays/etylizer_overlay.erl \
     -f \
     --report-mode report --report-timeout 1000 \
-    --metrics-file etylizer_metrics.json \
+    --metrics-file typecheck_test_metrics.json \
     --no-deps \
     "$@"

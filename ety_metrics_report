@@ -1,34 +1,42 @@
 #!/usr/bin/env escript
 %%! -noinput
 
-main([PrFile]) ->
-    report(load_json(PrFile), #{});
-main([PrFile, BaseFile]) ->
-    report(load_json(PrFile), load_json(BaseFile));
-main(_) ->
-    io:format(standard_error, "Usage: ety_metrics_report <pr.json> [base.json]~n", []),
-    halt(1).
+main(Args) ->
+    {Title, Rest} = case Args of
+        ["--title", T | R] -> {T, R};
+        R -> {undefined, R}
+    end,
+    case Rest of
+        [PrFile] -> report(Title, load_json(PrFile), #{});
+        [PrFile, BaseFile] -> report(Title, load_json(PrFile), load_json(BaseFile));
+        _ ->
+            io:format(standard_error, "Usage: ety_metrics_report [--title TITLE] <pr.json> [base.json]~n", []),
+            halt(1)
+    end.
 
 load_json(Path) ->
     {ok, Bin} = file:read_file(Path),
     json:decode(Bin).
 
-report(Pr, Base) ->
+report(Title, Pr, Base) ->
     HasBase = maps:size(Base) > 0,
     % Typecheck time sections
     case maps:find(<<"typecheck_time">>, Pr) of
         {ok, PrEntries} ->
             BaseEntries = maps:get(<<"typecheck_time">>, Base, []),
-            print_time_section("Typecheck Statistics", "function", PrEntries, BaseEntries, HasBase);
+            print_time_section(section_title(Title, "Typecheck Statistics"), "function", PrEntries, BaseEntries, HasBase);
         error -> ok
     end,
     % Poly vars section
     case maps:find(<<"poly_vars">>, Pr) of
         {ok, PrPoly} ->
             BasePoly = maps:get(<<"poly_vars">>, Base, []),
-            print_poly_section(PrPoly, BasePoly, HasBase);
+            print_poly_section(section_title(Title, "Polymorphic Variable Statistics"), PrPoly, BasePoly, HasBase);
         error -> ok
     end.
+
+section_title(undefined, Section) -> Section;
+section_title(Title, Section) -> Title ++ ": " ++ Section.
 
 %% --- Time statistics ---
 
@@ -123,9 +131,9 @@ poly_stats(Entries) ->
       min_poly => lists:min(Polys), min_mono => lists:min(Monos),
       max_poly => lists:max(Polys), max_mono => lists:max(Monos)}.
 
-print_poly_section(PrEntries, BaseEntries, HasBase) ->
+print_poly_section(Title, PrEntries, BaseEntries, HasBase) ->
     PrS = poly_stats(PrEntries),
-    io:format("## Polymorphic Variable Statistics~n~n", []),
+    io:format("## ~s~n~n", [Title]),
     case HasBase of
         true ->
             BaseS = poly_stats(BaseEntries),
