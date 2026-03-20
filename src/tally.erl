@@ -41,7 +41,9 @@ is_satisfiable(SymTab, Constraints, FixedVars) ->
     FinalCons = subst:clean_cons(InternalRawConstraints, FixedVars, SymTab),
 
     MonomorphicTallyVariables = maps:from_list([{ty_variable:new_with_name(Var), []} || Var <- sets:to_list(FixedVars)]),
-    ?METRIC(poly_vars, {maps:size(MonomorphicTallyVariables)}),
+    AllVars = sets:from_list(utils:everything(fun({var, V}) when is_atom(V) -> {ok, V}; (_) -> error end, FinalCons)),
+    MonoInConstrs = sets:size(sets:intersection(AllVars, FixedVars)),
+    ?METRIC(poly_vars, {sets:size(AllVars) - MonoInConstrs, MonoInConstrs}),
 
     % Split constraints into independent partitions
     MM = split(FinalCons, FixedVars),
@@ -89,7 +91,9 @@ tally(SymTab, Constraints, FixedVars) ->
     InternalConstraints = [{ty_parser:parse(T1), ty_parser:parse(T2)} || {T1, T2} <- InternalRawConstraints],
 
     MonomorphicTallyVariables = maps:from_list([{ty_variable:new_with_name(Var), []} || Var <- sets:to_list(FixedVars)]),
-    ?METRIC(poly_vars, {maps:size(MonomorphicTallyVariables)}),
+    AllVars = sets:from_list(utils:everything(fun({var, V}) when is_atom(V) -> {ok, V}; (_) -> error end, InternalRawConstraints)),
+    MonoInConstrs = sets:size(sets:intersection(AllVars, FixedVars)),
+    ?METRIC(poly_vars, {sets:size(AllVars) - MonoInConstrs, MonoInConstrs}),
 
     InternalResult = etally:tally(InternalConstraints, MonomorphicTallyVariables),
 

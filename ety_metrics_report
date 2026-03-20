@@ -110,15 +110,18 @@ print_time_section(Title, Unit, PrEntries, BaseEntries, HasBase) ->
 %% --- Poly var statistics ---
 
 poly_stats([]) ->
-    #{invocations => 0, total => 0, avg => 0.0, min => 0, max => 0};
+    #{invocations => 0, total_poly => 0, total_mono => 0,
+      avg_poly => 0.0, avg_mono => 0.0,
+      min_poly => 0, min_mono => 0, max_poly => 0, max_mono => 0};
 poly_stats(Entries) ->
-    Vals = [V || [V] <- Entries],
-    N = length(Vals),
-    Total = lists:sum(Vals),
-    #{invocations => N, total => Total,
-      avg => Total / max(1, N),
-      min => lists:min(Vals),
-      max => lists:max(Vals)}.
+    Polys = [P || [P, _] <- Entries],
+    Monos = [M || [_, M] <- Entries],
+    N = length(Entries),
+    #{invocations => N,
+      total_poly => lists:sum(Polys), total_mono => lists:sum(Monos),
+      avg_poly => lists:sum(Polys) / max(1, N), avg_mono => lists:sum(Monos) / max(1, N),
+      min_poly => lists:min(Polys), min_mono => lists:min(Monos),
+      max_poly => lists:max(Polys), max_mono => lists:max(Monos)}.
 
 print_poly_section(PrEntries, BaseEntries, HasBase) ->
     PrS = poly_stats(PrEntries),
@@ -126,26 +129,41 @@ print_poly_section(PrEntries, BaseEntries, HasBase) ->
     case HasBase of
         true ->
             BaseS = poly_stats(BaseEntries),
-            io:format("| Metric | PR | Base | Delta |~n", []),
-            io:format("|--------|----|------|-------|~n", []),
-            row3("Invocations", ival(maps:get(invocations, PrS)), ival(maps:get(invocations, BaseS)),
-                 delta_int(maps:get(invocations, PrS), maps:get(invocations, BaseS))),
-            row3("Total vars", ival(maps:get(total, PrS)), ival(maps:get(total, BaseS)),
-                 delta_int(maps:get(total, PrS), maps:get(total, BaseS))),
-            row3("Avg vars", fmt_f1(maps:get(avg, PrS)), fmt_f1(maps:get(avg, BaseS)),
-                 delta_f1(maps:get(avg, PrS), maps:get(avg, BaseS))),
-            row3("Min vars", ival(maps:get(min, PrS)), ival(maps:get(min, BaseS)),
-                 delta_int(maps:get(min, PrS), maps:get(min, BaseS))),
-            row3("Max vars", ival(maps:get(max, PrS)), ival(maps:get(max, BaseS)),
-                 delta_int(maps:get(max, PrS), maps:get(max, BaseS)));
+            io:format("| Metric | PR Poly | PR Mono | Base Poly | Base Mono | Delta Poly | Delta Mono |~n", []),
+            io:format("|--------|---------|---------|-----------|-----------|------------|------------|~n", []),
+            poly_row3("Invocations",
+                ival(maps:get(invocations, PrS)), ival(maps:get(invocations, PrS)),
+                ival(maps:get(invocations, BaseS)), ival(maps:get(invocations, BaseS)),
+                delta_int(maps:get(invocations, PrS), maps:get(invocations, BaseS)),
+                delta_int(maps:get(invocations, PrS), maps:get(invocations, BaseS))),
+            poly_row3("Total vars",
+                ival(maps:get(total_poly, PrS)), ival(maps:get(total_mono, PrS)),
+                ival(maps:get(total_poly, BaseS)), ival(maps:get(total_mono, BaseS)),
+                delta_int(maps:get(total_poly, PrS), maps:get(total_poly, BaseS)),
+                delta_int(maps:get(total_mono, PrS), maps:get(total_mono, BaseS))),
+            poly_row3("Avg vars",
+                fmt_f1(maps:get(avg_poly, PrS)), fmt_f1(maps:get(avg_mono, PrS)),
+                fmt_f1(maps:get(avg_poly, BaseS)), fmt_f1(maps:get(avg_mono, BaseS)),
+                delta_f1(maps:get(avg_poly, PrS), maps:get(avg_poly, BaseS)),
+                delta_f1(maps:get(avg_mono, PrS), maps:get(avg_mono, BaseS))),
+            poly_row3("Min vars",
+                ival(maps:get(min_poly, PrS)), ival(maps:get(min_mono, PrS)),
+                ival(maps:get(min_poly, BaseS)), ival(maps:get(min_mono, BaseS)),
+                delta_int(maps:get(min_poly, PrS), maps:get(min_poly, BaseS)),
+                delta_int(maps:get(min_mono, PrS), maps:get(min_mono, BaseS))),
+            poly_row3("Max vars",
+                ival(maps:get(max_poly, PrS)), ival(maps:get(max_mono, PrS)),
+                ival(maps:get(max_poly, BaseS)), ival(maps:get(max_mono, BaseS)),
+                delta_int(maps:get(max_poly, PrS), maps:get(max_poly, BaseS)),
+                delta_int(maps:get(max_mono, PrS), maps:get(max_mono, BaseS)));
         false ->
-            io:format("| Metric | Value |~n", []),
-            io:format("|--------|-------|~n", []),
-            row1("Invocations", ival(maps:get(invocations, PrS))),
-            row1("Total vars", ival(maps:get(total, PrS))),
-            row1("Avg vars", fmt_f1(maps:get(avg, PrS))),
-            row1("Min vars", ival(maps:get(min, PrS))),
-            row1("Max vars", ival(maps:get(max, PrS)))
+            io:format("| Metric | Poly | Mono |~n", []),
+            io:format("|--------|------|------|~n", []),
+            row2("Invocations", ival(maps:get(invocations, PrS)), ival(maps:get(invocations, PrS))),
+            row2("Total vars", ival(maps:get(total_poly, PrS)), ival(maps:get(total_mono, PrS))),
+            row2("Avg vars", fmt_f1(maps:get(avg_poly, PrS)), fmt_f1(maps:get(avg_mono, PrS))),
+            row2("Min vars", ival(maps:get(min_poly, PrS)), ival(maps:get(min_mono, PrS))),
+            row2("Max vars", ival(maps:get(max_poly, PrS)), ival(maps:get(max_mono, PrS)))
     end,
     io:format("~n", []).
 
@@ -154,8 +172,14 @@ print_poly_section(PrEntries, BaseEntries, HasBase) ->
 row1(Metric, Val) ->
     io:format("| ~s | ~s |~n", [Metric, Val]).
 
+row2(Metric, V1, V2) ->
+    io:format("| ~s | ~s | ~s |~n", [Metric, V1, V2]).
+
 row3(Metric, Pr, Base, Delta) ->
     io:format("| ~s | ~s | ~s | ~s |~n", [Metric, Pr, Base, Delta]).
+
+poly_row3(Metric, PrP, PrM, BaseP, BaseM, DeltaP, DeltaM) ->
+    io:format("| ~s | ~s | ~s | ~s | ~s | ~s | ~s |~n", [Metric, PrP, PrM, BaseP, BaseM, DeltaP, DeltaM]).
 
 %% --- Formatting ---
 
