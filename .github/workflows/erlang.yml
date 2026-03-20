@@ -28,6 +28,8 @@ jobs:
         include:
           - name: dialyzer
             cmd: rebar3 as test dialyzer
+          - name: erlang_types
+            cmd: ./typecheck_erlang_types --report-mode report --report-timeout 30000
           - name: syntax transformation
             cmd: ./_build/default/bin/etylizer --sanity --no-type-checking -I ./include -I ./src ./src/*.erl
     steps:
