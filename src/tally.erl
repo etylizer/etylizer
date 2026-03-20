@@ -15,6 +15,25 @@
 
 -export_type([monomorphic_variables/0]).
 
+-ifdef(ety_metrics).
+var_metrics(FixedVars, Constraints, SymTab) ->
+    AllVars = sets:from_list(utils:everything(
+        fun({var, V}) when is_atom(V) -> {ok, V}; (_) -> error end, Constraints)),
+    MonoUsed = sets:size(sets:intersection(AllVars, FixedVars)),
+    MonoUnused = sets:size(FixedVars) - MonoUsed,
+    Poly = sets:size(AllVars) - MonoUsed,
+    PolyVars = sets:subtract(AllVars, FixedVars),
+    Types = lists:flatmap(fun({S, T}) -> [S, T] end, Constraints),
+    Meaningful = sets:size(sets:filter(fun(Alpha) ->
+        Subst = #{Alpha => {predef, none}},
+        lists:any(fun(T) ->
+            T2 = subst:apply_base(Subst, T),
+            not subty:is_equivalent(SymTab, T, T2)
+        end, Types)
+    end, PolyVars)),
+    {Poly, MonoUsed, MonoUnused, Meaningful}.
+-endif.
+
 -type monomorphic_variables() :: sets:set(ast:ty_varname()).
 -type tally_res() :: {error, [{error, string()}]} | nonempty_list(subst:t()).
 -type constraints_partition() :: #{term() => [{ast:ty(), ast:ty()}]}.
@@ -41,9 +60,7 @@ is_satisfiable(SymTab, Constraints, FixedVars) ->
     FinalCons = subst:clean_cons(InternalRawConstraints, FixedVars, SymTab),
 
     MonomorphicTallyVariables = maps:from_list([{ty_variable:new_with_name(Var), []} || Var <- sets:to_list(FixedVars)]),
-    AllVars = sets:from_list(utils:everything(fun({var, V}) when is_atom(V) -> {ok, V}; (_) -> error end, FinalCons)),
-    MonoInConstrs = sets:size(sets:intersection(AllVars, FixedVars)),
-    ?METRIC(poly_vars, {sets:size(AllVars) - MonoInConstrs, MonoInConstrs}),
+    ?METRIC(poly_vars, var_metrics(FixedVars, FinalCons, SymTab)),
 
     % Split constraints into independent partitions
     MM = split(FinalCons, FixedVars),
@@ -91,9 +108,7 @@ tally(SymTab, Constraints, FixedVars) ->
     InternalConstraints = [{ty_parser:parse(T1), ty_parser:parse(T2)} || {T1, T2} <- InternalRawConstraints],
 
     MonomorphicTallyVariables = maps:from_list([{ty_variable:new_with_name(Var), []} || Var <- sets:to_list(FixedVars)]),
-    AllVars = sets:from_list(utils:everything(fun({var, V}) when is_atom(V) -> {ok, V}; (_) -> error end, InternalRawConstraints)),
-    MonoInConstrs = sets:size(sets:intersection(AllVars, FixedVars)),
-    ?METRIC(poly_vars, {sets:size(AllVars) - MonoInConstrs, MonoInConstrs}),
+    ?METRIC(poly_vars, var_metrics(FixedVars, InternalRawConstraints, SymTab)),
 
     InternalResult = etally:tally(InternalConstraints, MonomorphicTallyVariables),
 

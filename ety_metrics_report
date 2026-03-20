@@ -44,28 +44,29 @@ time_stats([]) ->
     #{total => 0, ok => 0, errors => 0, timeouts => 0,
       total_time => 0, avg => 0.0, max => {0, <<>>}, min => {0, <<>>}};
 time_stats(Entries) ->
-    {Ok, Err, Tout, Times} = lists:foldl(
-        fun([Name, Time, Status], {O, E, T, Ts}) ->
+    {Ok, Err, Tout, Times, NonTOTimes} = lists:foldl(
+        fun([Name, Time, Status], {O, E, T, Ts, NTs}) ->
             Entry = {Name, Time},
             case Status of
-                <<"ok">>      -> {O+1, E, T, [Entry|Ts]};
-                <<"error">>   -> {O, E+1, T, [Entry|Ts]};
-                <<"timeout">> -> {O, E, T+1, [Entry|Ts]};
-                _             -> {O, E, T, [Entry|Ts]}
+                <<"ok">>      -> {O+1, E, T, [Entry|Ts], [Entry|NTs]};
+                <<"error">>   -> {O, E+1, T, [Entry|Ts], [Entry|NTs]};
+                <<"timeout">> -> {O, E, T+1, [Entry|Ts], NTs};
+                _             -> {O, E, T, [Entry|Ts], [Entry|NTs]}
             end
         end,
-        {0, 0, 0, []},
+        {0, 0, 0, [], []},
         Entries
     ),
     Total = length(Entries),
     TotalTime = lists:sum([T || {_, T} <- Times]),
     Avg = TotalTime / max(1, Total),
+    MaxMinTimes = case NonTOTimes of [] -> Times; _ -> NonTOTimes end,
     {MaxN, MaxT} = lists:foldl(
         fun({N,T}, {_, BT}) when T > BT -> {N,T}; (_, Acc) -> Acc end,
-        {<<>>, 0}, Times),
+        {<<>>, 0}, MaxMinTimes),
     {MinN, MinT} = lists:foldl(
         fun({N,T}, {_, BT}) when T < BT -> {N,T}; (_, Acc) -> Acc end,
-        {<<>>, infinity}, Times),
+        {<<>>, infinity}, MaxMinTimes),
     MinVal = case MinT of infinity -> 0; V -> V end,
     #{total => Total, ok => Ok, errors => Err, timeouts => Tout,
       total_time => TotalTime, avg => Avg,
@@ -118,76 +119,89 @@ print_time_section(Title, Unit, PrEntries, BaseEntries, HasBase) ->
 %% --- Poly var statistics ---
 
 poly_stats([]) ->
-    #{invocations => 0, total_poly => 0, total_mono => 0,
-      avg_poly => 0.0, avg_mono => 0.0,
-      min_poly => 0, min_mono => 0, max_poly => 0, max_mono => 0};
+    Z = #{total => 0, avg => 0.0, min => 0, max => 0},
+    #{invocations => 0, poly => Z, mono_used => Z, mono_unused => Z, meaningful => Z};
 poly_stats(Entries) ->
-    Polys = [P || [P, _] <- Entries],
-    Monos = [M || [_, M] <- Entries],
+    Polys = [P || [P, _, _, _] <- Entries],
+    MonoUsed = [U || [_, U, _, _] <- Entries],
+    MonoUnused = [X || [_, _, X, _] <- Entries],
+    Meaningful = [M || [_, _, _, M] <- Entries],
     N = length(Entries),
-    #{invocations => N,
-      total_poly => lists:sum(Polys), total_mono => lists:sum(Monos),
-      avg_poly => lists:sum(Polys) / max(1, N), avg_mono => lists:sum(Monos) / max(1, N),
-      min_poly => lists:min(Polys), min_mono => lists:min(Monos),
-      max_poly => lists:max(Polys), max_mono => lists:max(Monos)}.
+    Calc = fun(Vs) ->
+        #{total => lists:sum(Vs), avg => lists:sum(Vs) / max(1, N),
+          min => lists:min(Vs), max => lists:max(Vs)}
+    end,
+    #{invocations => N, poly => Calc(Polys),
+      mono_used => Calc(MonoUsed), mono_unused => Calc(MonoUnused),
+      meaningful => Calc(Meaningful)}.
 
 print_poly_section(Title, PrEntries, BaseEntries, HasBase) ->
     PrS = poly_stats(PrEntries),
     io:format("## ~s~n~n", [Title]),
+    Cats = [poly, mono_used, mono_unused, meaningful],
+    CatNames = ["Poly", "Mono (used)", "Mono (unused)", "Meaningful"],
     case HasBase of
         true ->
             BaseS = poly_stats(BaseEntries),
-            io:format("| Metric | PR Poly | PR Mono | Base Poly | Base Mono | Delta Poly | Delta Mono |~n", []),
-            io:format("|--------|---------|---------|-----------|-----------|------------|------------|~n", []),
-            poly_row3("Invocations",
-                ival(maps:get(invocations, PrS)), ival(maps:get(invocations, PrS)),
-                ival(maps:get(invocations, BaseS)), ival(maps:get(invocations, BaseS)),
-                delta_int(maps:get(invocations, PrS), maps:get(invocations, BaseS)),
-                delta_int(maps:get(invocations, PrS), maps:get(invocations, BaseS))),
-            poly_row3("Total vars",
-                ival(maps:get(total_poly, PrS)), ival(maps:get(total_mono, PrS)),
-                ival(maps:get(total_poly, BaseS)), ival(maps:get(total_mono, BaseS)),
-                delta_int(maps:get(total_poly, PrS), maps:get(total_poly, BaseS)),
-                delta_int(maps:get(total_mono, PrS), maps:get(total_mono, BaseS))),
-            poly_row3("Avg vars",
-                fmt_f1(maps:get(avg_poly, PrS)), fmt_f1(maps:get(avg_mono, PrS)),
-                fmt_f1(maps:get(avg_poly, BaseS)), fmt_f1(maps:get(avg_mono, BaseS)),
-                delta_f1(maps:get(avg_poly, PrS), maps:get(avg_poly, BaseS)),
-                delta_f1(maps:get(avg_mono, PrS), maps:get(avg_mono, BaseS))),
-            poly_row3("Min vars",
-                ival(maps:get(min_poly, PrS)), ival(maps:get(min_mono, PrS)),
-                ival(maps:get(min_poly, BaseS)), ival(maps:get(min_mono, BaseS)),
-                delta_int(maps:get(min_poly, PrS), maps:get(min_poly, BaseS)),
-                delta_int(maps:get(min_mono, PrS), maps:get(min_mono, BaseS))),
-            poly_row3("Max vars",
-                ival(maps:get(max_poly, PrS)), ival(maps:get(max_mono, PrS)),
-                ival(maps:get(max_poly, BaseS)), ival(maps:get(max_mono, BaseS)),
-                delta_int(maps:get(max_poly, PrS), maps:get(max_poly, BaseS)),
-                delta_int(maps:get(max_mono, PrS), maps:get(max_mono, BaseS)));
+            PrHdrs = [io_lib:format("PR ~s", [N]) || N <- CatNames],
+            BaseHdrs = [io_lib:format("Base ~s", [N]) || N <- CatNames],
+            DeltaHdrs = [io_lib:format("Delta ~s", [N]) || N <- CatNames],
+            AllHdrs = ["Metric"] ++ PrHdrs ++ BaseHdrs ++ DeltaHdrs,
+            HdrLine = "| " ++ lists:flatten(lists:join(" | ", AllHdrs)) ++ " |",
+            SepLine = "|" ++ lists:flatten(lists:duplicate(length(AllHdrs), "---|")),
+            io:format("~s~n~s~n", [HdrLine, SepLine]),
+            poly_row("Invocations", Cats, PrS, BaseS,
+                fun(_, _) -> ival(maps:get(invocations, PrS)) end,
+                fun(_, _) -> ival(maps:get(invocations, BaseS)) end,
+                fun(_, _) -> delta_int(maps:get(invocations, PrS), maps:get(invocations, BaseS)) end),
+            lists:foreach(fun({Label, Key, Fmt, DFmt}) ->
+                poly_row(Label, Cats, PrS, BaseS,
+                    fun(C, S) -> Fmt(maps:get(Key, maps:get(C, S))) end,
+                    fun(C, S) -> Fmt(maps:get(Key, maps:get(C, S))) end,
+                    fun(C, _) -> DFmt(maps:get(Key, maps:get(C, PrS)), maps:get(Key, maps:get(C, BaseS))) end)
+            end, [
+                {"Total vars", total, fun ival/1, fun delta_int/2},
+                {"Avg vars", avg, fun fmt_f1/1, fun delta_f1/2},
+                {"Min vars", min, fun ival/1, fun delta_int/2},
+                {"Max vars", max, fun ival/1, fun delta_int/2}
+            ]);
         false ->
-            io:format("| Metric | Poly | Mono |~n", []),
-            io:format("|--------|------|------|~n", []),
-            row2("Invocations", ival(maps:get(invocations, PrS)), ival(maps:get(invocations, PrS))),
-            row2("Total vars", ival(maps:get(total_poly, PrS)), ival(maps:get(total_mono, PrS))),
-            row2("Avg vars", fmt_f1(maps:get(avg_poly, PrS)), fmt_f1(maps:get(avg_mono, PrS))),
-            row2("Min vars", ival(maps:get(min_poly, PrS)), ival(maps:get(min_mono, PrS))),
-            row2("Max vars", ival(maps:get(max_poly, PrS)), ival(maps:get(max_mono, PrS)))
+            HdrLine = "| Metric | " ++ lists:flatten(lists:join(" | ", CatNames)) ++ " |",
+            SepLine = "|" ++ lists:flatten(lists:duplicate(length(CatNames) + 1, "---|")),
+            io:format("~s~n~s~n", [HdrLine, SepLine]),
+            InvVals = [ival(maps:get(invocations, PrS)) || _ <- Cats],
+            print_poly_row("Invocations", InvVals),
+            lists:foreach(fun({Label, Key, Fmt}) ->
+                Vals = [Fmt(maps:get(Key, maps:get(C, PrS))) || C <- Cats],
+                print_poly_row(Label, Vals)
+            end, [
+                {"Total vars", total, fun ival/1},
+                {"Avg vars", avg, fun fmt_f1/1},
+                {"Min vars", min, fun ival/1},
+                {"Max vars", max, fun ival/1}
+            ])
     end,
     io:format("~n", []).
+
+poly_row(Metric, Cats, PrS, BaseS, PrFmt, BaseFmt, DeltaFmt) ->
+    PrVals = [PrFmt(C, PrS) || C <- Cats],
+    BaseVals = [BaseFmt(C, BaseS) || C <- Cats],
+    DeltaVals = [DeltaFmt(C, undefined) || C <- Cats],
+    print_poly_row(Metric, PrVals ++ BaseVals ++ DeltaVals).
+
+print_poly_row(Metric, Vals) ->
+    All = [Metric | Vals],
+    Fmt = "| ~s" ++ lists:flatten(lists:duplicate(length(All) - 1, " | ~s")) ++ " |~n",
+    io:format(Fmt, All).
 
 %% --- Table row helpers ---
 
 row1(Metric, Val) ->
     io:format("| ~s | ~s |~n", [Metric, Val]).
 
-row2(Metric, V1, V2) ->
-    io:format("| ~s | ~s | ~s |~n", [Metric, V1, V2]).
-
 row3(Metric, Pr, Base, Delta) ->
     io:format("| ~s | ~s | ~s | ~s |~n", [Metric, Pr, Base, Delta]).
 
-poly_row3(Metric, PrP, PrM, BaseP, BaseM, DeltaP, DeltaM) ->
-    io:format("| ~s | ~s | ~s | ~s | ~s | ~s | ~s |~n", [Metric, PrP, PrM, BaseP, BaseM, DeltaP, DeltaM]).
 
 %% --- Formatting ---
 

@@ -61,7 +61,7 @@ jobs:
             json: typecheck_test_metrics.json
     steps:
     - uses: actions/checkout@v4
-    - run: rebar3 as metrics escriptize
+    - run: make build && rebar3 as metrics escriptize
     - run: ${{ matrix.cmd }}
     - uses: actions/upload-artifact@v4
       with:
@@ -95,7 +95,7 @@ jobs:
     - uses: actions/checkout@v4
       with:
         ref: ${{ github.event.pull_request.base.sha }}
-    - run: rebar3 as metrics escriptize || true
+    - run: make build && rebar3 as metrics escriptize || true
     - run: ${{ matrix.cmd }} || true
     - uses: actions/upload-artifact@v4
       if: always()
