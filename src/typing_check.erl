@@ -15,6 +15,7 @@
 
 -include("log.hrl").
 -include("typing.hrl").
+-include("metrics.hrl").
 
 % Checks all functions against their specs, only print a report.
 -spec check_all_report(
@@ -30,19 +31,29 @@ check_all_report(Ctx, FileName, Env, Decls) ->
             {function, _, Name, Arity, _} = Decl,
             T0 = erlang:system_time(millisecond),
             try check_report(ExtCtx, Decl, Ty) of
-                success -> 
-                    io:format(user,"Ok: ~s:~w/~w (~p ms)~n", [F(FileName), Name, Arity, ?TIME(T0)]);
-                timeout -> 
-                    io:format(user,"Timeout: ~s:~w/~w (~p ms)~n", [F(FileName), Name, Arity, ?TIME(T0)])
-            catch 
-                throw:{etylizer, ty_error, Msg} -> 
-                    io:format(user,"Error: ~s:~w/~w (~p ms)~n  ~s~n", [F(FileName), Name, Arity, ?TIME(T0), Msg]);
-                throw:{etylizer, unsupported, Msg} -> 
+                success ->
+                    Time = ?TIME(T0),
+                    ?METRIC(typecheck_time, {list_to_atom(utils:sformat("~s:~w/~w", [F(FileName), Name, Arity])), Time, ok}),
+                    io:format(user,"Ok: ~s:~w/~w (~p ms)~n", [F(FileName), Name, Arity, Time]);
+                timeout ->
+                    Time = ?TIME(T0),
+                    ?METRIC(typecheck_time, {list_to_atom(utils:sformat("~s:~w/~w", [F(FileName), Name, Arity])), Time, timeout}),
+                    io:format(user,"Timeout: ~s:~w/~w (~p ms)~n", [F(FileName), Name, Arity, Time])
+            catch
+                throw:{etylizer, ty_error, Msg} ->
+                    Time = ?TIME(T0),
+                    ?METRIC(typecheck_time, {list_to_atom(utils:sformat("~s:~w/~w", [F(FileName), Name, Arity])), Time, error}),
+                    io:format(user,"Error: ~s:~w/~w (~p ms)~n  ~s~n", [F(FileName), Name, Arity, Time, Msg]);
+                throw:{etylizer, unsupported, Msg} ->
                     io:format(user,"Unsupported: ~s:~w/~w~n  ~s~n", [F(FileName), Name, Arity, Msg]);
                 throw:{etylizer, Type, _Msg} ->
-                    io:format(user,"Error: (~p) ~s:~w/~w (~p ms)~n", [Type, F(FileName), Name, Arity, ?TIME(T0)]);
+                    Time = ?TIME(T0),
+                    ?METRIC(typecheck_time, {list_to_atom(utils:sformat("~s:~w/~w", [F(FileName), Name, Arity])), Time, error}),
+                    io:format(user,"Error: (~p) ~s:~w/~w (~p ms)~n", [Type, F(FileName), Name, Arity, Time]);
                 _:T ->
-                    io:format(user,"Other: (~p) ~s:~w/~w (~p ms)~n", [{T}, F(FileName), Name, Arity, ?TIME(T0)])
+                    Time = ?TIME(T0),
+                    ?METRIC(typecheck_time, {list_to_atom(utils:sformat("~s:~w/~w", [F(FileName), Name, Arity])), Time, error}),
+                    io:format(user,"Other: (~p) ~s:~w/~w (~p ms)~n", [{T}, F(FileName), Name, Arity, Time])
             end
         end,
         Decls

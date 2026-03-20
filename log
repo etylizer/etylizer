@@ -1,0 +1,312 @@
+2026-03-20T16:55:25.3069423Z Current runner version: '2.332.0'
+2026-03-20T16:55:25.3095384Z ##[group]Runner Image Provisioner
+2026-03-20T16:55:25.3096190Z Hosted Compute Agent
+2026-03-20T16:55:25.3096772Z Version: 20260213.493
+2026-03-20T16:55:25.3097506Z Commit: 5c115507f6dd24b8de37d8bbe0bb4509d0cc0fa3
+2026-03-20T16:55:25.3098234Z Build Date: 2026-02-13T00:28:41Z
+2026-03-20T16:55:25.3098872Z Worker ID: {901fa56e-c187-4d2f-9c04-cb381b8e3151}
+2026-03-20T16:55:25.3099635Z Azure Region: eastus2
+2026-03-20T16:55:25.3100162Z ##[endgroup]
+2026-03-20T16:55:25.3101963Z ##[group]Operating System
+2026-03-20T16:55:25.3102627Z Ubuntu
+2026-03-20T16:55:25.3103135Z 24.04.3
+2026-03-20T16:55:25.3103567Z LTS
+2026-03-20T16:55:25.3104073Z ##[endgroup]
+2026-03-20T16:55:25.3104614Z ##[group]Runner Image
+2026-03-20T16:55:25.3105164Z Image: ubuntu-24.04
+2026-03-20T16:55:25.3105730Z Version: 20260309.50.1
+2026-03-20T16:55:25.3106975Z Included Software: https://github.com/actions/runner-images/blob/ubuntu24/20260309.50/images/ubuntu/Ubuntu2404-Readme.md
+2026-03-20T16:55:25.3108486Z Image Release: https://github.com/actions/runner-images/releases/tag/ubuntu24%2F20260309.50
+2026-03-20T16:55:25.3109451Z ##[endgroup]
+2026-03-20T16:55:25.3112466Z ##[group]GITHUB_TOKEN Permissions
+2026-03-20T16:55:25.3114828Z Actions: write
+2026-03-20T16:55:25.3115420Z ArtifactMetadata: write
+2026-03-20T16:55:25.3115935Z Attestations: write
+2026-03-20T16:55:25.3116569Z Checks: write
+2026-03-20T16:55:25.3117076Z Contents: write
+2026-03-20T16:55:25.3117574Z Deployments: write
+2026-03-20T16:55:25.3118225Z Discussions: write
+2026-03-20T16:55:25.3118781Z Issues: write
+2026-03-20T16:55:25.3119254Z Metadata: read
+2026-03-20T16:55:25.3119821Z Models: read
+2026-03-20T16:55:25.3120642Z Packages: write
+2026-03-20T16:55:25.3121223Z Pages: write
+2026-03-20T16:55:25.3121909Z PullRequests: write
+2026-03-20T16:55:25.3122433Z RepositoryProjects: write
+2026-03-20T16:55:25.3123024Z SecurityEvents: write
+2026-03-20T16:55:25.3123563Z Statuses: write
+2026-03-20T16:55:25.3124149Z ##[endgroup]
+2026-03-20T16:55:25.3126450Z Secret source: Actions
+2026-03-20T16:55:25.3127279Z Prepare workflow directory
+2026-03-20T16:55:25.3541166Z Prepare all required actions
+2026-03-20T16:55:25.3578650Z Getting action download info
+2026-03-20T16:55:25.6930683Z Download action repository 'actions/checkout@v4' (SHA:34e114876b0b11c390a56381ad16ebd13914f8d5)
+2026-03-20T16:55:25.8360273Z Download action repository 'actions/upload-artifact@v4' (SHA:ea165f8d65b6e75b540449e92b4886f43607fa02)
+2026-03-20T16:55:26.0977946Z Complete job name: metrics: etylizer
+2026-03-20T16:55:26.1429341Z ##[group]Checking docker version
+2026-03-20T16:55:26.1442460Z ##[command]/usr/bin/docker version --format '{{.Server.APIVersion}}'
+2026-03-20T16:55:26.2253970Z '1.48'
+2026-03-20T16:55:26.2266714Z Docker daemon API version: '1.48'
+2026-03-20T16:55:26.2267494Z ##[command]/usr/bin/docker version --format '{{.Client.APIVersion}}'
+2026-03-20T16:55:26.2434761Z '1.48'
+2026-03-20T16:55:26.2448100Z Docker client API version: '1.48'
+2026-03-20T16:55:26.2453188Z ##[endgroup]
+2026-03-20T16:55:26.2456600Z ##[group]Clean up resources from previous jobs
+2026-03-20T16:55:26.2462198Z ##[command]/usr/bin/docker ps --all --quiet --no-trunc --filter "label=a3f4a4"
+2026-03-20T16:55:26.2605244Z ##[command]/usr/bin/docker network prune --force --filter "label=a3f4a4"
+2026-03-20T16:55:26.2736772Z ##[endgroup]
+2026-03-20T16:55:26.2737282Z ##[group]Create local container network
+2026-03-20T16:55:26.2747414Z ##[command]/usr/bin/docker network create --label a3f4a4 github_network_66b0c36eb45544b38f3f17fab63a0b75
+2026-03-20T16:55:26.3263898Z 6684993d6ee8c9bfe5f1ccea2e2b8486654081a8c984a1fc5b87c9f2854c441d
+2026-03-20T16:55:26.3285999Z ##[endgroup]
+2026-03-20T16:55:26.3321281Z ##[group]Starting job container
+2026-03-20T16:55:26.3353889Z ##[command]/usr/bin/docker pull erlang:28
+2026-03-20T16:55:26.6399687Z 28: Pulling from library/erlang
+2026-03-20T16:55:26.7318195Z 8f6ad858d0a4: Pulling fs layer
+2026-03-20T16:55:26.7319696Z b012eb15dff0: Pulling fs layer
+2026-03-20T16:55:26.7321264Z ee3a0e7d77f0: Pulling fs layer
+2026-03-20T16:55:26.7322918Z 8688d0f2f567: Pulling fs layer
+2026-03-20T16:55:26.7324244Z f9ce07f777d5: Pulling fs layer
+2026-03-20T16:55:26.7325561Z 900e8b78a95f: Pulling fs layer
+2026-03-20T16:55:26.7326318Z 3214483d9ad9: Pulling fs layer
+2026-03-20T16:55:26.7326994Z 8688d0f2f567: Waiting
+2026-03-20T16:55:26.7327640Z f9ce07f777d5: Waiting
+2026-03-20T16:55:26.7328238Z 900e8b78a95f: Waiting
+2026-03-20T16:55:26.7328835Z 3214483d9ad9: Waiting
+2026-03-20T16:55:27.4588845Z ee3a0e7d77f0: Verifying Checksum
+2026-03-20T16:55:27.4591500Z ee3a0e7d77f0: Download complete
+2026-03-20T16:55:27.7985986Z b012eb15dff0: Verifying Checksum
+2026-03-20T16:55:27.7993483Z b012eb15dff0: Download complete
+2026-03-20T16:55:28.5152604Z 8f6ad858d0a4: Verifying Checksum
+2026-03-20T16:55:28.5153284Z 8f6ad858d0a4: Download complete
+2026-03-20T16:55:28.6128353Z 900e8b78a95f: Verifying Checksum
+2026-03-20T16:55:28.6129775Z 900e8b78a95f: Download complete
+2026-03-20T16:55:28.7168814Z 3214483d9ad9: Verifying Checksum
+2026-03-20T16:55:28.7169515Z 3214483d9ad9: Download complete
+2026-03-20T16:55:30.1754845Z 8f6ad858d0a4: Pull complete
+2026-03-20T16:55:31.6101282Z 8688d0f2f567: Verifying Checksum
+2026-03-20T16:55:31.6101992Z 8688d0f2f567: Download complete
+2026-03-20T16:55:32.5325841Z b012eb15dff0: Pull complete
+2026-03-20T16:55:32.6060196Z f9ce07f777d5: Verifying Checksum
+2026-03-20T16:55:32.6061059Z f9ce07f777d5: Download complete
+2026-03-20T16:55:35.2693305Z ee3a0e7d77f0: Pull complete
+2026-03-20T16:55:43.0885173Z 8688d0f2f567: Pull complete
+2026-03-20T16:55:51.1431121Z f9ce07f777d5: Pull complete
+2026-03-20T16:55:51.1547401Z 900e8b78a95f: Pull complete
+2026-03-20T16:55:51.1948061Z 3214483d9ad9: Pull complete
+2026-03-20T16:55:51.1990848Z Digest: sha256:a8745c5ac66ed63891fad0ca2cb7cee4e3da4a48978e0e56146c6285739ccf21
+2026-03-20T16:55:51.2006121Z Status: Downloaded newer image for erlang:28
+2026-03-20T16:55:51.2015557Z docker.io/library/erlang:28
+2026-03-20T16:55:51.2099203Z ##[command]/usr/bin/docker create --name a2a8905e93094b6fbce4e862ff7c1b4e_erlang28_ca8e4b --label a3f4a4 --workdir /__w/etylizer/etylizer --network github_network_66b0c36eb45544b38f3f17fab63a0b75  -e "HOME=/github/home" -e GITHUB_ACTIONS=true -e CI=true -v "/var/run/docker.sock":"/var/run/docker.sock" -v "/home/runner/work":"/__w" -v "/home/runner/actions-runner/cached/externals":"/__e":ro -v "/home/runner/work/_temp":"/__w/_temp" -v "/home/runner/work/_actions":"/__w/_actions" -v "/opt/hostedtoolcache":"/__t" -v "/home/runner/work/_temp/_github_home":"/github/home" -v "/home/runner/work/_temp/_github_workflow":"/github/workflow" --entrypoint "tail" erlang:28 "-f" "/dev/null"
+2026-03-20T16:55:51.2339162Z cae726fb12d0791fe1c2c196496f53863ee80f5b77fb0805a490681b9076bed7
+2026-03-20T16:55:51.2362065Z ##[command]/usr/bin/docker start cae726fb12d0791fe1c2c196496f53863ee80f5b77fb0805a490681b9076bed7
+2026-03-20T16:55:51.4019528Z cae726fb12d0791fe1c2c196496f53863ee80f5b77fb0805a490681b9076bed7
+2026-03-20T16:55:51.4037799Z ##[command]/usr/bin/docker ps --all --filter id=cae726fb12d0791fe1c2c196496f53863ee80f5b77fb0805a490681b9076bed7 --filter status=running --no-trunc --format "{{.ID}} {{.Status}}"
+2026-03-20T16:55:51.4153741Z cae726fb12d0791fe1c2c196496f53863ee80f5b77fb0805a490681b9076bed7 Up Less than a second
+2026-03-20T16:55:51.4172631Z ##[command]/usr/bin/docker inspect --format "{{range .Config.Env}}{{println .}}{{end}}" cae726fb12d0791fe1c2c196496f53863ee80f5b77fb0805a490681b9076bed7
+2026-03-20T16:55:51.4288724Z HOME=/github/home
+2026-03-20T16:55:51.4289125Z GITHUB_ACTIONS=true
+2026-03-20T16:55:51.4289484Z CI=true
+2026-03-20T16:55:51.4289967Z PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+2026-03-20T16:55:51.4290734Z OTP_VERSION=28.4.1
+2026-03-20T16:55:51.4291111Z REBAR3_VERSION=3.26.0
+2026-03-20T16:55:51.4291447Z REBAR_VERSION=2.6.4
+2026-03-20T16:55:51.4308489Z ##[endgroup]
+2026-03-20T16:55:51.4317671Z ##[group]Waiting for all services to be ready
+2026-03-20T16:55:51.4319294Z ##[endgroup]
+2026-03-20T16:55:51.4578319Z ##[group]Run actions/checkout@v4
+2026-03-20T16:55:51.4579087Z with:
+2026-03-20T16:55:51.4579288Z   repository: etylizer/etylizer
+2026-03-20T16:55:51.4579671Z   token: ***
+2026-03-20T16:55:51.4579855Z   ssh-strict: true
+2026-03-20T16:55:51.4580034Z   ssh-user: git
+2026-03-20T16:55:51.4580209Z   persist-credentials: true
+2026-03-20T16:55:51.4580642Z   clean: true
+2026-03-20T16:55:51.4580827Z   sparse-checkout-cone-mode: true
+2026-03-20T16:55:51.4581053Z   fetch-depth: 1
+2026-03-20T16:55:51.4581216Z   fetch-tags: false
+2026-03-20T16:55:51.4581393Z   show-progress: true
+2026-03-20T16:55:51.4581564Z   lfs: false
+2026-03-20T16:55:51.4581721Z   submodules: false
+2026-03-20T16:55:51.4581897Z   set-safe-directory: true
+2026-03-20T16:55:51.4582344Z ##[endgroup]
+2026-03-20T16:55:51.4638101Z ##[command]/usr/bin/docker exec  cae726fb12d0791fe1c2c196496f53863ee80f5b77fb0805a490681b9076bed7 sh -c "cat /etc/*release | grep ^ID"
+2026-03-20T16:55:51.6829119Z Syncing repository: etylizer/etylizer
+2026-03-20T16:55:51.6831443Z ##[group]Getting Git version info
+2026-03-20T16:55:51.6832025Z Working directory is '/__w/etylizer/etylizer'
+2026-03-20T16:55:51.6832905Z [command]/usr/bin/git version
+2026-03-20T16:55:51.6833319Z git version 2.47.3
+2026-03-20T16:55:51.6847283Z ##[endgroup]
+2026-03-20T16:55:51.6862772Z Temporarily overriding HOME='/__w/_temp/94cc5fb4-e362-4a47-873b-4e6958cb0b03' before making global git config changes
+2026-03-20T16:55:51.6863524Z Adding repository directory to the temporary git global config as a safe directory
+2026-03-20T16:55:51.6877927Z [command]/usr/bin/git config --global --add safe.directory /__w/etylizer/etylizer
+2026-03-20T16:55:51.6911852Z Deleting the contents of '/__w/etylizer/etylizer'
+2026-03-20T16:55:51.6916210Z ##[group]Initializing the repository
+2026-03-20T16:55:51.6920730Z [command]/usr/bin/git init /__w/etylizer/etylizer
+2026-03-20T16:55:51.6961807Z hint: Using 'master' as the name for the initial branch. This default branch name
+2026-03-20T16:55:51.6963904Z hint: is subject to change. To configure the initial branch name to use in all
+2026-03-20T16:55:51.6965104Z hint: of your new repositories, which will suppress this warning, call:
+2026-03-20T16:55:51.6965755Z hint:
+2026-03-20T16:55:51.6966207Z hint: 	git config --global init.defaultBranch <name>
+2026-03-20T16:55:51.6966726Z hint:
+2026-03-20T16:55:51.6967227Z hint: Names commonly chosen instead of 'master' are 'main', 'trunk' and
+2026-03-20T16:55:51.6968119Z hint: 'development'. The just-created branch can be renamed via this command:
+2026-03-20T16:55:51.6968823Z hint:
+2026-03-20T16:55:51.6969169Z hint: 	git branch -m <name>
+2026-03-20T16:55:51.6969783Z Initialized empty Git repository in /__w/etylizer/etylizer/.git/
+2026-03-20T16:55:51.6977800Z [command]/usr/bin/git remote add origin https://github.com/etylizer/etylizer
+2026-03-20T16:55:51.7012434Z ##[endgroup]
+2026-03-20T16:55:51.7012980Z ##[group]Disabling automatic garbage collection
+2026-03-20T16:55:51.7016303Z [command]/usr/bin/git config --local gc.auto 0
+2026-03-20T16:55:51.7045065Z ##[endgroup]
+2026-03-20T16:55:51.7045414Z ##[group]Setting up auth
+2026-03-20T16:55:51.7117229Z [command]/usr/bin/git config --local --name-only --get-regexp core\.sshCommand
+2026-03-20T16:55:51.7120555Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'core\.sshCommand' && git config --local --unset-all 'core.sshCommand' || :"
+2026-03-20T16:55:51.7347371Z [command]/usr/bin/git config --local --name-only --get-regexp http\.https\:\/\/github\.com\/\.extraheader
+2026-03-20T16:55:51.7377112Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'http\.https\:\/\/github\.com\/\.extraheader' && git config --local --unset-all 'http.https://github.com/.extraheader' || :"
+2026-03-20T16:55:51.7623796Z [command]/usr/bin/git config --local --name-only --get-regexp ^includeIf\.gitdir:
+2026-03-20T16:55:51.7654539Z [command]/usr/bin/git submodule foreach --recursive git config --local --show-origin --name-only --get-regexp remote.origin.url
+2026-03-20T16:55:51.7903198Z [command]/usr/bin/git config --local http.https://github.com/.extraheader AUTHORIZATION: basic ***
+2026-03-20T16:55:51.7939513Z ##[endgroup]
+2026-03-20T16:55:51.7940168Z ##[group]Fetching the repository
+2026-03-20T16:55:51.7949292Z [command]/usr/bin/git -c protocol.version=2 fetch --no-tags --prune --no-recurse-submodules --depth=1 origin +9f9e90bf68653c7f781a8fd08fbd89f3f6fd86ac:refs/remotes/pull/348/merge
+2026-03-20T16:55:52.1729110Z From https://github.com/etylizer/etylizer
+2026-03-20T16:55:52.1729930Z  * [new ref]         9f9e90bf68653c7f781a8fd08fbd89f3f6fd86ac -> pull/348/merge
+2026-03-20T16:55:52.1757564Z ##[endgroup]
+2026-03-20T16:55:52.1758124Z ##[group]Determining the checkout info
+2026-03-20T16:55:52.1760242Z ##[endgroup]
+2026-03-20T16:55:52.1766449Z [command]/usr/bin/git sparse-checkout disable
+2026-03-20T16:55:52.1809567Z [command]/usr/bin/git config --local --unset-all extensions.worktreeConfig
+2026-03-20T16:55:52.1840265Z ##[group]Checking out the ref
+2026-03-20T16:55:52.1845553Z [command]/usr/bin/git checkout --progress --force refs/remotes/pull/348/merge
+2026-03-20T16:55:52.2448839Z Note: switching to 'refs/remotes/pull/348/merge'.
+2026-03-20T16:55:52.2451626Z 
+2026-03-20T16:55:52.2452451Z You are in 'detached HEAD' state. You can look around, make experimental
+2026-03-20T16:55:52.2453320Z changes and commit them, and you can discard any commits you make in this
+2026-03-20T16:55:52.2454107Z state without impacting any branches by switching back to a branch.
+2026-03-20T16:55:52.2454576Z 
+2026-03-20T16:55:52.2455230Z If you want to create a new branch to retain commits you create, you may
+2026-03-20T16:55:52.2457543Z do so (now or later) by using -c with the switch command. Example:
+2026-03-20T16:55:52.2458171Z 
+2026-03-20T16:55:52.2458325Z   git switch -c <new-branch-name>
+2026-03-20T16:55:52.2458589Z 
+2026-03-20T16:55:52.2458917Z Or undo this operation with:
+2026-03-20T16:55:52.2459170Z 
+2026-03-20T16:55:52.2459319Z   git switch -
+2026-03-20T16:55:52.2459513Z 
+2026-03-20T16:55:52.2459979Z Turn off this advice by setting config variable advice.detachedHead to false
+2026-03-20T16:55:52.2460782Z 
+2026-03-20T16:55:52.2461345Z HEAD is now at 9f9e90b Merge aff3ec79b369d39c84f98c10c0214e8b04a8ba6c into 3c7d5c3b24484c5799bc23ea009dfb9d1f803741
+2026-03-20T16:55:52.2463199Z ##[endgroup]
+2026-03-20T16:55:52.2504311Z [command]/usr/bin/git log -1 --format=%H
+2026-03-20T16:55:52.2531749Z 9f9e90bf68653c7f781a8fd08fbd89f3f6fd86ac
+2026-03-20T16:55:52.2749704Z ##[group]Run rebar3 as metrics escriptize
+2026-03-20T16:55:52.2750096Z [36;1mrebar3 as metrics escriptize[0m
+2026-03-20T16:55:52.2753466Z shell: sh -e {0}
+2026-03-20T16:55:52.2753680Z ##[endgroup]
+2026-03-20T16:55:52.9140927Z ===> Fetching rebar3_proper v0.12.1
+2026-03-20T16:55:52.9695089Z ===> Analyzing applications...
+2026-03-20T16:55:52.9898009Z ===> Compiling rebar3_proper
+2026-03-20T16:55:53.2041759Z ===> Verifying dependencies...
+2026-03-20T16:55:53.2109995Z make: Entering directory '/__w/etylizer/etylizer/c_src/espresso'
+2026-03-20T16:55:53.2113335Z mkdir -p ../../_build
+2026-03-20T16:55:53.2122573Z cc -std=c99 -D_POSIX_C_SOURCE=200809L   -c -o black_white.o black_white.c
+2026-03-20T16:55:53.2597552Z cc -std=c99 -D_POSIX_C_SOURCE=200809L   -c -o canonical.o canonical.c
+2026-03-20T16:55:53.2895785Z cc -std=c99 -D_POSIX_C_SOURCE=200809L   -c -o cofactor.o cofactor.c
+2026-03-20T16:55:53.3353043Z cc -std=c99 -D_POSIX_C_SOURCE=200809L   -c -o cols.o cols.c
+2026-03-20T16:55:53.3702194Z cc -std=c99 -D_POSIX_C_SOURCE=200809L   -c -o compl.o compl.c
+2026-03-20T16:55:53.4300136Z cc -std=c99 -D_POSIX_C_SOURCE=200809L   -c -o contain.o contain.c
+2026-03-20T16:55:53.4743354Z cc -std=c99 -D_POSIX_C_SOURCE=200809L   -c -o cpu_time.o cpu_time.c
+2026-03-20T16:55:53.5014039Z cc -std=c99 -D_POSIX_C_SOURCE=200809L   -c -o cubestr.o cubestr.c
+2026-03-20T16:55:53.5369248Z cc -std=c99 -D_POSIX_C_SOURCE=200809L   -c -o cvrin.o cvrin.c
+2026-03-20T16:55:53.6004407Z cc -std=c99 -D_POSIX_C_SOURCE=200809L   -c -o cvrm.o cvrm.c
+2026-03-20T16:55:53.6537942Z cc -std=c99 -D_POSIX_C_SOURCE=200809L   -c -o cvrmisc.o cvrmisc.c
+2026-03-20T16:55:53.6870614Z cc -std=c99 -D_POSIX_C_SOURCE=200809L   -c -o cvrout.o cvrout.c
+2026-03-20T16:55:53.7468657Z cc -std=c99 -D_POSIX_C_SOURCE=200809L   -c -o dominate.o dominate.c
+2026-03-20T16:55:53.7778932Z cc -std=c99 -D_POSIX_C_SOURCE=200809L   -c -o equiv.o equiv.c
+2026-03-20T16:55:53.8122580Z cc -std=c99 -D_POSIX_C_SOURCE=200809L   -c -o espresso.o espresso.c
+2026-03-20T16:55:53.8453489Z cc -std=c99 -D_POSIX_C_SOURCE=200809L   -c -o essen.o essen.c
+2026-03-20T16:55:53.8798846Z cc -std=c99 -D_POSIX_C_SOURCE=200809L   -c -o essentiality.o essentiality.c
+2026-03-20T16:55:53.9208684Z cc -std=c99 -D_POSIX_C_SOURCE=200809L   -c -o exact.o exact.c
+2026-03-20T16:55:53.9563098Z cc -std=c99 -D_POSIX_C_SOURCE=200809L   -c -o expand.o expand.c
+2026-03-20T16:55:54.0129881Z cc -std=c99 -D_POSIX_C_SOURCE=200809L   -c -o gasp.o gasp.c
+2026-03-20T16:55:54.0509465Z cc -std=c99 -D_POSIX_C_SOURCE=200809L   -c -o gimpel.o gimpel.c
+2026-03-20T16:55:54.0806188Z cc -std=c99 -D_POSIX_C_SOURCE=200809L   -c -o globals.o globals.c
+2026-03-20T16:55:54.1042197Z cc -std=c99 -D_POSIX_C_SOURCE=200809L   -c -o hack.o hack.c
+2026-03-20T16:55:54.1646933Z cc -std=c99 -D_POSIX_C_SOURCE=200809L   -c -o indep.o indep.c
+2026-03-20T16:55:54.1948837Z cc -std=c99 -D_POSIX_C_SOURCE=200809L   -c -o irred.o irred.c
+2026-03-20T16:55:54.2426421Z cc -std=c99 -D_POSIX_C_SOURCE=200809L   -c -o main.o main.c
+2026-03-20T16:55:54.3009394Z cc -std=c99 -D_POSIX_C_SOURCE=200809L   -c -o map.o map.c
+2026-03-20T16:55:54.3338545Z cc -std=c99 -D_POSIX_C_SOURCE=200809L   -c -o matrix.o matrix.c
+2026-03-20T16:55:54.3821242Z cc -std=c99 -D_POSIX_C_SOURCE=200809L   -c -o mincov.o mincov.c
+2026-03-20T16:55:54.4201142Z cc -std=c99 -D_POSIX_C_SOURCE=200809L   -c -o opo.o opo.c
+2026-03-20T16:55:54.4764721Z cc -std=c99 -D_POSIX_C_SOURCE=200809L   -c -o pair.o pair.c
+2026-03-20T16:55:54.5356598Z cc -std=c99 -D_POSIX_C_SOURCE=200809L   -c -o part.o part.c
+2026-03-20T16:55:54.5651689Z cc -std=c99 -D_POSIX_C_SOURCE=200809L   -c -o primes.o primes.c
+2026-03-20T16:55:54.6015739Z cc -std=c99 -D_POSIX_C_SOURCE=200809L   -c -o prtime.o prtime.c
+2026-03-20T16:55:54.6277573Z cc -std=c99 -D_POSIX_C_SOURCE=200809L   -c -o reduce.o reduce.c
+2026-03-20T16:55:54.6688809Z cc -std=c99 -D_POSIX_C_SOURCE=200809L   -c -o rows.o rows.c
+2026-03-20T16:55:54.7028222Z cc -std=c99 -D_POSIX_C_SOURCE=200809L   -c -o set.o set.c
+2026-03-20T16:55:54.7713882Z cc -std=c99 -D_POSIX_C_SOURCE=200809L   -c -o setc.o setc.c
+2026-03-20T16:55:54.8170866Z cc -std=c99 -D_POSIX_C_SOURCE=200809L   -c -o sharp.o sharp.c
+2026-03-20T16:55:54.8593382Z cc -std=c99 -D_POSIX_C_SOURCE=200809L   -c -o sigma.o sigma.c
+2026-03-20T16:55:54.8924906Z cc -std=c99 -D_POSIX_C_SOURCE=200809L   -c -o signature.o signature.c
+2026-03-20T16:55:54.9282778Z cc -std=c99 -D_POSIX_C_SOURCE=200809L   -c -o signature_exact.o signature_exact.c
+2026-03-20T16:55:54.9599155Z cc -std=c99 -D_POSIX_C_SOURCE=200809L   -c -o sminterf.o sminterf.c
+2026-03-20T16:55:54.9900631Z cc -std=c99 -D_POSIX_C_SOURCE=200809L   -c -o solution.o solution.c
+2026-03-20T16:55:55.0199894Z cc -std=c99 -D_POSIX_C_SOURCE=200809L   -c -o sparse.o sparse.c
+2026-03-20T16:55:55.0530035Z cc -std=c99 -D_POSIX_C_SOURCE=200809L   -c -o strdup.o strdup.c
+2026-03-20T16:55:55.0694095Z cc -std=c99 -D_POSIX_C_SOURCE=200809L   -c -o unate.o unate.c
+2026-03-20T16:55:55.1158567Z cc -std=c99 -D_POSIX_C_SOURCE=200809L   -c -o util_signature.o util_signature.c
+2026-03-20T16:55:55.1556055Z cc -std=c99 -D_POSIX_C_SOURCE=200809L   -c -o verify.o verify.c
+2026-03-20T16:55:55.1903596Z cc -std=c99 -D_POSIX_C_SOURCE=200809L    black_white.o canonical.o cofactor.o cols.o compl.o contain.o cpu_time.o cubestr.o cvrin.o cvrm.o cvrmisc.o cvrout.o dominate.o equiv.o espresso.o essen.o essentiality.o exact.o expand.o gasp.o gimpel.o globals.o hack.o indep.o irred.o main.o map.o matrix.o mincov.o opo.o pair.o part.o primes.o prtime.o reduce.o rows.o set.o setc.o sharp.o sigma.o signature.o signature_exact.o sminterf.o solution.o sparse.o strdup.o unate.o util_signature.o verify.o -o ../../_build/espresso
+2026-03-20T16:55:55.2167827Z make: Leaving directory '/__w/etylizer/etylizer/c_src/espresso'
+2026-03-20T16:55:55.2181998Z ===> Analyzing applications...
+2026-03-20T16:55:55.3649406Z ===> Compiling etylizer
+2026-03-20T16:55:56.6636022Z ===> Building escript for etylizer...
+2026-03-20T16:55:56.7671117Z ##[group]Run ./report_etylizer
+2026-03-20T16:55:56.7671438Z [36;1m./report_etylizer[0m
+2026-03-20T16:55:56.7671743Z shell: sh -e {0}
+2026-03-20T16:55:56.7671921Z ##[endgroup]
+2026-03-20T16:55:57.3451163Z /usr/local/lib/erlang/lib/erts-16.3/src/erlang.erl:10333:2: Warning: can't find doc file "../../doc/src/erlang_system_info.md"
+2026-03-20T16:55:57.3452381Z % 10333| -doc {file,"../../doc/src/erlang_system_info.md"}.
+2026-03-20T16:55:57.3453029Z %      |  ^
+2026-03-20T16:55:57.3453217Z 
+2026-03-20T16:55:57.3453915Z /usr/local/lib/erlang/lib/erts-16.3/src/erlang.erl:12142:2: Warning: can't find doc file "../../doc/src/erlang_port_info.md"
+2026-03-20T16:55:57.3455095Z % 12142| -doc {file, "../../doc/src/erlang_port_info.md"}.
+2026-03-20T16:55:57.3455780Z %      |  ^
+2026-03-20T16:55:57.3455987Z 
+2026-03-20T16:55:57.5381945Z /usr/local/lib/erlang/lib/erts-16.3/src/erlang.erl:10333:2: Warning: can't find doc file "../../doc/src/erlang_system_info.md"
+2026-03-20T16:55:57.5383119Z % 10333| -doc {file,"../../doc/src/erlang_system_info.md"}.
+2026-03-20T16:55:57.5383604Z %      |  ^
+2026-03-20T16:55:57.5383777Z 
+2026-03-20T16:55:57.5384370Z /usr/local/lib/erlang/lib/erts-16.3/src/erlang.erl:12142:2: Warning: can't find doc file "../../doc/src/erlang_port_info.md"
+2026-03-20T16:55:57.5385354Z % 12142| -doc {file, "../../doc/src/erlang_port_info.md"}.
+2026-03-20T16:55:57.5385821Z %      |  ^
+2026-03-20T16:55:57.5385975Z 
+2026-03-20T16:55:58.4430252Z [WARN 2026-03-20 16:55:58.438 paths.erl:257] Module feature_flags not found, search path: ./src:/usr/local/lib/erlang/lib/parsetools-2.7.1/src:/usr/local/lib/erlang/lib/kernel-10.6.1/src:/usr/local/lib/erlang/lib/eldap-1.2.16/src:/usr/local/lib/erlang/lib/megaco-4.8.3/src/tcp:/usr/local/lib/erlang/lib/megaco-4.8.3/src/text:/usr/local/lib/erlang/lib/megaco-4.8.3/src/app:/usr/local/lib/erlang/lib/megaco-4.8.3/src/engine:/usr/local/lib/erlang/lib/megaco-4.8.3/src/udp:/usr/local/lib/erlang/lib/megaco-4.8.3/src/flex:/usr/local/lib/erlang/lib/megaco-4.8.3/src/binary:/usr/local/lib/erlang/lib/edoc-1.4.1/src:/usr/local/lib/erlang/lib/tftp-1.2.4/src:/usr/local/lib/erlang/lib/sasl-4.3.1/src:/usr/local/lib/erlang/lib/reltool-1.0.3/src:/usr/local/lib/erlang/lib/debugger-6.0.3/src:/usr/local/lib/erlang/lib/diameter-2.6.1/src/gen:/usr/local/lib/erlang/lib/diameter-2.6.1/src/compiler:/usr/local/lib/erlang/lib/diameter-2.6.1/src/info:/usr/local/lib/erlang/lib/diameter-2.6.1/src/transport:/usr/local/lib/erlang/lib/diameter-2.6.1/src/base:/usr/local/lib/erlang/lib/compiler-9.0.5/src:/usr/local/lib/erlang/lib/erts-16.3/src:/usr/local/lib/erlang/lib/observer-2.18.2/src:/usr/local/lib/erlang/lib/wx-2.5.4/src:/usr/local/lib/erlang/lib/wx-2.5.4/src/gen:/usr/local/lib/erlang/lib/ftp-1.2.4/src:/usr/local/lib/erlang/lib/inets-9.6.1/src/http_server:/usr/local/lib/erlang/lib/inets-9.6.1/src/inets_app:/usr/local/lib/erlang/lib/inets-9.6.1/src/http_lib:/usr/local/lib/erlang/lib/inets-9.6.1/src/http_client:/usr/local/lib/erlang/lib/mnesia-4.25.2/src:/usr/local/lib/erlang/lib/asn1-5.4.3/src:/usr/local/lib/erlang/lib/common_test-1.30/src:/usr/local/lib/erlang/lib/et-1.7.3/src:/usr/local/lib/erlang/lib/public_key-1.20.2/src:/usr/local/lib/erlang/lib/xmerl-2.1.9/src:/usr/local/lib/erlang/lib/ssh-5.5.1/src:/usr/local/lib/erlang/lib/ssl-11.5.3/src:/usr/local/lib/erlang/lib/crypto-5.8.3/src:/usr/local/lib/erlang/lib/odbc-2.16.1/src:/usr/local/lib/erlang/lib/eunit-2.10.2/src:/usr/local/lib/erlang/lib/runtime_tools-2.3.1/src:/usr/local/lib/erlang/lib/dialyzer-5.4/src:/usr/local/lib/erlang/lib/tools-4.1.4/src:/usr/local/lib/erlang/lib/os_mon-2.11.2/src:/usr/local/lib/erlang/lib/snmp-5.20.1/src/agent:/usr/local/lib/erlang/lib/snmp-5.20.1/src/misc:/usr/local/lib/erlang/lib/snmp-5.20.1/src/compiler:/usr/local/lib/erlang/lib/snmp-5.20.1/src/app:/usr/local/lib/erlang/lib/snmp-5.20.1/src/manager:/usr/local/lib/erlang/lib/syntax_tools-4.0.3/src:/usr/local/lib/erlang/lib/stdlib-7.3/src
+2026-03-20T16:55:58.4477466Z Name error: Module feature_flags not found
+2026-03-20T16:55:58.4619957Z ##[error]Process completed with exit code 1.
+2026-03-20T16:55:58.4727439Z Post job cleanup.
+2026-03-20T16:55:58.4731884Z ##[command]/usr/bin/docker exec  cae726fb12d0791fe1c2c196496f53863ee80f5b77fb0805a490681b9076bed7 sh -c "cat /etc/*release | grep ^ID"
+2026-03-20T16:55:58.6668177Z [command]/usr/bin/git version
+2026-03-20T16:55:58.6723878Z git version 2.47.3
+2026-03-20T16:55:58.6789822Z Temporarily overriding HOME='/__w/_temp/384847d4-cdcd-48f8-8eec-5f18f88eee42' before making global git config changes
+2026-03-20T16:55:58.6792832Z Adding repository directory to the temporary git global config as a safe directory
+2026-03-20T16:55:58.6798650Z [command]/usr/bin/git config --global --add safe.directory /__w/etylizer/etylizer
+2026-03-20T16:55:58.6843045Z [command]/usr/bin/git config --local --name-only --get-regexp core\.sshCommand
+2026-03-20T16:55:58.6881818Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'core\.sshCommand' && git config --local --unset-all 'core.sshCommand' || :"
+2026-03-20T16:55:58.7149681Z [command]/usr/bin/git config --local --name-only --get-regexp http\.https\:\/\/github\.com\/\.extraheader
+2026-03-20T16:55:58.7175621Z http.https://github.com/.extraheader
+2026-03-20T16:55:58.7188297Z [command]/usr/bin/git config --local --unset-all http.https://github.com/.extraheader
+2026-03-20T16:55:58.7221726Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'http\.https\:\/\/github\.com\/\.extraheader' && git config --local --unset-all 'http.https://github.com/.extraheader' || :"
+2026-03-20T16:55:58.7492969Z [command]/usr/bin/git config --local --name-only --get-regexp ^includeIf\.gitdir:
+2026-03-20T16:55:58.7528105Z [command]/usr/bin/git submodule foreach --recursive git config --local --show-origin --name-only --get-regexp remote.origin.url
+2026-03-20T16:55:58.7938066Z Stop and remove container: a2a8905e93094b6fbce4e862ff7c1b4e_erlang28_ca8e4b
+2026-03-20T16:55:58.7942792Z ##[command]/usr/bin/docker rm --force cae726fb12d0791fe1c2c196496f53863ee80f5b77fb0805a490681b9076bed7
+2026-03-20T16:55:58.9029511Z cae726fb12d0791fe1c2c196496f53863ee80f5b77fb0805a490681b9076bed7
+2026-03-20T16:55:58.9057518Z Remove container network: github_network_66b0c36eb45544b38f3f17fab63a0b75
+2026-03-20T16:55:58.9062292Z ##[command]/usr/bin/docker network rm github_network_66b0c36eb45544b38f3f17fab63a0b75
+2026-03-20T16:55:59.0247146Z github_network_66b0c36eb45544b38f3f17fab63a0b75
+2026-03-20T16:55:59.0305801Z Cleaning up orphan processes
+2026-03-20T16:55:59.0640170Z ##[warning]Node.js 20 actions are deprecated. The following actions are running on Node.js 20 and may not work as expected: actions/checkout@v4. Actions will be forced to run with Node.js 24 by default starting June 2nd, 2026. Please check if updated versions of these actions are available that support Node.js 24. To opt into Node.js 24 now, set the FORCE_JAVASCRIPT_ACTIONS_TO_NODE24=true environment variable on the runner or in your workflow file. Once Node.js 24 becomes the default, you can temporarily opt out by setting ACTIONS_ALLOW_USE_UNSECURE_NODE_VERSION=true. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/

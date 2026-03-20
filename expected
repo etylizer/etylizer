@@ -1,0 +1,53 @@
+## Typecheck Statistics
+
+| Metric | PR | Base | Delta |
+|--------|----|------|-------|
+| Total functions | 439 | 439 | 0 |
+| OK | 439 | 439 | 0 |
+| Errors | 0 | 0 | 0 |
+| Timeouts | 0 | 0 | 0 |
+| Total time | 1m 40s | 1m 30s | +9.6s |
+| Avg per function | 229.0ms | 207.1ms | +21.9ms |
+| Max | 13389ms (`tarjan:dfs/1`) | 3768ms (`tarjan:dfs_visit/4`) | +9621ms |
+| Min | 4ms (`tarjan:':::'/2`) | 5ms (`tarjan:':::'/2`) | -1ms |
+
+## Test Statistics: typecheck
+
+| Metric | PR | Base | Delta |
+|--------|----|------|-------|
+| Total tests | 596 | 596 | 0 |
+| OK | 596 | 596 | 0 |
+| Errors | 0 | 0 | 0 |
+| Timeouts | 0 | 0 | 0 |
+| Total time | 23.8s | 23.7s | +45ms |
+| Avg per test | 39.9ms | 39.8ms | +0.1ms |
+| Max | 2515ms (`map.erl/const_map_00`) | 2510ms (`map.erl/const_map_00`) | +5ms |
+| Min | 3ms (`user.erl/user_09_fail`) | 3ms (`maybe_expr.erl/maybe_match_01_fail`) | 0ms |
+
+## Test Statistics: infer
+
+| Metric | PR | Base | Delta |
+|--------|----|------|-------|
+| Total tests | 384 | 384 | 0 |
+| OK | 384 | 384 | 0 |
+| Errors | 0 | 0 | 0 |
+| Timeouts | 0 | 0 | 0 |
+| Total time | 1m 4s | 1m 2s | +2.1s |
+| Avg per test | 168.7ms | 163.1ms | +5.6ms |
+| Max | 3713ms (`nominal_stdlib.erl/anno_line`) | 3549ms (`nominal_stdlib.erl/anno_line`) | +164ms |
+| Min | 7ms (`records.erl/get_name`) | 7ms (`records.erl/get_name`) | 0ms |
+
+## Polymorphic Variable Statistics
+
+| Suite | Invocations | | Total vars | | Avg vars | | Min vars | | Max vars | |
+|-------|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| | PR | Base | PR | Base | PR | Base | PR | Base | PR | Base |
+| **typecheck tests** | 1961 | 0 | 12126 | 0 | 6.1 | 0 | 0 | 0 | 28 | 0 |
+| **infer tests** | 384 | 0 | 3176 | 0 | 8.2 | 0 | 2 | 0 | 38 | 0 |
+| **erlang_types** | 1191 | 0 | 30120 | 0 | 25.2 | 0 | 0 | 0 | 116 | 0 |
+| | | | | | | | | | | |
+| **Suite** | **Delta** | | **Delta** | | **Delta** | | **Delta** | | **Delta** | |
+| **typecheck tests** | +1961 | | +12126 | | +6.1 | | 0 | | +28 | |
+| **infer tests** | +384 | | +3176 | | +8.2 | | +2 | | +38 | |
+| **erlang_types** | +1191 | | +30120 | | +25.2 | | 0 | | +116 | |
+
