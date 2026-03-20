@@ -31,7 +31,24 @@ var_metrics(FixedVars, Constraints, SymTab) ->
             not subty:is_equivalent(SymTab, T, T2)
         end, Types)
     end, PolyVars)),
-    {Poly, MonoUsed, MonoUnused, Meaningful}.
+    %% Unconstrained: poly vars where both α→⊥ and α→⊤ preserve satisfiability
+    MonoMap = maps:from_list([{ty_variable:new_with_name(V), []} || V <- sets:to_list(FixedVars)]),
+    Unconstrained = sets:size(sets:filter(fun(Alpha) ->
+        SubstBot = #{Alpha => {predef, none}},
+        SubstTop = #{Alpha => {predef, any}},
+        ConsBot = [{subst:apply_base(SubstBot, S), subst:apply_base(SubstBot, T)} || {S, T} <- Constraints],
+        ConsTop = [{subst:apply_base(SubstTop, S), subst:apply_base(SubstTop, T)} || {S, T} <- Constraints],
+        MonoWithAlpha = maps:put(ty_variable:new_with_name(Alpha), [], MonoMap),
+        case do_satisfiable(ConsBot, MonoWithAlpha) of
+            {false, _} -> false;
+            {true, _} ->
+                case do_satisfiable(ConsTop, MonoWithAlpha) of
+                    {false, _} -> false;
+                    {true, _} -> true
+                end
+        end
+    end, PolyVars)),
+    {Poly, MonoUsed, MonoUnused, Meaningful, Unconstrained}.
 -endif.
 
 -type monomorphic_variables() :: sets:set(ast:ty_varname()).

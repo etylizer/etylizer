@@ -120,12 +120,13 @@ print_time_section(Title, Unit, PrEntries, BaseEntries, HasBase) ->
 
 poly_stats([]) ->
     Z = #{total => 0, avg => 0.0, min => 0, max => 0},
-    #{invocations => 0, poly => Z, mono_used => Z, mono_unused => Z, meaningful => Z};
+    #{invocations => 0, poly => Z, mono_used => Z, mono_unused => Z, meaningful => Z, unconstrained => Z};
 poly_stats(Entries) ->
-    Polys = [P || [P, _, _, _] <- Entries],
-    MonoUsed = [U || [_, U, _, _] <- Entries],
-    MonoUnused = [X || [_, _, X, _] <- Entries],
-    Meaningful = [M || [_, _, _, M] <- Entries],
+    Polys = [P || [P, _, _, _, _] <- Entries],
+    MonoUsed = [U || [_, U, _, _, _] <- Entries],
+    MonoUnused = [X || [_, _, X, _, _] <- Entries],
+    Meaningful = [M || [_, _, _, M, _] <- Entries],
+    Unconstrained = [R || [_, _, _, _, R] <- Entries],
     N = length(Entries),
     Calc = fun(Vs) ->
         #{total => lists:sum(Vs), avg => lists:sum(Vs) / max(1, N),
@@ -133,13 +134,13 @@ poly_stats(Entries) ->
     end,
     #{invocations => N, poly => Calc(Polys),
       mono_used => Calc(MonoUsed), mono_unused => Calc(MonoUnused),
-      meaningful => Calc(Meaningful)}.
+      meaningful => Calc(Meaningful), unconstrained => Calc(Unconstrained)}.
 
 print_poly_section(Title, PrEntries, BaseEntries, HasBase) ->
     PrS = poly_stats(PrEntries),
     io:format("## ~s~n~n", [Title]),
-    Cats = [poly, mono_used, mono_unused, meaningful],
-    CatNames = ["Poly", "Mono (used)", "Mono (unused)", "Meaningful"],
+    Cats = [poly, mono_used, mono_unused, meaningful, unconstrained],
+    CatNames = ["Poly", "Mono (used)", "Mono (unused)", "Meaningful", "Unconstrained"],
     case HasBase of
         true ->
             BaseS = poly_stats(BaseEntries),
