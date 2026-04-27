@@ -124,6 +124,8 @@ cmd_spec() ->
               help => "Disable redundancy checking for a function (name/arity). May be given multiple times."},
             #{name => verbose, short => $v, long => "-verbose", type => boolean, default => false,
               help => "Verbose output (e.g. preprocessor warnings)"},
+            #{name => metrics_file, long => "-metrics-file",
+              help => "Write collected metrics to the given JSON file"},
             #{name => files, nargs => list, required => false, default => [],
               help => "Files to type check"}
         ]
@@ -171,7 +173,8 @@ parse_args(Args) ->
         no_redundancy = maps:get(no_redundancy, ArgMap),
         files = maps:get(files, ArgMap),
         type_overlay = maps:get(type_overlay, ArgMap, []),
-        verbose = maps:get(verbose, ArgMap, false)
+        verbose = maps:get(verbose, ArgMap, false),
+        metrics_file = maps:get(metrics_file, ArgMap, undefined)
     },
     if
         Opts#opts.help ->
@@ -235,6 +238,10 @@ dump_transformed_ast(Opts) ->
 doWork(Opts) ->
     global_state:with_new_state(fun() ->
       ?LOG_TRACE("Initializing ETS tables"),
+      case Opts#opts.metrics_file of
+          undefined -> ok;
+          _ -> metrics:init()
+      end,
       parse_cache:init(Opts),
       stdtypes:init(),
       try
@@ -277,6 +284,11 @@ doWork(Opts) ->
                   cm_check:perform_type_checks(SearchPath, cm_depgraph:all_sources(DepGraph), DepGraph, Opts)
           end
       after
+          case Opts#opts.metrics_file of
+              undefined -> ok;
+              Path -> metrics:dump(Path)
+          end,
+          metrics:cleanup(),
           parse_cache:cleanup(),
           stdtypes:cleanup()
       end

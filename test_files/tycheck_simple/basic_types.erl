@@ -26,6 +26,9 @@ atom_05_fail() -> 1.
 -spec atom_06_fail() -> foobar.
 atom_06_fail() -> spam.
 
+-spec atom_07(any()) -> ok.
+atom_07(_A) -> ok.
+
 % Chars
 -spec char_01() -> $a.
 char_01() -> $a.

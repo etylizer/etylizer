@@ -28,40 +28,81 @@ jobs:
         include:
           - name: dialyzer
             cmd: rebar3 as test dialyzer
-          - name: typecheck
-            cmd: ./typecheck_erlang_types --report-mode report --report-timeout 30000 2>&1 | tee /tmp/typecheck_report.log
+          - name: erlang_types
+            cmd: ./typecheck_erlang_types --report-mode report --report-timeout 30000
           - name: syntax transformation
             cmd: ./_build/default/bin/etylizer --sanity --no-type-checking -I ./include -I ./src ./src/*.erl
     steps:
     - uses: actions/checkout@v4
     - run: make build
     - run: ${{ matrix.cmd }}
-    - name: Upload typecheck report
-      if: matrix.name == 'typecheck'
-      uses: actions/upload-artifact@v4
-      with:
-        name: typecheck-pr
-        path: /tmp/typecheck_report.log
 
-  typecheck-base:
-    name: "typecheck (base)"
+  metrics:
+    name: "metrics: ${{ matrix.name }}"
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    container:
+      image: erlang:28
+    strategy:
+      matrix:
+        include:
+          - name: erlang_types
+            cmd: ./report_erlang_types
+            artifact: metrics-erlang-types-pr
+            json: erlang_types_metrics.json
+          - name: etylizer
+            cmd: ./report_etylizer
+            artifact: metrics-etylizer-pr
+            json: etylizer_metrics.json
+          - name: typecheck
+            cmd: ./report_typecheck
+            artifact: metrics-typecheck-pr
+            json: typecheck_test_metrics.json
+    steps:
+    - uses: actions/checkout@v4
+    - run: make build && rebar3 as metrics escriptize
+    - run: ${{ matrix.cmd }}
+    - uses: actions/upload-artifact@v4
+      with:
+        name: ${{ matrix.artifact }}
+        path: ${{ matrix.json }}
+
+  metrics-base:
+    name: "metrics (base): ${{ matrix.name }}"
     needs: build
     if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
     container:
       image: erlang:28
+    strategy:
+      matrix:
+        include:
+          - name: erlang_types
+            cmd: ./report_erlang_types
+            artifact: metrics-erlang-types-base
+            json: erlang_types_metrics.json
+          - name: etylizer
+            cmd: ./report_etylizer
+            artifact: metrics-etylizer-base
+            json: etylizer_metrics.json
+          - name: typecheck
+            cmd: ./report_typecheck
+            artifact: metrics-typecheck-base
+            json: typecheck_test_metrics.json
     steps:
     - uses: actions/checkout@v4
       with:
         ref: ${{ github.event.pull_request.base.sha }}
-    - run: make build
-    - run: ./typecheck_erlang_types --report-mode report --report-timeout 30000 2>&1 | tee /tmp/typecheck_report.log || true
-    - name: Upload typecheck report
-      uses: actions/upload-artifact@v4
+    - run: make build && rebar3 as metrics escriptize || true
+    - run: ${{ matrix.cmd }} || true
+    - uses: actions/upload-artifact@v4
+      if: always()
       with:
-        name: typecheck-base
-        path: /tmp/typecheck_report.log
+        name: ${{ matrix.artifact }}
+        path: ${{ matrix.json }}
+        if-no-files-found: ignore
 
   test:
     name: "test: ${{ matrix.name }}"
@@ -74,8 +115,7 @@ jobs:
       matrix:
         include:
           - name: typecheck
-            cmd: ./run_test.escript typecheck 2>&1 | tee /tmp/test_report.log
-            artifact: test-typecheck-pr
+            cmd: ./run_test.escript typecheck
           - name: infer
             cmd: ./run_test.escript infer 2>&1 | tee /tmp/test_report.log
             artifact: test-infer-pr
@@ -97,39 +137,31 @@ jobs:
         path: /tmp/test_report.log
 
   test-base:
-    name: "test (base): ${{ matrix.name }}"
+    name: "test (base): infer"
     needs: build
     if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     container:
       image: erlang:28
-    strategy:
-      matrix:
-        include:
-          - name: typecheck
-            cmd: ./run_test.escript typecheck 2>&1 | tee /tmp/test_report.log
-            artifact: test-typecheck-base
-          - name: infer
-            cmd: ./run_test.escript infer 2>&1 | tee /tmp/test_report.log
-            artifact: test-infer-base
     steps:
     - uses: actions/checkout@v4
       with:
         ref: ${{ github.event.pull_request.base.sha }}
     - run: make build
-    - run: ${{ matrix.cmd }} || true
-    - name: Upload test report
-      uses: actions/upload-artifact@v4
+    - run: ./run_test.escript infer 2>&1 | tee /tmp/test_report.log || true
+    - uses: actions/upload-artifact@v4
       with:
-        name: ${{ matrix.artifact }}
+        name: test-infer-base
         path: /tmp/test_report.log
 
   ci-stats:
     name: "CI stats"
-    needs: [verify, typecheck-base, test, test-base]
+    needs: [verify, metrics, metrics-base, test, test-base]
     if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
+    container:
+      image: erlang:28
     steps:
     - uses: actions/checkout@v4
     - uses: actions/download-artifact@v4
@@ -137,20 +169,24 @@ jobs:
         path: /tmp/artifacts
     - name: Generate stats
       run: |
-        echo "## Typecheck Statistics" > /tmp/ci_stats.md
-        echo "" >> /tmp/ci_stats.md
-        .github/scripts/typecheck_stats.sh \
-          /tmp/artifacts/typecheck-pr/typecheck_report.log \
-          /tmp/artifacts/typecheck-base/typecheck_report.log \
-          >> /tmp/ci_stats.md
-        echo "" >> /tmp/ci_stats.md
-        echo "## Test Statistics: typecheck" >> /tmp/ci_stats.md
-        echo "" >> /tmp/ci_stats.md
-        .github/scripts/typecheck_stats.sh \
-          /tmp/artifacts/test-typecheck-pr/test_report.log \
-          /tmp/artifacts/test-typecheck-base/test_report.log \
-          >> /tmp/ci_stats.md
-        echo "" >> /tmp/ci_stats.md
+        : > /tmp/ci_stats.md
+        for suite in erlang_types etylizer typecheck; do
+          case $suite in
+            erlang_types) title="erlang_types"; json="erlang_types_metrics.json"; artifact="metrics-erlang-types";;
+            etylizer)     title="etylizer";     json="etylizer_metrics.json";      artifact="metrics-etylizer";;
+            typecheck)    title="typecheck tests"; json="typecheck_test_metrics.json"; artifact="metrics-typecheck";;
+          esac
+          pr_file="/tmp/artifacts/${artifact}-pr/${json}"
+          base_file="/tmp/artifacts/${artifact}-base/${json}"
+          if [ -f "$pr_file" ]; then
+            if [ -f "$base_file" ]; then
+              ./ety_metrics_report --title "$title" "$pr_file" "$base_file" >> /tmp/ci_stats.md
+            else
+              ./ety_metrics_report --title "$title" "$pr_file" >> /tmp/ci_stats.md
+            fi
+            echo "" >> /tmp/ci_stats.md
+          fi
+        done
         echo "## Test Statistics: infer" >> /tmp/ci_stats.md
         echo "" >> /tmp/ci_stats.md
         .github/scripts/typecheck_stats.sh \
@@ -171,7 +207,7 @@ jobs:
             issue_number: context.issue.number,
           });
           const existing = comments.find(c =>
-            c.user.type === 'Bot' && c.body.includes('## Typecheck Statistics')
+            c.user.type === 'Bot' && c.body.includes('Typecheck Statistics')
           );
           if (existing) {
             await github.rest.issues.updateComment({
