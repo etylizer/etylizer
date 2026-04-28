@@ -16,39 +16,13 @@
 -export_type([monomorphic_variables/0]).
 
 -ifdef(ety_metrics).
-var_metrics(FixedVars, Constraints, SymTab) ->
+var_metrics(FixedVars, Constraints, _SymTab) ->
     AllVars = sets:from_list(utils:everything(
         fun({var, V}) when is_atom(V) -> {ok, V}; (_) -> error end, Constraints)),
     MonoUsed = sets:size(sets:intersection(AllVars, FixedVars)),
     MonoUnused = sets:size(FixedVars) - MonoUsed,
     Poly = sets:size(AllVars) - MonoUsed,
-    PolyVars = sets:subtract(AllVars, FixedVars),
-    Types = lists:flatmap(fun({S, T}) -> [S, T] end, Constraints),
-    Meaningful = sets:size(sets:filter(fun(Alpha) ->
-        Subst = #{Alpha => {predef, none}},
-        lists:any(fun(T) ->
-            T2 = subst:apply_base(Subst, T),
-            not subty:is_equivalent(SymTab, T, T2)
-        end, Types)
-    end, PolyVars)),
-    %% Unconstrained: poly vars where both α→⊥ and α→⊤ preserve satisfiability
-    MonoMap = maps:from_list([{ty_variable:new_with_name(V), []} || V <- sets:to_list(FixedVars)]),
-    Unconstrained = sets:size(sets:filter(fun(Alpha) ->
-        SubstBot = #{Alpha => {predef, none}},
-        SubstTop = #{Alpha => {predef, any}},
-        ConsBot = [{subst:apply_base(SubstBot, S), subst:apply_base(SubstBot, T)} || {S, T} <- Constraints],
-        ConsTop = [{subst:apply_base(SubstTop, S), subst:apply_base(SubstTop, T)} || {S, T} <- Constraints],
-        MonoWithAlpha = maps:put(ty_variable:new_with_name(Alpha), [], MonoMap),
-        case do_satisfiable(ConsBot, MonoWithAlpha) of
-            {false, _} -> false;
-            {true, _} ->
-                case do_satisfiable(ConsTop, MonoWithAlpha) of
-                    {false, _} -> false;
-                    {true, _} -> true
-                end
-        end
-    end, PolyVars)),
-    {Poly, MonoUsed, MonoUnused, Meaningful, Unconstrained}.
+    {Poly, MonoUsed, MonoUnused}.
 -endif.
 
 -type monomorphic_variables() :: sets:set(ast:ty_varname()).
