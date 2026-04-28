@@ -24,7 +24,11 @@
           % when true, exhaustiveness checking is disabled for the top-level function clauses
           disable_exhaustiveness = false :: boolean(),
           % when true, redundancy checking is disabled for the top-level function clauses
-          disable_redundancy = false :: boolean()
+          disable_redundancy = false :: boolean(),
+          % Local var bindings known at constraint-gen time 
+          % e.g. function args from the spec, plus any other refs we want exp_constrs_tyof to resolve
+          % directly to a closed type.
+          env = #{} :: #{ ast:any_ref() => ast:ty() }
         }).
 -type ctx() :: #ctx{}.
 
@@ -88,17 +92,56 @@ gen_constrs_fun_group(ExhaustivenessMode, Symtab, {DisableExhaustiveness, Disabl
 -spec gen_constrs_annotated_fun(feature_flags:exhaustiveness_mode(), symtab:t(), {boolean(), boolean()}, ast:ty_full_fun(), ast:fun_decl()) -> constr:constrs().
 gen_constrs_annotated_fun(ExhaustivenessMode, Symtab, {DisableExhaustiveness, DisableRedundancy}, {fun_full, ArgTys, ResTy}, {function, L, Name, Arity, FunClauses}) ->
     Ctx0 = new_ctx(Symtab, ExhaustivenessMode),
-    Ctx = Ctx0#ctx{ disable_exhaustiveness = DisableExhaustiveness, disable_redundancy = DisableRedundancy },
-    {Args, Body} = fun_clauses_to_exp(Ctx, L, FunClauses),
+    Ctx1 = Ctx0#ctx{ disable_exhaustiveness = DisableExhaustiveness, disable_redundancy = DisableRedundancy },
+    {Args, Body} = fun_clauses_to_exp(Ctx1, L, FunClauses),
     if length(Args) =/= length(ArgTys) orelse length(Args) =/= Arity ->
             errors:ty_error(L, "Arity mismatch for function ~w", Name);
        true -> ok
     end,
     ArgRefs = lists:map(fun(V) -> {local_ref, V} end, Args),
     Env = maps:from_list(lists:zip(ArgRefs, ArgTys)),
+    %% Thread Env into Ctx so exp_constrs_tyof can resolve arg-var lookups
+    %% to their declared (closed) spec types directly
+    Ctx = Ctx1#ctx{ env = Env },
     BodyCs = exps_constrs(Ctx, L, Body, ResTy),
     Msg = utils:sformat("definition of ~w/~w", Name, Arity),
     utils:single({cdef, mk_locs(Msg, L), Env, BodyCs}).
+
+% Like exp_constrs, but returns the type of the expression directly instead of
+% constraining it against a target T. Falls back to a fresh var + cvarmater for 
+% vars not in env, and to fresh var + full exp_constrs for arbitrarily complex expressions.
+-spec exp_constrs_tyof(ctx(), ast:exp()) -> {ast:ty(), constr:constrs()}.
+exp_constrs_tyof(Ctx, E) ->
+    case E of
+        {'atom',    _L, A} -> {{singleton, A}, sets:new()};
+        {'char',    _L, C} -> {{singleton, C}, sets:new()};
+        {'integer', _L, I} -> {{singleton, I}, sets:new()};
+        {'float',   _L, _} -> {{predef, float}, sets:new()};
+        {nil, _L}          -> {{empty_list}, sets:new()};
+        {tuple, _L, Es} ->
+            {Cs, ElemTys} = lists:foldr(
+                fun(Elem, {AccCs, AccTys}) ->
+                    {Ty, ECs} = exp_constrs_tyof(Ctx, Elem),
+                    {sets:union(AccCs, ECs), [Ty | AccTys]}
+                end,
+                {sets:new(), []}, Es),
+            {{tuple, ElemTys}, Cs};
+        {var, _L, AnyRef} ->
+            case maps:find(AnyRef, Ctx#ctx.env) of
+                {ok, ClosedTy} ->
+                    %% Direct closed type from env
+                    {ClosedTy, sets:new()};
+                error ->
+                    %% otherwise fall back to exp_constrs
+                    Alpha = fresh_tyvar(Ctx),
+                    Cs = exp_constrs(Ctx, E, Alpha),
+                    {Alpha, Cs}
+            end;
+        _ ->
+            Alpha = fresh_tyvar(Ctx),
+            Cs = exp_constrs(Ctx, E, Alpha),
+            {Alpha, Cs}
+    end.
 
 % constraints for a sequence of expressions
 -spec exps_constrs(ctx(), ast:loc(), [ast:exp()], ast:ty()) -> constr:constrs().
@@ -460,10 +503,9 @@ exp_constrs(Ctx, E, T) ->
 % Helper for case expressions (with or without escape annotations).
 -spec case_constrs(ctx(), ast:loc(), ast:exp(), [ast:case_clause()], ast:escape_annotation(), ast:ty()) -> constr:constrs().
 case_constrs(Ctx, L, ScrutE, Clauses, EscapeAnnotation, T) ->
-    Alpha = fresh_tyvar(Ctx),
     % Reset disable flags for inner case expressions (only applies to top-level fun clauses)
     InnerCtx = Ctx#ctx{ disable_exhaustiveness = false, disable_redundancy = false },
-    Cs0 = exp_constrs(InnerCtx, ScrutE, Alpha),
+    {ScrutTy, Cs0} = exp_constrs_tyof(InnerCtx, ScrutE),
     NeedsUnmatchedCheck = case Ctx#ctx.disable_redundancy of
         true -> false;
         false -> needs_unmatched_check(Clauses)
@@ -478,7 +520,7 @@ case_constrs(Ctx, L, ScrutE, Clauses, EscapeAnnotation, T) ->
                             {ThisLower, ThisUpper, ThisCs, ThisConstrBody} =
                                 case_clause_constrs(
                                   InnerCtx,
-                                  ty_without(Alpha, ast_lib:mk_union(Lowers)),
+                                  ty_without(ScrutTy, ast_lib:mk_union(Lowers)),
                                   ScrutE,
                                   NeedsUnmatchedCheck,
                                   Lowers,
@@ -499,7 +541,7 @@ case_constrs(Ctx, L, ScrutE, Clauses, EscapeAnnotation, T) ->
             false ->
                 case Ctx#ctx.exhaustiveness_mode of
                     enabled -> utils:single(
-                                  {csubty, mk_locs("case exhaustiveness", L), Alpha, ast_lib:mk_union(Lowers)});
+                                  {csubty, mk_locs("case exhaustiveness", L), ScrutTy, ast_lib:mk_union(Lowers)});
                     disabled -> sets:new()
                 end
         end,
@@ -827,7 +869,11 @@ case_clause_constrs(Ctx, TyScrut, Scrut, NeedsUnmatchedCheck, LowersBefore,
         pretty:render_constr(BodyEnvCs)
     ),
     Beta = fresh_tyvar(Ctx),
-    BodyCs = exps_constrs(Ctx, L, Exps, Beta),
+    % Propagate clause narrowing into env so exp_constrs_tyof's env-shortcut
+    % uses the narrowed type for inner expressions (especially nested case
+    % scrutinees)
+    BodyCtx = Ctx#ctx{ env = intersect_envs(Ctx#ctx.env, BodyEnv) },
+    BodyCs = exps_constrs(BodyCtx, L, Exps, Beta),
     % Add escape constraints: for each escaping variable, materialize its type
     % in this branch and flow it into the shared escape type variable.
     EscCs = lists:foldl(
@@ -1749,3 +1795,4 @@ sanity_check(Cs, Spec) ->
         false ->
             ?ABORT("Sanity check failed: ~s", "invalid constraint generated")
     end.
+
