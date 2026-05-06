@@ -77,6 +77,43 @@ has_dynamic_constr(Tab, Constrs) ->
         end,
         sets:to_list(Constrs)).
 
+% Nominal types present and structural check passed: check nominal compatibility.
+% Short-circuits on the common case: the flattened constraint set is a superset of every branch combination. 
+% Nominal checks are monotonic. 
+% If no conflict exists in the flattened set, no combination can have one either. 
+% Only when the flattened check finds a conflict do we enumerate combinations to rule out false positives
+% caused by mixing constraints from mutually exclusive branches.
+-spec check_nominal_after_structural(symtab:t(), constr:simp_constrs(), constr:collected_constrs()) ->
+    ok | {error, error()}.
+check_nominal_after_structural(Tab, Ds, SubtyConstrs) ->
+    case constr_solve_nominal:check_nominal_constrs(Tab, SubtyConstrs) of
+        ok -> ok;
+        {error, _} ->
+            SubtyConstrsDisj = constr_collect:collect_constrs_all_combinations(Ds),
+            ?LOG_DEBUG("Nominal conflict on flattened set, checking ~w combinations", length(SubtyConstrsDisj)),
+            constr_solve_nominal:check_nominal_combinations_only(Tab, SubtyConstrsDisj)
+    end.
+
+% Check for redundant branches.
+-spec check_redundancy(symtab:t(), sets:set(ast:ty_varname()), constr:simp_constrs(), constr:collected_constrs()) ->
+    ok | {error, error()}.
+check_redundancy(Tab, FixedTyvars, Ds, SubtyConstrs) ->
+    ReduDs = constr_collect:collect_matching_cond_constrs(Ds),
+    ?LOG_DEBUG("Constraints are satisfiable, now checking ~w branches for redundancy",
+        length(ReduDs)),
+    case has_dynamic_constr(Tab, SubtyConstrs) of
+        true ->
+            ?LOG_DEBUG("Skipping all redundancy checks (dynamic() found in constraints)"),
+            ok;
+        false ->
+            lists:foldl(
+                fun (LocAndConstrs, Acc) ->
+                    check_redundant_branch(Tab, FixedTyvars, SubtyConstrs, LocAndConstrs, Acc)
+                end,
+                ok,
+                ReduDs)
+    end.
+
 -spec check_redundant_branch(symtab:t(), sets:set(ast:ty_varname()), constr:subty_constrs(),
     {ast:loc(), constr:subty_constrs()}, ok | {error, error()}) -> ok | {error, error()}.
 check_redundant_branch(_Tab, _FixedTyvars, _SubtyConstrs, _LocAndConstrs, Acc = {error, _}) -> Acc;
@@ -119,23 +156,19 @@ check_simp_constrs(Tab, FixedTyvars, Ds, What) ->
     SubtyConstrs = constr_collect:collect_constrs_no_matching_cond(Ds),
     ?LOG_DEBUG("Checking constraints for satisfiability to type check ~s:~n~s~nFixed: ~s",
         What, pretty:render_constr(SubtyConstrs), pretty:render_set(fun pretty:atom/1, FixedTyvars)),
+    % Run structural check once on the flattened constraint set
     case is_satisfiable(Tab, SubtyConstrs, FixedTyvars, "satisfiability check") of
         true ->
-            % check for redundant branches
-            ReduDs = constr_collect:collect_matching_cond_constrs(Ds),
-            ?LOG_DEBUG("Constraints are satisfiable, now checking ~w branches for redundancy",
-                length(ReduDs)),
-            case has_dynamic_constr(Tab, SubtyConstrs) of
+            % Structurally satisfiable; now check for nominal conflicts if needed
+            NomResult = case symtab:has_any_nominals(Tab) andalso constr_solve_nominal:has_nominal_constrs(Tab, SubtyConstrs) of
                 true ->
-                    ?LOG_DEBUG("Skipping all redundancy checks (dynamic() found in constraints)"),
-                    ok;
+                    check_nominal_after_structural(Tab, Ds, SubtyConstrs);
                 false ->
-                    lists:foldl(
-                        fun (LocAndConstrs, Acc) ->
-                            check_redundant_branch(Tab, FixedTyvars, SubtyConstrs, LocAndConstrs, Acc)
-                        end,
-                        ok,
-                        ReduDs)
+                    ok
+            end,
+            case NomResult of
+                ok -> check_redundancy(Tab, FixedTyvars, Ds, SubtyConstrs);
+                {error, _} = Err -> Err
             end;
         false ->
             locate_unsat_error(Tab, FixedTyvars, Ds)
