@@ -17,31 +17,32 @@
 ]).
 
 -define(ATOM, ty_variable).
--define(LEAF, ty_rec).
+-define(LEAF, dnf_ty_nominal).
 
 -include("dnf/bdd.hrl").
 
 % helper constructors (used by ty_parser)
+% Each wraps a ty_rec value in a dnf_ty_nominal leaf, then in a dnf_ty_variable leaf.
 -spec atom(dnf_ty_atom:type()) -> bdd().
-atom(DnfTyAtom) -> leaf(ty_rec:atom(DnfTyAtom)).
+atom(DnfTyAtom) -> leaf(dnf_ty_nominal:leaf(ty_rec:atom(DnfTyAtom))).
 -spec interval(dnf_ty_interval:type()) -> bdd().
-interval(DnfTyInterval) -> leaf(ty_rec:interval(DnfTyInterval)).
+interval(DnfTyInterval) -> leaf(dnf_ty_nominal:leaf(ty_rec:interval(DnfTyInterval))).
 -spec functions(ty_functions:type()) -> bdd().
-functions(DnfTyFunctions) -> leaf(ty_rec:functions(DnfTyFunctions)).
+functions(DnfTyFunctions) -> leaf(dnf_ty_nominal:leaf(ty_rec:functions(DnfTyFunctions))).
 -spec tuples(ty_tuples:type()) -> bdd().
-tuples(DnfTyTuples) -> leaf(ty_rec:tuples(DnfTyTuples)).
+tuples(DnfTyTuples) -> leaf(dnf_ty_nominal:leaf(ty_rec:tuples(DnfTyTuples))).
 -spec list(dnf_ty_list:type()) -> bdd().
-list(DnfTyList) -> leaf(ty_rec:list(DnfTyList)).
+list(DnfTyList) -> leaf(dnf_ty_nominal:leaf(ty_rec:list(DnfTyList))).
 -spec predefined(dnf_ty_predefined:type()) -> bdd().
-predefined(DnfTyPredef) -> leaf(ty_rec:predefined(DnfTyPredef)).
+predefined(DnfTyPredef) -> leaf(dnf_ty_nominal:leaf(ty_rec:predefined(DnfTyPredef))).
 -spec bitstring(dnf_ty_bitstring:type()) -> bdd().
-bitstring(Dnf) -> leaf(ty_rec:bitstring(Dnf)).
+bitstring(Dnf) -> leaf(dnf_ty_nominal:leaf(ty_rec:bitstring(Dnf))).
 -spec map(dnf_ty_map:type()) -> bdd().
-map(Dnf) -> leaf(ty_rec:map(Dnf)).
+map(Dnf) -> leaf(dnf_ty_nominal:leaf(ty_rec:map(Dnf))).
 
 % encoded map has to be a leaf during parsing
 -spec tuple_to_map(leaf()) -> leaf().
-tuple_to_map({leaf, Internal}) -> {leaf, ty_rec:tuple_to_map(Internal)}.
+tuple_to_map({leaf, Internal}) -> {leaf, dnf_ty_nominal:tuple_to_map(Internal)}.
 
 % =============
 % Subtyping
@@ -49,11 +50,11 @@ tuple_to_map({leaf, Internal}) -> {leaf, ty_rec:tuple_to_map(Internal)}.
 
 -spec is_empty_line({[T], [T], ?LEAF:type()}, S) -> {boolean(), S} when S :: is_empty_cache(), T :: ?ATOM:type().
 is_empty_line({AllPos, Neg, T}, ST) ->
-  case {AllPos, Neg, ty_rec:is_literal_empty(T)} of
-    {_, _, true} -> 
+  case {AllPos, Neg, dnf_ty_nominal:is_literal_empty(T)} of
+    {_, _, true} ->
       {true, ST};
     {_PositiveVariables, _NegativeVariables, false} -> % ignore variables for emptiness
-      ty_rec:is_empty(T, ST)
+      dnf_ty_nominal:is_empty(T, ST)
   end.
 
 % =============
@@ -61,10 +62,10 @@ is_empty_line({AllPos, Neg, T}, ST) ->
 % =============
 
 % (NTLV rule)
--spec normalize_line({[T], [T], ?LEAF:type()}, monomorphic_variables(), S) -> 
+-spec normalize_line({[T], [T], ?LEAF:type()}, monomorphic_variables(), S) ->
     {set_of_constraint_sets(), S} when S :: normalize_cache(),T :: ?ATOM:type().
 normalize_line({[], [], TyRec}, Fixed, ST) ->
-  ty_rec:normalize(TyRec, Fixed, ST);
+  dnf_ty_nominal:normalize(TyRec, Fixed, ST);
 normalize_line({PVar, NVar, TyRec}, Fixed, ST) ->
   SmallestVar = smallest(PVar, NVar, Fixed),
   %io:format(user, "Got smallest var ~p~n", [SmallestVar]),
@@ -79,12 +80,12 @@ normalize_line({PVar, NVar, TyRec}, Fixed, ST) ->
       {[[{Var, ty_node:make(Singled), ty_node:any()}]], ST};
     {{{delta, _}, _}, _} ->
       % part 1 paper Lemma C.3 and C.11 all fixed variables can be eliminated
-      ty_rec:normalize(TyRec, Fixed, ST)
+      dnf_ty_nominal:normalize(TyRec, Fixed, ST)
   end.
 
 % assumption: PVars U NVars is not empty
 -type tagged_variable() :: {pos | neg | {delta, pos | neg}, ?ATOM:type()}.
--spec smallest([T], [T], monomorphic_variables()) -> 
+-spec smallest([T], [T], monomorphic_variables()) ->
     {tagged_variable(), [tagged_variable()]} when T :: ?ATOM:type().
 smallest(PositiveVariables, NegativeVariables, FixedVariables) ->
   ?assert_pattern(true, (length(PositiveVariables) + length(NegativeVariables)) > 0),
@@ -98,23 +99,23 @@ smallest(PositiveVariables, NegativeVariables, FixedVariables) ->
     [{{delta, pos}, V} || V <- PositiveVariables, maps:is_key(V, FixedVariables)],
 
   Sort = fun({_, V}, {_, V2}) -> ty_variable:leq(V, V2) end,
-  [X | Z] = 
-  ?assert_pattern([_ | _], 
-                  lists:sort(Sort, PositiveVariablesTagged++NegativeVariablesTagged) ++ 
+  [X | Z] =
+  ?assert_pattern([_ | _],
+                  lists:sort(Sort, PositiveVariablesTagged++NegativeVariablesTagged) ++
                   lists:sort(Sort, RestTagged)),
 
   {X, Z}.
 
 -spec single(boolean(), [T], [T], ?LEAF:type()) -> bdd() when T :: ?ATOM:type().
 single(Pol, VPos, VNeg, Ty) ->
-  AccP = lists:foldl(fun(Var, TTy) -> 
+  AccP = lists:foldl(fun(Var, TTy) ->
     VVar = dnf_ty_variable:singleton(Var),
-    intersect(TTy, VVar) 
+    intersect(TTy, VVar)
   end, leaf(Ty), VPos),
 
-  AccN = lists:foldl(fun(Var, TTy) -> 
+  AccN = lists:foldl(fun(Var, TTy) ->
     VVar = dnf_ty_variable:singleton(Var),
-    union(TTy, VVar) 
+    union(TTy, VVar)
   end, empty(), VNeg),
 
   S = difference(AccP, AccN),
@@ -127,5 +128,5 @@ single(Pol, VPos, VNeg, Ty) ->
 all_variables_line(P, N, Leaf, Cache) ->
   sets:union([sets:from_list(P),
               sets:from_list(N),
-              ty_rec:all_variables(Leaf, Cache)
+              dnf_ty_nominal:all_variables(Leaf, Cache)
              ]).

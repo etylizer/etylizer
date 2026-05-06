@@ -39,10 +39,10 @@ unparse({ty_tuple, 2, [TupPart, FunPart]}, ST0) ->
 
 -spec unparse_fun_part(ty_node:type(), S) -> {ast_ty(), S} when S :: unparse_cache().
 unparse_fun_part(FunPart, ST) ->
-    % a map should definitely not have any variables
-    {leaf, TyFunPart} = case ty_node:load(FunPart) of 
-                             {leaf, TyFunPart1} -> {leaf, TyFunPart1}; 
-                             _ -> error(badarg) 
+    % a map should definitely not have any variables or nominal tags
+    {leaf, {leaf, TyFunPart}} = case ty_node:load(FunPart) of
+                             {leaf, {leaf, TyFunPart1}} -> {leaf, {leaf, TyFunPart1}};
+                             _ -> error(badarg)
                          end, % non-exhaustive
     case TyFunPart of
         empty -> error(badarg);
@@ -68,10 +68,10 @@ unparse_fun_part_dnf(FunsDnf, ST) ->
 
 -spec unparse_tuple_part(ty_node:type(), S) -> {{predef, none} | {union, [ast:ty_tuple()]}, S} when S :: unparse_cache().
 unparse_tuple_part(TupPart, ST) ->
-    % a map should definitely not have any variables
-    {leaf, TyTupPart0} = case ty_node:load(TupPart) of 
-                             {leaf, TyTupPart1} -> {leaf, TyTupPart1}; 
-                             _ -> error(badarg) 
+    % a map should definitely not have any variables or nominal tags
+    {leaf, {leaf, TyTupPart0}} = case ty_node:load(TupPart) of
+                             {leaf, {leaf, TyTupPart1}} -> {leaf, {leaf, TyTupPart1}};
+                             _ -> error(badarg)
                          end, % non-exhaustive
 
     % remove the part that makes the tuple part always non-empty
