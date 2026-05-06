@@ -127,6 +127,8 @@
     guard_test/0,
     ty_singleton/0,
     ty_bitstring/0,
+    ty_bitstring_cons/0,
+    ty_empty_bitstring/0,
     ty_empty_list/0,
     ty_list/0,
     ty_cons/0,
@@ -439,8 +441,10 @@ loc_exp({_, L, _, _, _, _}) -> L.
 
 % 8.7  Types
 -type ty_singleton() :: {singleton, atom() | integer() | char()}.
-% TODO bitstring is imprecise
--type ty_bitstring() :: {bitstring}. %{binary, binary(), integer(), integer()}.
+% {bitstring} = any bitstring, {bitstring, M, N} = bitstrings of size M + K*N for K >= 0
+-type ty_bitstring() :: {bitstring} | {bitstring, non_neg_integer(), non_neg_integer()}.
+-type ty_bitstring_cons() :: {bitstring_cons, ty(), ty()}.
+-type ty_empty_bitstring() :: {empty_bitstring}.
 
 -type ty_empty_list() :: {empty_list}.
 -type ty_list() :: {list, ty()}.
@@ -562,7 +566,7 @@ is_predef_alias_name(N) ->
 -type ty_negation() :: {negation, ty()}.
 
 % We do not have an explicit type for records. We encode them as tuples instead.
--type ty() :: ty_singleton() | ty_bitstring() | ty_some_list()
+-type ty() :: ty_singleton() | ty_bitstring() | ty_bitstring_cons() | ty_empty_bitstring() | ty_some_list()
     | ty_fun() | ty_integer_range() | ty_map_any() | ty_map() | ty_predef() | ty_predef_alias()
     | ty_named() | ty_tuple_any() | ty_tuple() | ty_var() | ty_mu_var() | ty_mu()
     | ty_union() | ty_intersection() | ty_negation().

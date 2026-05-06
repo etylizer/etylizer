@@ -290,6 +290,13 @@ eval_const_ty(Ty, Loc) ->
         errors:ty_error(Loc, "Invalid type: ~200p", Ty)
     end.
 
+-spec eval_type_int(ast_erl:ty()) -> integer().
+eval_type_int({integer, _, V}) -> V;
+eval_type_int({op, _, '+', A, B}) -> eval_type_int(A) + eval_type_int(B);
+eval_type_int({op, _, '-', A, B}) -> eval_type_int(A) - eval_type_int(B);
+eval_type_int({op, _, '*', A, B}) -> eval_type_int(A) * eval_type_int(B);
+eval_type_int({op, _, '-', A}) -> -eval_type_int(A).
+
 -spec trans_ty(ctx(), tyenv(), ast_erl:ty()) -> ast:ty().
 trans_ty(Ctx, Env, Ty) ->
     case Ty of
@@ -297,7 +304,11 @@ trans_ty(Ctx, Env, Ty) ->
         {'atom', _, X} -> {singleton, X};
         {'char', _, X} -> {singleton, X};
         {'integer', _, X} -> {singleton, X};
-        {type, _, binary, _} -> {bitstring}; % TODO full bitstring support
+        {type, _, binary, []} -> {bitstring, 0, 8};  % binary()
+        {type, _, binary, [M, N]} ->
+            MI = eval_type_int(M),
+            NI = eval_type_int(N),
+            {bitstring, MI, NI};
         {type, _, nil, []} -> {empty_list};
         {type, _, list, [T]} -> {list, trans_ty(Ctx, Env, T)};
         {type, _, 'fun', []} -> {fun_simple};

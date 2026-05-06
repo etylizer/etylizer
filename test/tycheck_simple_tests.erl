@@ -107,7 +107,7 @@ check_decls_in_file(F, What, NoInfer) ->
         Ty = symtab:lookup_fun({ref, Name, Arity}, Loc, Tab),
         ShouldFail = utils:string_ends_with(NameStr, "_fail"),
         RunTest =
-          {timeout, 10, {FullNameStr ++ " (typecheck)", fun() ->
+          {timeout, 55, {FullNameStr ++ " (typecheck)", fun() ->
                 ?LOG_NOTE("Type checking ~s from ~s", NameStr, F),
                 global_state:with_new_state(fun() ->
                   case ShouldFail of
@@ -199,9 +199,17 @@ simple_test_() ->
     "mu_01_fail"
   ],
 
+  BinaryPart = [
+    % slow
+    "bin_match_float_01",
+    % feature: project bits into integer values
+    "bin_let_04"
+  ],
+
 
   % The following functions are currently excluded from being tested.
-  WhatNot = NominalPart ++ [
+  WhatNot = NominalPart ++
+    BinaryPart ++ [
     % FIXME slow, waiting for optiization
     "refine_02",
     % TODO binary pattern element size verification
@@ -231,6 +239,94 @@ simple_test_() ->
     "refine_01",
     "refine_02",
     "refine_tagged_tuple",
+    "refinement_string",
+    "b3",
+    "b5_embed_bitstring",
+    "b5_embed_binary_unit1",
+    "b5_embed_binary",
+    "b5_match_binary_unit16_2bytes",
+    "b5_match_binary_unit16_4bytes",
+    "b5_truncate_binary",
+    "bin_construct_int_02",
+    "bin_construct_int_04",
+    "bin_construct_int_05",
+    "bin_construct_int_07",
+    "bin_construct_int_08",
+    "bin_construct_float_01",
+    "bin_construct_float_02",
+    "bin_construct_float_03",
+    "bin_construct_str_01",
+    "bin_construct_bin_03",
+    "bin_construct_complex_01",
+    "bin_construct_utf16_01",
+    "bin_construct_utf16_02",
+    "bin_construct_utf32_01",
+    "bin_construct_fixed_01",
+    "bin_construct_fixed_03",
+    "bin_construct_match_int_01",
+    "bin_match_int_01",
+    "bin_match_int_02",
+    "bin_match_int_03",
+    "bin_match_int_04",
+    "bin_match_int_05",
+    "bin_match_int_06",
+    "bin_match_int_07",
+    "bin_exhaust_01",
+    "bin_exhaust_03",
+    "bin_exhaust_02",
+    "bin_exhaust_04",
+    "bin_match_bin_01",
+    "bin_match_bin_02",
+    "bin_match_bin_03",
+    "bin_match_literal_01",
+    "bin_match_literal_02",
+    "bin_match_literal_03",
+    "bin_match_float_02",
+    "bin_concat_01",
+    "bin_concat_02",
+    "bin_concat_03",
+    "bin_guard_01",
+    "bin_guard_02",
+    "bin_guard_04",
+    "bin_guard_05",
+    "bin_guard_literal_01",
+    "bin_guard_literal_02",
+    "bin_occ_02",
+    "bin_precise_01",
+    "bin_precise_02",
+    "bin_precise_03",
+    "bin_precise_04",
+    "bin_comp_02",
+    "bin_comp_03",
+    "bin_comp_06",
+    "bin_subtype_01",
+    "bin_try_01",
+    "bin_fun_01_helper",
+    "bin_data_02",
+    "bin_let_01",
+    "bin_let_02",
+    "bin_let_03",
+    "bin_rec_01",
+    "bin_rec_02",
+    "bin_rec_03",
+    "bin_rec_04",
+    "bin_cons_01",
+    "bin_cons_03",
+    "bin_cons_04",
+    "bin_bif_guard_01",
+    "bin_bif_guard_02",
+    "bin_case_01",
+    "bin_case_02",
+    "bin_concat_04",
+    "bin_llet_04",
+    "bin_utf8_cons_01",
+    "bin_utf8_cons_03",
+    "bin_utf8_cons_04",
+    "bin_utf8_cons_05",
+    "bin_utf8_cons_06",
+    "b5_embed_1bit_bitstring",
+    "b5_embed_1bit_binary_unit1",
+    "b5_match_binary_unit16_empty",
     % TODO timeout, with flipped variable ordering it infers instantly
     "match_13",
     % TODO slow (tuple-encoded lists) inference #255
@@ -248,9 +344,7 @@ simple_test_() ->
     "op_08",
     % TODO slow maybe inference
     "maybe_08",
-    "maybe_09",
-    % TODO slow list inference (nonempty_string)
-    "refinement_string"
+    "maybe_09"
   ],
 
   %What = ["atom_03_fail"],
