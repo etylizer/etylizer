@@ -20,7 +20,8 @@
     normalize/3,
     unparse/2,
     all_variables/2,
-    has_negative_only_line/1
+    has_negative_only_line/1,
+    substitute/3
 ]).
 
 -include("erlang_types.hrl").
@@ -338,3 +339,29 @@ minimize_node_dnf(Dnf) ->
 has_negative_only_line(T) ->
     D = minimize_dnf(T),
     lists:any(fun({[], [_|_], _}) -> true; (_) -> false end, D).
+
+% Generic BDD substitution
+% LeafFun rewrites a leaf
+% AtomFun maps an atom to a replacement BDD
+-spec substitute_bdd(bdd(), fun((?LEAF:type()) -> ?LEAF:type()),
+                            fun((?ATOM:type()) -> bdd())) -> bdd().
+substitute_bdd({leaf, L}, LeafFun, _AtomFun) -> {leaf, LeafFun(L)};
+substitute_bdd({node, Atom, P, N}, LeafFun, AtomFun) ->
+    P2 = substitute_bdd(P, LeafFun, AtomFun),
+    N2 = substitute_bdd(N, LeafFun, AtomFun),
+    AtomBdd = AtomFun(Atom),
+    union(intersect(AtomBdd, P2), difference(N2, AtomBdd)).
+
+% Default substitute/3 for atom BDDs
+%
+% The Sigma argument is unused here and exists only for
+% signature-uniformity with the variable BDD, which substitutes variables and
+% supplies its own substitute/3 (it sets VARIABLE_BDD to suppress this default).
+% Atom BDDs are always called with an empty Sigma.
+-ifndef(VARIABLE_BDD).
+-spec substitute(bdd(), #{}, #{ty_node:type() => ty_node:type()}) -> bdd().
+substitute(BDD, _Sigma, NodeMap) ->
+    substitute_bdd(BDD,
+        fun(Leaf) -> ?LEAF:substitute(Leaf, NodeMap) end,
+        fun(Atom) -> singleton(?ATOM:substitute(Atom, NodeMap)) end).
+-endif.

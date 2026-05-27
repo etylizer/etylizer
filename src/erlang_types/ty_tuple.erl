@@ -9,7 +9,8 @@
   all_variables/2,
   unparse/2,
   big_intersect/1,
-  components/1
+  components/1,
+  substitute/2
 ]).
 
 -export_type([type/0]).
@@ -66,4 +67,8 @@ unparse({ty_tuple, _, Refs}, ST0) ->
                  Refs
                 ),
   {{tuple, All}, ST3}.
+
+-spec substitute(type(), #{?NODE:type() => ?NODE:type()}) -> type().
+substitute({ty_tuple, Dim, Refs}, NodeMap) ->
+  {ty_tuple, Dim, [maps:get(R, NodeMap, R) || R <- Refs]}.
 
