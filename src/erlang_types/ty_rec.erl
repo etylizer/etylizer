@@ -28,7 +28,8 @@
   map/1,
 
   tuple_to_map/1,
-  is_literal_empty/1
+  is_literal_empty/1,
+  substitute/2
 ]).
 
 -export_type([type/0, type_record/0]).
@@ -360,6 +361,24 @@ bitstring(A) -> (empty0())#ty{dnf_ty_bitstring = A}.
 
 -spec map(dnf_ty_map:type()) -> type().
 map(A) -> (empty0())#ty{dnf_ty_map = A}.
+
+-spec substitute(type(), #{ty_node:type() => ty_node:type()}) -> type().
+substitute(any, _NodeMap) -> any;
+substitute(empty, _NodeMap) -> empty;
+substitute(#ty{
+    dnf_ty_predefined = P, dnf_ty_atom = A, dnf_ty_interval = I, dnf_ty_list = L,
+    dnf_ty_bitstring = B, ty_tuples = T, ty_functions = F, dnf_ty_map = M
+}, NodeMap) ->
+    simpl_to_repr(#ty{
+        dnf_ty_predefined = P,
+        dnf_ty_atom = A,
+        dnf_ty_interval = I,
+        dnf_ty_list = dnf_ty_list:substitute(L, #{}, NodeMap),
+        dnf_ty_bitstring = B,
+        ty_tuples = ty_tuples:substitute(T, NodeMap),
+        ty_functions = ty_functions:substitute(F, NodeMap),
+        dnf_ty_map = dnf_ty_map:substitute(M, #{}, NodeMap)
+    }).
 
 % Converter used by ty_parser
 % to convert from a map encoded in the 2-arity tuple part to the map part

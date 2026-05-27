@@ -99,6 +99,8 @@
 'maps:merge'(_, _) -> error(badarg).
 -spec 'maps:map'(fun((Key, Value1) -> Value2), #{Key => Value1}) -> #{Key => Value2}.
 'maps:map'(_, _) -> error(overlay).
+-spec 'maps:update_with'(Key, fun((Value) -> Value), Value, #{Key => Value}) -> #{Key => Value}.
+'maps:update_with'(_, _, _, _) -> error(overlay).
 -spec 'maps:find'(Key, #{Key => Value}) -> {ok, Value} | error.
 'maps:find'(_, _) -> error(overlay).
 

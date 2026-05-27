@@ -18,6 +18,9 @@
 
 -define(ATOM, ty_variable).
 -define(LEAF, ty_rec).
+% the variable BDD substitutes variables, so it supplies its own substitute/3
+% instead of the node-remapping default in bdd.hrl
+-define(VARIABLE_BDD, true).
 
 -include("dnf/bdd.hrl").
 
@@ -129,3 +132,19 @@ all_variables_line(P, N, Leaf, Cache) ->
               sets:from_list(N),
               ty_rec:all_variables(Leaf, Cache)
              ]).
+
+% Substitute variables (Sigma) and node references (NodeMap) in this BDD. 
+% Sigma maps a ty_variable to the ty_node whose BDD replaces it
+% NodeMap remaps the ty_nodes referenced in the ty_rec leaves. 
+% Shares the generic traversal with the atom BDDs in bdd.hrl.
+-spec substitute(bdd(), #{variable() => ty_node:type()}, #{ty_node:type() => ty_node:type()}) -> bdd().
+substitute(BDD, Sigma, NodeMap) ->
+  substitute_bdd(BDD,
+    fun(Leaf) -> ty_rec:substitute(Leaf, NodeMap) end,
+    fun(Var) ->
+      case maps:find(Var, Sigma) of
+        {ok, TNode} -> ty_node:load(TNode);
+        error -> singleton(Var)
+      end
+    end).
+

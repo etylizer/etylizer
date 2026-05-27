@@ -4,7 +4,8 @@
   equal/2,
   compare/2,
   map/2,
-  unparse/2
+  unparse/2,
+  substitute/2
 ]).
 
 % invariants
@@ -21,6 +22,9 @@ compare(A, B) -> ty_tuple:compare(A, B).
 
 -spec equal(type(), type()) -> boolean().
 equal(A, B) -> compare(A, B) == eq.
+
+-spec substitute(type(), #{ty_node:type() => ty_node:type()}) -> type().
+substitute(T, NodeMap) -> ty_tuple:substitute(T, NodeMap).
 
 -spec map(N, N) -> type() when N :: ty_node:type().
 map(TupPart, FunPart) -> ty_tuple:tuple([TupPart, FunPart]).

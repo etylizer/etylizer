@@ -16,7 +16,8 @@
   is_empty/2,
   normalize/3,
   unparse/2,
-  all_variables/2
+  all_variables/2,
+  substitute/2
 ]).
 -export_type([type/0]).
 
@@ -46,6 +47,9 @@ is_any(1) -> true; is_any(_) -> false.
 is_empty(0, S) -> {true, S}; is_empty(_, S) -> {false, S}.
 -spec all_variables(type(), _) -> sets:set().
 all_variables(_, _) -> sets:new().
+% a 0/1 terminal carries no ty_node references, so substitution is a no-op
+-spec substitute(type(), #{ty_node:type() => ty_node:type()}) -> type().
+substitute(B, _NodeMap) -> B.
 -spec unparse(type(), T) -> {ast_ty(), T}.
 unparse(0, C) -> {{predef, none}, C};
 unparse(1, C) -> {{predef, any}, C}.

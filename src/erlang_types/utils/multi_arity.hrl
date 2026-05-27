@@ -25,7 +25,8 @@
   normalize/3,
   unparse/2,
   all_variables/2,
-  has_negative_only_line/1
+  has_negative_only_line/1,
+  substitute/2
 ]).
 
 -spec reorder(X) -> X when X :: type().
@@ -184,3 +185,8 @@ has_negative_only_line({Default, All}) ->
   ?MULTIARITY:has_negative_only_line(Default) 
   orelse
   lists:any(fun({_, M}) -> ?MULTIARITY:has_negative_only_line(M) end, maps:to_list(All)).
+
+-spec substitute(type(), #{ty_node:type() => ty_node:type()}) -> type().
+substitute({Default, All}, NodeMap) ->
+  {?MULTIARITY:substitute(Default, #{}, NodeMap),
+   maps:map(fun(_K, V) -> ?MULTIARITY:substitute(V, #{}, NodeMap) end, All)}.

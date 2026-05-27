@@ -4,6 +4,7 @@
   equal/2,
   compare/2,
   unparse/2,
+  substitute/2,
   list/1
 ]).
 
@@ -29,6 +30,9 @@ compare(A, B) -> ty_tuple:compare(A, B).
 
 -spec equal(type(), type()) -> boolean().
 equal(P1, P2) -> ty_tuple:equal(P1, P2).
+
+-spec substitute(type(), #{ty_node:type() => ty_node:type()}) -> type().
+substitute(T, NodeMap) -> ty_tuple:substitute(T, NodeMap).
 
 -spec unparse(type(), T) -> {ast_ty(), T} when T :: unparse_cache().
 unparse({ty_tuple, 2, [List, Termination]}, ST0) ->
