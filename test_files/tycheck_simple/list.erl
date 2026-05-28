@@ -154,6 +154,20 @@ list_pattern_12(S) ->
     _ -> bad
   end.
 
+%%%%%%%%%%%%%%%%%%%%%%%% PRECISE STRING LITERALS %%%%%%%%%%%%%%%%%%%%%%%
+
+%% Each character of a string literal should be a singleton, just like
+%% string patterns already are (see ty_of_pat in constr_gen.erl).
+
+-spec str_precise_01() -> [$X, ...].
+str_precise_01() -> "X".
+
+-spec str_precise_02() -> [$f | $o, ...].
+str_precise_02() -> "foo".
+
+-spec str_precise_03() -> nonempty_list($a..$z).
+str_precise_03() -> "hello".
+
 -spec list_01_fail(
         fun((nonempty_list(A), list(A)) -> A),
         {list(Item), list(Item)}) -> Item.
