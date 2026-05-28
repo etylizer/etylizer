@@ -1,0 +1,358 @@
+#!/usr/bin/env escript
+%%! -noinput
+
+main(Args) ->
+    {Title, Rest} = case Args of
+        ["--title", T | R] -> {T, R};
+        R -> {undefined, R}
+    end,
+    case Rest of
+        [PrFile] -> report(Title, load_json(PrFile), #{});
+        [PrFile, BaseFile] -> report(Title, load_json(PrFile), load_json(BaseFile));
+        _ ->
+            io:format(standard_error, "Usage: ety_metrics_report [--title TITLE] <pr.json> [base.json]~n", []),
+            halt(1)
+    end.
+
+load_json(Path) ->
+    {ok, Bin} = file:read_file(Path),
+    json:decode(Bin).
+
+report(Title, Pr, Base) ->
+    HasBase = maps:size(Base) > 0,
+    PrTimes = maps:get(<<"typecheck_time">>, Pr, []),
+    BaseTimes = maps:get(<<"typecheck_time">>, Base, []),
+    PrPoly = maps:get(<<"poly_vars">>, Pr, []),
+    BasePoly = maps:get(<<"poly_vars">>, Base, []),
+    % When a base is present we restrict PR records to functions also present
+    % in base, so the delta vs Base is apples-to-apples. PR-only functions are
+    % excluded; on this fixed corpus there are none.
+    {PrTimesCommon, PrPolyCommon} =
+        case HasBase of
+            true ->
+                BaseFnSet = function_set(BaseTimes),
+                {TC, _TA} = partition_times(PrTimes, BaseFnSet),
+                {PC, _PA} = partition_poly(PrPoly, BaseFnSet),
+                {TC, PC};
+            false ->
+                {PrTimes, PrPoly}
+        end,
+    case maps:find(<<"typecheck_time">>, Pr) of
+        {ok, _} ->
+            print_time_section(section_title(Title, "Typecheck Statistics"), "function",
+                               PrTimesCommon, BaseTimes, HasBase);
+        error -> ok
+    end,
+    case maps:find(<<"poly_vars">>, Pr) of
+        {ok, _} ->
+            print_poly_section(section_title(Title, "Polymorphic Variable Statistics"),
+                               PrPolyCommon, BasePoly, HasBase);
+        error -> ok
+    end,
+    %% Verdict flips, reusing the cells already loaded above (no recomputation):
+    %% on this fixed corpus, list functions whose Error/Ok verdict differs
+    %% between the base engine and the PR engine.
+    case HasBase of
+        true -> print_flips(Title, PrTimes, BaseTimes);
+        false -> ok
+    end.
+
+%% PrTimes = PR-engine cell, BaseTimes = base-engine cell (same fixed corpus).
+%% Prints Error->Ok and Ok->Error lists, only when non-empty, behind a warning.
+print_flips(Title, PrTimes, BaseTimes) ->
+    Pr = status_map(PrTimes),
+    Base = status_map(BaseTimes),
+    EtoO = flip_names(Base, Pr, <<"error">>, <<"ok">>),
+    OtoE = flip_names(Base, Pr, <<"ok">>, <<"error">>),
+    case EtoO ++ OtoE of
+        [] -> ok;
+        _ ->
+            io:setopts([{encoding, unicode}]),
+            TitleStr = case Title of undefined -> ""; _ -> Title ++ " " end,
+            io:format("~n~ts **~tsverdict flips** (base engine -> PR engine)~n~n",
+                      [[16#26A0, 16#FE0F], TitleStr]),
+            flip_line("Error -> Ok", EtoO),
+            flip_line("Ok -> Error", OtoE),
+            io:format("~n", [])
+    end.
+
+status_map(Entries) -> maps:from_list([{N, S} || [N, _T, S] <- Entries]).
+
+%% Labels whose base-engine status is From and PR-engine status is To, sorted.
+flip_names(Base, Pr, From, To) ->
+    lists:sort([binary_to_list(N)
+                || {N, S} <- maps:to_list(Base), S =:= From,
+                   maps:get(N, Pr, undefined) =:= To]).
+
+flip_line(_Label, []) -> ok;
+flip_line(Label, Names) ->
+    Quoted = ["`" ++ N ++ "`" || N <- Names],
+    io:format("- **~ts** (~p): ~ts~n", [Label, length(Names), lists:join(", ", Quoted)]).
+
+%% Set of function labels (binaries) seen in a typecheck_time array.
+function_set(Entries) ->
+    sets:from_list([Name || [Name, _Time, _Status] <- Entries]).
+
+%% Split typecheck_time entries by whether the fn label is in BaseFnSet.
+partition_times(Entries, BaseFnSet) ->
+    lists:foldr(
+        fun(E = [Name | _], {AccC, AccA}) ->
+            case sets:is_element(Name, BaseFnSet) of
+                true -> {[E | AccC], AccA};
+                false -> {AccC, [E | AccA]}
+            end
+        end,
+        {[], []},
+        Entries
+    ).
+
+%% Split poly_vars entries by whether the FN tag is in BaseFnSet. The
+%% __no_fun__ label (inference path) is always treated as common.
+partition_poly(Entries, BaseFnSet) ->
+    lists:foldr(
+        fun(E = [FN | _], {AccC, AccA}) ->
+            case FN =:= <<"__no_fun__">> orelse sets:is_element(FN, BaseFnSet) of
+                true -> {[E | AccC], AccA};
+                false -> {AccC, [E | AccA]}
+            end
+        end,
+        {[], []},
+        Entries
+    ).
+
+section_title(undefined, Section) -> Section;
+section_title(Title, Section) -> Title ++ ": " ++ Section.
+
+%% --- Time statistics ---
+
+time_stats([]) ->
+    #{total => 0, ok => 0, errors => 0, timeouts => 0,
+      total_time => 0, avg => 0.0, max => {0, <<>>}, min => {0, <<>>}};
+time_stats(Entries) ->
+    {Ok, Err, Tout, Times, NonTOTimes} = lists:foldl(
+        fun([Name, Time, Status], {O, E, T, Ts, NTs}) ->
+            Entry = {Name, Time},
+            case Status of
+                <<"ok">>      -> {O+1, E, T, [Entry|Ts], [Entry|NTs]};
+                <<"error">>   -> {O, E+1, T, [Entry|Ts], [Entry|NTs]};
+                <<"timeout">> -> {O, E, T+1, [Entry|Ts], NTs};
+                _             -> {O, E, T, [Entry|Ts], [Entry|NTs]}
+            end
+        end,
+        {0, 0, 0, [], []},
+        Entries
+    ),
+    Total = length(Entries),
+    TotalTime = lists:sum([T || {_, T} <- Times]),
+    Avg = TotalTime / max(1, Total),
+    MaxMinTimes = case NonTOTimes of [] -> Times; _ -> NonTOTimes end,
+    {MaxN, MaxT} = lists:foldl(
+        fun({N,T}, {_, BT}) when T > BT -> {N,T}; (_, Acc) -> Acc end,
+        {<<>>, 0}, MaxMinTimes),
+    {MinN, MinT} = lists:foldl(
+        fun({N,T}, {_, BT}) when T < BT -> {N,T}; (_, Acc) -> Acc end,
+        {<<>>, infinity}, MaxMinTimes),
+    MinVal = case MinT of infinity -> 0; V -> V end,
+    #{total => Total, ok => Ok, errors => Err, timeouts => Tout,
+      total_time => TotalTime, avg => Avg,
+      max => {MaxT, MaxN}, min => {MinVal, MinN}}.
+
+print_time_section(Title, Unit, PrCommonEntries, BaseEntries, HasBase) ->
+    io:format("## ~s~n~n", [Title]),
+    case HasBase of
+        true ->
+            ComS = time_stats(PrCommonEntries),
+            BaseS = time_stats(BaseEntries),
+            io:format("| Metric | PR-common | Base | Delta |~n", []),
+            io:format("|--------|-----------|------|-------|~n", []),
+            row4_int("Total " ++ Unit ++ "s", maps:get(total, ComS), maps:get(total, BaseS)),
+            row4_int("OK", maps:get(ok, ComS), maps:get(ok, BaseS)),
+            row4_int("Errors", maps:get(errors, ComS), maps:get(errors, BaseS)),
+            row4_int("Timeouts", maps:get(timeouts, ComS), maps:get(timeouts, BaseS)),
+            row4_time("Total time", maps:get(total_time, ComS), maps:get(total_time, BaseS)),
+            row4_ms1("Avg per " ++ Unit, maps:get(avg, ComS), maps:get(avg, BaseS)),
+            {ComMaxT, ComMaxN} = maps:get(max, ComS),
+            {BaseMaxT, BaseMaxN} = maps:get(max, BaseS),
+            row4_named("Max", ComMaxT, ComMaxN, BaseMaxT, BaseMaxN),
+            {ComMinT, ComMinN} = maps:get(min, ComS),
+            {BaseMinT, BaseMinN} = maps:get(min, BaseS),
+            row4_named("Min", ComMinT, ComMinN, BaseMinT, BaseMinN);
+        false ->
+            PrS = time_stats(PrCommonEntries),
+            io:format("| Metric | Value |~n", []),
+            io:format("|--------|-------|~n", []),
+            row1("Total " ++ Unit ++ "s", ival(maps:get(total, PrS))),
+            row1("OK", ival(maps:get(ok, PrS))),
+            row1("Errors", ival(maps:get(errors, PrS))),
+            row1("Timeouts", ival(maps:get(timeouts, PrS))),
+            row1("Total time", fmt_time(maps:get(total_time, PrS))),
+            row1("Avg per " ++ Unit, fmt_ms1(maps:get(avg, PrS))),
+            {PrMaxT, PrMaxN} = maps:get(max, PrS),
+            row1("Max", fmt_ms_name(PrMaxT, PrMaxN)),
+            {PrMinT, PrMinN} = maps:get(min, PrS),
+            row1("Min", fmt_ms_name(PrMinT, PrMinN))
+    end,
+    io:format("~n", []).
+
+%% 4-column rows: Metric | PR-common | Base | Delta(common - base)
+row4_int(Metric, Com, Base) ->
+    io:format("| ~s | ~s | ~s | ~s |~n",
+              [Metric, ival(Com), ival(Base), delta_int(Com, Base)]).
+row4_time(Metric, Com, Base) ->
+    io:format("| ~s | ~s | ~s | ~s |~n",
+              [Metric, fmt_time(Com), fmt_time(Base), delta_time(Com, Base)]).
+row4_ms1(Metric, Com, Base) ->
+    io:format("| ~s | ~s | ~s | ~s |~n",
+              [Metric, fmt_ms1(Com), fmt_ms1(Base), delta_ms1(Com, Base)]).
+row4_named(Metric, ComT, ComN, BaseT, BaseN) ->
+    io:format("| ~s | ~s | ~s | ~s |~n",
+              [Metric, fmt_ms_name(ComT, ComN), fmt_ms_name(BaseT, BaseN), delta_time(ComT, BaseT)]).
+
+%% --- Poly var statistics ---
+
+poly_stats([]) ->
+    Z = #{total => 0, avg => 0.0, min => 0, max => 0},
+    #{invocations => 0, poly => Z, frame => Z, mono_used => Z, mono_unused => Z};
+poly_stats(Entries) ->
+    Polys = [P || [_FN, P, _, _, _ | _] <- Entries],
+    Frames = [F || [_FN, _, F, _, _ | _] <- Entries],
+    MonoUsed = [U || [_FN, _, _, U, _ | _] <- Entries],
+    MonoUnused = [X || [_FN, _, _, _, X | _] <- Entries],
+    N = length(Entries),
+    Calc = fun([]) -> #{total => 0, avg => 0.0, min => 0, max => 0};
+              (Vs) -> #{total => lists:sum(Vs), avg => lists:sum(Vs) / max(1, N),
+                        min => lists:min(Vs), max => lists:max(Vs)}
+           end,
+    #{invocations => N, poly => Calc(Polys), frame => Calc(Frames),
+      mono_used => Calc(MonoUsed), mono_unused => Calc(MonoUnused)}.
+
+print_poly_section(Title, PrCommonEntries, BaseEntries, HasBase) ->
+    io:format("## ~s~n~n", [Title]),
+    Cats = [poly, frame, mono_used, mono_unused],
+    CatNames = ["Poly", "Frame", "Mono (used)", "Mono (unused)"],
+    case HasBase of
+        true ->
+            ComS = poly_stats(PrCommonEntries),
+            BaseS = poly_stats(BaseEntries),
+            ComHdrs = [io_lib:format("PR-common ~s", [N]) || N <- CatNames],
+            BaseHdrs = [io_lib:format("Base ~s", [N]) || N <- CatNames],
+            DeltaHdrs = [io_lib:format("Delta ~s", [N]) || N <- CatNames],
+            AllHdrs = ["Metric"] ++ ComHdrs ++ BaseHdrs ++ DeltaHdrs,
+            HdrLine = "| " ++ lists:flatten(lists:join(" | ", AllHdrs)) ++ " |",
+            SepLine = "|" ++ lists:flatten(lists:duplicate(length(AllHdrs), "---|")),
+            io:format("~s~n~s~n", [HdrLine, SepLine]),
+            % Invocations row: same value for all Cat columns in each group
+            poly_row3("Invocations", Cats,
+                fun(_) -> ival(maps:get(invocations, ComS)) end,
+                fun(_) -> ival(maps:get(invocations, BaseS)) end,
+                fun(_) -> delta_int(maps:get(invocations, ComS), maps:get(invocations, BaseS)) end),
+            lists:foreach(fun({Label, Key, Fmt, DFmt}) ->
+                poly_row3(Label, Cats,
+                    fun(C) -> Fmt(maps:get(Key, maps:get(C, ComS))) end,
+                    fun(C) -> Fmt(maps:get(Key, maps:get(C, BaseS))) end,
+                    fun(C) -> DFmt(maps:get(Key, maps:get(C, ComS)),
+                                   maps:get(Key, maps:get(C, BaseS))) end)
+            end, [
+                {"Total vars", total, fun ival/1, fun delta_int/2},
+                {"Avg vars", avg, fun fmt_f1/1, fun delta_f1/2},
+                {"Min vars", min, fun ival/1, fun delta_int/2},
+                {"Max vars", max, fun ival/1, fun delta_int/2}
+            ]);
+        false ->
+            PrS = poly_stats(PrCommonEntries),
+            HdrLine = "| Metric | " ++ lists:flatten(lists:join(" | ", CatNames)) ++ " |",
+            SepLine = "|" ++ lists:flatten(lists:duplicate(length(CatNames) + 1, "---|")),
+            io:format("~s~n~s~n", [HdrLine, SepLine]),
+            InvVals = [ival(maps:get(invocations, PrS)) || _ <- Cats],
+            print_poly_row("Invocations", InvVals),
+            lists:foreach(fun({Label, Key, Fmt}) ->
+                Vals = [Fmt(maps:get(Key, maps:get(C, PrS))) || C <- Cats],
+                print_poly_row(Label, Vals)
+            end, [
+                {"Total vars", total, fun ival/1},
+                {"Avg vars", avg, fun fmt_f1/1},
+                {"Min vars", min, fun ival/1},
+                {"Max vars", max, fun ival/1}
+            ])
+    end,
+    io:format("~n", []).
+
+poly_row3(Metric, Cats, ComFmt, BaseFmt, DeltaFmt) ->
+    ComVals = [ComFmt(C) || C <- Cats],
+    BaseVals = [BaseFmt(C) || C <- Cats],
+    DeltaVals = [DeltaFmt(C) || C <- Cats],
+    print_poly_row(Metric, ComVals ++ BaseVals ++ DeltaVals).
+
+print_poly_row(Metric, Vals) ->
+    All = [Metric | Vals],
+    Fmt = "| ~s" ++ lists:flatten(lists:duplicate(length(All) - 1, " | ~s")) ++ " |~n",
+    io:format(Fmt, All).
+
+%% --- Table row helpers ---
+
+row1(Metric, Val) ->
+    io:format("| ~s | ~s |~n", [Metric, Val]).
+
+%% --- Formatting ---
+
+ival(N) -> integer_to_list(N).
+
+fmt_f1(F) -> io_lib:format("~.1f", [F]).
+
+fmt_time(Ms) when Ms >= 60000 ->
+    Min = Ms div 60000,
+    Sec = (Ms rem 60000) / 1000,
+    case round(Sec) == trunc(Sec) andalso Sec >= 1.0 of
+        true -> io_lib:format("~Bm ~Bs", [Min, round(Sec)]);
+        false when Sec < 1.0 -> io_lib:format("~Bm ~.1fs", [Min, Sec]);
+        false -> io_lib:format("~Bm ~.1fs", [Min, Sec])
+    end;
+fmt_time(Ms) when Ms >= 1000 ->
+    io_lib:format("~.1fs", [Ms / 1000]);
+fmt_time(Ms) ->
+    io_lib:format("~Bms", [Ms]).
+
+fmt_ms1(F) ->
+    io_lib:format("~.1fms", [F]).
+
+fmt_ms_name(Ms, Name) when is_binary(Name), byte_size(Name) > 0 ->
+    io_lib:format("~Bms (`~s`)", [Ms, Name]);
+fmt_ms_name(Ms, _) ->
+    io_lib:format("~Bms", [Ms]).
+
+delta_int(Pr, Base) ->
+    D = Pr - Base,
+    case D of
+        0 -> "0";
+        _ when D > 0 -> io_lib:format("+~B", [D]);
+        _ -> integer_to_list(D)
+    end.
+
+delta_time(Pr, Base) ->
+    D = Pr - Base,
+    case D of
+        0 -> "0";
+        _ when D > 0 -> "+" ++ lists:flatten(fmt_time_delta(D));
+        _ -> lists:flatten(fmt_time_delta(D))
+    end.
+
+delta_ms1(Pr, Base) ->
+    D = Pr - Base,
+    case abs(D) < 0.05 of
+        true -> "0";
+        false when D > 0 -> io_lib:format("+~.1fms", [D]);
+        false -> io_lib:format("~.1fms", [D])
+    end.
+
+delta_f1(Pr, Base) ->
+    D = Pr - Base,
+    case abs(D) < 0.05 of
+        true -> "0";
+        false when D > 0 -> io_lib:format("+~.1f", [D]);
+        false -> io_lib:format("~.1f", [D])
+    end.
+
+fmt_time_delta(Ms) when abs(Ms) >= 1000 ->
+    io_lib:format("~.1fs", [Ms / 1000]);
+fmt_time_delta(Ms) ->
+    io_lib:format("~Bms", [Ms]).

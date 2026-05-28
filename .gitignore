@@ -4,7 +4,7 @@
 *.plt
 erl_crash.dump
 .concrete/DEV_MODE
-**/rebar3.crashdump
+rebar3.crashdump
 
 # etylizer
 _etylizer/
@@ -17,6 +17,7 @@ _checkouts/
 etylizer.log
 *.trace
 *.analyze
+*_metrics.json
 
 .idea
 *.iml

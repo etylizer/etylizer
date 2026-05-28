@@ -1,12 +1,13 @@
 #!/usr/bin/env bash
 
 D=$( cd -- "$( dirname -- "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )
+ROOT=$( cd -- "$D/../.." &> /dev/null && pwd )
 
 if [ "$1" == "--build" ]; then
     shift
-    pushd $D
+    pushd $ROOT
     rebar3 as metrics escriptize || exit 1
     popd
 fi
 
-$D/_build/metrics/bin/etylizer "$@"
+$ROOT/_build/metrics/bin/etylizer "$@"

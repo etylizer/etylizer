@@ -1,0 +1,193 @@
+#!/usr/bin/env escript
+%%! -noinput
+%%
+%% Render a single Markdown table summarising per-partition tally metrics
+%% across multiple suites (typically: erlang_types, etylizer, typecheck).
+%%
+%% Usage:
+%%   ety_partitions_report [--title TITLE] \
+%%       --suite NAME PR.json [BASE.json] \
+%%       [--suite NAME PR.json [BASE.json] ...]
+%%
+%% Each --suite block contributes a PR row (and a Base row if BASE.json is
+%% given) to the table. Missing JSON files are silently skipped.
+
+main(Args) ->
+    {Title, Rest} = case Args of
+        ["--title", T | R] -> {T, R};
+        R -> {undefined, R}
+    end,
+    Suites = parse_suites(Rest, []),
+    case Suites of
+        [] ->
+            io:format(standard_error,
+                "Usage: ety_partitions_report [--title TITLE] --suite NAME PR.json [BASE.json] ...~n",
+                []),
+            halt(1);
+        _ -> render(Title, Suites)
+    end.
+
+parse_suites([], Acc) -> lists:reverse(Acc);
+parse_suites(["--suite", Name | Rest], Acc) ->
+    {Files, Rest2} = take_until_suite(Rest, []),
+    Suite = case Files of
+        [Pr]       -> {Name, Pr, undefined};
+        [Pr, Base] -> {Name, Pr, Base};
+        _ ->
+            io:format(standard_error, "Expected 1 or 2 files after --suite ~s~n", [Name]),
+            halt(1)
+    end,
+    parse_suites(Rest2, [Suite | Acc]);
+parse_suites([Other | _], _) ->
+    io:format(standard_error, "Unexpected arg: ~s~n", [Other]),
+    halt(1).
+
+take_until_suite(["--suite" | _] = Rest, Acc) -> {lists:reverse(Acc), Rest};
+take_until_suite([X | Rest], Acc) -> take_until_suite(Rest, [X | Acc]);
+take_until_suite([], Acc) -> {lists:reverse(Acc), []}.
+
+%% --- Loading ---
+
+load_json(Path) ->
+    case file:read_file(Path) of
+        {ok, Bin} -> {ok, json:decode(Bin)};
+        {error, enoent} -> missing
+    end.
+
+%% --- Stats ---
+
+%% Compute aggregate stats for a single JSON map.
+stats(Json) ->
+    Inv   = maps:get(<<"tally_invocation">>, Json, []),
+    Shape = maps:get(<<"tally_partition">>, Json, []),
+    Time  = maps:get(<<"tally_partition_time">>, Json, []),
+    Invocs = length(Inv),
+    TotalParts = lists:sum([N || [_FN, N] <- Inv]),
+    PartsPerInv = case Invocs of 0 -> 0.0; _ -> TotalParts / Invocs end,
+
+    Times = [T || [_FN, T] <- Time],
+    {AvgT, MaxT} = avg_max_int(Times),
+
+    Sizes = [NC || [_FN, NC | _] <- Shape],
+    {AvgSz, MaxSz} = avg_max_int(Sizes),
+    P90Sz = percentile(Sizes, 0.90),
+
+    Polys = [Po || [_FN, _NC, Po | _] <- Shape],
+    {AvgPoly, MaxPoly} = avg_max_int(Polys),
+
+    NoPoly = lists:sum([1 || [_FN, _NC, 0 | _] <- Shape]),
+
+    #{
+      invocs => Invocs,
+      total_parts => TotalParts,
+      parts_per_inv => PartsPerInv,
+      avg_time_us => AvgT,
+      max_time_us => MaxT,
+      avg_size => AvgSz,
+      max_size => MaxSz,
+      p90_size => P90Sz,
+      avg_poly => AvgPoly,
+      max_poly => MaxPoly,
+      no_poly => NoPoly
+    }.
+
+avg_max_int([])  -> {0.0, 0};
+avg_max_int(Vs)  -> {lists:sum(Vs) / length(Vs), lists:max(Vs)}.
+
+%% Inclusive percentile via nearest-rank.
+percentile([], _) -> 0;
+percentile(Vs, P) ->
+    Sorted = lists:sort(Vs),
+    N = length(Sorted),
+    Idx = max(1, min(N, ceiling(P * N))),
+    lists:nth(Idx, Sorted).
+
+ceiling(X) ->
+    T = trunc(X),
+    case X - T of
+        +0.0 -> T;
+        _ when X > 0 -> T + 1;
+        _ -> T
+    end.
+
+%% --- Rendering ---
+
+%% Each table row corresponds to one (suite, side) pair.
+%% side is "PR" or "Base" (when a base JSON was provided).
+render(Title, Suites) ->
+    case Title of
+        undefined -> io:format("## Tally Partition Statistics~n~n", []);
+        T -> io:format("## ~s: Tally Partition Statistics~n~n", [T])
+    end,
+    Rows = lists:flatten([suite_rows(S) || S <- Suites]),
+    case Rows of
+        [] ->
+            io:format("_no data_~n~n", []);
+        _ ->
+            print_header(),
+            lists:foreach(fun print_row/1, Rows),
+            io:format("~n", [])
+    end.
+
+%% One row per side: "<name>-pr" and "<name>-base" (when a base file is given).
+suite_rows({Name, PrPath, BasePath}) ->
+    PrRow = case load_json(PrPath) of
+        {ok, Pr} -> [{Name ++ "-pr", stats(Pr)}];
+        missing -> []
+    end,
+    BaseRow = case BasePath of
+        undefined -> [];
+        _ ->
+            case load_json(BasePath) of
+                {ok, Base} -> [{Name ++ "-base", stats(Base)}];
+                missing -> []
+            end
+    end,
+    PrRow ++ BaseRow.
+
+print_header() ->
+    Cols = [
+      "Suite", "Invocs", "Parts", "P/Inv",
+      "Avg t/p", "Max t/p",
+      "Avg sz", "Max sz", "p90 sz",
+      "Avg poly", "Max poly",
+      "# no-poly"
+    ],
+    Hdr = "| " ++ lists:flatten(lists:join(" | ", Cols)) ++ " |",
+    Sep = "|" ++ lists:flatten(lists:duplicate(length(Cols), "---|")),
+    io:format("~s~n~s~n", [Hdr, Sep]).
+
+print_row({Name, S}) ->
+    Cols = [
+        Name,
+        ival(maps:get(invocs, S)),
+        ival(maps:get(total_parts, S)),
+        fmt_f1(maps:get(parts_per_inv, S)),
+        fmt_us(maps:get(avg_time_us, S)),
+        fmt_us(maps:get(max_time_us, S)),
+        fmt_f1(maps:get(avg_size, S)),
+        ival(maps:get(max_size, S)),
+        ival(maps:get(p90_size, S)),
+        fmt_f1(maps:get(avg_poly, S)),
+        ival(maps:get(max_poly, S)),
+        ival(maps:get(no_poly, S))
+    ],
+    io:format("| ~s |~n", [lists:flatten(lists:join(" | ", Cols))]).
+
+%% --- Formatting ---
+
+ival(N) when is_integer(N) -> integer_to_list(N);
+ival(N) when is_float(N) -> integer_to_list(round(N)).
+
+fmt_f1(F) -> lists:flatten(io_lib:format("~.1f", [F])).
+
+%% Format a time value given in microseconds.
+fmt_us(0) -> "0";
+fmt_us(+0.0) -> "0";
+fmt_us(Us) when is_float(Us) -> fmt_us(round(Us));
+fmt_us(Us) when Us >= 1000000 ->
+    lists:flatten(io_lib:format("~.1fs", [Us / 1000000]));
+fmt_us(Us) when Us >= 1000 ->
+    lists:flatten(io_lib:format("~.1fms", [Us / 1000]));
+fmt_us(Us) ->
+    lists:flatten(io_lib:format("~Bus", [Us])).

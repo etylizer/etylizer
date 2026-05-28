@@ -17,12 +17,42 @@
 
 -ifdef(ety_metrics).
 var_metrics(FixedVars, Constraints, _SymTab) ->
+    {_NC, Poly, Frame, MonoUsed, MonoUnused} = shape_metrics(Constraints, FixedVars),
+    {current_fn(), Poly, Frame, MonoUsed, MonoUnused}.
+
+%% Compute {NumConstraints, Poly, Frame, MonoUsed, MonoUnused} for a list of
+%% constraints. Poly = non-fixed vars whose atom name does not start with "%";
+%% Frame = non-fixed vars whose name starts with "%" (gradual framevars).
+shape_metrics(Constraints, FixedVars) ->
+    NumConstrs = length(Constraints),
     AllVars = sets:from_list(utils:everything(
         fun({var, V}) when is_atom(V) -> {ok, V}; (_) -> error end, Constraints)),
     MonoUsed = sets:size(sets:intersection(AllVars, FixedVars)),
     MonoUnused = sets:size(FixedVars) - MonoUsed,
-    Poly = sets:size(AllVars) - MonoUsed,
-    {Poly, MonoUsed, MonoUnused}.
+    NonFixed = sets:subtract(AllVars, FixedVars),
+    {Poly, Frame} = sets:fold(
+        fun(V, {P, F}) ->
+            case atom_to_list(V) of
+                [$% | _] -> {P, F + 1};
+                _        -> {P + 1, F}
+            end
+        end, {0, 0}, NonFixed),
+    {NumConstrs, Poly, Frame, MonoUsed, MonoUnused}.
+
+current_fn() ->
+    case ?METRIC_GET_FUN() of undefined -> '__no_fun__'; X -> X end.
+
+record_tally_invocation(NumPartitions) ->
+    metrics:record(tally_invocation, {current_fn(), NumPartitions}).
+
+%% Shape is recorded for every partition (cheap, unbiased by early-exit).
+record_partition_shapes(Partitions, FixedVars) ->
+    lists:foreach(
+      fun(P) ->
+          {NC, Po, Fr, MU, MX} = shape_metrics(P, FixedVars),
+          metrics:record(tally_partition, {current_fn(), NC, Po, Fr, MU, MX})
+      end, Partitions).
+
 -endif.
 
 -type monomorphic_variables() :: sets:set(ast:ty_varname()).
@@ -56,6 +86,8 @@ is_satisfiable(SymTab, Constraints, FixedVars) ->
     % Split constraints into independent partitions
     MM = split(FinalCons, FixedVars),
     Partitions = [V || {_, V} <- maps:to_list(MM)],
+    ?METRIC_DO(record_tally_invocation(length(Partitions))),
+    ?METRIC_DO(record_partition_shapes(Partitions, FixedVars)),
     case Partitions of
         [] -> {true, satisfiable}; % no subtype constraints
         [First | Rest] ->
@@ -69,8 +101,10 @@ is_satisfiable(SymTab, Constraints, FixedVars) ->
 -spec do_satisfiable([{ast:ty(), ast:ty()}], map()) ->
     {false, [{error, string()}]} | {true, term()}.
 do_satisfiable(FinalCons, MonomorphicTallyVariables) ->
+    ?METRIC_DO(T0 = erlang:monotonic_time(microsecond)),
     InternalConstraints = [{ty_parser:parse(T1), ty_parser:parse(T2)} || {T1, T2} <- FinalCons],
     InternalResult = etally:is_tally_satisfiable(InternalConstraints, MonomorphicTallyVariables),
+    ?METRIC_DO(metrics:record(tally_partition_time, {current_fn(), erlang:monotonic_time(microsecond) - T0})),
     case InternalResult of
         false -> {false, []};
         true -> {true, satisfiable}
