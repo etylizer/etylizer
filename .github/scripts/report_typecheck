@@ -1,7 +1,7 @@
 #!/bin/bash
 set -e
 
-./ety_metrics \
+"$(dirname "$0")/ety_metrics" \
     -P . \
     -S ./test_files/tycheck_simple \
     -I ./include \
@@ -10,7 +10,7 @@ set -e
     -I ./erlang_types/dnf \
     --type-overlay overlays/etylizer_overlay.erl \
     -f \
-    --report-mode report --report-timeout 1000 \
+    --report-mode report --report-timeout 4000 \
     --metrics-file typecheck_test_metrics.json \
     --no-deps \
     "$@"

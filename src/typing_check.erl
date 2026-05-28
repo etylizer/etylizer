@@ -27,8 +27,9 @@ check_all_report(Ctx, FileName, Env, Decls) ->
     ExtCtx = Ctx#ctx { symtab = ExtSymtab },
     F = fun(FN) -> filename:basename(filename:rootname(FN)) end,
     lists:foreach(
-        fun({Decl, Ty}) -> 
+        fun({Decl, Ty}) ->
             {function, _, Name, Arity, _} = Decl,
+            ?METRIC_SET_FUN(list_to_atom(utils:sformat("~s:~w/~w", [F(FileName), Name, Arity]))),
             T0 = erlang:system_time(millisecond),
             try check_report(ExtCtx, Decl, Ty) of
                 success ->
@@ -66,9 +67,11 @@ check_report(Ctx, Decl = {function, Loc, Name, Arity, Clauses}, PolyTy) ->
     ?LOG_INFO("Type checking ~w/~w at ~s against type ~s",
               Name, Arity, ast:format_loc(Loc), pretty:render_tyscheme(PolyTy)),
     Timeout = Ctx#ctx.report_timeout,
+    _CurFun = ?METRIC_GET_FUN(),
     TimeoutRes = utils:timeout(
         Timeout,
-        fun () -> 
+        fun () ->
+            ?METRIC_SET_FUN(_CurFun),
             FunStr = utils:sformat("~w/~w", Name, Arity),
             {MonoTy, Fixed, _} = typing_common:mono_ty(Loc, PolyTy, Ctx#ctx.symtab),
             ensure_type_supported(Loc, MonoTy),

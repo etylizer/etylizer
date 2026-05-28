@@ -11,7 +11,7 @@
 
 -spec init() -> ok.
 init() ->
-    ets:new(?TABLE, [named_table, bag, public]),
+    ets:new(?TABLE, [named_table, duplicate_bag, public]),
     ok.
 
 -spec record(atom(), term()) -> ok.
