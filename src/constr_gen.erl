@@ -64,6 +64,11 @@ fresh_vars(Ctx, N) ->
 -spec mk_locs(string(), ast:loc()) -> constr:locs().
 mk_locs(Label, X) -> {Label, utils:single(X)}.
 
+-spec string_to_cons_ty(string()) -> ast:ty().
+string_to_cons_ty([]) -> {empty_list};
+string_to_cons_ty([X | Xs]) ->
+    {cons, {singleton, X}, string_to_cons_ty(Xs)}.
+
 % Inference for a group of mutually recursive functions without type annotations.
 -spec gen_constrs_fun_group(feature_flags:exhaustiveness_mode(), symtab:t(), {sets:set({atom(), arity()}), sets:set({atom(), arity()})}, [ast:fun_decl()]) -> {constr:constrs(), constr:constr_env()}.
 gen_constrs_fun_group(ExhaustivenessMode, Symtab, {DisableExhaustiveness, DisableRedundancy}, Decls) ->
@@ -120,7 +125,7 @@ exp_constrs(Ctx, E, T) ->
         {'integer', L, I} -> utils:single({csubty, mk_locs("int literal", L), {singleton, I}, T});
         {'float', L, _F} -> utils:single({csubty, mk_locs("float literal", L), {predef, float}, T});
         {'string', L, ""} -> utils:single({csubty, mk_locs("empty string literal", L), {empty_list}, T});
-        {'string', L, _S} -> utils:single({csubty, mk_locs("string literal", L), {predef_alias, nonempty_string}, T});
+        {'string', L, S} -> utils:single({csubty, mk_locs("string literal", L), string_to_cons_ty(S), T});
         {bin, L, []} -> utils:single({csubty, mk_locs("empty bitstring", L), {bitstring}, T});
         {bin, L, _Cs} ->
             % TODO constraints for inner binary pattern elements
@@ -1103,10 +1108,7 @@ ty_of_pat(Symtab, Env, P, Mode) ->
         {'char', _L, C} -> {singleton, C};
         {'integer', _L, I} -> {singleton, I};
         {'float', _L, _F} -> {predef, float};
-        {'string', _L, []} -> {empty_list};
-        {'string', _L, Z} -> 
-            [X|Xs] = lists:reverse(Z),
-            lists:foldl(fun(E, Acc) -> {cons, {singleton, E}, Acc} end, {cons, {singleton, X}, {empty_list}}, Xs);
+        {'string', _L, Z} -> string_to_cons_ty(Z);
         % TODO correct binary patterns
         {bin, _L, _Elems} -> {bitstring};
         {match, _L, P1, P2} ->
@@ -1583,8 +1585,7 @@ ty_of_const_exp(E) ->
         {'atom', _, A} -> {ok, {singleton, A}};
         {'integer', _, I} -> {ok, {singleton, I}};
         {'char', _, C} -> {ok, {singleton, C}};
-        {'string', _, ""} -> {ok, {empty_list}};
-        {'string', _, _} -> {ok, {predef_alias, nonempty_string}};
+        {'string', _, S} -> {ok, string_to_cons_ty(S)};
         {op, _, '-', {'integer', _, I}} -> {ok, {singleton, -I}};
         {nil, _} -> {ok, {empty_list}};
         {tuple, _, Elems} ->
