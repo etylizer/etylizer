@@ -1,6 +1,8 @@
 #!/bin/bash
 set -e
 
+# metrics_skip/erlang_types.txt is a list of `-i module:name/arity` lines for
+# functions that don't complete within --report-timeout below.
 ./ety_metrics \
     -P . \
     -S ./src/erlang_types/ \
@@ -10,7 +12,8 @@ set -e
     -I ./src/erlang_types/dnf \
     --type-overlay overlays/etylizer_overlay.erl \
     -f \
-    --report-mode report --report-timeout 1000 \
+    --report-mode report --report-timeout 45000 \
     --metrics-file erlang_types_metrics.json \
     --no-deps \
+    $(cat metrics_skip/erlang_types.txt) \
     "$@"

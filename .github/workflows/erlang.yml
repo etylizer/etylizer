@@ -41,7 +41,7 @@ jobs:
     name: "metrics: ${{ matrix.name }}"
     needs: build
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 60
     container:
       image: erlang:28
     strategy:
@@ -49,59 +49,55 @@ jobs:
         include:
           - name: erlang_types
             cmd: ./report_erlang_types
-            artifact: metrics-erlang-types-pr
             json: erlang_types_metrics.json
+            artifact_pr: metrics-erlang-types-pr
+            artifact_base: metrics-erlang-types-base
           - name: etylizer
             cmd: ./report_etylizer
-            artifact: metrics-etylizer-pr
             json: etylizer_metrics.json
+            artifact_pr: metrics-etylizer-pr
+            artifact_base: metrics-etylizer-base
           - name: typecheck
             cmd: ./report_typecheck
-            artifact: metrics-typecheck-pr
             json: typecheck_test_metrics.json
+            artifact_pr: metrics-typecheck-pr
+            artifact_base: metrics-typecheck-base
     steps:
-    - uses: actions/checkout@v4
-    - run: make build && rebar3 as metrics escriptize
-    - run: ${{ matrix.cmd }}
-    - uses: actions/upload-artifact@v4
+    - name: Checkout PR
+      uses: actions/checkout@v4
       with:
-        name: ${{ matrix.artifact }}
-        path: ${{ matrix.json }}
-
-  metrics-base:
-    name: "metrics (base): ${{ matrix.name }}"
-    needs: build
-    if: github.event_name == 'pull_request'
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    container:
-      image: erlang:28
-    strategy:
-      matrix:
-        include:
-          - name: erlang_types
-            cmd: ./report_erlang_types
-            artifact: metrics-erlang-types-base
-            json: erlang_types_metrics.json
-          - name: etylizer
-            cmd: ./report_etylizer
-            artifact: metrics-etylizer-base
-            json: etylizer_metrics.json
-          - name: typecheck
-            cmd: ./report_typecheck
-            artifact: metrics-typecheck-base
-            json: typecheck_test_metrics.json
-    steps:
-    - uses: actions/checkout@v4
+        path: pr
+    - name: Build PR
+      working-directory: pr
+      run: make build && rebar3 as metrics escriptize
+    - name: Report PR
+      working-directory: pr
+      run: ${{ matrix.cmd }}
+    - name: Upload PR artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: ${{ matrix.artifact_pr }}
+        path: pr/${{ matrix.json }}
+    - name: Checkout base
+      if: github.event_name == 'pull_request'
+      uses: actions/checkout@v4
       with:
         ref: ${{ github.event.pull_request.base.sha }}
-    - run: make build && rebar3 as metrics escriptize || true
-    - run: ${{ matrix.cmd }} || true
-    - uses: actions/upload-artifact@v4
-      if: always()
+        path: base
+    - name: Build base
+      if: github.event_name == 'pull_request'
+      working-directory: base
+      run: make build && rebar3 as metrics escriptize || true
+    - name: Report base
+      if: github.event_name == 'pull_request'
+      working-directory: base
+      run: ${{ matrix.cmd }} || true
+    - name: Upload base artifact
+      if: always() && github.event_name == 'pull_request'
+      uses: actions/upload-artifact@v4
       with:
-        name: ${{ matrix.artifact }}
-        path: ${{ matrix.json }}
+        name: ${{ matrix.artifact_base }}
+        path: base/${{ matrix.json }}
         if-no-files-found: ignore
 
   test:
@@ -157,7 +153,7 @@ jobs:
 
   ci-stats:
     name: "CI stats"
-    needs: [verify, metrics, metrics-base, test, test-base]
+    needs: [verify, metrics, test, test-base]
     if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
     container:
@@ -170,6 +166,9 @@ jobs:
     - name: Generate stats
       run: |
         : > /tmp/ci_stats.md
+        # POSIX positional params hold the accumulated --suite ... args for
+        # the unified partitions report. Container shell is sh, not bash.
+        set --
         for suite in erlang_types etylizer typecheck; do
           case $suite in
             erlang_types) title="erlang_types"; json="erlang_types_metrics.json"; artifact="metrics-erlang-types";;
@@ -181,12 +180,17 @@ jobs:
           if [ -f "$pr_file" ]; then
             if [ -f "$base_file" ]; then
               ./ety_metrics_report --title "$title" "$pr_file" "$base_file" >> /tmp/ci_stats.md
+              set -- "$@" --suite "$suite" "$pr_file" "$base_file"
             else
               ./ety_metrics_report --title "$title" "$pr_file" >> /tmp/ci_stats.md
+              set -- "$@" --suite "$suite" "$pr_file"
             fi
             echo "" >> /tmp/ci_stats.md
           fi
         done
+        if [ "$#" -gt 0 ]; then
+          ./ety_partitions_report "$@" >> /tmp/ci_stats.md
+        fi
         echo "## Test Statistics: infer" >> /tmp/ci_stats.md
         echo "" >> /tmp/ci_stats.md
         .github/scripts/typecheck_stats.sh \

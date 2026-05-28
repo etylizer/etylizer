@@ -20,20 +20,67 @@ load_json(Path) ->
 
 report(Title, Pr, Base) ->
     HasBase = maps:size(Base) > 0,
-    % Typecheck time sections
+    PrTimes = maps:get(<<"typecheck_time">>, Pr, []),
+    BaseTimes = maps:get(<<"typecheck_time">>, Base, []),
+    PrPoly = maps:get(<<"poly_vars">>, Pr, []),
+    BasePoly = maps:get(<<"poly_vars">>, Base, []),
+    % When a base is present we split PR records into two buckets so the
+    % comparison is apples-to-apples:
+    %   PR-common: functions also present in base (fair delta vs Base)
+    %   PR-added:  functions only in PR (no base counterpart)
+    {PrTimesCommon, PrTimesAdded, PrPolyCommon, PrPolyAdded} =
+        case HasBase of
+            true ->
+                BaseFnSet = function_set(BaseTimes),
+                {TC, TA} = partition_times(PrTimes, BaseFnSet),
+                {PC, PA} = partition_poly(PrPoly, BaseFnSet),
+                {TC, TA, PC, PA};
+            false ->
+                {PrTimes, [], PrPoly, []}
+        end,
     case maps:find(<<"typecheck_time">>, Pr) of
-        {ok, PrEntries} ->
-            BaseEntries = maps:get(<<"typecheck_time">>, Base, []),
-            print_time_section(section_title(Title, "Typecheck Statistics"), "function", PrEntries, BaseEntries, HasBase);
+        {ok, _} ->
+            print_time_section(section_title(Title, "Typecheck Statistics"), "function",
+                               PrTimesCommon, PrTimesAdded, BaseTimes, HasBase);
         error -> ok
     end,
-    % Poly vars section
     case maps:find(<<"poly_vars">>, Pr) of
-        {ok, PrPoly} ->
-            BasePoly = maps:get(<<"poly_vars">>, Base, []),
-            print_poly_section(section_title(Title, "Polymorphic Variable Statistics"), PrPoly, BasePoly, HasBase);
+        {ok, _} ->
+            print_poly_section(section_title(Title, "Polymorphic Variable Statistics"),
+                               PrPolyCommon, PrPolyAdded, BasePoly, HasBase);
         error -> ok
     end.
+
+%% Set of function labels (binaries) seen in a typecheck_time array.
+function_set(Entries) ->
+    sets:from_list([Name || [Name, _Time, _Status] <- Entries]).
+
+%% Split typecheck_time entries by whether the fn label is in BaseFnSet.
+partition_times(Entries, BaseFnSet) ->
+    lists:foldr(
+        fun(E = [Name | _], {AccC, AccA}) ->
+            case sets:is_element(Name, BaseFnSet) of
+                true -> {[E | AccC], AccA};
+                false -> {AccC, [E | AccA]}
+            end
+        end,
+        {[], []},
+        Entries
+    ).
+
+%% Split poly_vars entries by whether the FN tag is in BaseFnSet. The
+%% __no_fun__ label (inference path) is always treated as common.
+partition_poly(Entries, BaseFnSet) ->
+    lists:foldr(
+        fun(E = [FN | _], {AccC, AccA}) ->
+            case FN =:= <<"__no_fun__">> orelse sets:is_element(FN, BaseFnSet) of
+                true -> {[E | AccC], AccA};
+                false -> {AccC, [E | AccA]}
+            end
+        end,
+        {[], []},
+        Entries
+    ).
 
 section_title(undefined, Section) -> Section;
 section_title(Title, Section) -> Title ++ ": " ++ Section.
@@ -72,35 +119,31 @@ time_stats(Entries) ->
       total_time => TotalTime, avg => Avg,
       max => {MaxT, MaxN}, min => {MinVal, MinN}}.
 
-print_time_section(Title, Unit, PrEntries, BaseEntries, HasBase) ->
-    PrS = time_stats(PrEntries),
+print_time_section(Title, Unit, PrCommonEntries, PrAddedEntries, BaseEntries, HasBase) ->
     io:format("## ~s~n~n", [Title]),
     case HasBase of
         true ->
+            ComS = time_stats(PrCommonEntries),
+            AddS = time_stats(PrAddedEntries),
             BaseS = time_stats(BaseEntries),
-            io:format("| Metric | PR | Base | Delta |~n", []),
-            io:format("|--------|----|------|-------|~n", []),
-            row3("Total " ++ Unit ++ "s", ival(maps:get(total, PrS)), ival(maps:get(total, BaseS)),
-                 delta_int(maps:get(total, PrS), maps:get(total, BaseS))),
-            row3("OK", ival(maps:get(ok, PrS)), ival(maps:get(ok, BaseS)),
-                 delta_int(maps:get(ok, PrS), maps:get(ok, BaseS))),
-            row3("Errors", ival(maps:get(errors, PrS)), ival(maps:get(errors, BaseS)),
-                 delta_int(maps:get(errors, PrS), maps:get(errors, BaseS))),
-            row3("Timeouts", ival(maps:get(timeouts, PrS)), ival(maps:get(timeouts, BaseS)),
-                 delta_int(maps:get(timeouts, PrS), maps:get(timeouts, BaseS))),
-            row3("Total time", fmt_time(maps:get(total_time, PrS)), fmt_time(maps:get(total_time, BaseS)),
-                 delta_time(maps:get(total_time, PrS), maps:get(total_time, BaseS))),
-            row3("Avg per " ++ Unit, fmt_ms1(maps:get(avg, PrS)), fmt_ms1(maps:get(avg, BaseS)),
-                 delta_ms1(maps:get(avg, PrS), maps:get(avg, BaseS))),
-            {PrMaxT, PrMaxN} = maps:get(max, PrS),
+            io:format("| Metric | PR-added | PR-common | Base | Delta |~n", []),
+            io:format("|--------|----------|-----------|------|-------|~n", []),
+            row5_int("Total " ++ Unit ++ "s", maps:get(total, AddS), maps:get(total, ComS), maps:get(total, BaseS)),
+            row5_int("OK", maps:get(ok, AddS), maps:get(ok, ComS), maps:get(ok, BaseS)),
+            row5_int("Errors", maps:get(errors, AddS), maps:get(errors, ComS), maps:get(errors, BaseS)),
+            row5_int("Timeouts", maps:get(timeouts, AddS), maps:get(timeouts, ComS), maps:get(timeouts, BaseS)),
+            row5_time("Total time", maps:get(total_time, AddS), maps:get(total_time, ComS), maps:get(total_time, BaseS)),
+            row5_ms1("Avg per " ++ Unit, maps:get(avg, AddS), maps:get(avg, ComS), maps:get(avg, BaseS)),
+            {ComMaxT, ComMaxN} = maps:get(max, ComS),
+            {AddMaxT, AddMaxN} = maps:get(max, AddS),
             {BaseMaxT, BaseMaxN} = maps:get(max, BaseS),
-            row3("Max", fmt_ms_name(PrMaxT, PrMaxN), fmt_ms_name(BaseMaxT, BaseMaxN),
-                 delta_time(PrMaxT, BaseMaxT)),
-            {PrMinT, PrMinN} = maps:get(min, PrS),
+            row5_named("Max", AddMaxT, AddMaxN, ComMaxT, ComMaxN, BaseMaxT, BaseMaxN),
+            {ComMinT, ComMinN} = maps:get(min, ComS),
+            {AddMinT, AddMinN} = maps:get(min, AddS),
             {BaseMinT, BaseMinN} = maps:get(min, BaseS),
-            row3("Min", fmt_ms_name(PrMinT, PrMinN), fmt_ms_name(BaseMinT, BaseMinN),
-                 delta_time(PrMinT, BaseMinT));
+            row5_named("Min", AddMinT, AddMinN, ComMinT, ComMinN, BaseMinT, BaseMinN);
         false ->
+            PrS = time_stats(PrCommonEntries),
             io:format("| Metric | Value |~n", []),
             io:format("|--------|-------|~n", []),
             row1("Total " ++ Unit ++ "s", ival(maps:get(total, PrS))),
@@ -116,47 +159,70 @@ print_time_section(Title, Unit, PrEntries, BaseEntries, HasBase) ->
     end,
     io:format("~n", []).
 
+%% 5-column rows: Metric | PR-added | PR-common | Base | Delta(common - base)
+%% PR-common sits next to Base so the eye can compare directly.
+row5_int(Metric, Add, Com, Base) ->
+    io:format("| ~s | ~s | ~s | ~s | ~s |~n",
+              [Metric, ival(Add), ival(Com), ival(Base), delta_int(Com, Base)]).
+row5_time(Metric, Add, Com, Base) ->
+    io:format("| ~s | ~s | ~s | ~s | ~s |~n",
+              [Metric, fmt_time(Add), fmt_time(Com), fmt_time(Base), delta_time(Com, Base)]).
+row5_ms1(Metric, Add, Com, Base) ->
+    io:format("| ~s | ~s | ~s | ~s | ~s |~n",
+              [Metric, fmt_ms1(Add), fmt_ms1(Com), fmt_ms1(Base), delta_ms1(Com, Base)]).
+row5_named(Metric, AddT, AddN, ComT, ComN, BaseT, BaseN) ->
+    io:format("| ~s | ~s | ~s | ~s | ~s |~n",
+              [Metric, fmt_ms_name(AddT, AddN), fmt_ms_name(ComT, ComN),
+               fmt_ms_name(BaseT, BaseN), delta_time(ComT, BaseT)]).
+
 %% --- Poly var statistics ---
 
 poly_stats([]) ->
     Z = #{total => 0, avg => 0.0, min => 0, max => 0},
-    #{invocations => 0, poly => Z, mono_used => Z, mono_unused => Z};
+    #{invocations => 0, poly => Z, frame => Z, mono_used => Z, mono_unused => Z};
 poly_stats(Entries) ->
-    Polys = [P || [P, _, _ | _] <- Entries],
-    MonoUsed = [U || [_, U, _ | _] <- Entries],
-    MonoUnused = [X || [_, _, X | _] <- Entries],
+    Polys = [P || [_FN, P, _, _, _ | _] <- Entries],
+    Frames = [F || [_FN, _, F, _, _ | _] <- Entries],
+    MonoUsed = [U || [_FN, _, _, U, _ | _] <- Entries],
+    MonoUnused = [X || [_FN, _, _, _, X | _] <- Entries],
     N = length(Entries),
-    Calc = fun(Vs) ->
-        #{total => lists:sum(Vs), avg => lists:sum(Vs) / max(1, N),
-          min => lists:min(Vs), max => lists:max(Vs)}
-    end,
-    #{invocations => N, poly => Calc(Polys),
+    Calc = fun([]) -> #{total => 0, avg => 0.0, min => 0, max => 0};
+              (Vs) -> #{total => lists:sum(Vs), avg => lists:sum(Vs) / max(1, N),
+                        min => lists:min(Vs), max => lists:max(Vs)}
+           end,
+    #{invocations => N, poly => Calc(Polys), frame => Calc(Frames),
       mono_used => Calc(MonoUsed), mono_unused => Calc(MonoUnused)}.
 
-print_poly_section(Title, PrEntries, BaseEntries, HasBase) ->
-    PrS = poly_stats(PrEntries),
+print_poly_section(Title, PrCommonEntries, PrAddedEntries, BaseEntries, HasBase) ->
     io:format("## ~s~n~n", [Title]),
-    Cats = [poly, mono_used, mono_unused],
-    CatNames = ["Poly", "Mono (used)", "Mono (unused)"],
+    Cats = [poly, frame, mono_used, mono_unused],
+    CatNames = ["Poly", "Frame", "Mono (used)", "Mono (unused)"],
     case HasBase of
         true ->
+            ComS = poly_stats(PrCommonEntries),
+            AddS = poly_stats(PrAddedEntries),
             BaseS = poly_stats(BaseEntries),
-            PrHdrs = [io_lib:format("PR ~s", [N]) || N <- CatNames],
+            AddHdrs = [io_lib:format("PR-added ~s", [N]) || N <- CatNames],
+            ComHdrs = [io_lib:format("PR-common ~s", [N]) || N <- CatNames],
             BaseHdrs = [io_lib:format("Base ~s", [N]) || N <- CatNames],
             DeltaHdrs = [io_lib:format("Delta ~s", [N]) || N <- CatNames],
-            AllHdrs = ["Metric"] ++ PrHdrs ++ BaseHdrs ++ DeltaHdrs,
+            AllHdrs = ["Metric"] ++ AddHdrs ++ ComHdrs ++ BaseHdrs ++ DeltaHdrs,
             HdrLine = "| " ++ lists:flatten(lists:join(" | ", AllHdrs)) ++ " |",
             SepLine = "|" ++ lists:flatten(lists:duplicate(length(AllHdrs), "---|")),
             io:format("~s~n~s~n", [HdrLine, SepLine]),
-            poly_row("Invocations", Cats, PrS, BaseS,
-                fun(_, _) -> ival(maps:get(invocations, PrS)) end,
-                fun(_, _) -> ival(maps:get(invocations, BaseS)) end,
-                fun(_, _) -> delta_int(maps:get(invocations, PrS), maps:get(invocations, BaseS)) end),
+            % Invocations row: same value for all three Cat columns in each group
+            poly_row4("Invocations", Cats,
+                fun(_) -> ival(maps:get(invocations, AddS)) end,
+                fun(_) -> ival(maps:get(invocations, ComS)) end,
+                fun(_) -> ival(maps:get(invocations, BaseS)) end,
+                fun(_) -> delta_int(maps:get(invocations, ComS), maps:get(invocations, BaseS)) end),
             lists:foreach(fun({Label, Key, Fmt, DFmt}) ->
-                poly_row(Label, Cats, PrS, BaseS,
-                    fun(C, S) -> Fmt(maps:get(Key, maps:get(C, S))) end,
-                    fun(C, S) -> Fmt(maps:get(Key, maps:get(C, S))) end,
-                    fun(C, _) -> DFmt(maps:get(Key, maps:get(C, PrS)), maps:get(Key, maps:get(C, BaseS))) end)
+                poly_row4(Label, Cats,
+                    fun(C) -> Fmt(maps:get(Key, maps:get(C, AddS))) end,
+                    fun(C) -> Fmt(maps:get(Key, maps:get(C, ComS))) end,
+                    fun(C) -> Fmt(maps:get(Key, maps:get(C, BaseS))) end,
+                    fun(C) -> DFmt(maps:get(Key, maps:get(C, ComS)),
+                                   maps:get(Key, maps:get(C, BaseS))) end)
             end, [
                 {"Total vars", total, fun ival/1, fun delta_int/2},
                 {"Avg vars", avg, fun fmt_f1/1, fun delta_f1/2},
@@ -164,6 +230,7 @@ print_poly_section(Title, PrEntries, BaseEntries, HasBase) ->
                 {"Max vars", max, fun ival/1, fun delta_int/2}
             ]);
         false ->
+            PrS = poly_stats(PrCommonEntries),
             HdrLine = "| Metric | " ++ lists:flatten(lists:join(" | ", CatNames)) ++ " |",
             SepLine = "|" ++ lists:flatten(lists:duplicate(length(CatNames) + 1, "---|")),
             io:format("~s~n~s~n", [HdrLine, SepLine]),
@@ -181,11 +248,12 @@ print_poly_section(Title, PrEntries, BaseEntries, HasBase) ->
     end,
     io:format("~n", []).
 
-poly_row(Metric, Cats, PrS, BaseS, PrFmt, BaseFmt, DeltaFmt) ->
-    PrVals = [PrFmt(C, PrS) || C <- Cats],
-    BaseVals = [BaseFmt(C, BaseS) || C <- Cats],
-    DeltaVals = [DeltaFmt(C, undefined) || C <- Cats],
-    print_poly_row(Metric, PrVals ++ BaseVals ++ DeltaVals).
+poly_row4(Metric, Cats, AddFmt, ComFmt, BaseFmt, DeltaFmt) ->
+    AddVals = [AddFmt(C) || C <- Cats],
+    ComVals = [ComFmt(C) || C <- Cats],
+    BaseVals = [BaseFmt(C) || C <- Cats],
+    DeltaVals = [DeltaFmt(C) || C <- Cats],
+    print_poly_row(Metric, AddVals ++ ComVals ++ BaseVals ++ DeltaVals).
 
 print_poly_row(Metric, Vals) ->
     All = [Metric | Vals],
@@ -196,10 +264,6 @@ print_poly_row(Metric, Vals) ->
 
 row1(Metric, Val) ->
     io:format("| ~s | ~s |~n", [Metric, Val]).
-
-row3(Metric, Pr, Base, Delta) ->
-    io:format("| ~s | ~s | ~s | ~s |~n", [Metric, Pr, Base, Delta]).
-
 
 %% --- Formatting ---
 
