@@ -155,6 +155,10 @@ exp_constrs_tyof(Ctx, E) ->
             Msg = utils:sformat("var ~s", pretty:render(pretty:ref(AnyRef))),
             AlphaName = fresh_ty_varname(Ctx),
             {{var, AlphaName}, utils:single({cvarmater, mk_locs(Msg, L), AnyRef, AlphaName})};
+        {call, L, Var = {var, _, _}, Args} ->
+            var_funcall_constrs_tyof(Ctx, L, Var, Args);
+        {call, _L, FunExp, Args} ->
+            gen_funcall_constrs_tyof(Ctx, FunExp, Args);
         _ ->
             Alpha = fresh_tyvar(Ctx),
             Cs = exp_constrs(Ctx, E, Alpha),
@@ -278,10 +282,15 @@ exp_constrs(Ctx, E, T) ->
                 end,
             sets:from_list([{cdef, mk_locs("function def", L), BodyEnv, CsBody},
                             {csubty, mk_locs("result of fun exp", L), FunTy, T}], [{version, 2}]);
-        {call, L, Var = {var, _, _}, Args} ->
-            var_funcall_constrs(Ctx, L, Var, Args, T);
-        {call, L, FunExp, Args} ->
-            gen_funcall_constrs(Ctx, L, FunExp, Args, T);
+        {call, L, FunExp, _Args} ->
+            {ResTy, Cs} = exp_constrs_tyof(Ctx, E),
+            Description =
+                case FunExp of
+                    {var, _, AnyRef} ->
+                        "result of calling " ++ pretty:render_any_ref(AnyRef);
+                    _ -> "result of function call"
+                end,
+            sets:add_element({csubty, mk_locs(Description, L), ResTy, T}, Cs);
         {call_remote, L, ModExp, FunExp, Args} ->
             dyncall_constrs(Ctx, L, ModExp, FunExp, Args, T);
         ({'if', _, _} = IfExp) ->
@@ -679,8 +688,8 @@ process_qualifiers(Ctx, Loc, [Q | Qs], Env, Cs) ->
             process_qualifiers(Ctx, Loc, Qs, NewEnv, sets:union(Cs, FilterCs))
     end.
 
--spec gen_funcall_constrs(ctx(), ast:loc(), ast:exp(), [ast:exp()], ast:ty()) -> constr:constrs().
-gen_funcall_constrs(Ctx, L, FunExp, Args, T) ->
+-spec gen_funcall_constrs_tyof(ctx(), ast:exp(), [ast:exp()]) -> {ast:ty(), constr:constrs()}.
+gen_funcall_constrs_tyof(Ctx, FunExp, Args) ->
     {ArgCs, ArgTys} =
         lists:foldr(
             fun(ArgExp, {AccCs, AccTys}) ->
@@ -693,51 +702,37 @@ gen_funcall_constrs(Ctx, L, FunExp, Args, T) ->
     Beta = fresh_tyvar(Ctx),
     FunTy = {fun_full, ArgTys, Beta},
     FunCs = exp_constrs(Ctx, FunExp, FunTy),
-    Description =
-        case FunExp of
-            {var, _, AnyRef} ->
-                "result of calling " ++ pretty:render_any_ref(AnyRef);
-            _ -> "result of function call"
-        end,
-    sets:add_element(
-        {csubty, mk_locs(Description, L), Beta, T},
-        sets:union(FunCs, ArgCs)).
+    {Beta, sets:union(FunCs, ArgCs)}.
 
--spec var_funcall_constrs(ctx(), ast:loc(), ast:exp_var(), [ast:exp()], ast:ty()) -> constr:constrs().
-var_funcall_constrs(Ctx, L, Var, Args, T) ->
+-spec var_funcall_constrs_tyof(ctx(), ast:loc(), ast:exp_var(), [ast:exp()]) -> {ast:ty(), constr:constrs()}.
+var_funcall_constrs_tyof(Ctx, L, Var, Args) ->
     case var_as_global_ref(Var) of
-        error -> gen_funcall_constrs(Ctx, L, Var, Args, T);
+        error -> gen_funcall_constrs_tyof(Ctx, Var, Args);
         {ok, Ref} ->
             case symtab:find_fun(Ref, Ctx#ctx.symtab) of
-                error -> gen_funcall_constrs(Ctx, L, Var, Args, T);
+                error -> gen_funcall_constrs_tyof(Ctx, Var, Args);
                 {ok, TyScm} ->
-                    funcall_constrs_with_tyscm(Ctx, L, Var, TyScm, Args, T)
+                    funcall_constrs_with_tyscm_tyof(Ctx, L, Var, TyScm, Args)
             end
     end.
 
--spec funcall_constrs_with_tyscm(ctx(), ast:loc(), ast:exp_var(), ast:ty_scheme(), [ast:exp()], ast:ty()) -> constr:constrs().
-funcall_constrs_with_tyscm(Ctx, L, Var, TyScm, Args, T) ->
+-spec funcall_constrs_with_tyscm_tyof(ctx(), ast:loc(), ast:exp_var(), ast:ty_scheme(), [ast:exp()]) -> {ast:ty(), constr:constrs()}.
+funcall_constrs_with_tyscm_tyof(Ctx, L, Var, TyScm, Args) ->
     {Mono, _, _} = typing_common:mono_ty(L, TyScm, none, fun(_, none) -> {fresh_ty_varname(Ctx), none} end, Ctx#ctx.symtab),
     case Mono of
         {fun_full, ArgTys, ResTy} when length(Args) =:= length(ArgTys) ->
-            FunName = pretty:render_var(Var),
-            ResConstr =
-                {csubty,
-                    mk_locs(utils:sformat("result of calling ~s", FunName), L),
-                    ResTy,
-                    T},
-            Res = lists:foldr(
+            ArgCs = lists:foldr(
                 fun({Arg, Ty}, Cs) ->
                     ThisCs = exp_constrs(Ctx, Arg, Ty),
                     sets:union(Cs, ThisCs)
                 end,
-                utils:single(ResConstr),
+                sets:new(),
                 lists:zip(Args, ArgTys)),
             ?LOG_DEBUG("Generating specialized constraints for call of fun ~s with type ~s (type scheme: ~s)",
-                FunName, pretty:render_ty(Mono), pretty:render_tyscheme(TyScm)),
-            Res;
+                pretty:render_var(Var), pretty:render_ty(Mono), pretty:render_tyscheme(TyScm)),
+            {ResTy, ArgCs};
         _ ->
-            gen_funcall_constrs(Ctx, L, Var, Args, T)
+            gen_funcall_constrs_tyof(Ctx, Var, Args)
     end.
 
 -spec var_as_global_ref(ast:exp_var()) -> t:opt(ast:global_ref()).
