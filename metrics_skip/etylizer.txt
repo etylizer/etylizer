@@ -39,6 +39,7 @@
 -i constr_gen:catch_clause_constrs/3
 -i constr_gen:dyncall_constrs/6
 -i constr_gen:exp_constrs/3
+-i constr_gen:exp_constrs_tyof/2
 -i constr_gen:exps_constrs/4
 -i constr_gen:fun_clauses_to_exp_aux/3
 -i constr_gen:funcall_constrs_with_tyscm/6

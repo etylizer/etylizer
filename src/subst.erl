@@ -18,7 +18,7 @@
     extend/3,
     mk_tally_subst/2,
     base_subst/1,
-    collect_vars/4,
+    collect_vars/5,
     clean_cons/3
 ]).
 
@@ -51,9 +51,12 @@ clean(T, Fixed, SymTab) ->
 
 -spec clean_cons([{ast:ty(), ast:ty()}], sets:set(ast:ty_varname()), symtab:t()) -> [{ast:ty(), ast:ty()}].
 clean_cons(CList, Fixed, SymTab) ->
-    Unfold = fun(Ty) -> ast_utils:unfold_ty(SymTab, Ty) end,
-    UnfoldedCList = [{Unfold(C1), Unfold(C2)} || {C1, C2} <- CList],
-    VarPositions = collect_vars_clist(UnfoldedCList, 0, #{}, Fixed),
+    %% Per-schema variance is precomputed via fixpoint over symtab:get_types/1 and
+    %% threaded as a read-only argument; this lets collect_vars treat
+    %% {named, _, Ref, Args} as a leaf, walking only Args with the correct
+    %% polarity per parameter — no need to unfold the (potentially huge) body.
+    VCache = compute_variance_cache(SymTab),
+    VarPositions = collect_vars_clist(CList, 0, #{}, Fixed, VCache),
 
     Apply = fun(Ty) -> maps:fold(
         fun(VariableName, VariablePositions, Tyy) ->
@@ -149,7 +152,9 @@ clean_type(Ty, Fix, SymTab) ->
     %% if a var is only in co variant position, replace with 0
     %% if a var is only in contra variant position, replace with 1
     UnfoldedTy = ast_utils:unfold_ty(SymTab, Ty),
-    VarPositions = collect_vars(UnfoldedTy, 0, #{}, Fix),
+    %% UnfoldedTy contains no {named, ...} refs, so the variance cache is unused;
+    %% pass an empty map.
+    VarPositions = collect_vars(UnfoldedTy, 0, #{}, Fix, #{}),
 
     NoVarsDnf = maps:fold(
         fun(VariableName, VariablePositions, Tyy) ->
@@ -174,59 +179,194 @@ clean_type(Ty, Fix, SymTab) ->
 combine_vars(_K, V1, V2) ->
     lists:uniq(V1 ++ V2).
 
-% Operates on unfolded types (named types already resolved, recursive refs are {ty_hole}).
-% Callers must unfold via ast_utils:unfold_ty/2 before calling.
-collect_vars_clist(L, CPos, Pos, Fix) when is_list(L) ->
+%% =================================================================
+%% Variance precomputation
+%%
+%% For every schema {ty_scheme, [V1..Vn], Body} stored in the symtab, we
+%% compute a vector [v1..vn] where each vi describes how Vi is used in Body
+%% after substitution:
+%%
+%%   co     — appears in covariant positions only
+%%   contra — appears in contravariant positions only
+%%   inv    — both
+%%   unused — never appears in any unfolded form
+%%
+%% Computation: monotone fixpoint over the variance lattice (depth 3:
+%% unused < {co, contra} < inv). Each pass walks every schema body using
+%% the previous pass's cache for nested {named, _, R', As} lookups; the
+%% pass returns the new cache. Iteration stops when no schema's vector
+%% changes. Termination is guaranteed because each entry can widen at most
+%% twice (unused → co/contra → inv).
+%%
+%% The resulting cache is a plain Erlang map threaded read-only through
+%% collect_vars; there is no global mutable state.
+%% =================================================================
+
+-type variance() :: co | contra | inv | unused.
+-type variance_cache() :: #{ symtab_ty_key() => [variance()] }.
+-type symtab_ty_key() :: {ty_key, atom(), atom(), arity()}.
+
+-spec compute_variance_cache(symtab:t()) -> variance_cache().
+compute_variance_cache(SymTab) ->
+    Types = symtab:get_types(SymTab),
+    Initial = maps:map(
+        fun(_, {ty_scheme, Vars, _}) -> [unused || _ <- Vars] end,
+        Types),
+    variance_fixpoint(Initial, Types).
+
+-spec variance_fixpoint(variance_cache(), map()) -> variance_cache().
+variance_fixpoint(OldCache, Types) ->
+    NewCache = maps:map(
+        fun(_Key, {ty_scheme, Vars, Body}) ->
+            VarNames = [VName || {VName, _Bound} <- Vars],
+            [variance_walk(Body, VN, co, unused, OldCache) || VN <- VarNames]
+        end, Types),
+    case NewCache =:= OldCache of
+        true  -> NewCache;
+        false -> variance_fixpoint(NewCache, Types)
+    end.
+
+%% Returns the variance of V in Ty, given outer polarity Pol and accumulator
+%% Acc (variance already collected for V). Nested {named, _, R, As} references
+%% look up R's vector in Cache and walk each As[i] under the composed polarity.
+-spec variance_walk(ast:ty() | {ty_hole}, ast:ty_varname(), co | contra,
+                    variance(), variance_cache()) -> variance().
+variance_walk(Body, V, Pol, Acc, Cache) ->
+    %% utils:everything handles the generic descent (tuple, union, cons, list,
+    %% map, record, ...) — those preserve polarity, so we just let the framework
+    %% walk into their children. We only override the three node kinds where
+    %% behaviour differs:
+    %%   {var, V}             — collect a Pol contribution.
+    %%   {fun_full, _, _}     — args at flipped Pol, ret at Pol.
+    %%   {negation, _}        — body at flipped Pol.
+    %%   {named, _, R, As}    — look up R's variances and compose per Arg.
+    Contributions = utils:everything(
+        fun(T) -> variance_node(T, V, Pol, Cache) end,
+        Body),
+    lists:foldl(fun(P, X) -> merge_pol(X, P) end, Acc, Contributions).
+
+%% Returns {ok, Variance} to halt generic descent and contribute Variance,
+%% or `error` to let utils:everything recurse into the term's children.
+-spec variance_node(any(), ast:ty_varname(), co | contra, variance_cache()) ->
+    {ok, variance()} | error.
+variance_node({var, V}, V, Pol, _Cache) ->
+    {ok, Pol};
+variance_node({fun_full, Args, Ret}, V, Pol, Cache) ->
+    Flipped = flip_pol(Pol),
+    ArgVar = lists:foldl(
+        fun(A, X) -> merge_pol(X, variance_walk(A, V, Flipped, unused, Cache)) end,
+        unused, Args),
+    RetVar = variance_walk(Ret, V, Pol, unused, Cache),
+    {ok, merge_pol(ArgVar, RetVar)};
+variance_node({negation, T}, V, Pol, Cache) ->
+    {ok, variance_walk(T, V, flip_pol(Pol), unused, Cache)};
+variance_node({named, _Loc, Ref, As}, V, Pol, Cache) ->
+    {ok, variance_named(Ref, As, V, Pol, Cache)};
+variance_node(_, _V, _Pol, _Cache) ->
+    error.
+
+-spec variance_named(ast:ty_ref(), [ast:ty()], ast:ty_varname(),
+                     co | contra, variance_cache()) -> variance().
+variance_named(Ref, As, V, Pol, Cache) ->
+    case lookup_variances(Ref, Cache) of
+        Variances when length(Variances) =:= length(As) ->
+            lists:foldl(
+                fun({VarI, A}, X) -> merge_pol(X, arg_variance(VarI, A, V, Pol, Cache)) end,
+                unused, lists:zip(Variances, As));
+        _ ->
+            lists:foldl(
+                fun(A, X) ->
+                    Co     = variance_walk(A, V, Pol,           unused, Cache),
+                    Contra = variance_walk(A, V, flip_pol(Pol), unused, Cache),
+                    merge_pol(merge_pol(X, Co), Contra)
+                end, unused, As)
+    end.
+
+-spec arg_variance(variance(), ast:ty(), ast:ty_varname(),
+                   co | contra, variance_cache()) -> variance().
+arg_variance(co,     A, V, Pol, Cache) -> variance_walk(A, V, Pol,           unused, Cache);
+arg_variance(contra, A, V, Pol, Cache) -> variance_walk(A, V, flip_pol(Pol), unused, Cache);
+arg_variance(inv,    A, V, Pol, Cache) ->
+    Co     = variance_walk(A, V, Pol,           unused, Cache),
+    Contra = variance_walk(A, V, flip_pol(Pol), unused, Cache),
+    merge_pol(Co, Contra);
+arg_variance(unused, _A, _V, _Pol, _Cache) -> unused.
+
+-spec lookup_variances(ast:ty_ref(), variance_cache()) -> [variance()] | undefined.
+lookup_variances(Ref, Cache) ->
+    Key = canonicalize_ref(Ref),
+    maps:get(Key, Cache, undefined).
+
+-spec canonicalize_ref(ast:ty_ref()) -> symtab_ty_key().
+canonicalize_ref({ty_ref, M, N, A})  -> {ty_key, M, N, A};
+canonicalize_ref({ty_qref, M, N, A}) -> {ty_key, M, N, A}.
+
+-spec flip_pol(co | contra) -> co | contra.
+flip_pol(co) -> contra;
+flip_pol(contra) -> co.
+
+-spec merge_pol(variance(), variance()) -> variance().
+merge_pol(unused, X) -> X;
+merge_pol(X, unused) -> X;
+merge_pol(X, X) -> X;
+merge_pol(_, _) -> inv.
+
+% Walks a list of subtype constraints; for each {C1, C2}, C1 is in covariant
+% (CPos) and C2 in contravariant (1-CPos) position. VCache carries
+% per-schema variance vectors so the named clause walks Args precisely
+% without unfolding the body.
+collect_vars_clist(L, CPos, Pos, Fix, VCache) when is_list(L) ->
     lists:foldl(fun({C1, C2}, Acc) ->
-        M1 = collect_vars(C1, CPos, Acc, Fix),
-        M2 = collect_vars(C2, 1-CPos, Acc, Fix),
+        M1 = collect_vars(C1, CPos, Acc, Fix, VCache),
+        M2 = collect_vars(C2, 1-CPos, Acc, Fix, VCache),
         maps:merge_with(fun combine_vars/3, M1, M2)
                 end, Pos, L).
 
--spec collect_vars(ast:ty() | {ty_hole}, 0 | 1, #{ast:ty_varname() => [0 | 1]}, sets:set(ast:ty_varname())) ->
+-spec collect_vars(ast:ty() | {ty_hole}, 0 | 1, #{ast:ty_varname() => [0 | 1]},
+                   sets:set(ast:ty_varname()), variance_cache()) ->
     #{ast:ty_varname() => [0 | 1]}.
-collect_vars(M = {map, _}, CPos, Pos, Fix) ->
-    collect_vars(ty_parser:rewrite_map_to_representation(M), CPos, Pos, Fix);
-collect_vars({K, Components}, CPos, Pos, Fix) when K == union; K == intersection; K == tuple ->
-    VPos = lists:map(fun(Ty) -> collect_vars(Ty, CPos, Pos, Fix) end, Components),
+collect_vars(M = {map, _}, CPos, Pos, Fix, VCache) ->
+    collect_vars(ty_parser:rewrite_map_to_representation(M), CPos, Pos, Fix, VCache);
+collect_vars({K, Components}, CPos, Pos, Fix, VCache) when K == union; K == intersection; K == tuple ->
+    VPos = lists:map(fun(Ty) -> collect_vars(Ty, CPos, Pos, Fix, VCache) end, Components),
     lists:foldl(fun(FPos, Current) -> maps:merge_with(fun combine_vars/3, FPos, Current) end, Pos, VPos);
-collect_vars({fun_full, Components, Target}, CPos, Pos, Fix) ->
-    VPos = lists:map(fun(Ty) -> collect_vars(Ty, 1 - CPos, Pos, Fix) end, Components),
+collect_vars({fun_full, Components, Target}, CPos, Pos, Fix, VCache) ->
+    VPos = lists:map(fun(Ty) -> collect_vars(Ty, 1 - CPos, Pos, Fix, VCache) end, Components),
     M1 = lists:foldl(fun(FPos, Current) -> maps:merge_with(fun combine_vars/3, FPos, Current) end, Pos, VPos),
-    M2 = collect_vars(Target, CPos, Pos, Fix),
+    M2 = collect_vars(Target, CPos, Pos, Fix, VCache),
     maps:merge_with(fun combine_vars/3, M1, M2);
-collect_vars({negation, Ty}, CPos, Pos, Fix) -> collect_vars(Ty, 1 - CPos, Pos, Fix);
-collect_vars({predef, _}, _CPos, Pos, _) -> Pos;
-collect_vars({predef_alias, _}, _CPos, Pos, _) -> Pos;
-collect_vars({singleton, _}, _CPos, Pos, _) -> Pos;
-collect_vars({range, _, _}, _CPos, Pos, _) -> Pos;
-collect_vars({_, any}, _CPos, Pos, _) -> Pos;
-collect_vars({empty_list}, _CPos, Pos, _) -> Pos;
-collect_vars({bitstring}, _CPos, Pos, _) -> Pos;
-collect_vars({map_any}, _CPos, Pos, _) -> Pos;
-collect_vars({tuple_any}, _CPos, Pos, _) -> Pos;
-collect_vars({fun_simple}, _CPos, Pos, _) -> Pos;
-collect_vars({mu_var, _Name}, _CPos, Pos, _) -> Pos;
-collect_vars({ty_hole}, _CPos, Pos, _) -> Pos;
-collect_vars({nonempty_improper_list, A, B}, CPos, Pos, Fix) ->
-    M1 = collect_vars(A, CPos, Pos, Fix),
-    M2 = collect_vars(B, CPos, Pos, Fix),
+collect_vars({negation, Ty}, CPos, Pos, Fix, VCache) -> collect_vars(Ty, 1 - CPos, Pos, Fix, VCache);
+collect_vars({predef, _}, _CPos, Pos, _, _) -> Pos;
+collect_vars({predef_alias, _}, _CPos, Pos, _, _) -> Pos;
+collect_vars({singleton, _}, _CPos, Pos, _, _) -> Pos;
+collect_vars({range, _, _}, _CPos, Pos, _, _) -> Pos;
+collect_vars({_, any}, _CPos, Pos, _, _) -> Pos;
+collect_vars({empty_list}, _CPos, Pos, _, _) -> Pos;
+collect_vars({bitstring}, _CPos, Pos, _, _) -> Pos;
+collect_vars({map_any}, _CPos, Pos, _, _) -> Pos;
+collect_vars({tuple_any}, _CPos, Pos, _, _) -> Pos;
+collect_vars({fun_simple}, _CPos, Pos, _, _) -> Pos;
+collect_vars({mu_var, _Name}, _CPos, Pos, _, _) -> Pos;
+collect_vars({ty_hole}, _CPos, Pos, _, _) -> Pos;
+collect_vars({nonempty_improper_list, A, B}, CPos, Pos, Fix, VCache) ->
+    M1 = collect_vars(A, CPos, Pos, Fix, VCache),
+    M2 = collect_vars(B, CPos, Pos, Fix, VCache),
     maps:merge_with(fun combine_vars/3, M1, M2);
-collect_vars({nonempty_list, A}, CPos, Pos, Fix) ->
-    collect_vars(A, CPos, Pos, Fix);
-collect_vars({list, A}, CPos, Pos, Fix) ->
-    collect_vars(A, CPos, Pos, Fix);
-collect_vars({mu, _MuVar, A}, CPos, Pos, Fix) -> % skip recursion variables
-    collect_vars(A, CPos, Pos, Fix);
-collect_vars({cons, A, B}, CPos, Pos, Fix) ->
-    M1 = collect_vars(A, CPos, Pos, Fix),
-    M2 = collect_vars(B, CPos, Pos, Fix),
+collect_vars({nonempty_list, A}, CPos, Pos, Fix, VCache) ->
+    collect_vars(A, CPos, Pos, Fix, VCache);
+collect_vars({list, A}, CPos, Pos, Fix, VCache) ->
+    collect_vars(A, CPos, Pos, Fix, VCache);
+collect_vars({mu, _MuVar, A}, CPos, Pos, Fix, VCache) -> % skip recursion variables
+    collect_vars(A, CPos, Pos, Fix, VCache);
+collect_vars({cons, A, B}, CPos, Pos, Fix, VCache) ->
+    M1 = collect_vars(A, CPos, Pos, Fix, VCache),
+    M2 = collect_vars(B, CPos, Pos, Fix, VCache),
     maps:merge_with(fun combine_vars/3, M1, M2);
-collect_vars({improper_list, A, B}, CPos, Pos, Fix) ->
-    M1 = collect_vars(A, CPos, Pos, Fix),
-    M2 = collect_vars(B, CPos, Pos, Fix),
+collect_vars({improper_list, A, B}, CPos, Pos, Fix, VCache) ->
+    M1 = collect_vars(A, CPos, Pos, Fix, VCache),
+    M2 = collect_vars(B, CPos, Pos, Fix, VCache),
     maps:merge_with(fun combine_vars/3, M1, M2);
-collect_vars({var, Name}, CPos, Pos, Fix) ->
+collect_vars({var, Name}, CPos, Pos, Fix, _VCache) ->
     Z = case sets:is_element(Name, Fix) of
         true -> Pos;
         _ ->
@@ -234,7 +374,109 @@ collect_vars({var, Name}, CPos, Pos, Fix) ->
             Pos#{Name => lists:uniq(AllPositions ++ [CPos])}
     end,
     Z;
-collect_vars(Ty, _, _, _) ->
+collect_vars({named, _Loc, Ref, Args}, CPos, Pos, Fix, VCache) ->
+    %% Use precomputed per-parameter variance to walk each Arg with the right
+    %% polarity. Cache miss / arity mismatch (external schema) falls back to
+    %% walking both polarities, which is safe but may overmark.
+    case lookup_variances(Ref, VCache) of
+        Variances when length(Variances) =:= length(Args) ->
+            lists:foldl(
+                fun({co,     A}, P) -> collect_vars(A, CPos,     P,  Fix, VCache);
+                   ({contra, A}, P) -> collect_vars(A, 1 - CPos, P,  Fix, VCache);
+                   ({inv,    A}, P) ->
+                       P1 = collect_vars(A, CPos,     P,  Fix, VCache),
+                       collect_vars(A, 1 - CPos, P1, Fix, VCache);
+                   ({unused, _A}, P) -> P
+                end, Pos, lists:zip(Variances, Args));
+        _ ->
+            lists:foldl(
+                fun(A, P) ->
+                    P1 = collect_vars(A, CPos,     P,  Fix, VCache),
+                    collect_vars(A, 1 - CPos, P1, Fix, VCache)
+                end, Pos, Args)
+    end;
+collect_vars({record, _Name, Fields}, CPos, Pos, Fix, VCache) ->
+    lists:foldl(
+        fun({_FieldName, T}, P) -> collect_vars(T, CPos, P, Fix, VCache) end,
+        Pos, Fields);
+collect_vars(Ty, _, _, _, _) ->
     logger:error("Unhandled collect vars branch: ~p", [Ty]),
     errors:bug("Unhandled collect vars branch: ~p", [Ty]).
+
+-ifdef(TEST).
+-include_lib("eunit/include/eunit.hrl").
+
+%% Build a tiny fake `ty_env` map for variance tests:
+%%   schemas :: [{Name :: atom(), Vars :: [atom()], Body :: ast:ty()}]
+%% Each Name becomes the {ty_key, test, Name, length(Vars)} key.
+mk_test_types(Schemas) ->
+    maps:from_list(
+        [{{ty_key, test, Name, length(Vs)},
+          {ty_scheme,
+           [{V, {predef, any}} || V <- Vs],
+           Body}}
+         || {Name, Vs, Body} <- Schemas]).
+
+run_variance_fp(Schemas) ->
+    Types = mk_test_types(Schemas),
+    Initial = maps:map(
+        fun(_, {ty_scheme, Vars, _}) -> [unused || _ <- Vars] end,
+        Types),
+    variance_fixpoint(Initial, Types).
+
+get_v(Name, Arity, Cache) ->
+    maps:get({ty_key, test, Name, Arity}, Cache).
+
+nref(Name, Args) ->
+    {named, {loc, "test", 0, 0}, {ty_ref, test, Name, length(Args)}, Args}.
+
+variance_co_test() ->
+    %% F(A) = {A, F(A)}  ::  A is co
+    Body = {tuple, [{var, 'A'}, nref('F', [{var, 'A'}])]},
+    Cache = run_variance_fp([{'F', ['A'], Body}]),
+    ?assertEqual([co], get_v('F', 1, Cache)).
+
+variance_inv_via_funarg_test() ->
+    %% F(A) = {A, fun(F(A) -> B)}   :: A is inv (B is a placeholder type)
+    Body = {tuple,
+            [{var, 'A'},
+             {fun_full, [nref('F', [{var, 'A'}])], {predef, atom}}]},
+    Cache = run_variance_fp([{'F', ['A'], Body}]),
+    ?assertEqual([inv], get_v('F', 1, Cache)).
+
+variance_unused_test() ->
+    %% F(A) = fun(F(A) -> ok)   :: A is unused
+    Body = {fun_full, [nref('F', [{var, 'A'}])], {singleton, ok}},
+    Cache = run_variance_fp([{'F', ['A'], Body}]),
+    ?assertEqual([unused], get_v('F', 1, Cache)).
+
+variance_inv_self_ret_test() ->
+    %% F(A) = fun(F(A) -> A)   :: A is inv
+    Body = {fun_full, [nref('F', [{var, 'A'}])], {var, 'A'}},
+    Cache = run_variance_fp([{'F', ['A'], Body}]),
+    ?assertEqual([inv], get_v('F', 1, Cache)).
+
+variance_co_through_contra_test() ->
+    %% G(A) = fun(A -> ok),  F(A) = fun(G(A) -> ok)   ::  F's A is co
+    BodyG = {fun_full, [{var, 'A'}], {singleton, ok}},
+    BodyF = {fun_full, [nref('G', [{var, 'A'}])], {singleton, ok}},
+    Cache = run_variance_fp([{'G', ['A'], BodyG}, {'F', ['A'], BodyF}]),
+    ?assertEqual([contra], get_v('G', 1, Cache)),
+    ?assertEqual([co], get_v('F', 1, Cache)).
+
+variance_contra_through_co_test() ->
+    %% G(A) = fun(A -> ok),  F(A) = G(A)   ::  F's A is contra
+    BodyG = {fun_full, [{var, 'A'}], {singleton, ok}},
+    BodyF = nref('G', [{var, 'A'}]),
+    Cache = run_variance_fp([{'G', ['A'], BodyG}, {'F', ['A'], BodyF}]),
+    ?assertEqual([contra], get_v('G', 1, Cache)),
+    ?assertEqual([contra], get_v('F', 1, Cache)).
+
+variance_list_test() ->
+    %% list(T) = empty_list() | cons(T, list(T))   :: T is co
+    Body = {union, [{empty_list}, {cons, {var, 'T'}, nref('list', [{var, 'T'}])}]},
+    Cache = run_variance_fp([{'list', ['T'], Body}]),
+    ?assertEqual([co], get_v('list', 1, Cache)).
+
+-endif.
 
