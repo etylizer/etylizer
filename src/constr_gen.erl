@@ -25,7 +25,11 @@
           % when true, exhaustiveness checking is disabled for the top-level function clauses
           disable_exhaustiveness = false :: boolean(),
           % when true, redundancy checking is disabled for the top-level function clauses
-          disable_redundancy = false :: boolean()
+          disable_redundancy = false :: boolean(),
+          % Local var bindings known at constraint-gen time
+          % e.g. function args from the spec, plus any other refs we want exp_constrs_tyof to resolve
+          % directly to a closed type.
+          env = #{} :: #{ ast:any_ref() => ast:ty() }
         }).
 -type ctx() :: #ctx{}.
 
@@ -94,14 +98,17 @@ gen_constrs_fun_group(ExhaustivenessMode, Symtab, {DisableExhaustiveness, Disabl
 -spec gen_constrs_annotated_fun(feature_flags:exhaustiveness_mode(), symtab:t(), {boolean(), boolean()}, ast:ty_full_fun(), ast:fun_decl()) -> constr:constrs().
 gen_constrs_annotated_fun(ExhaustivenessMode, Symtab, {DisableExhaustiveness, DisableRedundancy}, {fun_full, ArgTys, ResTy}, {function, L, Name, Arity, FunClauses}) ->
     Ctx0 = new_ctx(Symtab, ExhaustivenessMode),
-    Ctx = Ctx0#ctx{ disable_exhaustiveness = DisableExhaustiveness, disable_redundancy = DisableRedundancy },
-    {Args, Body} = fun_clauses_to_exp(Ctx, L, FunClauses),
+    Ctx1 = Ctx0#ctx{ disable_exhaustiveness = DisableExhaustiveness, disable_redundancy = DisableRedundancy },
+    {Args, Body} = fun_clauses_to_exp(Ctx1, L, FunClauses),
     if length(Args) =/= length(ArgTys) orelse length(Args) =/= Arity ->
             errors:ty_error(L, "Arity mismatch for function ~w", Name);
        true -> ok
     end,
     ArgRefs = lists:map(fun(V) -> {local_ref, V} end, Args),
     Env = maps:from_list(lists:zip(ArgRefs, ArgTys)),
+    %% Thread Env into Ctx so exp_constrs_tyof can resolve arg-var lookups
+    %% to their declared (closed) spec types directly
+    Ctx = Ctx1#ctx{ env = Env },
     BodyCs = exps_constrs(Ctx, L, Body, ResTy),
     Msg = utils:sformat("definition of ~w/~w", Name, Arity),
     utils:single({cdef, mk_locs(Msg, L), Env, BodyCs}).
@@ -148,6 +155,17 @@ exp_constrs_tyof(Ctx, E) ->
             RecTy = symtab:lookup_record(RecName, L, Ctx#ctx.symtab),
             {_FieldTy, Idx} = ety_records:lookup_field_index(RecTy, FieldName, L),
             {stdtypes:tint(Idx + 1), sets:new()};
+        {var, _L, AnyRef} ->
+            case maps:find(AnyRef, Ctx#ctx.env) of
+                {ok, ClosedTy} ->
+                    %% Direct closed type from env
+                    {ClosedTy, sets:new()};
+                error ->
+                    %% otherwise fall back to exp_constrs
+                    Alpha = fresh_tyvar(Ctx),
+                    Cs = exp_constrs(Ctx, E, Alpha),
+                    {Alpha, Cs}
+            end;
         _ ->
             Alpha = fresh_tyvar(Ctx),
             Cs = exp_constrs(Ctx, E, Alpha),
@@ -890,8 +908,42 @@ case_clause_constrs(Ctx, TyScrut, Scrut, NeedsUnmatchedCheck, LowersBefore,
         pretty:render_mono_env(BodyEnv),
         pretty:render_constr(BodyEnvCs)
     ),
+    % Check the body against ExpectedTy directly (exps_constrs, the CHECKING
+    % form): the case's result target is already known, so we want the tight
+    % `body <: ExpectedTy' and no intermediate Beta var + result constraint.
+    % (exps_constrs_tyof is the SYNTHESIS form -- it is for when there is no
+    % target and we must compute one; using it here would re-introduce a fresh
+    % result var + subtype hop, the opposite of what we want. The _tyof win is
+    % realized DEEPER DOWN, on the body's sub-expressions, via the env below.)
+    %
+    % Propagate the clause's pattern bindings (BodyEnv) into the env. This is
+    % the line that matters for performance, and the effect is super-linear,
+    % not "a few less vars":
+    %
+    %   Without it, every use of a bound variable (fun param / pattern var) in
+    %   the body misses Ctx#ctx.env, so exp_constrs_tyof takes its `error'
+    %   branch and mints a FRESH tyvar + cvar materialization PER OCCURRENCE.
+    %   Each such var is unconstrained except by its own cvar, hence stays
+    %   polymorphic and flows -- unseparated -- into the same tally problem.
+    %   The tally partitioner can only split the constraint set along
+    %   INDEPENDENT poly vars, so N fresh per-occurrence vars couple
+    %   otherwise-independent positions back together.
+    %
+    %   That coupling is what explodes: when these vars land in the negated
+    %   tuple positions of an exhaustiveness/redundancy check (e.g.
+    %   find_peelables' 7-branch tagged 2-tuple case), tuple-DNF normalization
+    %   is exponential in the number of coupled vars feeding those positions
+    %   (the ~3^N tensor product). A handful of extra coupled vars is enough to
+    %   cross from tractable into the blow-up regime.
+    %
+    %   Threading BodyEnv collapses all occurrences of a bound var to its one
+    %   existing type (exp_constrs_tyof's {ok, ClosedTy} branch: no new var, no
+    %   new constraint), so each position contributes fixed structure instead
+    %   of several fresh coupled slots. For find_peelables/2 this is the
+    %   measured 10007ms -> ~290ms difference.
+    BodyCtx = Ctx#ctx{ env = intersect_envs(Ctx#ctx.env, BodyEnv) },
     Beta = fresh_tyvar(Ctx),
-    BodyCs = exps_constrs(Ctx, L, Exps, Beta),
+    BodyCs = exps_constrs(BodyCtx, L, Exps, Beta),
     InnerCs = BodyCs,
 
     CGuards =
