@@ -11,7 +11,8 @@
 -ifdef(TEST).
 -export([
          pat_guard_lower_upper/4,
-         ty_of_pat/4
+         ty_of_pat/4,
+         exp_constrs_tyof/2
         ]).
 -endif.
 
@@ -105,6 +106,67 @@ gen_constrs_annotated_fun(ExhaustivenessMode, Symtab, {DisableExhaustiveness, Di
     Msg = utils:sformat("definition of ~w/~w", Name, Arity),
     utils:single({cdef, mk_locs(Msg, L), Env, BodyCs}).
 
+% Like exp_constrs, but returns the type of the expression directly instead of
+% constraining it against a target T. Falls back to a fresh var + full exp_constrs
+% for arbitrarily complex expressions.
+-spec exp_constrs_tyof(ctx(), ast:exp()) -> {ast:ty(), constr:constrs()}.
+exp_constrs_tyof(Ctx, E) ->
+    case E of
+        {'atom',    _L, A} -> {{singleton, A}, sets:new()};
+        {'char',    _L, C} -> {{singleton, C}, sets:new()};
+        {'integer', _L, I} -> {{singleton, I}, sets:new()};
+        {'float',   _L, _} -> {{predef, float}, sets:new()};
+        {'string',  _L, S} ->
+            %% Erlang string literal s = [c1, c2, ..., cn] is exactly
+            %% cons(singleton(c1), cons(..., cons(singleton(cn), {empty_list}))).
+            StringTy = lists:foldr(
+                fun(C, Acc) -> {cons, {singleton, C}, Acc} end,
+                {empty_list},
+                S),
+            {StringTy, sets:new()};
+        {nil, _L}          -> {{empty_list}, sets:new()};
+        {bin, _L, []}      -> {{bitstring}, sets:new()};
+        {bin, L, _Cs} ->
+            ?LOG_WARN("Skipping verification of binary pattern elements of ~s", ast:format_loc(L)),
+            {{bitstring}, sets:new()};
+        {map_create, _L, []} -> {{map, []}, sets:new()};
+        {tuple, _L, Es} ->
+            {Cs, ElemTys} = lists:foldr(
+                fun(Elem, {AccCs, AccTys}) ->
+                    {Ty, ECs} = exp_constrs_tyof(Ctx, Elem),
+                    {sets:union(AccCs, ECs), [Ty | AccTys]}
+                end,
+                {sets:new(), []}, Es),
+            {{tuple, ElemTys}, Cs};
+        {cons, _L, Head, Tail} ->
+            {HeadTy, HCs} = exp_constrs_tyof(Ctx, Head),
+            {TailTy, TCs} = exp_constrs_tyof(Ctx, Tail),
+            {{cons, HeadTy, TailTy}, sets:union(HCs, TCs)};
+        {block, L, Es} ->
+            exps_constrs_tyof(Ctx, L, Es);
+        {record_index, L, RecName, FieldName} ->
+            RecTy = symtab:lookup_record(RecName, L, Ctx#ctx.symtab),
+            {_FieldTy, Idx} = ety_records:lookup_field_index(RecTy, FieldName, L),
+            {stdtypes:tint(Idx + 1), sets:new()};
+        _ ->
+            Alpha = fresh_tyvar(Ctx),
+            Cs = exp_constrs(Ctx, E, Alpha),
+            {Alpha, Cs}
+    end.
+
+% Like exps_constrs, but returns the type of the last expression directly
+% (a block / expression-sequence evaluates to its last expression's value).
+-spec exps_constrs_tyof(ctx(), ast:loc(), [ast:exp()]) -> {ast:ty(), constr:constrs()}.
+exps_constrs_tyof(_Ctx, _L, []) ->
+    ?ABORT("empty list of expressions");
+exps_constrs_tyof(Ctx, _L, [E]) ->
+    exp_constrs_tyof(Ctx, E);
+exps_constrs_tyof(Ctx, L, [E | Rest]) ->
+    Alpha = fresh_tyvar(Ctx),
+    Cs = exp_constrs(Ctx, E, Alpha),
+    {Ty, RestCs} = exps_constrs_tyof(Ctx, L, Rest),
+    {Ty, sets:union(Cs, RestCs)}.
+
 % constraints for a sequence of expressions
 -spec exps_constrs(ctx(), ast:loc(), [ast:exp()], ast:ty()) -> constr:constrs().
 exps_constrs(_Ctx, _L, [], _T) ->
@@ -190,13 +252,13 @@ exp_constrs(Ctx, E, T) ->
 
             ResultCs;
         {cons, L, Head, Tail} ->
-            Alpha = fresh_tyvar(Ctx),
-            C1 = exp_constrs(Ctx, Head, Alpha),
-            Beta = fresh_tyvar(Ctx),
-            C2 = exp_constrs(Ctx, Tail, Beta),
-            Cs = sets:union(C1, C2),
-            ListC = {csubty, mk_locs("cons constructor", L), {cons, Alpha, Beta}, T},
-            sets:add_element(ListC, Cs);
+            %% Synthesize head/tail types directly (exp_constrs_tyof) instead of
+            %% fresh head/tail tyvars + checking subtyping. Removes 2 polyvars per
+            %% cons cell from the tally problem (var-removal optimization).
+            {HeadTy, HCs} = exp_constrs_tyof(Ctx, Head),
+            {TailTy, TCs} = exp_constrs_tyof(Ctx, Tail),
+            ListC = {csubty, mk_locs("cons constructor", L), {cons, HeadTy, TailTy}, T},
+            sets:add_element(ListC, sets:union(HCs, TCs));
         {fun_ref, L, GlobalRef} ->
             utils:single({cvar, mk_locs("function ref", L), GlobalRef, T});
         {'fun', L, RecName, FunClauses} ->
@@ -415,12 +477,14 @@ exp_constrs(Ctx, E, T) ->
                 sets:add_element(ResConstr, ExpCs),
                 FieldUpdates);
         {tuple, L, Args} ->
+            %% Synthesize element types directly (exp_constrs_tyof) instead of a
+            %% fresh tyvar per element + checking subtyping. Removes one polyvar
+            %% per tuple element from the tally problem (var-removal optimization).
             {Tys, Cs} =
                 lists:foldr(
                   fun(Arg, {Tys, Cs}) ->
-                          Alpha = fresh_tyvar(Ctx),
-                          ThisCs = exp_constrs(Ctx, Arg, Alpha),
-                          {[Alpha | Tys], sets:union(Cs, ThisCs)}
+                          {Ty, ThisCs} = exp_constrs_tyof(Ctx, Arg),
+                          {[Ty | Tys], sets:union(Cs, ThisCs)}
                   end,
                   {[], sets:new([{version, 2}])},
                   Args),
@@ -456,10 +520,9 @@ exp_constrs(Ctx, E, T) ->
 % Helper for case expressions.
 -spec case_constrs(ctx(), ast:loc(), ast:exp(), [ast:case_clause()], ast:ty()) -> constr:constrs().
 case_constrs(Ctx, L, ScrutE, Clauses, T) ->
-    Alpha = fresh_tyvar(Ctx),
     % Reset disable flags for inner case expressions (only applies to top-level fun clauses)
     InnerCtx = Ctx#ctx{ disable_exhaustiveness = false, disable_redundancy = false },
-    Cs0 = exp_constrs(InnerCtx, ScrutE, Alpha),
+    {ScrutTy, Cs0} = exp_constrs_tyof(InnerCtx, ScrutE),
     NeedsUnmatchedCheck = case Ctx#ctx.disable_redundancy of
         true -> false;
         false -> needs_unmatched_check(Clauses)
@@ -474,7 +537,7 @@ case_constrs(Ctx, L, ScrutE, Clauses, T) ->
                             {ThisLower, ThisUpper, ThisCs, ThisConstrBody} =
                                 case_clause_constrs(
                                   InnerCtx,
-                                  ty_without(Alpha, ast_lib:mk_union(Lowers)),
+                                  ty_without(ScrutTy, ast_lib:mk_union(Lowers)),
                                   ScrutE,
                                   NeedsUnmatchedCheck,
                                   Lowers,
@@ -494,7 +557,7 @@ case_constrs(Ctx, L, ScrutE, Clauses, T) ->
             false ->
                 case Ctx#ctx.exhaustiveness_mode of
                     enabled -> utils:single(
-                                  {csubty, mk_locs("case exhaustiveness", L), Alpha, ast_lib:mk_union(Lowers)});
+                                  {csubty, mk_locs("case exhaustiveness", L), ScrutTy, ast_lib:mk_union(Lowers)});
                     disabled -> sets:new()
                 end
         end,
