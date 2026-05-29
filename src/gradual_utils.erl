@@ -203,11 +203,11 @@ build_sigma2(X, Alpha, Ctx) ->
     maps:merge(X_Subst, Alpha_Subst).
 
 % Returns the set of variable names appearing in both positive and negative positions in Ty.
-% Delegates to subst:collect_vars/4 for exhaustive AST traversal.
+% Delegates to subst:collect_vars/5 for exhaustive AST traversal.
 -spec collect_pos_neg_tyvars(ast:ty(), symtab:t()) -> sets:set(ast:ty_varname()).
 collect_pos_neg_tyvars(Ty, SymTab) ->
     UnfoldedTy = ast_utils:unfold_ty(SymTab, Ty),
-    VarPositions = subst:collect_vars(UnfoldedTy, 0, #{}, sets:new()),
+    VarPositions = subst:collect_vars(UnfoldedTy, 0, #{}, sets:new(), #{}),
     maps:fold(
       fun(Name, Positions, Acc) ->
           case lists:usort(Positions) of
