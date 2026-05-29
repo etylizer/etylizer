@@ -148,6 +148,14 @@ exp_constrs_tyof(Ctx, E) ->
             RecTy = symtab:lookup_record(RecName, L, Ctx#ctx.symtab),
             {_FieldTy, Idx} = ety_records:lookup_field_index(RecTy, FieldName, L),
             {stdtypes:tint(Idx + 1), sets:new()};
+        {call, L, Var = {var, _, _}, Args} ->
+            case try_spec_call(Ctx, L, Var, Args) of
+                {ok, R} -> R;
+                error ->
+                    Alpha = fresh_tyvar(Ctx),
+                    Cs = exp_constrs(Ctx, E, Alpha),
+                    {Alpha, Cs}
+            end;
         _ ->
             Alpha = fresh_tyvar(Ctx),
             Cs = exp_constrs(Ctx, E, Alpha),
@@ -717,27 +725,54 @@ var_funcall_constrs(Ctx, L, Var, Args, T) ->
 
 -spec funcall_constrs_with_tyscm(ctx(), ast:loc(), ast:exp_var(), ast:ty_scheme(), [ast:exp()], ast:ty()) -> constr:constrs().
 funcall_constrs_with_tyscm(Ctx, L, Var, TyScm, Args, T) ->
-    {Mono, _, _} = typing_common:mono_ty(L, TyScm, none, fun(_, none) -> {fresh_ty_varname(Ctx), none} end, Ctx#ctx.symtab),
-    case Mono of
-        {fun_full, ArgTys, ResTy} when length(Args) =:= length(ArgTys) ->
+    case try_spec_call_with_tyscm(Ctx, L, TyScm, Args) of
+        {ok, {ResTy, ArgCs}} ->
             FunName = pretty:render_var(Var),
             ResConstr =
                 {csubty,
                     mk_locs(utils:sformat("result of calling ~s", FunName), L),
                     ResTy,
                     T},
-            Res = lists:foldr(
-                fun({Arg, Ty}, Cs) ->
-                    ThisCs = exp_constrs(Ctx, Arg, Ty),
-                    sets:union(Cs, ThisCs)
-                end,
-                utils:single(ResConstr),
-                lists:zip(Args, ArgTys)),
-            ?LOG_DEBUG("Generating specialized constraints for call of fun ~s with type ~s (type scheme: ~s)",
-                FunName, pretty:render_ty(Mono), pretty:render_tyscheme(TyScm)),
-            Res;
-        _ ->
+            sets:add_element(ResConstr, ArgCs);
+        error ->
             gen_funcall_constrs(Ctx, L, Var, Args, T)
+    end.
+
+% Helper: instantiate the type scheme, generate arg constraints, and return the
+% spec'd result type directly. Used both by funcall_constrs_with_tyscm (which
+% layers a csubty against the caller's target on top) and by exp_constrs_tyof
+% (which returns ResTy directly with no outer α + csubty hop).
+-spec try_spec_call(ctx(), ast:loc(), ast:exp_var(), [ast:exp()]) ->
+    {ok, {ast:ty(), constr:constrs()}} | error.
+try_spec_call(Ctx, L, Var, Args) ->
+    case var_as_global_ref(Var) of
+        error -> error;
+        {ok, Ref} ->
+            case symtab:find_fun(Ref, Ctx#ctx.symtab) of
+                error -> error;
+                {ok, TyScm} -> try_spec_call_with_tyscm(Ctx, L, TyScm, Args)
+            end
+    end.
+
+-spec try_spec_call_with_tyscm(ctx(), ast:loc(), ast:ty_scheme(), [ast:exp()]) ->
+    {ok, {ast:ty(), constr:constrs()}} | error.
+try_spec_call_with_tyscm(Ctx, L, TyScm, Args) ->
+    {Mono, _, _} = typing_common:mono_ty(L, TyScm, none,
+        fun(_, none) -> {fresh_ty_varname(Ctx), none} end,
+        Ctx#ctx.symtab),
+    case Mono of
+        {fun_full, ArgTys, ResTy} when length(Args) =:= length(ArgTys) ->
+            ArgCs = lists:foldr(
+                fun({Arg, Ty}, Cs) ->
+                    sets:union(Cs, exp_constrs(Ctx, Arg, Ty))
+                end,
+                sets:new([{version, 2}]),
+                lists:zip(Args, ArgTys)),
+            ?LOG_DEBUG("Generating specialized constraints for call with type ~s (type scheme: ~s)",
+                pretty:render_ty(Mono), pretty:render_tyscheme(TyScm)),
+            {ok, {ResTy, ArgCs}};
+        _ ->
+            error
     end.
 
 -spec var_as_global_ref(ast:exp_var()) -> t:opt(ast:global_ref()).
