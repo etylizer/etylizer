@@ -460,7 +460,7 @@ extend_symtab({_, Namespace, Type, ArgsCount}, RawTyScheme) ->
   % io:format(user,"Extending symtab by ~p~n With scheme: ~p~n", [Ref, TyScheme]),
   ets:insert_new(?SYMTAB, {Ref, TyScheme}).
 
--spec lookup_ty(ast:ty_qref() | ast:ty_ref()) -> ety_ty_scheme().
+-spec lookup_ty(ast:ty_ref()) -> ety_ty_scheme().
 lookup_ty({ty_qref, A, B, C}) ->
   Ref = {A, B, C},
   [{_, Scheme}] = ?assert_pattern([{_, _}], ets:lookup(?SYMTAB, Ref)),
