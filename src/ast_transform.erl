@@ -1055,7 +1055,9 @@ trans_map_assoc(Ctx, Env, Assoc) ->
 
 % Expands record_field_other (the _ = Expr syntax) into individual record_field entries
 % for each field not explicitly given. The record_field_other entry is removed.
--spec expand_record_field_other(ctx(), atom(), [ast:exp_record_create_field()]) ->
+-spec expand_record_field_other(ctx(), atom(),
+    [{record_field, ast:loc(), atom(), ast:exp()}
+     | {record_field_other, ast:loc(), ast:exp()}]) ->
     [{record_field, ast:loc(), atom(), ast:exp()}].
 expand_record_field_other(Ctx, RecName, Fields) ->
     % Split into explicit fields and the optional wildcard

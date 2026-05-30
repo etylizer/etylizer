@@ -1,5 +1,6 @@
 -i ast_check:check_ty/5
 -i ast_transform:eval_const_ty/2
+-i ast_transform:expand_record_field_other/3
 -i ast_transform:fill_record_defaults/4
 -i ast_transform:make_tyenv/3
 -i ast_transform:resolve_ety_ty/3
