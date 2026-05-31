@@ -10,9 +10,9 @@
   normalize_line/3,
   all_variables_line/4,
   phi/3,
-  phi_solve/4,
+  phi_solve/5,
   phi_norm/4,
-  phi_norm_solve/5,
+  phi_norm_solve/6,
   unparse_any/1,
   unparse_any/0
 ]).
@@ -46,23 +46,18 @@ phi(BigS, [], ST) ->
 phi(BigS, [Ty | N], ST) ->
   maybe
     {false, ST1} ?= lists:foldl(fun(_S, {true, ST0}) -> {true, ST0}; (S, {false, ST0}) -> ?NODE:is_empty(S, ST0) end, {false, ST}, BigS),
-    lists:foldl(
-      fun(E, Acc) -> phi_solve(E, Acc, N, BigS) end,
-      {true, ST1},
-      lists:zip(lists:seq(1, length(ty_tuple:components(Ty))), lists:zip(BigS, ty_tuple:components(Ty))))
+    phi_fold_components(BigS, ty_tuple:components(Ty), 1, {true, ST1}, N)
   end.
 
--spec phi_solve({integer(), {ty:type(), ty:type()}}, {boolean(), S}, [?ATOM:type()], [ty:type()]) -> {boolean(), S} when S :: is_empty_cache().
-phi_solve(_, {false, ST2}, _, _) -> {false, ST2};
-phi_solve({Index, {_PComponent, NComponent}}, {true, ST2}, N, BigS) ->
-    % remove pi_Index(NegativeComponents) from pi_Index(PComponents) and continue searching
-    DoDiff = fun({IIndex, PComp}) ->
-      case IIndex of
-        Index -> ?NODE:difference(PComp, NComponent);
-        _ -> PComp
-      end
-             end,
-    NewBigS = lists:map(DoDiff, lists:zip(lists:seq(1, length(BigS)), BigS)),
+phi_fold_components(_BigS, [], _Idx, Acc, _N) -> Acc;
+phi_fold_components(BigS, [NComp | Rest], Idx, Acc, N) ->
+    Acc1 = phi_solve(Idx, NComp, Acc, N, BigS),
+    phi_fold_components(BigS, Rest, Idx + 1, Acc1, N).
+
+-spec phi_solve(integer(), ty:type(), {boolean(), S}, [?ATOM:type()], [ty:type()]) -> {boolean(), S} when S :: is_empty_cache().
+phi_solve(_, _, {false, ST2}, _, _) -> {false, ST2};
+phi_solve(Index, NComponent, {true, ST2}, N, BigS) ->
+    NewBigS = replace_at(Index, BigS, NComponent),
     phi(NewBigS, N, ST2).
 
 
@@ -80,15 +75,32 @@ normalize_line({Pos, Neg, T}, Fixed, ST) ->
 
 -spec phi_norm([ty_node:type()], [T], monomorphic_variables(), S) -> 
     {set_of_constraint_sets(), S} when S :: normalize_cache(), T :: ?ATOM:type().
-phi_norm(BigS, [], Fixed, ST) ->
+phi_norm(BigS, NegList, Fixed, ST) ->
+  %% Memoize phi_norm by (BigS, NegList). Pure in (BigS, NegList, Fixed); Fixed
+  %% is constant for the whole normalize traversal. On the gen_constrs probe
+  %% one (BigS, NegList) pair was recomputed up to 52k times — eliminating
+  %% that redundancy is the structural lever (SAT-solver-style sub-problem
+  %% memoization within a single normalize). The cache lives inside the
+  %% ST map, so it dies when normalize returns — no global-state risk.
+  Key = {phi_norm_tuple_memo, BigS, NegList},
+  case ST of
+    #{Key := Cached} -> {Cached, ST};
+    _ ->
+      {Res, ST1} = phi_norm_impl(BigS, NegList, Fixed, ST),
+      {Res, ST1#{Key => Res}}
+  end.
+
+-spec phi_norm_impl([ty_node:type()], [T], monomorphic_variables(), S) ->
+    {set_of_constraint_sets(), S} when S :: normalize_cache(), T :: ?ATOM:type().
+phi_norm_impl(BigS, [], Fixed, ST) ->
   lists:foldl( % FIXME shortcut
-    fun(S, {Res, ST0}) -> 
+    fun(S, {Res, ST0}) ->
       {R, ST1} = ty_node:normalize(S, Fixed, ST0),
-      {constraint_set:join(Res, R, Fixed), ST1} 
-    end, 
-    {[], ST}, 
+      {constraint_set:join(Res, R, Fixed), ST1}
+    end,
+    {[], ST},
     BigS);
-phi_norm(BigS, [Ty | N], Fixed, ST) ->
+phi_norm_impl(BigS, [Ty | N], Fixed, ST) ->
   {R1, ST0} = lists:foldl(
     fun(S, {R2, ST2}) ->
       {R3, ST3} = ty_node:normalize(S, Fixed, ST2),
@@ -96,29 +108,27 @@ phi_norm(BigS, [Ty | N], Fixed, ST) ->
     end,
     {[], ST},
     BigS),
-
-  {R4, ST4} = lists:foldl(
-    fun(E, Acc) -> phi_norm_solve(E, Acc, N, BigS, Fixed) end,
-    {[[]], ST0},
-    lists:zip(lists:seq(1, length(ty_tuple:components(Ty))), lists:zip(BigS, ty_tuple:components(Ty)))
-  ),
-
+  {R4, ST4} = phi_norm_fold_components(BigS, ty_tuple:components(Ty), 1,
+                                       {[[]], ST0}, N, Fixed),
   {constraint_set:join(R1, R4, Fixed), ST4}.
 
--spec phi_norm_solve({integer(), {ty_node:type(), ty_node:type()}}, {set_of_constraint_sets(), S}, [?ATOM:type()], [ty_node:type()], monomorphic_variables()) ->
+phi_norm_fold_components(_BigS, [], _Idx, Acc, _N, _Fixed) -> Acc;
+phi_norm_fold_components(BigS, [NComp | Rest], Idx, Acc, N, Fixed) ->
+    Acc1 = phi_norm_solve(Idx, NComp, Acc, N, BigS, Fixed),
+    phi_norm_fold_components(BigS, Rest, Idx + 1, Acc1, N, Fixed).
+
+-spec phi_norm_solve(integer(), ty_node:type(), {set_of_constraint_sets(), S}, [?ATOM:type()], [ty_node:type()], monomorphic_variables()) ->
     {set_of_constraint_sets(), S} when S :: normalize_cache().
-phi_norm_solve({Index, {_PComponent, NComponent}}, {Result, ST00}, N, BigS, Fixed) ->
-    % remove pi_Index(NegativeComponents) from pi_Index(PComponents) and continue searching
-    DoDiff =
-      fun({IIndex, PComp}) ->
-        case IIndex of
-          Index -> ty_node:difference(PComp, NComponent);
-          _ -> PComp
-        end
-      end,
-    NewBigS = lists:map(DoDiff, lists:zip(lists:seq(1, length(BigS)), BigS)),
+phi_norm_solve(Index, NComponent, {Result, ST00}, N, BigS, Fixed) ->
+    %% Replace BigS[Index] with `BigS[Index] - NComponent`, keep other entries.
+    %% Direct linear-pass replace_at avoids the lists:zip+seq pair the prior
+    %% implementation built fresh on every call.
+    NewBigS = replace_at(Index, BigS, NComponent),
     {Res01, ST01} = phi_norm(NewBigS, N, Fixed, ST00),
     {constraint_set:meet(Result, Res01, Fixed), ST01}.
+
+replace_at(1, [H | T], NComp) -> [ty_node:difference(H, NComp) | T];
+replace_at(N, [H | T], NComp) when N > 1 -> [H | replace_at(N - 1, T, NComp)].
 
 -spec all_variables_line([T], [T], ?LEAF:type(), all_variables_cache()) -> 
     sets:set(variable()) when T :: ?ATOM:type().
