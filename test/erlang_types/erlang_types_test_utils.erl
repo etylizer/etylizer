@@ -60,13 +60,19 @@ test_tally(ConstrList, ExpectedSubst, FixedVars, Symtab) ->
 test_tally_satisfiable(Satisfiable, ConstrList) ->
   test_tally_satisfiable(Satisfiable, ConstrList, [], #{}).
 
-% -spec test_tally_satisfiable(boolean(), list({ast:ty(), ast:ty()}), [ast:ty_varname()], symtab:t()) -> ok.
+% -spec test_tally_satisfiable(boolean(), list({ast:ty(), ast:ty()} | constr:simp_constr()), [ast:ty_varname()], symtab:t()) -> ok.
 test_tally_satisfiable(Satisfiable, ConstrList, FixedVars, Symtab) ->
   with_symtab(fun() ->
-    Constrs = 
+    Constrs =
       sets:from_list(
-        lists:map( 
-          fun ({T, U}) -> {scsubty, sets:from_list([loc_auto()]), T, U} end,
+        lists:map(
+          fun ({T, U}) -> {scsubty, sets:from_list([loc_auto()]), T, U};
+              %% Full constraint records (scsubty/scmater) pass through
+              %% untouched — supports configs dumped via utils:format_tally_config
+              %% that preserve materialization constraints.
+              (C) when element(1, C) =:= scsubty;
+                       element(1, C) =:= scmater -> C
+          end,
           ConstrList
       )),
 
