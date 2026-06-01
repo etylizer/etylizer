@@ -515,7 +515,8 @@ process_qualifiers(Ctx, Loc, [Q | Qs], Env, Cs) ->
         % strict list generator: Pat <:- Exp
         {generate_strict, LGen, Pat, Exp} ->
             Alpha = fresh_tyvar(Ctx),
-            ExpCs = exp_constrs(Ctx, Exp, stdtypes:tlist(Alpha)),
+            ExpCs0 = exp_constrs(Ctx, Exp, stdtypes:tlist(Alpha)),
+            ExpCs = sets:from_list([{cdef, mk_locs("strict list generator source", LGen), Env, ExpCs0}]),
 
             % For strict generators, the list element type must be a subtype of the pattern type
             TyPat = ty_of_pat(Ctx#ctx.symtab, Env, Pat, upper),
@@ -531,7 +532,12 @@ process_qualifiers(Ctx, Loc, [Q | Qs], Env, Cs) ->
             Alpha = fresh_tyvar(Ctx), % list elements
             Beta = fresh_tyvar(Ctx), % pattern
 
-            ExpCs = exp_constrs(Ctx, Exp, stdtypes:tlist(Alpha)),
+            % The source expression is evaluated in the environment of the
+            % preceding qualifiers, so wrap its constraints in a cdef carrying
+            % Env. Without this, a source list referencing a variable bound by
+            % an earlier generator is unbound at simplification time.
+            ExpCs0 = exp_constrs(Ctx, Exp, stdtypes:tlist(Alpha)),
+            ExpCs = sets:from_list([{cdef, mk_locs("list generator source", LGen), Env, ExpCs0}]),
 
             TyPat = ty_of_pat(Ctx#ctx.symtab, Env, Pat, upper),
             {PatCs, PatEnv} = pat_env(Ctx, LGen, Beta, Pat),
@@ -555,7 +561,8 @@ process_qualifiers(Ctx, Loc, [Q | Qs], Env, Cs) ->
         {m_generate_strict, LGen, KeyPat, ValPat, Exp} ->
             KeyAlpha = fresh_tyvar(Ctx),
             ValAlpha = fresh_tyvar(Ctx),
-            ExpCs = exp_constrs(Ctx, Exp, stdtypes:tmap(KeyAlpha, ValAlpha)),
+            ExpCs0 = exp_constrs(Ctx, Exp, stdtypes:tmap(KeyAlpha, ValAlpha)),
+            ExpCs = sets:from_list([{cdef, mk_locs("strict map generator source", LGen), Env, ExpCs0}]),
 
             % For strict generators, the map element types must be subtypes of the pattern types
             TyKeyPat = ty_of_pat(Ctx#ctx.symtab, Env, KeyPat, upper),
@@ -577,7 +584,8 @@ process_qualifiers(Ctx, Loc, [Q | Qs], Env, Cs) ->
             KeyBeta = fresh_tyvar(Ctx), % key pattern type
             ValBeta = fresh_tyvar(Ctx), % value pattern type
 
-            ExpCs = exp_constrs(Ctx, Exp, stdtypes:tmap(KeyAlpha, ValAlpha)),
+            ExpCs0 = exp_constrs(Ctx, Exp, stdtypes:tmap(KeyAlpha, ValAlpha)),
+            ExpCs = sets:from_list([{cdef, mk_locs("map generator source", LGen), Env, ExpCs0}]),
 
             % Get upper bounds for filtering
             TyKeyPat = ty_of_pat(Ctx#ctx.symtab, Env, KeyPat, upper),

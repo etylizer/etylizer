@@ -120,3 +120,18 @@ zip_02_fail() ->
 -spec lc_15_fail(integer()) -> list().
 lc_15_fail(N) ->  [X || X <- N].
 
+% Nested generator whose source list is a variable bound by an earlier generator. 
+-spec lc_nested_gen([[integer()]]) -> [integer()].
+lc_nested_gen(L) -> [X || Xs <- L, X <- Xs].
+
+-spec lc_nested_gen_s([[integer()]]) -> [integer()].
+lc_nested_gen_s(L) -> [X || Xs <:- L, X <:- Xs].
+
+-spec lc_nested_gen_fail([[integer()]]) -> [atom()].
+lc_nested_gen_fail(L) -> [X || Xs <- L, X <- Xs]. % X is integer(), not atom()
+
+% Same scoping case for a map comprehension: the second generator iterates a
+% map bound by the first generator.
+-spec mc_nested_gen([#{atom() => integer()}]) -> #{atom() => integer()}.
+mc_nested_gen(Ms) -> #{K => V || M <- Ms, K := V <- M}.
+
