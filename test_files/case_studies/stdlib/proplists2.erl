@@ -73,7 +73,7 @@ different keys.
 -spec expand_3(key(), property_norm(), property_norm(), [term()], [term()]) -> [term()].
 -spec key_uniq([expansion()]) -> [expansion()].
 -spec key_uniq_1(property_norm(), [expansion()]) -> [expansion()].
--spec flatten([[A]]) -> [A]; ([etylizer:without(A, list())]) -> [A]. % top-level flatten only
+-spec flatten([[A]]) -> [A]; ([etylizer:without(A, maybe_improper_list())]) -> [A]. % top-level flatten only
 -spec apply_stages([term()], [stage()]) -> [term()].
 -spec split([term()], #{key() => [term()]}, [term()]) -> {#{key() => [term()]}, [term()]}.
 -spec maps_prepend(key(), term(), #{key() => [term()]}) -> #{key() => [term()]}.
