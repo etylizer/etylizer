@@ -113,9 +113,6 @@
 'maps:size'(_) -> error(overlay).
 -spec 'maps:without'([Key], #{Key => Value}) -> #{Key => Value}.
 'maps:without'(_, _) -> error(overlay).
--spec 'maps:update_with'(Key, fun((Value) -> Value), Value, #{Key => Value}) ->
-    #{Key => Value}.
-'maps:update_with'(_, _, _, _) -> error(overlay).
 -spec 'maps:foreach'(fun((Key, Value) -> _), #{Key => Value}) -> ok.
 'maps:foreach'(_, _) -> error(overlay).
 
