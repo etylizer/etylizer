@@ -243,6 +243,4 @@ jobs:
     steps:
     - uses: actions/checkout@v4
     - run: make build
-    - name: Cache espresso binary
-      run: ./run_test.escript "case_01 (typecheck)"
     - run: ETYLIZER_CASE_STUDY_LOGLEVEL=warn ${{ matrix.study.cmd }}

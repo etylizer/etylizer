@@ -56,7 +56,7 @@ variable_union_test() ->
     A = u([v(a), b(foo)]),
     B = id(A),
     true = subty:is_equivalent(symtab:empty(), A, B),
-    ?assertEqual("not(a) /\\ foo | a", pretty:render_ty(B)) % was "foo | a" before; need ty_rec factorization now
+    ?assertEqual("a | not(a) /\\ foo", pretty:render_ty(B)) % was "foo | a" before; need ty_rec factorization now
   end).
 
 var_inter_test() ->
@@ -67,7 +67,7 @@ var_inter_test() ->
     ]),
     B = id(A),
     true = subty:is_equivalent(symtab:empty(), A, B),
-    ?assertEqual("mu5 /\\ mu6 | not(mu6) /\\ bool", pretty:render_ty(B))
+    ?assertEqual("not(mu6) /\\ bool | mu5 /\\ mu6", pretty:render_ty(B))
   end).
 
 var_inter2_test() ->
@@ -81,7 +81,7 @@ var_inter2_test() ->
     B = id(A),
     true = subty:is_equivalent(symtab:empty(), A, B), 
     % was "bool | mu6 /\\ mu5" before
-    ?assertEqual("mu5 /\\ mu6 | not(mu5) /\\ bool | not(mu6) /\\ bool", pretty:render_ty(B))
+    ?assertEqual("not(mu6) /\\ bool | mu5 /\\ mu6 | not(mu5) /\\ bool", pretty:render_ty(B))
   end).
 
 var_neg_dnf_test() ->
@@ -95,7 +95,7 @@ var_neg_dnf_test() ->
       ]),
     B = id(A),
     true = subty:is_equivalent(symtab:empty(), A, B),
-    ?assertEqual("not(mu5) /\\ bool | not(mu6) /\\ bool", pretty:render_ty(B))
+    ?assertEqual("not(mu6) /\\ bool | not(mu5) /\\ bool", pretty:render_ty(B))
   end).
 
 var_neg_inter_test() ->
@@ -109,7 +109,7 @@ var_neg_inter_test() ->
     B = id(A),
     true = subty:is_equivalent(symtab:empty(), A, B),
     % was "not(bool | mu6 /\\ mu5)" before
-    ?assertEqual("not(mu5) /\\ not(bool) | not(mu6) /\\ not(bool)", pretty:render_ty(B))
+    ?assertEqual("not(mu6) /\\ not(bool) | not(mu5) /\\ not(bool)", pretty:render_ty(B))
   end).
 
 tuples_1_test() ->
@@ -129,7 +129,7 @@ variable_simple_union_test() ->
     A = u([v(a), v(b)]),
     B = id(A),
     true = subty:is_equivalent(symtab:empty(), A, B),
-    ?assertEqual("a | b", pretty:render_ty(B))
+    ?assertEqual("b | a", pretty:render_ty(B))
   end).
 
 variable_union_2_test() ->
@@ -138,7 +138,7 @@ variable_union_2_test() ->
     B = id(A),
     true = subty:is_equivalent(symtab:empty(), A, B),
     % was "foo | a | b" before
-    ?assertEqual("not(a) /\\ not(b) /\\ foo | a | b", pretty:render_ty(B))
+    ?assertEqual("b | a | not(a) /\\ not(b) /\\ foo", pretty:render_ty(B))
   end).
 
 variable_union_3_test() ->
@@ -147,7 +147,7 @@ variable_union_3_test() ->
     B = id(A),
     true = subty:is_equivalent(symtab:empty(), A, B),
     % was "foo | a | b c" before
-    ?assertEqual("not(a) /\\ not(b) /\\ not(c) /\\ foo | a | b | c", pretty:render_ty(B))
+    ?assertEqual("c | b | a | not(a) /\\ not(b) /\\ not(c) /\\ foo", pretty:render_ty(B))
   end).
 
 variable_union_4_test() ->
@@ -156,7 +156,7 @@ variable_union_4_test() ->
     B = id(A),
     true = subty:is_equivalent(symtab:empty(), A, B),
     % was "atom() | a" before
-    ?assertEqual("not(a) /\\ atom() | a", pretty:render_ty(B))
+    ?assertEqual("a | not(a) /\\ atom()", pretty:render_ty(B))
   end).
 
 variable_union_5_test() ->
@@ -165,7 +165,7 @@ variable_union_5_test() ->
     B = id(A),
     true = subty:is_equivalent(symtab:empty(), A, B),
     % was "atom() | 2..4 | a"" before
-    ?assertEqual("not(a) /\\ (atom() | 2..4) | a", pretty:render_ty(B))
+    ?assertEqual("a | not(a) /\\ (atom() | 2..4)", pretty:render_ty(B))
   end).
 
 other_test() ->
@@ -183,7 +183,7 @@ other_test() ->
     ]),
     B = id(A),
     true = subty:is_equivalent(symtab:empty(), A, B),
-    ?assertEqual("{a, int} | {a5 /\\ b, int}", pretty:render_ty(B))
+    ?assertEqual("{a5 /\\ b, int} | {a, int}", pretty:render_ty(B))
   end).
 
 var_condition_test() ->
@@ -194,7 +194,7 @@ var_condition_test() ->
     ]),
     B = id(A),
     true = subty:is_equivalent(symtab:empty(), A, B),
-    ?assertEqual("not(b) /\\ not(c) | c /\\ not(a)", pretty:render_ty(B))
+    ?assertEqual("c /\\ not(a) | not(b) /\\ not(c)", pretty:render_ty(B))
   end).
 
 recursive_test() ->

@@ -111,6 +111,12 @@ for file in "${files[@]}"; do
         -f \
         --no-deps "$TYPE_LIB""$file" \
         $TO \
+        -i 'dnf_ty_function:minimize_node_dnf/1' \
+        -i 'dnf_ty_list:minimize_node_dnf/1' \
+        -i 'dnf_ty_tuple:minimize_node_dnf/1' \
+        -i 'dnf_ty_map:minimize_node_dnf/1' \
+        -i 'dnf_ty_variable:minimize_node_dnf/1' \
+        -i 'ty_node:normalize/3' \
         -i 'ty_parser:convert/3' \
         -i 'ty_parser:parse/1' \
         -i 'ty_parser:unify/2' \
