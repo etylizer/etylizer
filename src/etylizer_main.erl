@@ -28,9 +28,6 @@ parse_define(S) ->
 cmd_spec() ->
     #{
         arguments => [
-            #{name => espresso_root, short => $E, long => "-espresso-root",
-              help => "Path to the root of the espresso binary. Etylizer executes that binary as "
-                      "$ESPRESSO_DIR/espresso. Default root is the escript folder."},
             #{name => project_root, short => $P, long => "-project-root",
               help => "Path to the root of the project. Etylizer stores persistent information in "
                       "$PROJECT_DIR/_etylizer."},
@@ -163,7 +160,6 @@ parse_args(Args) ->
         type_check_ignore = maps:get(ignore, ArgMap),
         ast_file = maps:get(check_ast, ArgMap, empty),
         project_root = maps:get(project_root, ArgMap, empty),
-        espresso_root = maps:get(espresso_root, ArgMap, empty),
         src_paths = maps:get(src_path, ArgMap),
         includes = maps:get(include, ArgMap),
         defines = [parse_define(D) || D <- maps:get(define, ArgMap)],
