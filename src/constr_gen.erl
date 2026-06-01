@@ -771,9 +771,265 @@ try_spec_call_with_tyscm(Ctx, L, TyScm, Args) ->
             ?LOG_DEBUG("Generating specialized constraints for call with type ~s (type scheme: ~s)",
                 pretty:render_ty(Mono), pretty:render_tyscheme(TyScm)),
             {ok, {ResTy, ArgCs}};
+        {intersection, FunTys} ->
+            %% Overload-resolution shortcut. Generalized semantic version:
+            %% pick the unique clause that PROVABLY applies by combining a
+            %% coarse-type approximation of each Arg with structural
+            %% subtype + disjointness checks over surface ast:ty().
+            %%
+            %% Soundness floor:
+            %%   chosen clause has every parameter as a structural supertype
+            %%   of the corresponding Arg's coarse type, AND every other
+            %%   clause has at least one parameter that is structurally
+            %%   disjoint from the corresponding Arg.
+            %%
+            %% Both predicates are CONSERVATIVE (default to "unknown"). In
+            %% particular, recursive / named types (`{named, ...}` and
+            %% `{mu, ...}`/`{mu_var, ...}`) always classify as "unknown"
+            %% because unfolding them at this layer would require a full
+            %% semantic check (and could non-terminate). When unknown
+            %% appears, the shortcut declines and the slow constraint-based
+            %% path takes over — which IS semantic and handles recursion
+            %% via the BDD / tally machinery.
+            ArgTys = [coarse_arg_type(A) || A <- Args],
+            case select_unique_overload(ArgTys, FunTys) of
+                {ok, {fun_full, MatchedArgTys, ResTy}} ->
+                    ArgCs = lists:foldr(
+                        fun({Arg, Ty}, Cs) ->
+                            sets:union(Cs, exp_constrs(Ctx, Arg, Ty))
+                        end,
+                        sets:new([{version, 2}]),
+                        lists:zip(Args, MatchedArgTys)),
+                    ?LOG_DEBUG("Generating overload-resolved constraints from intersection of ~p clauses",
+                        length(FunTys)),
+                    {ok, {ResTy, ArgCs}};
+                error -> error
+            end;
         _ ->
             error
     end.
+
+%% Coarse upper-bound type for an Erlang expression. Used by the
+%% overload-resolution shortcut. Default `{predef, any}` keeps the shortcut
+%% sound — widening can only block the shortcut, never make it fire on a
+%% wrong clause.
+coarse_arg_type({atom, _, A})       -> {singleton, A};
+coarse_arg_type({integer, _, I})    -> {singleton, I};
+coarse_arg_type({char, _, C})       -> {singleton, C};
+coarse_arg_type({float, _, _})      -> {predef, float};
+coarse_arg_type({nil, _})           -> {empty_list};
+coarse_arg_type({cons, _, _, _})    -> {predef_alias, nonempty_list};
+coarse_arg_type({string, _, _})     -> {predef_alias, string};
+coarse_arg_type({tuple, _, Elems})  -> {tuple, [coarse_arg_type(E) || E <- Elems]};
+coarse_arg_type({bin, _, _})        -> {bitstring};
+coarse_arg_type({map_create, _, _}) -> {map_any};
+coarse_arg_type(_)                  -> {predef, any}.
+
+%% Select the unique fun_full clause that PROVABLY applies given the args'
+%% coarse types. `error` ⇒ zero or ≥2 clauses might apply ⇒ slow path.
+select_unique_overload(ArgTys, FunTys) ->
+    Marks = [classify_clause(ArgTys, Cl) || Cl <- FunTys],
+    Applicable = [Cl || {applicable, Cl} <- lists:zip(Marks, FunTys)],
+    HasUnknown = lists:any(fun(unknown) -> true; (_) -> false end, Marks),
+    case {Applicable, HasUnknown} of
+        {[Single], false} -> {ok, Single};
+        _                 -> error
+    end.
+
+%% applicable        — Arg coarse ty ⊆ clause param (every position)
+%% provably_disjoint — Arg coarse ty ∩ clause param = ∅ (some position)
+%% unknown           — neither, default fall-back
+classify_clause(_, NonFun) when element(1, NonFun) =/= fun_full -> provably_disjoint;
+classify_clause(ArgTys, {fun_full, ParamTys, _}) when length(ArgTys) =:= length(ParamTys) ->
+    Checks = [classify_arg(A, P) || {A, P} <- lists:zip(ArgTys, ParamTys)],
+    case lists:any(fun(provably_disjoint) -> true; (_) -> false end, Checks) of
+        true  -> provably_disjoint;
+        false ->
+            case lists:all(fun(applicable) -> true; (_) -> false end, Checks) of
+                true  -> applicable;
+                false -> unknown
+            end
+    end;
+classify_clause(_, _) -> provably_disjoint.
+
+classify_arg(ArgTy, ParamTy) ->
+    case ty_structural_subtype(ArgTy, ParamTy) of
+        true  -> applicable;
+        false ->
+            case ty_structural_disjoint(ArgTy, ParamTy) of
+                true  -> provably_disjoint;
+                false -> unknown
+            end
+    end.
+
+%% Runtime "kind" classification of a singleton's value. Used to give a
+%% one-line disjointness rule against any ty that is constrained to a
+%% specific runtime shape (atom, integer, tuple, list…).
+singleton_runtime_kind(V) when is_atom(V)     -> atom;
+singleton_runtime_kind(V) when is_integer(V)  -> integer;
+singleton_runtime_kind(V) when is_float(V)    -> float;
+singleton_runtime_kind(V) when is_tuple(V)    -> tuple;
+singleton_runtime_kind([])                    -> empty_list;
+singleton_runtime_kind(V) when is_list(V)     -> nonempty_list;
+singleton_runtime_kind(V) when is_binary(V)   -> bitstring;
+singleton_runtime_kind(V) when is_function(V) -> function;
+singleton_runtime_kind(V) when is_pid(V)      -> pid;
+singleton_runtime_kind(V) when is_port(V)     -> port;
+singleton_runtime_kind(V) when is_reference(V) -> reference;
+singleton_runtime_kind(V) when is_map(V)      -> map;
+singleton_runtime_kind(_)                     -> unknown.
+
+%% Does ty (possibly) contain values of the given runtime kind?
+%%
+%% For each KNOWN type shape, return true ONLY if the type's value set
+%% includes values of that kind, false otherwise. For UNKNOWN type shapes
+%% (named / mu / mu_var / var / negation / anything we don't pattern-match
+%% on), default to true so the caller falls into "could-contain" and the
+%% disjointness check returns false. That keeps the shortcut sound for
+%% recursive / opaque types: we'd rather decline the shortcut than wrongly
+%% claim two types are disjoint.
+ty_kind_inhabited({predef, any}, _)              -> true;
+ty_kind_inhabited({predef, none}, _)             -> false;
+ty_kind_inhabited({predef, atom}, K)             -> K =:= atom;
+ty_kind_inhabited({predef, integer}, K)          -> K =:= integer;
+ty_kind_inhabited({predef, float}, K)            -> K =:= float;
+ty_kind_inhabited({predef, pid}, K)              -> K =:= pid;
+ty_kind_inhabited({predef, port}, K)             -> K =:= port;
+ty_kind_inhabited({predef, reference}, K)        -> K =:= reference;
+ty_kind_inhabited({predef_alias, term}, _)       -> true;  % term = any
+ty_kind_inhabited({predef_alias, boolean}, K)    -> K =:= atom;
+ty_kind_inhabited({predef_alias, char}, K)       -> K =:= integer;
+ty_kind_inhabited({predef_alias, number}, K)     -> K =:= integer orelse K =:= float;
+ty_kind_inhabited({predef_alias, pos_integer}, K) -> K =:= integer;
+ty_kind_inhabited({predef_alias, neg_integer}, K) -> K =:= integer;
+ty_kind_inhabited({predef_alias, non_neg_integer}, K) -> K =:= integer;
+ty_kind_inhabited({predef_alias, list}, K)       -> K =:= empty_list orelse K =:= nonempty_list;
+ty_kind_inhabited({predef_alias, nonempty_list}, K) -> K =:= nonempty_list;
+ty_kind_inhabited({predef_alias, string}, K)     -> K =:= empty_list orelse K =:= nonempty_list;
+ty_kind_inhabited({predef_alias, binary}, K)     -> K =:= bitstring;
+ty_kind_inhabited({predef_alias, bitstring}, K)  -> K =:= bitstring;
+ty_kind_inhabited({predef_alias, function}, K)   -> K =:= function;
+ty_kind_inhabited({tuple_any}, K)                -> K =:= tuple;
+ty_kind_inhabited({tuple, _}, K)                 -> K =:= tuple;
+ty_kind_inhabited({empty_list}, K)               -> K =:= empty_list;
+ty_kind_inhabited({list, _}, K)                  -> K =:= empty_list orelse K =:= nonempty_list;
+ty_kind_inhabited({nonempty_list, _}, K)         -> K =:= nonempty_list;
+ty_kind_inhabited({cons, _, _}, K)               -> K =:= nonempty_list;
+ty_kind_inhabited({improper_list, _, _}, K)      -> K =:= nonempty_list;
+ty_kind_inhabited({nonempty_improper_list, _, _}, K) -> K =:= nonempty_list;
+ty_kind_inhabited({bitstring}, K)                -> K =:= bitstring;
+ty_kind_inhabited({fun_simple}, K)               -> K =:= function;
+ty_kind_inhabited({fun_full, _, _}, K)           -> K =:= function;
+ty_kind_inhabited({fun_any_arg, _}, K)           -> K =:= function;
+ty_kind_inhabited({map_any}, K)                  -> K =:= map;
+ty_kind_inhabited({map, _}, K)                   -> K =:= map;
+ty_kind_inhabited({singleton, V}, K)             -> singleton_runtime_kind(V) =:= K;
+ty_kind_inhabited({union, Args}, K) ->
+    lists:any(fun(A) -> ty_kind_inhabited(A, K) end, Args);
+ty_kind_inhabited({intersection, Args}, K) ->
+    %% Conservative: intersection inhabits K if EVERY arm does. False-positive
+    %% ("yes" when actually empty) blocks the shortcut — still sound.
+    lists:all(fun(A) -> ty_kind_inhabited(A, K) end, Args);
+ty_kind_inhabited({negation, _}, _) -> true;  % conservative: negation could include anything
+%% Recursive / opaque types — conservative true to prevent unsound disjoint
+ty_kind_inhabited({named, _, _, _}, _) -> true;
+ty_kind_inhabited({mu, _, _}, _)       -> true;
+ty_kind_inhabited({mu_var, _}, _)      -> true;
+ty_kind_inhabited({var, _}, _)         -> true;
+ty_kind_inhabited(_, _)                -> true.
+
+%% Structural-subtype check. CONSERVATIVE: false ⇒ keep checking. False
+%% includes "we can't tell" cases like named/mu/mu_var.
+ty_structural_subtype(T, T)                                   -> true;
+ty_structural_subtype(_,                {predef, any})        -> true;
+ty_structural_subtype(_,            {predef_alias, term})     -> true;
+ty_structural_subtype({predef, none},                 _)      -> true;
+ty_structural_subtype({singleton, V}, {singleton, V})         -> true;
+ty_structural_subtype({singleton, V}, {predef, atom})    when is_atom(V)    -> true;
+ty_structural_subtype({singleton, V}, {predef, integer}) when is_integer(V) -> true;
+ty_structural_subtype({singleton, V}, {predef, float})   when is_float(V)   -> true;
+ty_structural_subtype({singleton, V}, {predef_alias, boolean}) when V =:= true; V =:= false -> true;
+ty_structural_subtype({singleton, V}, {predef_alias, number})  when is_number(V) -> true;
+ty_structural_subtype({singleton, V}, {predef_alias, char})    when is_integer(V), V >= 0, V =< 16#10FFFF -> true;
+ty_structural_subtype({singleton, V}, {predef_alias, pos_integer}) when is_integer(V), V > 0 -> true;
+ty_structural_subtype({singleton, V}, {predef_alias, non_neg_integer}) when is_integer(V), V >= 0 -> true;
+ty_structural_subtype({singleton, V}, {predef_alias, neg_integer}) when is_integer(V), V < 0 -> true;
+ty_structural_subtype({empty_list},   {predef_alias, list})   -> true;
+ty_structural_subtype({empty_list},   {list, _})              -> true;
+ty_structural_subtype({tuple, _},     {tuple_any})            -> true;
+ty_structural_subtype({tuple, A},     {tuple, B}) when length(A) =:= length(B) ->
+    lists:all(fun({X, Y}) -> ty_structural_subtype(X, Y) end, lists:zip(A, B));
+ty_structural_subtype(X,              {union, Args}) ->
+    lists:any(fun(A) -> ty_structural_subtype(X, A) end, Args);
+ty_structural_subtype({intersection, Args}, Y) ->
+    lists:any(fun(A) -> ty_structural_subtype(A, Y) end, Args);
+ty_structural_subtype(_, _) -> false.
+
+%% Structural-disjointness check. CONSERVATIVE: returns true ONLY when
+%% the proof is structurally evident.
+%%
+%% Order is important: union/intersection distribution must run BEFORE the
+%% generic singleton-vs-anything fall-through, because for a union like
+%% {union, [singleton(a), singleton(b)]}, a kind-based check would say
+%% "atom-kind inhabited ⇒ not disjoint" but the specific singleton value
+%% may not be in the union (it IS disjoint). Distribution lets the recursive
+%% calls hit the precise singleton-vs-singleton rule.
+ty_structural_disjoint({predef, any},                 _) -> false;
+ty_structural_disjoint(_,                {predef, any}) -> false;
+ty_structural_disjoint({predef_alias, term},          _) -> false;
+ty_structural_disjoint(_,           {predef_alias, term}) -> false;
+ty_structural_disjoint({predef, none},                _) -> true;
+ty_structural_disjoint(_,               {predef, none}) -> true;
+%% Distribution over union / intersection — both sides
+ty_structural_disjoint({union, Args}, Y) ->
+    lists:all(fun(A) -> ty_structural_disjoint(A, Y) end, Args);
+ty_structural_disjoint(X, {union, Args}) ->
+    lists:all(fun(A) -> ty_structural_disjoint(X, A) end, Args);
+ty_structural_disjoint({intersection, Args}, Y) ->
+    lists:any(fun(A) -> ty_structural_disjoint(A, Y) end, Args);
+ty_structural_disjoint(X, {intersection, Args}) ->
+    lists:any(fun(A) -> ty_structural_disjoint(X, A) end, Args);
+%% Named / mu / mu_var / var — must NOT claim disjoint without unfolding.
+%% Put these EARLY so they short-circuit the singleton-kind fall-through.
+ty_structural_disjoint({named, _, _, _}, _) -> false;
+ty_structural_disjoint(_, {named, _, _, _}) -> false;
+ty_structural_disjoint({mu, _, _}, _)       -> false;
+ty_structural_disjoint(_, {mu, _, _})       -> false;
+ty_structural_disjoint({mu_var, _}, _)      -> false;
+ty_structural_disjoint(_, {mu_var, _})      -> false;
+ty_structural_disjoint({var, _}, _)         -> false;
+ty_structural_disjoint(_, {var, _})         -> false;
+ty_structural_disjoint({negation, _}, _)    -> false;
+ty_structural_disjoint(_, {negation, _})    -> false;
+%% Singleton vs singleton: value equality
+ty_structural_disjoint({singleton, X}, {singleton, Y}) -> X =/= Y;
+%% Singleton vs anything (non-singleton, non-union, non-recursive): use the
+%% value's runtime kind. Reached only after the special cases above filter
+%% out unions / named types, so ty_kind_inhabited's known-shape clauses give
+%% a precise answer.
+ty_structural_disjoint({singleton, V}, T) ->
+    K = singleton_runtime_kind(V),
+    K =/= unknown andalso not ty_kind_inhabited(T, K);
+ty_structural_disjoint(T, {singleton, V}) ->
+    K = singleton_runtime_kind(V),
+    K =/= unknown andalso not ty_kind_inhabited(T, K);
+%% Predef vs predef: a few hard-coded combinations
+ty_structural_disjoint({predef, atom},    {predef, integer}) -> true;
+ty_structural_disjoint({predef, integer}, {predef, atom})    -> true;
+ty_structural_disjoint({predef, atom},    {predef, float})   -> true;
+ty_structural_disjoint({predef, float},   {predef, atom})    -> true;
+ty_structural_disjoint({predef, atom},    {tuple_any})       -> true;
+ty_structural_disjoint({tuple_any},       {predef, atom})    -> true;
+ty_structural_disjoint({predef, integer}, {tuple_any})       -> true;
+ty_structural_disjoint({tuple_any},       {predef, integer}) -> true;
+%% Tuple shape mismatch
+ty_structural_disjoint({tuple, A}, {tuple, B}) when length(A) =/= length(B) -> true;
+ty_structural_disjoint({tuple, A}, {tuple, B}) ->
+    lists:any(fun({X, Y}) -> ty_structural_disjoint(X, Y) end, lists:zip(A, B));
+%% empty_list vs tuple
+ty_structural_disjoint({empty_list}, {tuple_any}) -> true;
+ty_structural_disjoint({tuple_any},  {empty_list}) -> true;
+ty_structural_disjoint(_, _) -> false.
 
 -spec var_as_global_ref(ast:exp_var()) -> t:opt(ast:global_ref()).
 var_as_global_ref({var, _, Ref}) ->
