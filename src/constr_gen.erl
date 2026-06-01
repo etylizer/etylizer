@@ -367,25 +367,22 @@ exp_constrs(Ctx, E, T) ->
         {nil, L} ->
             utils:single({csubty, mk_locs("result of nil", L), {empty_list}, T});
         {op, L, Op, Lhs, Rhs} ->
-            Alpha1 = fresh_tyvar(Ctx),
-            Cs1 = exp_constrs(Ctx, Lhs, Alpha1),
-            Alpha2 = fresh_tyvar(Ctx),
-            Cs2 = exp_constrs(Ctx, Rhs, Alpha2),
+            {LhsTy, Cs1} = exp_constrs_tyof(Ctx, Lhs),
+            {RhsTy, Cs2} = exp_constrs_tyof(Ctx, Rhs),
             Beta = fresh_tyvar(Ctx),
             MsgTy = utils:sformat("type of op ~w", Op),
             MsgRes = utils:sformat("result of op ~w", Op),
             OpCs = sets:from_list(
-                     [{cop, mk_locs(MsgTy, L), Op, 2, {fun_full, [Alpha1, Alpha2], Beta}},
+                     [{cop, mk_locs(MsgTy, L), Op, 2, {fun_full, [LhsTy, RhsTy], Beta}},
                       {csubty, mk_locs(MsgRes, L), Beta, T}], [{version, 2}]),
             sets:union([Cs1, Cs2, OpCs]);
         {op, L, Op, Arg} ->
-            Alpha = fresh_tyvar(Ctx),
-            ArgCs = exp_constrs(Ctx, Arg, Alpha),
+            {ArgTy, ArgCs} = exp_constrs_tyof(Ctx, Arg),
             Beta = fresh_tyvar(Ctx),
             MsgTy = utils:sformat("type of op ~w", Op),
             MsgRes = utils:sformat("result of op ~w", Op),
             OpCs = sets:from_list(
-                     [{cop, mk_locs(MsgTy, L), Op, 1, {fun_full, [Alpha], Beta}},
+                     [{cop, mk_locs(MsgTy, L), Op, 1, {fun_full, [ArgTy], Beta}},
                       {csubty, mk_locs(MsgRes, L), Beta, T}], [{version, 2}]),
             sets:union(ArgCs, OpCs);
         {'receive', L, CaseClauses} ->
@@ -693,9 +690,8 @@ gen_funcall_constrs_tyof(Ctx, FunExp, Args) ->
     {ArgCs, ArgTys} =
         lists:foldr(
             fun(ArgExp, {AccCs, AccTys}) ->
-                    Alpha = fresh_tyvar(Ctx),
-                    Cs = exp_constrs(Ctx, ArgExp, Alpha),
-                    {sets:union(AccCs, Cs), [Alpha | AccTys]}
+                    {Ty, Cs} = exp_constrs_tyof(Ctx, ArgExp),
+                    {sets:union(AccCs, Cs), [Ty | AccTys]}
             end,
             {sets:new(), []},
             Args),
