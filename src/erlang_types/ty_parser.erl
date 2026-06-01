@@ -473,11 +473,10 @@ do_convert_named(X = {named, _, Ref, Args}, R = {IdTy, _}, Q, Cache) ->
 do_convert_named_new(X, Ref, Args, R, Q, Cache) ->
   % find ty in global table
   % io:format(user,"Lookup ~p~n", [Ref]),
-  ({ty_scheme, Vars, Ty}) = lookup_ty(Ref),
+  Scheme = lookup_ty(Ref),
 
-  Map = subst:from_list(lists:zip([V || {V, _Bound} <- Vars], Args)),
   % we can do this since recursive variables should not descend "into" a named type
-  NewTy = convert_back(debruijn(subst:apply(Map, Ty, no_clean))),
+  NewTy = convert_back(debruijn(ast_utils:instantiate_scheme(Scheme, Args))),
 
   % sanity
   ?assert_pattern(false, maps:is_key({Ref, Args}, Cache)),

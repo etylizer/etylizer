@@ -6,7 +6,9 @@
     referenced_modules/1,
     referenced_modules_via_types/1,
     referenced_recursive_variables/1,
-    unfold_ty/2
+    unfold_ty/2,
+    unfold_named/4,
+    instantiate_scheme/2
 ]).
 
 -include("etylizer.hrl").
@@ -62,8 +64,8 @@ referenced_recursive_variables(Forms) ->
                 end, Forms),
     ?assert_type(lists:uniq(Modules), [ast:ty_mu_var()]).
 
-% @doc Unfold a type by resolving all named type references via the symtab.
-% Recursive back-references are replaced with {ty_hole}.
+% unfold a type by resolving all named type references via the symtab
+% recursive back-references are replaced with {ty_hole}
 -spec unfold_ty(symtab:t(), ast:ty()) -> ast:ty() | {ty_hole}.
 unfold_ty(Tab, Ty) -> unfold_ty(Tab, Ty, #{}).
 
@@ -78,11 +80,20 @@ unfold_ty_named(Tab, Loc, Ref, Args, Memo) ->
     case Memo of
         #{{Ref, Args} := _} -> {ty_hole};
         _ ->
-            {ty_scheme, Vars, Body} = symtab:lookup_ty(Ref, Loc, Tab),
-            Map = subst:from_list(lists:zip([V || {V, _Bound} <- Vars], Args)),
-            Expanded = subst:apply(Map, Body, no_clean),
-            unfold_ty(Tab, Expanded, Memo#{{Ref, Args} => []})
+            unfold_ty(Tab, unfold_named(Tab, Ref, Args, Loc), Memo#{{Ref, Args} => []})
     end.
+
+% the body of the named type Ref applied to Args
+% fails with a name error at Loc if Ref is not defined
+-spec unfold_named(symtab:t(), ast:ty_ref(), [ast:ty()], ast:loc()) -> ast:ty().
+unfold_named(Tab, Ref, Args, Loc) ->
+    instantiate_scheme(symtab:lookup_ty(Ref, Loc, Tab), Args).
+
+% the body of a type scheme with Args substituted for its parameters
+% the bounds of the parameters are ignored
+-spec instantiate_scheme(ast:ty_scheme(), [ast:ty()]) -> ast:ty().
+instantiate_scheme({ty_scheme, Vars, Body}, Args) ->
+    subst:apply(subst:from_list(lists:zip([V || {V, _Bound} <- Vars], Args)), Body, no_clean).
 
 -spec unfold_ty_compound_2(symtab:t(), ast:ty(), map()) -> ast:ty() | {ty_hole}.
 unfold_ty_compound_2(Tab, {fun_full, Args, Ret}, Memo) ->
