@@ -71,11 +71,15 @@ is_satisfiable(SymTab, Constraints, FixedVars) ->
     Ctx = gradual_utils:new_ctx(),
     {InlinedConstrs, _SubtyConstrs, _Maters, _UnificationSubst} = gradual_utils:preprocess_constrs(Constraints, Ctx),
 
+    % Deterministic sort: primary by erts_debug:size, secondary by full term so
+    % size ties don't leak the sets:to_list order into
+    % the constraint sequence consumed by the algorithm.
     InternalRawConstraints =
-    lists:map( fun ({scsubty, _, S, T}) -> {S, T} end,
-               lists:sort( fun ({scsubty, _, S, T}, {scsubty, _, X, Y}) ->
-                                   (erts_debug:size({S, T})) < erts_debug:size(({X, Y})) end,
-                           sets:to_list(InlinedConstrs))),
+    [{S, T} ||
+        {_Size, {scsubty, _, S, T}} <-
+            lists:sort(
+                [{erts_debug:size({S, T}), C}
+                 || C = {scsubty, _, S, T} <- sets:to_list(InlinedConstrs)])],
 
     % cleaning is OK, we only care about one solution
     FinalCons = subst:clean_cons(InternalRawConstraints, FixedVars, SymTab),
@@ -85,7 +89,8 @@ is_satisfiable(SymTab, Constraints, FixedVars) ->
 
     % Split constraints into independent partitions
     MM = split(FinalCons, FixedVars),
-    Partitions = [V || {_, V} <- maps:to_list(MM)],
+    % Sort partitions by key for deterministic processing order
+    Partitions = [V || {_, V} <- lists:sort(maps:to_list(MM))],
     ?METRIC_DO(record_tally_invocation(length(Partitions))),
     ?METRIC_DO(record_partition_shapes(Partitions, FixedVars)),
     case Partitions of
@@ -167,8 +172,9 @@ split(Constrs, FixedVars) ->
         Vars = varset(Entry, FixedVars),
         case Vars of
             [] ->
-                % Ground constraint: tag with unique ref so it gets its own group
-                {AccUF, [{make_ref(), Entry} | AccIdx], I + 1};
+                % Ground constraint: tag with a deterministic per-call key so
+                % partition iteration order is reproducible 
+                {AccUF, [{{ground, I}, Entry} | AccIdx], I + 1};
             [First | Rest] ->
                 UF1 = uf_ensure(First, AccUF),
                 UF2 = lists:foldl(fun(V, U) ->
@@ -180,9 +186,9 @@ split(Constrs, FixedVars) ->
 
     % Phase 2: Group constraints by their root representative.
     lists:foldl(fun({Key, Entry}, Acc) ->
-        GroupKey = case is_reference(Key) of
-            true -> Key;
-            false -> {Root, _} = uf_find(Key, UF), Root
+        GroupKey = case Key of
+            {ground, _} -> Key;
+            _ -> {Root, _} = uf_find(Key, UF), Root
         end,
         maps:update_with(GroupKey, fun(Old) -> [Entry | Old] end, [Entry], Acc)
     end, #{}, IndexedConstrs).
