@@ -119,7 +119,8 @@ prop_parse_and_emptiness() ->
         Ty = tnamed(Name),
         T0 = os:system_time(millisecond),
         Parsed = ty_parser:parse(Ty),
-        true = ((T1 = os:system_time(millisecond)) - T0) < ?PARSETIMEOUTMS,
+        T1 = os:system_time(millisecond),
+        true = (T1 - T0) < ?PARSETIMEOUTMS,
         ty_node:is_empty(Parsed),
         true = (os:system_time(millisecond) - T1) < ?EMPTYTIMEOUTMS
       end, X),
@@ -150,7 +151,8 @@ prop_parse_and_emptiness_cache() ->
           Ty = tnamed(Name),
           T0 = os:system_time(millisecond),
           Parsed = ty_parser:parse(Ty),
-          true = ((T1 = os:system_time(millisecond)) - T0) < ?PARSETIMEOUTMS,
+          T1 = os:system_time(millisecond),
+          true = (T1 - T0) < ?PARSETIMEOUTMS,
           ty_node:is_empty(Parsed),
           true = (os:system_time(millisecond) - T1) < ?EMPTYTIMEOUTMS
         end, X),
@@ -167,7 +169,8 @@ prop_subtype_instances() ->
         T0 = os:system_time(millisecond),
         S = ty_parser:parse(tnamed(NameA)),
         T = ty_parser:parse(tnamed(NameB)),
-        true = ((T1 = os:system_time(millisecond)) - T0) < ?PARSETIMEOUTMS,
+        T1 = os:system_time(millisecond),
+        true = (T1 - T0) < ?PARSETIMEOUTMS,
         ty_node:is_empty(ty_node:difference(S, T)),
         true = (os:system_time(millisecond) - T1) < ?EMPTYTIMEOUTMS
       end, 

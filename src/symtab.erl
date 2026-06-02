@@ -40,7 +40,7 @@
 -type fun_env() :: #{ ast:global_ref() => ast:ty_scheme() }.
 -type ty_key() :: {ty_key, Module::atom(), Name::atom(), Arity::arity()}.
 -type ty_env() :: #{ ty_key() => ast:ty_scheme() }.
--type record_env() :: #{ atom() => records:record_ty() }.
+-type record_env() :: #{ atom() => ety_records:record_ty() }.
 -type op_env() :: #{ {atom(), arity()} => ast:ty_scheme() }.
 -type mod_env() :: #{ ast:mod_name() => file:filename() }.
 -record(tab, {
@@ -125,7 +125,7 @@ find_ty(Ref, Tab) ->
             end ,
     maps:find(TyRef, Tab#tab.types).
 
--spec lookup_record(atom(), ast:loc(), t()) -> records:record_ty().
+-spec lookup_record(atom(), ast:loc(), t()) -> ety_records:record_ty().
 lookup_record(Name, Loc, Tab) ->
     case find_record(Name, Tab) of
         {ok, X} -> X;
@@ -134,7 +134,7 @@ lookup_record(Name, Loc, Tab) ->
             errors:name_error(Loc, "record ~w undefined", Name)
     end.
 
--spec find_record(atom(), t()) -> t:opt(records:record_ty()).
+-spec find_record(atom(), t()) -> t:opt(ety_records:record_ty()).
 find_record(Name, Tab) -> maps:find(Name, Tab#tab.records).
 
 -spec symbols_for_module(atom(), t()) -> [{ref, atom(), arity()}].
@@ -291,9 +291,9 @@ extend_add_type(Name, TyScm, TyVars, ModuleName, AccTab) ->
 
 -spec extend_add_record(atom(), list(), atom(), t()) -> t().
 extend_add_record(RecordName, Fields, ModuleName, AccTab) ->
-    RecordTy = records:record_ty_from_decl(RecordName, Fields),
-    RecTypeName = records:record_type_name(RecordName),
-    RecTupleType = records:encode_record_ty(RecordTy),
+    RecordTy = ety_records:record_ty_from_decl(RecordName, Fields),
+    RecTypeName = ety_records:record_type_name(RecordName),
+    RecTupleType = ety_records:encode_record_ty(RecordTy),
     RecTyScheme = {ty_scheme, [], RecTupleType},
     AccTab#tab {
         records = maps:put(RecordName, RecordTy, AccTab#tab.records),

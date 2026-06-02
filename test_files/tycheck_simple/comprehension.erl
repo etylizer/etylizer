@@ -54,13 +54,14 @@ lc_09() ->
 lc_10() -> 
   [{X, Y} || X <- [1,2,3], Y <- [a,b]].
 
-% test for a scoping bug
--spec lc_11(list(boolean())) -> list({boolean(), boolean()}).
-lc_11(Alts) -> [{S, A} || A <- Alts, S=A].
-
-% filter expression result (S=A) must be boolean
--spec lc_12_fail(list(T)) -> list({T, T}).
-lc_12_fail(Alts) -> [{S, A} || A <- Alts, S=A].
+% TODO OTP 29 behavior change, what to do with these tests?
+% % test for a scoping bug
+% -spec lc_11(list(boolean())) -> list({boolean(), boolean()}).
+% lc_11(Alts) -> [{S, A} || A <- Alts, S=A].
+%
+% % filter expression result (S=A) must be boolean
+% -spec lc_12_fail(list(T)) -> list({T, T}).
+% lc_12_fail(Alts) -> [{S, A} || A <- Alts, S=A].
 
 -spec lc_13_fail() -> [integer()].
 lc_13_fail() -> 

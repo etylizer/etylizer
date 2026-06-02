@@ -44,9 +44,10 @@ clean(T, Fixed, SymTab) ->
     % clean
     Cleaned = clean_type(T, Fixed, SymTab),
     % simplify by converting into internal type and back (processes any() and none() replacements)
-    Res = ty_parser:unparse(X = ty_parser:parse(Cleaned)),
+    Parsed = ty_parser:parse(Cleaned),
+    Res = ty_parser:unparse(Parsed),
     % FIXME remove sanity at some point
-    true = ty_node:leq(X, ty_parser:parse(T)),
+    true = ty_node:leq(Parsed, ty_parser:parse(T)),
     Res.
 
 -spec clean_cons([{ast:ty(), ast:ty()}], sets:set(ast:ty_varname()), symtab:t()) -> [{ast:ty(), ast:ty()}].

@@ -1,4 +1,4 @@
--module(graph).
+-module(ety_graph).
 
 -export([with_graph/1, add_vertex/2, add_edge/3, out_neighbours/2,
          strong_components/1, topsort/1, to_list/2]).

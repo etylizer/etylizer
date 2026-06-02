@@ -257,7 +257,8 @@ parse_convert(LocalRef, Ty) ->
                     % might need to trigger a reorder of the BDD
                     % also, remove duplicate nodes after local unification
                     Fin = utils:replace(Val, #{ToDefine => N}),
-                    dnf_ty_variable:assert_valid(FinalReordered = dnf_ty_variable:reorder(Fin)),
+                    FinalReordered = dnf_ty_variable:reorder(Fin),
+                    dnf_ty_variable:assert_valid(FinalReordered),
                     Acc0#{E => FinalReordered}
                 end
               end, SmallerResultMapping, NodeContainedIn),

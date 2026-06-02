@@ -65,23 +65,23 @@ mono_ty(L, TyScm, FreshStart, SymTab) ->
 -spec order_bounds([ast:bounded_tyvar()]) -> [ast:bounded_tyvar()] | cyclic.
 order_bounds(BoundedTyvars) ->
     VarOrder =
-        graph:with_graph(
+        ety_graph:with_graph(
             fun(G) ->
                 % add all type variables as vertices
                 lists:foreach(
                     fun({Alpha, _Bound}) ->
-                        graph:add_vertex(G, Alpha)
+                        ety_graph:add_vertex(G, Alpha)
                     end,
                     BoundedTyvars),
                 % add an edge Beta -> Alpha if Beta is free in Alpha's bound
                 lists:foreach(
                     fun({Alpha, Bound}) ->
                         Free = sets:to_list(tyutils:free_in_ty(Bound)),
-                        lists:map( fun(Beta) -> graph:add_edge(G, Beta, Alpha) end, Free)
+                        lists:map( fun(Beta) -> ety_graph:add_edge(G, Beta, Alpha) end, Free)
                     end,
                     BoundedTyvars),
-                L = graph:topsort(G),
-                ?LOG_TRACE("Graph: ~200p, L: ~200p", graph:to_list(G, fun erlang:atom_to_list/1), L),
+                L = ety_graph:topsort(G),
+                ?LOG_TRACE("Graph: ~200p, L: ~200p", ety_graph:to_list(G, fun erlang:atom_to_list/1), L),
                 L
             end),
     case VarOrder of

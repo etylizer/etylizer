@@ -1,4 +1,4 @@
--module(m1).
+-module(mm1).
 
 -compile(export_all).
 -compile(nowarn_export_all).
