@@ -21,7 +21,7 @@
           funenv :: funenv(),
           % The records seen so far. We need the record definitions to rewrite record types
           % into tuple types.
-          records :: #{ atom() => records:record_ty() },
+          records :: #{ atom() => ety_records:record_ty() },
           % Default expressions for record fields, used to fill in omitted fields during
           % record construction.
           record_defaults = #{} :: #{ atom() => #{ atom() => ast:exp() } },
@@ -145,14 +145,14 @@ trans_form(Ctx, Form, Mode) ->
                 TmpCtx = Ctx#ctx { records = maps:put(Name, EmptyRecordTy, Ctx#ctx.records) },
                 NewFields = trans_record_fields(TmpCtx, varenv:empty("type variable"), Fields),
                 NewForm = {attribute, to_loc(TmpCtx, Anno), record, {Name, NewFields}},
-                RecordTy = records:record_ty_from_decl(Name, NewFields),
+                RecordTy = ety_records:record_ty_from_decl(Name, NewFields),
                 FieldDefaults = extract_field_defaults(NewFields),
                 % Generate type forms for override variants created during field processing
                 OverrideVariants = collect_record_variants(Ctx, Name),
                 Loc = to_loc(Ctx, Anno),
                 VariantForms = lists:map(
                     fun ({VariantName, VOverrides}) ->
-                        VariantBody = records:encode_record_ty(RecordTy, VOverrides),
+                        VariantBody = ety_records:encode_record_ty(RecordTy, VOverrides),
                         {attribute, Loc, type, transparent,
                             {VariantName, {ty_scheme, [], VariantBody}}}
                     end,
@@ -325,6 +325,7 @@ trans_ty(Ctx, Env, Ty) ->
             eval_const_ty(Ty, to_loc(Ctx, Anno));
         {op, Anno, _, _} ->
             eval_const_ty(Ty, to_loc(Ctx, Anno));
+        {type, _Anno, record, []} -> {tuple_any};
         {type, Anno, record, [{'atom', _, Name} | Fields]} ->
             Loc = to_loc(Ctx, Anno),
             case maps:find(Name, Ctx#ctx.records) of
@@ -334,7 +335,7 @@ trans_ty(Ctx, Env, Ty) ->
                     case Fields of
                         [] ->
                             % Use named reference (enables recursive records)
-                            RecRef = {ty_ref, Ctx#ctx.module_name, records:record_type_name(Name), 0},
+                            RecRef = {ty_ref, Ctx#ctx.module_name, ety_records:record_type_name(Name), 0},
                             {named, Loc, RecRef, []};
                         _ ->
                             Overrides =
@@ -351,7 +352,7 @@ trans_ty(Ctx, Env, Ty) ->
                                     VariantRef = {ty_ref, Ctx#ctx.module_name, VariantName, 0},
                                     {named, Loc, VariantRef, []};
                                 _ ->
-                                    records:encode_record_ty(RecTy, Overrides)
+                                    ety_records:encode_record_ty(RecTy, Overrides)
                             end
                     end
             end;
@@ -1170,7 +1171,7 @@ parse_type(Ctx, Src) ->
 % Stores a record override variant in the ETS table for later retrieval.
 % Used when a self-referencing record has field overrides (e.g., #rr{name :: any()}).
 % Returns the generated variant type name.
--spec store_record_variant(ctx(), atom(), [records:record_field()]) -> atom().
+-spec store_record_variant(ctx(), atom(), [ety_records:record_field()]) -> atom().
 store_record_variant(Ctx, RecName, Overrides) ->
     Tab = Ctx#ctx.record_variants,
     N = length(ets:lookup(Tab, RecName)) + 1,
@@ -1179,7 +1180,7 @@ store_record_variant(Ctx, RecName, Overrides) ->
     VariantName.
 
 % Collects and removes all record override variants for a record from the ETS table.
--spec collect_record_variants(ctx(), atom()) -> [{atom(), [records:record_field()]}].
+-spec collect_record_variants(ctx(), atom()) -> [{atom(), [ety_records:record_field()]}].
 collect_record_variants(Ctx, RecName) ->
     Tab = Ctx#ctx.record_variants,
     Results = [{VName, Ov} || {_, VName, Ov} <- ets:lookup(Tab, RecName)],

@@ -346,7 +346,7 @@ exp_constrs(Ctx, E, T) ->
                     end,
                     sets:new([{version, 2}]),
                     GivenFields),
-            RecTupleTy = records:encode_record_ty({Name, VarFields}),
+            RecTupleTy = ety_records:encode_record_ty({Name, VarFields}),
             RecConstr = {csubty, mk_locs("record value constructor", L), RecTupleTy, T},
             sets:add_element(RecConstr, Cs);
         {record_field, L, Exp, RecName, FieldName} ->
@@ -363,13 +363,13 @@ exp_constrs(Ctx, E, T) ->
                         {N, Ty}
                     end,
                     DefFields),
-            RecTupleTy = records:encode_record_ty({RecName, VarFields}),
+            RecTupleTy = ety_records:encode_record_ty({RecName, VarFields}),
             Cs = exp_constrs(Ctx, Exp, RecTupleTy),
             FieldConstr = {csubty, mk_locs("record field access", L), Alpha, T},
             sets:add_element(FieldConstr, Cs);
         {record_index, L, RecName, FieldName} ->
             RecTy = symtab:lookup_record(RecName, L, Ctx#ctx.symtab),
-            {_FieldTy, Idx} = records:lookup_field_index(RecTy, FieldName, L),
+            {_FieldTy, Idx} = ety_records:lookup_field_index(RecTy, FieldName, L),
             Constr = {csubty, mk_locs("record field index", L), stdtypes:tint(Idx + 1), T},
             utils:single(Constr);
         {record_update, L, Exp, RecName, FieldUpdates} ->
@@ -397,15 +397,15 @@ exp_constrs(Ctx, E, T) ->
                     end,
                     DefFields),
             FieldsForExp = lists:map(fun ({N, Ty, _}) -> {N, Ty} end, FieldTypes),
-            RecTupleTyExp = records:encode_record_ty({RecName, FieldsForExp}),
+            RecTupleTyExp = ety_records:encode_record_ty({RecName, FieldsForExp}),
             ExpCs = exp_constrs(Ctx, Exp, RecTupleTyExp),
             FieldsForRes = lists:map(fun ({N, _, Ty}) -> {N, Ty} end, FieldTypes),
             RecTyRes = {RecName, FieldsForRes},
-            RecTupleTyRes = records:encode_record_ty(RecTyRes),
+            RecTupleTyRes = ety_records:encode_record_ty(RecTyRes),
             ResConstr = {csubty, mk_locs("record result", L), RecTupleTyRes, T},
             lists:foldr(
                 fun({record_field, FieldUpdateLoc, FieldName, FieldExp}, Cs) ->
-                    FieldTy = records:lookup_field_ty(RecTyRes, FieldName, FieldUpdateLoc),
+                    FieldTy = ety_records:lookup_field_ty(RecTyRes, FieldName, FieldUpdateLoc),
                     ThisCs = exp_constrs(Ctx, FieldExp, FieldTy),
                     sets:union(Cs, ThisCs)
                 end,
@@ -1161,11 +1161,11 @@ ty_of_pat(Symtab, Env, P, Mode) ->
                         end
                     end,
                     RecFields),
-            TupleTy = records:encode_record_ty({RecName, MatchedRecFields}),
+            TupleTy = ety_records:encode_record_ty({RecName, MatchedRecFields}),
             TupleTy;
         {record_index, L, RecName, FieldName} ->
             RecTy = symtab:lookup_record(RecName, L, Symtab),
-            {_, Idx} = records:lookup_field_index(RecTy, FieldName, L),
+            {_, Idx} = ety_records:lookup_field_index(RecTy, FieldName, L),
             stdtypes:tint(Idx + 1);
         {tuple, _L, Ps} -> {tuple, lists:map(fun(P) -> ty_of_pat(Symtab, Env, P, Mode) end, Ps)};
         {wildcard, _L} -> {predef, any};
@@ -1294,7 +1294,7 @@ pat_env(Ctx, OuterL, T, P) ->
                         end
                     end,
                     DefFields),
-            RecTupleTy = records:encode_record_ty({RecName, FieldTypes}),
+            RecTupleTy = ety_records:encode_record_ty({RecName, FieldTypes}),
             C = {csubty, mk_locs("t // #Record{...}", OuterL), T, RecTupleTy},
             {sets:add_element(C, Cs), Env};
         {record_index, _L, _Name, _Field} -> Empty;
@@ -1608,17 +1608,9 @@ var_test_env(FunExp, X, RestArgs) ->
                     end
                 of
                     unsupported -> Default;
-                    {is_record, Arity} ->
-                        % check whether first rest arg is an atom (the record name)
-                        if
-                            Arity =:= 2 orelse Arity =:= 3 ->
-                                case RestArgs of
-                                    [{'atom', _, RecordName} | _] ->
-                                        {#{XRef => {record, RecordName, []}}, safe};
-                                    _ -> Default
-                                end;
-                            true -> Default
-                        end;
+                    {is_record, _Arity} ->
+                        % TODO #356 erlang native records >OTP 29
+                        {#{XRef => {tuple_any}}, safe};
                     {is_function, 2} ->
                         case RestArgs of
                             [{'integer', _, N}] ->

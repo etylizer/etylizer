@@ -1,7 +1,7 @@
--module(m2).
+-module(mm2).
 
 -compile(export_all).
 -compile(nowarn_export_all).
 
 -spec bar() -> integer().
-bar() -> m1:foo(1).
+bar() -> mm1:foo(1).

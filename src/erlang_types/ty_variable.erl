@@ -77,28 +77,15 @@ compare(_, _) -> eq.
 id_of(Name) when is_atom(Name) ->
   case atom_to_list(Name) of
     [$$ | Rest] ->
-      R = catch list_to_integer(Rest) ,
-      case R of
-          Int when is_integer(Int) -> {id, Int};
-          _ -> none
+      try list_to_integer(Rest) of
+        Int -> {id, Int}
+      catch
+        error:badarg -> none
       end;
-    _ -> 
+    _ ->
       none
   end;
 id_of(_) -> none.
-% TODO re-enable once try-catch works
-% id_of(Name) when is_atom(Name) ->
-%   case atom_to_list(Name) of
-%     [$$ | Rest] ->
-%       try list_to_integer(Rest) of
-%         Int -> {id, Int}
-%       catch
-%         error:badarg -> none
-%       end;
-%     _ -> 
-%       none
-%   end;
-% id_of(_) -> none.
 
 -spec leq(type(), type()) -> boolean().
 leq(V1, V2) -> 

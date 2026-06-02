@@ -1,4 +1,4 @@
--module(records).
+-module(ety_records).
 
 -export([
     encode_record_ty/2,
