@@ -90,23 +90,28 @@ phi_norm(BigS, [], Fixed, ST) ->
     BigS);
 phi_norm(BigS, [Ty | N], Fixed, ST) ->
   {R1, ST0} = lists:foldl(
-    fun(S, {R2, ST2}) ->
-      {R3, ST3} = ty_node:normalize(S, Fixed, ST2),
-      {constraint_set:join(R2, R3, Fixed), ST3}
+    fun(_S, {[[]], ST2}) -> {[[]], ST2};
+       (S, {R2, ST2}) ->
+         {R3, ST3} = ty_node:normalize(S, Fixed, ST2),
+         {constraint_set:join(R2, R3, Fixed), ST3}
     end,
     {[], ST},
     BigS),
 
-  {R4, ST4} = lists:foldl(
-    fun(E, Acc) -> phi_norm_solve(E, Acc, N, BigS, Fixed) end,
-    {[[]], ST0},
-    lists:zip(lists:seq(1, length(ty_tuple:components(Ty))), lists:zip(BigS, ty_tuple:components(Ty)))
-  ),
-
-  {constraint_set:join(R1, R4, Fixed), ST4}.
+  case R1 of
+    [[]] -> {[[]], ST0};
+    _ ->
+      {R4, ST4} = lists:foldl(
+        fun(E, Acc) -> phi_norm_solve(E, Acc, N, BigS, Fixed) end,
+        {[[]], ST0},
+        lists:zip(lists:seq(1, length(ty_tuple:components(Ty))), lists:zip(BigS, ty_tuple:components(Ty)))
+      ),
+      {constraint_set:join(R1, R4, Fixed), ST4}
+  end.
 
 -spec phi_norm_solve({integer(), {ty_node:type(), ty_node:type()}}, {set_of_constraint_sets(), S}, [?ATOM:type()], [ty_node:type()], monomorphic_variables()) ->
     {set_of_constraint_sets(), S} when S :: normalize_cache().
+phi_norm_solve(_, {[], ST00}, _, _, _) -> {[], ST00};
 phi_norm_solve({Index, {_PComponent, NComponent}}, {Result, ST00}, N, BigS, Fixed) ->
     % remove pi_Index(NegativeComponents) from pi_Index(PComponents) and continue searching
     DoDiff =
