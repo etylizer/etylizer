@@ -61,14 +61,28 @@ check_simp_constrs_return_unmatched(Tab, FixedTyvars, Ds, What) ->
 % If so, redundancy checks are skipped entirely because dynamic() is consistent
 % with both T and not(T) for any T, making the satisfiability-based redundancy
 % check unsound.
+%
+% Implementation: precompute (once per process / symtab) the set of named-type
+% refs whose body transitively contains `{predef, dynamic}`. Then for each
+% constraint type, walk it WITHOUT unfolding and check for `{predef, dynamic}`
+% directly OR any `{named, _, Ref, _}` whose Ref is in the precomputed set.
+%
+% This avoids the previous per-constraint `ast_utils:unfold_ty` call which
+% built a fully-expanded copy of every constraint type (≈8 s on a 16-constraint
+% set involving ast:exp()) just to scan for one literal.
 -spec has_dynamic_constr(symtab:t(), constr:collected_constrs()) -> boolean().
 has_dynamic_constr(Tab, Constrs) ->
+    DynRefs = get_dyn_refs(Tab),
     TyHasDynamic = fun(Ty) ->
-        Unfolded = ast_utils:unfold_ty(Tab, Ty),
         utils:everything(
-            fun ({predef, dynamic}) -> {ok, true};
-                (_) -> error
-            end, Unfolded) =/= []
+          fun({predef, dynamic}) -> {ok, true};
+             ({named, _, Ref, _}) ->
+                 case sets:is_element(normalize_ref(Ref), DynRefs) of
+                     true -> {ok, true};
+                     false -> error
+                 end;
+             (_) -> error
+          end, Ty) =/= []
     end,
     lists:any(
         fun ({scsubty, _, T1, T2}) -> TyHasDynamic(T1) orelse TyHasDynamic(T2);
@@ -76,6 +90,69 @@ has_dynamic_constr(Tab, Constrs) ->
             (_) -> false
         end,
         sets:to_list(Constrs)).
+
+%% AST uses `{ty_ref, M, N, A}` and `{ty_qref, M, N, A}` for named-type
+%% references; the symtab keys them as `{ty_key, M, N, A}`. Normalize so
+%% the precomputed dyn set and the constraint walk speak the same language.
+normalize_ref({ty_ref, M, N, A})  -> {ty_key, M, N, A};
+normalize_ref({ty_qref, M, N, A}) -> {ty_key, M, N, A};
+normalize_ref(Other)              -> Other.
+
+%% Process-dict-cached set of named-type refs that transitively reference
+%% `{predef, dynamic}`. Recomputed once per symtab (keyed by erlang:phash2/1
+%% of the type-map to detect changes across function checks).
+get_dyn_refs(Tab) ->
+    Types = symtab:get_types(Tab),
+    Key = erlang:phash2(Types),
+    case erlang:get({'$dyn_refs', Key}) of
+        undefined ->
+            Set = compute_dyn_refs(Types),
+            erlang:put({'$dyn_refs', Key}, Set),
+            Set;
+        Set ->
+            Set
+    end.
+
+compute_dyn_refs(Types) ->
+    %% Direct: which refs have {predef, dynamic} directly in their body
+    %% Edges: ref -> set of refs it directly references in its body
+    %% (refs normalized to the symtab's ty_key form so the closure unifies
+    %% ty_ref / ty_qref / ty_key from the various AST sites)
+    {Direct, Edges} = maps:fold(
+      fun(Ref, {ty_scheme, _, Body}, {DAcc, EAcc}) ->
+            BodyHasDyn = utils:everything(
+                fun({predef, dynamic}) -> {ok, true}; (_) -> error end, Body) =/= [],
+            BodyRefs = sets:from_list(
+                [normalize_ref(R) || R <- utils:everything(
+                    fun({named, _, R, _}) -> {ok, R}; (_) -> error end, Body)]),
+            DAcc1 = case BodyHasDyn of
+                        true  -> sets:add_element(Ref, DAcc);
+                        false -> DAcc
+                    end,
+            {DAcc1, EAcc#{Ref => BodyRefs}}
+      end, {sets:new(), #{}}, Types),
+    %% Fixpoint: add a ref if any of its referenced refs is already in.
+    closure_dyn_refs(Direct, Edges).
+
+closure_dyn_refs(Set, Edges) ->
+    NewSet = maps:fold(
+      fun(Ref, RefsOut, Acc) ->
+            case sets:is_element(Ref, Acc) of
+                true  -> Acc;
+                false ->
+                    case sets:fold(
+                           fun(R, A) -> A orelse sets:is_element(R, Acc) end,
+                           false, RefsOut)
+                    of
+                        true  -> sets:add_element(Ref, Acc);
+                        false -> Acc
+                    end
+            end
+      end, Set, Edges),
+    case sets:size(NewSet) =:= sets:size(Set) of
+        true  -> Set;
+        false -> closure_dyn_refs(NewSet, Edges)
+    end.
 
 -spec check_redundant_branch(symtab:t(), sets:set(ast:ty_varname()), constr:subty_constrs(),
     {ast:loc(), constr:subty_constrs()}, ok | {error, error()}) -> ok | {error, error()}.

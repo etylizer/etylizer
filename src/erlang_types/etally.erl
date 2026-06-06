@@ -231,10 +231,13 @@ tally(Constraints, MonomorphicVariables) ->
 tally_normalize(Constraints, MonomorphicVariables) ->
   lists:foldl(fun
     ({_S, _T}, []) -> [];
-    ({S, T}, A) -> 
+    ({S, T}, A) ->
       SnT = ?TY:difference(S, T),
-      Normalized = ty_node:normalize(SnT, MonomorphicVariables),
-      constraint_set:meet(A, Normalized, MonomorphicVariables)
+      case ty_node:normalize(SnT, MonomorphicVariables) of
+        %% Short-circuit: meet(A, []) = [] — skip the meet call entirely.
+        [] -> [];
+        Normalized -> constraint_set:meet(A, Normalized, MonomorphicVariables)
+      end
               end, [[]], Constraints).
 
 

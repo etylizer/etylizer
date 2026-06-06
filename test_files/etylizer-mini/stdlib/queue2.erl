@@ -80,7 +80,8 @@ some with more readable but perhaps less understandable aliases.
     drop/1, drop_r/1, split/2,
     filter/2, filtermap/2, fold/3, any/2, all/2,
     delete/2, delete_r/2, delete_with/2, delete_with_r/2,
-    head/1
+    head/1,
+    reverse/1, join/2
 ]}).
 
 -spec f2r([Item]) -> queue(Item).
