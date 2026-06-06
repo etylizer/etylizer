@@ -39,3 +39,12 @@ error04(_) -> ok.
 error05(1) -> error(impl);
 error05(2) -> ok;
 error05(_) -> error(badarg).
+
+%% Regression test for an optimization that was dropped.
+%% Local stand-in for maps:fold/3
+-spec my_fold(fun((K, V, Acc) -> Acc), Acc, #{K => V}) -> Acc.
+my_fold(_F, Init, _M) -> Init.
+
+-spec hof_value_tuple_pat(dynamic()) -> dynamic().
+hof_value_tuple_pat(M) ->
+    my_fold(fun(_K, {_, _, Xs}, _Acc) -> Xs ++ Xs end, [], M).
