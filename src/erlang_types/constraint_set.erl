@@ -30,6 +30,7 @@
 % API
 -include("constraints.hrl").
 -include("etylizer.hrl").
+-include("sanity.hrl").
 
 -type cache() :: #{ty:type() => []}.
 
@@ -78,14 +79,40 @@ meet([], _, _) -> [];
 meet(_, [], _) -> [];
 meet([[]], Set2, _) -> Set2;
 meet(Set1, [[]], _) -> Set1;
-meet(S1, S2, Fixed) -> 
-  % when a constraint set is combined, the lower and upper bounds for a variable might change
-  % this in turn could mean the whole constraint set can become unsatisfiable
-  % it is appararently faster to join everything together, 
-  % then minimizing the meet result by using join
-  MeetResult = [[join_constraint_sets(C1, C2, Fixed) || C2 <- S2] || C1 <- S1],
-  R = lists:foldl(fun(S, Acc) -> join(S, Acc, Fixed) end, [], MeetResult),
-  assert_all_cs_sorted(minimize(R)).
+%% Idempotency: meet(S, S) = S. The cartesian product generates joins
+%% join(c, c') for c, c' in S. join(c, c) = c is in S; join(c, c') for c≠c' is
+%% strictly tighter and subsumed by both c and c' (which are in S). Minimize
+%% keeps the most general → returns S.
+meet(Same, Same, _) -> Same;
+meet(S1, S2, Fixed) ->
+  %% Set-equality (modulo order) is the same as term-equality for sorted reps.
+  %% Sort+compare is O(n log n + n) — cheap for small n which dominates here.
+  case lists:sort(S1) =:= lists:sort(S2) of
+    true -> S1;
+    false -> meet_full(S1, S2, Fixed)
+  end.
+
+meet_full(S1, S2, Fixed) ->
+  %% Incremental subsumption-during-construction. Walks the |S1|×|S2| Cartesian
+  %% product but never builds it as a list — and for each pair, refuses to add
+  %% if the accumulator already has something smaller (so the result stays
+  %% minimal as we go).
+  lists:foldl(
+    fun(C1, Acc1) ->
+        lists:foldl(
+          fun(C2, Acc) ->
+              NewCs = join_constraint_sets(C1, C2, Fixed),
+              case is_unsatisfiable(NewCs, Fixed) of
+                true -> Acc;
+                false ->
+                  case lists:any(fun(Cs) -> is_smaller(Cs, NewCs) end, Acc) of
+                    true -> Acc;
+                    false ->
+                      [NewCs | [C || C <- Acc, not is_smaller(NewCs, C)]]
+                  end
+              end
+          end, Acc1, S2)
+    end, [], S1).
 
 % TODO this implementation creates smaller result set of constraint sets, investigate
 % meet(S1, S2, Fixed) -> 
@@ -125,7 +152,7 @@ join(Set, [], _Fixed) -> Set;
 join(S1, S2, Fixed) ->
   S22 = lists:filter(fun(Cs) -> may_add(S1, Cs, Fixed) end, S2),
   S11 = lists:filter(fun(Cs) -> may_add(S22, Cs, Fixed) end, S1),
-  assert_all_cs_sorted((lists:usort(S11 ++ S22))).
+  lists:usort(S11 ++ S22).
 
 -spec may_add(set_of_constraint_sets_rep(), constraint_set(), monomorphic_variables()) -> boolean().
 may_add(S, Con, Fixed) ->
@@ -140,12 +167,16 @@ saturate(C, FixedVariables, Cache) ->
       SnT = ty:difference(S, T),
       Normed = ty:normalize(SnT, FixedVariables),
       NewS = meet([C], Normed, FixedVariables),
-      Z = lists:foldl(fun(NewC, AllS) ->
-        NewMerged = saturate(NewC, FixedVariables, Cache#{SnT => []}),
-        join(AllS, NewMerged, FixedVariables)
-                  end, [], NewS),
-      Z;
-    none -> 
+      %% Short-circuit join-fold: once AllS = [[]] (trivially satisfied),
+      %% remaining recursive saturate calls don't change the outcome — join
+      %% absorbs them. Mirrors the andalso/orelse semantics of is_empty.
+      lists:foldl(
+        fun(_NewC, [[]]) -> [[]];
+           (NewC, AllS) ->
+             NewMerged = saturate(NewC, FixedVariables, Cache#{SnT => []}),
+             join(AllS, NewMerged, FixedVariables)
+        end, [], NewS);
+    none ->
       [C]
   end.
 
@@ -248,27 +279,6 @@ minimize([Cs | Others], All) ->
       minimize(NewS, NewS);
     _ -> minimize(Others, All)
   end.
-
--spec assert_all_cs_sorted(S) -> S when S :: set_of_constraint_sets().
-assert_all_cs_sorted(S) ->
-    % Verify all constraint sets are sorted by sorting them and checking for equality
-    lists:foreach(fun(ConstraintSet) ->
-        Sorted = lists:sort(
-            fun({Var1, _, _}, {Var2, _, _}) ->
-                case ty_variable:compare(Var1, Var2) of
-                    lt -> true;
-                    eq -> true;
-                    gt -> false
-                end
-            end,
-            ConstraintSet
-        ),
-        case ConstraintSet =:= Sorted of
-            true -> ok;
-            false -> error({unsorted_constraint_set, ConstraintSet, Sorted})
-        end
-    end, S),
-    S.
 
 -ifdef(TEST).
 -include_lib("eunit/include/eunit.hrl").

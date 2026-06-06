@@ -1,0 +1,72 @@
+digraph G {
+  rankdir=BT;
+  bgcolor="white";
+  labelloc="t"; fontsize=20; fontname="Helvetica-Bold";
+  label="as/high-compact\nmerge of 11 atomized optimization leaves + base (kwkouy);\n6 entangled commits share the lpupzt sub-base";
+  node [shape=box style="rounded,filled" fontname="Helvetica" fontsize=10 margin="0.12,0.06"];
+  edge [color="#888888" arrowsize=0.7];
+
+  // --- merge tip (as/high-compact) ---
+  "kwkouy" [label="kwkouy  [as/high-compact]\nmerge fixes: reconcile the 12\natomized optimization leaves\n(exp_constrs_tyof + case_clause_constrs\nin constr_gen, phi_norm in dnf_ty_tuple)" fillcolor="#ffd166" penwidth=2 color="#1d3557"];
+
+  // --- entangled cluster: shared lpupzt sub-base ---
+  "lpupzt" [label="lpupzt\ndirect-type elaboration for\nconstants, structural\nconstructors, record_index" fillcolor="#a9d6f5" penwidth=2.4 color="#1d3557"];
+  "krrvmv" [label="krrvmv\nop operands and fun literals\npropagate caller-known types" fillcolor="#cfe8fb" penwidth=1 color="#555555"];
+  "ltrzwm" [label="ltrzwm\nvariable lookup via\nspec-arg env" fillcolor="#cfe8fb" penwidth=1 color="#555555"];
+  "lkrmpv" [label="lkrmpv\nclause-narrowing\npropagates into env" fillcolor="#cfe8fb" penwidth=1 color="#555555"];
+  "qkvmmt" [label="qkvmmt\nspec-call shortcut" fillcolor="#cfe8fb" penwidth=1 color="#555555"];
+  "uwzsqt" [label="uwzsqt\nconstr_gen:\noverload-resolution shortcut" fillcolor="#cfe8fb" penwidth=1 color="#555555"];
+
+  // --- independent single-commit leaves (off mmvuto) ---
+  "qyopul" [label="qyopul\nsubst:clean_cons — top-level\npeeling (single-pass,\npolarity-aware)" fillcolor="white" penwidth=1 color="#555555"];
+  "wkyvps" [label="wkyvps  [as/high-compact-shortcircuit]\ntally normalize short-circuit:\nabsorbing-element early-exit in\nexplore_function_norm / phi_norm" fillcolor="white" penwidth=1 color="#555555"];
+  "rwxtmq" [label="rwxtmq\nfun_clauses_to_exp: keep var\npatterns as direct args,\narity-1 skip tuple wrapping" fillcolor="white" penwidth=1 color="#555555"];
+  "ylnolk" [label="ylnolk\nEliminate intermediate Beta in\ncase branches: pass ExpectedTy\ndirectly to body expression" fillcolor="white" penwidth=1 color="#555555"];
+  "wytlqm" [label="wytlqm\nGuard env skip: avoid redundant\ncase_clause_env call when\nguards are empty" fillcolor="white" penwidth=1 color="#555555"];
+  "qntopk" [label="qntopk\nconstr_solve:has_dynamic_constr —\nprecompute named-type refs with\ndynamic(), avoid per-constr unfold" fillcolor="white" penwidth=1 color="#555555"];
+  "mwqrwq" [label="mwqrwq\nbenchmark script" fillcolor="#e0e0e0" penwidth=1 color="#555555"];
+  "kxwyup" [label="kxwyup\n[Fix] fix queue and make case\nstudy exit on first failure" fillcolor="#f4a6a6" penwidth=1 color="#555555"];
+
+  // --- base chain ---
+  "mmvuto" [label="mmvuto\nBug tests" fillcolor="#d9d9d9" penwidth=1 color="#555555"];
+  "tlrpqy" [label="tlrpqy\nBug tests II" fillcolor="#d9d9d9" penwidth=1 color="#555555"];
+  "urvxnq" [label="urvxnq\n(base = as/high-impact)" shape=ellipse fillcolor="#cccccc" penwidth=1 color="#555555"];
+
+  // === edges: parent -> child (arrows point up toward the merge tip) ===
+
+  // base chain
+  "urvxnq" -> "tlrpqy";
+  "tlrpqy" -> "mmvuto";
+
+  // entangled cluster rooted at lpupzt
+  "mmvuto" -> "lpupzt";
+  "lpupzt" -> "krrvmv";
+  "lpupzt" -> "ltrzwm";
+  "lpupzt" -> "qkvmmt";
+  "ltrzwm" -> "lkrmpv";
+  "qkvmmt" -> "uwzsqt";
+
+  // independent leaves off mmvuto
+  "mmvuto" -> "qyopul";
+  "mmvuto" -> "wkyvps";
+  "mmvuto" -> "rwxtmq";
+  "mmvuto" -> "ylnolk";
+  "mmvuto" -> "wytlqm";
+  "mmvuto" -> "qntopk";
+  "mmvuto" -> "mwqrwq";
+  "mmvuto" -> "kxwyup";
+
+  // merge tip parents (11 leaf-heads + base mmvuto)
+  "krrvmv" -> "kwkouy";
+  "lkrmpv" -> "kwkouy";
+  "uwzsqt" -> "kwkouy";
+  "mwqrwq" -> "kwkouy";
+  "qntopk" -> "kwkouy";
+  "wytlqm" -> "kwkouy";
+  "ylnolk" -> "kwkouy";
+  "rwxtmq" -> "kwkouy";
+  "wkyvps" -> "kwkouy";
+  "kxwyup" -> "kwkouy";
+  "qyopul" -> "kwkouy";
+  "mmvuto" -> "kwkouy";
+}

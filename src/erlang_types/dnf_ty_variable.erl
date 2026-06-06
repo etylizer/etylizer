@@ -100,10 +100,17 @@ smallest(PositiveVariables, NegativeVariables, FixedVariables) ->
     [{{delta, neg}, V} || V <- NegativeVariables, maps:is_key(V, FixedVariables)] ++
     [{{delta, pos}, V} || V <- PositiveVariables, maps:is_key(V, FixedVariables)],
 
-  Sort = fun({_, V}, {_, V2}) -> ty_variable:leq(V, V2) end,
-  [X | Z] = 
-  ?assert_pattern([_ | _], 
-                  lists:sort(Sort, PositiveVariablesTagged++NegativeVariablesTagged) ++ 
+  %% A5 swing: pick the LARGEST variable first (reverse the usual lex order)
+  %% — fpos already placed the most-discriminating vars at one end via the
+  %% reorder, and reversing the picker swaps which end we resolve first. Can
+  %% materially change the recursion-tree shape.
+  Sort = case os:getenv("ETY_PICKER_REV") of
+    "1" -> fun({_, V}, {_, V2}) -> not ty_variable:leq(V, V2) end;
+    _   -> fun({_, V}, {_, V2}) -> ty_variable:leq(V, V2) end
+  end,
+  [X | Z] =
+  ?assert_pattern([_ | _],
+                  lists:sort(Sort, PositiveVariablesTagged++NegativeVariablesTagged) ++
                   lists:sort(Sort, RestTagged)),
 
   {X, Z}.
