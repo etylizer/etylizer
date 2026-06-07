@@ -49,6 +49,7 @@ phi(BigS, [Ty | N], ST) ->
     phi_fold_components(BigS, ty_tuple:components(Ty), 1, {true, ST1}, N)
   end.
 
+-spec phi_fold_components([ty:type()], [ty:type()], integer(), {boolean(), S}, [?ATOM:type()]) -> {boolean(), S} when S :: is_empty_cache().
 phi_fold_components(_BigS, [], _Idx, Acc, _N) -> Acc;
 phi_fold_components(BigS, [NComp | Rest], Idx, Acc, N) ->
     Acc1 = phi_solve(Idx, NComp, Acc, N, BigS),
@@ -123,6 +124,8 @@ phi_norm_impl(BigS, [Ty | N], Fixed, ST) ->
       {constraint_set:join(R1, R4, Fixed), ST4}
   end.
 
+-spec phi_norm_fold_components([ty_node:type()], [ty_node:type()], integer(), {set_of_constraint_sets(), S}, [?ATOM:type()], monomorphic_variables()) ->
+    {set_of_constraint_sets(), S} when S :: normalize_cache().
 phi_norm_fold_components(_BigS, [], _Idx, Acc, _N, _Fixed) -> Acc;
 %% Short-circuit on accumulator = [] (meet absorbs to [] from here on).
 phi_norm_fold_components(_BigS, _Rest, _Idx, {[], ST} = Acc, _N, _Fixed) -> Acc;
@@ -140,8 +143,10 @@ phi_norm_solve(Index, NComponent, {Result, ST00}, N, BigS, Fixed) ->
     {Res01, ST01} = phi_norm(NewBigS, N, Fixed, ST00),
     {constraint_set:meet(Result, Res01, Fixed), ST01}.
 
-replace_at(1, [H | T], NComp) -> [ty_node:difference(H, NComp) | T];
-replace_at(N, [H | T], NComp) when N > 1 -> [H | replace_at(N - 1, T, NComp)].
+-spec replace_at(integer(), [ty_node:type()], ty_node:type()) -> [ty_node:type()].
+replace_at(_, [], _NComp) -> [];
+replace_at(N, [H | T], NComp) when N =< 1 -> [ty_node:difference(H, NComp) | T];
+replace_at(N, [H | T], NComp) -> [H | replace_at(N - 1, T, NComp)].
 
 -spec all_variables_line([T], [T], ?LEAF:type(), all_variables_cache()) -> 
     sets:set(variable()) when T :: ?ATOM:type().
