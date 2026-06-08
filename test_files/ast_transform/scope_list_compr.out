@@ -10,7 +10,7 @@
                              {block,{loc,[],0,0},
                                     [{'case',{loc,[],0,0},
                                              {var,{loc,[],0,0},{local_ref,{'X',1}}},
-                                             [{case_clause,{loc,[],0,0},{var,{loc,[],0,0},{local_bind,{'Y',0}}},[],[{var,{loc,[],0,0},{local_ref,{'X',1}}}]}]}]},
+                                             [{case_clause,{loc,[],0,0},{var,{loc,[],0,0},{local_bind,{'Y',0}}},[],[{var,{loc,[],0,0},{local_ref,{'X',1}}}],false}]}]},
                              [{generate,{loc,[],0,0},
                                         {var,{loc,[],0,0},{local_bind,{'X',1}}},
                                         {cons,{loc,[],0,0},

@@ -742,7 +742,7 @@ render_case(Scrut, Clauses, Indent) ->
     Pad ++ "end".
 
 -spec render_clause(ast:case_clause(), non_neg_integer()) -> string().
-render_clause({case_clause, _, Pat, Guards, Body}, Indent) ->
+render_clause({case_clause, _, Pat, Guards, Body, _Generated}, Indent) ->
     PatStr = render_exp(Pat, Indent),
     GuardStr = render_guards(Guards, Indent),
     BodyStr = string:join([render_exp(E, Indent + 2) || E <- Body], ",\n" ++ lists:duplicate(Indent + 2, $\s)),
