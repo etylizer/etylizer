@@ -583,7 +583,7 @@ case_constrs(Ctx, L, ScrutE, Clauses, T) ->
         false -> needs_unmatched_check(Clauses)
     end,
     {BodyList, Lowers, _Uppers, CsCases} =
-        lists:foldl(fun (Clause = {case_clause, LocClause, _, _, _},
+        lists:foldl(fun (Clause = {case_clause, LocClause, _, _, _, _},
                          {BodyList, Lowers, Uppers, AccCs}) ->
                             ?LOG_TRACE("Generating constraint for case clause at ~s: Lowers=~s, Uppers=~s",
                                        ast:format_loc(LocClause),
@@ -1170,7 +1170,7 @@ receive_after_constrs(Ctx, L, CaseClauses, TimeoutExp, AfterBody, T) ->
 % Generates constraints for a single receive clause.
 % Pattern variables get type dynamic(). Guards override with specific types.
 -spec receive_clause_constrs(ctx(), ast:case_clause(), ast:ty()) -> constr:constrs().
-receive_clause_constrs(Ctx, {case_clause, L, Pat, Guards, Exps}, T) ->
+receive_clause_constrs(Ctx, {case_clause, L, Pat, Guards, Exps, _Generated}, T) ->
     % Bind pattern variables to dynamic
     BoundVars = bound_vars_pat(Pat),
     DynamicPatEnv = sets:fold(
@@ -1202,7 +1202,7 @@ receive_clause_constrs(Ctx, {case_clause, L, Pat, Guards, Exps}, T) ->
 -spec needs_unmatched_check(list(ast:case_clause())) -> boolean().
 needs_unmatched_check(Clauses) ->
     case Clauses of
-        [{case_clause, _, Pat, [], _}] -> not is_irrefutable_pat(Pat);
+        [{case_clause, _, Pat, [], _, _}] -> not is_irrefutable_pat(Pat);
         _ -> true
     end.
 
@@ -1252,7 +1252,7 @@ case_clause_unmatched_constraints(Ctx, LowersBefore, Upper, Scrut) ->
     ctx(), ast:ty(), ast:exp(), boolean(), list(ast:ty()), ast:case_clause(), ast:ty()
 ) -> {ast:ty(), ast:ty(), constr:constrs(), constr:constr_case_branch()}.
 case_clause_constrs(Ctx, TyScrut, Scrut, NeedsUnmatchedCheck, LowersBefore,
-    {case_clause, L, Pat, Guards, Exps}, ExpectedTy) ->
+    {case_clause, L, Pat, Guards, Exps, Generated}, ExpectedTy) ->
     {BodyLower, BodyUpper, BodyEnvCs, BodyEnv} =
         case_clause_env(Ctx, L, TyScrut, Scrut, Pat, Guards),
     % When guards are empty, the guard env is never used: no guard constraints
@@ -1318,9 +1318,12 @@ case_clause_constrs(Ctx, TyScrut, Scrut, NeedsUnmatchedCheck, LowersBefore,
                     GuardCs
             end,
             Guards)),
+    % Compiler-generated clauses are exempt from the redundancy check: they are
+    % defensive branches the programmer never wrote (see ast:case_clause/0). They
+    % still contribute their lower bound to the exhaustiveness check above.
     RedundancyCs =
         if
-            NeedsUnmatchedCheck ->
+            NeedsUnmatchedCheck andalso not Generated ->
                 case_clause_unmatched_constraints(Ctx, LowersBefore, BodyUpper, Scrut);
             true -> none
         end,
@@ -2147,7 +2150,7 @@ fun_clauses_to_exp(Ctx, _, FunClauses = [{fun_clause, L, Pats, [], Body}]) ->
             WrappedBody = lists:foldl(
                 fun({{Var, Loc}, Pat}, B) ->
                     [{'case', Loc, {var, Loc, {local_ref, Var}},
-                      [{case_clause, Loc, Pat, [], B}]}]
+                      [{case_clause, Loc, Pat, [], B, false}]}]
                 end, Body, Matches),
             {Args, WrappedBody};
         {false, true} ->
@@ -2188,7 +2191,7 @@ fun_clauses_to_exp_aux(Ctx, L, FunClauses) ->
                 Scrut = {var, L, {local_ref, Var}},
                 Clauses = lists:map(
                     fun({fun_clause, CL, [Pat], Guards, Exps}) ->
-                        {case_clause, CL, Pat, Guards, Exps}
+                        {case_clause, CL, Pat, Guards, Exps, false}
                     end, FunClauses),
                 {Scrut, Clauses};
             _ ->
@@ -2202,7 +2205,7 @@ fun_clauses_to_exp_aux(Ctx, L, FunClauses) ->
 
 -spec fun_clause_to_case_clause(ast:fun_clause()) -> ast:case_clause().
 fun_clause_to_case_clause({fun_clause, L, Pats, Guards, Exps}) ->
-    {case_clause, L, {tuple, L, Pats}, Guards, Exps}.
+    {case_clause, L, {tuple, L, Pats}, Guards, Exps, false}.
 
 % if g1 -> e1;
 %    ...
@@ -2222,7 +2225,7 @@ if_exp_to_case_exp({'if', L, IfClauses}) ->
     Pat = {wildcard, L},
     CaseClauses =
         lists:map(fun({if_clause, ClauseLoc, Guards, Body}) ->
-                          {case_clause, ClauseLoc, Pat, Guards, Body}
+                          {case_clause, ClauseLoc, Pat, Guards, Body, false}
                   end, IfClauses),
     {'case', L, ScrutExp, CaseClauses}.
 
