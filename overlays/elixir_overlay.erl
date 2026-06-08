@@ -32,3 +32,12 @@
 % Elixir Tuple.to_list/1
 -spec 'Elixir.Tuple:to_list'(tuple()) -> [term()].
 'Elixir.Tuple:to_list'(_) -> error(overlay).
+
+% Elixir compiles `a ++ b` and `a -- b` to the remote calls erlang:'++'/2 and
+% erlang:'--'/2 (unlike +, *, <=, ... which stay as operator nodes). etylizer
+% knows ++/-- only as operators, so the call form has no spec without this.
+-spec 'erlang:++'([A], [B]) -> [A | B].
+'erlang:++'(_, _) -> error(overlay).
+
+-spec 'erlang:--'([A], [A]) -> [A].
+'erlang:--'(_, _) -> error(overlay).

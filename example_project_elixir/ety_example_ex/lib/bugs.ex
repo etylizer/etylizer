@@ -1,20 +1,16 @@
 defmodule Bugs do
   @moduledoc """
-  Deliberate type errors — etylizer reports each one. Several are distilled from
-  common mistakes in student exercise solutions.
+  Deliberate type errors that fail with the overlay too.
 
-  These fail *with* the overlay too: they are real bugs in the code's types, not
-  gaps in stdlib specs. Compare with `StdlibSpecs`, whose "failure" disappears
-  once the overlay supplies a precise spec.
+  Compare with `StdlibSpecs`, whose failure disappears once the overlay supplies a precise spec.
   """
 
   # The spec promises the result is `false`, but the first clause returns `true`.
-  # (A real solution wrote `:: false` where it meant `:: boolean()`.)
   @spec same?(any(), any()) :: false
   def same?(x, x), do: true
   def same?(_, _), do: false
 
-  # A pipe that yields a *list* where the spec promises a single integer.
+  # A pipe that yields a list where the spec promises a single integer.
   @spec total([integer()]) :: integer()
   def total(xs), do: xs |> :lists.map(fn x -> x + 1 end)
 
