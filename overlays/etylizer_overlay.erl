@@ -103,6 +103,21 @@
 'maps:update_with'(_, _, _, _) -> error(overlay).
 -spec 'maps:find'(Key, #{Key => Value}) -> {ok, Value} | error.
 'maps:find'(_, _) -> error(overlay).
+-spec 'maps:get'(Key, #{Key => Value}, Value) -> Value.
+'maps:get'(_, _, _) -> error(overlay).
+-spec 'maps:keys'(#{Key => _Value}) -> [Key].
+'maps:keys'(_) -> error(overlay).
+-spec 'maps:values'(#{_Key => Value}) -> [Value].
+'maps:values'(_) -> error(overlay).
+-spec 'maps:size'(#{_Key => _Value}) -> non_neg_integer().
+'maps:size'(_) -> error(overlay).
+-spec 'maps:without'([Key], #{Key => Value}) -> #{Key => Value}.
+'maps:without'(_, _) -> error(overlay).
+-spec 'maps:update_with'(Key, fun((Value) -> Value), Value, #{Key => Value}) ->
+    #{Key => Value}.
+'maps:update_with'(_, _, _, _) -> error(overlay).
+-spec 'maps:foreach'(fun((Key, Value) -> _), #{Key => Value}) -> ok.
+'maps:foreach'(_, _) -> error(overlay).
 
 % filename overlays
 -spec 'filename:join'(string(), string()) -> string().
