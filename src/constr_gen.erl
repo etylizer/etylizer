@@ -779,8 +779,13 @@ case_clause_constrs(Ctx, TyScrut, Scrut, NeedsUnmatchedCheck, LowersBefore,
     BodyCs = exps_constrs(Ctx#ctx{lin = constr_lin:clause(Ctx#ctx.lin, Scrut, Pat, Guards)}, L, Exps, Beta),
     InnerCs = BodyCs,
 
-    % The clauses that the maybe rewrite adds are not written by the user, they may be dead.
-    CheckRedundancy = NeedsUnmatchedCheck andalso not ast:is_generated_by('maybe', L),
+    % Clauses that the programmer never wrote are exempt from the redundancy check: those
+    % that the maybe rewrite adds, and compiler-generated clauses, which are defensive
+    % branches (e.g. those Elixir emits for `cond`, string interpolation and strict
+    % `and`/`or`). They still contribute their lower bound to the exhaustiveness check.
+    CheckRedundancy = NeedsUnmatchedCheck
+        andalso not ast:is_generated_by('maybe', L)
+        andalso not ast:is_generated_by(compiler, L),
     RedundancyCs =
         if
             CheckRedundancy ->
