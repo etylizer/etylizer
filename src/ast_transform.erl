@@ -647,7 +647,8 @@ trans_exp(Ctx, Env, Exp) ->
             Clause = {case_clause, Loc,
                       {match, Loc, {var, Loc, {local_bind, MatchVar}}, Q},
                       [], % no guards
-                      [{var, Loc, {local_ref, MatchVar}}]},
+                      [{var, Loc, {local_ref, MatchVar}}],
+                      false},
             {{'case', Loc, NewExp, [Clause]}, NewEnv0};
         {nil, Anno} -> {{nil, to_loc(Ctx, Anno)}, Env};
         {op, Anno, Op, L, R} ->
@@ -959,9 +960,11 @@ trans_case_clause(Ctx, Env, C) ->
             {Q, QEnv} = trans_pat(Ctx, Env, Pat, bind_fresh),
             NewGuards = trans_guards(Ctx, QEnv, Guards),
             Loc = to_loc(Ctx, Anno),
+            % Preserve the compiler's `{generated, true}` marker (dropped by to_loc)
+            Generated = erl_anno:generated(Anno),
             ?LOG_TRACE("Env for body of case clause at ~s: ~w", ast:format_loc(Loc), QEnv),
             {NewBody, NewEnv} = trans_exp_seq(Ctx, QEnv, Body),
-            {{case_clause, Loc, Q, NewGuards, NewBody}, NewEnv, QEnv};
+            {{case_clause, Loc, Q, NewGuards, NewBody, Generated}, NewEnv, QEnv};
         X -> errors:uncovered_case(?FILE, ?LINE, X)
     end.
 

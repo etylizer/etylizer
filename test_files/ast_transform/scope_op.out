@@ -11,12 +11,13 @@
                                      {block,{loc,[],0,0},
                                             [{'case',{loc,[],0,0},
                                                      {integer,{loc,[],0,0},1},
-                                                     [{case_clause,{loc,[],0,0},{var,{loc,[],0,0},{local_bind,{'B',0}}},[],[{var,{loc,[],0,0},{local_ref,{'B',0}}}]}]}]},
+                                                     [{case_clause,{loc,[],0,0},{var,{loc,[],0,0},{local_bind,{'B',0}}},[],[{var,{loc,[],0,0},{local_ref,{'B',0}}}],false}]}]},
                                      {block,{loc,[],0,0},
                                             [{'case',{loc,[],0,0},
                                                      {integer,{loc,[],0,0},2},
-                                                     [{case_clause,{loc,[],0,0},{var,{loc,[],0,0},{local_bind,{'C',0}}},[],[{var,{loc,[],0,0},{local_ref,{'C',0}}}]}]}]}},
+                                                     [{case_clause,{loc,[],0,0},{var,{loc,[],0,0},{local_bind,{'C',0}}},[],[{var,{loc,[],0,0},{local_ref,{'C',0}}}],false}]}]}},
                                  [{case_clause,{loc,[],0,0},
                                                {var,{loc,[],0,0},{local_bind,{'A',0}}},
                                                [],
-                                               [{tuple,{loc,[],0,0},[{var,{loc,[],0,0},{local_ref,{'A',0}}},{var,{loc,[],0,0},{local_ref,{'B',0}}},{var,{loc,[],0,0},{local_ref,{'C',0}}}]}]}]}]}]}].
+                                               [{tuple,{loc,[],0,0},[{var,{loc,[],0,0},{local_ref,{'A',0}}},{var,{loc,[],0,0},{local_ref,{'B',0}}},{var,{loc,[],0,0},{local_ref,{'C',0}}}]}],
+                                               false}]}]}]}].
