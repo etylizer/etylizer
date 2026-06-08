@@ -40,6 +40,20 @@ Useful for debugging:
   (`-l`)
 * disables caching of results, i.e. force type checking (`--force`)
 
+### Examples
+
+Two self-contained example projects, each with a `check.sh` that compiles the
+code and runs etylizer over it:
+
+* [`example_project/`](example_project) — Erlang. A tour of etylizer features
+  (occurrence typing, intersection types, exhaustiveness checks, ...).
+* [`example_project_elixir/`](example_project_elixir) — Elixir. etylizer also
+  type checks Elixir by reading the compiled `.beam` files. The example shows
+  what etylizer can prove about Elixir code, and highlights how Elixir's
+  standard-library typespecs (e.g. `Enum.map/2 :: list()`) are far less precise
+  than Erlang's polymorphic ones (e.g. `lists:map/2 :: [B]`) — and how a
+  [type overlay](overlays/elixir_overlay.erl) recovers the precision.
+
 ## Developer documentation
 
 ### Type-checker pipeline
