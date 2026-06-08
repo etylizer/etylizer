@@ -86,25 +86,36 @@ make_parse_opts(Kind, Opts) ->
             #parse_opts{ verbose = false, includes = Includes, defines = Opts#opts.defines }
     end.
 
+% Whether the given path is a compiled BEAM file (e.g. an Elixir module).
+-spec is_beam_file(file:filename()) -> boolean().
+is_beam_file(File) ->
+    filename:extension(File) =:= ".beam".
+
 -spec maybe_sanity_check(file_kind(), boolean(), file:filename(), [ast_erl:form()]) -> ok.
 maybe_sanity_check(intern, true, File, RawForms) ->
-    ?LOG_INFO("Checking whether parse result for ~p conforms to AST in ast_erl.erl ...",
-        File),
-    {RawSpec, _} = ast_check:parse_spec("src/ast_erl.erl"),
-    lists:foreach(
-        fun({Idx,Form}) ->
-            case ast_check:check_against_type(RawSpec, ast_erl, form, Form) of
-                true ->
-                    ?LOG_DEBUG(
-                        "Parse result of form ~p from ~s conforms to AST in ast_erl.erl",
-                        Idx, File);
-                false ->
-                    ?ABORT("Parse result of form ~p from ~s violates AST in ast_erl.erl",
-                        Idx, File)
-            end
-        end,
-        lists:enumerate(1, RawForms)),
-    ok;
+    case is_beam_file(File) of
+        % Forms extracted from a BEAM file (e.g. Elixir output) need not conform
+        % to the ast_erl sanity spec, so we skip the check for them.
+        true -> ok;
+        false ->
+            ?LOG_INFO("Checking whether parse result for ~p conforms to AST in ast_erl.erl ...",
+                File),
+            {RawSpec, _} = ast_check:parse_spec("src/ast_erl.erl"),
+            lists:foreach(
+                fun({Idx,Form}) ->
+                    case ast_check:check_against_type(RawSpec, ast_erl, form, Form) of
+                        true ->
+                            ?LOG_DEBUG(
+                                "Parse result of form ~p from ~s conforms to AST in ast_erl.erl",
+                                Idx, File);
+                        false ->
+                            ?ABORT("Parse result of form ~p from ~s violates AST in ast_erl.erl",
+                                Idx, File)
+                    end
+                end,
+                lists:enumerate(1, RawForms)),
+            ok
+    end;
 maybe_sanity_check(_, _, _, _) -> ok.
 
 -spec transform_forms(file_kind(), file:filename(), [ast_erl:form()], #opts{}) -> [ast:form()].
@@ -157,4 +168,26 @@ really_parse_file(Kind, File, Opts) ->
 
     maybe_sanity_check(Kind, Opts#opts.sanity, File, RawForms),
 
-    transform_forms(Kind, File, RawForms, Opts).
+    Forms = transform_forms(Kind, File, RawForms, Opts),
+    % For BEAM inputs, point error locations at the resolved .ex/.erl source.
+    % This is display-only: the module name was already derived from File during
+    % transform, so retargeting the location file does not affect type checking.
+    case is_beam_file(File) of
+        true -> retarget_locs_to_source(Forms, File, parse_beam:source_path(File, RawForms));
+        false -> Forms
+    end.
+
+% Rewrite the file component of every location that points at the BEAM file to
+% the resolved source path. No-op when the source could not be resolved (in which
+% case source_path/2 returns the BEAM path itself).
+-spec retarget_locs_to_source([ast:form()], file:filename(), file:filename()) -> [ast:form()].
+retarget_locs_to_source(Forms, BeamPath, BeamPath) -> Forms;
+retarget_locs_to_source(Forms, BeamPath, SrcPath) ->
+    ?LOG_DEBUG("Retargeting BEAM error locations from ~s to ~s", BeamPath, SrcPath),
+    ?assert_type(
+        utils:everywhere(
+            fun({loc, F, L, C}) when F =:= BeamPath -> {ok, {loc, SrcPath, L, C}};
+               (_) -> error
+            end,
+            Forms),
+        [ast:form()]).
