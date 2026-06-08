@@ -24,7 +24,10 @@
           % when true, exhaustiveness checking is disabled for the top-level function clauses
           disable_exhaustiveness = false :: boolean(),
           % when true, redundancy checking is disabled for the top-level function clauses
-          disable_redundancy = false :: boolean()
+          disable_redundancy = false :: boolean(),
+          % compiler-generated case clauses, exempt from redundancy checking
+          % (see ast:generated_clause_key/0)
+          generated_clauses = sets:new() :: sets:set(ast:generated_clause_key())
         }).
 -type ctx() :: #ctx{}.
 
@@ -70,14 +73,15 @@ string_to_cons_ty([X | Xs]) ->
     {cons, {singleton, X}, string_to_cons_ty(Xs)}.
 
 % Inference for a group of mutually recursive functions without type annotations.
--spec gen_constrs_fun_group(feature_flags:exhaustiveness_mode(), symtab:t(), {sets:set({atom(), arity()}), sets:set({atom(), arity()})}, [ast:fun_decl()]) -> {constr:constrs(), constr:constr_env()}.
-gen_constrs_fun_group(ExhaustivenessMode, Symtab, {DisableExhaustiveness, DisableRedundancy}, Decls) ->
+-spec gen_constrs_fun_group(feature_flags:exhaustiveness_mode(), symtab:t(), {sets:set({atom(), arity()}), sets:set({atom(), arity()}), sets:set(ast:generated_clause_key())}, [ast:fun_decl()]) -> {constr:constrs(), constr:constr_env()}.
+gen_constrs_fun_group(ExhaustivenessMode, Symtab, {DisableExhaustiveness, DisableRedundancy, GeneratedClauses}, Decls) ->
     lists:foldl(
       fun({function, L, Name, Arity, FunClauses}, {Cs, Env}) ->
               Ctx0 = new_ctx(Symtab, ExhaustivenessMode),
               Ctx = Ctx0#ctx{
                   disable_exhaustiveness = sets:is_element({Name, Arity}, DisableExhaustiveness),
-                  disable_redundancy = sets:is_element({Name, Arity}, DisableRedundancy)
+                  disable_redundancy = sets:is_element({Name, Arity}, DisableRedundancy),
+                  generated_clauses = GeneratedClauses
               },
               Exp = {'fun', L, no_name, FunClauses},
               Alpha = fresh_tyvar(Ctx),
@@ -90,10 +94,10 @@ gen_constrs_fun_group(ExhaustivenessMode, Symtab, {DisableExhaustiveness, Disabl
 % This function is invoked for each branch of the intersection type in the type spec.
 % The idea is that we can give better error messages by pointing out which part of the
 % intersection did not type check.
--spec gen_constrs_annotated_fun(feature_flags:exhaustiveness_mode(), symtab:t(), {boolean(), boolean()}, ast:ty_full_fun(), ast:fun_decl()) -> constr:constrs().
-gen_constrs_annotated_fun(ExhaustivenessMode, Symtab, {DisableExhaustiveness, DisableRedundancy}, {fun_full, ArgTys, ResTy}, {function, L, Name, Arity, FunClauses}) ->
+-spec gen_constrs_annotated_fun(feature_flags:exhaustiveness_mode(), symtab:t(), {boolean(), boolean(), sets:set(ast:generated_clause_key())}, ast:ty_full_fun(), ast:fun_decl()) -> constr:constrs().
+gen_constrs_annotated_fun(ExhaustivenessMode, Symtab, {DisableExhaustiveness, DisableRedundancy, GeneratedClauses}, {fun_full, ArgTys, ResTy}, {function, L, Name, Arity, FunClauses}) ->
     Ctx0 = new_ctx(Symtab, ExhaustivenessMode),
-    Ctx = Ctx0#ctx{ disable_exhaustiveness = DisableExhaustiveness, disable_redundancy = DisableRedundancy },
+    Ctx = Ctx0#ctx{ disable_exhaustiveness = DisableExhaustiveness, disable_redundancy = DisableRedundancy, generated_clauses = GeneratedClauses },
     {Args, Body} = fun_clauses_to_exp(Ctx, L, FunClauses),
     if length(Args) =/= length(ArgTys) orelse length(Args) =/= Arity ->
             errors:ty_error(L, "Arity mismatch for function ~w", Name);
@@ -796,6 +800,12 @@ case_clause_unmatched_constraints(Ctx, LowersBefore, Upper, Scrut) ->
     Ui = ast_lib:mk_union([ast_lib:mk_negation(Upper) | LowersBefore]),
     exp_constrs(Ctx, Scrut, Ui).
 
+-spec is_generated_clause(ctx(), ast:case_clause()) -> boolean().
+is_generated_clause(Ctx, Clause) ->
+    Generated = Ctx#ctx.generated_clauses,
+    % Hashing the clause is only needed for modules with generated clauses
+    sets:size(Generated) > 0 andalso sets:is_element(ast:generated_clause_key(Clause), Generated).
+
 % Parameters:
 %   ctx(): context
 %   ast:ty(): type of scrutiny (alpha in the typing rules)
@@ -815,7 +825,7 @@ case_clause_unmatched_constraints(Ctx, LowersBefore, Upper, Scrut) ->
     ctx(), ast:ty(), ast:exp(), boolean(), list(ast:ty()), ast:case_clause(), ast:ty()
 ) -> {ast:ty(), ast:ty(), constr:constrs(), constr:constr_case_branch()}.
 case_clause_constrs(Ctx, TyScrut, Scrut, NeedsUnmatchedCheck, LowersBefore,
-    {case_clause, L, Pat, Guards, Exps}, ExpectedTy) ->
+    Clause = {case_clause, L, Pat, Guards, Exps}, ExpectedTy) ->
     {BodyLower, BodyUpper, BodyEnvCs, BodyEnv} =
         case_clause_env(Ctx, L, TyScrut, Scrut, Pat, Guards),
     {_, _, GuardEnvCs, GuardEnv} = case_clause_env(Ctx, L, TyScrut, Scrut, Pat, []),
@@ -839,9 +849,13 @@ case_clause_constrs(Ctx, TyScrut, Scrut, NeedsUnmatchedCheck, LowersBefore,
                     GuardCs
             end,
             Guards)),
+    % Compiler-generated clauses are exempt from the redundancy check: they are
+    % defensive branches the programmer never wrote (see ast:generated_clause_key/0).
+    % They still contribute their lower bound to the exhaustiveness check.
+    CheckRedundancy = NeedsUnmatchedCheck andalso not is_generated_clause(Ctx, Clause),
     RedundancyCs =
         if
-            NeedsUnmatchedCheck ->
+            CheckRedundancy ->
                 case_clause_unmatched_constraints(Ctx, LowersBefore, BodyUpper, Scrut);
             true -> none
         end,

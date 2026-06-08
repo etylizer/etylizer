@@ -50,6 +50,12 @@ resolve_disabled_funs(Feature, Forms) ->
             PerFunOff
     end.
 
+% Collects the keys of compiler-generated case clauses,
+% recorded by ast_transform as -etylizer({generated_clauses, [...]}).
+-spec generated_clauses_from_forms(ast:forms()) -> sets:set(ast:generated_clause_key()).
+generated_clauses_from_forms(Forms) ->
+    sets:from_list(lists:append([Keys || {attribute, _, etylizer, {generated_clauses, Keys}} <- Forms])).
+
 % Checks all forms of a module
 -spec check_forms(ctx(), string(), ast:forms(), sets:set(string()), sets:set(string()), boolean()) -> [{atom(), arity()}].
 check_forms(Ctx, FileName, Forms, Only, Ignore, CheckExports) ->
@@ -67,7 +73,8 @@ check_forms(Ctx, FileName, Forms, Only, Ignore, CheckExports, {CliNoExhaustivene
     ExtTab = symtab:extend_symtab(FileName, Forms, Ctx#ctx.symtab, Ctx#ctx.overlay_symtab),
     DisableExhaustiveness = sets:union(resolve_disabled_funs(functions_exhaustive, Forms), CliNoExhaustiveness),
     DisableRedundancy = sets:union(resolve_disabled_funs(functions_redundant, Forms), CliNoRedundancy),
-    ExtCtx = Ctx#ctx { symtab = ExtTab, disable_exhaustiveness = DisableExhaustiveness, disable_redundancy = DisableRedundancy },
+    GeneratedClauses = generated_clauses_from_forms(Forms),
+    ExtCtx = Ctx#ctx { symtab = ExtTab, disable_exhaustiveness = DisableExhaustiveness, disable_redundancy = DisableRedundancy, generated_clauses = GeneratedClauses },
     ?LOG_DEBUG("Only: ~200p", sets:to_list(Only)),
     ?LOG_DEBUG("Ignore: ~200p", sets:to_list(Ignore)),
     % Split in functions with and without tyspec

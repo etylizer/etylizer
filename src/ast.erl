@@ -106,6 +106,7 @@
     exc_type_pat/0,
     stacktrace_pat/0,
     case_clause/0,
+    generated_clause_key/0,
     fun_clause/0,
     if_clause/0,
     guard/0,
@@ -164,7 +165,7 @@
 
 -export([
     format_loc/1, to_loc/2, loc_auto/0, min_loc/2, leq_loc/2, is_predef_name/1, is_predef_alias_name/1,
-    local_varname_from_any_ref/1, get_fun_name/1, loc_exp/1
+    local_varname_from_any_ref/1, get_fun_name/1, loc_exp/1, generated_clause_key/1
 ]).
 
 % General
@@ -212,6 +213,10 @@ min_loc(L1, L2) ->
         true -> L1;
         false -> L2
     end.
+
+-spec generated_clause_key(case_clause()) -> generated_clause_key().
+generated_clause_key(Clause = {case_clause, Loc, _, _, _}) ->
+    {Loc, erlang:phash2(Clause, 1 bsl 32)}.
 
 -spec local_varname_from_any_ref(any_ref()) -> {true, local_varname()} | false.
 local_varname_from_any_ref(Ref) ->
@@ -391,6 +396,17 @@ loc_exp({_, L, _, _, _, _}) -> L.
 -type stacktrace_pat() :: pat_wildcard() | pat_var().
 
 -type case_clause() :: {case_clause, loc(), Pat::pat(), Guards::[guard()], Body::exps()}.
+
+% Compiler-generated case clauses (`{generated, true}` in their source annotation, e.g.
+% the defensive branches Elixir emits for `cond`, string interpolation and strict
+% `and`/`or`) are exempt from the redundancy check: the programmer never wrote them.
+% to_loc/2 drops the marker, so ast_transform records the key of every generated clause
+% in a `{attribute, _, etylizer, {generated_clauses, [generated_clause_key()]}}` form,
+% and constr_gen looks clauses up by key. The location alone is not unique (Elixir
+% often emits line-only locations and puts generated and hand-written clauses at the
+% same position), so the key also contains a hash of the whole clause.
+-type generated_clause_key() :: {loc(), non_neg_integer()}.
+
 -type fun_clause()  :: {fun_clause, loc(), Pats::[pat()], Guards::[guard()], Body::exps()}.
 -type if_clause()   :: {if_clause, loc(), Guards::[guard()], Body::exps()}.
 

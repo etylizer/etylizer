@@ -33,7 +33,11 @@
           extra_forms = [] :: [ast:form()],
           % ETS table for accumulating record override variants during type transformation.
           % Used because trans_ty cannot thread state through its return value.
-          record_variants :: ets:table() | undefined
+          record_variants :: ets:table() | undefined,
+          % ETS table collecting the keys of compiler-generated case clauses
+          % (see ast:generated_clause_key/0).
+          % Used because trans_exp cannot thread state through its return value.
+          generated_clauses :: ets:table() | undefined
         }).
 -type ctx() :: #ctx{}.
 
@@ -60,6 +64,7 @@ trans(Path, Forms, Mode) ->
 trans(Path, Forms, Mode, FunEnv) ->
     ModName = ast_utils:modname_from_path(Path),
     VarTab = ets:new(record_variants, [bag]),
+    GenTab = ets:new(generated_clauses, [set]),
     {RevNewForms, FinalCtx} =
         lists:foldl(
             fun(F, {NewForms, Ctx0}) ->
@@ -72,11 +77,22 @@ trans(Path, Forms, Mode, FunEnv) ->
             end,
             {[], #ctx{ path = Path, current_file = Path, module_name = ModName,
                         funenv = FunEnv, records = #{},
-                        record_variants = VarTab }},
+                        record_variants = VarTab, generated_clauses = GenTab }},
             Forms
             ),
     ets:delete(VarTab),
-    lists:reverse(RevNewForms) ++ FinalCtx#ctx.extra_forms.
+    GenForms = generated_clauses_forms(GenTab),
+    ets:delete(GenTab),
+    lists:reverse(RevNewForms) ++ FinalCtx#ctx.extra_forms ++ GenForms.
+
+% All generated clause keys of the module as a single etylizer form,
+% or no form if there are none (the common case for Erlang code).
+-spec generated_clauses_forms(ets:table()) -> [ast:form()].
+generated_clauses_forms(Tab) ->
+    case lists:sort([Key || {Key} <- ets:tab2list(Tab)]) of
+        [] -> [];
+        Keys -> [{attribute, ast:loc_auto(), etylizer, {generated_clauses, Keys}}]
+    end.
 
 -spec build_funenv(file:filename(), [ast_erl:form()]) -> funenv().
 build_funenv(Path, Forms) ->
@@ -966,9 +982,21 @@ trans_case_clause(Ctx, Env, C) ->
             Loc = to_loc(Ctx, Anno),
             ?LOG_TRACE("Env for body of case clause at ~s: ~w", ast:format_loc(Loc), QEnv),
             {NewBody, NewEnv} = trans_exp_seq(Ctx, QEnv, Body),
-            {{case_clause, Loc, Q, NewGuards, NewBody}, NewEnv, QEnv};
+            Clause = {case_clause, Loc, Q, NewGuards, NewBody},
+            % Preserve the compiler's `{generated, true}` marker (dropped by to_loc)
+            case erl_anno:generated(Anno) of
+                true -> record_generated_clause(Ctx, Clause);
+                false -> ok
+            end,
+            {Clause, NewEnv, QEnv};
         X -> errors:uncovered_case(?FILE, ?LINE, X)
     end.
+
+-spec record_generated_clause(ctx(), ast:case_clause()) -> ok.
+record_generated_clause(#ctx{ generated_clauses = undefined }, _Clause) -> ok;
+record_generated_clause(Ctx, Clause) ->
+    true = ets:insert(Ctx#ctx.generated_clauses, {ast:generated_clause_key(Clause)}),
+    ok.
 
 -spec trans_catch_clauses(ctx(), varenv_local:t(),
                           [ast_erl:catch_clause()]) -> [ast:catch_clause()].

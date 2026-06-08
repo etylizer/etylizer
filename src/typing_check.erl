@@ -210,7 +210,7 @@ check_alt(Ctx, Decl = {function, Loc, Name, Arity, _}, FunTy, BranchMode, Fixed)
                FunStr, pretty:render_ty(FunTy)),
     DisableExhaustiveness = sets:is_element({Name, Arity}, Ctx#ctx.disable_exhaustiveness),
     DisableRedundancy = sets:is_element({Name, Arity}, Ctx#ctx.disable_redundancy),
-    Cs = constr_gen:gen_constrs_annotated_fun(Ctx#ctx.exhaustiveness_mode, Ctx#ctx.symtab, {DisableExhaustiveness, DisableRedundancy}, FunTy, Decl),
+    Cs = constr_gen:gen_constrs_annotated_fun(Ctx#ctx.exhaustiveness_mode, Ctx#ctx.symtab, {DisableExhaustiveness, DisableRedundancy, Ctx#ctx.generated_clauses}, FunTy, Decl),
     case Ctx#ctx.sanity of
         {ok, TyMap} -> constr_gen:sanity_check(Cs, TyMap);
         error -> ok

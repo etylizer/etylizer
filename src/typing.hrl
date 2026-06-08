@@ -11,7 +11,10 @@
           disable_exhaustiveness = sets:new() :: sets:set({atom(), arity()}),
           % functions where redundancy checking is disabled at the function clause level
           % via -etylizer({functions_redundant, off, [...]})
-          disable_redundancy = sets:new() :: sets:set({atom(), arity()})
+          disable_redundancy = sets:new() :: sets:set({atom(), arity()}),
+          % compiler-generated case clauses, exempt from redundancy checking
+          % (see ast:generated_clause_key/0)
+          generated_clauses = sets:new() :: sets:set(ast:generated_clause_key())
         }).
 
 -type ctx() :: #ctx{}.
