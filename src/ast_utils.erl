@@ -12,7 +12,9 @@
 -include("etylizer.hrl").
 
 -spec modname_from_path(file:filename()) -> ast:mod_name().
-modname_from_path(Path) -> list_to_atom(filename:basename(Path, ".erl")).
+modname_from_path(Path) ->
+    Ext = filename:extension(Path),
+    list_to_atom(filename:basename(Path, Ext)).
 
 -spec loc_replacer(term()) -> {ok, {loc, string(), 0, 0}} | error.
 loc_replacer({loc, File, Line, Col}) ->
