@@ -146,6 +146,8 @@
 
 {module, parse, #{file => "etylizer/src/parse.erl", overlays => [{library, "../../overlays/etylizer_overlay.erl"}], timeout => 10000}}.
 
+{module, parse_beam, #{file => "etylizer/src/parse_beam.erl", overlays => [{library, "../../overlays/etylizer_overlay.erl"}], timeout => 10000}}.
+
 {module, parse_cache, #{file => "etylizer/src/parse_cache.erl", overlays => [{library, "../../overlays/etylizer_overlay.erl"}], timeout => 10000}}.
 
 {module, paths, #{file => "etylizer/src/paths.erl", overlays => [{library, "../../overlays/etylizer_overlay.erl"}], timeout => 10000}}.
