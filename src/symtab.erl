@@ -358,22 +358,30 @@ extend_symtab_with_module_list(Symtab, SearchPath, Modules, OverlaySymtab) ->
 traverse_module_list(SearchPath, Symtab, [CurrentModule | RemainingModules], OverlaySymtab) ->
     case maps:get(CurrentModule, Symtab#tab.modules, error) of
         error ->
-            % It's a new module
-            Entry = {_, Filename, _} = paths:find_module_path(SearchPath, CurrentModule),
-            Forms = retrieve_forms_for_source(Entry),
-            NewSymtab = extend_symtab(Filename, Forms, CurrentModule, Symtab, OverlaySymtab),
-            ?LOG_DEBUG("Extended symtab with entries from ~p", CurrentModule),
-            case log:allow(trace) of
-                true ->
-                    NewSymbols = symbols_for_module(CurrentModule, NewSymtab),
-                    ?LOG_TRACE("New symbols from module ~p: ~s", CurrentModule,
-                        pretty:render_list(fun pretty:ref/1, NewSymbols));
-                false ->
-                    ok
-            end,
-            AdditionalModules = ast_utils:referenced_modules_via_types(Forms),
-            ?LOG_DEBUG("Additional modules for ~w: ~200p", CurrentModule, AdditionalModules),
-            traverse_module_list(SearchPath, NewSymtab, RemainingModules ++ AdditionalModules, OverlaySymtab);
+            % It's a new module. A module referenced via a type spec may be
+            % unresolvable (e.g. an Elixir stdlib module not on the search path);
+            % in that case we skip it instead of aborting the whole symtab build.
+            try paths:find_module_path(SearchPath, CurrentModule) of
+                Entry = {_, Filename, _} ->
+                    Forms = retrieve_forms_for_source(Entry),
+                    NewSymtab = extend_symtab(Filename, Forms, CurrentModule, Symtab, OverlaySymtab),
+                    ?LOG_DEBUG("Extended symtab with entries from ~p", CurrentModule),
+                    case log:allow(trace) of
+                        true ->
+                            NewSymbols = symbols_for_module(CurrentModule, NewSymtab),
+                            ?LOG_TRACE("New symbols from module ~p: ~s", CurrentModule,
+                                pretty:render_list(fun pretty:ref/1, NewSymbols));
+                        false ->
+                            ok
+                    end,
+                    AdditionalModules = ast_utils:referenced_modules_via_types(Forms),
+                    ?LOG_DEBUG("Additional modules for ~w: ~200p", CurrentModule, AdditionalModules),
+                    traverse_module_list(SearchPath, NewSymtab, RemainingModules ++ AdditionalModules, OverlaySymtab)
+            catch
+                throw:{etylizer, name_error, _} ->
+                    ?LOG_WARN("Skipping unresolvable module ~p", CurrentModule),
+                    traverse_module_list(SearchPath, Symtab, RemainingModules, OverlaySymtab)
+            end;
         _ -> traverse_module_list(SearchPath, Symtab, RemainingModules, OverlaySymtab)
     end;
 traverse_module_list(_, Symtab, [], _) ->

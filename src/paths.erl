@@ -65,17 +65,106 @@ compute_search_path(Opts) ->
             {[], sets:new([{version, 2}])},
             SrcDirs),
     LocalPaths = lists:reverse(LocalPathEntries),
+    ExtraCodePaths = build_extra_code_paths(Opts),
     ?LOG_TRACE2("OTP search path: ~p", OtpPaths),
     ?LOG_TRACE2("rebar search path: ~p", DepPaths),
     ?LOG_TRACE2("Local search path: ~p", LocalPaths),
-    LocalPaths ++ DepPaths ++ OtpPaths.
+    ?LOG_TRACE2("Extra code paths: ~p", ExtraCodePaths),
+    LocalPaths ++ DepPaths ++ ExtraCodePaths ++ OtpPaths.
+
+% Build search path entries from -pa/-pz code paths.
+% This allows etylizer to find BEAM files (e.g. Elixir stdlib) on the code path.
+% When a path looks like an Elixir stdlib ebin (e.g. .../lib/elixir/ebin),
+% also adds sibling ebin dirs (logger, iex, mix, etc.).
+% Also auto-discovers project dependency ebin dirs from input file paths.
+-spec build_extra_code_paths(cmd_opts()) -> search_path().
+build_extra_code_paths(Opts) ->
+    Dirs = Opts#opts.load_start ++ Opts#opts.load_end,
+    ExplicitDirs = lists:flatmap(fun expand_ebin_siblings/1, Dirs),
+    InputDepDirs = discover_beam_project_deps(Opts#opts.files),
+    AllDirs = lists:usort(ExplicitDirs ++ InputDepDirs),
+    lists:filtermap(
+        fun(Dir) ->
+            case filelib:is_dir(Dir) of
+                true -> {true, {dep, Dir, []}};
+                false -> false
+            end
+        end, AllDirs).
+
+% If Dir matches .../lib/APP/ebin, find all sibling .../lib/*/ebin dirs.
+-spec expand_ebin_siblings(file:filename()) -> [file:filename()].
+expand_ebin_siblings(Dir) ->
+    case filelib:is_dir(Dir) of
+        false -> [Dir];
+        true ->
+            % Check if Dir looks like .../lib/APP/ebin
+            case filename:basename(Dir) of
+                "ebin" ->
+                    LibDir = filename:dirname(filename:dirname(Dir)),
+                    case filename:basename(LibDir) of
+                        "lib" ->
+                            % Found a lib/APP/ebin pattern — add all siblings
+                            case file:list_dir(LibDir) of
+                                {ok, Subs} ->
+                                    SiblingDirs = lists:filtermap(
+                                        fun(Sub) ->
+                                            Ebin = filename:join([LibDir, Sub, "ebin"]),
+                                            case filelib:is_dir(Ebin) of
+                                                true -> {true, Ebin};
+                                                false -> false
+                                            end
+                                        end, Subs),
+                                    ?LOG_DEBUG("Expanded ~s to ~p sibling ebin dirs", Dir, length(SiblingDirs)),
+                                    SiblingDirs;
+                                _ -> [Dir]
+                            end;
+                        _ -> [Dir]
+                    end;
+                _ -> [Dir]
+            end
+    end.
+
+% For each input BEAM file in _build/ENV/lib/APP/ebin/, discover all
+% sibling dependency ebin dirs (_build/ENV/lib/*/ebin/).
+-spec discover_beam_project_deps([file:filename()]) -> [file:filename()].
+discover_beam_project_deps(Files) ->
+    lists:usort(lists:flatmap(
+        fun(File) ->
+            case filename:extension(File) of
+                ".beam" ->
+                    EbinDir = filename:dirname(File),
+                    case filename:basename(EbinDir) of
+                        "ebin" ->
+                            LibDir = filename:dirname(filename:dirname(EbinDir)),
+                            case filename:basename(LibDir) of
+                                "lib" ->
+                                    case file:list_dir(LibDir) of
+                                        {ok, Subs} ->
+                                            lists:filtermap(
+                                                fun(Sub) ->
+                                                    Ebin = filename:join([LibDir, Sub, "ebin"]),
+                                                    case filelib:is_dir(Ebin) of
+                                                        true -> {true, Ebin};
+                                                        false -> false
+                                                    end
+                                                end, Subs);
+                                        _ -> []
+                                    end;
+                                _ -> []
+                            end;
+                        _ -> []
+                    end;
+                _ -> []
+            end
+        end, Files)).
 
 -spec has_erl_files(file:filename()) -> boolean().
 has_erl_files(Dir) ->
     case file:list_dir(Dir) of
         {ok, Entries} ->
             lists:any(fun(Entry) ->
-                    case filename:extension(Entry) =:= ".erl" of
+                    Ext = filename:extension(Entry),
+                    case Ext =:= ".erl" orelse Ext =:= ".beam" of
                         true ->
                             X = filename:join(Dir, Entry),
                             filelib:is_file(X);
@@ -196,7 +285,8 @@ add_dir_to_list(Path) ->
         {ok, DirContent} ->
             {Dirs, Files} = lists:splitwith(fun(F) -> filelib:is_dir(F) end, DirContent),
             Sources = lists:filter(
-                        fun(F) -> utils:string_ends_with(F, ".erl") end, Files),
+                        fun(F) -> utils:string_ends_with(F, ".erl") orelse
+                                  utils:string_ends_with(F, ".beam") end, Files),
             SourcesFull = lists:map(fun(F) -> filename:join(Path, F) end, Sources),
             ChildSources = lists:append(lists:map(fun(F) -> add_dir_to_list(filename:join(Path, F)) end, Dirs)),
             lists:append(SourcesFull, ChildSources);
@@ -267,16 +357,28 @@ find_module_path(SearchPath, Module) ->
 
 -spec really_find_module_path(search_path(), atom()) -> search_path_entry().
 really_find_module_path(SearchPath, Module) ->
-    Filename = string:concat(atom_to_list(Module), ".erl"),
+    ModStr = atom_to_list(Module),
+    ErlFilename = string:concat(ModStr, ".erl"),
+    BeamFilename = string:concat(ModStr, ".beam"),
     SearchResult = lists:search(
       fun({_, SrcPath, _Includes}) ->
-            case filelib:find_file(Filename, SrcPath) of
+            case filelib:find_file(ErlFilename, SrcPath) of
                 {ok, _} -> true;
-                {error, not_found} -> false
+                {error, not_found} ->
+                    case filelib:find_file(BeamFilename, SrcPath) of
+                        {ok, _} -> true;
+                        {error, not_found} -> false
+                    end
             end
       end, SearchPath),
     case SearchResult of
         {value, {Kind, SrcPath, Includes}} ->
+            % Prefer .erl over .beam when both are present in the same dir.
+            ErlPath = filename:join(SrcPath, ErlFilename),
+            Filename = case filelib:is_file(ErlPath) of
+                true -> ErlFilename;
+                false -> BeamFilename
+            end,
             File = utils:normalize_path(filename:join(SrcPath, Filename)),
             ?LOG_DEBUG("Resolved module ~p to file ~p", Module, File),
             {Kind, File, Includes};
