@@ -1,12 +1,6 @@
 defmodule Showcase do
   @moduledoc """
-  A short tour of properties etylizer can *prove* about Elixir code using
-  set-theoretic types: unions, intersections, occurrence typing, parametric
-  polymorphism and precise tuple/list types.
-
-  Every function in this module type checks. etylizer reads the compiled
-  `Elixir.Showcase.beam`, recovers the Erlang abstract forms (and the `@spec`s)
-  from its `debug_info`, and checks each clause against the spec.
+  Every function in this module type checks. 
   """
 
   # Union argument + occurrence typing: each guard refines `x`, so etylizer
@@ -33,8 +27,8 @@ defmodule Showcase do
   def all_integers?([x | rest]) when is_integer(x), do: all_integers?(rest)
   def all_integers?(_), do: false
 
-  # Distributivity of unions over tuples — a set-theoretic identity that
-  # etylizer proves directly: `{:ok | :err, integer() | nil}` is the same type
+  # Distributivity of unions over tuples 
+  # etylizer proves: `{:ok | :err, integer() | nil}` is the same type
   # as the four-way union on the right.
   @spec dist({:ok | :err, integer() | nil}) ::
           {:ok, integer()} | {:ok, nil} | {:err, integer()} | {:err, nil}
