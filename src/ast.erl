@@ -390,7 +390,14 @@ loc_exp({_, L, _, _, _, _}) -> L.
 -type exc_type_pat() :: pat_wildcard() | pat_var() | rep_atom().
 -type stacktrace_pat() :: pat_wildcard() | pat_var().
 
--type case_clause() :: {case_clause, loc(), Pat::pat(), Guards::[guard()], Body::exps()}.
+% Generated::boolean() is true iff the clause was synthesized by the compiler
+% (carries `{generated, true}` in its source annotation, e.g. Elixir's `cond`,
+% string interpolation, and strict `and`/`or` emit dead defensive branches).
+% need to be excluded from certain checks: the programmer never
+% wrote them, so reporting them is noise. 
+% Hand-written clauses always have Generated = false and are checked normally.
+-type case_clause() :: {case_clause, loc(), Pat::pat(), Guards::[guard()], Body::exps(),
+                        Generated::boolean()}.
 -type fun_clause()  :: {fun_clause, loc(), Pats::[pat()], Guards::[guard()], Body::exps()}.
 -type if_clause()   :: {if_clause, loc(), Guards::[guard()], Body::exps()}.
 

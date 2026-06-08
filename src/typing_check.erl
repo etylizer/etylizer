@@ -301,7 +301,7 @@ sublocation_map(Term) ->
     Entries = utils:everything(
       fun({'case', Loc, Expr, Clauses}) -> {rec, {Loc, [Expr, Clauses]}};
          ({'fun', Loc, _, Clauses}) -> {rec, {Loc, Clauses}};
-         ({case_clause, Loc, Pat, _Guards, Body}) -> {rec, {Loc, [Pat, Body]}};
+         ({case_clause, Loc, Pat, _Guards, Body, _Gen}) -> {rec, {Loc, [Pat, Body]}};
          ({fun_clause, Loc, Pats, _Guards, Body}) -> {rec, {Loc, [Pats, Body]}};
          (_) -> error
       end, Term),
@@ -315,7 +315,7 @@ collect_locs(Term, Cache) ->
       fun({loc, _, _, _} = Loc) -> {ok, Loc};
          ({'case', Loc, _, _}) -> cached(Loc, Cache);
          ({'fun', Loc, _, _}) -> cached(Loc, Cache);
-         ({case_clause, Loc, _, _, _}) -> cached(Loc, Cache);
+         ({case_clause, Loc, _, _, _, _}) -> cached(Loc, Cache);
          ({fun_clause, Loc, _, _, _}) -> cached(Loc, Cache);
          (_) -> error
       end, Term)).
