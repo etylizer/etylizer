@@ -187,16 +187,55 @@ trans_form(Ctx, Form, Mode) ->
     R.
 
 % The option of an -etylizer attribute, which is any term as the user has written it.
+% A msg_type names a function and gives the type of its messages as a string, or as a list of
+% strings, each a function type: desugaring then creates a helper function with an
+% intersection spec. The attribute must appear before function definitions (OTP 28+).
 -spec trans_etylizer_opt(ctx(), ast:loc(), term()) -> {ok, ast:etylizer_opt()} | error.
-trans_etylizer_opt(_Ctx, _Loc, Opt) ->
+trans_etylizer_opt(Ctx, Loc, Opt) ->
     case Opt of
         {Kind, off} when Kind =:= functions_exhaustive; Kind =:= functions_redundant ->
             {ok, {Kind, off}};
         {Kind, off, Funs} when Kind =:= functions_exhaustive; Kind =:= functions_redundant ->
             % the term of the attribute: a list of name/arity pairs
             {ok, {Kind, off, ?assert_type(Funs, [ast:fun_with_arity()])}};
+        {msg_type, FunName, Arity, TypeStrs = [First | _], noexhaustiveness}
+                when is_atom(FunName), is_integer(Arity), is_list(First) ->
+            {ok, {msg_type, FunName, Arity, msg_fun_tys(Ctx, Loc, TypeStrs), noexhaustiveness}};
+        {msg_type, FunName, Arity, TypeStr, noexhaustiveness}
+                when is_atom(FunName), is_integer(Arity), is_list(TypeStr) ->
+            {ok, {msg_type, FunName, Arity, msg_ty(Ctx, Loc, TypeStr), noexhaustiveness}};
+        {msg_type, FunName, Arity, TypeStrs = [First | _]}
+                when is_atom(FunName), is_integer(Arity), is_list(First) ->
+            {ok, {msg_type, FunName, Arity, msg_fun_tys(Ctx, Loc, TypeStrs)}};
+        {msg_type, FunName, Arity, TypeStr}
+                when is_atom(FunName), is_integer(Arity), is_list(TypeStr) ->
+            {ok, {msg_type, FunName, Arity, msg_ty(Ctx, Loc, TypeStr)}};
         _ ->
             error
+    end.
+
+% The list form of a message type: each string must parse as a type, a type that is no
+% function type is the argument of one.
+-spec msg_fun_tys(ctx(), ast:loc(), term()) -> [ast:ty_full_fun()].
+msg_fun_tys(Ctx, Loc, TypeStrs) ->
+    lists:map(
+        fun(TyStr) ->
+            case parse_type(Ctx, TyStr) of
+                {ok, Ty = {fun_full, _, _}} -> Ty;
+                {ok, Ty} -> {fun_full, [Ty], {predef, any}};
+                error -> errors:ty_error(Loc, "Invalid type in msg_type list: ~s", [TyStr])
+            end
+        end,
+        % the term of the attribute: a list of strings
+        ?assert_type(TypeStrs, [string()])).
+
+-spec msg_ty(ctx(), ast:loc(), term()) -> ast:ty().
+msg_ty(Ctx, Loc, TypeStr0) ->
+    % the term of the attribute: a string
+    TypeStr = ?assert_type(TypeStr0, string()),
+    case parse_type(Ctx, TypeStr) of
+        {ok, Ty} -> Ty;
+        error -> errors:ty_error(Loc, "Invalid type in -etylizer({msg_type, ...}): ~s", TypeStr)
     end.
 
 -spec to_loc(ctx(), ast_erl:anno()) -> ast:loc().
@@ -433,8 +472,16 @@ trans_ty(Ctx, Env, Ty) ->
         {user_type, Anno, Name, ArgTys} ->
             % FIXME: should we check whether the reference is valid?
             Loc = to_loc(Ctx, Anno),
-            Ref = {ty_ref, Ctx#ctx.module_name, Name, arity(Loc, ArgTys)},
-            {named, Loc, Ref, trans_tys(Ctx, Env, ArgTys)};
+            NewArgTys = trans_tys(Ctx, Env, ArgTys),
+            case {Name, NewArgTys} of
+                {pid, [ArgTy]} ->
+                    % pid(T) is the Marlow-Wadler parameterized pid type.
+                    % Map to erlang:pid/1 so symtab lookups use the standard registration.
+                    {named, Loc, {ty_ref, erlang, pid, 1}, [ArgTy]};
+                _ ->
+                    Ref = {ty_ref, Ctx#ctx.module_name, Name, arity(Loc, ArgTys)},
+                    {named, Loc, Ref, NewArgTys}
+            end;
         {remote_type, Anno, [{'atom', _, etylizer}, {'atom', _, Name}, ArgTys]} ->
             resolve_ety_ty(to_loc(Ctx, Anno), Name, trans_tys(Ctx, Env, ArgTys));
         {remote_type, Anno, [{'atom', _, Mod}, {'atom', _, Name}, ArgTys]} ->
@@ -460,6 +507,9 @@ trans_ty(Ctx, Env, Ty) ->
                 _ ->
                     case {ast:predef_name(Name), NewArgTys} of
                         {{ok, Predef}, []} -> {predef, Predef};
+                        {{ok, pid}, [ArgTy]} ->
+                            % pid(T) is a parameterized pid type: process accepting messages of type T
+                            {named, Loc, {ty_ref, erlang, pid, 1}, [ArgTy]};
                         {{ok, _}, _} ->
                             errors:ty_error(Loc, "Invalid application of builtin type: ~w", Ty);
                         {error, _} ->
