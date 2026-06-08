@@ -165,10 +165,14 @@ cached_type_refs(SourcePath, Cache) ->
 
 -spec find_source_for_module(atom(), paths:search_path()) -> false | file:filename().
 find_source_for_module(Module, SearchPath) ->
-    Entry = paths:find_module_path(SearchPath, Module),
-    case Entry of
+    % A referenced module may be unresolvable (e.g. an Elixir stdlib module that
+    % is not on the search path). Treat that as "no local source" instead of
+    % aborting, so dependency analysis can proceed.
+    try paths:find_module_path(SearchPath, Module) of
         {local, Src, _} -> Src;
         _ -> false
+    catch
+        throw:{etylizer, name_error, _} -> false
     end.
 
 % Builds the dependency graph.
