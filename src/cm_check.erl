@@ -46,7 +46,8 @@ perform_type_checks(SearchPath, SourceList, DepGraph, Opts) ->
                 length(CheckList), length(SourceList), CheckList)
     end,
     OverlaySymtab = overlay_symtab(Opts),
-    NewIndex2 = traverse_and_check(CheckList, symtab:std_symtab(SearchPath, OverlaySymtab),
+    NewIndex2 = traverse_and_check(CheckList,
+        symtab:std_symtab(SearchPath, OverlaySymtab, Opts#opts.gradual_typing_mode),
         OverlaySymtab, SearchPath, Opts, NewIndex1),
     cm_index:save_index(IndexFile, NewIndex2),
     CheckList.
