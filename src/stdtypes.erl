@@ -217,9 +217,11 @@ tspecial_any() ->
         {predef, reference}
     ]).
 
+% All list values: [] or any cons cell
+% corresponds to elements for which is_list/1 returns true.
 -spec tlist_any() -> ast:ty().
 tlist_any() ->
-    {improper_list, {predef, any}, {predef, any}}.
+    {union, [{empty_list}, {nonempty_improper_list, {predef, any}, {predef, any}}]}.
 
 -spec tlist_improper(ast:ty(), ast:ty()) -> ast:ty().
 tlist_improper(A, B) ->
@@ -259,8 +261,10 @@ expand_predef_alias(number) -> {union, [{predef, float}, {predef, integer}]};
 expand_predef_alias(list) -> {list, {predef, any}};
 % also see code in ast_transform for expanding predefined aliases applied to arguments
 expand_predef_alias(nonempty_list) -> {nonempty_list, {predef, any}};
-expand_predef_alias(maybe_improper_list) -> {improper_list, {predef, any}, {predef, any}};
-expand_predef_alias(nonempty_maybe_improper_list) -> {nonempty_list, {predef, any}};
+expand_predef_alias(maybe_improper_list) ->
+    {union, [{empty_list}, {nonempty_improper_list, {predef, any}, {predef, any}}]};
+expand_predef_alias(nonempty_maybe_improper_list) ->
+    {nonempty_improper_list, {predef, any}, {predef, any}};
 expand_predef_alias(string) -> {list, expand_predef_alias(char)};
 expand_predef_alias(nonempty_string) -> {nonempty_list, expand_predef_alias(char)};
 expand_predef_alias(iodata) -> {union, [expand_predef_alias(iolist), expand_predef_alias(binary)]};
@@ -268,7 +272,12 @@ expand_predef_alias(iolist) ->
     % TODO fix variable IDs
     RecVarID = erlang:unique_integer(),
     Var = {mu_var, erlang:list_to_atom("mu" ++ integer_to_list(RecVarID))},
-    RecType = {improper_list, {union, [expand_predef_alias(byte), expand_predef_alias(binary), Var]}, {union, [expand_predef_alias(binary), tempty_list()]}},
+    Elem = {union, [expand_predef_alias(byte), expand_predef_alias(binary), Var]},
+    Term = {union, [expand_predef_alias(binary), tempty_list()]},
+    % iolist() = maybe_improper_list(byte() | binary() | iolist(), binary() | []).
+    % A bare binary() is iodata() but not an iolist(): list_to_binary/1 accepts
+    % [2 | <<1>>] and rejects <<1>>.
+    RecType = {union, [tempty_list(), {nonempty_improper_list, Elem, Term}]},
     {mu, Var, RecType};
 expand_predef_alias(map) -> {map, [{map_field_opt, {predef, any}, {predef, any}}]};
 expand_predef_alias(function) -> {fun_simple};
