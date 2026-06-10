@@ -1636,7 +1636,10 @@ var_test_env(FunExp, X, RestArgs) ->
                             is_function -> {#{XRef => {predef_alias, function}}, safe};
                             is_integer -> {#{XRef => {predef, integer}}, safe};
                             is_float -> {#{XRef => {predef, float}}, safe};
-                            is_list -> {#{XRef => {predef_alias, list}}, safe};
+                            % is_list/1 only checks the top constructor 
+                            % true for [] and for every cons cell (improper tails included)
+                            % so it must not narrow to the proper list type.
+                            is_list -> {#{XRef => {predef_alias, maybe_improper_list}}, safe};
                             is_map -> {#{XRef => {predef_alias, map}}, safe};
                             is_number -> {#{XRef => {predef_alias, number}}, safe};
                             is_pid -> {#{XRef => {predef, pid}}, safe};

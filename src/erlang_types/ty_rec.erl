@@ -508,8 +508,11 @@ unparse_any_module(dnf_ty_atom, {predef, any}) -> {predef, atom};
 unparse_any_module(dnf_ty_atom, Result) -> ast_lib:mk_intersection([{predef, atom}, Result]);
 unparse_any_module(dnf_ty_interval, {predef, any}) -> {predef, integer};
 unparse_any_module(dnf_ty_interval, Result) -> ast_lib:mk_intersection([{predef, integer}, Result]);
-unparse_any_module(dnf_ty_list, {predef, any}) -> {improper_list, {predef, any}, {predef, any}};
-unparse_any_module(dnf_ty_list, Result) -> ast_lib:mk_intersection([{improper_list, {predef, any}, {predef, any}}, Result]);
+% The internal list component holds cons cells only ([] lives in
+% dnf_ty_predefined), so its top is cons(any(), any()), i.e. the nonempty
+% maybe-improper list. {improper_list, any, any} would re-parse to any().
+unparse_any_module(dnf_ty_list, {predef, any}) -> {nonempty_improper_list, {predef, any}, {predef, any}};
+unparse_any_module(dnf_ty_list, Result) -> ast_lib:mk_intersection([{nonempty_improper_list, {predef, any}, {predef, any}}, Result]);
 unparse_any_module(dnf_ty_bitstring, {predef, any}) -> {bitstring};
 unparse_any_module(dnf_ty_bitstring, Result) -> ast_lib:mk_intersection([{bitstring}, Result]);
 unparse_any_module(ty_tuples, {predef, any}) -> {tuple_any};

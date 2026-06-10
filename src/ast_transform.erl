@@ -378,12 +378,17 @@ trans_ty(Ctx, Env, Ty) ->
             Loc = to_loc(Ctx, Anno),
             NewArgTys = trans_tys(Ctx, Env, ArgTys),
             case {Name, NewArgTys} of
-                % There is a long discussion about improper lists here:
-                % https://github.com/josefs/Gradualizer/issues/110
-                % To keep things simple, we do not distinguish between an improper list
-                % and a maybe-improper list.
+                % we follow the semantics of Erlang:
+                % list_to_binary([2 | <<1>>])  -> <<2,1>>     % <<1>> termination OK
+                % list_to_binary(<<1>>)        -> badarg      % <<1>> top level: ERROR
+                % iolist_to_binary(<<1>>)      -> <<1>>
+                % A maybe_improper_list(T1, T2) is [] or a cons chain over T1
+                % whose final tail is in T2
+                % nonempty_maybe_improper_list and nonempty_improper_list:
+                % they differ only in their termination types
                 {nonempty_list, [T]} -> {nonempty_list, T};
-                {maybe_improper_list, [T1, T2]} -> {improper_list, T1, T2};
+                {maybe_improper_list, [T1, T2]} ->
+                    {union, [{empty_list}, {nonempty_improper_list, T1, T2}]};
                 {nonempty_maybe_improper_list, [T1, T2]} -> {nonempty_improper_list, T1, T2};
                 {nonempty_improper_list, [T1, T2]} -> {nonempty_improper_list, T1, T2};
                 {record, [{singleton, RecordName}]} when is_atom(RecordName) ->
