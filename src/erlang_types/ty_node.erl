@@ -57,7 +57,6 @@
 -include("etylizer.hrl").
 
 -type type() :: {node, integer()}.
--type temporary_type() :: {local_ref, integer()}. % used in ty_parser
 -type set_of_constraint_sets() :: constraint_set:set_of_constraint_sets().
 
 
@@ -92,25 +91,10 @@ clean() ->
         [ets:delete(T) || T <- ?ALL_ETS]
   end.
 
--spec compare(T, T) -> eq | lt | gt when T :: type() | temporary_type().
+-spec compare(T, T) -> eq | lt | gt when T :: type().
 compare({node, Id1}, {node, Id2}) when Id1 < Id2 -> lt;
 compare({node, Id1}, {node, Id2}) when Id1 > Id2 -> gt;
-compare({node, _Id1}, {node, _Id2}) -> eq;
-% this is an architecture hack;
-% ty_node is used differently in ty_parser with local references
-% ty_node has to support comparing these local temporary references
-compare({local_ref, Id1}, {local_ref, Id2}) when Id1 < Id2 -> lt;
-compare({local_ref, Id1}, {local_ref, Id2}) when Id1 > Id2 -> gt;
-compare({local_ref, _Id1}, {local_ref, _Id2}) -> eq;
-% now this gets hacky
-% we need to ensure that comparing these two structures behaves as if 
-% the local_ref was replaced, i.e. the order result be the same
-% before and after replacing the local_ref
-% otherwise we get invalid BDDs
-compare(L = {local_ref, _}, N = {node, _}) -> 
-  compare(ty_parser:lookup_ref(L), N);
-compare(N = {node, _}, L = {local_ref, _}) -> 
-  compare(N, ty_parser:lookup_ref(L)).
+compare({node, _Id1}, {node, _Id2}) -> eq.
 
 -spec make(type_descriptor()) -> type().
 make(Ty) ->
