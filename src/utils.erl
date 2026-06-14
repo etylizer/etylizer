@@ -19,7 +19,7 @@
     string_ends_with/2, shorten/2,
     map_flip/2, foreach/2, concat_map/2,
     with_index/1, with_index/2,
-    mkdirs/1, hash_sha1/1, hash_file/1,
+    mkdirs/1, hash/1, hash_file/1,
     with_default/2, compare/2,
     timing/1,
     single/1,
@@ -213,16 +213,20 @@ with_index(Start, L) ->
 mkdirs(D) ->
     ?assert_pattern(ok, filelib:ensure_dir(filename:join(D, "XXX"))). % only creates the parent!
 
--spec hash_sha1(iodata()) -> string().
-hash_sha1(Data) ->
-    Digest = crypto:hash(sha, Data),
+% Content fingerprint for cache keys / recompilation detection, NOT a security
+% hash. Uses erlang:md5/1 (pure ERTS) rather than crypto:hash/2 so the browser
+% BEAM does not need the OpenSSL-backed crypto NIF. Callers must not assume a
+% particular algorithm or digest length.
+-spec hash(iodata()) -> string().
+hash(Data) ->
+    Digest = erlang:md5(Data),
     Bin = binary:encode_hex(Digest),
     binary_to_list(Bin).
 
 -spec hash_file(file:filename()) -> string() | {error, any()}.
 hash_file(Path) ->
     case file:read_file(Path) of
-        {ok, FileContent} -> utils:hash_sha1(FileContent);
+        {ok, FileContent} -> utils:hash(FileContent);
         X -> X
     end.
 
