@@ -215,7 +215,7 @@ mkdirs(D) ->
 
 -spec hash_sha1(iodata()) -> string().
 hash_sha1(Data) ->
-    Digest = crypto:hash(sha, Data),
+    Digest = erlang:md5(Data),   % wasm: drop crypto/OpenSSL dependency
     Bin = binary:encode_hex(Digest),
     binary_to_list(Bin).
 
