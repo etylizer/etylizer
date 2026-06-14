@@ -114,7 +114,7 @@ has_exported_interface_changed(Path, Forms, {_, Index}) ->
 -spec interface_hash(ast:forms()) -> string().
 interface_hash(Forms) ->
     Interface = cm_module_interface:extract_interface_declaration(Forms),
-    utils:hash_sha1(io_lib:write(Interface)).
+    utils:hash(io_lib:write(Interface)).
 
 -spec analyze(file:filename(), ast:forms()) -> cm_fun_deps:module_info().
 analyze(Path, Forms) ->
