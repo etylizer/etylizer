@@ -96,7 +96,7 @@ has_file_changed(Path, {_, Index}) ->
             true;
         {ok, {OldFileHash, _, _, _}} ->
             {ok, Content} = ?assert_type(file:read_file(Path), {ok, binary()}),
-            NewHash = utils:hash_sha1(Content),
+            NewHash = utils:hash(Content),
             NewHash =/= OldFileHash
     end.
 
@@ -109,7 +109,7 @@ has_exported_interface_changed(Path, Forms, {_, Index}) ->
             Interface = cm_module_interface:extract_interface_declaration(Forms),
             ?LOG_DEBUG("Interface of ~p: ~200p", Path, Interface),
             Written = ?assert_type(io_lib:write(Interface), iodata()),
-            NewHash = utils:hash_sha1(Written),
+            NewHash = utils:hash(Written),
             OldInterfaceHash =/= NewHash
     end.
 
@@ -224,7 +224,7 @@ insert_fun_index(Path, Forms, ModInfo, FailedFuns, {DepVersions, Index}) ->
     {ok, FileContent} = ?assert_type(file:read_file(Path), {ok, binary()}),
     Interface = cm_module_interface:extract_interface_declaration(Forms),
     Written = ?assert_type(io_lib:write(Interface), iodata()),
-    InterfaceHash = utils:hash_sha1(Written),
+    InterfaceHash = utils:hash(Written),
     DeclsHash = ?assert_type(maps:get(decls_hash, ModInfo), string()),
     Funs = ?assert_type(maps:get(funs, ModInfo), #{cm_fun_deps:fun_id() => cm_fun_deps:fun_info()}),
     FailedSet = sets:from_list(FailedFuns, [{version, 2}]),
@@ -241,7 +241,7 @@ insert_fun_index(Path, Forms, ModInfo, FailedFuns, {DepVersions, Index}) ->
         end, maps:new(), Funs),
     % Use a dummy file hash when there are failures, so the file is re-processed next run
     FileHash = case FailedFuns of
-        [] -> utils:hash_sha1(FileContent);
+        [] -> utils:hash(FileContent);
         _ -> ""
     end,
     {DepVersions, maps:put(Path, {FileHash, InterfaceHash, DeclsHash, FunIndex}, Index)}.
