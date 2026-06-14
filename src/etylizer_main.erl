@@ -1,13 +1,11 @@
 -module(etylizer_main).
 -export([
-    main/1
-]).
-
--ifdef(TEST).
--export([
+    main/1,
+    %% Exported for the browser/WASM persistent driver (web_driver_ex): reuse the
+    %% exact option parsing + check orchestration without halting the VM.
+    parse_args/1,
     doWork/1
 ]).
--endif.
 
 
 % @doc This is the main module of etylizer. It parses commandline arguments and orchestrates
