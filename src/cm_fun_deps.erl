@@ -96,7 +96,7 @@ extract_type_refs({function, _, Name, Arity, Clauses}, Forms) ->
 hash_fun_body({function, _, _, _, Clauses}) ->
     Stripped = normalize_for_hash(Clauses),
     Written = ?assert_type(io_lib:write(Stripped), iodata()),
-    utils:hash_sha1(Written).
+    utils:hash(Written).
 
 % @doc Hash a single function spec. Returns "" if no spec exists.
 -spec hash_fun_spec(atom(), arity(), ast:forms()) -> string().
@@ -106,7 +106,7 @@ hash_fun_spec(Name, Arity, Forms) ->
         {ok, SpecForm} ->
             Stripped = ast_utils:remove_locs(SpecForm),
             Written = ?assert_type(io_lib:write(Stripped), iodata()),
-            utils:hash_sha1(Written)
+            utils:hash(Written)
     end.
 
 % @doc Hash module-level declarations (types, records, exports).
@@ -125,7 +125,7 @@ hash_module_decls(Forms) ->
         end, Forms),
     Stripped = ast_utils:remove_locs(Decls),
     Written = ?assert_type(io_lib:write(Stripped), iodata()),
-    utils:hash_sha1(Written).
+    utils:hash(Written).
 
 % @doc Find the spec form for a function.
 -spec find_spec(atom(), arity(), ast:forms()) -> none | {ok, ast:fun_spec()}.
