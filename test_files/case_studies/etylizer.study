@@ -187,3 +187,6 @@
 
 {module, varenv_local, #{file => "etylizer/src/varenv_local.erl", overlays => [{library, "../../overlays/etylizer_overlay.erl"}], timeout => 10000}}.
 
+{module, web_driver, #{file => "etylizer/src/web_driver.erl", overlays => [{library, "../../overlays/etylizer_overlay.erl"}], timeout => 10000}}.
+
+{module, web_driver_ex, #{file => "etylizer/src/web_driver_ex.erl", overlays => [{library, "../../overlays/etylizer_overlay.erl"}], timeout => 10000}}.
