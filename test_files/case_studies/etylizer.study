@@ -66,6 +66,8 @@
 
 {module, decompose, #{file => "etylizer/src/decompose.erl", overlays => [{library, "../../overlays/etylizer_overlay.erl"}], timeout => 10000}}.
 
+{module, diagnostics, #{file => "etylizer/src/diagnostics.erl", overlays => [{library, "../../overlays/etylizer_overlay.erl"}], timeout => 10000}}.
+
 {module, constraint_set, #{file => "etylizer/src/erlang_types/constraint_set.erl", overlays => [{library, "../../overlays/etylizer_overlay.erl"}], timeout => 10000}}.
 
 {module, dnf_minimizer, #{file => "etylizer/src/erlang_types/dnf_minimizer.erl", overlays => [{library, "../../overlays/etylizer_overlay.erl"}], timeout => 10000}}.

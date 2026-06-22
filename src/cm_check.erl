@@ -4,7 +4,8 @@
 % updating the index. A changed file is rechecked function by function.
 
 -export([
-    perform_type_checks/4
+    perform_type_checks/4,
+    collect_diagnostics/4
 ]).
 
 -export_type([check_list/0]).
@@ -16,6 +17,7 @@
 -include("log.hrl").
 -include("etylizer_main.hrl").
 -include("parse.hrl").
+-include("etylizer.hrl").
 
 % The functions to check in a file
 -type fun_filter() :: all | [ast:fun_with_arity()].
@@ -27,17 +29,30 @@
     cm_depgraph:dep_graph(),
     cmd_opts()) -> check_list().
 perform_type_checks(SearchPath, SourceList, DepGraph, Opts) ->
+    {CheckList, _} = collect_diagnostics(SearchPath, SourceList, DepGraph, Opts),
+    CheckList.
+
+% @doc json-mode counterpart of perform_type_checks/4
+% runs the same incremental selection and updates the index,
+% but collects structured diagnostics as data instead of throwing on the first error.
+% Outside of json mode there are no diagnostics.
+-spec collect_diagnostics(
+    paths:search_path(),
+    [file:filename()],
+    cm_depgraph:dep_graph(),
+    cmd_opts()) -> {check_list(), [diagnostics:diagnostic()]}.
+collect_diagnostics(SearchPath, SourceList, DepGraph, Opts) ->
     {CheckList, Index} = check_list(SourceList, DepGraph, Opts),
     OverlaySymtab = overlay_symtab(Opts),
     Symtab = symtab:std_symtab(SearchPath, OverlaySymtab, Opts#opts.gradual_typing_mode),
-    {Checked, NewIndex} = lists:foldl(
-        fun({File, Filter}, {Acc, AccIndex}) ->
-            {Entry, NextIndex} =
+    {Checked, NewIndex, Diags} = lists:foldl(
+        fun({File, Filter}, {Acc, AccIndex, DiagAcc}) ->
+            {Entry, NextIndex, FileDiags} =
                 check_single_file(File, Filter, Symtab, OverlaySymtab, SearchPath, Opts, AccIndex),
-            {[Entry | Acc], NextIndex}
-        end, {[], Index}, CheckList),
+            {[Entry | Acc], NextIndex, DiagAcc ++ FileDiags}
+        end, {[], Index, []}, CheckList),
     cm_index:save_index(paths:index_file_name(Opts), NewIndex),
-    [E || E = {_, Funs} <- lists:reverse(Checked), Funs =/= []].
+    {[E || E = {_, Funs} <- lists:reverse(Checked), Funs =/= []], Diags}.
 
 % The files to check, and the index they were determined with. An empty filter is for
 % a file whose text changed, but none of its functions.
@@ -125,15 +140,15 @@ merge_filters(Funs1, Funs2) -> lists:usort(Funs1 ++ Funs2).
 -spec check_single_file(
     file:filename(), fun_filter(), symtab:t(), symtab:t(),
     paths:search_path(), cmd_opts(), cm_index:index())
-    -> {{file:filename(), fun_filter()}, cm_index:index()}.
+    -> {{file:filename(), fun_filter()}, cm_index:index(), [diagnostics:diagnostic()]}.
 check_single_file(CurrentFile, Filter, Symtab, OverlaySymtab, SearchPath, Opts, Index) ->
     Forms = parse_cache:parse(intern, CurrentFile),
     {Checked, Unchecked} = selection(CurrentFile, Forms, Filter, Opts),
-    Failed =
+    {Failed, Diags} =
         case Checked of
             [] ->
                 ?LOG_DEBUG("Nothing to check in ~s (filter: ~200p)", CurrentFile, Filter),
-                [];
+                {[], []};
             _ ->
                 ?LOG_DEBUG("Checking ~s (filter: ~200p)", CurrentFile, Checked),
                 ModName = ast_utils:modname_from_path(CurrentFile),
@@ -152,7 +167,7 @@ check_single_file(CurrentFile, Filter, Symtab, OverlaySymtab, SearchPath, Opts, 
     % a function that was due and is excluded on the command line stays due
     NotOk = Failed ++ [{F, unchecked} || F <- Unchecked],
     Headers = parse_cache:headers(CurrentFile),
-    {{CurrentFile, Checked}, cm_index:insert(CurrentFile, Forms, Headers, NotOk, Index)}.
+    {{CurrentFile, Checked}, cm_index:insert(CurrentFile, Forms, Headers, NotOk, Index), Diags}.
 
 % The functions of the filter that the command line selects, and those it excludes.
 -spec selection(file:filename(), ast:forms(), fun_filter(), cmd_opts()) ->
@@ -170,11 +185,12 @@ selection(File, Forms, Filter, Opts) ->
         {Selected, Excluded} -> {Selected, Excluded}
     end.
 
-% Returns the functions that failed (empty in early-exit mode).
+% Returns the functions that failed (empty in early-exit mode) and, in json mode, the
+% diagnostics.
 -spec do_type_check(
     file:filename(), ast:forms(), sets:set(string()), sets:set(string()),
     symtab:t(), symtab:t(), cmd_opts()
-) -> [{ast:fun_with_arity(), cm_index:failure()}].
+) -> {[{ast:fun_with_arity(), cm_index:failure()}], [diagnostics:diagnostic()]}.
 do_type_check(CurrentFile, Forms, Only, Ignore, ExpandedSymtab, OverlaySymtab, Opts) ->
     Sanity = perform_sanity_check(CurrentFile, Forms, Opts#opts.sanity),
     Ctx = typing:new_ctx(ExpandedSymtab, OverlaySymtab, Sanity,
@@ -185,10 +201,20 @@ do_type_check(CurrentFile, Forms, Only, Ignore, ExpandedSymtab, OverlaySymtab, O
     case Opts#opts.no_type_checking of
         true ->
             ?LOG_INFO("Not type checking ~p as requested", CurrentFile),
-            [];
+            {[], []};
         false ->
-            typing:check_forms(Ctx, CurrentFile, Forms, Only, Ignore,
-                Opts#opts.check_exports, {CliNoExhaustiveness, CliNoRedundancy})
+            CliFlags = {CliNoExhaustiveness, CliNoRedundancy},
+            case Opts#opts.report_mode of
+                json ->
+                    Diags = typing:collect_diagnostics(Ctx, CurrentFile, Forms, Only, Ignore,
+                        Opts#opts.check_exports, CliFlags),
+                    FailedFuns = lists:uniq(
+                        [FA || D <- Diags, {ok, FA} <- [diagnostics:failed_fun(D)]]),
+                    {[{FA, error} || FA <- FailedFuns], Diags};
+                _ ->
+                    {typing:check_forms(Ctx, CurrentFile, Forms, Only, Ignore,
+                        Opts#opts.check_exports, CliFlags), []}
+            end
     end.
 
 -spec perform_sanity_check(file:filename(), ast:forms(), boolean()) -> {ok, ast_check:ty_map()} | error.
