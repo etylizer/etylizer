@@ -63,12 +63,14 @@ cmd_spec() ->
             #{name => report_mode, long => "-report-mode",
               type => {custom, fun("early-exit") -> early_exit;
                                   ("report") -> report;
+                                  ("json") -> json;
                                   (_) -> error(badarg)
                        end},
               default => early_exit,
               help => "Choose a different mode of error reporting. The default 'early-exit' stops "
                       "on the first type error encountered, the 'report' mode continues and prints "
-                      "all results at the end to the console (early-exit, report)"},
+                      "all results at the end to the console, the 'json' mode prints a JSON array of "
+                      "diagnostics to stdout and exits 0 (early-exit, report, json)"},
             #{name => report_timeout, long => "-report-timeout", type => {integer, [{min, 1}]},
               default => 5000,
               help => "Define a timeout in milliseconds for type checking a function in report_mode 'report'."
@@ -233,7 +235,8 @@ dump_transformed_ast(Opts) ->
         end, FunDecls)
     end, Opts#opts.files).
 
--spec doWork(#opts{}) -> cm_check:check_list().
+-spec doWork(#opts{}) ->
+    cm_check:check_list() | {json_diagnostics, [file:filename()], [diagnostics:diagnostic()]}.
 doWork(Opts) ->
     global_state:with_new_state(fun() ->
       ?LOG_TRACE("Initializing ETS tables"),
@@ -288,7 +291,16 @@ doWork(Opts) ->
                   [];
               false ->
                   ?LOG_INFO("Performing type checking"),
-                  cm_check:perform_type_checks(SearchPath, cm_depgraph:all_sources(DepGraph), DepGraph, Opts)
+                  AllSources = cm_depgraph:all_sources(DepGraph),
+                  case Opts#opts.report_mode of
+                      json ->
+                          {CheckList, Diags} =
+                              cm_check:collect_diagnostics(SearchPath, AllSources, DepGraph, Opts),
+                          CheckedFiles = [F || {F, _Funs} <- CheckList],
+                          {json_diagnostics, CheckedFiles, Diags};
+                      _ ->
+                          cm_check:perform_type_checks(SearchPath, AllSources, DepGraph, Opts)
+                  end
           end
       after
           case Opts#opts.metrics_file of
@@ -316,6 +328,39 @@ main(Args) ->
     Opts = parse_args(Args),
     log:init(Opts#opts.log_level, Opts#opts.log_file),
     ?LOG_DEBUG("Parsed commandline options as ~200p", Opts),
+    case Opts#opts.report_mode of
+        json -> main_json(Opts);
+        _ -> main_default(Opts)
+    end,
+    ok.
+
+% JSON mode: print a JSON array of diagnostics to stdout and exit 0 (diagnostics are data,
+% not a crash). Only a tool-level failure (parse error of the input file, internal bug)
+% prints an error object to stderr and exits non-zero.
+-spec main_json(#opts{}) -> no_return().
+main_json(Opts) ->
+    try doWork(Opts) of
+        {json_diagnostics, CheckedFiles, Diags} ->
+            Filtered = diagnostics:filter_by_file(Diags, Opts#opts.files),
+            io:format("~ts~n", [diagnostics:results_to_json_iolist(CheckedFiles, Filtered)]),
+            erlang:halt(0);
+        _ ->
+            % type checking was not performed (e.g. --no-type-checking): nothing checked
+            io:format("~ts~n", [diagnostics:results_to_json_iolist([], [])]),
+            erlang:halt(0)
+    catch
+        throw:{etylizer, K, Msg}:S ->
+            ?LOG_DEBUG("~s", erl_error:format_exception(throw, K, S)),
+            io:format(standard_error, "~ts~n", [diagnostics:error_to_json_iolist(K, Msg)]),
+            case K of
+                parse_error -> erlang:halt(1);
+                name_error -> erlang:halt(1);
+                _ -> erlang:halt(2)
+            end
+    end.
+
+-spec main_default(#opts{}) -> ok.
+main_default(Opts) ->
     try doWork(Opts)
     catch throw:{etylizer, K, Msg}:S ->
             Raw = erl_error:format_exception(throw, K, S),
