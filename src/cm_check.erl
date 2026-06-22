@@ -4,7 +4,8 @@
 % updating the index. Supports function-level incremental type checking.
 
 -export([
-    perform_type_checks/4
+    perform_type_checks/4,
+    collect_diagnostics/4
 ]).
 
 -export_type([check_list/0]).
@@ -40,6 +41,90 @@ perform_type_checks(SearchPath, SourceList, DepGraph, Opts) ->
     rebuild_dep_graphs_if_needed(CheckList, SearchPath, DepGraph, Opts),
     _ = rebuild_fun_dep_graph(SourceList, CheckList, paths:fun_depgraph_file_name(Opts)),
     run_checks_and_save(CheckList, SearchPath, Opts, NewIndex1, IndexFile).
+
+% @doc json-mode counterpart of perform_type_checks/4 
+% runs the same incremental selection and updates the index, 
+% but collects structured diagnostics as data instead of throwing on the first error. 
+-spec collect_diagnostics(
+    paths:search_path(),
+    [file:filename()],
+    cm_depgraph:dep_graph(),
+    cmd_opts()) -> {check_list(), [diagnostics:diagnostic()]}.
+collect_diagnostics(SearchPath, SourceList, DepGraph, Opts) ->
+    IndexFile = paths:index_file_name(Opts),
+    RebarLockFile = paths:rebar_lock_file(Opts),
+    Index = cm_index:load_index(RebarLockFile, IndexFile, Opts#opts.mode),
+    {DepsChanged, NewIndex0} =
+        cm_index:has_external_dep_changed(RebarLockFile, Index),
+    NewIndex1 = case Opts#opts.no_deps of
+        true -> NewIndex0;
+        false -> cm_index:prune(NewIndex0, SourceList)
+    end,
+    CheckList = compute_check_list(SourceList, NewIndex1, DepGraph, DepsChanged, Opts),
+    rebuild_dep_graphs_if_needed(CheckList, SearchPath, DepGraph, Opts),
+    _ = rebuild_fun_dep_graph(SourceList, CheckList, paths:fun_depgraph_file_name(Opts)),
+    run_checks_and_collect(CheckList, SearchPath, Opts, NewIndex1, IndexFile).
+
+% @doc Diagnostics counterpart of run_checks_and_save/5
+-spec run_checks_and_collect(
+    check_list(), paths:search_path(), cmd_opts(), cm_index:index(), file:filename()
+) -> {check_list(), [diagnostics:diagnostic()]}.
+run_checks_and_collect(CheckList, SearchPath, Opts, Index, IndexFile) ->
+    OverlaySymtab = overlay_symtab(Opts),
+    Symtab = symtab:std_symtab(SearchPath, OverlaySymtab, Opts#opts.gradual_typing_mode),
+    {NewIndex, Diags} = lists:foldl(
+        fun({CurrentFile, FunFilter}, {IndexAcc, DiagAcc}) ->
+            {NewIndexAcc, FileDiags} = collect_file_diagnostics(
+                CurrentFile, FunFilter, Symtab, OverlaySymtab, SearchPath, Opts, IndexAcc),
+            {NewIndexAcc, DiagAcc ++ FileDiags}
+        end, {Index, []}, CheckList),
+    cm_index:save_index(IndexFile, NewIndex),
+    {CheckList, Diags}.
+
+% @doc Diagnostics counterpart of check_single_file/7
+-spec collect_file_diagnostics(
+    file:filename(), all | [{atom(), arity()}], symtab:t(), symtab:t(),
+    paths:search_path(), cmd_opts(), cm_index:index())
+    -> {cm_index:index(), [diagnostics:diagnostic()]}.
+collect_file_diagnostics(CurrentFile, FunFilter, Symtab, OverlaySymtab, SearchPath, Opts, Index) ->
+    ModName = ast_utils:modname_from_path(CurrentFile),
+    Only = build_only_set(FunFilter, Opts#opts.type_check_only, ModName),
+    case {sets:is_empty(Only), Opts#opts.type_check_only} of
+        {true, [_|_]} ->
+            ?LOG_DEBUG("Skipping ~s: no functions match -o filter", CurrentFile),
+            {Index, []};
+        _ ->
+            ?LOG_DEBUG("Collecting diagnostics for ~s (filter: ~200p)", CurrentFile, FunFilter),
+            Forms = parse_cache:parse(intern, CurrentFile),
+            Referenced = [M || M <- ast_utils:referenced_modules(Forms), M =/= ModName],
+            ExpandedSymtab = symtab:extend_symtab_with_module_list(Symtab, SearchPath, Referenced, OverlaySymtab),
+            Diags = run_diagnostics(CurrentFile, Forms, Only, ExpandedSymtab, OverlaySymtab, Opts),
+            FailedFuns = lists:uniq([{F, A} || #{function := F, arity := A} <- Diags, F =/= undefined]),
+            {cm_index:insert(CurrentFile, Forms, FailedFuns, Index), Diags}
+    end.
+
+% @doc Diagnostics counterpart of do_type_check/6
+-spec run_diagnostics(
+    file:filename(), ast:forms(), sets:set(string()), symtab:t(), symtab:t(), cmd_opts()
+) -> [diagnostics:diagnostic()].
+run_diagnostics(CurrentFile, Forms, Only, ExpandedSymtab, OverlaySymtab, Opts) ->
+    Sanity = perform_sanity_check(CurrentFile, Forms, Opts#opts.sanity),
+    Ctx = typing:new_ctx(ExpandedSymtab, OverlaySymtab, Sanity,
+        Opts#opts.report_mode, Opts#opts.report_timeout,
+        Opts#opts.exhaustiveness_mode, Opts#opts.gradual_typing_mode),
+    CliNoExhaustiveness = utils:parse_fun_ids(Opts#opts.no_exhaustiveness),
+    CliNoRedundancy = utils:parse_fun_ids(Opts#opts.no_redundancy),
+    case Opts#opts.no_type_checking of
+        true ->
+            ?LOG_INFO("Not type checking ~p as requested", CurrentFile),
+            [];
+        false ->
+            typing:collect_diagnostics(Ctx, CurrentFile, Forms,
+                Only,
+                sets:from_list(Opts#opts.type_check_ignore, [{version, 2}]),
+                Opts#opts.check_exports,
+                {CliNoExhaustiveness, CliNoRedundancy})
+    end.
 
 % @doc Run type checks and save the index.
 -spec run_checks_and_save(
