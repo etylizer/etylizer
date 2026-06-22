@@ -2,7 +2,8 @@
 
 -export([
     check_all/4,
-    check_all_report/4
+    check_all_report/4,
+    check_all_collect/4
 ]).
 
 -ifdef(TEST).
@@ -130,6 +131,36 @@ check_all(Ctx, FileName, Env, Decls) ->
             ?LOG_NOTE("Checking failed: ~s", Msg),
             {error, Msg}
     end.
+
+% Checks all functions against their specs, collecting all diagnostics as data instead of
+% throwing on the first error. Mirrors check_all_report/4's per-function try/catch, but
+% accumulates diagnostics:diagnostic() values rather than printing them. Continues to the
+% next function after an error, so all functions are reported (first located error per
+% function). The structured location is currently the function declaration location; the
+% precise per-expression location is embedded in the message text.
+-spec check_all_collect(
+        ctx(), string(), symtab:fun_env(), [{ast:fun_decl(), ast:ty_scheme()}]
+       ) -> [diagnostics:diagnostic()].
+check_all_collect(Ctx, FileName, Env, Decls) ->
+    ?LOG_INFO("Collecting diagnostics for ~w functions in ~s", length(Decls), FileName),
+    ExtSymtab = symtab:extend_symtab_with_fun_env(Env, Ctx#ctx.symtab),
+    ExtCtx = Ctx#ctx { symtab = ExtSymtab },
+    lists:foldr(
+        fun({Decl, Ty}, Acc) ->
+            {function, Loc, Name, Arity, _} = Decl,
+            try check(ExtCtx, Decl, Ty) of
+                ok -> Acc
+            catch
+                throw:{etylizer, Kind, Msg} ->
+                    % Prefer the precise location embedded in the message; fall back to
+                    % the function declaration location.
+                    PreciseLoc = diagnostics:loc_from_message(Msg, Loc),
+                    [diagnostics:from_error(Kind, PreciseLoc, Msg, Name, Arity) | Acc]
+            end
+        end,
+        [],
+        Decls
+    ).
 
 % Ensures that a mono type used as a spec is supported. Throws a ty_error if not.
 -spec ensure_type_supported(ast:loc(), ast:ty()) -> _.
