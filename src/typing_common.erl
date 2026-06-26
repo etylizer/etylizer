@@ -23,7 +23,7 @@ format_src_loc({loc, File, LineNo, ColumnNo}) ->
             if
                 LineNo >= 1 andalso LineNo =< N ->
                     Line = string:trim(lists:nth(LineNo, ?assert_type(Lines, nonempty_list(string()))), trailing),
-                    ColumnSpace = lists:duplicate(?assert_type(ColumnNo - 1, non_neg_integer()), $\s),
+                    ColumnSpace = lists:duplicate(?assert_type(max(0, ColumnNo - 1), non_neg_integer()), $\s),
                     utils:sformat("%~5.B| ~s~n%     | ~s^", LineNo, Line, ColumnSpace);
                 true ->
                     ErrMsg

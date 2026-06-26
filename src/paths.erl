@@ -39,7 +39,7 @@ compute_search_path(Opts) ->
     {OtpPaths, OtpIncDirs} = find_otp_paths(),
     {DepPaths, DepIncDirs} = find_dependency_roots(RootDir, OtpIncDirs),
     ImplicitDirs = lists:map(fun(F) -> filename:dirname(F) end, Opts#opts.files),
-    SrcDirs = ImplicitDirs ++ Opts#opts.src_paths,
+    SrcDirs = ImplicitDirs ++ Opts#opts.src_paths ++ Opts#opts.includes,
     LocalIncDirs =
         Opts#opts.includes ++
         Opts#opts.src_paths ++

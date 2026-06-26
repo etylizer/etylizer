@@ -355,11 +355,6 @@ replace_term({node, _} = Ref, Mapping) ->
         {ok, NewTerm} -> NewTerm;
         error -> Ref
     end;
-replace_term({local_ref, _} = Ref, Mapping) ->
-    case maps:find(Ref, Mapping) of
-        {ok, NewTerm} -> NewTerm;
-        error -> Ref
-    end;
 replace_term(Tuple, Mapping) when is_tuple(Tuple) ->
     list_to_tuple([replace_term(Element, Mapping) || Element <- tuple_to_list(Tuple)]);
 replace_term([H|T], Mapping) ->
