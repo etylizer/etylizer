@@ -17,6 +17,10 @@
 
 -record(ctx,
         { path :: file:filename(),
+          % starts equal to path, but updates on -include boundaries
+          % useful to map locs back to include files
+          % needed to make locs unique
+          current_file :: file:filename(),
           module_name :: atom(),
           funenv :: funenv(),
           % The records seen so far. We need the record definitions to rewrite record types
@@ -58,14 +62,16 @@ trans(Path, Forms, Mode, FunEnv) ->
     VarTab = ets:new(record_variants, [bag]),
     {RevNewForms, FinalCtx} =
         lists:foldl(
-            fun(F, {NewForms, Ctx}) ->
+            fun(F, {NewForms, Ctx0}) ->
+                Ctx = update_current_file(Ctx0, F),
                 case trans_form(Ctx, F, Mode) of
                     error -> {NewForms, Ctx};
                     {NewForm, NewCtx} -> {[NewForm | NewForms], NewCtx};
                     NewForm -> {[NewForm | NewForms], Ctx}
                 end
             end,
-            {[], #ctx{ path = Path, module_name = ModName, funenv = FunEnv, records = #{},
+            {[], #ctx{ path = Path, current_file = Path, module_name = ModName,
+                        funenv = FunEnv, records = #{},
                         record_variants = VarTab }},
             Forms
             ),
@@ -180,7 +186,22 @@ trans_form(Ctx, Form, Mode) ->
     R.
 
 -spec to_loc(ctx(), ast_erl:anno()) -> ast:loc().
-to_loc(Ctx, Anno) -> ast:to_loc(Ctx#ctx.path, Anno).
+to_loc(Ctx, Anno) -> ast:to_loc(Ctx#ctx.current_file, Anno).
+
+% Updates ctx.current_file when a top-level -file marker (inserted by epp at
+% include boundaries) is encountered. 
+% The module's own marker is mapped back to the original Path 
+% so module locs keep their exact file string.
+% Only header code switches to the header's path, 
+% which is what makes header loc()s distinct from same-numbered module lines.
+-spec update_current_file(ctx(), ast_erl:form()) -> ctx().
+update_current_file(Ctx, {attribute, _, file, {MarkerFile, _}}) ->
+    SameAsModule =
+        filename:rootname(filename:basename(MarkerFile)) =:=
+            filename:rootname(filename:basename(Ctx#ctx.path)),
+    NewFile = case SameAsModule of true -> Ctx#ctx.path; false -> MarkerFile end,
+    Ctx#ctx{ current_file = NewFile };
+update_current_file(Ctx, _Form) -> Ctx.
 
 -spec trans_spec_ty(ctx(), ast:loc(), [ast_erl:ty_full_fun()]) -> ast:ty_scheme().
 trans_spec_ty(Ctx, Loc, FunTys) ->
@@ -1197,7 +1218,7 @@ collect_record_variants(Ctx, RecName) ->
 -ifdef(TEST).
 
 test_ctx() ->
-    #ctx{ path = ".", module_name = ast_transform, funenv = varenv:empty("function"), records = #{},
+    #ctx{ path = ".", current_file = ".", module_name = ast_transform, funenv = varenv:empty("function"), records = #{},
           record_variants = ets:new(test_record_variants, [bag]) }.
 
 parse_type_test() ->
