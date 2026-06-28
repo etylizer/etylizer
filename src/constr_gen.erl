@@ -135,9 +135,7 @@ exp_constrs(Ctx, E, T) ->
         {block, L, Es} ->
             exps_constrs(Ctx, L, Es, T);
         {'case', L, ScrutE, Clauses} ->
-            case_constrs(Ctx, L, ScrutE, Clauses, [], T);
-        {'case', L, ScrutE, Clauses, EscapeAnnotation} ->
-            case_constrs(Ctx, L, ScrutE, Clauses, EscapeAnnotation, T);
+            case_constrs(Ctx, L, ScrutE, Clauses, T);
         {'catch', L, CatchE} ->
             Top = {predef, any},
             Cs = exp_constrs(Ctx, CatchE, Top),
@@ -428,13 +426,6 @@ exp_constrs(Ctx, E, T) ->
                   Args),
             TupleC = {csubty, mk_locs("tuple constructor", L), {tuple, Tys}, T},
             sets:add_element(TupleC, Cs);
-        {var, L, EscRef = {escaped_ref, _VarName, _EscTyVar}} ->
-            Msg = utils:sformat("escaped var ~w", _VarName),
-            AlphaName = fresh_ty_varname(Ctx),
-            Locs = mk_locs(Msg, L),
-            Mater = {cvarmater, Locs, EscRef, AlphaName},
-            Link = {csubty, Locs, {var, AlphaName}, T},
-            sets:from_list([Mater, Link]);
         {var, L, AnyRef} ->
             Msg = utils:sformat("var ~s", pretty:render(pretty:ref(AnyRef))),
             AlphaName = fresh_ty_varname(Ctx),
@@ -462,9 +453,9 @@ exp_constrs(Ctx, E, T) ->
     end.
 
 
-% Helper for case expressions (with or without escape annotations).
--spec case_constrs(ctx(), ast:loc(), ast:exp(), [ast:case_clause()], ast:escape_annotation(), ast:ty()) -> constr:constrs().
-case_constrs(Ctx, L, ScrutE, Clauses, EscapeAnnotation, T) ->
+% Helper for case expressions.
+-spec case_constrs(ctx(), ast:loc(), ast:exp(), [ast:case_clause()], ast:ty()) -> constr:constrs().
+case_constrs(Ctx, L, ScrutE, Clauses, T) ->
     Alpha = fresh_tyvar(Ctx),
     % Reset disable flags for inner case expressions (only applies to top-level fun clauses)
     InnerCtx = Ctx#ctx{ disable_exhaustiveness = false, disable_redundancy = false },
@@ -488,8 +479,7 @@ case_constrs(Ctx, L, ScrutE, Clauses, EscapeAnnotation, T) ->
                                   NeedsUnmatchedCheck,
                                   Lowers,
                                   Clause,
-                                  T,
-                                  EscapeAnnotation),
+                                  T),
                             {BodyList ++ [ThisConstrBody],
                              Lowers ++ [ThisLower],
                              Uppers ++ [ThisUpper],
@@ -691,7 +681,6 @@ funcall_constrs_with_tyscm(Ctx, L, Var, TyScm, Args, T) ->
 var_as_global_ref({var, _, Ref}) ->
     case Ref of
         {local_ref, _} -> error;
-        {escaped_ref, _, _} -> error;
         _ -> {ok, Ref}
     end.
 
@@ -823,11 +812,10 @@ case_clause_unmatched_constraints(Ctx, LowersBefore, Upper, Scrut) ->
 %   constr:constrs(): constraints result from the guarded pattern of the clause
 %   constr:constr_case_branch(): the body of the case
 -spec case_clause_constrs(
-    ctx(), ast:ty(), ast:exp(), boolean(), list(ast:ty()), ast:case_clause(), ast:ty(),
-    ast:escape_annotation()
+    ctx(), ast:ty(), ast:exp(), boolean(), list(ast:ty()), ast:case_clause(), ast:ty()
 ) -> {ast:ty(), ast:ty(), constr:constrs(), constr:constr_case_branch()}.
 case_clause_constrs(Ctx, TyScrut, Scrut, NeedsUnmatchedCheck, LowersBefore,
-    {case_clause, L, Pat, Guards, Exps}, ExpectedTy, EscapeAnnotation) ->
+    {case_clause, L, Pat, Guards, Exps}, ExpectedTy) ->
     {BodyLower, BodyUpper, BodyEnvCs, BodyEnv} =
         case_clause_env(Ctx, L, TyScrut, Scrut, Pat, Guards),
     {_, _, GuardEnvCs, GuardEnv} = case_clause_env(Ctx, L, TyScrut, Scrut, Pat, []),
@@ -841,19 +829,7 @@ case_clause_constrs(Ctx, TyScrut, Scrut, NeedsUnmatchedCheck, LowersBefore,
     ),
     Beta = fresh_tyvar(Ctx),
     BodyCs = exps_constrs(Ctx, L, Exps, Beta),
-    % Add escape constraints: for each escaping variable, materialize its type
-    % in this branch and flow it into the shared escape type variable.
-    EscCs = lists:foldl(
-        fun({VarName, EscTyVar}, Acc) ->
-            EscAlpha = fresh_ty_varname(Ctx),
-            Locs = mk_locs("escape var", L),
-            Mater = {cvarmater, Locs, {local_ref, VarName}, EscAlpha},
-            Link = {csubty, Locs, {var, EscAlpha}, {var, EscTyVar}},
-            sets:add_element(Link, sets:add_element(Mater, Acc))
-        end,
-        sets:new(),
-        EscapeAnnotation),
-    InnerCs = sets:union(BodyCs, EscCs),
+    InnerCs = BodyCs,
 
     CGuards =
         sets:union(
@@ -977,14 +953,7 @@ case_clause_env(Ctx, L, TyScrut, Scrut, Pat, Guards) ->
     {Ci0, Gamma0} = pat_env(Ctx, L, Ti, pat_of_exp(Scrut)),
     {Ci1, Gamma1} = pat_guard_env(Ctx, L, Ti, Pat, Guards),
     Gamma2 = intersect_envs(Gamma1, Gamma0),
-    % When the scrutiny is an escaped variable, add it to the env
-    % so that it gets narrowed by the case pattern matching.
-    Gamma3 = case Scrut of
-        {var, _, {escaped_ref, _, _} = EscRef} ->
-            intersect_envs(Gamma2, #{EscRef => Ti});
-        _ -> Gamma2
-    end,
-    {Lower, Upper, sets:union(Ci0, Ci1), Gamma3}.
+    {Lower, Upper, sets:union(Ci0, Ci1), Gamma2}.
 
 % ⌊ p when g ⌋_e and ⌈ p when g ⌉_e
 -spec pat_guard_lower_upper(symtab:t(), ast:pat(), [ast:guard()], ast:exp()) -> {ast:ty(), ast:ty()}.
@@ -1081,8 +1050,7 @@ bound_vars_pat(P) ->
              );
         {wildcard, _L} -> sets:new([{version, 2}]);
         {var, _L, {local_bind, V}} -> sets:from_list([V], [{version, 2}]);
-        {var, _L, {local_ref, _V}} -> sets:new();
-        {var, _L, {escaped_ref, _V, _}} -> sets:new()
+        {var, _L, {local_ref, _V}} -> sets:new()
     end.
 
 

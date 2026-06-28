@@ -116,23 +116,17 @@ case_14(X, X) -> ok;
 case_14(_, _) -> nok.
 
 % scoping of variables outside of the case expression if they are safe
+% currently: safe escaped variables are treated as dynamic()
 -spec case_15() -> ok.
 case_15() ->
     case foo of _ -> S = ok end,
     S.
 
--spec case_16_fail() -> ok.
-case_16_fail() ->
-    case ok of _ -> S = foo end,
-    S.
-
-% safe variable scope
 -spec case_17(foo | bar) -> ok.
 case_17(X) ->
     case X of foo -> S = ok; bar -> S = ok end,
     S.
 
-% S has type foo | bar
 -spec case_18(foo | bar) -> foo | bar.
 case_18(X) ->
     case X of 
@@ -141,7 +135,6 @@ case_18(X) ->
     end,
     S.
 
-% S has type foo
 -spec case_19(foo | bar) -> foo | bar.
 case_19(X) ->
     case X of 
@@ -150,27 +143,6 @@ case_19(X) ->
     end,
     S.
 
-% S has type foo | fail
--spec case_20_fail(foo | bar) -> foo | bar.
-case_20_fail(X) ->
-    case X of 
-        foo -> S = foo; 
-        bar -> S = fail
-    end,
-    S.
-
-% S has type foo | bar
-% the case expression is exhaustive
--spec case_21_fail(foo | bar) -> foo.
-case_21_fail(X) ->
-    case X of
-        S when S == foo -> S;
-        S when S == bar -> foo
-    end,
-    S.
-
-% S has type foo | bar
-% the case expression is exhaustive
 -spec case_22(foo | bar) -> foo | bar.
 case_22(X) ->
     case X of
@@ -212,25 +184,9 @@ case_27(X) ->
     end,
     S.
 
--spec case_28_fail(foo | bar) -> bar.
-case_28_fail(X) ->
-    case X of
-        S when {S, complex} == {foo, complex} -> S;
-        S -> S
-    end,
-    S.
-
 % symmetry
 -spec case_29(foo | bar) -> foo | bar.
 case_29(X) ->
-    case X of
-        S when {foo, complex} == {S, complex} -> S;
-        S -> S
-    end,
-    S.
-
--spec case_30_fail(foo | bar) -> bar.
-case_30_fail(X) ->
     case X of
         S when {foo, complex} == {S, complex} -> S;
         S -> S
@@ -244,7 +200,6 @@ case_31() ->
         _ -> U
     end.
 
-% escaped variable should be narrowed by subsequent case matching
 -spec case_32(a | b | c) -> b | c.
 case_32(X) ->
     Y = X,

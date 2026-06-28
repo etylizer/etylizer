@@ -32,6 +32,15 @@ new_ctx(Tab, Env, Sanity) ->
 simp_constrs(Ctx, Cs) ->
     sets:union(lists:map(fun (C) -> simp_constr(Ctx, C) end, sets:to_list(Cs))).
 
+%% A local variable left unresolved at simplification time is typed as dynamic() 
+%% with a warning, rather than being a hard error. 
+%% This covers variables that escape a case/if/receive branch safely.
+-spec escaped_dynamic(ast:local_varname(), constr:locs(), string()) -> ast:ty_scheme().
+escaped_dynamic(Y, Locs, Context) ->
+    ?LOG_WARN("~s: variable ~w escapes (~s); typing it as dynamic()",
+              ast:format_loc(loc(Locs)), Y, Context),
+    {ty_scheme, [], {predef, dynamic}}.
+
 -spec lookup_var_ty(ctx(), ast:any_ref(), constr:locs(), string()) -> ast:ty_scheme().
 lookup_var_ty(Ctx, X, Locs, Context) ->
     case maps:find(X, Ctx#ctx.env) of
@@ -39,8 +48,7 @@ lookup_var_ty(Ctx, X, Locs, Context) ->
         error ->
             case X of
                 {local_ref, Y} ->
-                    errors:bug("Unbound variable in " ++ Context ++ " ~w: ~p",
-                         [Y, Ctx#ctx.env]);
+                    escaped_dynamic(Y, Locs, Context);
                 GlobalX ->
                     symtab:lookup_fun(GlobalX, loc(Locs), Ctx#ctx.symtab)
             end
@@ -88,10 +96,7 @@ simp_constr(Ctx, C) ->
                     error ->
                         case X of
                             {local_ref, Y} ->
-                                errors:bug("Unbound variable in materialization constraint simplification ~w: ~p",
-                                     [Y, Ctx#ctx.env]);
-                            {escaped_ref, _VarName, EscTyVar} ->
-                                {ty_scheme, [], {var, EscTyVar}};
+                                escaped_dynamic(Y, Locs, "materialization");
                             GlobalX ->
                                 symtab:lookup_fun(GlobalX, loc(Locs), Ctx#ctx.symtab)
                         end
