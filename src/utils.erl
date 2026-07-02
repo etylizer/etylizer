@@ -405,14 +405,22 @@ fold_with_context(Fun, Acc, [H|T]) ->
     {NewAcc, NewT} = Fun({Acc, H, T}),
     fold_with_context(Fun, NewAcc, NewT).
 
-% transforms a tally:tally constraints to a config file which can be loaded in the tally_tests.erl tests
-% TODO free variables #74
+% Dumps a tally invocation as a 3-term config file consumable by file:consult/1.
+% Terms:
+%   1) the constraint list — full records (scsubty | scmater), preserving the
+%      distinction between subtype and materialization constraints. Older callers
+%      that pass `{S, T}` pairs already use that shape and pass through unchanged.
+%   2) the symbol-table types map (symtab:get_types/1 output)
+%   3) the fixed-vars set (sets:set/0)
+% test_tally_satisfiable/4 in erlang_types_test_utils accepts either pair-form
+% or record-form for backward compatibility with pre-existing test files.
 format_tally_config(Constraints, FixedVars, Symtab) ->
-    "[" ++ lists:join(",", [io_lib:format("{~p, ~p}", [S, T]) || {_, _, S, T} <- Constraints]) ++ "]." 
-    ++ "\n" 
-    ++ io_lib:format("~p.", [symtab:get_types(Symtab)])
-    ++ "\n" 
-    ++ io_lib:format("~p.", [FixedVars]).
+    ConsList = case Constraints of
+        L when is_list(L) -> L;
+        _ -> sets:to_list(Constraints)
+    end,
+    io_lib:format("~p.~n~p.~n~p.~n",
+                  [ConsList, symtab:get_types(Symtab), FixedVars]).
 
 % Parses a string like "name/arity" into {atom(), arity()}.
 -spec parse_fun_id(string()) -> {atom(), arity()}.
