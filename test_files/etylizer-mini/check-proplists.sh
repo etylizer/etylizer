@@ -6,6 +6,7 @@ cd $(dirname $0)
 # 1) requires {T, ...} types
 
 QF=""
+QF=$QF" -i flatten/1" # TODO
 QF=$QF" -i expand/2" # 1)
 QF=$QF" -i normalize/2" # 1)
 QF=$QF" -i to_map/2" # 1)

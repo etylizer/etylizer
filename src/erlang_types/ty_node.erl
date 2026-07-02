@@ -87,7 +87,7 @@ init() ->
 clean() ->
   case ets:whereis(?ID) of
       undefined -> ok;
-      _ -> 
+      _ ->
         [ets:delete(T) || T <- ?ALL_ETS]
   end.
 
@@ -171,9 +171,7 @@ is_empty(TyNode) ->
     [{_, R}] -> ?assert_type(R, boolean());
     [_ | _] -> error(invariant);
     [] ->
-      % T0 = os:system_time(microsecond),
       {Result, LocalCache} = is_empty(TyNode, #{}),
-      % io:format(user,"Empty ~p in ~p us~n", [TyNode, os:system_time(microsecond)-T0]),
       utils:update_ets_from_map(?CACHE, LocalCache),
       ets:insert(?CACHE, [{TyNode, Result}]),
       Result
@@ -294,16 +292,8 @@ normalize(TyNode, FixedVariables) ->
     [{_, Result}] -> ?assert_type(Result, set_of_constraint_sets());
     [_ | _] -> error(invariant);
     [] ->
-      % T0 = os:system_time(millisecond),
       {Result, _LocalCache} = normalize(TyNode, FixedVariables, #{}),
       ets:insert(?NORMCACHE, [{{TyNode, FixedVariables}, Result}]),
-      % case (os:system_time(millisecond)-T0) > 10000 of
-      %   true -> 
-      %     io:format(user, "~p~n", [ty_node:dump(TyNode)]),
-      %     error(eend);
-      %   _ -> ok
-      % end,
-      % io:format(user,"Normalize ~p in ~p ms~n", [TyNode, os:system_time(millisecond)-T0]),
       Result
   end,
   Z.
@@ -311,31 +301,22 @@ normalize(TyNode, FixedVariables) ->
 -spec normalize(type(), monomorphic_variables(), ST) -> 
     {set_of_constraint_sets(), ST} when ST :: normalize_cache().
 normalize(TyNode, FixedVariables, Cache) ->
-  Ty = load(TyNode),
-
+  %% Cache by TyNode (a small {node, Id} term) rather than by the loaded
+  %% descriptor Ty (a deep BDD term). TyNode is 1-1 with Ty (consing via
+  %% ?UNIQUETABLE), so this is semantically equivalent but avoids the
+  %% ets:lookup(?SYSTEM, TyNode) on every cache hit and shrinks the cache key.
   case Cache of
-    #{{Ty, FixedVariables} := Res} -> 
+    #{{TyNode, FixedVariables} := Res} ->
       {Res, Cache};
-    _ -> 
-      % assume type is normalized and add to local cache
-      {Result, LC_0} = dnf_ty_variable:normalize(Ty, FixedVariables, Cache#{{Ty, FixedVariables} => [[]]}),
-
-      case Result of 
-        % satisfiable; 
-        % local cache can be kept as is 
-        % Ty is empty is now cached, and all intermediate results are also cached
-        [[]] -> 
+    _ ->
+      Ty = load(TyNode),
+      {Result, LC_0} = dnf_ty_variable:normalize(Ty, FixedVariables,
+                          Cache#{{TyNode, FixedVariables} => [[]]}),
+      case Result of
+        [[]] ->
           {[[]], LC_0};
-
-        % not (immediately) satisfiable;
-        % invalidate all types that were assumed to be satisfiable
-        %  => recover initial cache
-        % and add the result of Ty to the cache
-        % this is a bigger approximation than in the subtyping algorithm,
-        % as the result could still be satisfiable
-        % only [] is surely unsatisfiable
-        Normalized -> 
-          {Normalized, Cache#{{Ty, FixedVariables} => Normalized}}
+        Normalized ->
+          {Normalized, Cache#{{TyNode, FixedVariables} => Normalized}}
       end
   end.
 
@@ -595,9 +576,8 @@ all_variables(Ty, Cache) ->
 %-spec opcache(term(), fun(() -> A)) -> A. % TODO scoped variables extension for annotations
 -spec opcache(term(), fun(() -> type())) -> type().
 opcache(Key, F) ->
-  % process dict faster but we can't erase just parts of it, only everything
   case ets:lookup(?OPCACHE, Key) of
-    [{_, Result}] -> ?assert_type(Result, type()); 
+    [{_, Result}] -> ?assert_type(Result, type());
     [_ | _] -> error(invariant);
     [] ->
       R = F(),

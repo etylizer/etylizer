@@ -21,7 +21,7 @@
 
 -export_type([type/0]).
 
--define(ELEMENTS, 5).
+-define(ELEMENTS, 6).
 
 -opaque type() :: <<_:?ELEMENTS>>.
 -type set_of_constraint_sets() :: constraint_set:set_of_constraint_sets().
@@ -43,27 +43,28 @@ reorder(X) -> X.
 -spec compare(T, T) -> eq | lt | gt when T :: type().
 compare(R1, R2) -> case R1 < R2 of true -> lt; _ -> case R1 > R2 of true -> gt; _ -> eq end end.
 
--spec predefined('[]' | float | pid | port | reference) -> type().
+-spec predefined('[]' | float | pid | port | reference | empty_bitstring) -> type().
 % Map each element to a unique bit position
-predefined('[]') -> <<1:?ELEMENTS>>; 
+predefined('[]') -> <<1:?ELEMENTS>>;
 predefined(float) -> <<2:?ELEMENTS>>;
 predefined(pid) -> <<4:?ELEMENTS>>;
 predefined(port) -> <<8:?ELEMENTS>>;
-predefined(reference) -> <<16:?ELEMENTS>>.
+predefined(reference) -> <<16:?ELEMENTS>>;
+predefined(empty_bitstring) -> <<32:?ELEMENTS>>.
 
 -spec empty() -> type().
 empty() -> <<0:?ELEMENTS>>.
 
-% The full set (all bits set for ?ELEMENTS elements: 1+2+4+8+16 = 31)
+% The full set (all bits set for ?ELEMENTS elements: 1+2+4+8+16+32 = 63)
 -spec any() -> type().
-any() -> <<31:?ELEMENTS>>.
+any() -> <<63:?ELEMENTS>>.
 
 -spec is_empty(type(), T) -> {boolean(), T}.
 is_empty(<<0:?ELEMENTS>>, ST) -> {true, ST};
 is_empty(_, ST) -> {false, ST}.
 
 -spec negate(T) -> T when T :: type().
-negate(<<N:?ELEMENTS>>) -> <<(31 bxor N):?ELEMENTS>>.
+negate(<<N:?ELEMENTS>>) -> <<(63 bxor N):?ELEMENTS>>.
 
 -spec union(T, T) -> T when T :: type().
 union(<<P1:?ELEMENTS>>, <<P2:?ELEMENTS>>) -> <<(P1 bor P2):?ELEMENTS>>.
@@ -89,13 +90,14 @@ unparse(<<Bitmask:?ELEMENTS>>, ST) ->
                         case Bit band Bitmask of 
                             0 -> Acc; 
                             _ -> 
-                                [case Atom of 
-                                     '[]' -> {empty_list}; 
+                                [case Atom of
+                                     '[]' -> {empty_list};
+                                     empty_bitstring -> {empty_bitstring};
                                      Rest -> {predef, Rest} end | Acc] 
                         end 
                 end, 
                 [], 
-                [ {'[]', 1}, {float, 2}, {pid, 4}, {port, 8}, {reference, 16} ]),
+                [ {'[]', 1}, {float, 2}, {pid, 4}, {port, 8}, {reference, 16}, {empty_bitstring, 32} ]),
     {ast_lib:mk_union(RawList), ST}.
 
 -spec all_variables(_, _) -> sets:set(variable()).
