@@ -58,6 +58,7 @@
     exp_bitstring_constr/0,
     exp_bitstring_elem/0,
     exp_block/0,
+    escape_source/0,
     escape_annotation/0,
     exp_case/0,
     exp_catch/0,
@@ -166,7 +167,7 @@
 
 -export([
     format_loc/1, to_loc/2, loc_auto/0, min_loc/2, leq_loc/2, is_predef_name/1, is_predef_alias_name/1,
-    local_varname_from_any_ref/1, escape_tyvar_name/1, get_fun_name/1, loc_exp/1
+    local_varname_from_any_ref/1, get_fun_name/1, loc_exp/1
 ]).
 
 % General
@@ -223,10 +224,6 @@ local_varname_from_any_ref(Ref) ->
         {escaped_ref, V, _} -> {true, V};
         _ -> false
     end.
-
--spec escape_tyvar_name(local_varname()) -> ty_varname().
-escape_tyvar_name({Name, Tok}) ->
-    list_to_atom("$esc_" ++ atom_to_list(Name) ++ "_" ++ integer_to_list(Tok)).
 
 % 8.1  Module Declarations and Forms
 -type fun_with_arity() :: {atom(), arity()}.
@@ -302,9 +299,21 @@ get_fun_name({function, _Loc, Name, Arity, _}) -> utils:sformat("~w/~w", Name, A
 -type exp_bitstring_constr() :: gen_bitstring_constr(exp(), exp()).
 -type exp_bitstring_elem() :: gen_bitstring_elem(exp(), exp()).
 -type exp_block() :: {block, loc(), exps()}.
-% Escape annotation: variables that escape the case scope (bound in all branches).
-% Each entry maps the original local_varname to a deterministic type variable name.
--type escape_annotation() :: [{local_varname(), ty_varname()}].
+% Escape annotation: variables that escape the scope of a branching construct
+% (case/if/receive) because they are bound in all branches.
+% Each entry assigns the variable a fresh escape type variable (unique per
+% construct occurrence) and records, for every branch (in branch order), where
+% the variable's value comes from in that branch:
+%   - local: the variable is bound by the branch's own pattern; its type is
+%     materialized from the branch environment.
+%   - {escaped, S}: the variable is bound somewhere inside the branch body and
+%     escaped a nested construct with escape type variable S; S is linked into
+%     this construct's escape type variable.
+% The per-occurrence type variables keep bindings of the same variable name in
+% sibling branches apart; only references *after* the construct see the
+% (union-typed) escape variable of the construct itself.
+-type escape_source() :: local | {escaped, ty_varname()}.
+-type escape_annotation() :: [{local_varname(), ty_varname(), [escape_source()]}].
 -type exp_case() :: {'case', loc(), exp(), [case_clause()]}
                   | {'case', loc(), exp(), [case_clause()], escape_annotation()}.
 -type exp_catch() :: {'catch', loc(), exp()}.
@@ -317,7 +326,8 @@ get_fun_name({function, _Loc, Name, Arity, _}) -> utils:sformat("~w/~w", Name, A
 -type gen_funcall(T) :: {call, loc(), Fun::T, Args::[T]}
                       | {call_remote, loc(), Mod::T, Fun::T, Args::[T]}.
 -type exp_funcall() :: gen_funcall(exp()).
--type exp_if() :: {'if', loc(), [if_clause()]}.
+-type exp_if() :: {'if', loc(), [if_clause()]}
+                | {'if', loc(), [if_clause()], escape_annotation()}.
 -type exp_list_compr() :: {lc, loc(), exp(), [qualifier()]}.
 -type gen_map_create() :: {map_create, loc(), [map_assoc_opt()]}.
 -type exp_map_create() :: gen_map_create().
@@ -330,8 +340,12 @@ get_fun_name({function, _Loc, Name, Arity, _}) -> utils:sformat("~w/~w", Name, A
 -type exp_binop() :: gen_binop(exp()).
 -type gen_unop(T) :: {op, loc(), Op::unop(), T}.
 -type exp_unop() :: gen_unop(exp()).
--type exp_recv() :: {'receive', loc(), [case_clause()]}.
--type exp_recv_after() :: {receive_after, loc(), [case_clause()], exp(), [exp()]}.
+-type exp_recv() :: {'receive', loc(), [case_clause()]}
+                  | {'receive', loc(), [case_clause()], escape_annotation()}.
+% For receive_after, the escape annotation contains one source per receive
+% clause plus a final source for the after body.
+-type exp_recv_after() :: {receive_after, loc(), [case_clause()], exp(), [exp()]}
+                        | {receive_after, loc(), [case_clause()], exp(), [exp()], escape_annotation()}.
 -type gen_record_create(T) :: {record_create, loc(), Name::atom(),
                                [{record_field, loc(), Field::atom(), T} |
                                 {record_field_other, loc(), T}]}.

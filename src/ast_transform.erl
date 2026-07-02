@@ -378,12 +378,17 @@ trans_ty(Ctx, Env, Ty) ->
             Loc = to_loc(Ctx, Anno),
             NewArgTys = trans_tys(Ctx, Env, ArgTys),
             case {Name, NewArgTys} of
-                % There is a long discussion about improper lists here:
-                % https://github.com/josefs/Gradualizer/issues/110
-                % To keep things simple, we do not distinguish between an improper list
-                % and a maybe-improper list.
+                % we follow the semantics of Erlang:
+                % list_to_binary([2 | <<1>>])  -> <<2,1>>     % <<1>> termination OK
+                % list_to_binary(<<1>>)        -> badarg      % <<1>> top level: ERROR
+                % iolist_to_binary(<<1>>)      -> <<1>>
+                % A maybe_improper_list(T1, T2) is [] or a cons chain over T1
+                % whose final tail is in T2
+                % nonempty_maybe_improper_list and nonempty_improper_list:
+                % they differ only in their termination types
                 {nonempty_list, [T]} -> {nonempty_list, T};
-                {maybe_improper_list, [T1, T2]} -> {improper_list, T1, T2};
+                {maybe_improper_list, [T1, T2]} ->
+                    {union, [{empty_list}, {nonempty_improper_list, T1, T2}]};
                 {nonempty_maybe_improper_list, [T1, T2]} -> {nonempty_improper_list, T1, T2};
                 {nonempty_improper_list, [T1, T2]} -> {nonempty_improper_list, T1, T2};
                 {record, [{singleton, RecordName}]} when is_atom(RecordName) ->
@@ -461,18 +466,60 @@ trans_exp_seq(Ctx, Env, Es) ->
     thread_through_env(Env, Es, fun(Env, E) -> trans_exp(Ctx, Env, E) end).
 
 
-% Builds a case expression with escape annotations for variables that escape the case scope.
--spec mk_case_with_escapes(ast:loc(), ast:exp(), [ast:case_clause()],
-                           [ast:local_varname()], varenv_local:t())
-                          -> {ast:exp_case(), varenv_local:t()}.
-mk_case_with_escapes(Loc, Scrut, Clauses, EscapedVars, Env) ->
-    EscapeAnnotation = [{V, ast:escape_tyvar_name(V)} || V <- EscapedVars],
-    NewEnv = varenv_local:mark_escaped(EscapedVars, Env),
-    CaseExp = case EscapeAnnotation of
-        [] -> {'case', Loc, Scrut, Clauses};
-        _ -> {'case', Loc, Scrut, Clauses, EscapeAnnotation}
-    end,
-    {CaseExp, NewEnv}.
+% Merges the environments of the branches of a multi-branch construct
+% (case/if/receive) and computes the escape annotation for the variables that
+% are bound in all branches (and hence escape the construct).
+% Each branch is given as {PatEnv, BodyEnv}: the env after the branch's
+% pattern and the env after the branch's body. Every escaping variable is
+% assigned a fresh escape type variable; the annotation records for every
+% branch where the variable's value comes from (see ast:escape_source()), so
+% that constraint generation can link the per-branch types into the fresh
+% escape type variable. Without per-occurrence escape type variables, the
+% same variable name bound independently in sibling branches would share one
+% type variable, conflating the (possibly incompatible) types of the branches.
+-spec merge_branch_envs(varenv_local:t(), [{varenv_local:t(), varenv_local:t()}])
+                       -> {varenv_local:t(), ast:escape_annotation()}.
+merge_branch_envs(Env0, []) -> {Env0, []};
+merge_branch_envs(Env0, Branches) ->
+    BodyEnvs = lists:map(fun({_, B}) -> B end, Branches),
+    MergedEnv = varenv_local:merge_envs(BodyEnvs),
+    NewBound = varenv_local:new_bindings(Env0, MergedEnv),
+    PatBound = lists:map(
+        fun({PatEnv, _}) ->
+            sets:from_list(varenv_local:new_bindings(Env0, PatEnv))
+        end, Branches),
+    Annotation =
+        lists:map(
+          fun(V) ->
+                  TyVar = varenv_local:fresh_esc_tyvar(V, MergedEnv),
+                  Sources =
+                      lists:map(
+                        fun({PatSet, {_, BodyEnv}}) ->
+                                case sets:is_element(V, PatSet) of
+                                    true -> local;
+                                    false ->
+                                        case varenv_local:escaped_tyvar(V, BodyEnv) of
+                                            {ok, S} -> {escaped, S};
+                                            error ->
+                                                errors:bug(
+                                                  "variable ~w is bound in a branch body "
+                                                  "but not marked as escaped", [V])
+                                        end
+                                end
+                        end,
+                        lists:zip(PatBound, Branches)),
+                  {V, TyVar, Sources}
+          end,
+          NewBound),
+    FinalEnv = varenv_local:mark_escaped(
+                 lists:map(fun({V, TyVar, _}) -> {V, TyVar} end, Annotation),
+                 MergedEnv),
+    {FinalEnv, Annotation}.
+
+-spec mk_case(ast:loc(), ast:exp(), [ast:case_clause()], ast:escape_annotation())
+             -> ast:exp_case().
+mk_case(Loc, Scrut, Clauses, []) -> {'case', Loc, Scrut, Clauses};
+mk_case(Loc, Scrut, Clauses, Annotation) -> {'case', Loc, Scrut, Clauses, Annotation}.
 
 -spec trans_exp_noenv(ctx(), varenv_local:t(), ast_erl:exp()) -> ast:exp().
 %                    (ctx(), varenv_local:t(), ast_erl:guard_test()) -> ast:guard_test().
@@ -508,12 +555,10 @@ trans_exp(Ctx, Env, Exp) ->
             {{block, to_loc(Ctx, Anno), NewExps}, NewEnv};
         {'case', Anno, E, Clauses} ->
             {TransE, Env1} = trans_exp(Ctx, Env, E),
-            {TransClauses, Env2, PatEnv} = trans_case_clauses(Ctx, Env1, Clauses),
-            % Compute escape annotation: only variables directly bound by the
-            % case patterns (not by nested constructs inside the clause body)
-            EscapedVars = varenv_local:new_bindings(Env1, PatEnv),
+            {TransClauses, Branches} = trans_case_clauses(Ctx, Env1, Clauses),
+            {NewEnv, Annotation} = merge_branch_envs(Env1, Branches),
             Loc = to_loc(Ctx, Anno),
-            mk_case_with_escapes(Loc, TransE, TransClauses, EscapedVars, Env2);
+            {mk_case(Loc, TransE, TransClauses, Annotation), NewEnv};
         {'catch', Anno, E} ->
             % Keep old Env, it's a catch
             {{'catch', to_loc(Ctx, Anno), trans_exp_noenv(Ctx, Env, E)}, Env};
@@ -578,10 +623,15 @@ trans_exp(Ctx, Env, Exp) ->
             {NewArgs, NewEnv} = trans_exps(Ctx, Env1, Args),
             {{call, to_loc(Ctx, Anno), NewFunExp, NewArgs}, NewEnv};
         {'if', Anno, Clauses} ->
-            {NewIfClauses, NewEnv} = trans_if_clauses(Ctx, Env, Clauses),
-            EscapedVars = varenv_local:new_bindings(Env, NewEnv),
-            NewEnv2 = varenv_local:mark_escaped(EscapedVars, NewEnv),
-            {{'if', to_loc(Ctx, Anno), NewIfClauses}, NewEnv2};
+            {NewIfClauses, BodyEnvs} = trans_if_clauses(Ctx, Env, Clauses),
+            % if clauses have no patterns, so each branch's pattern env is Env itself
+            {NewEnv, Annotation} = merge_branch_envs(Env, [{Env, B} || B <- BodyEnvs]),
+            Loc = to_loc(Ctx, Anno),
+            IfExp = case Annotation of
+                [] -> {'if', Loc, NewIfClauses};
+                _ -> {'if', Loc, NewIfClauses, Annotation}
+            end,
+            {IfExp, NewEnv};
         {lc, Anno, E, Qualifiers} ->
             {NewQ, NewEnv} = trans_qualifiers(Ctx, Env, Qualifiers),
             % keep the old Env, list comprehension opens a new scope
@@ -618,8 +668,8 @@ trans_exp(Ctx, Env, Exp) ->
                       {match, Loc, {var, Loc, {local_bind, MatchVar}}, Q},
                       [], % no guards
                       [{var, Loc, {local_ref, MatchVar}}]},
-            EscapedVars = varenv_local:new_bindings(E1, NewEnv0),
-            mk_case_with_escapes(Loc, NewExp, [Clause], EscapedVars, NewEnv0);
+            {NewEnv, Annotation} = merge_branch_envs(E1, [{NewEnv0, NewEnv0}]),
+            {mk_case(Loc, NewExp, [Clause], Annotation), NewEnv};
         {nil, Anno} -> {{nil, to_loc(Ctx, Anno)}, Env};
         {op, Anno, Op, L, R} ->
             {[NewL, NewR], NewEnv} = trans_exps(Ctx, Env, [L, R]),
@@ -632,15 +682,27 @@ trans_exp(Ctx, Env, Exp) ->
         {'maybe', Anno, Exps, Else = {'else', _ElseAnno, _Cs0}} ->
             trans_maybe(Ctx, Env, {'maybe', Anno, Exps}, Else);
         {'receive', Anno, CaseClauses} ->
-            {NewClauses, NewEnv, _PatEnv} = trans_case_clauses(Ctx, Env, CaseClauses),
-            {{'receive', to_loc(Ctx, Anno), NewClauses}, NewEnv};
+            {NewClauses, Branches} = trans_case_clauses(Ctx, Env, CaseClauses),
+            {NewEnv, Annotation} = merge_branch_envs(Env, Branches),
+            Loc = to_loc(Ctx, Anno),
+            RecvExp = case Annotation of
+                [] -> {'receive', Loc, NewClauses};
+                _ -> {'receive', Loc, NewClauses, Annotation}
+            end,
+            {RecvExp, NewEnv};
         {'receive', Anno, CaseClauses, AfterExp, AfterBody} ->
             {NewAfterExp, Env1} = trans_exp(Ctx, Env, AfterExp),
-            {NewCaseClauses, Env2, _PatEnv2} = trans_case_clauses(Ctx, Env1, CaseClauses),
+            {NewCaseClauses, Branches} = trans_case_clauses(Ctx, Env1, CaseClauses),
             {NewAfterBody, Env3} = trans_exp_seq(Ctx, Env1, AfterBody),
-            Env4 = varenv_local:merge_envs([Env2, Env3]),
-            {{receive_after, to_loc(Ctx, Anno), NewCaseClauses,
-                NewAfterExp, NewAfterBody}, Env4};
+            % the after body acts as an additional branch (with no pattern)
+            {Env4, Annotation} = merge_branch_envs(Env1, Branches ++ [{Env1, Env3}]),
+            Loc = to_loc(Ctx, Anno),
+            RecvExp = case Annotation of
+                [] -> {receive_after, Loc, NewCaseClauses, NewAfterExp, NewAfterBody};
+                _ -> {receive_after, Loc, NewCaseClauses, NewAfterExp, NewAfterBody,
+                      Annotation}
+            end,
+            {RecvExp, Env4};
         {'record', Anno, Name, Fields} ->
             % record creation
             {NewFields, NewEnv} =
@@ -913,14 +975,15 @@ trans_pat_bin_elem(Ctx, Env, Elem, BindMode) ->
             {{bin_element, to_loc(Ctx, Anno), NewValPat, NewSize, Tyspecs}, Env2}
     end.
 
+% Transforms the clauses of a case/receive. Returns the transformed clauses
+% and, per clause, the env after the clause's pattern and after its body.
+% Merging the per-clause envs is left to the caller (see merge_branch_envs).
 -spec trans_case_clauses(ctx(), varenv_local:t(), [ast_erl:case_clause()])
-                        -> {[ast:case_clause()], varenv_local:t(), varenv_local:t()}.
-trans_case_clauses(_Ctx, Env, []) -> {[], Env, Env};
+                        -> {[ast:case_clause()], [{varenv_local:t(), varenv_local:t()}]}.
 trans_case_clauses(Ctx, Env, Cs) ->
     Results = lists:map(fun(C) -> trans_case_clause(Ctx, Env, C) end, Cs),
     {NewClauses, BodyEnvs, PatEnvs} = lists:unzip3(Results),
-    ?LOG_TRACE("Merging envs: ~200p", BodyEnvs),
-    {NewClauses, varenv_local:merge_envs(BodyEnvs), varenv_local:merge_envs(PatEnvs)}.
+    {NewClauses, lists:zip(PatEnvs, BodyEnvs)}.
 
 -spec trans_case_clause(ctx(), varenv_local:t(), ast_erl:case_clause())
                        -> {ast:case_clause(), varenv_local:t(), varenv_local:t()}.
@@ -985,13 +1048,12 @@ trans_fun_clause(Ctx, Env, C) ->
         X -> errors:uncovered_case(?FILE, ?LINE, X)
     end.
 
+% Transforms the clauses of an if. Returns the transformed clauses and, per
+% clause, the env after the clause's body (merging is left to the caller).
 -spec trans_if_clauses(ctx(), varenv_local:t(), [ast_erl:if_clause()])
-                      -> {[ast:if_clause()], varenv_local:t()}.
-trans_if_clauses(_Ctx, Env, []) -> {[], Env};
+                      -> {[ast:if_clause()], [varenv_local:t()]}.
 trans_if_clauses(Ctx, Env, Cs) ->
-    {NewClauses, NewEnvs} =
-        lists:unzip(lists:map(fun(C) -> trans_if_clause(Ctx, Env, C) end, Cs)),
-    {NewClauses, varenv_local:merge_envs(NewEnvs)}.
+    lists:unzip(lists:map(fun(C) -> trans_if_clause(Ctx, Env, C) end, Cs)).
 
 -spec trans_if_clause(ctx(), varenv_local:t(), ast_erl:if_clause())
                      -> {ast:if_clause(), varenv_local:t()}.
@@ -1056,7 +1118,9 @@ trans_map_assoc(Ctx, Env, Assoc) ->
 
 % Expands record_field_other (the _ = Expr syntax) into individual record_field entries
 % for each field not explicitly given. The record_field_other entry is removed.
--spec expand_record_field_other(ctx(), atom(), [ast:exp_record_create_field()]) ->
+-spec expand_record_field_other(ctx(), atom(),
+    [{record_field, ast:loc(), atom(), ast:exp()}
+     | {record_field_other, ast:loc(), ast:exp()}]) ->
     [{record_field, ast:loc(), atom(), ast:exp()}].
 expand_record_field_other(Ctx, RecName, Fields) ->
     % Split into explicit fields and the optional wildcard

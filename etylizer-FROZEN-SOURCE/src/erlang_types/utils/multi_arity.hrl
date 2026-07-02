@@ -1,0 +1,186 @@
+-ifndef(MULTIARITY).
+-define(MULTIARITY, dnf_ty_function).
+-endif.
+
+-include("erlang_types.hrl").
+
+-export_type([type/0]).
+
+-type type() :: {type_default(), type_map()}.
+-type type_default() :: ?MULTIARITY:type().
+-type type_map() :: #{non_neg_integer() => ?MULTIARITY:type()}.
+
+-export([
+  reorder/1,
+  assert_valid/1,
+  compare/2,
+  singleton/2,
+  any/0,
+  empty/0,
+  negate/1,
+  union/2,
+  intersect/2,
+  difference/2,
+  is_empty/2,
+  normalize/3,
+  unparse/2,
+  all_variables/2,
+  has_negative_only_line/1
+]).
+
+-spec reorder(X) -> X when X :: type().
+reorder({D, M}) ->
+  {?MULTIARITY:reorder(D), maps:map(fun(_, V) -> ?MULTIARITY:reorder(V) end, M)}.
+
+-spec assert_valid(type()) -> _.
+assert_valid({D, M}) ->
+  ?MULTIARITY:assert_valid(D),
+  maps:foreach(fun(_, V) -> ?MULTIARITY:assert_valid(V) end, M).
+
+-spec compare(T, T) -> eq | lt | gt when T :: type().
+compare({D, M}, {D2, M2}) ->
+  case ?MULTIARITY:compare(D, D2) of
+    eq ->
+      case maps:size(M) < maps:size(M2) of
+        true -> lt;
+        _ ->
+          case maps:size(M) > maps:size(M2) of
+            true -> gt;
+            _ ->
+              lists:foldl(
+                fun({{_, A}, {_, B}}, eq) -> ?MULTIARITY:compare(A, B); (_, R) -> R end, 
+                eq, 
+                lists:zip(maps:to_list(M), maps:to_list(M2))
+              )
+          end
+      end;
+    R -> R
+  end.
+
+-spec empty() -> type().
+empty() ->
+  {?MULTIARITY:empty(), #{}}.
+
+-spec any() -> type().
+any() ->
+  {?MULTIARITY:any(), #{}}.
+
+-spec is_empty(type(), T) -> {boolean(), T} when T :: is_empty_cache().
+is_empty({Default, All}, ST) ->
+  maybe
+    {true, ST1} ?= ?MULTIARITY:is_empty(Default, ST),
+    maps:fold(fun
+      (_Size, _V, {false, ST0}) -> {false, ST0};
+      (_Size, V, {true, ST0}) -> ?MULTIARITY:is_empty(V, ST0) 
+    end, {true, ST1}, All)
+  end.
+
+-spec singleton(non_neg_integer(), ?MULTIARITY:type()) -> type().
+singleton(Length, Dnf) when is_integer(Length) ->
+  remove_redundant({?MULTIARITY:empty(), #{Length => Dnf}}).
+
+-spec negate(T) -> T when T :: type().
+negate({Default, Ty}) ->
+  remove_redundant({?MULTIARITY:negate(Default), maps:map(fun(_K,V) -> ?MULTIARITY:negate(V) end, Ty)}).
+
+-spec union(T, T) -> T when T :: type().
+union({DefaultF1, F1}, {DefaultF2, F2}) ->
+  % get all keys
+  AllKeys = maps:keys(F1) ++ maps:keys(F2),
+  UnionKey = fun(Key) ->
+    ?MULTIARITY:union(
+      maps:get(Key, F1, DefaultF1),
+      maps:get(Key, F2, DefaultF2)
+    )
+                 end,
+  remove_redundant({?MULTIARITY:union(DefaultF1, DefaultF2), maps:from_list([{Key, UnionKey(Key)} || Key <- AllKeys])}).
+
+-spec intersect(T, T) -> T when T :: type().
+intersect({DefaultF1, F1}, {DefaultF2, F2}) ->
+  % get all keys
+  AllKeys = maps:keys(F1) ++ maps:keys(F2),
+  IntersectKey = fun(Key) ->
+    ?MULTIARITY:intersect(
+      maps:get(Key, F1, DefaultF1),
+      maps:get(Key, F2, DefaultF2)
+    )
+                 end,
+  remove_redundant({?MULTIARITY:intersect(DefaultF1, DefaultF2), maps:from_list([{Key, IntersectKey(Key)} || Key <- AllKeys])}).
+
+-spec difference(T, T) -> T when T :: type().
+difference({DefaultF1, F1}, {DefaultF2, F2}) ->
+  % get all keys
+  AllKeys = maps:keys(F1) ++ maps:keys(F2),
+  DifferenceKey = fun(Key) ->
+    ?MULTIARITY:difference(
+      maps:get(Key, F1, DefaultF1),
+      maps:get(Key, F2, DefaultF2)
+    )
+                 end,
+  remove_redundant({?MULTIARITY:difference(DefaultF1, DefaultF2), maps:from_list([{Key, DifferenceKey(Key)} || Key <- AllKeys])}).
+
+% removes mappings in others which are syntactically equivalent to the default value
+-spec remove_redundant(T) -> T when T :: type().
+remove_redundant({Default, Others}) ->
+  {
+    Default,
+    % #{Arity => TypeOfArity || Arity := TypeOfArity <- Others, TypeOfArity /= Default} FIXME does not type check
+    maps:filter(fun(_Arity, TypeOfArity) -> TypeOfArity /= Default end, Others)
+  }.
+
+-spec normalize(type(), monomorphic_variables(), T) -> {constraint_set:set_of_constraint_sets(), T} when T :: normalize_cache().
+normalize({Default, All}, Fixed, ST) ->
+  {Others, ST2} = normalize_arities(All, Fixed, ST),
+  {DF, ST3} = ?MULTIARITY:normalize(Default, Fixed, ST2),
+  {constraint_set:meet(DF, Others, Fixed), ST3}.
+
+-spec normalize_arities(type_map(), monomorphic_variables(), S) -> {constraint_set:set_of_constraint_sets(), S} when S :: normalize_cache().
+normalize_arities(All, Fixed, ST) ->
+  maps:fold(fun(_Size, V, {Acc, ST0}) -> % FIXME shortcut behavior
+    {Res, ST1} = ?MULTIARITY:normalize(V, Fixed, ST0),
+    {constraint_set:meet(Acc, Res, Fixed), ST1}
+            end, {constraint_set:sat(), ST}, All).
+
+-spec unparse(type(), T) -> {ast_ty(), T} when T :: unparse_cache().
+unparse({Default, T}, ST0) ->
+  {X1, ST1} = 
+  case ?MULTIARITY:unparse(Default, ST0) of
+    {{predef, any}, S} -> {?MULTIARITY:unparse_any(), S};
+    Z -> Z
+  end,
+
+  {Xs, ST2} =
+  lists:foldl(fun({_Size, TT}, {Cs, ST00}) -> 
+    case ?MULTIARITY:unparse(TT, ST00) of
+      {{predef, any}, _} -> error(todo_multi_unparse); %AnyTupleI(Size);
+      {X, ST01} -> {Cs ++ [X], ST01}
+    end
+  end, {[], ST1}, maps:to_list(T)),
+
+  Defined = [?MULTIARITY:unparse_any(Size) || Size <- maps:keys(T)],
+  % default without the defined arities ANY U defined arities
+  R = ast_lib:mk_union([ 
+      ast_lib:mk_diff( 
+        X1, 
+        ast_lib:mk_union(Defined)
+      ), 
+      ast_lib:mk_union(Xs)
+    ]),
+
+  {R, ST2}.
+
+-spec all_variables(type(), all_variables_cache()) -> sets:set(variable()).
+all_variables({Default, All}, Cache) ->
+  V1 = ?MULTIARITY:all_variables(Default, Cache),
+  ResVars = 
+    maps:fold(fun(_Size, V, VarAcc) -> 
+      Res = ?MULTIARITY:all_variables(V, Cache),
+      sets:union(VarAcc, Res)
+              end, sets:new(), All),
+  sets:union(V1, ResVars).
+
+-spec has_negative_only_line(type()) -> boolean().
+has_negative_only_line({Default, All}) -> 
+  ?MULTIARITY:has_negative_only_line(Default) 
+  orelse
+  lists:any(fun({_, M}) -> ?MULTIARITY:has_negative_only_line(M) end, maps:to_list(All)).

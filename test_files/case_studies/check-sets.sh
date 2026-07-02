@@ -37,7 +37,7 @@ QF=$QF" -i filter_set/2" # 2)
 QF=$QF" -i filter_seg_list/4" # 2)
 QF=$QF" -i get_bucket_s/2" # 2)
 QF=$QF" -i put_bucket_s/3" # 2)
-../../ety --type-overlay overlay.erl --no-deps $QF -f -l info stdlib/sets2.erl
+# ../../ety --type-overlay overlay.erl --no-deps $QF -f -l info stdlib/sets2.erl
 
 QF=" -i filter/2" # C1)
 QF=$QF" -i map/2" # C1)

@@ -651,6 +651,8 @@ render_exp(Exp, Indent) ->
             render_exp(Pat, Indent) ++ " = " ++ render_exp(E, Indent);
         {'catch', _, E} ->
             "catch " ++ render_exp(E, Indent);
+        {'if', L, Clauses, _EscAnn} ->
+            render_exp({'if', L, Clauses}, Indent);
         {'if', _, Clauses} ->
             Pad = lists:duplicate(Indent, $\s),
             Inner = Indent + 2,
@@ -658,6 +660,8 @@ render_exp(Exp, Indent) ->
             "if\n" ++
             string:join([InPad ++ render_if_clause(C, Inner) || C <- Clauses], ";\n") ++ "\n" ++
             Pad ++ "end";
+        {'receive', L, Clauses, _EscAnn} ->
+            render_exp({'receive', L, Clauses}, Indent);
         {'receive', _, Clauses} ->
             Pad = lists:duplicate(Indent, $\s),
             Inner = Indent + 2,
@@ -665,6 +669,8 @@ render_exp(Exp, Indent) ->
             "receive\n" ++
             string:join([InPad ++ render_clause(C, Inner) || C <- Clauses], ";\n") ++ "\n" ++
             Pad ++ "end";
+        {receive_after, L, Clauses, Timeout, AfterBody, _EscAnn} ->
+            render_exp({receive_after, L, Clauses, Timeout, AfterBody}, Indent);
         {receive_after, _, Clauses, Timeout, AfterBody} ->
             Pad = lists:duplicate(Indent, $\s),
             Inner = Indent + 2,

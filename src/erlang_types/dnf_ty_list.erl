@@ -3,7 +3,13 @@
 -define(ATOM, ty_list).
 -define(LEAF, ty_bool).
 
+-export([substitute/2]).
+
 -include("dnf/bdd.hrl").
+
+-spec substitute(type(), #{ty_node:type() => ty_node:type()}) -> type().
+substitute(BDD, NodeMap) ->
+  substitute_atoms(BDD, fun(Atom) -> ty_tuple:substitute(Atom, NodeMap) end).
 
 -spec is_empty_line({[T], [T], ?LEAF:type()}, S) -> {boolean(), S} when S :: is_empty_cache(), T :: ?ATOM:type().
 is_empty_line(Line, ST) ->

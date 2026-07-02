@@ -20,10 +20,9 @@
     normalize/3,
     unparse/2,
     all_variables/2,
-    has_negative_only_line/1
+    has_negative_only_line/1,
+    substitute_atoms/2
 ]).
-
--etylizer({functions_exhaustive, off, [convert_back_to_repr/5]}).
 
 -include("erlang_types.hrl").
 
@@ -48,6 +47,7 @@
 -type type() :: bdd().
 -type line() :: {[?ATOM:type()], [?ATOM:type()], ?LEAF:type()}.
 -type dnf() :: [line()].
+-type cube() :: {[non_neg_integer()], [non_neg_integer()], [non_neg_integer()]}.
 -type leaf() :: {leaf, ?LEAF:type()}.
 -type bdd_node() :: {node, _Atom :: ?ATOM:type(), _PositiveEdge :: bdd(), _NegativeEdge :: bdd()}.
 -type bdd() :: leaf() | bdd_node().
@@ -226,7 +226,7 @@ dnf_acc(Acc, Ps, Ns, {leaf, T}) ->
     end;
 dnf_acc(Acc, Ps, Ns, {node, A, P, N}) ->
     % We could add heuristics here to avoid adding some redundant atoms
-    % but espresso is so cheap, we don't need to do that
+    % but the downstream minimizer is cheap, so we don't need to
     Acc0 = dnf_acc(Acc, [A | Ps], Ns, P),
     dnf_acc(Acc0, Ps, [A | Ns], N).
 
@@ -241,8 +241,7 @@ is_empty(Ty, ST) ->
 % tallying
 -spec normalize(type(), monomorphic_variables(), S) -> {set_of_constraint_sets(), S} when S :: normalize_cache().
 normalize(Dnf, Fixed, ST) ->
-    DD = dnf(Dnf),
-    D = minimize_dnf(DD),
+    D = minimize_dnf(Dnf),
 
     case D of
         [] -> {constraint_set:sat(), ST};
@@ -275,7 +274,7 @@ unparse(Dnf, ST) ->
                     {Acc ++ [Ele], ST1}
                 end,
                 {[], ST},
-                minimize_dnf(dnf(Dnf))
+                minimize_dnf(Dnf)
             ),
             {ast_lib:mk_union(ToUnion), ST2}
     end.
@@ -295,160 +294,58 @@ all_variables(Dnf, Cache) ->
         sets:union([Atoms, all_variables_line(P, N, Leaf, Cache)])
     end, sets:new(), AllLines).
 
--spec minimize_dnf(S) -> S when S :: dnf().
-minimize_dnf(Dnf) ->
-    minimize_node_dnf(Dnf).
+-spec minimize_dnf(type()) -> dnf().
+minimize_dnf(T) ->
+    minimize_node_dnf(dnf(T)).
 
 -spec minimize_node_dnf(dnf()) -> dnf().
 minimize_node_dnf([]) -> [];
 minimize_node_dnf([X]) -> [X];
 % only minimize dnfs with more than one line
 minimize_node_dnf(Dnf) ->
-    % TAll = os:system_time(millisecond),
-    % using espresso names
-    AllVariables = '_minimize_vars_from_dnf'(Dnf),
-
-    % .i length(AllVariables)
-    I = maps:size(AllVariables),
-
-    % when we have only 0/1 leafs, we look only at a single '1' output
-    % with algebraic bdds, the amount of output functions
-    % is the amount of syntactically different leafs which are not 0
-    {AllOutputs, ReverseAllOutputs} = '_minimize_outputs_from_dnf'(Dnf),
-    % .o length(AllOutputs)
+    % with 0/1 (ty_bool) leaves there is a single '1' output 
+    % with algebraic leaves the number of outputs is the number of
+    % syntactically distinct non-empty leaves.
+    Indexed = lists:enumerate(lists:uniq([Leaf || {_, _, Leaf} <- Dnf])),
+    {AllOutputs, ReverseAllOutputs} = {#{Leaf => I || {I, Leaf} <- Indexed}, maps:from_list(Indexed)},
     O = maps:size(AllOutputs),
 
-    % now for all variables assign an index
-    {VariableIndices, RevVariableIndices} = '_minimize_indices_from_variables'(AllVariables),
+    % index every atom appearing in the on-set
+    AllAtoms = #{Atom => [] || {Pos, Neg, _} <- Dnf, Atom <- Pos ++ Neg},
+    I = maps:size(AllAtoms),
+    IndexedAtom = lists:enumerate(maps:keys(AllAtoms)),
+    {AtomIndices, RevAtomIndices} = {#{Atom => Ind || {Ind, Atom} <- IndexedAtom}, maps:from_list(IndexedAtom)},
 
-    % convert all lines using the variable indices
-    AllLines = '_minimize_all_lines_from_dnf'(Dnf, VariableIndices, AllOutputs, I, O),
-    StrInput = ".i " ++ integer_to_list(I) ++ "\n.o " ++ integer_to_list(O) ++ "\n" ++ lists:flatten(lists:join("\n", AllLines)),
-    Result = '_minimize_espresso'(StrInput),
-    '_minimize_get_result'(Result, I, O, RevVariableIndices, ReverseAllOutputs).
+    % each DNF line maps to exactly one (0-based) output leaf
+    OnCubes = [ {[ maps:get(A, AtomIndices) - 1 || A <- Pos ],
+       [ maps:get(A, AtomIndices) - 1 || A <- Neg ],
+       [ maps:get(Leaf, AllOutputs) - 1 ]}
+      || {Pos, Neg, Leaf} <- Dnf ],
+    ResultCubes = dnf_minimizer:minimize(I, O, OnCubes),
+    '_minimize_cubes_to_dnf'(ResultCubes, RevAtomIndices, ReverseAllOutputs).
 
--spec '_minimize_vars_from_dnf'(dnf()) -> #{?ATOM:type() => []}.
-'_minimize_vars_from_dnf'(Dnf) ->
-    lists:foldl(fun({Pos, Neg, _}, Env) ->
-        lists:foldl(fun(Term, Env2) -> Env2#{Term => []} end, Env, Pos ++ Neg)
-    end, #{}, Dnf).
+% result cubes back to DNF lines 
+% split a multi-leaf cube into one line per leaf
+-spec '_minimize_cubes_to_dnf'([cube()], #{pos_integer() => ?ATOM:type()}, #{pos_integer() => ?LEAF:type()}) -> dnf().
+'_minimize_cubes_to_dnf'(Cubes, RevAtomIndices, ReverseAllOutputs) ->
+    [ {PosList, NegList, maps:get(Leaf + 1, ReverseAllOutputs)}
+      || {Pos, Neg, Leaves} <- Cubes,
+         PosList <- [[ maps:get(P + 1, RevAtomIndices) || P <- Pos ]],
+         NegList <- [[ maps:get(N + 1, RevAtomIndices) || N <- Neg ]],
+         Leaf <- Leaves ].
 
--spec '_minimize_outputs_from_dnf'(dnf()) -> {#{?LEAF:type() => pos_integer()}, #{pos_integer() => ?LEAF:type()}}.
-'_minimize_outputs_from_dnf'(Dnf) ->
-    {All, Reverse, _} = lists:foldl(fun({_, _, T}, {Env, RevEnv, Index}) ->
-        case Env of
-            #{T := _} -> {Env, RevEnv, Index};
-            _ -> {Env#{T => Index}, RevEnv#{Index => T}, ?assert_type(Index + 1, pos_integer())}
-        end
-    end, {#{}, #{}, 1}, Dnf),
-    {All, Reverse}.
-
--spec '_minimize_indices_from_variables'(#{?ATOM:type() => []}) -> {#{?ATOM:type() => pos_integer()}, #{pos_integer() => ?ATOM:type()}}.
-'_minimize_indices_from_variables'(AllVariables) ->
-    {_, VarInd, RevVarInd} = maps:fold(
-        fun(K, _V, {Index, Vars, RevVars}) ->
-            {?assert_type(Index+1, pos_integer()), Vars#{K => Index}, RevVars#{Index => K}}
-        end, {1, #{}, #{}}, AllVariables),
-    {VarInd, RevVarInd}.
-
--spec '_minimize_all_lines_from_dnf'(dnf(), #{?ATOM:type() => pos_integer()}, #{?LEAF:type() => pos_integer()}, non_neg_integer(), non_neg_integer()) -> [string()].
-'_minimize_all_lines_from_dnf'(Dnf, VariableIndices, AllOutputs, I, O) ->
-    lists:foldl(fun({Pos, Neg, T}, All) ->
-        % variables
-        MinTerm = list_to_tuple(lists:duplicate(I, "-")),
-        NewMinTerm0 = lists:foldl(fun(P, Min) -> replace_index("1", P, Min, VariableIndices) end, MinTerm, Pos),
-        NewMinTerm1 = lists:foldl(fun(N, Min) -> replace_index("0", N, Min, VariableIndices) end, NewMinTerm0, Neg),
-
-        % replace a single output with 1
-        MinTermOutputs = list_to_tuple(lists:duplicate(O, "0")),
-        MinTermOutputsFin = erlang:setelement(maps:get(T, AllOutputs), MinTermOutputs, "1"),
-
-        NewTWithoutOutputs = ?assert_type(tuple_to_list(NewMinTerm1), [string()]),
-        Outputs = ?assert_type(tuple_to_list(MinTermOutputsFin), [string()]),
-        [lists:flatten(NewTWithoutOutputs ++ " " ++ Outputs)] ++ All
-    end, [], Dnf).
-
-% "01-1001 1" -> {"01-1001", "1"}
--spec espresso_split_line_into_elements_and_result(string()) -> {string(), string()}.
-espresso_split_line_into_elements_and_result(LineStr) ->
-    case string:split(LineStr, " ") of
-        [Elements, Result] -> {Elements, Result};
-        _ -> error(badarg) % TODO mark non-exhaustive
-    end.
-
--spec '_minimize_get_result'(string(), non_neg_integer(), non_neg_integer(), #{pos_integer() => ?ATOM:type()}, #{pos_integer() => ?LEAF:type()}) -> dnf().
-'_minimize_get_result'(Result, I, O, RevVariableIndices, ReverseAllOutputs) ->
-    OnlyResultLines = extract_integer_lines(Result, I + 1 + O),
-
-    [
-        convert_back_to_repr(
-            espresso_split_line_into_elements_and_result(Line),
-            RevVariableIndices,
-            ReverseAllOutputs, 1, {[], [], to_replace})
-        || Line <- OnlyResultLines
-    ].
-
--spec '_minimize_espresso'(string()) -> string().
-'_minimize_espresso'(StrInput) ->
-    Path = espresso_bin:get_path(),
-    Port = open_port({spawn_executable, Path}, [use_stdio, exit_status, stream, stderr_to_stdout]),
-    % Append .e marker so espresso stops reading without needing EOF on stdin
-    port_command(Port, ?assert_type([StrInput, "\n.e\n"], iodata())),
-    '_collect_port_output'(Port, []).
-
--spec '_collect_port_output'(port(), string()) -> string().
-'_collect_port_output'(Port, Acc) ->
-    receive
-        {Port, {data, Data}} ->
-            '_collect_port_output'(Port, Acc ++ Data);
-        {Port, {exit_status, 0}} ->
-            Acc;
-        {Port, {exit_status, Status}} ->
-            error({espresso_exit, Status})
-    end.
-
--spec replace_index(string(), A, tuple(), #{A => pos_integer()}) -> tuple().
-replace_index(Val, Term, CurrentLine, VariableIndices) ->
-    erlang:setelement(maps:get(Term, VariableIndices), CurrentLine, Val).
-
--spec extract_integer_lines(string(), non_neg_integer()) -> [string()].
-extract_integer_lines(Str, Max) ->
-    Lines = string:split(Str, "\n", all),
-    lists:filtermap(
-        fun(Line) ->
-            case is_integer_start(Line) of
-                false -> false;
-                true -> {true, string:slice(Line,0, Max)}
-            end
-        end,
-        Lines).
-
--spec is_integer_start(string()) -> boolean().
-is_integer_start([C|_]) when C == $- -> true;
-is_integer_start([C|_]) when C >= $0, C =< $9 -> true;
-is_integer_start(_) -> false.
-
--spec convert_back_to_repr({string(), string()},
-                           #{integer() => ?ATOM:type()},
-                           #{integer() => ?LEAF:type()},
-                           integer(),
-                           {[?ATOM:type()], [?ATOM:type()], ?LEAF:type() | to_replace}) -> line().
-convert_back_to_repr({[], Outputs}, _IndexToTerms, IndexToOutput, _CurrentIndex, {P, N, to_replace}) ->
-    % assert only one "1" in outputs
-    case string:split(Outputs, "1", all) of
-        [First, _Second] ->
-            Index = length(First) + 1,
-            {P, N, maps:get(Index, IndexToOutput)};
-        _ -> error(badarg) % TODO mark non-exhaustive
-    end;
-convert_back_to_repr({[$- | Rest], Outputs}, IndexToTerms, IndexToOutput, CurrentIndex, Acc) ->
-    convert_back_to_repr({Rest, Outputs}, IndexToTerms, IndexToOutput, CurrentIndex + 1, Acc);
-convert_back_to_repr({[$1 | Rest], Outputs}, IndexToTerms, IndexToOutput, CurrentIndex, {Pos, Neg, to_replace}) ->
-    convert_back_to_repr({Rest, Outputs}, IndexToTerms, IndexToOutput, CurrentIndex + 1, {Pos ++ [maps:get(CurrentIndex, IndexToTerms)], Neg, to_replace});
-convert_back_to_repr({[$0 | Rest], Outputs}, IndexToTerms, IndexToOutput, CurrentIndex, {Pos, Neg, to_replace}) ->
-    convert_back_to_repr({Rest, Outputs}, IndexToTerms, IndexToOutput, CurrentIndex + 1, {Pos, Neg ++ [maps:get(CurrentIndex, IndexToTerms)], to_replace}).
 
 -spec has_negative_only_line(type()) -> boolean().
 has_negative_only_line(T) ->
-    D = minimize_dnf(dnf(T)),
+    D = minimize_dnf(T),
     lists:any(fun({[], [_|_], _}) -> true; (_) -> false end, D).
+
+% substitute each atom `a` via Fun(a), and rebuild the BDD
+% leaves are not touched.
+-spec substitute_atoms(bdd(), fun((?ATOM:type()) -> ?ATOM:type())) -> bdd().
+substitute_atoms({leaf, L}, _Fun) -> {leaf, L};
+substitute_atoms({node, Atom, P, N}, Fun) ->
+    P2 = substitute_atoms(P, Fun),
+    N2 = substitute_atoms(N, Fun),
+    AtomBdd = singleton(Fun(Atom)),
+    union(intersect(AtomBdd, P2), difference(N2, AtomBdd)).

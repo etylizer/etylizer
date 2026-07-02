@@ -57,7 +57,6 @@
 -include("etylizer.hrl").
 
 -type type() :: {node, integer()}.
--type temporary_type() :: {local_ref, integer()}. % used in ty_parser
 -type set_of_constraint_sets() :: constraint_set:set_of_constraint_sets().
 
 
@@ -88,29 +87,14 @@ init() ->
 clean() ->
   case ets:whereis(?ID) of
       undefined -> ok;
-      _ -> 
+      _ ->
         [ets:delete(T) || T <- ?ALL_ETS]
   end.
 
--spec compare(T, T) -> eq | lt | gt when T :: type() | temporary_type().
+-spec compare(T, T) -> eq | lt | gt when T :: type().
 compare({node, Id1}, {node, Id2}) when Id1 < Id2 -> lt;
 compare({node, Id1}, {node, Id2}) when Id1 > Id2 -> gt;
-compare({node, _Id1}, {node, _Id2}) -> eq;
-% this is an architecture hack;
-% ty_node is used differently in ty_parser with local references
-% ty_node has to support comparing these local temporary references
-compare({local_ref, Id1}, {local_ref, Id2}) when Id1 < Id2 -> lt;
-compare({local_ref, Id1}, {local_ref, Id2}) when Id1 > Id2 -> gt;
-compare({local_ref, _Id1}, {local_ref, _Id2}) -> eq;
-% now this gets hacky
-% we need to ensure that comparing these two structures behaves as if 
-% the local_ref was replaced, i.e. the order result be the same
-% before and after replacing the local_ref
-% otherwise we get invalid BDDs
-compare(L = {local_ref, _}, N = {node, _}) -> 
-  compare(ty_parser:lookup_ref(L), N);
-compare(N = {node, _}, L = {local_ref, _}) -> 
-  compare(N, ty_parser:lookup_ref(L)).
+compare({node, _Id1}, {node, _Id2}) -> eq.
 
 -spec make(type_descriptor()) -> type().
 make(Ty) ->
@@ -187,9 +171,7 @@ is_empty(TyNode) ->
     [{_, R}] -> ?assert_type(R, boolean());
     [_ | _] -> error(invariant);
     [] ->
-      % T0 = os:system_time(microsecond),
       {Result, LocalCache} = is_empty(TyNode, #{}),
-      % io:format(user,"Empty ~p in ~p us~n", [TyNode, os:system_time(microsecond)-T0]),
       utils:update_ets_from_map(?CACHE, LocalCache),
       ets:insert(?CACHE, [{TyNode, Result}]),
       Result
@@ -310,16 +292,8 @@ normalize(TyNode, FixedVariables) ->
     [{_, Result}] -> ?assert_type(Result, set_of_constraint_sets());
     [_ | _] -> error(invariant);
     [] ->
-      % T0 = os:system_time(millisecond),
       {Result, _LocalCache} = normalize(TyNode, FixedVariables, #{}),
       ets:insert(?NORMCACHE, [{{TyNode, FixedVariables}, Result}]),
-      % case (os:system_time(millisecond)-T0) > 10000 of
-      %   true -> 
-      %     io:format(user, "~p~n", [ty_node:dump(TyNode)]),
-      %     error(eend);
-      %   _ -> ok
-      % end,
-      % io:format(user,"Normalize ~p in ~p ms~n", [TyNode, os:system_time(millisecond)-T0]),
       Result
   end,
   Z.
@@ -327,31 +301,22 @@ normalize(TyNode, FixedVariables) ->
 -spec normalize(type(), monomorphic_variables(), ST) -> 
     {set_of_constraint_sets(), ST} when ST :: normalize_cache().
 normalize(TyNode, FixedVariables, Cache) ->
-  Ty = load(TyNode),
-
+  %% Cache by TyNode (a small {node, Id} term) rather than by the loaded
+  %% descriptor Ty (a deep BDD term). TyNode is 1-1 with Ty (consing via
+  %% ?UNIQUETABLE), so this is semantically equivalent but avoids the
+  %% ets:lookup(?SYSTEM, TyNode) on every cache hit and shrinks the cache key.
   case Cache of
-    #{{Ty, FixedVariables} := Res} -> 
+    #{{TyNode, FixedVariables} := Res} ->
       {Res, Cache};
-    _ -> 
-      % assume type is normalized and add to local cache
-      {Result, LC_0} = dnf_ty_variable:normalize(Ty, FixedVariables, Cache#{{Ty, FixedVariables} => [[]]}),
-
-      case Result of 
-        % satisfiable; 
-        % local cache can be kept as is 
-        % Ty is empty is now cached, and all intermediate results are also cached
-        [[]] -> 
+    _ ->
+      Ty = load(TyNode),
+      {Result, LC_0} = dnf_ty_variable:normalize(Ty, FixedVariables,
+                          Cache#{{TyNode, FixedVariables} => [[]]}),
+      case Result of
+        [[]] ->
           {[[]], LC_0};
-
-        % not (immediately) satisfiable;
-        % invalidate all types that were assumed to be satisfiable
-        %  => recover initial cache
-        % and add the result of Ty to the cache
-        % this is a bigger approximation than in the subtyping algorithm,
-        % as the result could still be satisfiable
-        % only [] is surely unsatisfiable
-        Normalized -> 
-          {Normalized, Cache#{{Ty, FixedVariables} => Normalized}}
+        Normalized ->
+          {Normalized, Cache#{{TyNode, FixedVariables} => Normalized}}
       end
   end.
 
@@ -392,25 +357,208 @@ unparse(Node = {node, Id}, Cache) ->
   end.
 
 % ===
-% substitution
+% Native substitution on the internal BDD representation.
+% Unlike the old unparse/parse hack, this preserves frame variable identities,
+% which avoids the proliferation of fresh frame variables across substitution
+% rounds (e.g. inside etally:unify).
 % ===
-% FIXME hack: unparse, substitute, then parse again
 -spec substitute(type(), #{variable() => type()}) -> type().
 substitute(Node, Varmap) ->
-  T1 = ty_parser:unparse(Node),
-  % Filter out frame variables (dynamic()) which unparse to {predef, dynamic} instead of {var, _}
-  Subst =
-   maps:fold(
+  % Filter out frame variables TODO crash instead, caller should not use frame vars
+  Sigma = maps:fold(
     fun(K, V, Acc) ->
             case ty_variable:is_frame(K) of
                 {true, _} -> Acc;
-                {false, NotFrame} ->
-                    {{var, Name}, _} = ty_variable:unparse(NotFrame, #{}),
-                    Acc#{Name => ty_parser:unparse(V)}
+                {false, _} -> Acc#{K => V}
             end
     end, #{}, Varmap),
-  Res = subst:apply(Subst, T1, no_clean),
-  ty_parser:parse(Res).
+  case maps:size(Sigma) of
+    0 -> Node;
+    _ -> do_substitute(Node, Sigma)
+  end.
+
+-spec do_substitute(type(), #{variable() => type()}) -> type().
+do_substitute(Node, Sigma) ->
+  Dom = sets:from_list(maps:keys(Sigma)),
+  % Walk reachable nodes; only those whose variable set intersects dom(Sigma) need substitution.
+  NeedsSub = collect_needs_sub(Node, Dom),
+  case maps:is_key(Node, NeedsSub) of
+    false -> Node;
+    true ->
+      % Pre-allocate fresh ty_node IDs as placeholders. The two-phase scheme
+      % lets us handle recursive references: cycles in the substitution image
+      % loop back to the new placeholders.
+      Placeholders = maps:map(fun(_K, _V) -> new_ty_node() end, NeedsSub),
+      % Compute the substituted body for each placeholder. 
+      % Reorder to restore the BDD invariant
+      Bodies0 = maps:fold(
+        fun(OldNode, Placeholder, Acc) ->
+          OldBdd = load(OldNode),
+          NewBdd = dnf_ty_variable:substitute(OldBdd, Sigma, Placeholders),
+          Acc#{Placeholder => dnf_ty_variable:reorder(NewBdd)}
+        end, #{}, Placeholders),
+      StartRef = maps:get(Node, Placeholders),
+      % Topological define-with-consing. Without this, every call would leak
+      % fresh ty_node IDs that already exist globally, defeating consing.
+      unify_and_define(StartRef, Bodies0)
+  end.
+
+% Returns the consed/defined ty_node for StartRef after reusing globally
+% consed nodes (and run-local equivalents) wherever possible.
+-spec unify_and_define(type(), #{type() => type_descriptor()}) -> type().
+unify_and_define(StartRef, Bodies) ->
+  {DefineOrder, RevGraph} = topo_sccs(Bodies),
+  {FinalStartRef, FinalBodies} = consing_pass(DefineOrder, RevGraph, StartRef, Bodies),
+  define_remaining(FinalBodies),
+  FinalStartRef.
+
+% Build the dependency graph (only edges within Bodies; external refs need no
+% ordering), compute SCCs, and return them in reverse-topological order along
+% with the reverse graph (for back-reference rewriting).
+-spec topo_sccs(#{type() => type_descriptor()}) -> {[[type()]], #{type() => [type()]}}.
+topo_sccs(Bodies) ->
+  KeySet = sets:from_list(maps:keys(Bodies)),
+  Graph = build_internal_graph(Bodies, KeySet),
+  RevGraph = tarjan:reverse_graph(Graph),
+  % tarjan widens Node to term(); we know inputs are type(), so re-tag.
+  {SCCsRaw, CondensedRaw} = tarjan:condense(Graph),
+  SCCs = ?assert_type(SCCsRaw, #{type() => type()}),
+  Condensed = ?assert_type(CondensedRaw, #{type() => [type()]}),
+  Components = group_components(SCCs),
+  Sort = ?assert_type(tarjan:dfs(Condensed), [type()]),
+  DefineOrder = [maps:get(R, Components) || R <- Sort],
+  {DefineOrder, RevGraph}.
+
+-spec build_internal_graph(#{type() => type_descriptor()}, sets:set(type())) ->
+    #{type() => [type()]}.
+build_internal_graph(Bodies, KeySet) ->
+  maps:fold(
+    fun(R, B, Acc) ->
+      Internal = [C || C <- collect_node_refs(B), sets:is_element(C, KeySet)],
+      Acc#{R => lists:usort(Internal)}
+    end, #{}, Bodies).
+
+-spec group_components(#{type() => type()}) -> #{type() => [type()]}.
+group_components(SCCs) ->
+  Acc0 = ?assert_type(#{}, #{type() => [type()]}),
+  lists:foldl(
+    fun({N, Root}, Acc) ->
+      maps:update_with(Root, fun(Ns) -> [N | Ns] end, [N], Acc)
+    end, Acc0, lists:sort(maps:to_list(SCCs))).
+
+% Walk SCCs in topological order, redirecting nodes whose body is already
+% globally consed (or appeared earlier in this run).
+-spec consing_pass([[type()]], #{type() => [type()]}, type(),
+                   #{type() => type_descriptor()}) ->
+    {type(), #{type() => type_descriptor()}}.
+consing_pass(DefineOrder, RevGraph, StartRef, Bodies) ->
+  LocalDefs0 = ?assert_type(#{}, #{type_descriptor() => type()}),
+  {S, B, _} = lists:foldl(
+    fun(SCC, Acc) -> process_scc(SCC, RevGraph, Acc) end,
+    {StartRef, Bodies, LocalDefs0},
+    DefineOrder),
+  {S, B}.
+
+-spec define_remaining(#{type() => type_descriptor()}) -> ok.
+define_remaining(Bodies) ->
+  maps:foreach(
+    fun(Ref, Body) ->
+      case is_defined(Ref) of
+        true -> ok;
+        false -> define(Ref, Body), ok
+      end
+    end, Bodies).
+
+% Process one SCC: for each node, try to globally cons; if hit, redirect.
+-spec process_scc([type()], #{type() => [type()]},
+                  {type(), #{type() => type_descriptor()}, #{type_descriptor() => type()}}) ->
+    {type(), #{type() => type_descriptor()}, #{type_descriptor() => type()}}.
+process_scc(SCC, RevGraph, Acc) ->
+  lists:foldl(
+    fun(ToDefine, {StartRef, Bodies, LocalDefs}) ->
+      case is_defined(ToDefine) of
+        true ->
+          % Could happen if our pre-allocated ID collided with prior state;
+          % shouldn't, but be defensive.
+          {StartRef, Bodies, LocalDefs};
+        false ->
+          case maps:find(ToDefine, Bodies) of
+            error ->
+              % Already redirected in an earlier iteration of this SCC.
+              {StartRef, Bodies, LocalDefs};
+            {ok, Body} ->
+              case is_consed_local_or_global(Body, LocalDefs) of
+                {true, ExistingNode} ->
+                  redirect_to_existing(ToDefine, ExistingNode, StartRef, Bodies, LocalDefs, RevGraph);
+                false ->
+                  {StartRef, Bodies, LocalDefs#{Body => ToDefine}}
+              end
+          end
+      end
+    end, Acc, SCC).
+
+-spec is_consed_local_or_global(type_descriptor(), #{type_descriptor() => type()}) ->
+    {true, type()} | false.
+is_consed_local_or_global(Body, LocalDefs) ->
+  case is_consed(Body) of
+    {true, N} -> {true, N};
+    false ->
+      case LocalDefs of
+        #{Body := N} -> {true, N};
+        _ -> false
+      end
+  end.
+
+-spec redirect_to_existing(type(), type(), type(),
+                           #{type() => type_descriptor()},
+                           #{type_descriptor() => type()},
+                           #{type() => [type()]}) ->
+    {type(), #{type() => type_descriptor()}, #{type_descriptor() => type()}}.
+redirect_to_existing(ToDefine, ExistingNode, StartRef, Bodies, LocalDefs, RevGraph) ->
+  Bodies1 = maps:remove(ToDefine, Bodies),
+  % Rewrite bodies that contained ToDefine to reference ExistingNode instead.
+  ContainedIn = maps:get(ToDefine, RevGraph, []),
+  Bodies2 = lists:foldl(
+    fun(E, Acc) ->
+      case maps:find(E, Acc) of
+        error -> Acc;
+        {ok, Val} ->
+          NewVal = utils:replace(Val, #{ToDefine => ExistingNode}),
+          Acc#{E => dnf_ty_variable:reorder(NewVal)}
+      end
+    end, Bodies1, ContainedIn),
+  NewStartRef = case StartRef of ToDefine -> ExistingNode; _ -> StartRef end,
+  {NewStartRef, Bodies2, LocalDefs}.
+
+% Walk all reachable nodes; return a map keyed by ty_node of the ones whose
+% transitive variable set intersects Dom (i.e. those that need a substituted copy).
+-spec collect_needs_sub(type(), sets:set(variable())) -> #{type() => true}.
+collect_needs_sub(Node, Dom) ->
+  do_collect_needs_sub([Node], #{}, Dom, #{}).
+
+-spec do_collect_needs_sub([type()], #{type() => boolean()}, sets:set(variable()), #{type() => true}) ->
+    #{type() => true}.
+do_collect_needs_sub([], _Visited, _Dom, Acc) -> Acc;
+do_collect_needs_sub([N | Rest], Visited, Dom, Acc) ->
+  case Visited of
+    #{N := _} -> do_collect_needs_sub(Rest, Visited, Dom, Acc);
+    _ ->
+      Vars = all_variables(N),
+      case sets:size(sets:intersection(Vars, Dom)) of
+        0 ->
+          do_collect_needs_sub(Rest, Visited#{N => true}, Dom, Acc);
+        _ ->
+          Body = load(N),
+          Children = collect_node_refs(Body),
+          do_collect_needs_sub(Rest ++ Children, Visited#{N => true}, Dom, Acc#{N => true})
+      end
+  end.
+
+-spec collect_node_refs(type_descriptor()) -> [type()].
+collect_node_refs(Body) ->
+  utils:everything(
+    fun(E = {node, Id}) when is_integer(Id) -> {ok, E}; (_) -> error end,
+    Body).
 
 -spec all_variables(type()) -> sets:set(variable()).
 all_variables(Ty) ->
@@ -428,9 +576,8 @@ all_variables(Ty, Cache) ->
 %-spec opcache(term(), fun(() -> A)) -> A. % TODO scoped variables extension for annotations
 -spec opcache(term(), fun(() -> type())) -> type().
 opcache(Key, F) ->
-  % process dict faster but we can't erase just parts of it, only everything
   case ets:lookup(?OPCACHE, Key) of
-    [{_, Result}] -> ?assert_type(Result, type()); 
+    [{_, Result}] -> ?assert_type(Result, type());
     [_ | _] -> error(invariant);
     [] ->
       R = F(),

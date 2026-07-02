@@ -17,7 +17,7 @@
                                                {match,{loc,[],0,0},{var,{loc,[],0,0},{local_bind,{'$X_0',0}}},{var,{loc,[],0,0},{local_bind,{'F',0}}}},
                                                [],
                                                [{var,{loc,[],0,0},{local_ref,{'$X_0',0}}}]}],
-                                 [{{'$X_0',0},'$esc_$X_0_0'},{{'F',0},'$esc_F_0'}]},
+                                 [{{'$X_0',0},'$esc_$X_0_0_0',[local]},{{'F',0},'$esc_F_0_1',[local]}]},
                          {'case',{loc,[],0,0},
                                  {'fun',{loc,[],0,0},
                                         {local_bind,{'F',1}},
@@ -32,7 +32,7 @@
                                                {match,{loc,[],0,0},{var,{loc,[],0,0},{local_bind,{'$X_1',0}}},{var,{loc,[],0,0},{local_bind,{'G',0}}}},
                                                [],
                                                [{var,{loc,[],0,0},{local_ref,{'$X_1',0}}}]}],
-                                 [{{'$X_1',0},'$esc_$X_1_0'},{{'G',0},'$esc_G_0'}]},
+                                 [{{'$X_1',0},'$esc_$X_1_0_2',[local]},{{'G',0},'$esc_G_0_3',[local]}]},
                          {tuple,{loc,[],0,0},
-                                [{call,{loc,[],0,0},{var,{loc,[],0,0},{escaped_ref,{'F',0},'$esc_F_0'}},[{var,{loc,[],0,0},{local_ref,{'X',0}}}]},
-                                 {call,{loc,[],0,0},{var,{loc,[],0,0},{escaped_ref,{'G',0},'$esc_G_0'}},[{var,{loc,[],0,0},{local_ref,{'X',0}}}]}]}]}]}].
+                                [{call,{loc,[],0,0},{var,{loc,[],0,0},{escaped_ref,{'F',0},'$esc_F_0_1'}},[{var,{loc,[],0,0},{local_ref,{'X',0}}}]},
+                                 {call,{loc,[],0,0},{var,{loc,[],0,0},{escaped_ref,{'G',0},'$esc_G_0_3'}},[{var,{loc,[],0,0},{local_ref,{'X',0}}}]}]}]}]}].

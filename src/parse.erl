@@ -56,7 +56,7 @@ make_define_opt({Name, Val}) ->
 
 -spec build_compile_opts(parse_opts()) -> [compile:option()].
 build_compile_opts(Opts) ->
-    [{parse_transform,parse},basic_validation, report] ++
+    [{parse_transform,parse},basic_validation, report_errors] ++
     (case Opts#parse_opts.verbose of true -> [verbose]; _ -> [] end) ++
     lists:map(fun (X) -> {i,X} end, Opts#parse_opts.includes) ++
     lists:map(fun make_define_opt/1, Opts#parse_opts.defines).

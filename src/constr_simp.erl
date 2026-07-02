@@ -68,7 +68,7 @@ simp_ccase(Ctx, Locs, CsScrut, CsExhaust, Bodies) ->
         error -> ok
     end,
     DsScrut = simp_constrs(Ctx, CsScrut),
-    LocsScrut = loc(CsScrut),
+    LocsScrut = loc(CsScrut, loc(Locs)), % if scrutinee has a known type (no constraints), add Locs as a fallback
     DsExhaust = simp_constrs(Ctx, CsExhaust),
     L = lists:map(fun (Body) -> simp_case_branch(Ctx, Body) end, Bodies),
     utils:single({sccase, {LocsScrut, DsScrut}, {loc(Locs), DsExhaust}, L}).

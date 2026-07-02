@@ -1,0 +1,57 @@
+-module(constr_gen_tests).
+
+-include("log.hrl").
+-include_lib("test/erlang_types/erlang_types_test_utils.hrl").
+-include_lib("eunit/include/eunit.hrl").
+
+-spec pat_guard_lower_upper_test() -> ok.
+pat_guard_lower_upper_test() ->
+    Symtab = symtab:empty(),
+    % The guarded pattern `_ when true`
+    Loc = ast:loc_auto(),
+    P = {wildcard, Loc},
+    G = [{'atom', Loc, true}],
+    E = {var, Loc, {local_ref, {foo, 1}}},
+    {Upper, Lower} = constr_gen:pat_guard_lower_upper(Symtab, P, [G], E),
+    ?LOG_WARN("Upper: ~w, Lower: ~w", Upper, Lower),
+    % Upper and Lower should be equiv to any()
+    Any = {predef, any},
+    ?assertEqual(true, is_equiv(Upper, Any)),
+    ?assertEqual(true, is_equiv(Lower, Any)).
+
+assert_ty_of_pat(P, Upper, Lower) ->
+    Symtab = symtab:empty(),
+    Env = #{},
+    GivenUpper = constr_gen:ty_of_pat(Symtab, Env, P, upper),
+    GivenLower = constr_gen:ty_of_pat(Symtab, Env, P, lower),
+    ?LOG_WARN("ty_of_pat, P=~200p, Upper=~w, GivenUpper=~w, Lower=~w, GivenLower=~w",
+        P, Upper, GivenUpper, Lower, GivenLower),
+    ?assertEqual(true, is_equiv(Upper, GivenUpper)),
+    ?assertEqual(true, is_equiv(Lower, GivenLower)).
+
+assert_ty_of_pat(P, UpperAndLower) ->
+    assert_ty_of_pat(P, UpperAndLower, UpperAndLower).
+
+
+-spec ty_of_pat_list_test() -> ok.
+ty_of_pat_list_test() ->
+    Loc = ast:loc_auto(),
+    Pnil = {nil, Loc},
+    Pa = {'atom', Loc, a},
+    Pb = {'atom', Loc, b},
+    Pwild =  {wildcard, Loc},
+    PCons1 = {cons, Loc, Pa, Pnil}, % pattern [a | []]
+    PCons2 = {cons, Loc, Pa, Pwild}, % pattern [a | _]
+    PCons3 = {cons, Loc, Pb, PCons2}, % pattern [b | a | _]
+    PCons4 = {cons, Loc, Pb, PCons1}, % pattern [b | a | []]
+    Tempty_list = stdtypes:tempty_list(),
+    Ta = stdtypes:tatom(a),
+    Tb = stdtypes:tatom(b),
+    Tany = stdtypes:any(),
+    assert_ty_of_pat(Pnil, Tempty_list, Tempty_list),
+    assert_ty_of_pat(Pa, Ta, Ta),
+    assert_ty_of_pat(Pwild, Tany, Tany),
+    assert_ty_of_pat(PCons1, stdtypes:tcons_list(Ta, Tempty_list)),
+    assert_ty_of_pat(PCons2, stdtypes:tcons_list(Ta, Tany)),
+    assert_ty_of_pat(PCons3, stdtypes:tcons_list(Tb, stdtypes:tcons_list(Ta, Tany))),
+    assert_ty_of_pat(PCons4, stdtypes:tcons_list(Tb, stdtypes:tcons_list(Ta, Tempty_list))).

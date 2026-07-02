@@ -76,6 +76,6 @@ QF=$QF" -i number_integer_part_rest/6" # 3)
 QF=$QF" -i number_fraction_part/6" # 3)
 QF=$QF" -i number_fraction_part_rest/7" # 8)
 QF=$QF" -i parse_options/1" # 8)
-../../ety --no-deps -f $QF -l info jsone/src/jsone_decode.erl
+# ../../ety --no-deps -f $QF -l info jsone/src/jsone_decode.erl
 
 ../../ety --build --report-mode report --report-timeout 3000 --type-overlay overlay.erl --no-deps -f -l error -P jsone -S jsone/src

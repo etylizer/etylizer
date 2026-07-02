@@ -1,0 +1,6 @@
+#!/usr/bin/env escript
+
+main(_) ->
+    {ok,[Tab]} = file:consult("tatom.symtab"),
+    T = #{K => V || (K = {ty_key, ast, _, _}) := V <- Tab},
+    io:format(user,"~p~n", [T]).

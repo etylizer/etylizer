@@ -20,7 +20,7 @@
     lookup_op/4,
     lookup_ty/3,
     lookup_record/3,
-    std_symtab/2,
+    std_symtab/3,
     extend_symtab/4,
     extend_symtab_with_fun_env/2,
     empty/0,
@@ -31,7 +31,8 @@
 
 -ifdef(TEST). % for tally tests
 -export([
-    from_types/1
+    from_types/1,
+    extend_add_record/4
 ]).
 -endif.
 
@@ -48,7 +49,8 @@
               ops :: op_env(),
               types :: ty_env(),
               records :: record_env(),
-              modules :: mod_env()
+              modules :: mod_env(),
+              gradual = dynamic :: feature_flags:gradual_typing_mode()
 }).
 
 -type t() :: #tab{}.
@@ -153,21 +155,21 @@ symbols_for_module(Mod, Tab) ->
 -spec empty() -> t().
 empty() -> #tab { funs = #{}, ops = #{}, types = #{}, records = #{}, modules = #{} }.
 
--spec std_symtab(paths:search_path(), t()) -> t().
-std_symtab(SearchPath, OverlaySymtab) ->
-    CacheKey = erlang:phash2(OverlaySymtab),
+-spec std_symtab(paths:search_path(), t(), feature_flags:gradual_typing_mode()) -> t().
+std_symtab(SearchPath, OverlaySymtab, Gradual) ->
+    CacheKey = {erlang:phash2(OverlaySymtab), Gradual},
     case persistent_term:get(std_symtab_cache, undefined) of
         {CacheKey, CachedTab} ->
             ?LOG_DEBUG("Using cached standard symtab"),
             CachedTab;
         _ ->
-            Tab = build_std_symtab(SearchPath, OverlaySymtab),
+            Tab = build_std_symtab(SearchPath, OverlaySymtab, Gradual),
             persistent_term:put(std_symtab_cache, {CacheKey, Tab}),
             Tab
     end.
 
--spec build_std_symtab(paths:search_path(), t()) -> t().
-build_std_symtab(SearchPath, OverlaySymtab) ->
+-spec build_std_symtab(paths:search_path(), t(), feature_flags:gradual_typing_mode()) -> t().
+build_std_symtab(SearchPath, OverlaySymtab, Gradual) ->
     ?LOG_DEBUG("Building symtab for standard library ..."),
     Funs =
         lists:foldl(fun({Name, Arity, T}, Map) ->
@@ -178,7 +180,7 @@ build_std_symtab(SearchPath, OverlaySymtab) ->
         lists:foldl(fun({Name, Arity, T}, Map) -> maps:put({Name, Arity}, T, Map) end,
                     #{},
                     stdtypes:builtin_ops()),
-    Tab = #tab { funs = Funs, ops = Ops, types = #{}, records = #{}, modules = #{} },
+    Tab = #tab { funs = Funs, ops = Ops, types = #{}, records = #{}, modules = #{}, gradual = Gradual },
     ExtTab = extend_symtab_with_module_list(Tab, SearchPath, [erlang], OverlaySymtab),
     % Merge overlay types into the main symtab so they are available for type resolution
     ExtTab2 = ExtTab#tab { types = maps:merge(ExtTab#tab.types, OverlaySymtab#tab.types) },
@@ -252,12 +254,37 @@ extend_symtab_internal(Filename, Forms, RefType, Tab, OverlaySymtab) ->
             errors:some_error("File ~s does not exist", [Filename])
     end,
     ModuleName = ast_utils:modname_from_path(Filename),
-    lists:foldl(
+    SpeccedTab = lists:foldl(
         fun(Form, AccTab) ->
             extend_process_form(Form, AccTab, RefType, ModuleName, Forms, OverlaySymtab)
         end,
         Tab#tab { modules = maps:put(ModuleName, Filename, Tab#tab.modules) },
-        Forms).
+        Forms),
+    % give every defined-but-unspecced function a dynamic() scheme here, 
+    % once, so all downstream lookups resolve it 
+    % covers local refs and (for exported functions, via maybe_add_qref) cross-module qrefs. 
+    % undefined functions are not defined here, so they still name-error.
+    case Tab#tab.gradual of
+        dynamic ->
+            lists:foldl(
+                fun({function, _, Name, Arity, _}, AccTab) ->
+                        case find_fun(create_ref_tuple(RefType, Name, Arity), AccTab) of
+                            {ok, _} -> AccTab;
+                            error ->
+                                maybe_add_qref(RefType, ModuleName, Name, Arity,
+                                               dynamic_fun_scheme(Arity), Forms, AccTab)
+                        end;
+                   (_, AccTab) -> AccTab
+                end,
+                SpeccedTab,
+                Forms);
+        _ -> SpeccedTab
+    end.
+
+% A function scheme that is dynamic() in all arguments and the result.
+-spec dynamic_fun_scheme(arity()) -> ast:ty_scheme().
+dynamic_fun_scheme(Arity) ->
+    {ty_scheme, [], {fun_full, lists:duplicate(Arity, {predef, dynamic}), {predef, dynamic}}}.
 
 -spec extend_process_form(ast:form(), t(), ref(), atom(), ast:forms(), t()) -> t().
 extend_process_form({attribute, _, spec, Name, Arity, T, _}, AccTab, RefType, ModuleName, Forms, OverlaySymtab) ->

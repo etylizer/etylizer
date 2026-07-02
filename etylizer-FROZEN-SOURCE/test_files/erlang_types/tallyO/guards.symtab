@@ -1,0 +1,30 @@
+{tab,
+ #{},
+ #{},
+ #{
+  {ty_key,ast_erl,guard_test,0} =>
+    {ty_scheme,[],
+     {union,
+      [
+
+       {named,
+      {loc,"test_files/etylizer-mini/src/ast_erl.erl",349,29},
+      {ty_ref,ast_erl,gen_tuple,1},
+      [{named,
+        {loc,"test_files/etylizer-mini/src/ast_erl.erl",349,39},
+        {ty_ref,ast_erl,guard_test,0},
+        []}]}
+
+      ]}},
+
+        
+  {ty_key,ast_erl,gen_tuple,1} =>
+    {ty_scheme,
+     [{'T',{predef,any}}],
+     {tuple,
+      [{list,{var,'T'}}]}}
+
+
+  },
+ #{},
+ #{}}.

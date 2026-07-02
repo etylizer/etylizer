@@ -1,0 +1,13 @@
+[{attribute,{loc,[],0,0},module,scope_args},
+ {function,{loc,[],0,0},bar,1,[{fun_clause,{loc,[],0,0},[{var,{loc,[],0,0},{local_bind,{'X',0}}}],[],[{op,{loc,[],0,0},'+',{var,{loc,[],0,0},{local_ref,{'X',0}}},{integer,{loc,[],0,0},1}}]}]},
+ {function,{loc,[],0,0},
+           foo,0,
+           [{fun_clause,{loc,[],0,0},
+                        [],[],
+                        [{call,{loc,[],0,0},
+                               {var,{loc,[],0,0},{ref,bar,1}},
+                               [{block,{loc,[],0,0},
+                                       [{'case',{loc,[],0,0},
+                                                {integer,{loc,[],0,0},1},
+                                                [{case_clause,{loc,[],0,0},{var,{loc,[],0,0},{local_bind,{'X',0}}},[],[{var,{loc,[],0,0},{local_ref,{'X',0}}}]}]}]}]},
+                         {var,{loc,[],0,0},{local_ref,{'X',0}}}]}]}].

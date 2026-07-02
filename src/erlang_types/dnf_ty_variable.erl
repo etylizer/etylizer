@@ -16,6 +16,10 @@
   tuple_to_map/1
 ]).
 
+-export([
+  substitute/3
+]).
+
 -define(ATOM, ty_variable).
 -define(LEAF, ty_rec).
 
@@ -97,10 +101,17 @@ smallest(PositiveVariables, NegativeVariables, FixedVariables) ->
     [{{delta, neg}, V} || V <- NegativeVariables, maps:is_key(V, FixedVariables)] ++
     [{{delta, pos}, V} || V <- PositiveVariables, maps:is_key(V, FixedVariables)],
 
-  Sort = fun({_, V}, {_, V2}) -> ty_variable:leq(V, V2) end,
-  [X | Z] = 
-  ?assert_pattern([_ | _], 
-                  lists:sort(Sort, PositiveVariablesTagged++NegativeVariablesTagged) ++ 
+  %% A5 swing: pick the LARGEST variable first (reverse the usual lex order)
+  %% — fpos already placed the most-discriminating vars at one end via the
+  %% reorder, and reversing the picker swaps which end we resolve first. Can
+  %% materially change the recursion-tree shape.
+  Sort = case os:getenv("ETY_PICKER_REV") of
+    "1" -> fun({_, V}, {_, V2}) -> not ty_variable:leq(V, V2) end;
+    _   -> fun({_, V}, {_, V2}) -> ty_variable:leq(V, V2) end
+  end,
+  [X | Z] =
+  ?assert_pattern([_ | _],
+                  lists:sort(Sort, PositiveVariablesTagged++NegativeVariablesTagged) ++
                   lists:sort(Sort, RestTagged)),
 
   {X, Z}.
@@ -129,3 +140,28 @@ all_variables_line(P, N, Leaf, Cache) ->
               sets:from_list(N),
               ty_rec:all_variables(Leaf, Cache)
              ]).
+
+% =============
+% Substitution
+% =============
+% Substitute variables (Sigma) and node references (NodeMap) in this BDD.
+% Sigma maps a ty_variable to a ty_node whose body will replace the variable.
+% NodeMap maps existing ty_nodes (referenced in leaves) to new ty_nodes.
+-spec substitute(bdd(), #{variable() => ty_node:type()}, #{ty_node:type() => ty_node:type()}) -> bdd().
+substitute({leaf, TyRec}, _Sigma, NodeMap) ->
+  {leaf, ty_rec:substitute(TyRec, NodeMap)};
+substitute({node, Var, P, N}, Sigma, NodeMap) ->
+  P2 = substitute(P, Sigma, NodeMap),
+  N2 = substitute(N, Sigma, NodeMap),
+  case maps:find(Var, Sigma) of
+    {ok, TNode} ->
+      % Var maps to a type. Load its BDD (a dnf_ty_variable BDD) and combine via cap/diff/cup.
+      TBdd = ty_node:load(TNode),
+      union(intersect(TBdd, P2), difference(N2, TBdd));
+    error ->
+      % Var is unchanged; rebuild with substituted children.
+      % Since Var's position in ordering is unchanged, this remains a valid BDD
+      % as long as P2 and N2 are valid (which they are recursively).
+      VBdd = singleton(Var),
+      union(intersect(VBdd, P2), difference(N2, VBdd))
+  end.

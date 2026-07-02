@@ -59,7 +59,7 @@ unparse_fun_part(FunPart, ST) ->
 -spec unparse_fun_part_dnf(dnf_ty_function:type(), S) -> {ast_ty(), S} when S :: unparse_cache().
 unparse_fun_part_dnf(FunsDnf, ST) ->
     [{AllFuns, [], 1}] = 
-    case dnf_ty_function:minimize_dnf(dnf_ty_function:dnf(FunsDnf)) of
+    case dnf_ty_function:minimize_dnf(FunsDnf) of
         R = [{_, [], 1}] -> R;
         _ -> error(badarg)
     end,
@@ -91,7 +91,7 @@ unparse_tuple_part_dnf(TyTupPart, ST) ->
         _ -> error(badarg)
     end,
 
-    TDnf = dnf_ty_tuple:minimize_dnf(dnf_ty_tuple:dnf(TuplesDnf)),
+    TDnf = dnf_ty_tuple:minimize_dnf(TuplesDnf),
 
     % negative part should be empty always, and only a single positive tuple remaining
     ToUnparse = [PosTup || {[PosTup], [], 1} <- TDnf],

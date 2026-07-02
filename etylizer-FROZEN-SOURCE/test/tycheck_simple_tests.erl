@@ -1,0 +1,270 @@
+-module(tycheck_simple_tests).
+
+% Test setup for all functions in test_files/tycheck_simple.erl
+
+-include_lib("eunit/include/eunit.hrl").
+-include("log.hrl").
+-include("etylizer_main.hrl").
+-include("parse.hrl").
+-include("typing.hrl").
+
+-spec check_ok_fun(string(), symtab:t(), symtab:t(), sets:set({atom(), arity()}), ast:fun_decl(), ast:ty_scheme()) -> ok.
+check_ok_fun(Filename, Tab, OverlayTab, DisableExhaustiveness, Decl = {function, L, Name, Arity, _}, Ty) ->
+    Includes = ["include", "src", "src/erlang_types", "src/erlang_types/dnf", "src/erlang_types/utils"],
+    SanityCheck = cm_check:perform_sanity_check(Filename, [Decl], true, Includes),
+    Ctx0 = typing:new_ctx(Tab, OverlayTab, SanityCheck), % FIXME: perform sanity check!
+    Ctx = Ctx0#ctx{ disable_exhaustiveness = DisableExhaustiveness },
+    try
+        typing_check:check(Ctx, Decl, Ty)
+    catch
+        throw:{etylizer, ty_error, Msg} ->
+            io:format("~s: Type checking ~w/~w in ~s failed but should succeed: ~s",
+                      [ast:format_loc(L), Name, Arity, Filename, Msg]),
+            ?assert(false)
+    end,
+    ok.
+
+-spec check_infer_ok_fun(string(), symtab:t(), symtab:t(), sets:set({atom(), arity()}), ast:fun_decl(), ast:ty_scheme()) -> ok.
+check_infer_ok_fun(Filename, Tab, OverlayTab, DisableExhaustiveness, Decl = {function, L, Name, Arity, _}, Ty) ->
+    % Check that the inferred type is more general then the type in the spec
+    Ctx0 = typing:new_ctx(Tab, OverlayTab, error),
+    Ctx = Ctx0#ctx{ disable_exhaustiveness = DisableExhaustiveness },
+    Envs =
+       try
+           typing_infer:infer(Ctx, [Decl])
+       catch
+           throw:{etylizer, ty_error, Msg2} ->
+               io:format("~s: Infering type for ~w/~w in ~s failed but should succeed: ~s",
+                     [ast:format_loc(L), Name, Arity, Filename, Msg2]),
+               ?assert(false)
+       end,
+    InferredTys =
+      lists:map(
+        fun(Env) ->
+          case maps:to_list(Env) of
+            [{_, T}] -> T;
+            _ -> io:format("Type map with more than one entry", []),
+                  ?assert(false)
+          end
+        end,
+        Envs),
+    ?LOG_NOTE("Inferred the following types for ~w/~w: ~s", Name, Arity,
+      pretty:render_list(fun pretty:tyscheme/1, InferredTys)),
+    case lists:any(
+            fun(InferredTy) -> typing_infer:more_general(L, InferredTy, Ty, Tab) end,
+            InferredTys)
+      of
+          true -> ok;
+          false ->
+              io:format(
+                "~s: None of the inferred types ~s for function ~w/~w in ~s is more general than type ~s from spec",
+                [ast:format_loc(L),
+                pretty:render_list(fun pretty:tyscheme/1, InferredTys),
+                Name, Arity, Filename,
+                pretty:render_tyscheme(Ty)]),
+              ?assert(false)
+      end,
+    ok.
+
+-spec check_fail_fun(string(), symtab:t(), symtab:t(), sets:set({atom(), arity()}), ast:fun_decl(), ast:ty_scheme()) -> ok.
+check_fail_fun(Filename, Tab, OverlayTab, DisableExhaustiveness, Decl = {function, L, Name, Arity, _}, Ty) ->
+    Ctx0 = typing:new_ctx(Tab, OverlayTab, error),
+    Ctx = Ctx0#ctx{ disable_exhaustiveness = DisableExhaustiveness },
+    try
+        typing_check:check(Ctx, Decl, Ty),
+        io:format("~s: Type checking ~w/~w in ~s succeeded but should fail",
+                  [ast:format_loc(L), Name, Arity, Filename]),
+        ?assert(false)
+    catch
+        throw:{etylizer, ty_error, _Msg} ->
+            ok
+    end.
+
+-type what() :: all | {include, sets:set(string())} | {exclude, sets:set(string())}.
+-type no_infer() :: all | sets:set(string()).
+
+-spec has_intersection(ast:ty_scheme()) -> boolean().
+has_intersection({ty_scheme, _, {intersection, _}}) -> true;
+has_intersection({ty_scheme, _, _}) -> false.
+
+-spec check_decls_in_file(string(), what(), no_infer()) -> list().
+check_decls_in_file(F, What, NoInfer) ->
+  {ok, RawForms} = parse:parse_file(F, #parse_opts{includes = 
+                                                   ["include", "src", "src/erlang_types", 
+                                                    "src/erlang_types/dnf", "src/erlang_types/utils"]}),
+  Forms = ast_transform:trans(F, RawForms),
+  SearchPath = paths:compute_search_path(#opts{}),
+  OverlayTab = symtab:empty(),
+  Tab0 = symtab:std_symtab(SearchPath, symtab:empty()),
+  Tab = symtab:extend_symtab(F, Forms, Tab0,symtab:empty()),
+  DisableExhaustiveness = typing:disable_exhaustiveness_from_forms(Forms),
+
+  CollectDecls = fun(Decl, TestCases) ->
+    case Decl of
+      {function, Loc, Name, Arity, _} ->
+        NameStr = atom_to_list(Name),
+        FullNameStr = F ++ "/" ++ atom_to_list(Name),
+        Ty = symtab:lookup_fun({ref, Name, Arity}, Loc, Tab),
+        ShouldFail = utils:string_ends_with(NameStr, "_fail"),
+        RunTest =
+          % FIXME #54 reduce timeout after issue has been fixed
+          {timeout, 120, {FullNameStr, fun() ->
+                ?LOG_NOTE("Type checking ~s from ~s", NameStr, F),
+                global_state:with_new_state(fun() ->
+                  case ShouldFail of
+                    true -> check_fail_fun(F, Tab, OverlayTab, DisableExhaustiveness, Decl, Ty);
+                    false ->
+                      check_ok_fun(F, Tab, OverlayTab, DisableExhaustiveness, Decl, Ty)
+                  end
+                                            end)
+              end}
+            },
+        InferTest =
+          {timeout, 150, {FullNameStr ++ " (infer)", fun() ->
+                ?LOG_NOTE("Infering type for ~s from ~s", NameStr, F),
+                global_state:with_new_state(fun() ->
+                  check_infer_ok_fun(F, Tab, OverlayTab, DisableExhaustiveness, Decl, Ty)
+                end),
+                ok
+              end}
+          },
+        ShouldRun = should_run(NameStr, What),
+        ShouldInfer = not ShouldFail andalso NoInfer =/= all
+          andalso not sets:is_element(NameStr, NoInfer)
+          andalso not has_intersection(Ty),
+        ExtraTestCases =
+          case {ShouldRun, ShouldInfer} of
+            {false, _} -> [];
+            {true, true} -> [RunTest, InferTest];
+            {true, false} -> [RunTest]
+          end,
+        TestCases ++ ExtraTestCases;
+      _ -> TestCases
+    end
+  end,
+  lists:foldl(CollectDecls, [], Forms).
+
+%% Suppress warnings about unmatched patterns
+%% TODO fix this somehow or not...
+-dialyzer({no_match, should_run/2}).
+-spec should_run(string(), all | {include, sets:set(string())} | {exclude, sets:set(string())}) -> boolean().
+should_run(Name, {include, Set}) -> sets:is_element(Name, Set);
+should_run(Name, {exclude, Set}) -> not sets:is_element(Name, Set);
+should_run(_Name, all) -> true.
+
+
+
+-spec check_decls_in_files(list(string()), what(), no_infer()) -> list().
+check_decls_in_files(Files, What, NoInfer) ->
+  CollectDecls = fun(File, TestCases) ->
+    TestCases ++ check_decls_in_file(File, What, NoInfer)
+  end,
+  lists:foldl(CollectDecls, [], Files).
+
+% Reads TEST, MODULE, and NO_INFER environment variables for test filtering.
+% Returns {OnlyFiles, What, SkipAllInfer}.
+%   TEST=module:fun_name  - run only fun_name from module.erl
+%   TEST=module           - run all functions from module.erl
+%   NO_INFER=1            - skip all inference tests
+-spec parse_test_env() -> {list(string()), what() | undefined, boolean()}.
+parse_test_env() ->
+  SkipAllInfer = os:getenv("NO_INFER") =/= false,
+  case os:getenv("TEST") of
+    false ->
+      {[], undefined, SkipAllInfer};
+    TestVal ->
+      case string:split(TestVal, ":") of
+        [Mod, Fun] -> {[Mod ++ ".erl"], {include, sets:from_list([Fun])}, SkipAllInfer};
+        [Mod] -> {[Mod ++ ".erl"], undefined, SkipAllInfer}
+      end
+  end.
+
+simple_test_() ->
+  % The following functions are currently excluded from being tested.
+  WhatNot = [
+    % TODO binary pattern element size verification
+    "b4_fail",
+    % TODO for if expressions guards always reference outer scope variables 
+    %      lower is always none() for any non-trivial if guard
+    %      see case_13_fail, maybe at some point we have better 
+    %      bounds for scoped variables
+    %      other tests that access outer variables are included here, too
+    "if_06",
+    "if_17",
+    "if_18",
+    "case_26",
+    "refinement_01c",
+    "refinement_01b"
+  ],
+
+  NoInfer = [
+    % TODO slow, timeouts
+    "refine_tagged_tuple",
+    "refine_02",
+    % TODO timeout, with flipped variable ordering it infers instantly
+    "match_13",
+    % TODO slow (tuple-encoded lists) inference #255
+    % reason: recursive types parsing and unparsing in solving step (missing proper substitution implementation)
+    "list_as_tuple_08",
+    "list_pattern_11",
+    "list_pattern_10_fail_h",
+    "list_pattern_02",
+    "list_pattern_07",
+    "inter_04_ok",
+    "foo",
+    "op_08",
+    % TODO slow maybe inference
+    "maybe_08",
+    "maybe_09",
+    % TODO inferred type is less general than spec?
+    "lc_10",
+    "zip_01",
+    "lc_11",
+    "lc_13",
+    "lc_13b",
+    "lc_15",
+    "lc_16",
+    "bin_concat_04"
+  ],
+
+  {EnvOnlyFiles, EnvWhat, SkipAllInfer} = parse_test_env(),
+
+  TopDir = "test_files/tycheck_simple",
+
+  OnlyFiles = EnvOnlyFiles,
+  % OnlyFiles = ["guards.erl"], % use this instead to not use ENV vars to select modules to test
+  IgnoreFiles = [],
+
+  What = case EnvWhat of
+    undefined -> {exclude, sets:from_list(WhatNot)};
+    W -> W
+  end,
+
+  NoInferSet = case SkipAllInfer of
+    true -> all;
+    false -> sets:from_list(NoInfer)
+  end,
+
+  parse_cache:with_cache(
+    #opts{},
+    fun() ->
+      case file:list_dir(TopDir) of
+        {ok, Entries} ->
+            ErlFiles =
+              lists:filtermap(fun(Entry) ->
+                case filename:extension(Entry) =:= ".erl" andalso
+                  (OnlyFiles =:= [] orelse lists:member(Entry, OnlyFiles)) andalso
+                  (not lists:member(Entry, IgnoreFiles))
+                of
+                  true -> {true, TopDir ++ "/" ++ Entry};
+                  false -> false
+                end
+              end, Entries),
+            case ErlFiles of
+              [] -> erlang:error("No test files found in " ++ TopDir);
+              _ -> ok
+            end,
+            check_decls_in_files(ErlFiles, What, NoInferSet);
+        _ -> erlang:error("Failed to list test directory " ++ TopDir)
+      end
+    end).

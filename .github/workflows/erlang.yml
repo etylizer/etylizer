@@ -8,112 +8,101 @@ on:
 jobs:
 
   build:
+    name: "build (OTP ${{ matrix.otp }})"
     runs-on: ubuntu-latest
     timeout-minutes: 1
+    strategy:
+      matrix:
+        otp: ['28', '29']
     container:
-      image: erlang:28
+      image: erlang:${{ matrix.otp }}
     steps:
     - uses: actions/checkout@v4
     - run: make build
 
   verify:
-    name: "verify: ${{ matrix.name }}"
+    name: "verify: ${{ matrix.check.name }} (OTP ${{ matrix.otp }})"
     needs: build
     runs-on: ubuntu-latest
     timeout-minutes: 10
     container:
-      image: erlang:28
+      image: erlang:${{ matrix.otp }}
     strategy:
       matrix:
-        include:
+        otp: ['28', '29']
+        check:
           - name: dialyzer
             cmd: rebar3 as test dialyzer
           - name: erlang_types
-            cmd: ./typecheck_erlang_types --report-mode report --report-timeout 30000
+            cmd: ./typecheck_erlang_types
           - name: syntax transformation
             cmd: ./_build/default/bin/etylizer --sanity --no-type-checking -I ./include -I ./src ./src/*.erl
     steps:
     - uses: actions/checkout@v4
     - run: make build
-    - run: ${{ matrix.cmd }}
+    - run: ${{ matrix.check.cmd }}
 
   metrics:
-    name: "metrics: ${{ matrix.name }}"
+    name: "metrics: ${{ matrix.name }} (OTP 29)"
     needs: build
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 60
     container:
-      image: erlang:28
+      image: erlang:29
     strategy:
       matrix:
         include:
-          - name: erlang_types
-            cmd: ./report_erlang_types
-            artifact: metrics-erlang-types-pr
-            json: erlang_types_metrics.json
           - name: etylizer
-            cmd: ./report_etylizer
-            artifact: metrics-etylizer-pr
-            json: etylizer_metrics.json
+            cmd: .github/scripts/report_etylizer
           - name: typecheck
-            cmd: ./report_typecheck
-            artifact: metrics-typecheck-pr
-            json: typecheck_test_metrics.json
+            cmd: .github/scripts/report_typecheck
     steps:
-    - uses: actions/checkout@v4
-    - run: make build && rebar3 as metrics escriptize
-    - run: ${{ matrix.cmd }}
-    - uses: actions/upload-artifact@v4
+    - name: Checkout PR
+      uses: actions/checkout@v4
       with:
-        name: ${{ matrix.artifact }}
-        path: ${{ matrix.json }}
-
-  metrics-base:
-    name: "metrics (base): ${{ matrix.name }}"
-    needs: build
-    if: github.event_name == 'pull_request'
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    container:
-      image: erlang:28
-    strategy:
-      matrix:
-        include:
-          - name: erlang_types
-            cmd: ./report_erlang_types
-            artifact: metrics-erlang-types-base
-            json: erlang_types_metrics.json
-          - name: etylizer
-            cmd: ./report_etylizer
-            artifact: metrics-etylizer-base
-            json: etylizer_metrics.json
-          - name: typecheck
-            cmd: ./report_typecheck
-            artifact: metrics-typecheck-base
-            json: typecheck_test_metrics.json
-    steps:
-    - uses: actions/checkout@v4
+        path: pr
+    - name: Build PR
+      working-directory: pr
+      run: make build && rebar3 as metrics escriptize
+    - name: Checkout base
+      if: github.event_name == 'pull_request'
+      uses: actions/checkout@v4
       with:
         ref: ${{ github.event.pull_request.base.sha }}
-    - run: make build && rebar3 as metrics escriptize || true
-    - run: ${{ matrix.cmd }} || true
-    - uses: actions/upload-artifact@v4
-      if: always()
+        path: base
+    - name: Build base
+      if: github.event_name == 'pull_request'
+      working-directory: base
+      run: make build && rebar3 as metrics escriptize || true
+    # 2x2 matrix: run the suite's corpus through BOTH engines (base & PR) so the
+    # comment can isolate the engine effect from the corpus change. A=base, B=PR.
+    - name: Run metrics matrix
+      if: github.event_name == 'pull_request'
+      run: pr/.github/scripts/metrics_matrix.sh run base pr ${{ matrix.name }} matrix_out
+    - name: Upload matrix artifact
+      if: always() && github.event_name == 'pull_request'
+      uses: actions/upload-artifact@v4
       with:
-        name: ${{ matrix.artifact }}
-        path: ${{ matrix.json }}
+        name: metrics-${{ matrix.name }}-matrix
+        path: matrix_out/
         if-no-files-found: ignore
+    # On push (no base to compare) just run the PR report as a smoke check.
+    - name: Report PR (push smoke check)
+      if: github.event_name != 'pull_request'
+      working-directory: pr
+      run: ${{ matrix.cmd }}
 
   test:
-    name: "test: ${{ matrix.name }}"
+    name: "test: ${{ matrix.check.name }} (OTP ${{ matrix.otp }})"
     needs: build
     runs-on: ubuntu-latest
     timeout-minutes: 10
     container:
-      image: erlang:28
+      image: erlang:${{ matrix.otp }}
     strategy:
       matrix:
-        include:
+        otp: ['28', '29']
+        check:
           - name: typecheck
             cmd: ./run_test.escript typecheck
           - name: infer
@@ -128,12 +117,12 @@ jobs:
     steps:
     - uses: actions/checkout@v4
     - run: make build
-    - run: ${{ matrix.cmd }}
+    - run: ${{ matrix.check.cmd }}
     - name: Upload test report
-      if: matrix.artifact
+      if: matrix.check.artifact && matrix.otp == '29'
       uses: actions/upload-artifact@v4
       with:
-        name: ${{ matrix.artifact }}
+        name: ${{ matrix.check.artifact }}
         path: /tmp/test_report.log
 
   test-base:
@@ -157,7 +146,7 @@ jobs:
 
   ci-stats:
     name: "CI stats"
-    needs: [verify, metrics, metrics-base, test, test-base]
+    needs: [verify, metrics, test, test-base]
     if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
     container:
@@ -170,23 +159,34 @@ jobs:
     - name: Generate stats
       run: |
         : > /tmp/ci_stats.md
-        for suite in erlang_types etylizer typecheck; do
+        # POSIX positional params hold the accumulated --suite ... args for
+        # the unified partitions report. Container shell is sh, not bash.
+        set --
+        for suite in etylizer typecheck; do
           case $suite in
-            erlang_types) title="erlang_types"; json="erlang_types_metrics.json"; artifact="metrics-erlang-types";;
-            etylizer)     title="etylizer";     json="etylizer_metrics.json";      artifact="metrics-etylizer";;
-            typecheck)    title="typecheck tests"; json="typecheck_test_metrics.json"; artifact="metrics-typecheck";;
+            etylizer)     title="etylizer";;
+            typecheck)    title="typecheck tests";;
           esac
-          pr_file="/tmp/artifacts/${artifact}-pr/${json}"
-          base_file="/tmp/artifacts/${artifact}-base/${json}"
-          if [ -f "$pr_file" ]; then
-            if [ -f "$base_file" ]; then
-              ./ety_metrics_report --title "$title" "$pr_file" "$base_file" >> /tmp/ci_stats.md
-            else
-              ./ety_metrics_report --title "$title" "$pr_file" >> /tmp/ci_stats.md
-            fi
+          dir="/tmp/artifacts/metrics-${suite}-matrix"
+          # Engine-effect + diagonal tables straight from the 2x2 matrix cells.
+          if [ -d "$dir" ]; then
+            .github/scripts/metrics_matrix.sh report "$suite" "$dir" "$title" >> /tmp/ci_stats.md
             echo "" >> /tmp/ci_stats.md
           fi
+          # Partitions report runs on the diagonal cells (PR/PR vs base/base).
+          pr_file="$dir/${suite}_cB_eB.json"
+          base_file="$dir/${suite}_cA_eA.json"
+          if [ -f "$pr_file" ]; then
+            if [ -f "$base_file" ]; then
+              set -- "$@" --suite "$suite" "$pr_file" "$base_file"
+            else
+              set -- "$@" --suite "$suite" "$pr_file"
+            fi
+          fi
         done
+        if [ "$#" -gt 0 ]; then
+          .github/scripts/ety_partitions_report "$@" >> /tmp/ci_stats.md
+        fi
         echo "## Test Statistics: infer" >> /tmp/ci_stats.md
         echo "" >> /tmp/ci_stats.md
         .github/scripts/typecheck_stats.sh \
@@ -226,15 +226,16 @@ jobs:
           }
 
   case-study:
-    name: "case study: ${{ matrix.name }}"
+    name: "case study: ${{ matrix.study.name }} (OTP ${{ matrix.otp }})"
     needs: build
     runs-on: ubuntu-latest
     timeout-minutes: 10
     container:
-      image: erlang:28
+      image: erlang:${{ matrix.otp }}
     strategy:
       matrix:
-        include:
+        otp: ['28', '29']
+        study:
           - name: stdlib
             cmd: test_files/etylizer-mini/check-stdlib.sh
           - name: jsone
@@ -242,6 +243,4 @@ jobs:
     steps:
     - uses: actions/checkout@v4
     - run: make build
-    - name: Cache espresso binary
-      run: ./run_test.escript "case_01 (typecheck)"
-    - run: ETYLIZER_CASE_STUDY_LOGLEVEL=warn ${{ matrix.cmd }}
+    - run: ETYLIZER_CASE_STUDY_LOGLEVEL=warn ${{ matrix.study.cmd }}

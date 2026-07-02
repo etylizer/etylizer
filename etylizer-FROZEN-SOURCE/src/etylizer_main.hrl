@@ -1,0 +1,35 @@
+-type opts_mode() :: prod_mode | test_mode.
+
+-record(opts, {log_level = default :: log:log_level() | default,
+               log_file = "etylizer.log" :: string(),
+               help = false :: boolean(),
+               dump_raw = false :: boolean(),
+               dump = false :: boolean(),
+               dump_transformed = false :: boolean(),
+               sanity = false :: boolean(),
+               sanity_infer = false :: boolean(),
+               force = false :: boolean(),
+               no_type_checking = false :: boolean(),
+               report_mode = early_exit :: feature_flags:report_mode(),
+               report_timeout = 5000 :: pos_integer(),
+               exhaustiveness_mode = enabled :: feature_flags:exhaustiveness_mode(),
+               gradual_typing_mode = dynamic :: feature_flags:gradual_typing_mode(),
+               no_deps = false :: boolean(),
+               check_exports = false :: boolean(),
+               type_check_only = [] :: [string()],
+               type_check_ignore = [] :: [string()],
+               ast_file = empty :: empty | string(),
+               project_root = empty :: empty | string(),
+               espresso_root = empty :: empty | string(),
+               src_paths = [] :: [string()],
+               includes = [] :: [string()],
+               defines = [] :: [{atom(), string()}],
+               load_start = [] :: [string()],
+               load_end = [] :: [string()],
+               files = [] :: [string()],
+               type_overlay = [] :: string(),
+               verbose = false :: boolean(),
+               mode = prod_mode :: opts_mode() % only used internally
+            }).
+
+-type cmd_opts() :: #opts{}.

@@ -1,0 +1,265 @@
+#{
+{ty_key,ast,ty,0} =>
+    {ty_scheme,[],
+     {union,
+      [{named,{loc,"src/ast.erl",413,15},{ty_ref,ast,ty_singleton,0},[]},
+       {named,{loc,"src/ast.erl",413,32},{ty_ref,ast,ty_bitstring,0},[]},
+       {named,{loc,"src/ast.erl",413,49},{ty_ref,ast,ty_some_list,0},[]},
+       {named,{loc,"src/ast.erl",414,7},{ty_ref,ast,ty_fun,0},[]},
+       {named,{loc,"src/ast.erl",414,18},{ty_ref,ast,ty_integer_range,0},[]},
+       {named,{loc,"src/ast.erl",414,39},{ty_ref,ast,ty_map_any,0},[]},
+       {named,{loc,"src/ast.erl",414,54},{ty_ref,ast,ty_map,0},[]},
+       {named,{loc,"src/ast.erl",414,65},{ty_ref,ast,ty_predef,0},[]},
+       {named,{loc,"src/ast.erl",414,79},{ty_ref,ast,ty_predef_alias,0},[]},
+       {named,{loc,"src/ast.erl",415,7},{ty_ref,ast,ty_named,0},[]},
+       {named,{loc,"src/ast.erl",415,20},{ty_ref,ast,ty_tuple_any,0},[]},
+       {named,{loc,"src/ast.erl",415,37},{ty_ref,ast,ty_tuple,0},[]},
+       {named,{loc,"src/ast.erl",415,50},{ty_ref,ast,ty_var,0},[]},
+       {named,{loc,"src/ast.erl",415,61},{ty_ref,ast,ty_mu,0},[]},
+       {named,{loc,"src/ast.erl",416,7},{ty_ref,ast,ty_union,0},[]},
+       {named,{loc,"src/ast.erl",416,20},{ty_ref,ast,ty_intersection,0},[]},
+       {named,{loc,"src/ast.erl",416,40},{ty_ref,ast,ty_negation,0},[]}]}},
+
+{ty_key,ast,ty_tuple_any,0} =>
+  {ty_scheme,[],{tuple,[{singleton,tuple_any}]}},
+
+{ty_key,ast,ty_predef,0} =>
+    {ty_scheme,[],
+     {tuple,
+      [{singleton,predef},
+       {named,{loc,"src/ast.erl",373,31},{ty_ref,ast,predef_name,0},[]}]}},
+
+{ty_key,ast,predef_name,0} =>
+    {ty_scheme,[],
+     {union,
+      [{singleton,any},
+       {singleton,none},
+       {singleton,pid},
+       {singleton,port},
+       {singleton,reference},
+       {singleton,float},
+       {singleton,integer},
+       {singleton,atom}]}},
+
+  {ty_key,ast,ty_bitstring,0} =>
+  {ty_scheme,[],
+    {tuple,[{singleton,binary},{predef,integer},{predef,integer}]}},
+
+   {ty_key,ast,ty_some_list,0} =>
+    {ty_scheme,[],
+     {union,
+      [{named,{loc,"src/ast.erl",351,25},{ty_ref,ast,ty_empty_list,0},[]},
+       {named,{loc,"src/ast.erl",351,43},{ty_ref,ast,ty_list,0},[]},
+       {named,{loc,"src/ast.erl",351,55},{ty_ref,ast,ty_nonempty_list,0},[]},
+       {named,{loc,"src/ast.erl",351,76},{ty_ref,ast,ty_improper_list,0},[]},
+       {named,
+        {loc,"src/ast.erl",352,25},
+        {ty_ref,ast,ty_nonempty_improper_list,0},
+        []}]}},
+
+   {ty_key,ast,ty_empty_list,0} =>
+    {ty_scheme,[],{tuple,[{singleton,empty_list}]}},
+
+   {ty_key,ast,ty_list,0} =>
+    {ty_scheme,[],
+     {tuple,
+      [{singleton,list},
+       {named,{loc,"src/ast.erl",347,27},{ty_ref,ast,ty,0},[]}]}},
+
+   {ty_key,ast,ty_nonempty_list,0} =>
+    {ty_scheme,[],
+     {tuple,
+      [{singleton,nonempty_list},
+       {named,{loc,"src/ast.erl",348,45},{ty_ref,ast,ty,0},[]}]}},
+
+   {ty_key,ast,ty_nonempty_improper_list,0} =>
+    {ty_scheme,[],
+     {tuple,
+      [{singleton,nonempty_improper_list},
+       {named,{loc,"src/ast.erl",350,63},{ty_ref,ast,ty,0},[]},
+       {named,{loc,"src/ast.erl",350,69},{ty_ref,ast,ty,0},[]}]}},
+
+   {ty_key,ast,ty_fun,0} =>
+    {ty_scheme,[],
+     {union,
+      [{named,{loc,"src/ast.erl",357,19},{ty_ref,ast,ty_simple_fun,0},[]},
+       {named,{loc,"src/ast.erl",357,37},{ty_ref,ast,ty_any_arg_fun,0},[]},
+       {named,{loc,"src/ast.erl",357,56},{ty_ref,ast,ty_full_fun,0},[]}]}},
+
+   {ty_key,ast,ty_simple_fun,0} =>
+    {ty_scheme,[],{tuple,[{singleton,fun_simple}]}},
+
+   {ty_key,ast,ty_any_arg_fun,0} =>
+    {ty_scheme,[],
+     {tuple,
+      [{singleton,fun_any_arg},
+       {named,{loc,"src/ast.erl",355,41},{ty_ref,ast,ty,0},[]}]}},
+
+   {ty_key,ast,ty_full_fun,0} =>
+    {ty_scheme,[],
+     {tuple,
+      [{singleton,fun_full},
+       {list,{named,{loc,"src/ast.erl",356,36},{ty_ref,ast,ty,0},[]}},
+       {named,{loc,"src/ast.erl",356,43},{ty_ref,ast,ty,0},[]}]}},
+
+   {ty_key,ast,ty_integer_range,0} =>
+    {ty_scheme,[],
+     {tuple,
+      [{singleton,range},
+       {union,[{predef,integer},{singleton,'*'}]},
+       {union,[{predef,integer},{singleton,'*'}]}]}},
+
+   {ty_key,ast,ty_map_any,0} => {ty_scheme,[],{tuple,[{singleton,map_any}]}},
+
+   {ty_key,ast,ty_map,0} =>
+    {ty_scheme,[],
+     {tuple,
+      [{singleton,map},
+       {list,
+        {named,{loc,"src/ast.erl",364,26},{ty_ref,ast,ty_map_assoc,0},[]}}]}},
+
+   {ty_key,ast,ty_map_assoc,0} =>
+    {ty_scheme,[],
+     {union,
+      [{named,{loc,"src/ast.erl",367,25},{ty_ref,ast,ty_map_assoc_opt,0},[]},
+       {named,
+        {loc,"src/ast.erl",367,46},
+        {ty_ref,ast,ty_map_assoc_req,0},
+        []}]}},
+
+   {ty_key,ast,ty_map_assoc_opt,0} =>
+    {ty_scheme,[],
+     {tuple,
+      [{singleton,map_field_opt},
+       {named,{loc,"src/ast.erl",365,45},{ty_ref,ast,ty,0},[]},
+       {named,{loc,"src/ast.erl",365,51},{ty_ref,ast,ty,0},[]}]}},
+
+   {ty_key,ast,ty_map_assoc_req,0} =>
+    {ty_scheme,[],
+     {tuple,
+      [{singleton,map_field_req},
+       {named,{loc,"src/ast.erl",366,45},{ty_ref,ast,ty,0},[]},
+       {named,{loc,"src/ast.erl",366,51},{ty_ref,ast,ty,0},[]}]}},
+
+   {ty_key,ast,ty_predef_alias,0} =>
+    {ty_scheme,[],
+     {tuple,
+      [{singleton,predef_alias},
+       {named,
+        {loc,"src/ast.erl",386,43},
+        {ty_ref,ast,predef_alias_name,0},
+        []}]}},
+
+   {ty_key,ast,predef_alias_name,0} =>
+    {ty_scheme,[],
+     {union,
+      [{singleton,term},
+       {singleton,binary},
+       {singleton,nonempty_binary},
+       {singleton,bitstring},
+       {singleton,nonempty_bitstring},
+       {singleton,boolean},
+       {singleton,byte},
+       {singleton,char},
+       {singleton,nil},
+       {singleton,number},
+       {singleton,list},
+       {singleton,nonempty_list},
+       {singleton,maybe_improper_list},
+       {singleton,nonempty_improper_list},
+       {singleton,nonempty_maybe_improper_list},
+       {singleton,string},
+       {singleton,nonempty_string},
+       {singleton,iodata},
+       {singleton,iolist},
+       {singleton,map},
+       {singleton,function},
+       {singleton,module},
+       {singleton,mfa},
+       {singleton,arity},
+       {singleton,identifier},
+       {singleton,node},
+       {singleton,timeout},
+       {singleton,no_return},
+       {singleton,non_neg_integer},
+       {singleton,pos_integer},
+       {singleton,neg_integer}]}},
+
+   {ty_key,ast,ty_named,0} =>
+    {ty_scheme,[],
+     {tuple,
+      [{singleton,named},
+       {named,{loc,"src/ast.erl",399,29},{ty_ref,ast,loc,0},[]},
+       {named,{loc,"src/ast.erl",399,42},{ty_ref,ast,ty_ref,0},[]},
+       {list,{named,{loc,"src/ast.erl",399,59},{ty_ref,ast,ty,0},[]}}]}},
+
+   {ty_key,ast,loc,0} =>
+    {ty_scheme,[],
+     {tuple,
+      [{singleton,loc},
+       {predef_alias,string},
+       {predef,integer},
+       {predef,integer}]}},
+
+   {ty_key,ast,ty_ref,0} =>
+    {ty_scheme,[],
+     {union,
+      [{tuple,
+        [{singleton,ty_ref},{predef,atom},{predef,atom},{predef_alias,arity}]},
+       {tuple,
+        [{singleton,ty_qref},
+         {predef,atom},
+         {predef,atom},
+         {predef_alias,arity}]}]}},
+
+   {ty_key,ast,ty_tuple,0} =>
+    {ty_scheme,[],
+     {tuple,
+      [{singleton,tuple},
+       {list,{named,{loc,"src/ast.erl",405,30},{ty_ref,ast,ty,0},[]}}]}},
+
+   {ty_key,ast,ty_var,0} =>
+    {ty_scheme,[],
+     {tuple,
+      [{singleton,var},
+       {named,{loc,"src/ast.erl",407,25},{ty_ref,ast,ty_varname,0},[]}]}},
+
+   {ty_key,ast,ty_varname,0} => {ty_scheme,[],{predef,atom}},
+
+   {ty_key,ast,ty_mu,0} =>
+    {ty_scheme,[],
+     {tuple,
+      [{singleton,mu},
+       {named,{loc,"src/ast.erl",402,42},{ty_ref,ast,ty_var,0},[]},
+       {named,{loc,"src/ast.erl",402,72},{ty_ref,ast,ty,0},[]}]}},
+
+   {ty_key,ast,ty_union,0} =>
+    {ty_scheme,[],
+     {tuple,
+      [{singleton,union},
+       {list,{named,{loc,"src/ast.erl",408,30},{ty_ref,ast,ty,0},[]}}]}},
+
+   {ty_key,ast,ty_intersection,0} =>
+    {ty_scheme,[],
+     {tuple,
+      [{singleton,intersection},
+       {list,{named,{loc,"src/ast.erl",409,44},{ty_ref,ast,ty,0},[]}}]}},
+
+   {ty_key,ast,ty_negation,0} =>
+    {ty_scheme,[],
+     {tuple,
+      [{singleton,negation},
+       {named,{loc,"src/ast.erl",410,35},{ty_ref,ast,ty,0},[]}]}},
+   {ty_key,ast,ty_singleton,0} =>
+    {ty_scheme,[],
+     {tuple,
+      [{singleton,singleton},
+       {union,[{predef,atom},{predef,integer},{predef_alias,char}]}]}},
+
+     {ty_key,ast,ty_improper_list,0} =>
+    {ty_scheme,[],
+     {tuple,
+      [{singleton,improper_list},
+       {named,{loc,"src/ast.erl",349,45},{ty_ref,ast,ty,0},[]},
+       {named,{loc,"src/ast.erl",349,51},{ty_ref,ast,ty,0},[]}]}}
+}.

@@ -72,12 +72,23 @@ case_09(X) ->
         _ -> 42.0
     end.
 
--spec case_10_fail(any()) -> integer().
-case_10_fail(X) ->
+% With guard BIF extension, abs is total in guards (non-numbers cause guard
+% failure). is_integer(Y) narrows Y to integer, so this passes.
+-spec case_10(any()) -> integer().
+case_10(X) ->
     case X of
-        % should fail because Y does not have type integer
-        % in the guard but abs requires a number
         Y when abs(Y) > 2 andalso is_integer(Y) -> Y;
+        _ -> 42
+    end.
+
+% not equivalent: we have no way to escape out of the inner case, not all cases are covered
+-spec case_10_equiv_fail(any()) -> integer().
+case_10_equiv_fail(X) ->
+    case X of
+        Y when abs(Y) > 2 ->
+            case Y of
+                Z when is_integer(Z) -> Z
+            end;
         _ -> 42
     end.
 
@@ -261,3 +272,85 @@ case_33_fail(F, Ref) ->
       __Z = [{Ref, _}] -> __Z; _ -> error(badarg)
   end,
   Node.
+
+% With guard BIF extension, abs is total in guards. Both branches return
+% integer literals, so this passes.
+-spec case_34(any()) -> integer().
+case_34(X) ->
+    case X of
+        Y when abs(Y) > 2 -> 2;
+        _ -> 42
+    end.
+
+-spec myabs
+(float()) -> float();
+(integer()) -> non_neg_integer();
+(etylizer:without(etylizer:without(any(), float()), integer())) -> none().
+myabs(X) -> error(err).
+
+-spec case_35_fail(any()) -> integer().
+case_35_fail(X) ->
+    myabs(X).
+
+%%%%%%%%%%%%%%%% GUARD BIF EXTENSION %%%%%%%%%%%%%%%
+
+% Guard BIFs are extended to be total on any() in guard context.
+% Non-domain inputs cause guard failure (modeled as none()).
+
+% abs(Y) in guard: Y is any(), body returns literal -> passes
+-spec guard_bif_01(any()) -> integer().
+guard_bif_01(X) ->
+    case X of
+        Y when abs(Y) > 0 -> 1;
+        _ -> 0
+    end.
+
+% abs(Y) in guard without narrowing: Y stays any(), returning Y should fail
+-spec guard_bif_02_fail(any()) -> integer().
+guard_bif_02_fail(X) ->
+    case X of
+        Y when abs(Y) > 0 -> Y;
+        _ -> 0
+    end.
+
+% hd(Y) in guard: Y is any(), body returns literal -> passes
+-spec guard_bif_03(any()) -> ok.
+guard_bif_03(X) ->
+    case X of
+        Y when hd(Y) =:= 1 -> ok;
+        _ -> ok
+    end.
+
+% length(Y) in guard: Y is any(), body returns literal -> passes
+-spec guard_bif_04(any()) -> integer().
+guard_bif_04(X) ->
+    case X of
+        Y when length(Y) > 0 -> 1;
+        _ -> 0
+    end.
+
+% abs + is_integer: guard narrows Y to integer, returning Y passes
+-spec guard_bif_05(any()) -> integer().
+guard_bif_05(X) ->
+    case X of
+        Y when abs(Y) > 0 andalso is_integer(Y) -> Y;
+        _ -> 0
+    end.
+
+% abs + is_integer reordered: is_integer before abs, should also pass
+-spec guard_bif_06(any()) -> integer().
+guard_bif_06(X) ->
+    case X of
+        Y when is_integer(Y) andalso abs(Y) > 0 -> Y;
+        _ -> 0
+    end.
+
+% Non-boolean second operand of andalso: valid Erlang (guard just fails),
+% should not be rejected. abs(Y) returns a number, not boolean, but in
+% guard context andalso doesn't require boolean operands.
+-spec guard_bif_07(any()) -> ok.
+guard_bif_07(X) ->
+    case X of
+        Y when is_integer(Y) andalso abs(Y) -> ok;
+        _ -> ok
+    end.

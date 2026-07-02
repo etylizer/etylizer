@@ -28,7 +28,8 @@
   map/1,
 
   tuple_to_map/1,
-  is_literal_empty/1
+  is_literal_empty/1,
+  substitute/2
 ]).
 
 -export_type([type/0, type_record/0]).
@@ -361,6 +362,24 @@ bitstring(A) -> (empty0())#ty{dnf_ty_bitstring = A}.
 -spec map(dnf_ty_map:type()) -> type().
 map(A) -> (empty0())#ty{dnf_ty_map = A}.
 
+-spec substitute(type(), #{ty_node:type() => ty_node:type()}) -> type().
+substitute(any, _NodeMap) -> any;
+substitute(empty, _NodeMap) -> empty;
+substitute(#ty{
+    dnf_ty_predefined = P, dnf_ty_atom = A, dnf_ty_interval = I, dnf_ty_list = L,
+    dnf_ty_bitstring = B, ty_tuples = T, ty_functions = F, dnf_ty_map = M
+}, NodeMap) ->
+    simpl_to_repr(#ty{
+        dnf_ty_predefined = P,
+        dnf_ty_atom = A,
+        dnf_ty_interval = I,
+        dnf_ty_list = dnf_ty_list:substitute(L, NodeMap),
+        dnf_ty_bitstring = B,
+        ty_tuples = ty_tuples:substitute(T, NodeMap),
+        ty_functions = ty_functions:substitute(F, NodeMap),
+        dnf_ty_map = dnf_ty_map:substitute(M, NodeMap)
+    }).
+
 % Converter used by ty_parser
 % to convert from a map encoded in the 2-arity tuple part to the map part
 -spec tuple_to_map(type()) -> type().
@@ -403,10 +422,13 @@ all_variables(#ty{
 -spec merge({Sofs, ST}, Sofs, monomorphic_variables()) -> 
     {Sofs, ST}  | {ok, Sofs, ST}
       when Sofs :: set_of_constraint_sets(), ST :: normalize_cache().
-merge({[], S}, _, _Fixed) -> {[], S}; 
-merge({R, S}, R2, Fixed) -> 
+merge({[], S}, _, _Fixed) -> {[], S};
+merge({R, S}, R2, Fixed) ->
     Meet = constraint_set:meet(R, R2, Fixed),
-    {ok, Meet, S} .
+    case Meet of
+        [] -> {[], S};
+        _ -> {ok, Meet, S}
+    end.
 
 
 -spec normalize(type(), monomorphic_variables(), ST) -> 
@@ -508,8 +530,11 @@ unparse_any_module(dnf_ty_atom, {predef, any}) -> {predef, atom};
 unparse_any_module(dnf_ty_atom, Result) -> ast_lib:mk_intersection([{predef, atom}, Result]);
 unparse_any_module(dnf_ty_interval, {predef, any}) -> {predef, integer};
 unparse_any_module(dnf_ty_interval, Result) -> ast_lib:mk_intersection([{predef, integer}, Result]);
-unparse_any_module(dnf_ty_list, {predef, any}) -> {improper_list, {predef, any}, {predef, any}};
-unparse_any_module(dnf_ty_list, Result) -> ast_lib:mk_intersection([{improper_list, {predef, any}, {predef, any}}, Result]);
+% The internal list component holds cons cells only ([] lives in
+% dnf_ty_predefined), so its top is cons(any(), any()), i.e. the nonempty
+% maybe-improper list. {improper_list, any, any} would re-parse to any().
+unparse_any_module(dnf_ty_list, {predef, any}) -> {nonempty_improper_list, {predef, any}, {predef, any}};
+unparse_any_module(dnf_ty_list, Result) -> ast_lib:mk_intersection([{nonempty_improper_list, {predef, any}, {predef, any}}, Result]);
 unparse_any_module(dnf_ty_bitstring, {predef, any}) -> {bitstring};
 unparse_any_module(dnf_ty_bitstring, Result) -> ast_lib:mk_intersection([{bitstring}, Result]);
 unparse_any_module(ty_tuples, {predef, any}) -> {tuple_any};
