@@ -3,7 +3,7 @@
 -include("log.hrl").
 
 -export([
-         gen_constrs_fun_group/4, gen_constrs_annotated_fun/5,
+         gen_constrs_fun_group/4, gen_constrs_annotated_fun/6,
          sanity_check/2,
          new_ctx/2, fun_clauses_to_exp/3
         ]).
@@ -31,7 +31,11 @@
           % directly to a closed type.
           env = #{} :: #{ ast:any_ref() => ast:ty() },
           % true when generating constraints inside a guard expression
-          in_guard = false :: boolean()
+          in_guard = false :: boolean(),
+          % declared receive message type (from -etylizer({msg_type, T})), if any
+          recv_msg_ty = none :: none | ast:ty(),
+          % per-receive exhaustiveness: exhaust (default) or noexhaust
+          recv_exhaust = exhaust :: exhaust | noexhaust
         }).
 -type ctx() :: #ctx{}.
 
@@ -97,8 +101,8 @@ gen_constrs_fun_group(ExhaustivenessMode, Symtab, {DisableExhaustiveness, Disabl
 % This function is invoked for each branch of the intersection type in the type spec.
 % The idea is that we can give better error messages by pointing out which part of the
 % intersection did not type check.
--spec gen_constrs_annotated_fun(feature_flags:exhaustiveness_mode(), symtab:t(), {boolean(), boolean()}, ast:ty_full_fun(), ast:fun_decl()) -> constr:constrs().
-gen_constrs_annotated_fun(ExhaustivenessMode, Symtab, {DisableExhaustiveness, DisableRedundancy}, {fun_full, ArgTys, ResTy}, {function, L, Name, Arity, FunClauses}) ->
+-spec gen_constrs_annotated_fun(feature_flags:exhaustiveness_mode(), symtab:t(), {boolean(), boolean()}, none | {ast:ty(), exhaust | noexhaust}, ast:ty_full_fun(), ast:fun_decl()) -> constr:constrs().
+gen_constrs_annotated_fun(ExhaustivenessMode, Symtab, {DisableExhaustiveness, DisableRedundancy}, RecvMsgTyArg, {fun_full, ArgTys, ResTy}, {function, L, Name, Arity, FunClauses}) ->
     Ctx0 = new_ctx(Symtab, ExhaustivenessMode),
     Ctx1 = Ctx0#ctx{ disable_exhaustiveness = DisableExhaustiveness, disable_redundancy = DisableRedundancy },
     {Args, Body} = fun_clauses_to_exp(Ctx1, L, FunClauses),
@@ -108,9 +112,14 @@ gen_constrs_annotated_fun(ExhaustivenessMode, Symtab, {DisableExhaustiveness, Di
     end,
     ArgRefs = lists:map(fun(V) -> {local_ref, V} end, Args),
     Env = maps:from_list(lists:zip(ArgRefs, ArgTys)),
+    % recv_msg_ty for typed receive; recv_exhaust for per-receive exhaustiveness opt-out
+    {RecvTy, RecvExhaust} = case RecvMsgTyArg of
+        none -> {none, exhaust};
+        {Ty, Exhaust} -> {Ty, Exhaust}
+    end,
     %% Thread Env into Ctx so exp_constrs_tyof can resolve arg-var lookups
     %% to their declared (closed) spec types directly
-    Ctx = Ctx1#ctx{ env = Env },
+    Ctx = Ctx1#ctx{ env = Env, recv_msg_ty = RecvTy, recv_exhaust = RecvExhaust },
     BodyCs = exps_constrs(Ctx, L, Body, ResTy),
     Msg = utils:sformat("definition of ~w/~w", Name, Arity),
     utils:single({cdef, mk_locs(Msg, L), Env, BodyCs}).
@@ -409,6 +418,20 @@ exp_constrs(Ctx, E, T) ->
             Cs2 = exp_constrs(Ctx, Rhs, Alpha2),
             BoolCs = utils:single({csubty, mk_locs("boolean shortcircuit", L), {predef_alias, boolean}, T}),
             sets:union([Cs1, Cs2, BoolCs]);
+        {op, L, '!', PidExp, MsgExp} ->
+            % Send operator: Pid ! Msg
+            % Standard cop constraint (checks Pid is a valid receiver, returns Msg).
+            Alpha1 = fresh_tyvar(Ctx),
+            Cs1 = exp_constrs(Ctx, PidExp, Alpha1),
+            Alpha2 = fresh_tyvar(Ctx),
+            Cs2 = exp_constrs(Ctx, MsgExp, Alpha2),
+            Beta = fresh_tyvar(Ctx),
+            OpCs = sets:from_list(
+                     [{cop, mk_locs("type of op !", L), '!', 2, {fun_full, [Alpha1, Alpha2], Beta}},
+                      {csubty, mk_locs("result of op !", L), Beta, T}], [{version, 2}]),
+            % Additional pid(T) check: if Pid has type pid(T), require Msg <: T
+            PidMsgCs = pid_send_constrs(Ctx, L, PidExp, Alpha2),
+            sets:union([Cs1, Cs2, OpCs, PidMsgCs]);
         {op, L, Op, Lhs, Rhs} ->
             Alpha1 = fresh_tyvar(Ctx),
             Cs1 = exp_constrs(Ctx, Lhs, Alpha1),
@@ -1139,16 +1162,122 @@ dyncall_constrs(Ctx, L, ModExp, FunExp, Args, T) ->
 -spec ty_without(ast:ty(), ast:ty()) -> ast:ty().
 ty_without(T1, T2) -> ast_lib:mk_intersection([T1, ast_lib:mk_negation(T2)]).
 
+% Checks if a pid send expression carries a pid(T) type annotation in the local environment.
+% If so, generates a constraint that the message type is a subtype of T.
+% This implements the Marlow-Wadler pid(T) parametric process type.
+-spec pid_send_constrs(ctx(), ast:loc(), ast:exp(), ast:ty()) -> constr:constrs().
+pid_send_constrs(Ctx, L, PidExp, MsgTy) ->
+    case PidExp of
+        {var, _, {local_ref, Var}} ->
+            case maps:find({local_ref, Var}, Ctx#ctx.env) of
+                {ok, {named, _, Ref, [T]}}
+                    when Ref =:= {ty_ref, erlang, pid, 1};
+                         Ref =:= {ty_qref, erlang, pid, 1} ->
+                    utils:single({csubty, mk_locs("pid(T) message type constraint", L), MsgTy, T});
+                _ ->
+                    sets:new([{version, 2}])
+            end;
+        _ ->
+            sets:new([{version, 2}])
+    end.
+
 % Generates constraints for a receive expression.
-% Pattern variables are bound to dynamic() since we don't know message types.
-% Guards override dynamic with specific types (e.g., is_integer(X) makes X :: integer()).
--spec receive_constrs(ctx(), ast:loc(), [ast:case_clause()], ast:ty()) ->
-    constr:constrs().
-receive_constrs(Ctx, _L, CaseClauses, T) ->
-    ClauseCs = lists:map(
-        fun(Clause) -> receive_clause_constrs(Ctx, Clause, T) end,
+% When recv_msg_ty is set, applies full case-like exhaustiveness and redundancy checking
+% against the declared message type. Otherwise, pattern variables default to dynamic().
+-spec receive_constrs(ctx(), ast:loc(), [ast:case_clause()], ast:ty()) -> constr:constrs().
+receive_constrs(Ctx, L, CaseClauses, T) ->
+    case Ctx#ctx.recv_msg_ty of
+        none ->
+            ClauseCs = lists:map(
+                fun(Clause) -> receive_clause_constrs(Ctx, Clause, T) end,
+                CaseClauses),
+            sets:union(ClauseCs);
+        MsgTy ->
+            typed_receive_constrs(Ctx, L, MsgTy, CaseClauses, T)
+    end.
+
+% Generates constraints for a typed receive using the declared message type as the scrutinee.
+% Applies exhaustiveness and redundancy checking, mirroring case_constrs.
+-spec typed_receive_constrs(ctx(), ast:loc(), ast:ty(), [ast:case_clause()],
+                            ast:ty()) -> constr:constrs().
+typed_receive_constrs(Ctx, L, MsgTy, CaseClauses, T) ->
+    HasBinPat = lists:any(
+        fun({case_clause, _, Pat, _, _}) -> has_bin_pat(Pat) end,
         CaseClauses),
-    sets:union(ClauseCs).
+    NeedsUnmatchedCheck = needs_unmatched_check(CaseClauses),
+    % A neutral atom literal serves as the virtual scrutinee: pat_of_exp maps any
+    % non-structural expression to a wildcard pattern, so Lower/Upper are determined
+    % purely by the clause pattern (the receive has no real scrutinee expression).
+    WildScrut = {atom, L, '_'},
+    {BodyList, Lowers, PatCs} =
+        lists:foldl(
+            fun({case_clause, CL, Pat, Guards, Exps}, {AccBodyList, PrevLowers, AccPatCs}) ->
+                % Compute bounds and environments with/without guards (mirrors case_clause_constrs).
+                {_GuardLower, GuardUpper, GuardPatCs, GuardPatEnv} =
+                    case_clause_env(Ctx, CL, MsgTy, WildScrut, Pat, []),
+                {BodyLower, _BodyUpper, BodyPatCs, BodyPatEnv} =
+                    case_clause_env(Ctx, CL, MsgTy, WildScrut, Pat, Guards),
+                % Redundancy: clause is redundant iff MsgTy <: not(GuardUpper) | union(PrevLowers)
+                RedundancyCs =
+                    if NeedsUnmatchedCheck ->
+                        recv_clause_unmatched_constraints(MsgTy, PrevLowers, GuardUpper, CL);
+                    true -> none
+                    end,
+                % Guard constraints
+                GuardCtx = Ctx#ctx{in_guard = true},
+                CGuards = sets:union(lists:map(
+                    fun(Guard) ->
+                        exps_constrs(GuardCtx, CL, Guard, {predef_alias, boolean})
+                    end, Guards)),
+                % Body constraints
+                Beta = fresh_tyvar(Ctx),
+                BodyCs = exps_constrs(Ctx, CL, Exps, Beta),
+                RL = case Exps of [E | _] -> ast:loc_exp(E) end,
+                ResultCs = utils:single({csubty, mk_locs("typed receive result", RL), Beta, T}),
+                % Build ccase_branch payload (same structure as case_clause_constrs)
+                Payload = constr:mk_case_branch_payload(
+                    {GuardPatEnv, CGuards},
+                    {BodyPatEnv, BodyCs},
+                    RedundancyCs,
+                    ResultCs),
+                BranchC = {ccase_branch, mk_locs("typed receive branch", CL), Payload},
+                % BranchC goes into BodyList; pattern constraints accumulate in PatCs
+                NewPatCs = sets:union(AccPatCs, sets:union(GuardPatCs, BodyPatCs)),
+                {AccBodyList ++ [BranchC], PrevLowers ++ [BodyLower], NewPatCs}
+            end,
+            {[], [], sets:new([{version, 2}])},
+            CaseClauses),
+    % Exhaustiveness: all message values must be covered by some clause.
+    % Suppressed when recv_exhaust is noexhaust (per-receive opt-out).
+    ExhaustCs =
+        case {Ctx#ctx.exhaustiveness_mode, Ctx#ctx.recv_exhaust, HasBinPat} of
+            {enabled, exhaust, false} ->
+                utils:single({csubty, mk_locs("typed receive exhaustiveness", L),
+                    MsgTy, ast_lib:mk_union(Lowers)});
+            _ -> sets:new([{version, 2}])
+        end,
+    % PatCs may be empty if all patterns are wildcards/vars (no constraints generated).
+    % loc(PatCs) in constr_simp requires at least one location-carrying constraint,
+    % so add a trivially-true baseline: MsgTy <: any().
+    BaseCs = utils:single({csubty, mk_locs("typed receive", L), MsgTy, {predef, any}}),
+    FinalPatCs = sets:union(PatCs, BaseCs),
+    CcaseC = {ccase, mk_locs("typed receive", L), FinalPatCs, ExhaustCs, BodyList},
+    utils:single(CcaseC).
+
+% Computes the redundancy constraint for a typed receive clause.
+% The clause is redundant iff the constraint MsgTy <: not(Upper) | union(LowersBefore) is satisfiable.
+-spec recv_clause_unmatched_constraints(ast:ty(), [ast:ty()], ast:ty(), ast:loc()) ->
+    constr:constr_case_branch_cond().
+recv_clause_unmatched_constraints(MsgTy, LowersBefore, Upper, L) ->
+    Ui = ast_lib:mk_union([ast_lib:mk_negation(Upper) | LowersBefore]),
+    utils:single({csubty, mk_locs("redundant receive clause", L), MsgTy, Ui}).
+
+% Check if a pattern contains a binary pattern at the top level (possibly inside a tuple).
+-spec has_bin_pat(ast:pat()) -> boolean().
+has_bin_pat({bin, _, _}) -> true;
+has_bin_pat({tuple, _, Ps}) -> lists:any(fun has_bin_pat/1, Ps);
+has_bin_pat({match, _, P1, P2}) -> has_bin_pat(P1) orelse has_bin_pat(P2);
+has_bin_pat(_) -> false.
 
 % Generates constraints for a receive...after expression.
 % Combines receive clause constraints with the after body constraints.
@@ -1169,20 +1298,31 @@ receive_after_constrs(Ctx, L, CaseClauses, TimeoutExp, AfterBody, T) ->
 
 % Generates constraints for a single receive clause.
 % Pattern variables get type dynamic(). Guards override with specific types.
+% If the context has a recv_msg_ty (typed receive...after), pattern variables are
+% bound to types inferred from the declared message type instead.
 -spec receive_clause_constrs(ctx(), ast:case_clause(), ast:ty()) -> constr:constrs().
 receive_clause_constrs(Ctx, {case_clause, L, Pat, Guards, Exps}, T) ->
-    % Bind pattern variables to dynamic
-    BoundVars = bound_vars_pat(Pat),
-    DynamicPatEnv = sets:fold(
-        fun(V, Acc) -> maps:put({local_ref, V}, {predef, dynamic}, Acc) end,
-        #{},
-        BoundVars),
-    {GuardEnv, _} = guard_seq_env(Guards),
-    % #FIXME HACK until #329 is fixed
-    % Guard refinements override dynamic(), not intersect with it.
-    % Overriding ensures guarded variables get only the guard type.
-    % Unguarded variables remain dynamic().
-    VarEnv = maps:merge(DynamicPatEnv, GuardEnv),
+    {VarEnv, ExtraCs} =
+        case Ctx#ctx.recv_msg_ty of
+            none ->
+                % Bind pattern variables to dynamic
+                BoundVars = bound_vars_pat(Pat),
+                DynamicPatEnv = sets:fold(
+                    fun(V, Acc) -> maps:put({local_ref, V}, {predef, dynamic}, Acc) end,
+                    #{},
+                    BoundVars),
+                {GuardEnv, _} = guard_seq_env(Guards),
+                % #FIXME HACK until #329 is fixed
+                % Guard refinements override dynamic(), not intersect with it.
+                % Overriding ensures guarded variables get only the guard type.
+                % Unguarded variables remain dynamic().
+                {maps:merge(DynamicPatEnv, GuardEnv), sets:new([{version, 2}])};
+            MsgTy ->
+                % Typed receive: bind pattern variables to types inferred from the
+                % declared message type (like a case clause scrutinizing MsgTy).
+                {PatCs, PatEnv} = pat_guard_env(Ctx, L, MsgTy, Pat, Guards),
+                {PatEnv, PatCs}
+        end,
     % Generate guard constraints to evaluate to boolean()
     GuardCtx = Ctx#ctx{in_guard = true},
     GuardCs = sets:union(
@@ -1196,7 +1336,7 @@ receive_clause_constrs(Ctx, {case_clause, L, Pat, Guards, Exps}, T) ->
     BodyCs = exps_constrs(Ctx, L, Exps, Beta),
     ResultCs = utils:single({csubty, mk_locs("receive clause result", L), Beta, T}),
     % Wrap in cdef with variable bindings
-    InnerCs = sets:union([GuardCs, BodyCs, ResultCs]),
+    InnerCs = sets:union([ExtraCs, GuardCs, BodyCs, ResultCs]),
     utils:single({cdef, mk_locs("receive clause", L), VarEnv, InnerCs}).
 
 -spec needs_unmatched_check(list(ast:case_clause())) -> boolean().

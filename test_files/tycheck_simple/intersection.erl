@@ -200,3 +200,21 @@ branch_unmatched_in_nested_expression_fail(foo) ->
         _  -> false
     end;
 branch_unmatched_in_nested_expression_fail(_) -> true.
+
+% Calling an intersection-typed function preserves the intersection.
+% This is the mechanism the typed-receive desugar relies on: a helper function
+% with an intersection spec is called from the original function.
+-spec overlapping_04(1) -> ok; (any()) -> any().
+overlapping_04(Msg) ->
+    case_as_fun(Msg).
+
+-spec case_as_fun(1) -> ok; (any()) -> any().
+case_as_fun(1) -> ok;
+case_as_fun(Any) -> Any.
+
+-spec overlapping_05(1) -> ok; (atom()) -> any(); (any()) -> any().
+overlapping_05(Msg) ->
+    case Msg of
+        1 -> ok;
+        Any -> Any
+    end.

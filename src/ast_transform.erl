@@ -120,6 +120,66 @@ trans_form(Ctx, Form, Mode) ->
                         {attribute, to_loc(Ctx, Anno), etylizer, EtylizerOpt};
                     {functions_redundant, off, _Funs} ->
                         {attribute, to_loc(Ctx, Anno), etylizer, EtylizerOpt};
+                    {msg_type, FunName, Arity, TypeStrs, noexhaustiveness}
+                            when is_atom(FunName), is_integer(Arity),
+                                 is_list(TypeStrs), TypeStrs =/= [],
+                                 is_list(hd(TypeStrs)) ->
+                        % List form with noexhaustiveness flag.
+                        Loc = to_loc(Ctx, Anno),
+                        FunTys = lists:map(
+                            fun(TyStr) ->
+                                case parse_type(Ctx, TyStr) of
+                                    {ok, Ty = {fun_full, _, _}} -> Ty;
+                                    {ok, Ty} -> {fun_full, [Ty], {predef, any}};
+                                    error ->
+                                        errors:ty_error(Loc,
+                                            "Invalid type in msg_type list: ~s", [TyStr])
+                                end
+                            end, TypeStrs),
+                        {attribute, Loc, etylizer, {msg_type, FunName, Arity, FunTys, noexhaustiveness}};
+                    {msg_type, FunName, Arity, TypeStr, noexhaustiveness}
+                            when is_atom(FunName), is_integer(Arity), is_list(TypeStr) ->
+                        % String form with noexhaustiveness flag.
+                        Loc = to_loc(Ctx, Anno),
+                        case parse_type(Ctx, TypeStr) of
+                            {ok, Ty} ->
+                                {attribute, Loc, etylizer, {msg_type, FunName, Arity, Ty, noexhaustiveness}};
+                            error ->
+                                errors:ty_error(Loc,
+                                    "Invalid type in -etylizer({msg_type, ...}): ~s", TypeStr)
+                        end;
+                    {msg_type, FunName, Arity, TypeStrs}
+                            when is_atom(FunName), is_integer(Arity),
+                                 is_list(TypeStrs), TypeStrs =/= [],
+                                 is_list(hd(TypeStrs)) ->
+                        % List form: -etylizer({msg_type, FunName, Arity, [FunTypeStr, ...]}).
+                        % Each string must parse as a function type (fun((T) -> S)).
+                        % Desugaring creates a helper function with intersection spec.
+                        Loc = to_loc(Ctx, Anno),
+                        FunTys = lists:map(
+                            fun(TyStr) ->
+                                case parse_type(Ctx, TyStr) of
+                                    {ok, Ty = {fun_full, _, _}} -> Ty;
+                                    {ok, Ty} -> {fun_full, [Ty], {predef, any}};
+                                    error ->
+                                        errors:ty_error(Loc,
+                                            "Invalid type in msg_type list: ~s", [TyStr])
+                                end
+                            end, TypeStrs),
+                        {attribute, Loc, etylizer, {msg_type, FunName, Arity, FunTys}};
+                    {msg_type, FunName, Arity, TypeStr}
+                            when is_atom(FunName), is_integer(Arity), is_list(TypeStr) ->
+                        % Parse the type string and emit a typed msg_type attribute.
+                        % Format: -etylizer({msg_type, FunName, Arity, "TypeString"}).
+                        % Must appear before function definitions (OTP 28+ requirement).
+                        Loc = to_loc(Ctx, Anno),
+                        case parse_type(Ctx, TypeStr) of
+                            {ok, Ty} ->
+                                {attribute, Loc, etylizer, {msg_type, FunName, Arity, Ty}};
+                            error ->
+                                errors:ty_error(Loc,
+                                    "Invalid type in -etylizer({msg_type, ...}): ~s", TypeStr)
+                        end;
                     _ ->
                         error
                 end;
@@ -388,8 +448,16 @@ trans_ty(Ctx, Env, Ty) ->
         {user_type, Anno, Name, ArgTys} ->
             % FIXME: should we check whether the reference is valid?
             Loc = to_loc(Ctx, Anno),
-            Ref = {ty_ref, Ctx#ctx.module_name, Name, arity(Loc, ArgTys)},
-            {named, Loc, Ref, trans_tys(Ctx, Env, ArgTys)};
+            NewArgTys = trans_tys(Ctx, Env, ArgTys),
+            case {Name, NewArgTys} of
+                {pid, [ArgTy]} ->
+                    % pid(T) is the Marlow-Wadler parameterized pid type.
+                    % Map to erlang:pid/1 so symtab lookups use the standard registration.
+                    {named, Loc, {ty_ref, erlang, pid, 1}, [ArgTy]};
+                _ ->
+                    Ref = {ty_ref, Ctx#ctx.module_name, Name, arity(Loc, ArgTys)},
+                    {named, Loc, Ref, NewArgTys}
+            end;
         {remote_type, Anno, [{'atom', _, etylizer}, {'atom', _, Name}, ArgTys]} ->
             resolve_ety_ty(to_loc(Ctx, Anno), Name, trans_tys(Ctx, Env, ArgTys));
         {remote_type, Anno, [{'atom', _, Mod}, {'atom', _, Name}, ArgTys]} ->
@@ -417,6 +485,9 @@ trans_ty(Ctx, Env, Ty) ->
                 _ ->
                     case {ast:is_predef_name(Name), NewArgTys} of
                         {true, []} -> {predef, Name};
+                        {true, [ArgTy]} when Name =:= pid ->
+                            % pid(T) is a parameterized pid type: process accepting messages of type T
+                            {named, Loc, {ty_ref, erlang, pid, 1}, [ArgTy]};
                         {true, _} ->
                             errors:ty_error(Loc, "Invalid application of builtin type: ~w", Ty);
                         {false, _} ->
