@@ -3,7 +3,9 @@
 -export([
   tally/2,
   tally/3,
-  is_satisfiable/3
+  is_satisfiable/3,
+  split/2,
+  reorder_polyvars/2
 ]).
 
 -ifdef(TEST).
@@ -55,6 +57,114 @@ record_partition_shapes(Partitions, FixedVars) ->
 
 -endif.
 
+%% --- A3-surgical instrumentation -----------------------------------------
+%% Dump post-clean_cons + post-reorder constraint set when:
+%%   ETY_DUMP_TALLY env var is set (its value is a substring; only invocations
+%%   whose current_fn() contains the substring are dumped), AND
+%%   the number of polyvars exceeds the threshold (default 50, override with
+%%   ETY_DUMP_TALLY_MIN_POLY).
+%% Files are appended-numbered under /tmp/tally_dump_*.txt so multiple
+%% partitions of the same caller don't collide.
+maybe_dump_post_peel(FinalCons, FixedVars) ->
+    case os:getenv("ETY_DUMP_TALLY") of
+        false -> ok;
+        Sub ->
+            case dump_fn_label() of
+                undefined -> ok;
+                FnLabel ->
+                    case string:str(FnLabel, Sub) of
+                        0 -> ok;
+                        _ ->
+                            Min = case os:getenv("ETY_DUMP_TALLY_MIN_POLY") of
+                                false -> 50;
+                                S -> list_to_integer(S)
+                            end,
+                            PolyVarSet = collect_polyvars(FinalCons, FixedVars),
+                            NPoly = sets:size(PolyVarSet),
+                            case NPoly >= Min of
+                                false -> ok;
+                                true -> dump_to_file(FnLabel, FinalCons, FixedVars, PolyVarSet)
+                            end
+                    end
+            end
+    end.
+
+dump_fn_label() ->
+    case erlang:get(ety_cur_fun) of
+        undefined -> undefined;
+        Atom when is_atom(Atom) -> atom_to_list(Atom);
+        Other -> lists:flatten(io_lib:format("~p", [Other]))
+    end.
+
+collect_polyvars(CList, Fixed) ->
+    sets:from_list(
+      [V || V <- utils:everything(
+                   fun({var, X}) when is_atom(X) -> {ok, X};
+                      (_) -> error end, CList),
+            not sets:is_element(V, Fixed)]).
+
+%% Emit a single .config file (3 terms: constraints, symtab, fixed) for the
+%% current invocation when its fn label matches the substring in
+%% ETY_DUMP_TALLY_CONFIG. Uses utils:format_tally_config which preserves the
+%% full constraint records (scsubty | scmater).
+maybe_dump_tally_config(Kind, Constraints, FixedVars, SymTab) ->
+    case os:getenv("ETY_DUMP_TALLY_CONFIG") of
+        false -> ok;
+        Sub ->
+            case dump_fn_label() of
+                undefined -> ok;
+                FnLabel ->
+                    case string:str(FnLabel, Sub) of
+                        0 -> ok;
+                        _ -> emit_tally_config(Kind, FnLabel, Constraints, FixedVars, SymTab)
+                    end
+            end
+    end.
+
+%% Print "FN [kind] N_constraints us=X" for every call when ETY_LOG_TALLY_TIMES=1.
+maybe_log_tally_time(Kind, UsTaken, Constraints, FixedVars, _SymTab) ->
+    case os:getenv("ETY_LOG_TALLY_TIMES") of
+        false -> ok;
+        _ ->
+            FnLabel = case dump_fn_label() of undefined -> "?"; L -> L end,
+            NC = sets:size(Constraints),
+            NFix = sets:size(FixedVars),
+            io:format(user, "[tally_time] ~s [~p] NC=~p fixed=~p took ~p us~n",
+                      [FnLabel, Kind, NC, NFix, UsTaken])
+    end.
+
+emit_tally_config(Kind, FnLabel, Constraints, FixedVars, SymTab) ->
+    Counter = case erlang:get(ety_tally_config_counter) of
+        undefined -> 0;
+        N -> N
+    end,
+    erlang:put(ety_tally_config_counter, Counter + 1),
+    Safe = re:replace(FnLabel, "[^A-Za-z0-9_]+", "_", [global, {return, list}]),
+    Path = "/tmp/tally_cfg_" ++ Safe ++ "_" ++ atom_to_list(Kind) ++ "_"
+           ++ integer_to_list(Counter) ++ ".config",
+    file:write_file(Path, utils:format_tally_config(Constraints, FixedVars, SymTab)),
+    io:format(user, "[ety_dump_tally_config] wrote ~s~n", [Path]),
+    ok.
+
+dump_to_file(FnLabel, FinalCons, FixedVars, PolyVarSet) ->
+    Counter = case erlang:get(ety_dump_tally_counter) of
+        undefined -> 0;
+        N -> N
+    end,
+    erlang:put(ety_dump_tally_counter, Counter + 1),
+    Safe = re:replace(FnLabel, "[^A-Za-z0-9_]+", "_", [global, {return, list}]),
+    Path = "/tmp/tally_dump_" ++ Safe ++ "_" ++ integer_to_list(Counter) ++ ".txt",
+    Out = io_lib:format(
+        "Fn: ~s~nNumConstrs: ~p~nPolyVarCount: ~p~nFixedVars: ~p~nPolyVars: ~p~nConstraints:~n~p~n",
+        [FnLabel, length(FinalCons), sets:size(PolyVarSet),
+         lists:sort(sets:to_list(FixedVars)),
+         lists:sort(sets:to_list(PolyVarSet)),
+         FinalCons]),
+    file:write_file(Path, Out),
+    io:format(user, "[ety_dump_tally] wrote ~s (NC=~p, Poly=~p)~n",
+              [Path, length(FinalCons), sets:size(PolyVarSet)]),
+    ok.
+
 -type monomorphic_variables() :: sets:set(ast:ty_varname()).
 -type tally_res() :: {error, [{error, string()}]} | nonempty_list(subst:t()).
 -type constraints_partition() :: #{term() => [{ast:ty(), ast:ty()}]}.
@@ -62,9 +172,17 @@ record_partition_shapes(Partitions, FixedVars) ->
 -spec is_satisfiable(symtab:t(), constr:collected_constrs(), monomorphic_variables()) ->
     {false, [{error, string()}]} | {true, term()}.
 is_satisfiable(SymTab, Constraints, FixedVars) ->
-    % uncomment to extract a tally test case config file
-    % io:format(user, "~s~n", [utils:format_tally_config(sets:to_list(Constraints), FixedVars, SymTab)]),
+    %% ETY_DUMP_TALLY_CONFIG=substring writes a tally test config
+    %% (constraints + symtab + fixed) for any tally invocation whose current_fn
+    %% contains the substring. Files: /tmp/tally_cfg_<safe-fn>_<N>.{config,symtab,fixed}
+    maybe_dump_tally_config(is_satisfiable, Constraints, FixedVars, SymTab),
+    T0 = erlang:monotonic_time(microsecond),
+    Res = do_is_satisfiable(SymTab, Constraints, FixedVars),
+    T1 = erlang:monotonic_time(microsecond),
+    maybe_log_tally_time(is_satisfiable, T1 - T0, Constraints, FixedVars, SymTab),
+    Res.
 
+do_is_satisfiable(SymTab, Constraints, FixedVars) ->
     % erlang_types has a global symtab
     ty_parser:set_symtab(SymTab),
 
@@ -82,7 +200,13 @@ is_satisfiable(SymTab, Constraints, FixedVars) ->
                  || C = {scsubty, _, S, T} <- sets:to_list(InlinedConstrs)])],
 
     % cleaning is OK, we only care about one solution
-    FinalCons = subst:clean_cons(InternalRawConstraints, FixedVars, SymTab),
+    FinalCons0 = subst:clean_cons(InternalRawConstraints, FixedVars, SymTab),
+    FinalCons = reorder_polyvars(FinalCons0, FixedVars),
+
+    %% A3-surgical: optional dump of post-peel constraints for analysis.
+    %% Enable with ETY_DUMP_TALLY=substring to capture invocations where
+    %% current_fn contains the substring AND poly var count > threshold.
+    maybe_dump_post_peel(FinalCons, FixedVars),
 
     MonomorphicTallyVariables = maps:from_list([{ty_variable:new_with_name(Var), []} || Var <- sets:to_list(FixedVars)]),
     ?METRIC(poly_vars, var_metrics(FixedVars, FinalCons, SymTab)),
@@ -120,9 +244,14 @@ tally(SymTab, Constraints) -> tally(SymTab, Constraints, sets:new()).
 
 -spec tally(symtab:t(), constr:collected_constrs(), sets:set(ast:ty_varname())) -> tally_res().
 tally(SymTab, Constraints, FixedVars) ->
-    % uncomment to extract a tally test case config file
-    % io:format(user, "~s~n", [utils:format_tally_config(sets:to_list(Constraints), FixedVars, SymTab)]),
+    maybe_dump_tally_config(tally, Constraints, FixedVars, SymTab),
+    T0 = erlang:monotonic_time(microsecond),
+    Res = do_tally(SymTab, Constraints, FixedVars),
+    T1 = erlang:monotonic_time(microsecond),
+    maybe_log_tally_time(tally, T1 - T0, Constraints, FixedVars, SymTab),
+    Res.
 
+do_tally(SymTab, Constraints, FixedVars) ->
     % erlang_types has a global symtab
     ty_parser:set_symtab(SymTab),
 
@@ -203,6 +332,136 @@ varset(Constraint, FixedVars) ->
                 end;
             (_) -> error
         end, Constraint)).
+
+%% Reorder polymorphic variables before parse so the BDD layer's
+%% `ty_variable:compare/2' ranks them by structural role.
+%%
+%% The natural baseline (constraint-generator emit order — vars `$0', `$1',
+%% ..., `$N' through `ty_parser's integer-id path with `Id1 < Id2 -> gt')
+%% puts the LAST-created variable at the TOP of the BDD. Last-created vars
+%% are typically deeply-nested intermediates of complex expressions; the v4
+%% picker's saturation fixpoint walks them first and gets lost. We measured
+%% a ≥60× slowdown on a 134-constraint partition (tarjan:condense/1) under
+%% this ordering vs. essentially any deliberate reordering.
+%%
+%% The published guidance is Castagna et al. 2015 Part 2, footnote 14: "type
+%% variables in the function type always have smaller orders than those in
+%% the argument type." We approximate that by walking each constraint and
+%% classifying every polyvar by its occurrence in `{fun_full, Args, Ret}'
+%% positions:
+%%   fnret  — appears at least once inside a fun_full's Ret      (BDD top)
+%%   fnarg  — appears only in fun_full's Args, never in Ret      (BDD mid)
+%%   mid    — appears only outside any fun_full                  (BDD bottom)
+%%
+%% Each polyvar is renamed to a `$ety_<Id>_ord' atom; ty_parser's special
+%% form turns this into a `ty_variable:with_name_and_id(Id, ord)' and
+%% compare/2 sorts LARGER Id FIRST (verified empirically). Δ and framevars
+%% are excluded from the rename.
+-define(REORDER_BASE_ID, 100000000).
+
+-spec reorder_polyvars([{ast:ty(), ast:ty()}], monomorphic_variables()) ->
+    [{ast:ty(), ast:ty()}].
+reorder_polyvars(CList, FixedVars) ->
+    Roles = classify_by_fpos(CList, FixedVars),
+    %% Stable input order: maps:keys/1 is unspecified for large maps.
+    Vars = lists:sort(maps:keys(Roles)),
+    %% Sort: fnret rank 0 (top), fnarg rank 1, mid rank 2; within rank by
+    %% descending hit count, tie-break by atom name for determinism.
+    Score = fun(V) ->
+        case maps:get(V, Roles) of
+            {Ret, _Arg, _} when Ret > 0 -> {0, -Ret, V};
+            {0, Arg, _} when Arg > 0    -> {1, -Arg, V};
+            {_, _, Mid}                 -> {2, -Mid, V}
+        end
+    end,
+    Ordered = lists:sort(fun(A, B) -> Score(A) =< Score(B) end, Vars),
+    N = length(Ordered),
+    RenameMap = maps:from_list(
+        [{V, {var, list_to_atom("$ety_"
+                ++ integer_to_list(?REORDER_BASE_ID + N - I) ++ "_ord")}}
+         || {V, I} <- lists:zip(Ordered, lists:seq(0, N - 1))]),
+    [{subst:apply_base(RenameMap, C1), subst:apply_base(RenameMap, C2)}
+     || {C1, C2} <- CList].
+
+%% fpos classification: walk each constraint AST and bucket every polyvar
+%% occurrence by whether it sits inside a {fun_full, Args, Ret} node's Args
+%% (function-arg position) or Ret (function-return position), or neither
+%% (mid). Skipped: Δ (fixed) and framevars. Returns map V -> {NRet, NArg, NMid}.
+-spec classify_by_fpos([{ast:ty(), ast:ty()}], monomorphic_variables()) ->
+    #{ast:ty_varname() => {non_neg_integer(), non_neg_integer(), non_neg_integer()}}.
+classify_by_fpos(CList, FixedVars) ->
+    lists:foldl(
+        fun({C1, C2}, Acc) ->
+            Acc1 = fpos_walk(C1, none, FixedVars, Acc),
+            fpos_walk(C2, none, FixedVars, Acc1)
+        end, #{}, CList).
+
+%% FunPos :: ret | arg | none
+fpos_walk({var, V}, FunPos, FixedVars, Acc) when is_atom(V) ->
+    case sets:is_element(V, FixedVars) orelse is_framevar_name(V) of
+        true -> Acc;
+        false -> fpos_bump(V, FunPos, Acc)
+    end;
+fpos_walk({fun_full, Args, Ret}, _OuterPos, Fixed, Acc) ->
+    %% Inside fun_full, args are fnarg position, ret is fnret position.
+    %% Outer FunPos is shadowed: a var nested under a fun is classified by the
+    %% innermost fun position.
+    Acc1 = lists:foldl(fun(A, AA) -> fpos_walk(A, arg, Fixed, AA) end, Acc, Args),
+    fpos_walk(Ret, ret, Fixed, Acc1);
+fpos_walk({fun_any_arg, Ret}, _OuterPos, Fixed, Acc) ->
+    fpos_walk(Ret, ret, Fixed, Acc);
+fpos_walk({tuple, Args}, FunPos, Fixed, Acc) ->
+    lists:foldl(fun(A, AA) -> fpos_walk(A, FunPos, Fixed, AA) end, Acc, Args);
+fpos_walk({union, Args}, FunPos, Fixed, Acc) ->
+    lists:foldl(fun(A, AA) -> fpos_walk(A, FunPos, Fixed, AA) end, Acc, Args);
+fpos_walk({intersection, Args}, FunPos, Fixed, Acc) ->
+    lists:foldl(fun(A, AA) -> fpos_walk(A, FunPos, Fixed, AA) end, Acc, Args);
+fpos_walk({negation, A}, FunPos, Fixed, Acc) ->
+    fpos_walk(A, FunPos, Fixed, Acc);
+fpos_walk({list, A}, FunPos, Fixed, Acc) ->
+    fpos_walk(A, FunPos, Fixed, Acc);
+fpos_walk({nonempty_list, A}, FunPos, Fixed, Acc) ->
+    fpos_walk(A, FunPos, Fixed, Acc);
+fpos_walk({cons, A, B}, FunPos, Fixed, Acc) ->
+    fpos_walk(B, FunPos, Fixed, fpos_walk(A, FunPos, Fixed, Acc));
+fpos_walk({improper_list, A, B}, FunPos, Fixed, Acc) ->
+    fpos_walk(B, FunPos, Fixed, fpos_walk(A, FunPos, Fixed, Acc));
+fpos_walk({nonempty_improper_list, A, B}, FunPos, Fixed, Acc) ->
+    fpos_walk(B, FunPos, Fixed, fpos_walk(A, FunPos, Fixed, Acc));
+fpos_walk({map, Assocs}, FunPos, Fixed, Acc) ->
+    lists:foldl(
+        fun({_Kind, K, V}, AA) ->
+            fpos_walk(V, FunPos, Fixed, fpos_walk(K, FunPos, Fixed, AA))
+        end, Acc, Assocs);
+fpos_walk({record, _Name, Fields}, FunPos, Fixed, Acc) ->
+    lists:foldl(fun({_, T}, AA) -> fpos_walk(T, FunPos, Fixed, AA) end, Acc, Fields);
+fpos_walk({named, _Loc, _Ref, Args}, FunPos, Fixed, Acc) ->
+    %% Variance of named-type args is non-trivial. Conservative: treat as
+    %% same as the surrounding position.
+    lists:foldl(fun(A, AA) -> fpos_walk(A, FunPos, Fixed, AA) end, Acc, Args);
+fpos_walk({mu, _V, T}, FunPos, Fixed, Acc) ->
+    fpos_walk(T, FunPos, Fixed, Acc);
+fpos_walk(_Leaf, _FunPos, _Fixed, Acc) -> Acc.
+
+fpos_bump(V, ret, Acc) ->
+    {R, A, M} = maps:get(V, Acc, {0, 0, 0}),
+    Acc#{V => {R + 1, A, M}};
+fpos_bump(V, arg, Acc) ->
+    {R, A, M} = maps:get(V, Acc, {0, 0, 0}),
+    Acc#{V => {R, A + 1, M}};
+fpos_bump(V, none, Acc) ->
+    {R, A, M} = maps:get(V, Acc, {0, 0, 0}),
+    Acc#{V => {R, A, M + 1}}.
+
+%% Framevars are identified by '%'-prefixed atoms (gradual_utils:is_framevar).
+%% Renaming them would break the prefix check, so we exclude them from the
+%% reorder; they keep their natural BDD compare position.
+-spec is_framevar_name(atom()) -> boolean().
+is_framevar_name(Name) ->
+    case atom_to_list(Name) of
+        [$% | _] -> true;
+        _ -> false
+    end.
 
 %% Union-Find with path compression (functional, returns updated parent map).
 -spec uf_ensure(ast:ty_var(), map()) -> map().

@@ -422,10 +422,13 @@ all_variables(#ty{
 -spec merge({Sofs, ST}, Sofs, monomorphic_variables()) -> 
     {Sofs, ST}  | {ok, Sofs, ST}
       when Sofs :: set_of_constraint_sets(), ST :: normalize_cache().
-merge({[], S}, _, _Fixed) -> {[], S}; 
-merge({R, S}, R2, Fixed) -> 
+merge({[], S}, _, _Fixed) -> {[], S};
+merge({R, S}, R2, Fixed) ->
     Meet = constraint_set:meet(R, R2, Fixed),
-    {ok, Meet, S} .
+    case Meet of
+        [] -> {[], S};
+        _ -> {ok, Meet, S}
+    end.
 
 
 -spec normalize(type(), monomorphic_variables(), ST) -> 
