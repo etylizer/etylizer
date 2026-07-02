@@ -301,9 +301,7 @@ ref(AnyRef) ->
         {ty_ref, Mod, Name, Arity} -> qarity(Mod, Name, Arity);
         {ty_qref, Mod, Name, Arity} -> qarity(Mod, Name, Arity);
         {local_ref, {Name, Tok}} ->
-            beside(atom(Name), text("@"), text(utils:sformat("~w", Tok)));
-        {escaped_ref, {Name, Tok}, _EscTyVar} ->
-            beside(atom(Name), text("@"), text(utils:sformat("~w'", Tok)))
+            beside(atom(Name), text("@"), text(utils:sformat("~w", Tok)))
     end.
 
 -spec constr_env(constr:constr_env()) -> doc().
@@ -607,15 +605,12 @@ render_exp(Exp, Indent) ->
         {var, _, {local_bind, V}} -> varname(V);
         {var, _, {ref, N, _A}} -> atom_to_list(N);
         {var, _, {qref, M, N, _A}} -> utils:sformat("~w:~w", M, N);
-        {var, _, {escaped_ref, V, _TyVar}} -> varname(V);
         {wildcard, _} -> "_";
         {tuple, _, Elems} ->
             "{" ++ string:join([render_exp(E, Indent) || E <- Elems], ", ") ++ "}";
         {cons, _, H, T} ->
             "[" ++ render_exp(H, Indent) ++ " | " ++ render_exp(T, Indent) ++ "]";
         {nil, _} -> "[]";
-        {'case', _, Scrut, Clauses, _EscAnn} ->
-            render_case(Scrut, Clauses, Indent);
         {'case', _, Scrut, Clauses} ->
             render_case(Scrut, Clauses, Indent);
         {call, _, Fun, Args} ->

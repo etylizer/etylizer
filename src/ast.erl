@@ -13,7 +13,6 @@
     unique_tok/0,
     local_varname/0,
     local_ref/0,
-    escaped_ref/0,
     any_ref/0,
     local_bind/0,
     local_ref_bind/0,
@@ -58,7 +57,6 @@
     exp_bitstring_constr/0,
     exp_bitstring_elem/0,
     exp_block/0,
-    escape_annotation/0,
     exp_case/0,
     exp_catch/0,
     exp_cons/0,
@@ -166,7 +164,7 @@
 
 -export([
     format_loc/1, to_loc/2, loc_auto/0, min_loc/2, leq_loc/2, is_predef_name/1, is_predef_alias_name/1,
-    local_varname_from_any_ref/1, escape_tyvar_name/1, get_fun_name/1, loc_exp/1
+    local_varname_from_any_ref/1, get_fun_name/1, loc_exp/1
 ]).
 
 % General
@@ -176,8 +174,7 @@
 -type unique_tok() :: integer().
 -type local_varname() :: {atom(), unique_tok()}.
 -type local_ref() :: {local_ref, local_varname()}. % refer to an existing local variable
--type escaped_ref() :: {escaped_ref, local_varname(), ty_varname()}. % refer to a variable that escaped a case/if scope
--type any_ref() :: global_ref() | local_ref() | escaped_ref().
+-type any_ref() :: global_ref() | local_ref().
 -type local_bind() :: {local_bind, local_varname()}. % bind a new local variable
 -type local_ref_bind() :: local_ref() | local_bind().
 -type loc() :: {loc, string(), integer(), integer()}. % file, line, column
@@ -220,13 +217,8 @@ min_loc(L1, L2) ->
 local_varname_from_any_ref(Ref) ->
     case Ref of
         {local_ref, V} -> {true, V};
-        {escaped_ref, V, _} -> {true, V};
         _ -> false
     end.
-
--spec escape_tyvar_name(local_varname()) -> ty_varname().
-escape_tyvar_name({Name, Tok}) ->
-    list_to_atom("$esc_" ++ atom_to_list(Name) ++ "_" ++ integer_to_list(Tok)).
 
 % 8.1  Module Declarations and Forms
 -type fun_with_arity() :: {atom(), arity()}.
@@ -302,11 +294,7 @@ get_fun_name({function, _Loc, Name, Arity, _}) -> utils:sformat("~w/~w", Name, A
 -type exp_bitstring_constr() :: gen_bitstring_constr(exp(), exp()).
 -type exp_bitstring_elem() :: gen_bitstring_elem(exp(), exp()).
 -type exp_block() :: {block, loc(), exps()}.
-% Escape annotation: variables that escape the case scope (bound in all branches).
-% Each entry maps the original local_varname to a deterministic type variable name.
--type escape_annotation() :: [{local_varname(), ty_varname()}].
--type exp_case() :: {'case', loc(), exp(), [case_clause()]}
-                  | {'case', loc(), exp(), [case_clause()], escape_annotation()}.
+-type exp_case() :: {'case', loc(), exp(), [case_clause()]}.
 -type exp_catch() :: {'catch', loc(), exp()}.
 -type gen_cons(T) :: {cons, loc(), Head::T, Tail::T}.
 -type exp_cons() :: gen_cons(exp()).

@@ -479,26 +479,33 @@ trans_exp_seq_noenv(Ctx, Env, Es) ->
     {NewEs, _} = trans_exp_seq(Ctx, Env, Es),
     NewEs.
 
-% Transforms a sequence of expressions. Match expressions are handled by trans_exp
-% which creates case expressions with escape annotations for variable scoping.
+% Statement-level match nesting
+% `Pat = Exp, Rest` becomes `case Exp of Pat -> Rest end`
+% Only matches at statement position are nested 
+% A trailing match, or a match in operand/subexpression position, 
+% is left to trans_exp, which compiles it to a standalone single-clause case. 
+-spec shallow_remove_match([ast_erl:exp()]) -> [ast_erl:exp()].
+shallow_remove_match(Exps) ->
+    lists:foldr(
+      fun(E, AfterExps) ->
+              case AfterExps of
+                  [] -> [E];
+                  _ ->
+                      case E of
+                          {match, Anno, Pat, Rhs} ->
+                              Clause = {clause, Anno, [Pat], [], AfterExps},
+                              [{'case', Anno, Rhs, [Clause]}]; % ast_erl:case_clause()
+                          _ -> [E | AfterExps]
+                      end
+              end
+      end, [], Exps).
+
+% Transforms a sequence of expressions, nesting statement-level matches first.
 -spec trans_exp_seq(ctx(), varenv_local:t(), [ast_erl:exp()]) -> {[ast:exp()], varenv_local:t()}.
 %                  (ctx(), varenv_local:t(), ast:guard()) -> {ast:guard(), varenv_local:t()}.
 trans_exp_seq(Ctx, Env, Es) ->
-    thread_through_env(Env, Es, fun(Env, E) -> trans_exp(Ctx, Env, E) end).
+    thread_through_env(Env, shallow_remove_match(Es), fun(Env, E) -> trans_exp(Ctx, Env, E) end).
 
-
-% Builds a case expression with escape annotations for variables that escape the case scope.
--spec mk_case_with_escapes(ast:loc(), ast:exp(), [ast:case_clause()],
-                           [ast:local_varname()], varenv_local:t())
-                          -> {ast:exp_case(), varenv_local:t()}.
-mk_case_with_escapes(Loc, Scrut, Clauses, EscapedVars, Env) ->
-    EscapeAnnotation = [{V, ast:escape_tyvar_name(V)} || V <- EscapedVars],
-    NewEnv = varenv_local:mark_escaped(EscapedVars, Env),
-    CaseExp = case EscapeAnnotation of
-        [] -> {'case', Loc, Scrut, Clauses};
-        _ -> {'case', Loc, Scrut, Clauses, EscapeAnnotation}
-    end,
-    {CaseExp, NewEnv}.
 
 -spec trans_exp_noenv(ctx(), varenv_local:t(), ast_erl:exp()) -> ast:exp().
 %                    (ctx(), varenv_local:t(), ast_erl:guard_test()) -> ast:guard_test().
@@ -534,12 +541,11 @@ trans_exp(Ctx, Env, Exp) ->
             {{block, to_loc(Ctx, Anno), NewExps}, NewEnv};
         {'case', Anno, E, Clauses} ->
             {TransE, Env1} = trans_exp(Ctx, Env, E),
-            {TransClauses, Env2, PatEnv} = trans_case_clauses(Ctx, Env1, Clauses),
-            % Compute escape annotation: only variables directly bound by the
-            % case patterns (not by nested constructs inside the clause body)
-            EscapedVars = varenv_local:new_bindings(Env1, PatEnv),
+            {TransClauses, Env2, _PatEnv} = trans_case_clauses(Ctx, Env1, Clauses),
+            % Variables bound in all branches become available to subsequent
+            % expressions through the scope-lowering post-pass, not annotations.
             Loc = to_loc(Ctx, Anno),
-            mk_case_with_escapes(Loc, TransE, TransClauses, EscapedVars, Env2);
+            {{'case', Loc, TransE, TransClauses}, Env2};
         {'catch', Anno, E} ->
             % Keep old Env, it's a catch
             {{'catch', to_loc(Ctx, Anno), trans_exp_noenv(Ctx, Env, E)}, Env};
@@ -605,9 +611,7 @@ trans_exp(Ctx, Env, Exp) ->
             {{call, to_loc(Ctx, Anno), NewFunExp, NewArgs}, NewEnv};
         {'if', Anno, Clauses} ->
             {NewIfClauses, NewEnv} = trans_if_clauses(Ctx, Env, Clauses),
-            EscapedVars = varenv_local:new_bindings(Env, NewEnv),
-            NewEnv2 = varenv_local:mark_escaped(EscapedVars, NewEnv),
-            {{'if', to_loc(Ctx, Anno), NewIfClauses}, NewEnv2};
+            {{'if', to_loc(Ctx, Anno), NewIfClauses}, NewEnv};
         {lc, Anno, E, Qualifiers} ->
             {NewQ, NewEnv} = trans_qualifiers(Ctx, Env, Qualifiers),
             % keep the old Env, list comprehension opens a new scope
@@ -634,8 +638,8 @@ trans_exp(Ctx, Env, Exp) ->
             {NewMapAssocs, Env2} = trans_map_assocs(Ctx, Env1, MapAssocs),
             {{map_update, to_loc(Ctx, Anno), NewE, NewMapAssocs}, Env2};
         {match, Anno, Pat, E} ->
-            % Rewrite match as a case expression. Pattern variables escape via
-            % escape annotations and are available to subsequent expressions.
+            % Rewrite match as a case expression. Pattern variables 
+            % are available to subsequent expressions
             {NewExp, E1} = trans_exp(Ctx, Env, E),
             {Q, E2} = trans_pat(Ctx, E1, Pat, bind_fresh),
             Loc = to_loc(Ctx, Anno),
@@ -644,8 +648,7 @@ trans_exp(Ctx, Env, Exp) ->
                       {match, Loc, {var, Loc, {local_bind, MatchVar}}, Q},
                       [], % no guards
                       [{var, Loc, {local_ref, MatchVar}}]},
-            EscapedVars = varenv_local:new_bindings(E1, NewEnv0),
-            mk_case_with_escapes(Loc, NewExp, [Clause], EscapedVars, NewEnv0);
+            {{'case', Loc, NewExp, [Clause]}, NewEnv0};
         {nil, Anno} -> {{nil, to_loc(Ctx, Anno)}, Env};
         {op, Anno, Op, L, R} ->
             {[NewL, NewR], NewEnv} = trans_exps(Ctx, Env, [L, R]),

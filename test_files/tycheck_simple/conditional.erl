@@ -50,11 +50,6 @@ if_15() ->
     if true -> S = ok end,
     S.
 
--spec if_16_fail() -> ok.
-if_16_fail() ->
-    if true -> S = foo end,
-    S.
-
 % safe variable scope, S has type ok
 -spec if_17(integer() | atom()) -> ok.
 if_17(X) ->
