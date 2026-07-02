@@ -33,6 +33,22 @@ assert_ty_of_pat(P, UpperAndLower) ->
     assert_ty_of_pat(P, UpperAndLower, UpperAndLower).
 
 
+-spec exp_constrs_tyof_record_index_test() -> ok.
+exp_constrs_tyof_record_index_test() ->
+    Loc = ast:loc_auto(),
+    Fields = [
+        {record_field, Loc, x, untyped, no_default},
+        {record_field, Loc, y, untyped, no_default}
+    ],
+    Symtab = symtab:extend_add_record(point, Fields, '$test', symtab:empty()),
+    Ctx = constr_gen:new_ctx(Symtab, disabled),
+    {TyX, CsX} = constr_gen:exp_constrs_tyof(Ctx, {record_index, Loc, point, x}),
+    ?assertEqual({singleton, 1}, TyX),
+    ?assertEqual(0, sets:size(CsX)),
+    {TyY, CsY} = constr_gen:exp_constrs_tyof(Ctx, {record_index, Loc, point, y}),
+    ?assertEqual({singleton, 2}, TyY),
+    ?assertEqual(0, sets:size(CsY)).
+
 -spec ty_of_pat_list_test() -> ok.
 ty_of_pat_list_test() ->
     Loc = ast:loc_auto(),
