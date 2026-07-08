@@ -96,8 +96,13 @@ module_report(File, Opts) ->
         error ->
             Base#{parse => parse_failed};
         {ok, RawForms} ->
+            %% Count only the module's own forms; the full compiler front-end
+            %% inlines -include'd headers, which would otherwise be counted once
+            %% per including module. The transform still gets the full forms so
+            %% header types/records resolve.
+            OwnRaw = own_forms(File, RawForms),
             RawReport = lists:foldl(fun deep_merge/2, Base#{parse => ok},
-                                    raw_collectors(RawForms)),
+                                    raw_collectors(OwnRaw)),
             case try_transform(File, RawForms) of
                 {ok, TxForms} ->
                     lists:foldl(fun deep_merge/2, RawReport, tx_collectors(TxForms));
@@ -106,11 +111,30 @@ module_report(File, Opts) ->
             end
     end.
 
+% Drop forms pulled in from -include'd headers, keeping only those originating in
+% the module's own .erl file. epp inserts `{attribute, _, file, {File, _}}`
+% markers at include boundaries; we track the current file and keep matching
+% forms (and drop the markers themselves).
+-spec own_forms(file:filename(), [ast_erl:form()]) -> [ast_erl:form()].
+own_forms(File, Forms) ->
+    Base = filename:basename(File),
+    {Kept, _} = lists:foldl(
+        fun({attribute, _, file, {F, _}}, {Acc, _Cur}) ->
+                {Acc, filename:basename(F)};
+           (Form, {Acc, Cur}) when Cur =:= Base ->
+                {[Form | Acc], Cur};
+           (_Form, {Acc, Cur}) ->
+                {Acc, Cur}
+        end, {[], Base}, Forms),
+    lists:reverse(Kept).
+
 % Collectors over the raw Erlang AST. Each returns a (possibly nested) map that
 % is deep-merged into the module report.
 -spec raw_collectors([ast_erl:form()]) -> [report()].
 raw_collectors(RawForms) ->
-    [collect_corpus(RawForms)].
+    [collect_corpus(RawForms),
+     collect_spec_coverage(RawForms),
+     collect_features(RawForms)].
 
 % Collectors over the transformed (internal) AST.
 -spec tx_collectors([ast:form()]) -> [report()].
@@ -156,6 +180,96 @@ form_line_count(Form) ->
             length([L || L <- string:split(Text, "\n", all), string:trim(L) =/= ""])
     catch _:_ -> 0
     end.
+
+%% ---------------------------------------------------------------------------
+%% #2 spec coverage + type-feature counts (raw AST)
+%%
+%% Matches the reference escripts count_specs.escript (coverage) and
+%% count_unions.escript (feature counts). `utils:everything/2' is identical to
+%% the escripts' own generic traversal, so the counts coincide (up to the
+%% stricter etylizer parser, which drops files with unresolved includes/macros).
+%% ---------------------------------------------------------------------------
+
+% Spec coverage: functions carrying a matching -spec vs. not (count_specs).
+-spec collect_spec_coverage([ast_erl:form()]) -> report().
+collect_spec_coverage(RawForms) ->
+    Funs = sets:from_list(utils:everything(
+        fun({function, _, Name, Arity, _}) -> {ok, {Name, Arity}};
+           (_) -> error
+        end, RawForms)),
+    SpecTargets = sets:from_list(utils:everything(
+        fun({attribute, _, spec, {{Name, Arity}, _}}) when is_atom(Name) -> {ok, {Name, Arity}};
+           ({attribute, _, spec, {{_Mod, Name, Arity}, _}}) -> {ok, {Name, Arity}};
+           (_) -> error
+        end, RawForms)),
+    NSpecced = sets:size(sets:intersection(Funs, SpecTargets)),
+    NUnspecced = sets:size(Funs) - NSpecced,
+    #{corpus => #{n_specced => NSpecced, n_unspecced => NUnspecced}}.
+
+% Type-system feature counts over specs and type declarations (count_unions).
+% `dynamic()' indirect (a user type expanding to dynamic) needs the symtab and
+% is added with the call-classification collector.
+-spec collect_features([ast_erl:form()]) -> report().
+collect_features(RawForms) ->
+    SpecClauses = spec_type_clauses(RawForms),
+    Union = length(utils:everything(
+        fun({type, _, union, _}) -> {rec, u}; (_) -> error end, RawForms)),
+    DynamicDirect = length(utils:everything(
+        fun({type, _, dynamic, []}) -> {ok, d}; (_) -> error end, RawForms)),
+    Overloaded = length([1 || Types <- SpecClauses, length(Types) > 1]),
+    Polymorphic = length([1 || Types <- SpecClauses, is_polymorphic(Types)]),
+    Numeric = length([1 || Types <- SpecClauses, has_numeric_type(Types)]),
+    #{features => #{
+        union => Union,
+        overloaded => Overloaded,
+        polymorphic => Polymorphic,
+        numeric => Numeric,
+        dynamic_direct => DynamicDirect
+    }}.
+
+% The type-clause lists of each unqualified -spec (count_unions considers only
+% unqualified specs for the per-spec feature counts).
+-spec spec_type_clauses([ast_erl:form()]) -> [[ast_erl:ty()]].
+spec_type_clauses(RawForms) ->
+    utils:everything(
+        fun({attribute, _, spec, {{Name, _Arity}, Types}}) when is_atom(Name) -> {ok, Types};
+           (_) -> error
+        end, RawForms).
+
+% A spec is polymorphic if some clause reuses a type variable within the
+% function type (ignoring `when' constraints) — count_unions's definition.
+-spec is_polymorphic([ast_erl:ty()]) -> boolean().
+is_polymorphic(TypeClauses) ->
+    lists:any(fun is_clause_polymorphic/1, TypeClauses).
+
+-spec is_clause_polymorphic(ast_erl:ty()) -> boolean().
+is_clause_polymorphic({type, _, bounded_fun, [FunType, _Constraints]}) ->
+    has_repeated_var(FunType);
+is_clause_polymorphic(FunType) ->
+    has_repeated_var(FunType).
+
+-spec has_repeated_var(term()) -> boolean().
+has_repeated_var(FunType) ->
+    Vars = utils:everything(
+        fun({var, _, '_'}) -> error;
+           ({var, _, Name}) -> {ok, Name};
+           (_) -> error
+        end, FunType),
+    length(Vars) =/= length(lists:usort(Vars)).
+
+-spec has_numeric_type([ast_erl:ty()]) -> boolean().
+has_numeric_type(Types) ->
+    [] =/= utils:everything(
+        fun(T) -> case is_numeric_type(T) of true -> {ok, T}; false -> error end end,
+        Types).
+
+-spec is_numeric_type(term()) -> boolean().
+is_numeric_type({type, _, Name, []}) ->
+    lists:member(Name, [integer, non_neg_integer, pos_integer, neg_integer,
+                        byte, char, arity]);
+is_numeric_type({type, _, range, _}) -> true;
+is_numeric_type({integer, _, _}) -> true;
+is_numeric_type(_) -> false.
 
 %% ---------------------------------------------------------------------------
 %% Argument parsing
