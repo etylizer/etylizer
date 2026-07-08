@@ -148,7 +148,8 @@ raw_collectors(RawForms) ->
     [collect_corpus(RawForms),
      collect_spec_coverage(RawForms),
      collect_features(RawForms),
-     collect_if_case(RawForms)].
+     collect_if_case(RawForms),
+     collect_index_calls(RawForms)].
 
 % Collectors over the transformed (internal) AST.
 -spec tx_collectors([ast:form()]) -> [report()].
@@ -290,6 +291,13 @@ is_numeric_type({type, _, range, _}) -> true;
 is_numeric_type({integer, _, _}) -> true;
 is_numeric_type(_) -> false.
 
+% A term found by a generic traversal as a list. is_list/1 also holds for improper lists,
+% so a guard cannot tell that the term is a proper list; this function checks it.
+-spec proper_list(term()) -> [term()].
+proper_list([]) -> [];
+proper_list([H | T]) -> [H | proper_list(T)];
+proper_list(_) -> error(badarg).
+
 %% ---------------------------------------------------------------------------
 %% #5 if-vs-case, with final-clause classification of each `if' (raw AST)
 %%
@@ -353,6 +361,68 @@ classify_guard(Disjuncts) ->
 is_comparison({op, _, Op, _, _}) ->
     lists:member(Op, ['<', '=<', '>', '>=', '==', '/=', '=:=', '=/=']);
 is_comparison(_) -> false.
+
+%% ---------------------------------------------------------------------------
+%% #4 index arguments of element/setelement/lists:key* (raw AST)
+%%
+%% element/setelement (remote or local) match s.escript exactly (index = arg 1).
+%% lists:key*/ukey* use a callee->index-position table (the index tuple field is
+%% not always arg 1) and are reported separately so element/setelement stays
+%% comparable to the published number. An index argument is `literal' iff it is
+%% an integer literal, else `non_literal'.
+%% ---------------------------------------------------------------------------
+-spec collect_index_calls([ast_erl:form()]) -> report().
+collect_index_calls(RawForms) ->
+    Tagged = utils:everything(fun index_call_arg/1, RawForms),
+    {EsL, EsNL} = tally_literal([Arg || {element_setelement, Arg} <- Tagged]),
+    {LkL, LkNL} = tally_literal([Arg || {lists_key, Arg} <- Tagged]),
+    #{index_calls => #{
+        literal => EsL + LkL,
+        non_literal => EsNL + LkNL,
+        element_setelement => #{literal => EsL, non_literal => EsNL},
+        lists_key => #{literal => LkL, non_literal => LkNL}
+    }}.
+
+% Applied to every subterm of the raw AST, so the index argument is a term().
+-spec index_call_arg(term()) -> {ok, {element_setelement | lists_key, term()}} | error.
+index_call_arg({call, _, {remote, _, {atom, _, erlang}, {atom, _, element}}, [A1, _]}) ->
+    {ok, {element_setelement, A1}};
+index_call_arg({call, _, {atom, _, element}, [A1, _]}) ->
+    {ok, {element_setelement, A1}};
+index_call_arg({call, _, {remote, _, {atom, _, erlang}, {atom, _, setelement}}, [A1, _, _]}) ->
+    {ok, {element_setelement, A1}};
+index_call_arg({call, _, {atom, _, setelement}, [A1, _, _]}) ->
+    {ok, {element_setelement, A1}};
+index_call_arg({call, _, {remote, _, {atom, _, lists}, {atom, _, Fun}}, Args0}) when is_atom(Fun) ->
+    Args = proper_list(Args0),
+    case lists_key_index_pos(Fun, length(Args)) of
+        {ok, Pos} -> {ok, {lists_key, lists:nth(Pos, ?assert_pattern([_ | _], Args))}};
+        error -> error
+    end;
+index_call_arg(_) -> error.
+
+-spec tally_literal([term()]) -> {non_neg_integer(), non_neg_integer()}.
+tally_literal(Args) ->
+    lists:foldl(
+      fun({integer, _, _}, {L, NL}) -> {L + 1, NL};
+         (_, {L, NL}) -> {L, NL + 1}
+      end, {0, 0}, Args).
+
+% Argument position (1-based) of the tuple-index in a lists:key*/ukey* call.
+-spec lists_key_index_pos(atom(), arity()) -> {ok, pos_integer()} | error.
+lists_key_index_pos(keyfind, 3) -> {ok, 2};
+lists_key_index_pos(keysearch, 3) -> {ok, 2};
+lists_key_index_pos(keymember, 3) -> {ok, 2};
+lists_key_index_pos(keytake, 3) -> {ok, 2};
+lists_key_index_pos(keydelete, 3) -> {ok, 2};
+lists_key_index_pos(keyreplace, 4) -> {ok, 2};
+lists_key_index_pos(keystore, 4) -> {ok, 2};
+lists_key_index_pos(keymap, 3) -> {ok, 2};
+lists_key_index_pos(keysort, 2) -> {ok, 1};
+lists_key_index_pos(ukeysort, 2) -> {ok, 1};
+lists_key_index_pos(keymerge, 3) -> {ok, 1};
+lists_key_index_pos(ukeymerge, 3) -> {ok, 1};
+lists_key_index_pos(_, _) -> error.
 
 %% ---------------------------------------------------------------------------
 %% Argument parsing
