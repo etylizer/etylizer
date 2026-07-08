@@ -52,7 +52,7 @@ run(Opts) ->
           try
               Files = paths:generate_input_file_list(Opts),
               ?LOG_INFO("Computing statistics for ~w modules", length(Files)),
-              Reports = lists:map(fun(F) -> module_report(F, Opts) end, Files),
+              Reports = lists:map(fun(F) -> safe_module_report(F, Opts) end, Files),
               json:encode(#{modules => Reports})
           after
               parse_cache:cleanup(),
@@ -70,6 +70,19 @@ run(Opts) ->
 %
 % The raw AST is acquired first so that raw-level metrics can still be computed
 % even when ast_transform fails on a file.
+% Wrapper for the file sweep (#8, parse sweep): a single unparseable or
+% malformed module must never abort the whole run, so any unexpected crash is
+% recorded as `crashed` for that module. The per-module `parse` field is thus
+% one of: ok | parse_failed | transform_failed | crashed.
+-spec safe_module_report(file:filename(), cmd_opts()) -> report().
+safe_module_report(File, Opts) ->
+    try module_report(File, Opts)
+    catch Class:Reason:Stack ->
+        ?LOG_WARN("statistics crashed on ~s: ~p:~p~n~p", [File, Class, Reason, Stack]),
+        #{module => ast_utils:modname_from_path(File),
+          file => unicode:characters_to_binary(File), parse => crashed}
+    end.
+
 -spec module_report(file:filename(), cmd_opts()) -> report().
 module_report(File, Opts) ->
     ParseOpts = #parse_opts{
@@ -107,7 +120,14 @@ tx_collectors(_TxForms) ->
 -spec try_transform(file:filename(), [ast_erl:form()]) -> {ok, [ast:form()]} | error.
 try_transform(File, RawForms) ->
     try {ok, ast_transform:trans(File, RawForms)}
-    catch throw:{etylizer, _Kind, _Msg} -> error end.
+    catch
+        %% Expected: undefined names, unsupported constructs, etc.
+        throw:{etylizer, _Kind, _Msg} -> error;
+        %% Unexpected: keep sweeping the remaining modules.
+        Class:Reason:Stack ->
+            ?LOG_WARN("ast_transform crashed on ~s: ~p:~p~n~p", [File, Class, Reason, Stack]),
+            error
+    end.
 
 %% ---------------------------------------------------------------------------
 %% #1 LOC and top-level function count
