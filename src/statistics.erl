@@ -145,7 +145,8 @@ raw_collectors(RawForms) ->
 % own function declarations.
 -spec tx_collectors([ast:fun_decl()]) -> [report()].
 tx_collectors(TxFuns) ->
-    [collect_patterns(TxFuns)].
+    [collect_patterns(TxFuns),
+     collect_refinement(TxFuns)].
 
 -spec try_transform(file:filename(), [ast_erl:form()]) -> {ok, [ast:form()]} | error.
 try_transform(File, RawForms) ->
@@ -424,13 +425,8 @@ collect_patterns(TxFuns) ->
            ({catch_clause, _, _, _, _, _, _}) -> {rec, x};
            (_) -> error
         end, TxFuns)),
-    ClauseCtxs = utils:everything(
-        fun({case_clause, _, Pat, Guards, _}) -> {rec, {pat_bound_tokens(Pat), Guards}};
-           ({fun_clause, _, Pats, Guards, _}) -> {rec, {pat_bound_tokens(Pats), Guards}};
-           ({catch_clause, _, X, P, S, Guards, _}) -> {rec, {pat_bound_tokens([X, P, S]), Guards}};
-           (_) -> error
-        end, TxFuns),
-    {TT, TTVar, TTBound} = lists:foldl(fun tally_type_tests/2, {0, 0, 0}, ClauseCtxs),
+    {TT, TTVar, TTBound} = lists:foldl(fun tally_type_tests/2, {0, 0, 0},
+                                       clause_contexts(TxFuns)),
     #{patterns => #{
         pat_matches => PatMatches,
         branches => Branches,
@@ -478,6 +474,115 @@ is_type_test_name(Name) ->
     lists:member(Name, [is_atom, is_binary, is_bitstring, is_boolean, is_float,
                         is_function, is_integer, is_list, is_map, is_number,
                         is_pid, is_port, is_reference, is_tuple]).
+
+% (pattern-bound-token set, guard sequence) for every clause reachable from a
+% term, recursing into bodies so nested clauses are included.
+-spec clause_contexts(term()) -> [{sets:set(ast:local_varname()), [ast:guard()]}].
+clause_contexts(Term) ->
+    utils:everything(
+        fun({case_clause, _, Pat, Guards, _}) -> {rec, {pat_bound_tokens(Pat), Guards}};
+           ({fun_clause, _, Pats, Guards, _}) -> {rec, {pat_bound_tokens(Pats), Guards}};
+           ({catch_clause, _, X, P, S, Guards, _}) -> {rec, {pat_bound_tokens([X, P, S]), Guards}};
+           (_) -> error
+        end, Term).
+
+%% ---------------------------------------------------------------------------
+%% #6 refinement reach R1-R4 (transformed AST, per distinct function)
+%%
+%% Definitions from the erlang-2026 appendix (table:bad-if-analysis). The worker
+%% escript was not preserved; these reproduce its documented behaviour on
+%% etylizer's post-transform AST, using local_bind/local_ref as ground truth.
+%%   R1 = an `if'-clause with an outer-scope guard. After the ast_transform
+%%        refactor an `if' is a `case' over the empty tuple, so R1 fires on a
+%%        `case {} of' whose clause guard references a variable.
+%%   R2 = a case-clause pattern containing a {local_ref, _} (non-linear pattern).
+%%   R3 = a clause guard `is_X(V)' where V is a {local_ref, _} not bound by the
+%%        clause's own pattern (an outer-scope type test).
+%%   R4 = an =-binding (one-arm case) whose bound name later appears as a
+%%        {local_ref, _} in a case pattern of the same function.
+%% ---------------------------------------------------------------------------
+-spec collect_refinement([ast:fun_decl()]) -> report().
+collect_refinement(TxFuns) ->
+    PerFun = [{r1(F), r2(F), r3(F), r4(F)} || F <- TxFuns],
+    Count = fun(I) -> length([1 || T <- PerFun, element(I, T)]) end,
+    Any = length([1 || {A, B, C, D} <- PerFun, A orelse B orelse C orelse D]),
+    #{refinement => #{
+        total_funs => length(TxFuns),
+        r1 => Count(1), r2 => Count(2), r3 => Count(3), r4 => Count(4),
+        any => Any
+    }}.
+
+-spec r1(ast:fun_decl()) -> boolean().
+r1(Fun) ->
+    exists(
+      fun({'case', _, {tuple, _, []}, Clauses}) -> clauses_guard_has_var(Clauses);
+         (_) -> false
+      end, Fun).
+
+-spec clauses_guard_has_var([ast:case_clause()]) -> boolean().
+clauses_guard_has_var(Clauses) ->
+    lists:any(
+      fun({case_clause, _, _, Guards, _}) -> exists(fun is_any_var/1, Guards);
+         (_) -> false
+      end, Clauses).
+
+-spec r2(ast:fun_decl()) -> boolean().
+r2(Fun) ->
+    exists(
+      fun({case_clause, _, Pat, _, _}) -> exists(fun is_local_ref_var/1, Pat);
+         (_) -> false
+      end, Fun).
+
+-spec r3(ast:fun_decl()) -> boolean().
+r3(Fun) ->
+    lists:any(
+      fun({BoundSet, Guards}) ->
+          lists:any(
+            fun({var, _, {local_ref, T}}) -> not sets:is_element(T, BoundSet);
+               (_) -> false
+            end, utils:everything(fun type_test_call/1, Guards))
+      end, clause_contexts(Fun)).
+
+-spec r4(ast:fun_decl()) -> boolean().
+r4(Fun) ->
+    % Post-transform, an =-binding is a one-arm case (single clause) over the
+    % bound expression; its pattern local_binds are the =-bound names.
+    OneArmClauses = utils:everything(
+        fun({'case', _, _, [Clause]}) -> {rec, Clause}; (_) -> error end, Fun),
+    OneArmBinds = sets:from_list(
+        lists:append([sets:to_list(pat_local_binds(P))
+                      || {case_clause, _, P, _, _} <- OneArmClauses])),
+    % Names captured as {local_ref, _} inside a case pattern.
+    CaseClauses = utils:everything(
+        fun({case_clause, _, _, _, _} = C) -> {rec, C}; (_) -> error end, Fun),
+    CaseRefs = sets:from_list(
+        lists:append([sets:to_list(pat_local_refs(Pat))
+                      || {case_clause, _, Pat, _, _} <- CaseClauses])),
+    not sets:is_disjoint(OneArmBinds, CaseRefs).
+
+-spec pat_local_binds(term()) -> sets:set(ast:local_varname()).
+pat_local_binds(Pat) ->
+    sets:from_list(utils:everything(
+        fun({var, _, {local_bind, T}}) -> {ok, T}; (_) -> error end, Pat)).
+
+-spec pat_local_refs(term()) -> sets:set(ast:local_varname()).
+pat_local_refs(Pat) ->
+    sets:from_list(utils:everything(
+        fun({var, _, {local_ref, T}}) -> {ok, T}; (_) -> error end, Pat)).
+
+-spec is_any_var(term()) -> boolean().
+is_any_var({var, _, _}) -> true;
+is_any_var(_) -> false.
+
+-spec is_local_ref_var(term()) -> boolean().
+is_local_ref_var({var, _, {local_ref, _}}) -> true;
+is_local_ref_var(_) -> false.
+
+% Whether some subterm satisfies the predicate.
+-spec exists(fun((term()) -> boolean()), term()) -> boolean().
+exists(Pred, Term) ->
+    [] =/= utils:everything(
+        fun(X) -> case Pred(X) of true -> {ok, x}; false -> error end end, Term).
 
 %% ---------------------------------------------------------------------------
 %% Argument parsing
