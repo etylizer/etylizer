@@ -82,16 +82,59 @@ module_report(File, Opts) ->
     case parse:parse_file(File, ParseOpts) of
         error ->
             Base#{parse => parse_failed};
-        {ok, _RawForms} ->
-            try ast_transform:trans(File, _RawForms) of
-                _TxForms ->
-                    %% Collectors consume _RawForms / _TxForms here.
-                    Base#{parse => ok}
-            catch
-                throw:{etylizer, _Kind, _Msg} ->
-                    %% Raw-level metrics remain available; transformed ones do not.
-                    Base#{parse => transform_failed}
+        {ok, RawForms} ->
+            RawReport = lists:foldl(fun deep_merge/2, Base#{parse => ok},
+                                    raw_collectors(RawForms)),
+            case try_transform(File, RawForms) of
+                {ok, TxForms} ->
+                    lists:foldl(fun deep_merge/2, RawReport, tx_collectors(TxForms));
+                error ->
+                    RawReport#{parse => transform_failed}
             end
+    end.
+
+% Collectors over the raw Erlang AST. Each returns a (possibly nested) map that
+% is deep-merged into the module report.
+-spec raw_collectors([ast_erl:form()]) -> [report()].
+raw_collectors(RawForms) ->
+    [collect_corpus(RawForms)].
+
+% Collectors over the transformed (internal) AST.
+-spec tx_collectors([ast:form()]) -> [report()].
+tx_collectors(_TxForms) ->
+    [].
+
+-spec try_transform(file:filename(), [ast_erl:form()]) -> {ok, [ast:form()]} | error.
+try_transform(File, RawForms) ->
+    try {ok, ast_transform:trans(File, RawForms)}
+    catch throw:{etylizer, _Kind, _Msg} -> error end.
+
+%% ---------------------------------------------------------------------------
+%% #1 LOC and top-level function count
+%% ---------------------------------------------------------------------------
+
+% Number of top-level function declarations (one form per name/arity), plus LOC.
+% LOC is the number of non-blank lines produced by pretty-printing the forms with
+% Erlang's formatter (erl_pp), which normalizes away comments, blank lines, and
+% source formatting. It is therefore only defined for successfully-parsed modules.
+-spec collect_corpus([ast_erl:form()]) -> report().
+collect_corpus(RawForms) ->
+    NFunctions = length([F || F = {function, _, _, _, _} <- RawForms]),
+    #{loc => formatted_loc(RawForms),
+      corpus => #{n_functions => NFunctions}}.
+
+-spec formatted_loc([ast_erl:form()]) -> non_neg_integer().
+formatted_loc(Forms) ->
+    lists:sum([form_line_count(F) || F <- Forms]).
+
+% Non-blank lines produced by pretty-printing a single form. Forms erl_pp cannot
+% render (e.g. the eof marker) contribute nothing.
+-spec form_line_count(ast_erl:form()) -> non_neg_integer().
+form_line_count(Form) ->
+    try unicode:characters_to_list(erl_pp:form(Form)) of
+        Text ->
+            length([L || L <- string:split(Text, "\n", all), string:trim(L) =/= ""])
+    catch _:_ -> 0
     end.
 
 %% ---------------------------------------------------------------------------
@@ -155,6 +198,19 @@ parse_define(S) ->
         [Name] -> {list_to_atom(Name), ""};
         [Name | Val] -> {list_to_atom(Name), Val}
     end.
+
+% Recursively merge two report maps: nested maps under the same key are merged,
+% other values from the second map win. Lets each collector contribute to a
+% shared group (e.g. `corpus`, `features`) independently.
+-spec deep_merge(report(), report()) -> report().
+deep_merge(M1, M2) ->
+    maps:fold(
+      fun(K, V2, Acc) ->
+          case Acc of
+              #{K := V1} when is_map(V1), is_map(V2) -> Acc#{K => deep_merge(V1, V2)};
+              _ -> Acc#{K => V2}
+          end
+      end, M1, M2).
 
 %% The report maps are built directly in the shape stdlib `json' accepts (atom
 %% keys, atom/integer/binary values, nested maps and lists), so no conversion
