@@ -115,7 +115,7 @@ module_report(File, Opts, Ctx) ->
                                       sets:is_element({N, A}, OwnFunKeys)],
                     TxReport = lists:foldl(fun deep_merge/2, RawReport,
                                            tx_collectors(OwnTxFuns)),
-                    deep_merge(TxReport, call_report(File, TxForms, OwnTxFuns, Ctx));
+                    deep_merge(TxReport, symtab_report(File, TxForms, OwnTxFuns, Ctx));
                 error ->
                     RawReport#{parse => transform_failed}
             end
@@ -659,15 +659,18 @@ exists(Pred, Term) ->
 %% Matches classify_calls.escript's buckets. The symtab is built per module from
 %% the shared base plus the module's referenced modules and own definitions.
 %% ---------------------------------------------------------------------------
--spec call_report(file:filename(), [ast:form()], [ast:fun_decl()], stat_ctx()) -> report().
-call_report(_File, _TxForms, _OwnTxFuns, {_SearchPath, undefined}) ->
+% Collectors that need the symbol table (#7 call classification and #9
+% constraint shape). The per-module symtab is built once and shared.
+-spec symtab_report(file:filename(), [ast:form()], [ast:fun_decl()], stat_ctx()) -> report().
+symtab_report(_File, _TxForms, _OwnTxFuns, {_SearchPath, undefined}) ->
     #{};
-call_report(File, TxForms, OwnTxFuns, {SearchPath, Std}) ->
+symtab_report(File, TxForms, OwnTxFuns, {SearchPath, Std}) ->
     try
         Tab = build_tab(File, TxForms, SearchPath, Std),
-        collect_calls(OwnTxFuns, Tab)
+        deep_merge(collect_calls(OwnTxFuns, Tab),
+                   collect_constraints(OwnTxFuns, Tab))
     catch Class:Reason:Stack ->
-        ?LOG_WARN("call classification failed for ~s: ~p:~p~n~p", [File, Class, Reason, Stack]),
+        ?LOG_WARN("symtab metrics failed for ~s: ~p:~p~n~p", [File, Class, Reason, Stack]),
         #{}
     end.
 
@@ -720,6 +723,72 @@ classify_ref(Ref, Tab) ->
 -spec has_ty_var(ast:ty()) -> boolean().
 has_ty_var(Ty) ->
     [] =/= utils:everything(fun({var, A}) when is_atom(A) -> {ok, A}; (_) -> error end, Ty).
+
+%% ---------------------------------------------------------------------------
+%% #9 constraint-shape metrics (transformed AST + symtab)
+%%
+%% For each function, generate its constraint set and walk it: total constraints,
+%% subtyping vs. case constraints, and the maximum nesting depth (through cdef /
+%% ccase). This is a general capability, not tied to a specific paper table.
+%% ---------------------------------------------------------------------------
+-spec collect_constraints([ast:fun_decl()], symtab:t()) -> report().
+collect_constraints(TxFuns, Tab) ->
+    Shapes = [S || S <- [constr_shape(F, Tab) || F <- TxFuns], S =/= skip],
+    Sum = fun(K) -> lists:sum([maps:get(K, S) || S <- Shapes]) end,
+    MaxDepth = lists:max([0 | [maps:get(max_depth, S) || S <- Shapes]]),
+    #{constraints => #{
+        funs_with_constraints => length(Shapes),
+        n_constrs => Sum(n_constrs),
+        n_csubty => Sum(n_csubty),
+        n_ccase => Sum(n_ccase),
+        max_depth => MaxDepth
+    }}.
+
+-spec constr_shape(ast:fun_decl(), symtab:t()) -> report() | skip.
+constr_shape(FunDecl, Tab) ->
+    Empty = sets:new([{version, 2}]),
+    try
+        {Cs, _Env} = constr_gen:gen_constrs_fun_group(enabled, Tab, {Empty, Empty}, [FunDecl]),
+        {Total, Csubty, Ccase, Depth} = walk_constr_set(Cs, {0, 0, 0, 0}, 1),
+        #{n_constrs => Total, n_csubty => Csubty, n_ccase => Ccase, max_depth => Depth}
+    catch _:_ ->
+        %% Some functions use constructs constraint generation does not support;
+        %% skip them rather than aborting the module.
+        skip
+    end.
+
+-type constr_acc() :: {integer(), integer(), integer(), integer()}.
+
+-spec walk_constr_set(constr:constrs(), constr_acc(), pos_integer()) -> constr_acc().
+walk_constr_set(Cs, Acc, Depth) ->
+    lists:foldl(fun(C, A) -> walk_constr(C, A, Depth) end, Acc, sets:to_list(Cs)).
+
+-spec walk_constr(constr:constr(), constr_acc(), pos_integer()) -> constr_acc().
+walk_constr({csubty, _, _, _}, {T, S, Ca, D}, Depth) -> {T + 1, S + 1, Ca, max(D, Depth)};
+walk_constr({cvar, _, _, _}, {T, S, Ca, D}, Depth) -> {T + 1, S, Ca, max(D, Depth)};
+walk_constr({cvarmater, _, _, _}, {T, S, Ca, D}, Depth) -> {T + 1, S, Ca, max(D, Depth)};
+walk_constr({cop, _, _, _, _}, {T, S, Ca, D}, Depth) -> {T + 1, S, Ca, max(D, Depth)};
+walk_constr({cdef, _, _, Inner}, {T, S, Ca, D}, Depth) ->
+    walk_constr_set(Inner, {T + 1, S, Ca, max(D, Depth)}, Depth + 1);
+walk_constr({ccase, _, Scrut, Exh, Branches}, {T, S, Ca, D}, Depth) ->
+    A1 = {T + 1, S, Ca + 1, max(D, Depth)},
+    A2 = walk_constr_set(Scrut, A1, Depth + 1),
+    A3 = walk_constr_set(Exh, A2, Depth + 1),
+    lists:foldl(fun(Br, A) -> walk_branch(Br, A, Depth + 1) end, A3, Branches).
+
+-spec walk_branch(constr:constr_case_branch(), constr_acc(), pos_integer()) -> constr_acc().
+walk_branch({ccase_branch, _, {G, B, Cond, R}}, Acc, Depth) ->
+    A1 = walk_constr_with_env(G, Acc, Depth),
+    A2 = walk_constr_with_env(B, A1, Depth),
+    A3 = case Cond of
+             none -> A2;
+             _ -> walk_constr_set(Cond, A2, Depth)
+         end,
+    walk_constr_set(R, A3, Depth).
+
+-spec walk_constr_with_env(constr:constrs_with_env(), constr_acc(), pos_integer()) -> constr_acc().
+walk_constr_with_env({_Env, Cs}, Acc, Depth) ->
+    walk_constr_set(Cs, Acc, Depth).
 
 %% ---------------------------------------------------------------------------
 %% Argument parsing
