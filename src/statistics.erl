@@ -101,11 +101,14 @@ module_report(File, Opts) ->
             %% per including module. The transform still gets the full forms so
             %% header types/records resolve.
             OwnRaw = own_forms(File, RawForms),
+            OwnFunKeys = sets:from_list([{N, A} || {function, _, N, A, _} <- OwnRaw]),
             RawReport = lists:foldl(fun deep_merge/2, Base#{parse => ok},
                                     raw_collectors(OwnRaw)),
             case try_transform(File, RawForms) of
                 {ok, TxForms} ->
-                    lists:foldl(fun deep_merge/2, RawReport, tx_collectors(TxForms));
+                    OwnTxFuns = [F || F = {function, _, N, A, _} <- TxForms,
+                                      sets:is_element({N, A}, OwnFunKeys)],
+                    lists:foldl(fun deep_merge/2, RawReport, tx_collectors(OwnTxFuns));
                 error ->
                     RawReport#{parse => transform_failed}
             end
@@ -138,10 +141,11 @@ raw_collectors(RawForms) ->
      collect_if_case(RawForms),
      collect_index_calls(RawForms)].
 
-% Collectors over the transformed (internal) AST.
--spec tx_collectors([ast:form()]) -> [report()].
-tx_collectors(_TxForms) ->
-    [].
+% Collectors over the transformed (internal) AST, restricted to the module's
+% own function declarations.
+-spec tx_collectors([ast:fun_decl()]) -> [report()].
+tx_collectors(TxFuns) ->
+    [collect_patterns(TxFuns)].
 
 -spec try_transform(file:filename(), [ast_erl:form()]) -> {ok, [ast:form()]} | error.
 try_transform(File, RawForms) ->
@@ -395,6 +399,85 @@ lists_key_index_pos(ukeysort, 2) -> {ok, 1};
 lists_key_index_pos(keymerge, 3) -> {ok, 1};
 lists_key_index_pos(ukeymerge, 3) -> {ok, 1};
 lists_key_index_pos(_, _) -> error.
+
+%% ---------------------------------------------------------------------------
+%% #3 pattern matches, branches, and type tests in guards (transformed AST)
+%%
+%% Runs on the transformed AST, where `if' and multi-clause heads are `case's,
+%% so all dispatch is uniform. Type tests are `erlang:is_X/1' calls in guards;
+%% "on var" is a test of a variable, "on bound var" is a test of a variable that
+%% the enclosing clause's pattern binds — decided via etylizer's own
+%% local_bind/local_ref annotations (no external binding analysis needed).
+%% Matches the erlang-2026 pattern-type-tests table.
+%% ---------------------------------------------------------------------------
+-spec collect_patterns([ast:fun_decl()]) -> report().
+collect_patterns(TxFuns) ->
+    PatMatches = length(utils:everything(
+        fun({'case', _, _, _}) -> {rec, x};
+           ({'receive', _, _}) -> {rec, x};
+           ({receive_after, _, _, _, _}) -> {rec, x};
+           ({'try', _, _, _, _, _}) -> {rec, x};
+           (_) -> error
+        end, TxFuns)),
+    Branches = length(utils:everything(
+        fun({case_clause, _, _, _, _}) -> {rec, x};
+           ({catch_clause, _, _, _, _, _, _}) -> {rec, x};
+           (_) -> error
+        end, TxFuns)),
+    ClauseCtxs = utils:everything(
+        fun({case_clause, _, Pat, Guards, _}) -> {rec, {pat_bound_tokens(Pat), Guards}};
+           ({fun_clause, _, Pats, Guards, _}) -> {rec, {pat_bound_tokens(Pats), Guards}};
+           ({catch_clause, _, X, P, S, Guards, _}) -> {rec, {pat_bound_tokens([X, P, S]), Guards}};
+           (_) -> error
+        end, TxFuns),
+    {TT, TTVar, TTBound} = lists:foldl(fun tally_type_tests/2, {0, 0, 0}, ClauseCtxs),
+    #{patterns => #{
+        pat_matches => PatMatches,
+        branches => Branches,
+        type_tests => TT,
+        tt_var => TTVar,
+        tt_bound => TTBound
+    }}.
+
+% The variable tokens a pattern binds/mentions (both fresh binds and, for
+% non-linear patterns, references).
+-spec pat_bound_tokens(term()) -> sets:set(ast:local_varname()).
+pat_bound_tokens(Pat) ->
+    sets:from_list(utils:everything(
+        fun({var, _, {local_bind, T}}) -> {ok, T};
+           ({var, _, {local_ref, T}}) -> {ok, T};
+           (_) -> error
+        end, Pat)).
+
+-spec tally_type_tests({sets:set(ast:local_varname()), [ast:guard()]},
+                       {integer(), integer(), integer()}) ->
+          {integer(), integer(), integer()}.
+tally_type_tests({BoundSet, Guards}, {TT, TTVar, TTBound}) ->
+    TestArgs = utils:everything(fun type_test_call/1, Guards),
+    lists:foldl(
+      fun(Arg, {T, V, B}) ->
+          case Arg of
+              {var, _, {Ref, Token}} when Ref =:= local_ref; Ref =:= local_bind ->
+                  B1 = case sets:is_element(Token, BoundSet) of true -> B + 1; false -> B end,
+                  {T + 1, V + 1, B1};
+              _ ->
+                  {T + 1, V, B}
+          end
+      end, {TT, TTVar, TTBound}, TestArgs).
+
+% A guard `is_X(Arg)' type-test call (single argument); yields its argument.
+-spec type_test_call(term()) -> {ok, ast:exp()} | error.
+type_test_call({call, _, {var, _, {qref, erlang, Name, 1}}, [Arg]}) ->
+    case is_type_test_name(Name) of true -> {ok, Arg}; false -> error end;
+type_test_call({call, _, {var, _, {ref, Name, 1}}, [Arg]}) ->
+    case is_type_test_name(Name) of true -> {ok, Arg}; false -> error end;
+type_test_call(_) -> error.
+
+-spec is_type_test_name(atom()) -> boolean().
+is_type_test_name(Name) ->
+    lists:member(Name, [is_atom, is_binary, is_bitstring, is_boolean, is_float,
+                        is_function, is_integer, is_list, is_map, is_number,
+                        is_pid, is_port, is_reference, is_tuple]).
 
 %% ---------------------------------------------------------------------------
 %% Argument parsing
