@@ -1,0 +1,25 @@
+#!/usr/bin/env escript
+%% -*- erlang -*-
+%%
+%% Standalone launcher for the statistics module. It adds etylizer's compiled
+%% beams to the code path and delegates to statistics:main/1. Build the beams
+%% first with `make build` (or pass --build as the first argument).
+
+main(["--build" | Rest]) ->
+    Dir = script_dir(),
+    Cmd = "cd " ++ Dir ++ " && make build",
+    case os:cmd(Cmd ++ " >/dev/null 2>&1 ; echo $?") of
+        "0\n" -> ok;
+        Other -> io:format(standard_error, "build failed: ~s~n", [Other]), halt(1)
+    end,
+    run(Rest);
+main(Args) ->
+    run(Args).
+
+run(Args) ->
+    Ebins = filelib:wildcard(filename:join([script_dir(), "_build", "default", "lib", "*", "ebin"])),
+    code:add_pathsz(Ebins),
+    statistics:main(Args).
+
+script_dir() ->
+    filename:dirname(filename:absname(escript:script_name())).
