@@ -627,8 +627,9 @@ trans_exp(Ctx, Env, Exp) ->
             {NewArgs, NewEnv} = trans_exps(Ctx, Env1, Args),
             {{call, to_loc(Ctx, Anno), NewFunExp, NewArgs}, NewEnv};
         {'if', Anno, Clauses} ->
-            {NewIfClauses, NewEnv} = trans_if_clauses(Ctx, Env, Clauses),
-            {{'if', to_loc(Ctx, Anno), NewIfClauses}, NewEnv};
+            {NewClauses, NewEnv} = trans_if_clauses(Ctx, Env, Clauses),
+            G = ast:generated('if', to_loc(Ctx, Anno)),
+            {{'case', G, {tuple, G, []}, NewClauses}, NewEnv};
         {lc, Anno, E, Qualifiers} ->
             {NewQ, NewEnv} = trans_qualifiers(Ctx, Env, Qualifiers),
             % keep the old Env, list comprehension opens a new scope
@@ -1040,21 +1041,23 @@ trans_fun_clause(Ctx, Env, C) ->
     end.
 
 -spec trans_if_clauses(ctx(), varenv_local:t(), [ast_erl:if_clause()])
-                      -> {[ast:if_clause()], varenv_local:t()}.
+                      -> {[ast:case_clause()], varenv_local:t()}.
 trans_if_clauses(_Ctx, Env, []) -> {[], Env};
 trans_if_clauses(Ctx, Env, Cs) ->
     {NewClauses, NewEnvs} =
         lists:unzip(lists:map(fun(C) -> trans_if_clause(Ctx, Env, C) end, Cs)),
     {NewClauses, varenv_local:merge_envs(NewEnvs)}.
 
+% Translates the if clause `G -> B` into the case clause `_ when G -> B`.
 -spec trans_if_clause(ctx(), varenv_local:t(), ast_erl:if_clause())
-                     -> {ast:if_clause(), varenv_local:t()}.
+                     -> {ast:case_clause(), varenv_local:t()}.
 trans_if_clause(Ctx, Env, C) ->
     case C of
         {clause, Anno, [], Guards, Body} ->
+            Loc = to_loc(Ctx, Anno),
             NewGuards = trans_guards(Ctx, Env, Guards),
             {NewBody, NewEnv} = trans_exp_seq(Ctx, Env, Body),
-            {{if_clause, to_loc(Ctx, Anno), NewGuards, NewBody}, NewEnv};
+            {{case_clause, Loc, {wildcard, ast:generated('if', Loc)}, NewGuards, NewBody}, NewEnv};
         X -> errors:uncovered_case(?FILE, ?LINE, X)
     end.
 

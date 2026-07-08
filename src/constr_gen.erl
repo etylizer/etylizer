@@ -219,8 +219,6 @@ exp_constrs(Ctx, E, T) ->
             gen_funcall_constrs(Ctx, L, FunExp, Args, T);
         {call_remote, L, ModExp, FunExp, Args} ->
             dyncall_constrs(Ctx, L, ModExp, FunExp, Args, T);
-        ({'if', _, _} = IfExp) ->
-            exp_constrs(Ctx, if_exp_to_case_exp(IfExp), T);
         {lc, L, Exp, Qs} ->
             {Env, Cs0} = process_qualifiers(Ctx, L, Qs, #{}, sets:new()),
             Beta = fresh_tyvar(Ctx), % element result
@@ -1704,29 +1702,6 @@ fun_body_ctx(Ctx, [{'case', L, _, _}]) ->
     end;
 fun_body_ctx(Ctx, _) ->
     Ctx#ctx{ disable_exhaustiveness = false, disable_redundancy = false }.
-
-% if g1 -> e1;
-%    ...
-%    gn -> en
-% end
-%
-% is transformed to
-%
-% case {}
-%   _ when g1 -> e1;
-%   ...
-%   _ when gn -> en
-% end
--spec if_exp_to_case_exp(ast:exp_if()) -> ast:exp_case().
-if_exp_to_case_exp({'if', L, IfClauses}) ->
-    G = ast:generated('if', L),
-    ScrutExp = {tuple, G, []},
-    CaseClauses =
-        lists:map(fun({if_clause, ClauseLoc, Guards, Body}) ->
-                          Pat = {wildcard, ast:generated('if', ClauseLoc)},
-                          {case_clause, ClauseLoc, Pat, Guards, Body}
-                  end, IfClauses),
-    {'case', G, ScrutExp, CaseClauses}.
 
 -spec sanity_check(constr:constrs(), ast_check:ty_map()) -> ok.
 sanity_check(Cs, Spec) ->
