@@ -21,7 +21,7 @@
 -export([
     main/1,        % escript entry point
     run/1,         % programmatic entry: #opts{} -> iodata() (JSON)
-    module_report/2
+    module_report/3
 ]).
 
 -type report() :: #{atom() => term()}.
@@ -52,7 +52,10 @@ run(Opts) ->
           try
               Files = paths:generate_input_file_list(Opts),
               ?LOG_INFO("Computing statistics for ~w modules", length(Files)),
-              Reports = lists:map(fun(F) -> safe_module_report(F, Opts) end, Files),
+              SearchPath = paths:compute_search_path(Opts),
+              Std = build_std_symtab(SearchPath),
+              Ctx = {SearchPath, Std},
+              Reports = lists:map(fun(F) -> safe_module_report(F, Opts, Ctx) end, Files),
               json:encode(#{modules => Reports})
           after
               parse_cache:cleanup(),
@@ -74,17 +77,19 @@ run(Opts) ->
 % malformed module must never abort the whole run, so any unexpected crash is
 % recorded as `crashed` for that module. The per-module `parse` field is thus
 % one of: ok | parse_failed | transform_failed | crashed.
--spec safe_module_report(file:filename(), cmd_opts()) -> report().
-safe_module_report(File, Opts) ->
-    try module_report(File, Opts)
+-type stat_ctx() :: {paths:search_path(), symtab:t() | undefined}.
+
+-spec safe_module_report(file:filename(), cmd_opts(), stat_ctx()) -> report().
+safe_module_report(File, Opts, Ctx) ->
+    try module_report(File, Opts, Ctx)
     catch Class:Reason:Stack ->
         ?LOG_WARN("statistics crashed on ~s: ~p:~p~n~p", [File, Class, Reason, Stack]),
         #{module => ast_utils:modname_from_path(File),
           file => unicode:characters_to_binary(File), parse => crashed}
     end.
 
--spec module_report(file:filename(), cmd_opts()) -> report().
-module_report(File, Opts) ->
+-spec module_report(file:filename(), cmd_opts(), stat_ctx()) -> report().
+module_report(File, Opts, Ctx) ->
     ParseOpts = #parse_opts{
         includes = Opts#opts.includes,
         defines = Opts#opts.defines,
@@ -108,7 +113,9 @@ module_report(File, Opts) ->
                 {ok, TxForms} ->
                     OwnTxFuns = [F || F = {function, _, N, A, _} <- TxForms,
                                       sets:is_element({N, A}, OwnFunKeys)],
-                    lists:foldl(fun deep_merge/2, RawReport, tx_collectors(OwnTxFuns));
+                    TxReport = lists:foldl(fun deep_merge/2, RawReport,
+                                           tx_collectors(OwnTxFuns)),
+                    deep_merge(TxReport, call_report(File, TxForms, OwnTxFuns, Ctx));
                 error ->
                     RawReport#{parse => transform_failed}
             end
@@ -147,6 +154,19 @@ raw_collectors(RawForms) ->
 tx_collectors(TxFuns) ->
     [collect_patterns(TxFuns),
      collect_refinement(TxFuns)].
+
+% Base symbol table (erlang + type-referenced modules), shared across the run.
+% `undefined' if it cannot be built (e.g. missing OTP paths), in which case call
+% classification is skipped. `infer' mode leaves unspecced functions unresolved,
+% so `find_fun' returns `error' for them (-> the `dynamic' bucket).
+-spec build_std_symtab(paths:search_path()) -> symtab:t() | undefined.
+build_std_symtab(SearchPath) ->
+    try symtab:std_symtab(SearchPath, symtab:empty(), infer)
+    catch Class:Reason:Stack ->
+        ?LOG_WARN("could not build base symtab; skipping call classification: ~p:~p~n~p",
+                  [Class, Reason, Stack]),
+        undefined
+    end.
 
 -spec try_transform(file:filename(), [ast_erl:form()]) -> {ok, [ast:form()]} | error.
 try_transform(File, RawForms) ->
@@ -583,6 +603,80 @@ is_local_ref_var(_) -> false.
 exists(Pred, Term) ->
     [] =/= utils:everything(
         fun(X) -> case Pred(X) of true -> {ok, x}; false -> error end end, Term).
+
+%% ---------------------------------------------------------------------------
+%% #7 call-site classification (transformed AST + symtab)
+%%
+%% Each application in the module's own functions is classified by its callee's
+%% -spec, resolved through etylizer's symbol table (which includes OTP specs):
+%%   dynamic           — no visible spec, or a higher-order / local-variable callee
+%%   closed_typed      — spec with no type variables
+%%   polymorphic       — spec with type variables
+%%   unresolved_module — M:F(...) where M is not a literal atom
+%% Matches classify_calls.escript's buckets. The symtab is built per module from
+%% the shared base plus the module's referenced modules and own definitions.
+%% ---------------------------------------------------------------------------
+-spec call_report(file:filename(), [ast:form()], [ast:fun_decl()], stat_ctx()) -> report().
+call_report(_File, _TxForms, _OwnTxFuns, {_SearchPath, undefined}) ->
+    #{};
+call_report(File, TxForms, OwnTxFuns, {SearchPath, Std}) ->
+    try
+        Tab = build_tab(File, TxForms, SearchPath, Std),
+        collect_calls(OwnTxFuns, Tab)
+    catch Class:Reason:Stack ->
+        ?LOG_WARN("call classification failed for ~s: ~p:~p~n~p", [File, Class, Reason, Stack]),
+        #{}
+    end.
+
+-spec build_tab(file:filename(), [ast:form()], paths:search_path(), symtab:t()) -> symtab:t().
+build_tab(File, TxForms, SearchPath, Std) ->
+    Mods = ast_utils:referenced_modules(TxForms),
+    WithOtp = symtab:extend_symtab_with_module_list(Std, SearchPath, Mods, symtab:empty()),
+    symtab:extend_symtab(File, TxForms, WithOtp, symtab:empty()).
+
+-spec collect_calls([ast:fun_decl()], symtab:t()) -> report().
+collect_calls(TxFuns, Tab) ->
+    Calls = utils:everything(
+        fun({call, L, _, _} = C) ->
+                % the calls that the maybe rewrite adds are not calls of the source
+                case ast:is_generated_by('maybe', L) of
+                    true -> error;
+                    false -> {rec, C}
+                end;
+           ({call_remote, _, _, _, _} = C) -> {rec, C};
+           (_) -> error
+        end, TxFuns),
+    Counts = lists:foldl(
+      fun(C, M) -> maps:update_with(classify_call(C, Tab), fun(V) -> V + 1 end, 1, M) end,
+      #{}, Calls),
+    #{calls => #{
+        dynamic => maps:get(dynamic, Counts, 0),
+        closed_typed => maps:get(closed_typed, Counts, 0),
+        polymorphic => maps:get(polymorphic, Counts, 0),
+        unresolved_module => maps:get(unresolved_module, Counts, 0)
+    }}.
+
+-spec classify_call(term(), symtab:t()) ->
+          dynamic | closed_typed | polymorphic | unresolved_module.
+classify_call({call, _, {var, _, {ref, _, _} = Ref}, _}, Tab) -> classify_ref(Ref, Tab);
+classify_call({call, _, {var, _, {qref, _, _, _} = Ref}, _}, Tab) -> classify_ref(Ref, Tab);
+classify_call({call, _, _, _}, _Tab) -> dynamic;
+classify_call({call_remote, _, _, _, _}, _Tab) -> unresolved_module.
+
+-spec classify_ref(ast:global_ref(), symtab:t()) -> dynamic | closed_typed | polymorphic.
+classify_ref(Ref, Tab) ->
+    case symtab:find_fun(Ref, Tab) of
+        error -> dynamic;
+        {ok, {ty_scheme, BoundedTyvars, Ty}} ->
+            case BoundedTyvars =/= [] orelse has_ty_var(Ty) of
+                true -> polymorphic;
+                false -> closed_typed
+            end
+    end.
+
+-spec has_ty_var(ast:ty()) -> boolean().
+has_ty_var(Ty) ->
+    [] =/= utils:everything(fun({var, A}) when is_atom(A) -> {ok, A}; (_) -> error end, Ty).
 
 %% ---------------------------------------------------------------------------
 %% Argument parsing
