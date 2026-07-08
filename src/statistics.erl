@@ -134,7 +134,8 @@ own_forms(File, Forms) ->
 raw_collectors(RawForms) ->
     [collect_corpus(RawForms),
      collect_spec_coverage(RawForms),
-     collect_features(RawForms)].
+     collect_features(RawForms),
+     collect_if_case(RawForms)].
 
 % Collectors over the transformed (internal) AST.
 -spec tx_collectors([ast:form()]) -> [report()].
@@ -270,6 +271,69 @@ is_numeric_type({type, _, Name, []}) ->
 is_numeric_type({type, _, range, _}) -> true;
 is_numeric_type({integer, _, _}) -> true;
 is_numeric_type(_) -> false.
+
+%% ---------------------------------------------------------------------------
+%% #5 if-vs-case, with final-clause classification of each `if' (raw AST)
+%%
+%% Must run on the raw AST: after the ast_transform refactor, `if' becomes
+%% `case' in the transformed AST, so `if' is only visible here. Matches
+%% count_if_case.escript.
+%% ---------------------------------------------------------------------------
+-spec collect_if_case([ast_erl:form()]) -> report().
+collect_if_case(RawForms) ->
+    FunClauseLists = [Cls || {function, _, _, _, Cls} <- RawForms],
+    Cases = length(utils:everything(
+        fun({'case', _, _, _}) -> {rec, c}; (_) -> error end, RawForms)),
+    Receives = length(utils:everything(
+        fun({'receive', _, _}) -> {rec, r};
+           ({'receive', _, _, _, _}) -> {rec, r};
+           (_) -> error
+        end, RawForms)),
+    IfClausesList = utils:everything(
+        fun({'if', _, Clauses}) -> {rec, Clauses}; (_) -> error end, RawForms),
+    Classes = [classify_if_last_guard(Cs) || Cs <- IfClausesList],
+    #{if_case => #{
+        funs => length(FunClauseLists),
+        multi_clause_funs => length([1 || Cls <- FunClauseLists, length(Cls) > 1]),
+        cases => Cases,
+        receives => Receives,
+        ifs => length(IfClausesList),
+        if_true_last => count_eq(true_catch_all, Classes),
+        if_cmp_last => count_eq(comparison, Classes),
+        if_other_last => count_eq(other, Classes)
+    }}.
+
+-spec count_eq(term(), [term()]) -> non_neg_integer().
+count_eq(X, Xs) -> length([1 || Y <- Xs, Y =:= X]).
+
+% Classify an `if' by the guard of its final clause: `true' catch-all, a
+% (conjunction/disjunction of) comparison operators, or anything else.
+-spec classify_if_last_guard([ast_erl:if_clause()]) -> true_catch_all | comparison | other.
+classify_if_last_guard([]) -> other;
+classify_if_last_guard(Clauses) ->
+    case lists:last(Clauses) of
+        {clause, _, _, Guards, _} -> classify_guard(Guards);
+        _ -> other
+    end.
+
+% Guards :: [[guard_test()]] -- outer list is `;' (disjunction), inner is `,'.
+-spec classify_guard([[ast_erl:guard_test()]]) -> true_catch_all | comparison | other.
+classify_guard([]) -> other;
+classify_guard(Disjuncts) ->
+    IsTrueDisjunct = fun([{atom, _, true}]) -> true; (_) -> false end,
+    case lists:any(IsTrueDisjunct, Disjuncts) of
+        true -> true_catch_all;
+        false ->
+            case lists:all(fun(D) -> lists:all(fun is_comparison/1, D) end, Disjuncts) of
+                true -> comparison;
+                false -> other
+            end
+    end.
+
+-spec is_comparison(ast_erl:guard_test()) -> boolean().
+is_comparison({op, _, Op, _, _}) ->
+    lists:member(Op, ['<', '=<', '>', '>=', '==', '/=', '=:=', '=/=']);
+is_comparison(_) -> false.
 
 %% ---------------------------------------------------------------------------
 %% Argument parsing
