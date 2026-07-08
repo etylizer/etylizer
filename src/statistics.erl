@@ -145,6 +145,7 @@ raw_collectors(RawForms) ->
     [collect_corpus(RawForms),
      collect_spec_coverage(RawForms),
      collect_features(RawForms),
+     collect_dynamic_indirect(RawForms),
      collect_if_case(RawForms),
      collect_index_calls(RawForms)].
 
@@ -297,6 +298,48 @@ is_numeric_type({type, _, Name, []}) ->
 is_numeric_type({type, _, range, _}) -> true;
 is_numeric_type({integer, _, _}) -> true;
 is_numeric_type(_) -> false.
+
+%% ---------------------------------------------------------------------------
+%% #2 (cont.) indirect dynamic(): user-type references in specs whose expansion
+%% reaches dynamic() through the module's own type aliases. count_unions counts
+%% only direct dynamic(); this covers the aliased case (e.g. -type d() ::
+%% dynamic(), then -spec f() -> d()). Cross-module aliases are not expanded.
+%% ---------------------------------------------------------------------------
+-spec collect_dynamic_indirect([ast_erl:form()]) -> report().
+collect_dynamic_indirect(RawForms) ->
+    TypeDefs = maps:from_list(
+        [{{Name, length(Params)}, RHS}
+         || {attribute, _, type, {Name, RHS, Params}} <- RawForms]),
+    UserRefs = utils:everything(
+        fun({user_type, _, _, _} = U) -> {rec, U}; (_) -> error end,
+        spec_type_clauses(RawForms)),
+    Indirect = length([U || U <- UserRefs, reaches_dynamic(U, TypeDefs, sets:new())]),
+    #{features => #{dynamic_indirect => Indirect}}.
+
+-spec reaches_dynamic(term(), #{{atom(), arity()} => term()},
+                      sets:set({atom(), arity()})) -> boolean().
+reaches_dynamic({type, _, dynamic, []}, _Defs, _Seen) ->
+    true;
+reaches_dynamic({user_type, _, Name, Args}, Defs, Seen) ->
+    Key = {Name, length(Args)},
+    case sets:is_element(Key, Seen) of
+        true -> false;
+        false ->
+            case maps:find(Key, Defs) of
+                {ok, RHS} -> reaches_dynamic(RHS, Defs, sets:add_element(Key, Seen));
+                error -> any_reaches_dynamic(Args, Defs, Seen)
+            end
+    end;
+reaches_dynamic(T, Defs, Seen) when is_tuple(T) ->
+    any_reaches_dynamic(tuple_to_list(T), Defs, Seen);
+reaches_dynamic(T, Defs, Seen) when is_list(T) ->
+    any_reaches_dynamic(T, Defs, Seen);
+reaches_dynamic(_, _, _) ->
+    false.
+
+-spec any_reaches_dynamic([term()], map(), sets:set({atom(), arity()})) -> boolean().
+any_reaches_dynamic(Children, Defs, Seen) ->
+    lists:any(fun(C) -> reaches_dynamic(C, Defs, Seen) end, Children).
 
 %% ---------------------------------------------------------------------------
 %% #5 if-vs-case, with final-clause classification of each `if' (raw AST)
