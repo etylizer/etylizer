@@ -139,7 +139,8 @@ more_general(Loc, Ts1, Ts2, Tab) ->
 % environment, we may simply quantify over all free type variables.
 -spec generalize(ast:ty()) -> ast:ty_scheme().
 generalize(T) ->
-    Free = sets:to_list(ftv(T)),
+    % gives a stable ty_scheme variable order.
+    Free = lists:sort(sets:to_list(ftv(T))),
     Vars = lists:map(fun(Alpha) -> {Alpha, {predef, any}} end, Free),
     {ty_scheme, Vars, T}.
 
