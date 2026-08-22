@@ -13,6 +13,7 @@
 
 
 -include("log.hrl").
+-include("metrics.hrl").
 -include("typing.hrl").
 
 % Infers the types of all the given functions.
@@ -20,6 +21,7 @@
 infer_all(_Ctx, _FileName, []) -> [#{}];
 infer_all(Ctx, FileName, Decls) ->
     ?LOG_INFO("Inferring types of functions without specs in ~s", FileName),
+    ?METRIC_SET_FUN(?METRIC_INFER_FUN(FileName)),
     % FIXME: need to build strongly connected components to infer each group in isolation
     L = infer(Ctx, Decls),
     ?LOG_INFO("Inferring types of functions without specs returned ~w environments in total",

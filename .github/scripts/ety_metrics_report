@@ -30,7 +30,7 @@ report(Title, Pr, Base) ->
     {PrTimesCommon, PrPolyCommon} =
         case HasBase of
             true ->
-                BaseFnSet = function_set(BaseTimes),
+                BaseFnSet = sets:union(function_set(BaseTimes), poly_label_set(BasePoly)),
                 {TC, _TA} = partition_times(PrTimes, BaseFnSet),
                 {PC, _PA} = partition_poly(PrPoly, BaseFnSet),
                 {TC, PC};
@@ -45,8 +45,18 @@ report(Title, Pr, Base) ->
     end,
     case maps:find(<<"poly_vars">>, Pr) of
         {ok, _} ->
+            % Per-function records can be truncated by a wall-clock kill,
+            % inference cannot. Separate tables, not one blended total.
+            Unstable = unstable_fns(PrTimes, BaseTimes, Pr, Base),
+            {PrInfer, PrPerFun} = partition_inference(PrPolyCommon),
+            {BaseInfer, BasePerFun} = partition_inference(BasePoly),
+            {PrPolyStable, PrDropped} = drop_unstable(PrPerFun, Unstable),
+            {BasePolyStable, BaseDropped} = drop_unstable(BasePerFun, Unstable),
             print_poly_section(section_title(Title, "Polymorphic Variable Statistics"),
-                               PrPolyCommon, BasePoly, HasBase);
+                               PrPolyStable, BasePolyStable, HasBase),
+            print_poly_exclusions(Unstable, PrDropped, BaseDropped, HasBase),
+            print_inference_section(section_title(Title, "Inference Path"),
+                                    PrInfer, BaseInfer, HasBase);
         error -> ok
     end,
     %% Verdict flips, reusing the cells already loaded above (no recomputation):
@@ -119,6 +129,73 @@ partition_poly(Entries, BaseFnSet) ->
         {[], []},
         Entries
     ).
+
+%% Functions whose tally metrics were truncated part-way by a wall-clock kill,
+%% in either cell. Taking the union over both cells keeps the remaining function 
+%% set identical on both sides of the delta.
+unstable_fns(PrTimes, BaseTimes, Pr, Base) ->
+    sets:union([timeout_fns(PrTimes), timeout_fns(BaseTimes),
+                localization_timeout_fns(Pr), localization_timeout_fns(Base)]).
+
+timeout_fns(Entries) ->
+    sets:from_list([Name || [Name, _Time, <<"timeout">>] <- Entries]).
+
+localization_timeout_fns(Cell) ->
+    sets:from_list([Name || [Name | _] <- maps:get(<<"localization_timeout">>, Cell, [])]).
+
+drop_unstable(Entries, Unstable) ->
+    lists:foldr(
+        fun(E = [FN | _], {AccKeep, AccDrop}) ->
+            case sets:is_element(FN, Unstable) of
+                true -> {AccKeep, AccDrop + 1};
+                false -> {[E | AccKeep], AccDrop}
+            end
+        end,
+        {[], 0},
+        Entries
+    ).
+
+%% Inference labels live only in poly_vars, never in typecheck_time.
+poly_label_set(Entries) ->
+    sets:from_list([FN || [FN | _] <- Entries]).
+
+%% {Inference, PerFunction}; typing_infer tags inference "<module>:__inference__/0".
+partition_inference(Entries) ->
+    lists:foldr(
+        fun(E = [FN | _], {AccI, AccF}) ->
+            case is_inference_label(FN) of
+                true -> {[E | AccI], AccF};
+                false -> {AccI, [E | AccF]}
+            end
+        end,
+        {[], []},
+        Entries
+    ).
+
+is_inference_label(FN) ->
+    Suffix = <<":__inference__/0">>,
+    N = byte_size(Suffix),
+    byte_size(FN) >= N andalso binary:part(FN, byte_size(FN) - N, N) =:= Suffix.
+
+%% Never wrapped in utils:timeout, so a delta here is an engine effect.
+print_inference_section(_Title, [], [], _HasBase) -> ok;
+print_inference_section(Title, PrInfer, BaseInfer, HasBase) ->
+    print_poly_section(Title, PrInfer, BaseInfer, HasBase),
+    io:format("_Constraint solving for functions without a spec, per module. "
+              "Not truncated._~n~n", []).
+
+%% Say what was left out, so the table is never silently partial.
+print_poly_exclusions(Unstable, PrDropped, BaseDropped, HasBase) ->
+    Counts =
+        case HasBase of
+            true -> io_lib:format("~w PR / ~w base", [PrDropped, BaseDropped]);
+            false -> io_lib:format("~w", [PrDropped])
+        end,
+    io:format("_Excludes ~ts invocation records from ~w function(s) truncated by "
+              "a 4s timeout (per-function or error-localization) in either cell; "
+              "those are cut off at a wall-clock-dependent point and are not "
+              "comparable between cells._~n~n",
+              [Counts, sets:size(Unstable)]).
 
 section_title(undefined, Section) -> Section;
 section_title(Title, Section) -> Title ++ ": " ++ Section.

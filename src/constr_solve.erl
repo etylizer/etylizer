@@ -1,6 +1,7 @@
 -module(constr_solve).
 
 -include("log.hrl").
+-include("metrics.hrl").
 
 -export([
     check_simp_constrs/4,
@@ -104,10 +105,16 @@ locate_unsat_error(Tab, FixedTyvars, Ds) ->
     ?LOG_DEBUG("Constraints are not satisfiable, now locating source of errors. Blocks:~n~s",
         pretty:render_list(fun pretty:constr_block/1, Blocks)),
     Timeout = 4000,
-    TimeoutRes = utils:timeout(Timeout, fun () -> locate_tyerror(Tab, FixedTyvars, Blocks) end),
+    _CurFun = ?METRIC_GET_FUN(),
+    TimeoutRes = utils:timeout(Timeout, fun () ->
+        ?METRIC_SET_FUN(_CurFun),
+        locate_tyerror(Tab, FixedTyvars, Blocks)
+    end),
     case TimeoutRes of
         {ok, Res} -> Res;
         timeout ->
+            % The worker was killed mid-search, report as unstable
+            ?METRIC(localization_timeout, {?METRIC_FUN()}),
             ?LOG_INFO("Locating type error timed out after ~wms", Timeout),
             {error, none}
     end.
