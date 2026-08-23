@@ -11,7 +11,10 @@
           disable_exhaustiveness = sets:new() :: sets:set({atom(), arity()}),
           % functions where redundancy checking is disabled at the function clause level
           % via -etylizer({functions_redundant, off, [...]})
-          disable_redundancy = sets:new() :: sets:set({atom(), arity()})
+          disable_redundancy = sets:new() :: sets:set({atom(), arity()}),
+          % per-function receive message types from -etylizer({msg_type, ...})
+          % maps {FunName, Arity} to {declared message type, exhaustiveness flag}
+          recv_msg_tys = #{} :: #{{atom(), arity()} => {ast:ty(), exhaust | noexhaust}}
         }).
 
 -type ctx() :: #ctx{}.
