@@ -14,7 +14,10 @@
           disable_redundancy = sets:new() :: sets:set({atom(), arity()}),
           % compiler-generated case clauses, exempt from redundancy checking
           % (see ast:generated_clause_key/0)
-          generated_clauses = sets:new() :: sets:set(ast:generated_clause_key())
+          generated_clauses = sets:new() :: sets:set(ast:generated_clause_key()),
+          % per-function receive message types from -etylizer({msg_type, ...})
+          % maps {FunName, Arity} to {declared message type, exhaustiveness flag}
+          recv_msg_tys = #{} :: #{{atom(), arity()} => {ast:ty(), exhaust | noexhaust}}
         }).
 
 -type ctx() :: #ctx{}.

@@ -8,12 +8,12 @@
 -include("parse.hrl").
 -include("typing.hrl").
 
--spec check_ok_fun(string(), symtab:t(), symtab:t(), sets:set({atom(), arity()}), sets:set({atom(), arity()}), ast:fun_decl(), ast:ty_scheme()) -> ok.
-check_ok_fun(Filename, Tab, OverlayTab, DisableExhaustiveness, DisableRedundancy, Decl = {function, L, Name, Arity, _}, Ty) ->
+-spec check_ok_fun(string(), symtab:t(), symtab:t(), sets:set({atom(), arity()}), sets:set({atom(), arity()}), #{{atom(), arity()} => {ast:ty(), exhaust | noexhaust}}, ast:fun_decl(), ast:ty_scheme()) -> ok.
+check_ok_fun(Filename, Tab, OverlayTab, DisableExhaustiveness, DisableRedundancy, RecvMsgTys, Decl = {function, L, Name, Arity, _}, Ty) ->
     Includes = ["include", "src", "src/erlang_types", "src/erlang_types/dnf", "src/erlang_types/utils"],
     SanityCheck = cm_check:perform_sanity_check(Filename, [Decl], true, Includes),
     Ctx0 = typing:new_ctx(Tab, OverlayTab, SanityCheck), % FIXME: perform sanity check!
-    Ctx = Ctx0#ctx{ disable_exhaustiveness = DisableExhaustiveness, disable_redundancy = DisableRedundancy },
+    Ctx = Ctx0#ctx{ disable_exhaustiveness = DisableExhaustiveness, disable_redundancy = DisableRedundancy, recv_msg_tys = RecvMsgTys },
     try
         typing_check:check(Ctx, Decl, Ty)
     catch
@@ -24,11 +24,11 @@ check_ok_fun(Filename, Tab, OverlayTab, DisableExhaustiveness, DisableRedundancy
     end,
     ok.
 
--spec check_infer_ok_fun(string(), symtab:t(), symtab:t(), sets:set({atom(), arity()}), sets:set({atom(), arity()}), ast:fun_decl(), ast:ty_scheme()) -> ok.
-check_infer_ok_fun(Filename, Tab, OverlayTab, DisableExhaustiveness, DisableRedundancy, Decl = {function, L, Name, Arity, _}, Ty) ->
+-spec check_infer_ok_fun(string(), symtab:t(), symtab:t(), sets:set({atom(), arity()}), sets:set({atom(), arity()}), #{{atom(), arity()} => {ast:ty(), exhaust | noexhaust}}, ast:fun_decl(), ast:ty_scheme()) -> ok.
+check_infer_ok_fun(Filename, Tab, OverlayTab, DisableExhaustiveness, DisableRedundancy, RecvMsgTys, Decl = {function, L, Name, Arity, _}, Ty) ->
     % Check that the inferred type is more general then the type in the spec
     Ctx0 = typing:new_ctx(Tab, OverlayTab, error),
-    Ctx = Ctx0#ctx{ disable_exhaustiveness = DisableExhaustiveness, disable_redundancy = DisableRedundancy },
+    Ctx = Ctx0#ctx{ disable_exhaustiveness = DisableExhaustiveness, disable_redundancy = DisableRedundancy, recv_msg_tys = RecvMsgTys },
     Envs =
        try
            typing_infer:infer(Ctx, [Decl])
@@ -66,10 +66,10 @@ check_infer_ok_fun(Filename, Tab, OverlayTab, DisableExhaustiveness, DisableRedu
       end,
     ok.
 
--spec check_fail_fun(string(), symtab:t(), symtab:t(), sets:set({atom(), arity()}), sets:set({atom(), arity()}), ast:fun_decl(), ast:ty_scheme()) -> ok.
-check_fail_fun(Filename, Tab, OverlayTab, DisableExhaustiveness, DisableRedundancy, Decl = {function, L, Name, Arity, _}, Ty) ->
+-spec check_fail_fun(string(), symtab:t(), symtab:t(), sets:set({atom(), arity()}), sets:set({atom(), arity()}), #{{atom(), arity()} => {ast:ty(), exhaust | noexhaust}}, ast:fun_decl(), ast:ty_scheme()) -> ok.
+check_fail_fun(Filename, Tab, OverlayTab, DisableExhaustiveness, DisableRedundancy, RecvMsgTys, Decl = {function, L, Name, Arity, _}, Ty) ->
     Ctx0 = typing:new_ctx(Tab, OverlayTab, error),
-    Ctx = Ctx0#ctx{ disable_exhaustiveness = DisableExhaustiveness, disable_redundancy = DisableRedundancy },
+    Ctx = Ctx0#ctx{ disable_exhaustiveness = DisableExhaustiveness, disable_redundancy = DisableRedundancy, recv_msg_tys = RecvMsgTys },
     try
         typing_check:check(Ctx, Decl, Ty),
         io:format("~s: Type checking ~w/~w in ~s succeeded but should fail",
@@ -91,14 +91,18 @@ check_decls_in_file(F, What, NoInfer) ->
   {ok, RawForms} = parse:parse_file(F, #parse_opts{includes =
                                                    ["include", "src", "src/erlang_types",
                                                     "src/erlang_types/dnf", "src/erlang_types/utils"]}),
-  Forms = ast_transform:trans(F, RawForms),
+  Forms0 = ast_transform:trans(F, RawForms),
+  Forms = typing:desugar_recv_funs(Forms0),
   Opts = #opts{gradual_typing_mode = infer},
   SearchPath = paths:compute_search_path(Opts),
+
+  % Desugar list-form msg_type attributes into helper functions with intersection specs.
   OverlayTab = symtab:empty(),
   Tab0 = symtab:std_symtab(SearchPath, symtab:empty(), Opts#opts.gradual_typing_mode),
   Tab = symtab:extend_symtab(F, Forms, Tab0,symtab:empty()),
   DisableExhaustiveness = typing:resolve_disabled_funs(functions_exhaustive, Forms),
   DisableRedundancy = typing:resolve_disabled_funs(functions_redundant, Forms),
+  RecvMsgTys = typing:recv_msg_tys_from_forms(Forms),
 
   CollectDecls = fun(Decl, TestCases) ->
     case Decl of
@@ -112,9 +116,9 @@ check_decls_in_file(F, What, NoInfer) ->
                 ?LOG_NOTE("Type checking ~s from ~s", NameStr, F),
                 global_state:with_new_state(fun() ->
                   case ShouldFail of
-                    true -> check_fail_fun(F, Tab, OverlayTab, DisableExhaustiveness, DisableRedundancy, Decl, Ty);
+                    true -> check_fail_fun(F, Tab, OverlayTab, DisableExhaustiveness, DisableRedundancy, RecvMsgTys, Decl, Ty);
                     false ->
-                      check_ok_fun(F, Tab, OverlayTab, DisableExhaustiveness, DisableRedundancy, Decl, Ty)
+                      check_ok_fun(F, Tab, OverlayTab, DisableExhaustiveness, DisableRedundancy, RecvMsgTys, Decl, Ty)
                   end
                                             end)
               end}
@@ -123,7 +127,7 @@ check_decls_in_file(F, What, NoInfer) ->
           {timeout, 10, {FullNameStr ++ " (infer)", fun() ->
                 ?LOG_NOTE("Infering type for ~s from ~s", NameStr, F),
                 global_state:with_new_state(fun() ->
-                  check_infer_ok_fun(F, Tab, OverlayTab, DisableExhaustiveness, DisableRedundancy, Decl, Ty)
+                  check_infer_ok_fun(F, Tab, OverlayTab, DisableExhaustiveness, DisableRedundancy, RecvMsgTys, Decl, Ty)
                 end),
                 ok
               end}
