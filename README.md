@@ -1,27 +1,36 @@
 # etylizer
 
 ![status badge](https://github.com/etylizer/etylizer/actions/workflows/erlang.yml/badge.svg)
+[![ICFP26](https://img.shields.io/badge/ICFP-26-blue)](https://doi.org/10.1145/3828708)
+[![Erlang26](https://img.shields.io/badge/Erlang_Workshop-26-blue)](https://doi.org/10.1145/3830434.3830945)
 
 Static typechecker for Erlang based on set-theoretic types.
 
+Try the [playground](https://albsch.github.io/etylizer-editor/) to see how etylizer works for Erlang and Elixir code.
+
+This is the **development** (`dev`) branch.
+
+**Branches.**
+
+* `main`: the stable release; always has the most up-to-date bug fixes.
+* `dev`: not-yet-approved optimizations and community-approved to-be-tested features.
+  * [improved compilation manager](https://github.com/etylizer/etylizer/pull/342)
+  * [bit string and binary support](https://github.com/etylizer/etylizer/pull/330).
+  * [Erlang message types](https://github.com/etylizer/etylizer/pull/358)
+* `experimental`: novel type-level features to try out.
+  * [nominal types](https://github.com/etylizer/etylizer/pull/338).
+
 ## User-level documentation
 
-### Install
-Add this to your `rebar.config` file:
-```erlang
-{plugins, [
-    {rebar3_etylizer, {git, "https://github.com/etylizer/rebar3_etylizer.git"}}
-]}.
-```
+User-level documentation is work in progress.
 
-Then run:
-```
-rebar3 etylizer
-```
+Currently supported 
 
-For a full list of plugin options see the [rebar plugin repo](https://github.com/etylizer/rebar3_etylizer).
+* native build
+* [LSP](https://github.com/albsch/erlang-language-platform) (fork of
+  [ELP](https://github.com/WhatsApp/erlang-language-platform))
 
-### Build
+### Native Build
 
 * `make` or `rebar3 escriptize` will generate a standalone portable escript called `etylizer` inside the directory
   `_build/default/bin`
@@ -34,25 +43,18 @@ For a full list of plugin options see the [rebar plugin repo](https://github.com
 
 Useful for debugging:
 
-    etylizer hello.erl --force -l debug -o foo1/1
+    etylizer hello.erl --force -l debug -o foo/1
 
 * type checks only the function `foo/1` (`-o`) with additional debug information
   (`-l`)
 * disables caching of results, i.e. force type checking (`--force`)
+* sets the verbosity of logging to `debug`
 
-### Examples
+There are two self-contained example projects to showcase native usage.
 
-Two self-contained example projects, each with a `check.sh` that compiles the
-code and runs etylizer over it:
-
-* [`example_project/`](example_project) — Erlang. A tour of etylizer features
+* [`example_project/`](example_project). A simple Erlang project. A tour of etylizer features
   (occurrence typing, intersection types, exhaustiveness checks, ...).
-* [`example_project_elixir/`](example_project_elixir) — Elixir. etylizer also
-  type checks Elixir by reading the compiled `.beam` files. The example shows
-  what etylizer can prove about Elixir code, and highlights how Elixir's
-  standard-library typespecs (e.g. `Enum.map/2 :: list()`) are far less precise
-  than Erlang's polymorphic ones (e.g. `lists:map/2 :: [B]`) — and how a
-  [type overlay](overlays/elixir_overlay.erl) recovers the precision.
+* [`example_project_elixir/`](example_project_elixir). A simple Elixir project.
 
 ## Developer documentation
 
@@ -66,6 +68,7 @@ code and runs etylizer over it:
     introduces a new binding or refers to an existing binding and in which module the existing
     binding is defined.
   * Bounds in type definitions have been replaced by intersections.
+  * It is stable and is used for caching.
 * Perform several sanity checks
   * Check that type defs are regular and contractive. This requires constructing a dependency
     cycle and potentially loading of type defs from other modules.
@@ -73,6 +76,9 @@ code and runs etylizer over it:
     type specs from external modules. We also need type spec for all bifs and for all
     erlang modules.
   * Check that each top-level functions have a type spec.
+* Generate constraint sets
+* Solve them via `erlang_types` tallying.
+* On error, try to locate the error location within a reasonable timeframe.
 
 ### Rules of hacking
 
@@ -82,4 +88,4 @@ code and runs etylizer over it:
 * Make sure that complicated functions have a short text of documentation.
 * Make sure that complicated functions have unit tests.
 * Make sure that all unit tests are running before comitting: `make test`
-* Make sure the dialyzer is happy before comitting: `make check`
+* Make sure the etylizer and dialyzer is happy before comitting: `make check`
