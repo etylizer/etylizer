@@ -8,7 +8,7 @@ Static typechecker for Erlang based on set-theoretic types.
 
 Try the [playground](https://albsch.github.io/etylizer-editor/) to see how etylizer works for Erlang and Elixir code.
 
-This is the **development** (`dev`) branch.
+This is the **experimental** (`experimental`) branch.
 
 **Branches.**
 
