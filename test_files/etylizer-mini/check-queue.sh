@@ -11,6 +11,7 @@ QF=""
 QF=$QF" -i get/2" # 2)
 QF=$QF" -i get/1" # 1) get/2
 QF=$QF" -i head/1" # 1) get/2
+QF=$QF" -i split/2" # 1) erlang:length on the front list
 ../../ety --type-overlay overlay_queue.erl --no-deps -l info -f stdlib/queue2.erl $QF
 
 ../../ety --report-mode report --report-timeout 150000 --type-overlay overlay_queue.erl --no-deps -f stdlib/queue2.erl

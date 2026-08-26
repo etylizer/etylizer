@@ -45,7 +45,7 @@ insert_if_absent(Key, Val, {What, Map}) ->
 
 -spec range(t(_K, V)) -> [V].
 range({_, Map}) ->
-    lists:map(fun({_, V}) -> V end, maps:to_list(Map)).
+    lists:map(fun({_, V}) -> V end, lists:sort(maps:to_list(Map))).
 
 % Looks up a variable, undefined variables cause an error.
 -spec lookup(ast:loc(), K, t(K, V)) -> V.
