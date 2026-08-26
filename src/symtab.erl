@@ -31,7 +31,8 @@
 
 -ifdef(TEST). % for tally tests
 -export([
-    from_types/1
+    from_types/1,
+    extend_add_record/4
 ]).
 -endif.
 

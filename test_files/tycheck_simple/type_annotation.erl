@@ -54,6 +54,7 @@ assert_04(N) -> ?assert_type(N, atom()). % downcast
 -spec to_upper([byte()]) -> Result when Result :: [byte()] ; (char()) -> char().
 %-spec to_upper([byte()]) -> [byte()] ; (char()) -> char().
 to_upper(_) -> error(impl).
+
 -spec assert_05() -> nonempty_string().
 assert_05() ->
     to_upper(?assert_type("FOO", [byte()])).
