@@ -25,7 +25,11 @@
           % when true, exhaustiveness checking is disabled for the top-level function clauses
           disable_exhaustiveness = false :: boolean(),
           % when true, redundancy checking is disabled for the top-level function clauses
-          disable_redundancy = false :: boolean()
+          disable_redundancy = false :: boolean(),
+          % Local var bindings known at constraint-gen time
+          % e.g. function args from the spec, plus any other refs we want exp_constrs_tyof to resolve
+          % directly to a closed type.
+          env = #{} :: #{ ast:any_ref() => ast:ty() }
         }).
 -type ctx() :: #ctx{}.
 
@@ -94,14 +98,17 @@ gen_constrs_fun_group(ExhaustivenessMode, Symtab, {DisableExhaustiveness, Disabl
 -spec gen_constrs_annotated_fun(feature_flags:exhaustiveness_mode(), symtab:t(), {boolean(), boolean()}, ast:ty_full_fun(), ast:fun_decl()) -> constr:constrs().
 gen_constrs_annotated_fun(ExhaustivenessMode, Symtab, {DisableExhaustiveness, DisableRedundancy}, {fun_full, ArgTys, ResTy}, {function, L, Name, Arity, FunClauses}) ->
     Ctx0 = new_ctx(Symtab, ExhaustivenessMode),
-    Ctx = Ctx0#ctx{ disable_exhaustiveness = DisableExhaustiveness, disable_redundancy = DisableRedundancy },
-    {Args, Body} = fun_clauses_to_exp(Ctx, L, FunClauses),
+    Ctx1 = Ctx0#ctx{ disable_exhaustiveness = DisableExhaustiveness, disable_redundancy = DisableRedundancy },
+    {Args, Body} = fun_clauses_to_exp(Ctx1, L, FunClauses),
     if length(Args) =/= length(ArgTys) orelse length(Args) =/= Arity ->
             errors:ty_error(L, "Arity mismatch for function ~w", Name);
        true -> ok
     end,
     ArgRefs = lists:map(fun(V) -> {local_ref, V} end, Args),
     Env = maps:from_list(lists:zip(ArgRefs, ArgTys)),
+    % thread Env into Ctx so exp_constrs_tyof can resolve arg-var lookups
+    % to their declared (closed) spec types directly
+    Ctx = Ctx1#ctx{ env = Env },
     BodyCs = exps_constrs(Ctx, L, Body, ResTy),
     Msg = utils:sformat("definition of ~w/~w", Name, Arity),
     utils:single({cdef, mk_locs(Msg, L), Env, BodyCs}).
@@ -149,6 +156,16 @@ exp_constrs_tyof(Ctx, E) ->
             RecTy = symtab:lookup_record(RecName, L, Ctx#ctx.symtab),
             {_FieldTy, Idx} = ety_records:lookup_field_index(RecTy, FieldName, L),
             {stdtypes:tint(Idx + 1), sets:new()};
+        {var, _L, AnyRef} ->
+            case maps:find(AnyRef, Ctx#ctx.env) of
+                {ok, ClosedTy} ->
+                    % direct closed type from env
+                    {ClosedTy, sets:new()};
+                error ->
+                    Alpha = fresh_tyvar(Ctx),
+                    Cs = exp_constrs(Ctx, E, Alpha),
+                    {Alpha, Cs}
+            end;
         _ ->
             Alpha = fresh_tyvar(Ctx),
             Cs = exp_constrs(Ctx, E, Alpha),
@@ -884,8 +901,11 @@ case_clause_constrs(Ctx, TyScrut, Scrut, NeedsUnmatchedCheck, LowersBefore,
         pretty:render_mono_env(BodyEnv),
         pretty:render_constr(BodyEnvCs)
     ),
+    % Propagate the clause's pattern bindings (BodyEnv) into the env,
+    % to not mint fresh type variables for bound variables with known types.
+    BodyCtx = Ctx#ctx{ env = intersect_envs(Ctx#ctx.env, BodyEnv) },
     Beta = fresh_tyvar(Ctx),
-    BodyCs = exps_constrs(Ctx, L, Exps, Beta),
+    BodyCs = exps_constrs(BodyCtx, L, Exps, Beta),
     InnerCs = BodyCs,
 
     CGuards =
