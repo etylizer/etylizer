@@ -180,7 +180,11 @@ build_std_symtab(SearchPath, OverlaySymtab, Gradual) ->
         lists:foldl(fun({Name, Arity, T}, Map) -> maps:put({Name, Arity}, T, Map) end,
                     #{},
                     stdtypes:builtin_ops()),
-    Tab = #tab { funs = Funs, ops = Ops, types = #{}, records = #{}, modules = #{}, gradual = Gradual },
+    % pid(T) is a parameterized pid type: pid(T) = pid() in the set-theoretic sense,
+    % but the T parameter is preserved for send-side checking (Pid ! Msg requires Msg <: T).
+    PidOneScm = {ty_scheme, [{a, {predef, any}}], {predef, pid}},
+    BuiltinTypes = #{{ty_key, erlang, pid, 1} => PidOneScm},
+    Tab = #tab { funs = Funs, ops = Ops, types = BuiltinTypes, records = #{}, modules = #{}, gradual = Gradual },
     ExtTab = extend_symtab_with_module_list(Tab, SearchPath, [erlang], OverlaySymtab),
     % Merge overlay types into the main symtab so they are available for type resolution
     ExtTab2 = ExtTab#tab { types = maps:merge(ExtTab#tab.types, OverlaySymtab#tab.types) },
