@@ -7,7 +7,7 @@ has_file_changed_test() ->
     TestFilePath = "./test_files/index/test/module.erl",
     RawForms = parse:parse_file_or_die(TestFilePath),
     Forms = ast_transform:trans(TestFilePath, RawForms),
-    Index = cm_index:insert(TestFilePath, Forms, {{"", ""}, maps:new()}),
+    Index = cm_index:insert(TestFilePath, Forms, [], {{"", ""}, maps:new()}),
     swap_test_files(),
     true = cm_index:has_file_changed(TestFilePath, Index),
     clean_up_test_file().
@@ -17,7 +17,7 @@ has_exported_interface_changed_test() ->
     TestFilePath = "./test_files/index/test/module.erl",
     RawForms = parse:parse_file_or_die(TestFilePath),
     Forms = ast_transform:trans(TestFilePath, RawForms),
-    Index = cm_index:insert(TestFilePath, Forms, {{"", ""}, maps:new()}),
+    Index = cm_index:insert(TestFilePath, Forms, [], {{"", ""}, maps:new()}),
     swap_test_files(),
     ChangedRawForms = parse:parse_file_or_die(TestFilePath),
     ChangedForms = ast_transform:trans(TestFilePath, ChangedRawForms),
