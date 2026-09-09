@@ -168,14 +168,6 @@ explore_function_norm(T1, T2, [Function | P], Fixed, ST0) ->
 irrelevant_arrow_norm(T1, T2, S1, S2) ->
   ty_node:difference(T1, S1) =:= T1 orelse ty_node:intersect(T2, S2) =:= T2.
 
--spec all_variables_line([T], [T], ?LEAF:type(), all_variables_cache()) -> sets:set(variable()) when T :: ?ATOM:type().
-all_variables_line(P, N, Leaf, Cache) ->
-  ?assert_pattern(Leaf, ty_bool:any()),
-  sets:union(
-     [ty_function:all_variables(F, Cache) || F <- P]
-  ++ [ty_function:all_variables(F, Cache) || F <- N]
-  ).
-
 -spec unparse_any() -> ast:ty_fun().
 unparse_any() -> {fun_simple}.
 

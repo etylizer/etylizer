@@ -126,13 +126,6 @@ single(Pol, VPos, VNeg, Ty) ->
     _ -> S
   end.
 
--spec all_variables_line([T], [T], ?LEAF:type(), all_variables_cache()) -> sets:set(variable()) when T :: ?ATOM:type().
-all_variables_line(P, N, Leaf, Cache) ->
-  sets:union([sets:from_list(P),
-              sets:from_list(N),
-              ty_rec:all_variables(Leaf, Cache)
-             ]).
-
 % Substitute variables (Sigma) and node references (NodeMap) in this BDD. 
 % Sigma maps a ty_variable to the ty_node whose BDD replaces it
 % NodeMap remaps the ty_nodes referenced in the ty_rec leaves. 

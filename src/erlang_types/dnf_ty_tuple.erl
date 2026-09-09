@@ -8,7 +8,6 @@
   % exported because other types are encoded via tuples
   is_empty_line/2,
   normalize_line/3,
-  all_variables_line/4,
   phi/3,
   phi_solve/4,
   phi_norm/4,
@@ -163,15 +162,6 @@ phi_norm_solve({Index, {_PComponent, NComponent}}, {Result, ST00}, N, BigS, Fixe
     NewBigS = lists:map(DoDiff, lists:zip(lists:seq(1, length(BigS)), BigS)),
     {Res01, ST01} = phi_norm(NewBigS, N, Fixed, ST00),
     {constraint_set:meet(Result, Res01, Fixed), ST01}.
-
--spec all_variables_line([T], [T], ?LEAF:type(), all_variables_cache()) -> 
-    sets:set(variable()) when T :: ?ATOM:type().
-all_variables_line(P, N, Leaf, Cache) ->
-  ?assert_pattern(Leaf, ty_bool:any()),
-  sets:union(
-     [ty_tuple:all_variables(F, Cache) || F <- P]
-  ++ [ty_tuple:all_variables(F, Cache) || F <- N]
-  ).
 
 -spec unparse_any() -> ast:ty_tuple_any().
 unparse_any() -> {tuple_any}.

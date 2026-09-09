@@ -15,7 +15,6 @@
   is_any/1,
   normalize/3,
   unparse/2,
-  all_variables/2,
   has_negative_only_line/1
 ]).
 
@@ -96,9 +95,6 @@ unparse({Atoms, finite}, ST) ->
   {ast_lib:mk_union(lists:map(fun(A) -> {singleton, A} end, gb_sets:to_list(Atoms))), ST};
 unparse({Atoms, cofinite}, ST) ->
   {ast_lib:mk_negation(ast_lib:mk_union(lists:map(fun(A) -> {singleton, A} end, gb_sets:to_list(Atoms)))), ST}.
-
--spec all_variables(type(), _) -> sets:set(variable()).
-all_variables(_, _) -> sets:new().
 
 -spec has_negative_only_line(type()) -> boolean().
 has_negative_only_line({_, cofinite}) -> true;
