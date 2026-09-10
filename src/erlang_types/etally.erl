@@ -35,6 +35,7 @@ is_tally_satisfiable(Constraints, MonomorphicVariables) ->
     "v2" -> is_satisfiable_v2(Constraints, MonomorphicVariables);
     "v3" -> is_satisfiable_v3(Constraints, MonomorphicVariables);
     "v4" -> is_satisfiable_v4(Constraints, MonomorphicVariables);
+    "saty" -> esaty:is_satisfiable(Constraints, MonomorphicVariables);
     _ -> ?TALLY_DEFAULT()(Constraints, MonomorphicVariables)
   end.
 
