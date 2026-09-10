@@ -112,6 +112,8 @@ maybe_dump_tally_config(Kind, Constraints, FixedVars, SymTab) ->
         false -> ok;
         Sub ->
             case dump_fn_label() of
+                %% no label outside report mode: "*" dumps every call
+                undefined when Sub =:= "*" -> emit_tally_config(Kind, "unlabeled", Constraints, FixedVars, SymTab);
                 undefined -> ok;
                 FnLabel ->
                     case string:str(FnLabel, Sub) of
