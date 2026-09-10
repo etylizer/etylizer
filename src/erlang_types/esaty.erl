@@ -278,11 +278,11 @@ decide([G | Gs], Path, D, Acc, Reads, St = #state{choices = Ch}) ->
 % one activation: it reads into a fresh read set, hands its reads on when it
 % exits, and if it fails before it ever exited, {T, reads} is learned
 -spec empty(ty:type(), reason(), state()) -> boolean().
-empty(T, Path, St = #state{bounds = C, cache = Cache, reads = Reads0, store = Store0, pending = Pending, choices = Ch}) ->
+empty(T, Path, St = #state{fixed = Fixed, bounds = C, cache = Cache, reads = Reads0, store = Store0, pending = Pending, choices = Ch}) ->
   case Cache of
     #{{node, T} := _} -> continue(St);
     _ ->
-      Lines = dnf_ty_variable:minimize_dnf(ty_node:load(T)),
+      Lines = ground_first(dnf_ty_variable:minimize_dnf(ty_node:load(T)), Fixed),
       case known_failure(T, C, Store0, St) of
         {true, Reads} ->
           backtrack(maps:merge(Path, reason_of(Reads, C)), St#state{reads = merge_reads(Reads0, Reads)});
@@ -293,6 +293,14 @@ empty(T, Path, St = #state{bounds = C, cache = Cache, reads = Reads0, store = St
                           pending = [{{exit, Reads0, Tok}, Path} | Pending], choices = [{activation, T, Tok, Reads0} | Ch]})
       end
   end.
+
+%% Lines without a polymorphic variable go first: they are the only ones that
+%% can fail on their own, and a variable line only emits a bound.
+-spec ground_first([L], monomorphic_variables()) -> [L] when L :: {[variable()], [variable()], ty_rec:type()}.
+ground_first(Lines, Fixed) ->
+  {Ground, Poly} = lists:partition(
+    fun({P, N, _}) -> lists:all(fun(V) -> maps:is_key(V, Fixed) end, P ++ N) end, Lines),
+  Ground ++ Poly.
 
 % single out the smallest polymorphic variable 
 % into one one-sided bound
@@ -440,13 +448,17 @@ map_line({Pos, Neg, _}, Path, St) ->
   phi(ty_tuple:components(ty_tuple:big_intersect(Pos)), Neg, Path, St).
 
 -spec phi([ty:type()], [ty_tuple:type()], reason(), state()) -> boolean().
-phi(BigS, Neg, Path, St) ->
-  Components = [{empty, Si} || Si <- BigS],
-  Alternatives = case Neg of
-    [] -> Components;
-    [Ty | N] -> Components ++ [{all, without(BigS, ty_tuple:components(Ty), 1, N)}]
-  end,
-  any_of(Alternatives, Path, St).
+phi(BigS, Neg, Path, St = #state{cache = Cache}) ->
+  case lists:any(fun(Si) -> maps:is_key({node, Si}, Cache) end, BigS) of
+    true -> continue(St);
+    false ->
+      Components = [{empty, Si} || Si <- BigS],
+      Alternatives = case Neg of
+        [] -> Components;
+        [Ty | N] -> Components ++ [{all, without(BigS, ty_tuple:components(Ty), 1, N)}]
+      end,
+      any_of(Alternatives, Path, St)
+  end.
 
 -spec without([ty:type()], [ty:type()], pos_integer(), [ty_tuple:type()]) -> [goal()].
 without(_BigS, [], _I, _N) -> [];
@@ -470,11 +482,15 @@ function_line({Pos, Neg, _}, Path, St) ->
 -spec explore(ty:type(), ty:type(), [ty_function:type()], reason(), state()) -> boolean().
 explore(T1, T2, [], Path, St) ->
   any_of([{empty, T1}, {empty, T2}], Path, St);
-explore(T1, T2, [F | Ps], Path, St) ->
-  S1 = ty_function:domain(F),
-  S2 = ty_function:codomain(F),
-  any_of([{empty, T1},
-          {empty, T2},
-          {all, [{fun_explore, T1, ty_node:intersect(T2, S2), Ps},
-                 {fun_explore, ty_node:difference(T1, S1), T2, Ps}]}],
-         Path, St).
+explore(T1, T2, [F | Ps], Path, St = #state{cache = Cache}) ->
+  case maps:is_key({node, T1}, Cache) orelse maps:is_key({node, T2}, Cache) of
+    true -> continue(St);
+    false ->
+      S1 = ty_function:domain(F),
+      S2 = ty_function:codomain(F),
+      any_of([{empty, T1},
+              {empty, T2},
+              {all, [{fun_explore, T1, ty_node:intersect(T2, S2), Ps},
+                     {fun_explore, ty_node:difference(T1, S1), T2, Ps}]}],
+             Path, St)
+  end.
