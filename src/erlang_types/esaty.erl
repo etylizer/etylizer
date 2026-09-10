@@ -163,7 +163,7 @@
 -type conjuncts() :: [goal()].
 
 % A search goal
-% the lines of a node are goals as they are prepared
+% the lines of a node and their constructor components are goals as they are prepared
 -type goal() :: 
     {input, pos_integer(), ty:type(), ty:type()} % the input constraint A <= B
   | {empty, ty:type()} % make the node empty
@@ -241,7 +241,8 @@ goal(Goal, Path, St) ->
     {consequence, T, PairPath, Read, Epoch} ->
       #state{reads = Reads} = St,
       empty(T, PairPath, St#state{reads = Reads#{Read => Epoch}});
-    {constructors, Leaf} -> constructors_empty(Leaf, Path, St);
+    dead -> backtrack(Path, St);
+    {constructors, Id, Components} -> all_of({constructors, Id}, Components, Path, St);
     {upper, V, U} -> bound(upper, V, U, Path, St);
     {lower, V, L} -> bound(lower, V, L, Path, St);
     {all, Id, Goals} -> all_of(Id, Goals, Path, St);
@@ -389,20 +390,50 @@ empty_node(T, Path, St = #state{fixed = Fixed, bounds = C, cache = Cache, epoch 
 %% of the line -- and a line without one goes to the constructor level, its
 %% monomorphic variables eliminated (Part 1, Lemma C.3/C.11). Constructor
 %% lines go first: they are the only lines that can fail on their own.
--type prepared() :: {constructors, ty_rec:type()} | {upper, variable(), ty:type()} | {lower, variable(), ty:type()}.
+%% A constructor line is prepared too: if one of its basic kinds is not empty
+%% it is a dead line, which goes first since it fails on its own; otherwise
+%% it is the lines of its structured components, each a tuple, function or
+%% map line.
+-type component() :: {tuple_line, tuple_dnf_line()} | {fun_line, function_dnf_line()} | {map_line, map_dnf_line()}.
+-type tuple_dnf_line() :: {[ty_tuple:type()], [ty_tuple:type()], ty_bool:type()}.
+-type function_dnf_line() :: {[ty_function:type()], [ty_function:type()], ty_bool:type()}.
+-type map_dnf_line() :: {[ty_map:type()], [ty_map:type()], ty_bool:type()}.
+-type prepared() :: dead | {constructors, integer(), [component()]}
+                  | {upper, variable(), ty:type()} | {lower, variable(), ty:type()}.
 -spec prepare([{[variable()], [variable()], ty_rec:type()}], monomorphic_variables()) -> [prepared()].
 prepare(Lines, Fixed) ->
   Prepared = [prepare_line(L, Fixed) || L <- Lines],
-  {Constructors, Bounds} = lists:partition(fun({constructors, _}) -> true; (_) -> false end, Prepared),
-  Constructors ++ Bounds.
+  {Dead, Rest} = lists:partition(fun(dead) -> true; (_) -> false end, Prepared),
+  {Constructors, Bounds} = lists:partition(fun({constructors, _, _}) -> true; (_) -> false end, Rest),
+  Dead ++ Constructors ++ Bounds.
 
 -spec prepare_line({[variable()], [variable()], ty_rec:type()}, monomorphic_variables()) -> prepared().
-prepare_line({[], [], Leaf}, _Fixed) -> {constructors, Leaf};
+prepare_line({[], [], Leaf}, _Fixed) -> prepare_constructors(Leaf);
 prepare_line({P, N, Leaf}, Fixed) ->
   case dnf_ty_variable:smallest(P, N, Fixed) of
     {{pos, V}, _} -> {upper, V, ty_node:make(dnf_ty_variable:single(true, P -- [V], N, Leaf))};
     {{neg, V}, _} -> {lower, V, ty_node:make(dnf_ty_variable:single(false, P, N -- [V], Leaf))};
-    {{{delta, _}, _}, _} -> {constructors, Leaf}
+    {{{delta, _}, _}, _} -> prepare_constructors(Leaf)
+  end.
+
+-spec prepare_constructors(ty_rec:type()) -> prepared().
+prepare_constructors(any) -> dead;
+prepare_constructors(empty) -> {constructors, erlang:unique_integer([positive]), []};
+prepare_constructors(TyRec) ->
+  case basic_empty(TyRec) of
+    false -> dead;
+    true ->
+      {TupDefault, TupArities} = ty_rec:pi(TyRec, ty_tuples),
+      {FunDefault, FunArities} = ty_rec:pi(TyRec, ty_functions),
+      Components =
+        [{tuple_line, L} || L <- dnf_ty_list:minimize_dnf(ty_rec:pi(TyRec, dnf_ty_list))] ++
+        [{tuple_line, L} || L <- dnf_ty_bitstring:minimize_dnf(ty_rec:pi(TyRec, dnf_ty_bitstring))] ++
+        [{tuple_line, L} || {_Arity, D} <- lists:sort(maps:to_list(TupArities)), L <- dnf_ty_tuple:minimize_dnf(D)] ++
+        [{tuple_line, L} || L <- dnf_ty_tuple:minimize_dnf(TupDefault)] ++
+        [{fun_line, L} || {_Arity, D} <- lists:sort(maps:to_list(FunArities)), L <- dnf_ty_function:minimize_dnf(D)] ++
+        [{fun_line, L} || L <- dnf_ty_function:minimize_dnf(FunDefault)] ++
+        [{map_line, L} || L <- dnf_ty_map:minimize_dnf(ty_rec:pi(TyRec, dnf_ty_map))],
+      {constructors, erlang:unique_integer([positive]), Components}
   end.
 
 %% A type all of whose variables are monomorphic is a constant for tallying:
@@ -532,30 +563,6 @@ present([Read = {V, Side, Node} | Rest], C, Found) ->
     _ -> false
   end.
 
-
-% A variable-free line is decomposed
--type tuple_dnf_line() :: {[ty_tuple:type()], [ty_tuple:type()], ty_bool:type()}.
--type function_dnf_line() :: {[ty_function:type()], [ty_function:type()], ty_bool:type()}.
--type map_dnf_line() :: {[ty_map:type()], [ty_map:type()], ty_bool:type()}.
--spec constructors_empty(ty_rec:type(), reason(), state()) -> boolean().
-constructors_empty(any, Path, St) -> backtrack(Path, St);
-constructors_empty(empty, _Path, St) -> continue(St);
-constructors_empty(TyRec, Path, St) ->
-  case basic_empty(TyRec) of
-    false -> backtrack(Path, St);
-    true ->
-      {TupDefault, TupArities} = ty_rec:pi(TyRec, ty_tuples),
-      {FunDefault, FunArities} = ty_rec:pi(TyRec, ty_functions),
-      Components =
-        [{tuple_line, L} || L <- dnf_ty_list:minimize_dnf(ty_rec:pi(TyRec, dnf_ty_list))] ++
-        [{tuple_line, L} || L <- dnf_ty_bitstring:minimize_dnf(ty_rec:pi(TyRec, dnf_ty_bitstring))] ++
-        [{tuple_line, L} || {_Arity, D} <- lists:sort(maps:to_list(TupArities)), L <- dnf_ty_tuple:minimize_dnf(D)] ++
-        [{tuple_line, L} || L <- dnf_ty_tuple:minimize_dnf(TupDefault)] ++
-        [{fun_line, L} || {_Arity, D} <- lists:sort(maps:to_list(FunArities)), L <- dnf_ty_function:minimize_dnf(D)] ++
-        [{fun_line, L} || L <- dnf_ty_function:minimize_dnf(FunDefault)] ++
-        [{map_line, L} || L <- dnf_ty_map:minimize_dnf(ty_rec:pi(TyRec, dnf_ty_map))],
-      all_of({constructors, TyRec}, Components, Path, St)
-  end.
 
 -spec basic_empty(ty_rec:type_record()) -> boolean().
 basic_empty(TyRec) ->

@@ -569,7 +569,7 @@ collect_node_refs(Body) ->
     Body).
 
 %% A run-wide memo for SaTy: what the search derives from a node alone.
--spec cached(term(), fun(() -> T)) -> T.
+-spec cached(term(), fun(() -> term())) -> term().
 cached(Key, Compute) ->
   case ets:lookup(?SATYCACHE, Key) of
     [{_, Value}] -> Value;
