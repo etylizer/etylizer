@@ -36,6 +36,7 @@ is_tally_satisfiable(Constraints, MonomorphicVariables) ->
     "v3" -> is_satisfiable_v3(Constraints, MonomorphicVariables);
     "v4" -> is_satisfiable_v4(Constraints, MonomorphicVariables);
     "saty" -> esaty:is_satisfiable(Constraints, MonomorphicVariables);
+    "none" -> true; % measurement: the pipeline cost without any search
     _ -> ?TALLY_DEFAULT()(Constraints, MonomorphicVariables)
   end.
 

@@ -41,6 +41,10 @@
 
   all_variables/1,
   all_variables/2,
+  lines/1,
+  nogoods/2,
+  learn_nogood/3,
+  cached/2,
   substitute/2,
 
   force_load/2
@@ -69,7 +73,10 @@
 -define(NORMCACHE, ty_node_normalize_cache).
 -define(OPCACHE, ty_node_op_cache).
 -define(VARCACHE, ty_node_variables_cache).
--define(ALL_ETS, [?ID, ?SYSTEM, ?P, ?N, ?UNIQUETABLE, ?CACHE, ?NORMCACHE, ?OPCACHE, ?VARCACHE]).
+-define(LINECACHE, ty_node_lines_cache).
+-define(NOGOODS, ty_node_saty_nogoods).
+-define(SATYCACHE, ty_node_saty_cache).
+-define(ALL_ETS, [?ID, ?SYSTEM, ?P, ?N, ?UNIQUETABLE, ?CACHE, ?NORMCACHE, ?OPCACHE, ?VARCACHE, ?LINECACHE, ?NOGOODS, ?SATYCACHE]).
 -define(TY, dnf_ty_variable).
 
 -spec init() -> _.
@@ -560,6 +567,48 @@ collect_node_refs(Body) ->
   utils:everything(
     fun(E = {node, Id}) when is_integer(Id) -> {ok, E}; (_) -> error end,
     Body).
+
+%% A run-wide memo for SaTy: what the search derives from a node alone.
+-spec cached(term(), fun(() -> T)) -> T.
+cached(Key, Compute) ->
+  case ets:lookup(?SATYCACHE, Key) of
+    [{_, Value}] -> Value;
+    _ ->
+      Value = Compute(),
+      ets:insert(?SATYCACHE, [{Key, Value}]),
+      Value
+  end.
+
+%% SaTy nogoods: the sets of bound pieces under which a node could not be
+%% made empty, per node and set of monomorphic variables. A statement about
+%% types, so shared by every problem of the run like the other caches. At
+%% most 32 per node, newest first.
+-spec nogoods(type(), monomorphic_variables()) -> [term()].
+nogoods(Ty, Fixed) ->
+  case ets:lookup(?NOGOODS, {Ty, Fixed}) of
+    [{_, Known}] -> ?assert_type(Known, [term()]);
+    _ -> []
+  end.
+
+-spec learn_nogood(type(), monomorphic_variables(), term()) -> ok.
+learn_nogood(Ty, Fixed, Reads) ->
+  Known = nogoods(Ty, Fixed),
+  case lists:member(Reads, Known) of
+    true -> ok;
+    false -> ets:insert(?NOGOODS, [{{Ty, Fixed}, lists:sublist([Reads | Known], 32)}]), ok
+  end.
+
+%% The minimized DNF lines of a node, cached: SaTy walks them on every
+%% activation of the node.
+-spec lines(type()) -> [{[variable()], [variable()], ty_rec:type()}].
+lines(Ty) ->
+  case ets:lookup(?LINECACHE, Ty) of
+    [{_, Lines}] -> ?assert_type(Lines, [{[variable()], [variable()], ty_rec:type()}]);
+    _ ->
+      Lines = dnf_ty_variable:minimize_dnf(load(Ty)),
+      ets:insert(?LINECACHE, [{Ty, Lines}]),
+      Lines
+  end.
 
 -spec all_variables(type()) -> sets:set(variable()).
 all_variables(Ty) ->
