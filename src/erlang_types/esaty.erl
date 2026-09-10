@@ -54,15 +54,16 @@
 %%               an enclosing activation, the key of an enclosing phi_tuple
 %%               or fun_explore goal to add to X
 %%   backtrack/2 the goal failed: the choice stack is unwound, every handler
-%%               seeing the failure in turn -- the tag of every activation
+%%               seeing the failure in turn -- the continuation nogood of
+%%               every conjunct on the path, the tag of every activation
 %%               whose continuation ran, the nogood of every activation that
 %%               failed on its own -- until a decision the failure depends on
 %%               has an alternative left
 %%
 %% Pending is what is left to do when a goal succeeds, and the choice stack
-%% is what a failure returns through: a decision for every OR on the path,
-%% and every activation started or exited on it. A decision keeps the state
-%% and Pending it was made under, so its next alternative starts from them.
+%% is what a failure returns through: it grows with every conjunct run and
+%% shrinks only when a failure unwinds it. A decision keeps the state and
+%% Pending it was made under, so its next alternative starts from them.
 %% Pending has to be kept and cannot be read off a single stack shared with
 %% the decisions: for A = A1 | A2 followed by B, the decision for A2 is
 %% pushed above B, A1 succeeds and B is popped, B fails, and the alternative
@@ -146,18 +147,26 @@
 -type read() :: {variable(), lower | upper, ty:type()}.
 -type reads() :: #{read() => epoch()}.
 
-% nogoods: the read sets under which empty(T) failed on its own
+% what the search has learned:
+% nogoods, the read sets under which empty(T) failed on its own,
+% and continuation nogoods, per activation, the read sets under which the
+% rest of a conjunction from a given position failed
 -type store() :: #{ty:type() => [reads()]}.
+-type conts() :: #{integer() => #{term() => [reads()]}}.
+-record(learned, {nogoods :: store(), conts :: conts()}).
+-type learned() :: #learned{}.
 
 % conjunction of goals
 -type conjuncts() :: [goal()].
 
 % A search goal
 -type goal() :: 
-    {empty, ty:type()} % make the node empty
+    {input, pos_integer(), ty:type(), ty:type()} % the input constraint A <= B
+  | {empty, ty:type()} % make the node empty
   | {consequence, ty:type(), reason(), read(), epoch()} % a piece pair, reading one of them
   | {line, {[variable()], [variable()], ty_rec:type()}} % a DNF line of a node
-  | {all, conjuncts()} % a conjunction of goals; disjunctions are not part of goals
+  | {all, term(), conjuncts()} % a conjunction of goals; disjunctions are not part of goals
+  | {all_from, {term(), pos_integer()}, conjuncts()} % the rest of a conjunction from a position on
   % decomposition of tuples
   | {tuple_line, tuple_dnf_line()}
   | {phi_tuple, [ty:type()], [ty_tuple:type()]}
@@ -167,7 +176,7 @@
   % decomposition of maps
   | {map_line, map_dnf_line()}
   % bookkeeping
-  | {exit, reads(), integer()} % leave an activation: its reads, its token
+  | {exit, reads(), integer(), integer()} % leave an activation: its reads, the enclosing token, its own
   | {achieve, cached_goal()}. % a phi_tuple or fun_explore goal completed
 
 % pending is the rest of the search after a goal succeeds,
@@ -176,7 +185,8 @@
 
 % what a failure meets on its way back, innermost first:
 % disjunctions are the decisions to backtrack to
--type choice() :: {decide, untried_alternatives(), state(), reason(), integer(), reason(), reads()} % a decision: its untried alternatives and state
+-type choice() :: {cont, integer(), {term(), pos_integer()}, epoch()} % a conjunct ran: learn a continuation nogood
+                 | {decide, untried_alternatives(), state(), reason(), integer(), reason(), reads()} % a decision: its untried alternatives and state
                  | {tag, integer()}                                   % an activation exited: its continuation failed
                  | {activation, ty:type(), integer(), epoch(), reads()}. % an activation started: learn its nogood
 -type untried_alternatives() :: [goal()]. % can be empty
@@ -197,8 +207,10 @@
   epoch :: epoch(),
   % the pieces the current activation has read
   reads :: reads(),
-  % the nogoods learned so far, kept when backtracking
-  store :: store(),
+  % the activation the search is in
+  tok :: integer(),
+  % what the search has learned, kept when backtracking
+  learned :: learned(),
   % worklist for goals to be done
   pending :: pending(),
   % choices for backtracking
@@ -209,30 +221,35 @@
 % all input constraints empty -> satisfiable
 -spec is_satisfiable(input_constraints(), monomorphic_variables()) -> boolean().
 is_satisfiable(Constraints, Fixed) ->
-  Goals = [{empty, ty_node:difference(S, T)} || {S, T} <- Constraints],
-  St = #state{fixed = Fixed, bounds = #{}, cache = #{}, epoch = 0, reads = #{}, store = #{}, pending = [{{all, Goals}, #{}}], choices = []},
+  %% each input constraint runs under its own tag, so a refutation's reason
+  %% names the constraints it used: an unsatisfiable core
+  Goals = [{input, I, A, B} || {I, {A, B}} <- lists:enumerate(Constraints)],
+  St = #state{fixed = Fixed, bounds = #{}, cache = #{}, epoch = 0, reads = #{}, tok = 0,
+              learned = #learned{nogoods = #{}, conts = #{}}, pending = [{{all, inputs, Goals}, #{}}], choices = []},
   continue(St).
 
 % run one goal under the decisions its existence depends on
 -spec goal(goal(), reason(), state()) -> boolean().
 goal(Goal, Path, St) ->
   case Goal of
+    {input, I, A, B} -> empty(ty_node:difference(A, B), #{{input, I} => []}, St);
     {empty, T} -> empty(T, Path, St);
     {consequence, T, PairPath, Read, Epoch} ->
       #state{reads = Reads} = St,
       empty(T, PairPath, St#state{reads = Reads#{Read => Epoch}});
     {line, L} -> line(L, Path, St);
-    {all, Goals} -> all_of(Goals, Path, St);
+    {all, Id, Goals} -> all_of(Id, Goals, Path, St);
+    {all_from, Pos, Goals} -> all_from(Pos, Goals, Path, St);
     {tuple_line, L} -> tuple_line(L, Path, St);
     {phi_tuple, BigS, Neg} -> phi(BigS, Neg, Path, St);
     {fun_line, L} -> function_line(L, Path, St);
     {fun_explore, T1, T2, P} -> explore(T1, T2, P, Path, St);
     {map_line, L} -> map_line(L, Path, St);
-    {exit, Reads0, Tok} ->
+    {exit, Reads0, Tok0, Tok} ->
       % the activation hands its reads on; from here on a failure is one of
       % the rest of the search, which the tag tells its activation
       #state{reads = ReadsIn, choices = Ch} = St,
-      continue(St#state{reads = maps:merge(Reads0, ReadsIn), choices = [{tag, Tok} | Ch]});
+      continue(St#state{reads = maps:merge(Reads0, ReadsIn), tok = Tok0, choices = [{tag, Tok} | Ch]});
     {achieve, Key} ->
       #state{cache = Cache} = St,
       continue(St#state{cache = Cache#{Key => []}})
@@ -246,39 +263,56 @@ continue(St = #state{pending = [{G, Path} | Pending]}) ->
   goal(G, Path, St#state{pending = Pending}).
 
 % when there is a conflict for reason R, having read the reads of the state,
-% with what was learned in its store:
+% with what was learned in it:
 % every handler on the choice stack sees the conflict in turn,
 % until a decision R depends on has an alternative left.
 % if there is none, the constraints are unsatisfiable.
 -spec backtrack(reason(), state()) -> boolean().
 backtrack(_R, #state{choices = []}) -> false;
-backtrack(R, St = #state{reads = Reads, store = Store, choices = [{decide, UntriedAlternatives, Saved, Path, D, Acc, ReadsAcc} | Ch]}) ->
+backtrack(R, St = #state{reads = Reads, learned = Learned, choices = [{cont, Tok, Pos, E} | Ch]}) ->
+  Found = maps:filter(fun(_, Ep) -> Ep < E end, Reads),
+  backtrack(R, St#state{learned = learn_cont(Tok, Pos, Found, Learned), choices = Ch});
+backtrack(R, St = #state{reads = Reads, learned = Learned, choices = [{decide, UntriedAlternatives, Saved, Path, D, Acc, ReadsAcc} | Ch]}) ->
   case R of
     #{D := _} ->
-      decide(UntriedAlternatives, Path, D, maps:merge(Acc, R), maps:merge(ReadsAcc, Reads), Saved#state{store = Store});
+      decide(UntriedAlternatives, Path, D, maps:merge(Acc, R), maps:merge(ReadsAcc, Reads), Saved#state{learned = Learned});
     _ ->
       backtrack(R, St#state{choices = Ch})
   end;
 backtrack(R, St = #state{choices = [{tag, Tok} | Ch]}) ->
   backtrack(R#{Tok => []}, St#state{choices = Ch});
-backtrack(R, St = #state{reads = ReadsIn, store = Store, choices = [{activation, T, Tok, E0, Reads0} | Ch]}) ->
+backtrack(R, St = #state{reads = ReadsIn, learned = Learned, choices = [{activation, T, Tok, E0, Reads0} | Ch]}) ->
+  Learned1 = forget_conts(Tok, Learned),
   case R of
     #{Tok := _} ->
-      backtrack(maps:remove(Tok, R), St#state{choices = Ch});
+      backtrack(maps:remove(Tok, R), St#state{learned = Learned1, choices = Ch});
     _ ->
       Found = maps:filter(fun(_, E) -> E < E0 end, ReadsIn),
-      backtrack(R, St#state{reads = maps:merge(Reads0, ReadsIn), store = learn(T, Found, Store), choices = Ch})
+      backtrack(R, St#state{reads = maps:merge(Reads0, ReadsIn), learned = learn(T, Found, Learned1), choices = Ch})
   end.
 
 % a conjunction: 
 % runs the first goal now, and remembers the rest in pending (for success)
 % under the decisions the conjunction depends on
 % an empty conjunction holds
--spec all_of(conjuncts(), reason(), state()) -> boolean().
-all_of([], _Path, St) -> continue(St);
-all_of([G], Path, St) -> goal(G, Path, St);
-all_of([G | Gs], Path, St = #state{pending = Pending}) ->
-  goal(G, Path, St#state{pending = [{{all, Gs}, Path} | Pending]}).
+% every conjunction has a structural id; the rest of the conjunction from
+% position I, with what follows it, is the same search whenever it is reached
+% again within the same activation; when it fails, the pieces it read that
+% existed at that point are a continuation nogood, and a later arrival at
+% that position under those pieces fails at once
+-spec all_of(term(), conjuncts(), reason(), state()) -> boolean().
+all_of(Id, Goals, Path, St) -> all_from({Id, 1}, Goals, Path, St).
+
+-spec all_from({term(), pos_integer()}, conjuncts(), reason(), state()) -> boolean().
+all_from(_Pos, [], _Path, St) -> continue(St);
+all_from(Pos = {Id, I}, [G | Gs], Path, St = #state{bounds = C, epoch = E, reads = Reads0, tok = Tok, learned = Learned, pending = Pending, choices = Ch}) ->
+  case known_cont(Tok, Pos, C, Learned) of
+    {true, Reads, Reason} ->
+      backtrack(maps:merge(Path, Reason), St#state{reads = maps:merge(Reads0, Reads)});
+    false ->
+      Pending1 = case Gs of [] -> Pending; _ -> [{{all_from, {Id, I + 1}, Gs}, Path} | Pending] end,
+      goal(G, Path, St#state{pending = Pending1, choices = [{cont, Tok, Pos, E} | Ch]})
+  end.
 
 % a disjunction: a decision
 % runs the first goal now, and remembers the rest 
@@ -308,19 +342,19 @@ decide([G | Gs], Path, D, Acc, Reads, St = #state{choices = Ch}) ->
 % exits, and if it fails before it ever exited, {T, the pieces it read that
 % predate it} is learned
 -spec empty(ty:type(), reason(), state()) -> boolean().
-empty(T, Path, St = #state{fixed = Fixed, bounds = C, cache = Cache, epoch = E0, reads = Reads0, store = Store0, pending = Pending, choices = Ch}) ->
+empty(T, Path, St = #state{fixed = Fixed, bounds = C, cache = Cache, epoch = E0, reads = Reads0, tok = Tok0, learned = Learned0, pending = Pending, choices = Ch}) ->
   case Cache of
     #{{node, T} := _} -> continue(St);
     _ ->
-      case known_failure(T, C, Store0) of
+      case known_failure(T, C, Learned0) of
         {true, Reads, Reason} ->
           backtrack(maps:merge(Path, Reason), St#state{reads = maps:merge(Reads0, Reads)});
         false ->
           Tok = erlang:unique_integer([positive]),
           Lines = ground_first(dnf_ty_variable:minimize_dnf(ty_node:load(T)), Fixed),
-          all_of([{line, L} || L <- Lines], Path,
-                 St#state{cache = Cache#{{node, T} => []}, reads = #{},
-                          pending = [{{exit, Reads0, Tok}, Path} | Pending], choices = [{activation, T, Tok, E0, Reads0} | Ch]})
+          all_of({lines, T}, [{line, L} || L <- Lines], Path,
+                 St#state{cache = Cache#{{node, T} => []}, reads = #{}, tok = Tok,
+                          pending = [{{exit, Reads0, Tok0, Tok}, Path} | Pending], choices = [{activation, T, Tok, E0, Reads0} | Ch]})
       end
   end.
 
@@ -369,7 +403,7 @@ bound(Mode, V, B, Path, St = #state{bounds = C, epoch = E}) ->
   St1 = St#state{bounds = C#{V => {L, U, Ls1, Us1}}, epoch = E + 1},
   case {L, U} of
     {CL, CU} when is_map_key(V, C) -> continue(St); % implied; a fresh variable still records its piece
-    _ -> consequences([pair(Mode, V, Piece, Other) || Other <- Others], St1)
+    _ -> consequences({Mode, V, B}, [pair(Mode, V, Piece, Other) || Other <- Others], St1)
   end.
 
 % a new piece against a piece on the other side: lower <= upper,
@@ -381,20 +415,38 @@ pair(lower, V, {L, Path, _}, {U, RU, EU}) -> {ty_node:difference(L, U), maps:mer
 %% The consequences of a new piece: for every piece on the other side, the
 %% pair must satisfy lower <= upper. Each is an empty goal under the two
 %% pieces' reasons, and reads the piece it was paired with.
--spec consequences([{ty:type(), reason(), read(), epoch()}], state()) -> boolean().
-consequences(Pairs, St) ->
-  all_of([{consequence, T, Path, Read, Epoch} || {T, Path, Read, Epoch} <- Pairs], #{}, St).
+-spec consequences(term(), [{ty:type(), reason(), read(), epoch()}], state()) -> boolean().
+consequences(Id, Pairs, St) ->
+  all_of(Id, [{consequence, T, Path, Read, Epoch} || {T, Path, Read, Epoch} <- Pairs], #{}, St).
 
--spec learn(ty:type(), reads(), store()) -> store().
-learn(T, Reads, Store) ->
+-spec learn(ty:type(), reads(), learned()) -> learned().
+learn(T, Reads, Learned = #learned{nogoods = Store}) ->
   Known = maps:get(T, Store, []),
-  Store#{T => lists:sublist([Reads | Known], ?NOGOODS_PER_NODE)}.
+  Learned#learned{nogoods = Store#{T => lists:sublist([Reads | Known], ?NOGOODS_PER_NODE)}}.
+
+-spec learn_cont(integer(), {term(), pos_integer()}, reads(), learned()) -> learned().
+learn_cont(Tok, Pos, Reads, Learned = #learned{conts = Conts}) ->
+  Mine = maps:get(Tok, Conts, #{}),
+  Known = maps:get(Pos, Mine, []),
+  Learned#learned{conts = Conts#{Tok => Mine#{Pos => lists:sublist([Reads | Known], ?NOGOODS_PER_NODE)}}}.
+
+%% An activation's continuation nogoods die with it.
+-spec forget_conts(integer(), learned()) -> learned().
+forget_conts(Tok, Learned = #learned{conts = Conts}) ->
+  Learned#learned{conts = maps:remove(Tok, Conts)}.
+
+-spec known_cont(integer(), {term(), pos_integer()}, bounds(), learned()) -> false | {true, reads(), reason()}.
+known_cont(Tok, Pos, C, #learned{conts = Conts}) ->
+  case Conts of
+    #{Tok := #{Pos := Known}} -> match_nogoods(Known, C);
+    _ -> false
+  end.
 
 %% A nogood applies when every piece it read is present. Its reads come back
 %% with the pieces' current epochs, and its reason is the pieces' current
 %% reasons.
--spec known_failure(ty:type(), bounds(), store()) -> false | {true, reads(), reason()}.
-known_failure(T, C, Store) ->
+-spec known_failure(ty:type(), bounds(), learned()) -> false | {true, reads(), reason()}.
+known_failure(T, C, #learned{nogoods = Store}) ->
   case Store of
     #{T := Known} -> match_nogoods(Known, C);
     _ -> false
@@ -443,7 +495,7 @@ constructors_empty(TyRec, Path, St) ->
         [{fun_line, L} || {_Arity, D} <- lists:sort(maps:to_list(FunArities)), L <- dnf_ty_function:minimize_dnf(D)] ++
         [{fun_line, L} || L <- dnf_ty_function:minimize_dnf(FunDefault)] ++
         [{map_line, L} || L <- dnf_ty_map:minimize_dnf(ty_rec:pi(TyRec, dnf_ty_map))],
-      all_of(Components, Path, St)
+      all_of({constructors, TyRec}, Components, Path, St)
   end.
 
 -spec basic_empty(ty_rec:type_record()) -> boolean().
@@ -481,7 +533,7 @@ phi(BigS, Neg, Path, St = #state{cache = Cache, pending = Pending}) ->
           Components = [{empty, Si} || Si <- BigS],
           Alternatives = case Neg of
             [] -> Components;
-            [Ty | N] -> Components ++ [{all, without(BigS, ty_tuple:components(Ty), 1, N)}]
+            [Ty | N] -> Components ++ [{all, {Key, phi_tuple_without}, without(BigS, ty_tuple:components(Ty), 1, N)}]
           end,
           any_of(Alternatives, Path, St#state{pending = [{{achieve, Key}, Path} | Pending]})
       end
@@ -501,8 +553,9 @@ function_line({Pos, Neg, _}, Path, St) ->
   Dom = ty_node:disjunction([ty_function:domain(F) || F <- Pos]),
   NotDom = ty_node:negate(Dom),
   Alternatives =
-    [{all, [{empty, ty_node:intersect(ty_function:domain(F), NotDom)},
-            {fun_explore, ty_function:domain(F), ty_node:negate(ty_function:codomain(F)), Pos}]}
+    [{all, {fun_phi_refute, Pos, F},
+      [{empty, ty_node:intersect(ty_function:domain(F), NotDom)},
+       {fun_explore, ty_function:domain(F), ty_node:negate(ty_function:codomain(F)), Pos}]}
      || F <- Neg],
   any_of(Alternatives, Path, St).
 
@@ -520,8 +573,9 @@ explore(T1, T2, P, Path, St = #state{cache = Cache, pending = Pending}) ->
             [F | Ps] ->
               S1 = ty_function:domain(F),
               S2 = ty_function:codomain(F),
-              [{all, [{fun_explore, T1, ty_node:intersect(T2, S2), Ps},
-                      {fun_explore, ty_node:difference(T1, S1), T2, Ps}]}]
+              [{all, {Key, fun_phi},
+                [{fun_explore, T1, ty_node:intersect(T2, S2), Ps},
+                 {fun_explore, ty_node:difference(T1, S1), T2, Ps}]}]
           end,
           any_of([{empty, T1}, {empty, T2} | Split], Path, St#state{pending = [{{achieve, Key}, Path} | Pending]})
       end
