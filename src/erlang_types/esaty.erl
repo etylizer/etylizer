@@ -341,8 +341,8 @@ bound(Mode, V, B, Path, St = #state{bounds = C, reads = Reads}) ->
   {CL, CU, RL, RU} = maps:get(V, C, {Empty, Any, #{}, #{}}),
   {L, U, RL1, RU1, OtherTrivial} =
     case Mode of
-      upper -> {CL, ty_node:intersect(B, CU), RL, maps:merge(RU, Path), CL =:= Empty};
-      lower -> {ty_node:union(B, CL), CU, maps:merge(RL, Path), RU, CU =:= Any}
+      upper -> {CL, intersect_bound(B, CU), RL, maps:merge(RU, Path), CL =:= Empty};
+      lower -> {union_bound(B, CL), CU, maps:merge(RL, Path), RU, CU =:= Any}
     end,
   St1 = St#state{reads = read(V, CL, CU, Reads)},
   St2 = St1#state{bounds = C#{V => {L, U, RL1, RU1}}},
@@ -511,4 +511,23 @@ explore(T1, T2, P = [F | Ps], Path, St = #state{cache = Cache, pending = Pending
                          {fun_explore, ty_node:difference(T1, S1), T2, Ps}]}],
                  Path, St#state{pending = [{{achieve, Key}, Path} | Pending]})
       end
+  end.
+
+% identical nodes need no engine call; the empty and any nodes are units
+-spec union_bound(T, T) -> T when T :: ty:type().
+union_bound(A, A) -> A;
+union_bound(A, B) ->
+  case ty_node:empty() of
+    A -> B;
+    B -> A;
+    _ -> ty_node:union(A, B)
+  end.
+
+-spec intersect_bound(T, T) -> T when T :: ty:type().
+intersect_bound(A, A) -> A;
+intersect_bound(A, B) ->
+  case ty_node:any() of
+    A -> B;
+    B -> A;
+    _ -> ty_node:intersect(A, B)
   end.
