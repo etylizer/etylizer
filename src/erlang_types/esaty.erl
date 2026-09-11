@@ -49,7 +49,8 @@
 %%   goal/3      runs a goal under the current state and path
 %%   continue/1  the goal succeeded: the next goal on Pending runs -- the
 %%               remaining conjuncts of an enclosing conjunction, the exit of
-%%               an enclosing activation
+%%               an enclosing activation, the key of an enclosing phi_tuple
+%%               or fun_explore goal to add to X
 %%   backtrack/2 the goal failed: the choice stack is unwound, every handler
 %%               seeing the failure in turn -- the tag of every activation
 %%               whose continuation ran, the nogood of every activation that
@@ -123,7 +124,10 @@
 
 % the cache for the coinductive hypothesis,
 % is modified when empty(T) starts
--type cache() :: memo_set({node, ty:type()}).
+% and when a phi_tuple or fun_explore goal completes
+-type cache() :: memo_set({node, ty:type()} | cached_goal()).
+-type cached_goal() :: {phi_tuple, [ty:type()], [ty_tuple:type()]}
+                     | {fun_explore, ty:type(), ty:type(), [ty_function:type()]}.
 
 % the bounds an activation has read, first read wins
 -type reads() :: #{variable() => {ty:type(), ty:type()}}.
@@ -148,7 +152,8 @@
   % decomposition of maps
   | {map_line, map_dnf_line()}
   % bookkeeping
-  | {exit, reads(), integer()}. % leave an activation: its reads, its token
+  | {exit, reads(), integer()} % leave an activation: its reads, its token
+  | {achieve, cached_goal()}. % a phi_tuple or fun_explore goal completed
 
 % pending is the rest of the search after a goal succeeds,
 % each goal with the decisions it depends on
@@ -171,7 +176,7 @@
   % until either a conflict occurs and the search backtracks to the latest decision it depends on (restoring bounds),
   % or all goals succeed and the refined bounds can be used to compute a valid (i.e. saturated) substitution
   bounds :: bounds(),
-  % cache used for coinductive hypothesis
+  % cache used for coinductive hypothesis and completed goals
   cache :: cache(),
   % the bounds the current activation has read
   reads :: reads(),
@@ -207,7 +212,10 @@ goal(Goal, Path, St) ->
       % the activation hands its reads on; from here on a failure is one of
       % the rest of the search, which the tag tells its activation
       #state{reads = ReadsIn, choices = Ch} = St,
-      continue(St#state{reads = merge_reads(Reads0, ReadsIn), choices = [{tag, Tok} | Ch]})
+      continue(St#state{reads = merge_reads(Reads0, ReadsIn), choices = [{tag, Tok} | Ch]});
+    {achieve, Key} ->
+      #state{cache = Cache} = St,
+      continue(St#state{cache = Cache#{Key => []}})
   end.
 
 % run the next pending goal under the decisions it depends on
@@ -448,16 +456,21 @@ map_line({Pos, Neg, _}, Path, St) ->
   phi(ty_tuple:components(ty_tuple:big_intersect(Pos)), Neg, Path, St).
 
 -spec phi([ty:type()], [ty_tuple:type()], reason(), state()) -> boolean().
-phi(BigS, Neg, Path, St = #state{cache = Cache}) ->
-  case lists:any(fun(Si) -> maps:is_key({node, Si}, Cache) end, BigS) of
-    true -> continue(St);
-    false ->
-      Components = [{empty, Si} || Si <- BigS],
-      Alternatives = case Neg of
-        [] -> Components;
-        [Ty | N] -> Components ++ [{all, without(BigS, ty_tuple:components(Ty), 1, N)}]
-      end,
-      any_of(Alternatives, Path, St)
+phi(BigS, Neg, Path, St = #state{cache = Cache, pending = Pending}) ->
+  Key = {phi_tuple, BigS, Neg},
+  case Cache of
+    #{Key := _} -> continue(St);
+    _ ->
+      case lists:any(fun(Si) -> maps:is_key({node, Si}, Cache) end, BigS) of
+        true -> continue(St#state{cache = Cache#{Key => []}});
+        false ->
+          Components = [{empty, Si} || Si <- BigS],
+          Alternatives = case Neg of
+            [] -> Components;
+            [Ty | N] -> Components ++ [{all, without(BigS, ty_tuple:components(Ty), 1, N)}]
+          end,
+          any_of(Alternatives, Path, St#state{pending = [{{achieve, Key}, Path} | Pending]})
+      end
   end.
 
 -spec without([ty:type()], [ty:type()], pos_integer(), [ty_tuple:type()]) -> [goal()].
@@ -482,15 +495,20 @@ function_line({Pos, Neg, _}, Path, St) ->
 -spec explore(ty:type(), ty:type(), [ty_function:type()], reason(), state()) -> boolean().
 explore(T1, T2, [], Path, St) ->
   any_of([{empty, T1}, {empty, T2}], Path, St);
-explore(T1, T2, [F | Ps], Path, St = #state{cache = Cache}) ->
-  case maps:is_key({node, T1}, Cache) orelse maps:is_key({node, T2}, Cache) of
-    true -> continue(St);
-    false ->
-      S1 = ty_function:domain(F),
-      S2 = ty_function:codomain(F),
-      any_of([{empty, T1},
-              {empty, T2},
-              {all, [{fun_explore, T1, ty_node:intersect(T2, S2), Ps},
-                     {fun_explore, ty_node:difference(T1, S1), T2, Ps}]}],
-             Path, St)
+explore(T1, T2, P = [F | Ps], Path, St = #state{cache = Cache, pending = Pending}) ->
+  Key = {fun_explore, T1, T2, P},
+  case Cache of
+    #{Key := _} -> continue(St);
+    _ ->
+      case maps:is_key({node, T1}, Cache) orelse maps:is_key({node, T2}, Cache) of
+        true -> continue(St#state{cache = Cache#{Key => []}});
+        false ->
+          S1 = ty_function:domain(F),
+          S2 = ty_function:codomain(F),
+          any_of([{empty, T1},
+                  {empty, T2},
+                  {all, [{fun_explore, T1, ty_node:intersect(T2, S2), Ps},
+                         {fun_explore, ty_node:difference(T1, S1), T2, Ps}]}],
+                 Path, St#state{pending = [{{achieve, Key}, Path} | Pending]})
+      end
   end.
