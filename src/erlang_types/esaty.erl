@@ -92,6 +92,8 @@
 %% in the search state and comes back in failures, so what a failed branch
 %% learned is known to every later one.
 %%
+%% Ground goals -- types whose variables are all monomorphic -- are decided
+%% by the subtyping engine (ty_node:is_empty, cached in ETS), never walked.
 %% The coinductive hypotheses of the emptiness algorithm and the goals
 %% already achieved on the current path live in X, threaded in the search
 %% state along Pending: a recursive type met again is assumed empty, and a
@@ -346,15 +348,23 @@ empty(T, Path, St = #state{fixed = Fixed, bounds = C, cache = Cache, epoch = E0,
   case Cache of
     #{{node, T} := _} -> continue(St);
     _ ->
-      case known_failure(T, C, Learned0) of
-        {true, Reads, Reason} ->
-          backtrack(maps:merge(Path, Reason), St#state{reads = maps:merge(Reads0, Reads)});
+      case is_ground(T, Fixed) of
+        true ->
+          case ty_node:is_empty(T) of
+            true -> continue(St);
+            false -> backtrack(Path, St)
+          end;
         false ->
-          Tok = erlang:unique_integer([positive]),
-          Lines = ground_first(dnf_ty_variable:minimize_dnf(ty_node:load(T)), Fixed),
-          all_of({lines, T}, [{line, L} || L <- Lines], Path,
-                 St#state{cache = Cache#{{node, T} => []}, reads = #{}, tok = Tok,
-                          pending = [{{exit, Reads0, Tok0, Tok}, Path} | Pending], choices = [{activation, T, Tok, E0, Reads0} | Ch]})
+          case known_failure(T, C, Learned0) of
+            {true, Reads, Reason} ->
+              backtrack(maps:merge(Path, Reason), St#state{reads = maps:merge(Reads0, Reads)});
+            false ->
+              Tok = erlang:unique_integer([positive]),
+              Lines = ground_first(dnf_ty_variable:minimize_dnf(ty_node:load(T)), Fixed),
+              all_of({lines, T}, [{line, L} || L <- Lines], Path,
+                     St#state{cache = Cache#{{node, T} => []}, reads = #{}, tok = Tok,
+                              pending = [{{exit, Reads0, Tok0, Tok}, Path} | Pending], choices = [{activation, T, Tok, E0, Reads0} | Ch]})
+          end
       end
   end.
 
@@ -365,6 +375,13 @@ ground_first(Lines, Fixed) ->
   {Ground, Poly} = lists:partition(
     fun({P, N, _}) -> lists:all(fun(V) -> maps:is_key(V, Fixed) end, P ++ N) end, Lines),
   Ground ++ Poly.
+
+%% A type all of whose variables are monomorphic is a constant for tallying:
+%% the subtyping engine decides it, treating those variables as atoms exactly
+%% as the delta rule of normalize_line does.
+-spec is_ground(ty:type(), monomorphic_variables()) -> boolean().
+is_ground(T, Fixed) ->
+  lists:all(fun(V) -> maps:is_key(V, Fixed) end, sets:to_list(ty_node:all_variables(T))).
 
 % single out the smallest polymorphic variable 
 % into one one-sided bound
