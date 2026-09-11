@@ -17,7 +17,7 @@
 -include("sanity.hrl").
 -include("constraints.hrl").
 
--define(TALLY_DEFAULT(), is_satisfiable_v4).
+-define(TALLY_DEFAULT(), esaty:is_satisfiable).
 
 -type normalized_set_of_constraint_sets() :: set_of_constraint_sets(). % normalized set of constraint sets
 -type solutions() :: set_of_constraint_sets(). % saturated set of constraint sets
