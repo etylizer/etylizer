@@ -22,11 +22,11 @@
 %% single(...) or single(...) <= alpha, the NTLV rule -- which is merged
 %% into C on the spot. When the merge tightens an existing bound, the
 %% consequence that saturation would add later is itself an empty goal run
-%% right away, on the tightened pair: CL \ (CU & U) (resp. (CL | L) \ CU).
-%% The search succeeds when Pending is exhausted: every line consumed, every
-%% consequence established, C saturated by construction. It fails when the
-%% choice stack is: every alternative refuted. The correspondence with a SAT
-%% solver:
+%% right away: only the *incremental* part CL \ U (resp. L \ CU), never the
+%% accumulated pair. The search succeeds when Pending is exhausted: every line
+%% consumed, every consequence established, C saturated by construction. It
+%% fails when the choice stack is: every alternative refuted. The
+%% correspondence with a SAT solver:
 %%
 %%   partial assignment      the bound map C : variable -> {Lower, Upper}
 %%   literal                 one one-sided bound from the NTLV rule
@@ -98,7 +98,9 @@
 %% decompositions, with prunings that lose no answer. A goal achieved on the
 %% path is not redone (C already lies inside it, the other alternatives only
 %% tighten C, and any path below a tighter set has a solution that also
-%% satisfies C and the pending goals). A backjump skips alternatives only
+%% satisfies C and the pending goals). The consequence of a tightened pair is
+%% its incremental part: every pair (lower piece, upper piece) is covered
+%% when the later of the two arrives. A backjump skips alternatives only
 %% when the failure read no bound that the decision produced, so the same
 %% failure exists under every alternative. And a nogood is reused only where
 %% every bound it read has the same value.
@@ -330,9 +332,10 @@ line({P, N, Leaf}, Path, St = #state{fixed = Fixed}) ->
   end.
 
 % alpha <= B (upper) or B <= alpha (lower), a piece depending on Path
-% Tightening an existing bound creates a new empty goal on L \ U
+% Tightening an existing bound creates a new empty goal on the incremental part,
+% the new piece against the other side: CL \ B (upper) or B \ CU (lower),
 % unless its trivial empty below or any above;
-% the goal depends on the reasons of both whole sides
+% the goal depends on both pieces' reasons
 % both current bounds are read
 -spec bound(upper | lower, variable(), ty:type(), reason(), state()) -> boolean().
 bound(Mode, V, B, Path, St = #state{bounds = C, reads = Reads}) ->
@@ -349,7 +352,9 @@ bound(Mode, V, B, Path, St = #state{bounds = C, reads = Reads}) ->
   case {L, U} of
     {CL, CU} when is_map_key(V, C) -> continue(St1); % implied; a fresh variable still records its bound
     _ when OtherTrivial -> continue(St2);
-    _ -> empty(ty_node:difference(L, U), maps:merge(RL1, RU1), St2)
+    _ ->
+      {PL, PU, R} = case Mode of upper -> {CL, B, RL}; lower -> {B, CU, RU} end,
+      empty(ty_node:difference(PL, PU), maps:merge(R, Path), St2)
   end.
 
 
