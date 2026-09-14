@@ -68,7 +68,8 @@
 -define(CACHE, ty_node_cache).
 -define(NORMCACHE, ty_node_normalize_cache).
 -define(OPCACHE, ty_node_op_cache).
--define(ALL_ETS, [?ID, ?SYSTEM, ?P, ?N, ?UNIQUETABLE, ?CACHE, ?NORMCACHE, ?OPCACHE]).
+-define(VARCACHE, ty_node_variables_cache).
+-define(ALL_ETS, [?ID, ?SYSTEM, ?P, ?N, ?UNIQUETABLE, ?CACHE, ?NORMCACHE, ?OPCACHE, ?VARCACHE]).
 -define(TY, dnf_ty_variable).
 
 -spec init() -> _.
@@ -562,7 +563,70 @@ collect_node_refs(Body) ->
 
 -spec all_variables(type()) -> sets:set(variable()).
 all_variables(Ty) ->
-  all_variables(Ty, #{}).
+  case ets:lookup(?VARCACHE, Ty) of
+    [{_, Result}] -> ?assert_type(Result, sets:set(variable()));
+    _ ->
+      %% Every node reachable from Ty that is not cached yet is walked once,
+      %% the strongly connected components of that graph are computed, and
+      %% each component gets one set -- its members reach each other, so they
+      %% reach the same nodes -- which is cached for all of them. The search
+      %% asks for the variables of many new nodes built from the same large,
+      %% recursive types; before, only the root of a walk was cached and every
+      %% new node re-walked the whole DAG below it.
+      Graph = uncached_graph([Ty], #{}),
+      Internal = maps:map(fun(_, Cs) -> [C || C <- Cs, maps:is_key(C, Graph)] end, Graph),
+      {SCCsRaw, _Condensed} = tarjan:condense(Internal),
+      SCCs = ?assert_type(SCCsRaw, #{type() => type()}),
+      Components = group_components(SCCs),
+      {Result, _Memo} = component_variables(maps:get(Ty, SCCs), Graph, SCCs, Components, #{}),
+      Result
+  end.
+
+%% The nodes reachable from Queue that have no cached variable set, with all
+%% their children; a cached node is not expanded.
+-spec uncached_graph([type()], #{type() => [type()]}) -> #{type() => [type()]}.
+uncached_graph([], Graph) -> Graph;
+uncached_graph([Node | Rest], Graph) ->
+  case maps:is_key(Node, Graph) orelse ets:member(?VARCACHE, Node) of
+    true -> uncached_graph(Rest, Graph);
+    false ->
+      Children = collect_node_refs(load(Node)),
+      uncached_graph(Children ++ Rest, Graph#{Node => Children})
+  end.
+
+%% The variable set of a component: what its members hold themselves, plus
+%% the sets of the components and cached nodes they refer to. Memoized over
+%% the component DAG; every member is cached with the set.
+-spec component_variables(type(), #{type() => [type()]}, #{type() => type()}, #{type() => [type()]},
+                          #{type() => sets:set(variable())}) -> {sets:set(variable()), #{type() => sets:set(variable())}}.
+component_variables(Root, Graph, SCCs, Components, Memo) ->
+  case Memo of
+    #{Root := Set} -> {Set, Memo};
+    _ ->
+      Members = maps:get(Root, Components),
+      {Set, Memo1} = lists:foldl(
+        fun(M, {Acc, Mm}) ->
+          Children = maps:get(M, Graph),
+          Own = ?TY:all_variables(load(M), maps:from_list([{C, []} || C <- Children])),
+          lists:foldl(
+            fun(C, {Acc1, Mm1}) ->
+              case Graph of
+                #{C := _} ->
+                  case maps:get(C, SCCs) of
+                    Root -> {Acc1, Mm1};
+                    ChildRoot ->
+                      {S, Mm2} = component_variables(ChildRoot, Graph, SCCs, Components, Mm1),
+                      {sets:union(S, Acc1), Mm2}
+                  end;
+                _ ->
+                  [{_, Known}] = ets:lookup(?VARCACHE, C),
+                  {sets:union(?assert_type(Known, sets:set(variable())), Acc1), Mm1}
+              end
+            end, {sets:union(Own, Acc), Mm}, Children)
+        end, {sets:new(), Memo}, Members),
+      ets:insert(?VARCACHE, [{M, Set} || M <- Members]),
+      {Set, Memo1#{Root => Set}}
+  end.
 
 -spec all_variables(type(), all_variables_cache()) -> sets:set(variable()).
 all_variables(Ty, Cache) ->
