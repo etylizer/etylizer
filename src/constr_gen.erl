@@ -149,6 +149,12 @@ exp_constrs_tyof(Ctx, E) ->
             RecTy = symtab:lookup_record(RecName, L, Ctx#ctx.symtab),
             {_FieldTy, Idx} = ety_records:lookup_field_index(RecTy, FieldName, L),
             {stdtypes:tint(Idx + 1), sets:new()};
+        {var, L, AnyRef} ->
+            % the materialization variable is the type of the variable
+            % the variable is resolved and inlined before tally
+            Msg = utils:sformat("var ~s", pretty:render(pretty:ref(AnyRef))),
+            AlphaName = fresh_ty_varname(Ctx),
+            {{var, AlphaName}, utils:single({cvarmater, mk_locs(Msg, L), AnyRef, AlphaName})};
         _ ->
             Alpha = fresh_tyvar(Ctx),
             Cs = exp_constrs(Ctx, E, Alpha),

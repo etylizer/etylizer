@@ -208,6 +208,31 @@ case_32(X) ->
         _ -> Y
     end.
 
+-spec case_scrut_reuse_01_fail(integer() | atom()) -> atom().
+case_scrut_reuse_01_fail(P) ->
+    case P of
+        _ -> P
+    end.
+
+-spec case_scrut_reuse_02_fail({integer() | atom(), atom()}) -> {atom(), atom()}.
+case_scrut_reuse_02_fail(P) ->
+    case P of
+        {A, B} ->
+            case A of
+                _ -> {A, B}
+            end
+    end.
+
+-spec case_scrut_reuse_03({integer() | atom(), atom()}) -> {atom(), atom()} | err.
+case_scrut_reuse_03(P) ->
+    case P of
+        {A, B} ->
+            case A of
+                X when is_atom(X) -> {A, B};
+                _ -> err
+            end
+    end.
+
 
 -spec case_33_fail(fun((atom() | reference(), term()) -> [tuple()]), term()) -> term().
 case_33_fail(F, Ref) ->
