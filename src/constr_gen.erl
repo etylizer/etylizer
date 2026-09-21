@@ -1699,19 +1699,16 @@ var_test_env(FunExp, X, RestArgs) ->
 %   (pm1, pm2, ..., pmn) -> em
 % end
 -spec fun_clauses_to_exp(ctx(), ast:loc(), [ast:fun_clause()]) -> {[ast:local_varname()], ast:exps()}.
-fun_clauses_to_exp(Ctx, _, FunClauses = [{fun_clause, L, Pats, [], Body}]) ->
-    % special case: only one clause, no guards, all patterns are variables
-    Vars =
-        lists:foldr(fun (Pat, Acc) ->
-                            case {Acc, Pat} of
-                                {error, _} -> error;
-                                {Vars, {var, _, {local_bind, V}}} -> [V | Vars];
-                                _ -> error
-                            end
-                    end, [], Pats),
-    case Vars of
-        error -> fun_clauses_to_exp_aux(Ctx, L, FunClauses);
-        VarList -> {VarList, Body}
+fun_clauses_to_exp(Ctx, _, [{fun_clause, L, Pats, [], Body}]) ->
+    % special case: only one clause, no guards. Variable patterns are the arguments
+    % themselves, the case only matches the remaining arguments.
+    Fresh = fresh_vars(Ctx, length(Pats)),
+    Args = lists:zipwith(fun ({var, _, {local_bind, V}}, _) -> V; (_, X) -> X end, Pats, Fresh),
+    case [{X, P} || {X, P} <- lists:zip(Args, Pats), lists:member(X, Fresh)] of
+        [] -> {Args, Body};
+        Rest ->
+            {Xs, Ps} = lists:unzip(Rest),
+            {Args, [fun_clauses_to_case(L, Xs, [{fun_clause, L, Ps, [], Body}])]}
     end;
 fun_clauses_to_exp(Ctx, L, FunClauses) ->
     fun_clauses_to_exp_aux(Ctx, L, FunClauses).
@@ -1735,15 +1732,24 @@ fun_clauses_to_exp_aux(Ctx, L, FunClauses) ->
                   Rest)
         end,
     Vars = fresh_vars(Ctx, Arity),
-    ScrutExp = {tuple, L, lists:map(fun(V) -> {var, L, {local_ref, V}} end, Vars)},
-    CaseClauses = lists:map(fun fun_clause_to_case_clause/1, FunClauses),
-    E = {'case', L, ScrutExp, CaseClauses},
+    E = fun_clauses_to_case(L, Vars, FunClauses),
     ?LOG_TRACE("Rewrote function clauses at ~s with arguments=~w:\n~200p", ast:format_loc(L), Vars, E),
     {Vars, [E]}.
 
+% The case expression matching the arguments Xs against the patterns of the clauses.
+-spec fun_clauses_to_case(ast:loc(), [ast:local_varname()], [ast:fun_clause()]) -> ast:exp().
+fun_clauses_to_case(L, Xs, FunClauses) ->
+    Scrut = tuple_unless_single(L, lists:map(fun(X) -> {var, L, {local_ref, X}} end, Xs)),
+    {'case', L, Scrut, lists:map(fun fun_clause_to_case_clause/1, FunClauses)}.
+
 -spec fun_clause_to_case_clause(ast:fun_clause()) -> ast:case_clause().
 fun_clause_to_case_clause({fun_clause, L, Pats, Guards, Exps}) ->
-    {case_clause, L, {tuple, L, Pats}, Guards, Exps}.
+    {case_clause, L, tuple_unless_single(L, Pats), Guards, Exps}.
+
+% A single scrutinee (or pattern) is not wrapped in a tuple.
+-spec tuple_unless_single(ast:loc(), [T]) -> T | {tuple, ast:loc(), [T]}.
+tuple_unless_single(_L, [X]) -> X;
+tuple_unless_single(L, Xs) -> {tuple, L, Xs}.
 
 % if g1 -> e1;
 %    ...
