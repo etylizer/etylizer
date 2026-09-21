@@ -43,7 +43,7 @@
 -type state() :: #state{}.
 
 -define(HISTORY_FILE, "etylizer-repl.history"). % saved at $XDG_CACHE_HOME
--define(COMMANDS, ["q", "help", "clear"]).
+-define(COMMANDS, ["q", "help", "clear", "empty"]).
 -define(PRINT_VERSION, io:format("erlang_types REPL v0.0.2-rc\n\r" ++ color("help;;", yellow) ++ " for help\n\r")).
 
 
@@ -363,12 +363,13 @@ handle_command("help") ->
     nl(),
     io:format("Commands terminate with ;;\n\r"),
     io:format("Auto-complete with tab\n\r"),
+    io:format(color("empty", yellow) ++ " <ast:ty() term> checks a raw ast:ty() term for emptiness, e.g.\n\r"),
+    io:format("  empty {union, [{singleton, gt}, {singleton, lt}]};;\n\r"),
     ok;
 handle_command(Command) ->
     case ast_parser:parse_command(Command) of
         error ->
-            io:format(color("Unknown command: ~s~n\r", red), [Command]),
-            io:format("Type " ++ color("help;;", yellow) ++ " for available commands~n\r");
+            handle_raw_command(string:trim(Command, leading));
         {ok, C = {type_definition, _}} ->
             handle_type_definition(C);
         {ok, C = {subtype, _, _}} ->
@@ -380,6 +381,66 @@ handle_command(Command) ->
         {ok, C = {type, _}} ->
             handle_type(C)
     end.
+
+% commands which take a raw ast:ty() term instead of the string representation
+-spec handle_raw_command(string()) -> _.
+handle_raw_command("empty" ++ [C | Rest] = Command) when C == $\s; C == $\t; C == $\n; C == $\r; C == ${ ->
+    case parse_raw_type([C | Rest]) of
+        {ok, Ty} ->
+            handle_is_empty(Ty);
+        {error, Reason} ->
+            io:format(color("Invalid Erlang term in command: ~s~n\r", red), [Command]),
+            io:format(color("~s~n\r", red), [Reason])
+    end;
+handle_raw_command(Command) ->
+    io:format(color("Unknown command: ~s~n\r", red), [Command]),
+    io:format("Type " ++ color("help;;", yellow) ++ " for available commands~n\r").
+
+% reads the raw Erlang term representation of ast:ty(), e.g. {union, [{singleton, gt}, {singleton, lt}]}
+% a trailing dot is optional
+% the term is not checked, malformed types are reported by ty_parser
+-spec parse_raw_type(string()) -> {ok, ast:ty()} | {error, string()}.
+parse_raw_type(String) ->
+    WithoutDot = ?assert_type(string:trim(String, trailing, " \t\r\n."), string()),
+    case erl_scan:string(WithoutDot ++ " .") of
+        {ok, Tokens, _} ->
+            case ?assert_type(erl_parse:parse_term(?assert_type(Tokens, dynamic())), dynamic()) of
+                {ok, Term} -> {ok, ?assert_type(Term, ast:ty())}; % unchecked
+                {error, {_, Module, Description}} -> {error, format_error(Module, Description)}
+            end;
+        {error, {_, Module, Description}, _} ->
+            {error, format_error(Module, Description)}
+    end.
+
+-spec format_error(module(), term()) -> string().
+format_error(Module, Description) ->
+    lists:flatten(io_lib:format("~s", [Module:format_error(Description)])).
+
+% ty_parser crashes on malformed types,
+% which can leave the erlang_types global state inconsistent
+-spec is_empty(ast:ty()) -> {ok, boolean()} | {error, term()}.
+is_empty(Ty) ->
+    try
+        {ok, ty:is_empty(ty_parser:parse(Ty))}
+    catch
+        Class:Reason ->
+            global_state:clean(),
+            global_state:init(),
+            {error, {Class, Reason}}
+    end.
+
+-spec handle_is_empty(ast:ty()) -> _.
+handle_is_empty(Ty) ->
+    case is_empty(Ty) of
+        {ok, Result} ->
+            io:format("empty(~s)\n\r~p\n\r", [pretty:render_ty(Ty), Result]);
+        {error, Error} ->
+            io:format(color("Emptiness check failed: ~s~n\r", red), [format_term(Error)])
+    end.
+
+-spec format_term(term()) -> string().
+format_term(Term) ->
+    lists:flatten(string:replace(io_lib:format("~p", [Term]), "\n", "\n\r", all)).
 
 -spec handle_type_definition(ast_parser:command_type_definition()) -> _.
 handle_type_definition({type_definition, Definition}) ->
