@@ -69,7 +69,8 @@ is_satisfiable(SymTab, Constraints, FixedVars) ->
     ty_parser:set_symtab(SymTab),
 
     Ctx = gradual_utils:new_ctx(),
-    {InlinedConstrs, _SubtyConstrs, _Maters, _UnificationSubst} = gradual_utils:preprocess_constrs(Constraints, Ctx),
+    {InlinedConstrs0, _SubtyConstrs, _Maters, _UnificationSubst} = gradual_utils:preprocess_constrs(Constraints, Ctx),
+    InlinedConstrs = resolve_overloads(SymTab, InlinedConstrs0),
 
     % Deterministic sort: primary by erts_debug:size, secondary by full term so
     % size ties don't leak the sets:to_list order into
@@ -115,6 +116,41 @@ do_satisfiable(FinalCons, MonomorphicTallyVariables) ->
         true -> {true, satisfiable}
     end.
 
+% Overload resolution before tally. For a constraint F <= (A1,...,An) -> B where F is an
+% intersection of arrows, a clause whose parameters are disjoint from the argument
+% types A1,...,An cannot apply. If exactly one clause (P1,...,Pn) -> R remains, the
+% constraint is replaced by A1 <= P1, ..., An <= Pn and R <= B. This spares tally the
+% normalization of the intersection of arrows, which is exponential in the clauses.
+% Type variables overlap with everything, so they can only prevent the replacement.
+-spec resolve_overloads(symtab:t(), constr:subty_constrs()) -> constr:subty_constrs().
+resolve_overloads(SymTab, Constrs) ->
+    sets:from_list(lists:flatmap(fun(C) -> resolve_overload(SymTab, C) end, sets:to_list(Constrs))).
+
+
+-spec resolve_overload(symtab:t(), constr:simp_constr_subty()) -> [constr:simp_constr_subty()].
+resolve_overload(SymTab, C = {scsubty, Loc, {intersection, FunTys}, {fun_full, ArgTys, ResTy}}) ->
+    IsClause = fun({fun_full, ParamTys, _}) -> length(ParamTys) =:= length(ArgTys); (_) -> false end,
+    case lists:all(IsClause, FunTys) of
+        false -> [C];
+        true ->
+            case [F || F = {fun_full, ParamTys, _} <- FunTys, overlaps(SymTab, ArgTys, ParamTys)] of
+                [{fun_full, ParamTys, ClauseResTy}] ->
+                    [{scsubty, Loc, ClauseResTy, ResTy} |
+                     [{scsubty, Loc, A, P} || {A, P} <- lists:zip(ArgTys, ParamTys)]];
+                _ -> [C]
+            end
+    end;
+resolve_overload(_SymTab, C) -> [C].
+
+-spec overlaps(symtab:t(), [ast:ty()], [ast:ty()]) -> boolean().
+overlaps(SymTab, ArgTys, ParamTys) ->
+    lists:all(
+        fun({{var, _}, _}) -> true; % nothing known about this argument
+           ({ArgTy, ParamTy}) ->
+                not subty:is_subty(SymTab, ast_lib:mk_intersection([ArgTy, ParamTy]), stdtypes:tnone())
+        end,
+        lists:zip(ArgTys, ParamTys)).
+
 -spec tally(symtab:t(), constr:collected_constrs()) -> tally_res().
 tally(SymTab, Constraints) -> tally(SymTab, Constraints, sets:new()).
 
@@ -127,7 +163,8 @@ tally(SymTab, Constraints, FixedVars) ->
     ty_parser:set_symtab(SymTab),
 
     Ctx = gradual_utils:new_ctx(),
-    {InlinedConstrs, SubtyConstrs, Maters, UnificationSubst} = gradual_utils:preprocess_constrs(Constraints, Ctx),
+    {InlinedConstrs0, SubtyConstrs, Maters, UnificationSubst} = gradual_utils:preprocess_constrs(Constraints, Ctx),
+    InlinedConstrs = resolve_overloads(SymTab, InlinedConstrs0),
 
     InternalRawConstraints =
     lists:map( fun ({scsubty, _, S, T}) -> {S, T} end,
