@@ -77,7 +77,19 @@ separate_constrs(Constrs, Ctx) ->
 
 -spec build_unification_subst(constr:mater_constrs()) -> subst:base_subst().
 build_unification_subst(Maters) ->
-    maps:from_list(lists:map(fun({scmater, _, Tau, Alpha}) -> {Alpha, Tau} end, sets:to_list(Maters))).
+    S0 = maps:from_list(lists:map(fun({scmater, _, Tau, Alpha}) -> {Alpha, Tau} end, sets:to_list(Maters))),
+    saturate_subst(S0).
+
+% A materialized type may itself mention materialization variables (e.g. the type of a
+% pattern variable mentions the scrutinee's type). Such dependencies are acyclic, so
+% applying the substitution to its own range reaches a fixpoint.
+-spec saturate_subst(subst:base_subst()) -> subst:base_subst().
+saturate_subst(S) ->
+    S1 = maps:map(fun(_Alpha, Tau) -> subst:apply_base(S, Tau) end, S),
+    case S1 =:= S of
+        true -> S;
+        false -> saturate_subst(S1)
+    end.
 
 -spec inline_subst(subst:base_subst(), constr:subty_constrs()) -> constr:subty_constrs().
 inline_subst(UnificationSubst, SubtyConstrs) ->
