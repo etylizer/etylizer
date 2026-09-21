@@ -52,9 +52,13 @@
     ttuple1/1, 
     ttuple2/2,
     ttuple_n/1,
-    tunion/2, 
+    tunion/2,
     tyscm/2,
-    tvar/1
+    tvar/1,
+    tbinary/0,
+    tnonempty_binary/0,
+    tnonempty_bitstring/0,
+    tempty_bitstring/0
 ]).
 
 -export_type([
@@ -102,6 +106,18 @@ tnon_neg_int() -> {predef_alias, non_neg_integer}.
 
 -spec tbitstring() -> ast:ty().
 tbitstring() -> {bitstring}.
+
+-spec tbinary() -> ast:ty().
+tbinary() -> {bitstring, 0, 8}.
+
+-spec tnonempty_binary() -> ast:ty().
+tnonempty_binary() -> {bitstring, 8, 8}.
+
+-spec tnonempty_bitstring() -> ast:ty().
+tnonempty_bitstring() -> {bitstring, 1, 1}.
+
+-spec tempty_bitstring() -> ast:ty().
+tempty_bitstring() -> {bitstring, 0, 0}.
 
 -spec tint(integer()) -> ast:ty().
 tint(A) -> {singleton, A}.
@@ -248,11 +264,10 @@ tbool() -> {predef_alias, boolean}.
 
 -spec expand_predef_alias(ast:predef_alias_name()) -> ast:ty().
 expand_predef_alias(term) -> {predef, any};
-% TODO better binaries
-expand_predef_alias(binary) -> {bitstring};
-expand_predef_alias(nonempty_binary) -> {bitstring};
+expand_predef_alias(binary) -> {bitstring, 0, 8};
+expand_predef_alias(nonempty_binary) -> {bitstring, 8, 8};
 expand_predef_alias(bitstring) -> {bitstring};
-expand_predef_alias(nonempty_bitstring) -> {bitstring};
+expand_predef_alias(nonempty_bitstring) -> {bitstring, 1, 1};
 expand_predef_alias(boolean) -> {union, [{singleton, true}, {singleton, false}]};
 expand_predef_alias(byte) -> {range, 0, 255};
 expand_predef_alias(char) -> {range, 0, 1114111};
@@ -328,7 +343,7 @@ builtin_ops() ->
     % These schemes for operators are polymorphic
     AndShortcutOpTy = tyscm([a], tinter([tfun([tatom(false), tany()], tatom(false)), tfun([tatom(true), tvar(a)], tvar(a))])),
     OrShortcutOpTy = tyscm([a], tinter([tfun([tatom(true), tany()], tatom(true)), tfun([tatom(false), tvar(a)], tvar(a))])),
-    PolyOpTy = tyscm([a], tfun([tvar(a), tvar(a)], tbool())),
+    PolyOpTy = tyscm(tfun([tany(), tany()], tbool())),
     [
         {'+', 2, NumOpTy},
         {'-', 2, NumOpTy},

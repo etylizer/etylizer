@@ -26,8 +26,8 @@ is_empty_line({AllPos, Neg, T}, ST) ->
 
 -spec is_empty_cont([T], T, ST) -> {boolean(), ST} when ST :: is_empty_cache(), T :: ?ATOM:type().
 is_empty_cont(Ps, NegatedFun, ST0) ->
-  %% ∃ Ts-->T2 ∈ N s.t.
-  %%    Ts is in the domains of the function
+  % ∃ Ts-->T2 ∈ N s.t.
+  %    Ts is in the domains of the function
   T1 = ty_function:domain(NegatedFun),
 
   AllDomains = lists:map(fun ty_function:domain/1, Ps),
@@ -84,27 +84,29 @@ normalize_line({Pos, Neg, T}, Fixed, ST) ->
 % domains_to_tuple(Domains) ->
 %   ty_node:make(dnf_ty_variable:leaf(ty_rec:tuples(ty_tuples:singleton(length(Domains), dnf_ty_tuple:singleton(ty_tuple:tuple(Domains)))))).
 
--spec normalize_line_cont(ty_node:type(), [T], [T], monomorphic_variables(), ST) -> 
+-spec normalize_line_cont(ty_node:type(), [T], [T], monomorphic_variables(), ST) ->
     {set_of_constraint_sets(), ST} when ST :: normalize_cache(), T :: ?ATOM:type().
 normalize_line_cont(_, _, [], _Fixed, ST) -> {[], ST}; % non-empty
 normalize_line_cont(S, P, [Function | N], Fixed, ST) ->
   T1 = ty_function:domain(Function),
   T2 = ty_function:codomain(Function),
 
-  %% ∃ T1-->T2 ∈ N s.t.
-  %%   T1 is in the domain of the function
-  %%   S is the union of all domains of the positive function intersections
   {X1, ST0} = ty_node:normalize(ty_node:intersect(T1, ty_node:negate(S)), Fixed, ST),
-
-  %io:format(user,"Exploring: ~p~n~p~n", [ty_node:dump(T1), ty_node:dump(ty_node:negate(T2))]),
-  {X2, ST1} = explore_function_norm(T1, ty_node:negate(T2), P, Fixed, ST0),
-
-  R1 = constraint_set:meet(X1, X2, Fixed),
-
-  {R2, ST2} = normalize_line_cont(S, P, N, Fixed, ST1),
-
-  % Continue searching for another arrow ∈ N
-  {constraint_set:join(R1, R2, Fixed), ST2}.
+  case X1 of
+    [] ->
+      % meet(X1, X2) = [], recurse on N.
+      {R2, ST2} = normalize_line_cont(S, P, N, Fixed, ST0),
+      {R2, ST2};
+    _ ->
+      {X2, ST1} = explore_function_norm(T1, ty_node:negate(T2), P, Fixed, ST0),
+      R1 = constraint_set:meet(X1, X2, Fixed),
+      case R1 of
+        [[]] -> {[[]], ST1};
+        _ ->
+          {R2, ST2} = normalize_line_cont(S, P, N, Fixed, ST1),
+          {constraint_set:join(R1, R2, Fixed), ST2}
+      end
+  end.
 
 
 -spec explore_function_norm(ty_node:type(), ty_node:type(), [T], monomorphic_variables(), S) -> 
@@ -115,17 +117,28 @@ explore_function_norm(BigT1, T2, [], Fixed, ST0) ->
   {constraint_set:join(NT1, NT2, Fixed), ST2};
 explore_function_norm(T1, T2, [Function | P], Fixed, ST0) ->
   {NT1, ST1} = ty_node:normalize(T1, Fixed, ST0),
-  {NT2, ST2} = ty_node:normalize(T2, Fixed, ST1),
-
-  S1 = ty_function:domain(Function),
-  S2 = ty_function:codomain(Function),
-
-  {NS1, ST3} = explore_function_norm(T1, ty_node:intersect(T2, S2), P, Fixed, ST2),
-  {NS2, ST4} = explore_function_norm(ty_node:difference(T1, S1), T2, P, Fixed, ST3),
-
-  {constraint_set:join(NT1,
-    constraint_set:join(NT2,
-      constraint_set:meet(NS1, NS2, Fixed), Fixed), Fixed), ST4}.
+  case NT1 of
+    [[]] -> {[[]], ST1};
+    _ ->
+      {NT2, ST2} = ty_node:normalize(T2, Fixed, ST1),
+      case NT2 of
+        [[]] -> {[[]], ST2};
+        _ ->
+          S1 = ty_function:domain(Function),
+          S2 = ty_function:codomain(Function),
+          {NS1, ST3} = explore_function_norm(T1, ty_node:intersect(T2, S2), P, Fixed, ST2),
+          case NS1 of
+            [] ->
+              {constraint_set:join(NT1, NT2, Fixed), ST3};
+            _ ->
+              {NS2, ST4} = explore_function_norm(ty_node:difference(T1, S1), T2, P, Fixed, ST3),
+              {constraint_set:join(NT1,
+                  constraint_set:join(NT2,
+                      constraint_set:meet(NS1, NS2, Fixed), Fixed), Fixed),
+               ST4}
+          end
+      end
+  end.
 
 -spec all_variables_line([T], [T], ?LEAF:type(), all_variables_cache()) -> sets:set(variable()) when T :: ?ATOM:type().
 all_variables_line(P, N, Leaf, Cache) ->

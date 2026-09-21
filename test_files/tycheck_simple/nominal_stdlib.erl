@@ -26,13 +26,13 @@
 -nominal debug_name() :: binary() | 1..255.
 -nominal debug_source() :: {'x', non_neg_integer()} | {'y', non_neg_integer()} | {value, any()}.
 -nominal debug_value() :: {debug_name(), debug_source()}.
--nominal debug_info() :: [{debug_line(), {debug_frame(), [debug_value()]}}].
+% -nominal debug_info() :: [{debug_line(), {debug_frame(), [debug_value()]}}].
 
 % dialyzer (dialyzer-5.4/src/erl_types.erl:311) - simplified
 -nominal erl_type() :: atom() | tuple().
 
 % ssl (ssl-11.5.1/src/ssl.erl:1541) - simplified
--nominal session_ticket() :: #{sni := binary()}.
+% -nominal session_ticket() :: #{sni := binary()}.
 
 %%%%%%%%%%%%%%%%%%%%%%%% erl_anno - LINE/LOCATION HIERARCHY %%%%%%%%%%%%%%%%%%%%%%%
 
