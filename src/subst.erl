@@ -371,6 +371,8 @@ collect_vars({K, Components}, CPos, Pos, Fix, VCache) when K == union; K == inte
 collect_vars({fun_full, Components, Target}, CPos, Pos, Fix, VCache) ->
     P1 = lists:foldl(fun(Ty, P) -> collect_vars(Ty, 1 - CPos, P, Fix, VCache) end, Pos, Components),
     collect_vars(Target, CPos, P1, Fix, VCache);
+collect_vars({fun_any_arg, Target}, CPos, Pos, Fix, VCache) ->
+    collect_vars(Target, CPos, Pos, Fix, VCache);
 collect_vars({negation, Ty}, CPos, Pos, Fix, VCache) -> collect_vars(Ty, 1 - CPos, Pos, Fix, VCache);
 collect_vars({predef, _}, _CPos, Pos, _, _) -> Pos;
 collect_vars({predef_alias, _}, _CPos, Pos, _, _) -> Pos;
@@ -525,6 +527,11 @@ variance_list_test() ->
     Body = {union, [{empty_list}, {cons, {var, 'T'}, nref('list', [{var, 'T'}])}]},
     Cache = run_variance_fp([{'list', ['T'], Body}]),
     ?assertEqual([co], get_v('list', 1, Cache)).
+
+collect_vars_fun_any_arg_test() ->
+    Ty = {fun_any_arg, {var, 'T'}},
+    ?assertEqual(#{'T' => [0]}, collect_vars(Ty, 0, #{}, sets:new(), #{})),
+    ?assertEqual(#{'T' => [1]}, collect_vars(Ty, 1, #{}, sets:new(), #{})).
 
 -endif.
 
