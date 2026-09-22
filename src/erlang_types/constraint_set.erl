@@ -81,41 +81,24 @@ meet(Set1, [[]], _) -> Set1;
 meet(S1, S2, Fixed) -> 
   % when a constraint set is combined, the lower and upper bounds for a variable might change
   % this in turn could mean the whole constraint set can become unsatisfiable
-  % it is appararently faster to join everything together, 
-  % then minimizing the meet result by using join
-  MeetResult = [[join_constraint_sets(C1, C2, Fixed) || C2 <- S2] || C1 <- S1],
-  R = lists:foldl(fun(S, Acc) -> join(S, Acc, Fixed) end, [], MeetResult),
-  assert_all_cs_sorted(minimize(R)).
-
-% TODO this implementation creates smaller result set of constraint sets, investigate
-% meet(S1, S2, Fixed) -> 
-%   AllCombinations = [{C1, C2} || C1 <- S1, C2 <- S2],
-%   % meet in such a way that bigger constraint sets get filtered out
-%   lists:foldl(
-%     fun({Cs1, Cs2}, Acc) ->
-%       % when a constraint set is combined, the lower and upper bounds for a variable might change
-%       % this in turn could mean the whole constraint set can become unsatisfiable
-%       % TODO investigate why for user_04 keeping the constraint sets minimal increases time by a lot
-%       %      -> change join_constraint_sets to return unsatisfiable again
-%       NewCs = join_constraint_sets(Cs1, Cs2, Fixed),
-%       case NewCs of
-%         unsatisfiable -> Acc;
-%         _ ->
-%           case lists:any(fun(Cs) -> is_smaller(Cs, NewCs) end, Acc) of
-%             true -> 
-%               % Acc contains a constraint set that is smaller than NewCs
-%               % We can skip adding NewCs to the Acc
-%               Acc;
-%             false -> 
-%               % Remove any existing constraints that NewCs subsumes
-%               FilteredAcc = [C || C <- Acc, not is_smaller(NewCs, C)],
-%               [NewCs | FilteredAcc]
-%           end
-%       end
-%     end,
-%     [],
-%     AllCombinations
-%   ).
+  % to keep the result minimal, a combination that is unsatisfiable or
+  % subsumed by the accumulator is dropped, and one that subsumes accumulated sets replaces them
+  R = lists:foldl(
+    fun(C1, Acc1) ->
+        lists:foldl(
+          fun(C2, Acc) ->
+              NewCs = join_constraint_sets(C1, C2, Fixed),
+              case is_unsatisfiable(NewCs, Fixed) of
+                true -> Acc;
+                false ->
+                  case lists:any(fun(Cs) -> is_smaller(Cs, NewCs) end, Acc) of
+                    true -> Acc;
+                    false -> [NewCs | [C || C <- Acc, not is_smaller(NewCs, C)]]
+                  end
+              end
+          end, Acc1, S2)
+    end, [], S1),
+  assert_all_cs_sorted(R).
 
 -spec join(S, S, monomorphic_variables()) -> S when S :: set_of_constraint_sets().
 join([[]], _Set2, _Fixed) -> [[]];
@@ -235,20 +218,6 @@ pick_bounds_in_c([{Var, S, T} | Cs], Memo) ->
       end
   end.
 
--spec minimize(S) -> S when S :: set_of_constraint_sets().
-minimize(S) -> minimize(S, S).
-
--spec minimize(S, S) -> S when S :: set_of_constraint_sets().
-minimize([], Result) -> Result;
-minimize([Cs | Others], All) ->
-  NewS = All -- [Cs],
-  case has_smaller_constraint(Cs, NewS) of
-    true ->
-      ?assert_pattern(true, length(NewS) < length(All)),
-      minimize(NewS, NewS);
-    _ -> minimize(Others, All)
-  end.
-
 -spec assert_all_cs_sorted(S) -> S when S :: set_of_constraint_sets().
 assert_all_cs_sorted(S) ->
     % Verify all constraint sets are sorted by sorting them and checking for equality
@@ -272,6 +241,21 @@ assert_all_cs_sorted(S) ->
 
 -ifdef(TEST).
 -include_lib("eunit/include/eunit.hrl").
+
+% meet/3 keeps its result minimal while building it, so only the tests minimize
+-spec minimize(S) -> S when S :: set_of_constraint_sets().
+minimize(S) -> minimize(S, S).
+
+-spec minimize(S, S) -> S when S :: set_of_constraint_sets().
+minimize([], Result) -> Result;
+minimize([Cs | Others], All) ->
+  NewS = All -- [Cs],
+  case has_smaller_constraint(Cs, NewS) of
+    true ->
+      ?assert_pattern(true, length(NewS) < length(All)),
+      minimize(NewS, NewS);
+    _ -> minimize(Others, All)
+  end.
 
 % TODO why does Dialyzer complain that L. 256 has no return?
 -dialyzer({no_return, [smaller_test/0]}).
