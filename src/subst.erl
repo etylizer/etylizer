@@ -175,9 +175,6 @@ clean_type(Ty, Fix, SymTab) ->
     Cleaned.
 
 
-combine_vars(_K, V1, V2) ->
-    lists:uniq(V1 ++ V2).
-
 %% Variance precomputation
 %%
 %% For every schema {ty_scheme, [V1..Vn], Body} stored in the symtab, we
@@ -292,9 +289,8 @@ merge_pol(_, _) -> inv.
 % (CPos) and C2 in contravariant (1-CPos) position. 
 collect_vars_clist(L, CPos, Pos, Fix, VCache) when is_list(L) ->
     lists:foldl(fun({C1, C2}, Acc) ->
-        M1 = collect_vars(C1, CPos, Acc, Fix, VCache),
-        M2 = collect_vars(C2, 1-CPos, Acc, Fix, VCache),
-        maps:merge_with(fun combine_vars/3, M1, M2)
+        Acc1 = collect_vars(C1, CPos, Acc, Fix, VCache),
+        collect_vars(C2, 1 - CPos, Acc1, Fix, VCache)
                 end, Pos, L).
 
 -spec collect_vars(ast:ty() | {ty_hole}, 0 | 1, #{ast:ty_varname() => [0 | 1]},
@@ -303,13 +299,10 @@ collect_vars_clist(L, CPos, Pos, Fix, VCache) when is_list(L) ->
 collect_vars(M = {map, _}, CPos, Pos, Fix, VCache) ->
     collect_vars(ty_parser:rewrite_map_to_representation(M), CPos, Pos, Fix, VCache);
 collect_vars({K, Components}, CPos, Pos, Fix, VCache) when K == union; K == intersection; K == tuple ->
-    VPos = lists:map(fun(Ty) -> collect_vars(Ty, CPos, Pos, Fix, VCache) end, Components),
-    lists:foldl(fun(FPos, Current) -> maps:merge_with(fun combine_vars/3, FPos, Current) end, Pos, VPos);
+    lists:foldl(fun(Ty, P) -> collect_vars(Ty, CPos, P, Fix, VCache) end, Pos, Components);
 collect_vars({fun_full, Components, Target}, CPos, Pos, Fix, VCache) ->
-    VPos = lists:map(fun(Ty) -> collect_vars(Ty, 1 - CPos, Pos, Fix, VCache) end, Components),
-    M1 = lists:foldl(fun(FPos, Current) -> maps:merge_with(fun combine_vars/3, FPos, Current) end, Pos, VPos),
-    M2 = collect_vars(Target, CPos, Pos, Fix, VCache),
-    maps:merge_with(fun combine_vars/3, M1, M2);
+    P1 = lists:foldl(fun(Ty, P) -> collect_vars(Ty, 1 - CPos, P, Fix, VCache) end, Pos, Components),
+    collect_vars(Target, CPos, P1, Fix, VCache);
 collect_vars({negation, Ty}, CPos, Pos, Fix, VCache) -> collect_vars(Ty, 1 - CPos, Pos, Fix, VCache);
 collect_vars({predef, _}, _CPos, Pos, _, _) -> Pos;
 collect_vars({predef_alias, _}, _CPos, Pos, _, _) -> Pos;
@@ -324,9 +317,7 @@ collect_vars({fun_simple}, _CPos, Pos, _, _) -> Pos;
 collect_vars({mu_var, _Name}, _CPos, Pos, _, _) -> Pos;
 collect_vars({ty_hole}, _CPos, Pos, _, _) -> Pos;
 collect_vars({nonempty_improper_list, A, B}, CPos, Pos, Fix, VCache) ->
-    M1 = collect_vars(A, CPos, Pos, Fix, VCache),
-    M2 = collect_vars(B, CPos, Pos, Fix, VCache),
-    maps:merge_with(fun combine_vars/3, M1, M2);
+    collect_vars(B, CPos, collect_vars(A, CPos, Pos, Fix, VCache), Fix, VCache);
 collect_vars({nonempty_list, A}, CPos, Pos, Fix, VCache) ->
     collect_vars(A, CPos, Pos, Fix, VCache);
 collect_vars({list, A}, CPos, Pos, Fix, VCache) ->
@@ -334,21 +325,22 @@ collect_vars({list, A}, CPos, Pos, Fix, VCache) ->
 collect_vars({mu, _MuVar, A}, CPos, Pos, Fix, VCache) -> % skip recursion variables
     collect_vars(A, CPos, Pos, Fix, VCache);
 collect_vars({cons, A, B}, CPos, Pos, Fix, VCache) ->
-    M1 = collect_vars(A, CPos, Pos, Fix, VCache),
-    M2 = collect_vars(B, CPos, Pos, Fix, VCache),
-    maps:merge_with(fun combine_vars/3, M1, M2);
+    collect_vars(B, CPos, collect_vars(A, CPos, Pos, Fix, VCache), Fix, VCache);
 collect_vars({improper_list, A, B}, CPos, Pos, Fix, VCache) ->
-    M1 = collect_vars(A, CPos, Pos, Fix, VCache),
-    M2 = collect_vars(B, CPos, Pos, Fix, VCache),
-    maps:merge_with(fun combine_vars/3, M1, M2);
+    collect_vars(B, CPos, collect_vars(A, CPos, Pos, Fix, VCache), Fix, VCache);
 collect_vars({var, Name}, CPos, Pos, Fix, _VCache) ->
-    Z = case sets:is_element(Name, Fix) of
+    case sets:is_element(Name, Fix) of
         true -> Pos;
         _ ->
-            AllPositions = maps:get(Name, Pos, []),
-            Pos#{Name => lists:uniq(AllPositions ++ [CPos])}
-    end,
-    Z;
+            % a variable has at most the two positions 0 and 1, so the list
+            % stays short enough to update by pattern match
+            case Pos of
+                #{Name := [CPos]} -> Pos;
+                #{Name := [_, _]} -> Pos;
+                #{Name := [_Other]} -> Pos#{Name := [0, 1]};
+                _ -> Pos#{Name => [CPos]}
+            end
+    end;
 collect_vars({named, _Loc, Ref, Args}, CPos, Pos, Fix, VCache) ->
     % Use precomputed per-parameter variance to walk each Arg with the right polarity. 
     Variances = lookup_variances(Ref, VCache),
