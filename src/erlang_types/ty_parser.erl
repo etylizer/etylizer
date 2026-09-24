@@ -122,13 +122,22 @@ clean() ->
     undefined -> logger:info("~p state already deleted, skip clean", [?MODULE]);
     _ -> [ets:delete(T) || T <- ?ALL_ETS]
   end,
+  erlang:erase(ty_parser_installed_symtab),
   logger:debug("~p state cleaned", [?MODULE]).
 
+% FIXME #395 the global symtab is a hack, 
+% we need to fix this so that it doesn't get instantiated for every subty check.
+% albsch 28/09/2026
 -spec set_symtab(symtab:t()) -> _.
 set_symtab(SymTab) ->
-  Types = symtab:get_types(SymTab),
-  % elp:ignore W0034
-  [ty_parser:extend_symtab(K, V) || {K, V} <- maps:to_list(Types)].
+  case erlang:get(ty_parser_installed_symtab) of
+    SymTab -> ok;
+    _ ->
+      Types = symtab:get_types(SymTab),
+      % elp:ignore W0034
+      [ty_parser:extend_symtab(K, V) || {K, V} <- maps:to_list(Types)],
+      erlang:put(ty_parser_installed_symtab, SymTab)
+  end.
 
 -spec parse(ast_ty()) -> type().
 parse(RawTy) ->
