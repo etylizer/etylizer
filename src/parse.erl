@@ -65,7 +65,7 @@ build_compile_opts(Opts) ->
 do_parse_erl(Path, Opts) ->
     NoExt = filename:rootname(Path),
     CompileOpts = build_compile_opts(Opts),
-    case compile:file(NoExt, CompileOpts) of
+    case compile:noenv_file(NoExt, CompileOpts) of
         {ok, _} ->
             extract_parse_result(Path);
         error ->

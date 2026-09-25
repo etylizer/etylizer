@@ -366,9 +366,10 @@ traverse_module_list(SearchPath, Symtab, [CurrentModule | RemainingModules], Ove
     case maps:get(CurrentModule, Symtab#tab.modules, error) of
         error ->
             % It's a new module
-            Entry = {_, Filename, _} = paths:find_module_path(SearchPath, CurrentModule),
-            Forms = retrieve_forms_for_source(Entry),
-            NewSymtab = extend_symtab(Filename, Forms, CurrentModule, Symtab, OverlaySymtab),
+            Entry = paths:find_module_path(SearchPath, CurrentModule),
+            {Contribution, AdditionalModules} =
+                module_contribution(Entry, CurrentModule, Symtab#tab.gradual, OverlaySymtab),
+            NewSymtab = merge_contribution(Symtab, Contribution),
             ?LOG_DEBUG("Extended symtab with entries from ~p", CurrentModule),
             case log:allow(trace) of
                 true ->
@@ -378,7 +379,6 @@ traverse_module_list(SearchPath, Symtab, [CurrentModule | RemainingModules], Ove
                 false ->
                     ok
             end,
-            AdditionalModules = ast_utils:referenced_modules_via_types(Forms),
             ?LOG_DEBUG("Additional modules for ~w: ~200p", CurrentModule, AdditionalModules),
             traverse_module_list(SearchPath, NewSymtab, RemainingModules ++ AdditionalModules, OverlaySymtab);
         _ -> traverse_module_list(SearchPath, Symtab, RemainingModules, OverlaySymtab)
@@ -386,16 +386,55 @@ traverse_module_list(SearchPath, Symtab, [CurrentModule | RemainingModules], Ove
 traverse_module_list(_, Symtab, [], _) ->
     Symtab.
 
+-spec module_contribution(paths:search_path_entry(), ast:mod_name(), feature_flags:gradual_typing_mode(), t()) ->
+    {t(), [ast:mod_name()]}.
+% Gradual mode and overlay are the same for a whole run and part of the cache stamp.
+module_contribution(Entry = {_, Filename, _}, Module, Gradual, OverlaySymtab) ->
+    symtab_cache:cached({module, Filename, parse_kind(Entry)}, fun() ->
+        Forms = retrieve_forms_for_source(Entry),
+        Contribution = extend_symtab(Filename, Forms, Module, (empty())#tab{gradual = Gradual}, OverlaySymtab),
+        {{Contribution, ast_utils:referenced_modules_via_types(Forms)}, [Filename | parse_cache:headers(Filename)]}
+    end).
+
+-spec merge_contribution(t(), t()) -> t().
+merge_contribution(Tab, Contribution) ->
+    Tab#tab{
+        funs = maps:merge(Tab#tab.funs, Contribution#tab.funs),
+        types = maps:merge(Tab#tab.types, Contribution#tab.types),
+        records = maps:merge(Tab#tab.records, Contribution#tab.records),
+        modules = maps:merge(Tab#tab.modules, Contribution#tab.modules)
+    }.
+
 -spec retrieve_forms_for_source(paths:search_path_entry()) -> ast:forms().
-retrieve_forms_for_source({Kind, Src, Includes}) ->
-    case Kind of
-        local -> parse_cache:parse(intern, Src);
-        _ -> parse_cache:parse({extern, Includes}, Src)
-    end.
+retrieve_forms_for_source(Entry = {_, Src, _}) ->
+    parse_cache:parse(parse_kind(Entry), Src).
+
+-spec parse_kind(paths:search_path_entry()) -> parse_cache:file_kind().
+parse_kind({local, _, _}) -> intern;
+parse_kind({_, _, Includes}) -> {extern, Includes}.
 
 -ifdef(TEST).
+-include_lib("eunit/include/eunit.hrl").
+-include("etylizer_main.hrl").
+
 -spec from_types(any()) -> t().
 from_types(Types) when is_list(Types) -> (empty())#tab{types = maps:from_list(Types)};
 from_types(Types) when is_map(Types) -> (empty())#tab{types = Types}.
+
+contribution_merge_test() ->
+    Opts = #opts{},
+    SearchPath = paths:compute_search_path(Opts),
+    parse_cache:with_cache(Opts, fun() ->
+        Overlay = empty(),
+        Load = fun(Mod, Tab) ->
+                   Entry = {_, File, _} = paths:find_module_path(SearchPath, Mod),
+                   Forms = retrieve_forms_for_source(Entry),
+                   {File, Forms, extend_symtab(File, Forms, Mod, Tab, Overlay)}
+               end,
+        {_, _, Base} = Load(lists, empty()),
+        {File, Forms, Direct} = Load(calendar, Base),
+        Contribution = extend_symtab(File, Forms, calendar, (empty())#tab{gradual = Base#tab.gradual}, Overlay),
+        ?assertEqual(Direct, merge_contribution(Base, Contribution))
+    end).
 -endif.
 

@@ -228,7 +228,7 @@ trans_spec_ty(Ctx, Loc, FunTys) ->
             [T] -> T;
             _ -> {intersection, Tys}
         end,
-    TyVars = varenv:range(Env),
+    TyVars = lists:uniq([V || {var, _, V} <- AllTyvars]),
     ConstrainedTyVars =
         lists:map(
                 fun(Alpha) ->
@@ -280,12 +280,17 @@ resolve_ety_ty(_, intersection, Tys) ->
         _ -> {intersection, Tys}
     end;
 resolve_ety_ty(_, without, [T, U]) -> {intersection, [T, {negation, U}]};
-resolve_ety_ty(_, mu, [Body]) ->
-    Name = list_to_atom("$mu_" ++ integer_to_list(erlang:unique_integer([positive]))),
+resolve_ety_ty(L, mu, [Body]) ->
+    Name = mu_name(L),
     {mu, {mu_var, Name}, replace_mu_var(Body, Name)};
 resolve_ety_ty(_, mu_var, []) -> {mu_var, '$mu_placeholder'};
 resolve_ety_ty(L, Name, _) ->
     errors:ty_error(L, "Invalid use of builtin type etylizer:~w", Name).
+
+-spec mu_name(ast:loc()) -> atom().
+mu_name({loc, File, Line, Col}) ->
+    list_to_atom(lists:flatten(
+        io_lib:format("$mu_~s_~p_~p_~p", [filename:basename(File), Line, Col, erlang:phash2(File)]))).
 
 -spec replace_mu_var(ast:ty(), atom()) -> ast:ty().
 replace_mu_var({mu_var, '$mu_placeholder'}, Name) -> {mu_var, Name};
