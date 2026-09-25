@@ -84,7 +84,7 @@ is_satisfiable(SymTab, Constraints, FixedVars) ->
                  || C = {scsubty, _, S, T} <- sets:to_list(InlinedConstrs)])],
 
     % cleaning is OK, we only care about one solution
-    FinalCons = subst:clean_cons(InternalRawConstraints, FixedVars, SymTab),
+    FinalCons = clean(InternalRawConstraints, FixedVars, SymTab),
 
     MonomorphicTallyVariables = maps:from_list([{ty_variable:new_with_name(Var), []} || Var <- sets:to_list(FixedVars)]),
     ?METRIC(poly_vars, var_metrics(FixedVars, FinalCons, SymTab)),
@@ -108,6 +108,18 @@ is_satisfiable(SymTab, Constraints, FixedVars) ->
     end,
     ?METRIC_DO(metrics:flush_counts()),
     Result.
+
+-spec clean([{ast:ty(), ast:ty()}], monomorphic_variables(), symtab:t()) -> [{ast:ty(), ast:ty()}].
+clean(Cons, FixedVars, SymTab) ->
+    rounds(subst:clean_cons(Cons, FixedVars, SymTab), FixedVars, SymTab).
+
+-spec rounds([{ast:ty(), ast:ty()}], monomorphic_variables(), symtab:t()) -> [{ast:ty(), ast:ty()}].
+rounds(Cons, FixedVars, SymTab) ->
+    Decomposed = decompose:step(Cons, FixedVars, SymTab),
+    case lists:usort(Decomposed) =:= lists:usort(Cons) of
+        true -> Cons;
+        false -> rounds(subst:clean_cons_syntactic(Decomposed, FixedVars, SymTab), FixedVars, SymTab)
+    end.
 
 -spec do_satisfiable([{ast:ty(), ast:ty()}], map()) ->
     {false, [{error, string()}]} | {true, term()}.

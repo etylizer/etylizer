@@ -20,6 +20,11 @@
 % if not, use the freshly pre-allocated node and parse it
 -define(CACHE, ty_parser_cache).
 
+% the terms given to parse/1, as given
+% a term seen before needs neither the renaming of its mu-binders nor the
+% removal of its locations to find its node
+-define(PARSED, ty_parser_parsed).
+
 % a cache of discarded references which disappear after unification
 % used to re-map local references to the unified reference, if possible
 -define(UNIFY, ty_parser_unify).
@@ -36,7 +41,7 @@
 -define(UNPARSE_NAMED_QUEUE, ty_parser_unparse_queue).
 -define(UNPARSE_NAMED_FINISHED, ty_parser_unparse_finish).
 
--define(ALL_ETS, [?CACHE, ?SYMTAB, ?TERMREFS, ?UNIFY, ?UNPARSE_CACHE, ?UNPARSE_NAMED_QUEUE, ?UNPARSE_NAMED_FINISHED, ?UNPARSE_NAMED_MAPPING]).
+-define(ALL_ETS, [?CACHE, ?PARSED, ?SYMTAB, ?TERMREFS, ?UNIFY, ?UNPARSE_CACHE, ?UNPARSE_NAMED_QUEUE, ?UNPARSE_NAMED_FINISHED, ?UNPARSE_NAMED_MAPPING]).
 
 -define(TY, dnf_ty_variable).
 -define(NODE, ty_node).
@@ -141,6 +146,16 @@ set_symtab(SymTab) ->
 
 -spec parse(ast_ty()) -> type().
 parse(RawTy) ->
+  case ets:lookup(?PARSED, RawTy) of
+    [{RawTy, Node}] -> ?assert_type(Node, type());
+    _ ->
+      Node = parse_new(RawTy),
+      ets:insert(?PARSED, {RawTy, Node}),
+      Node
+  end.
+
+-spec parse_new(ast_ty()) -> type().
+parse_new(RawTy) ->
   % io:format(user,"Parsing: ~w,~n", [RawTy]),
   % first: rename such that mu-binders have no collisions
   % use DeBruijn indexes and then convert back to fresh named variables

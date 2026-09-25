@@ -21,7 +21,8 @@
     mk_tally_subst/2,
     base_subst/1,
     collect_vars/5,
-    clean_cons/3
+    clean_cons/3,
+    clean_cons_syntactic/3
 ]).
 
 -ifdef(TEST).
@@ -64,6 +65,10 @@ clean_cons(CList, Fixed, SymTab) ->
         Cleaned -> Cleaned;
         Fewer -> clean_cons(Fewer, Fixed, SymTab)
     end.
+
+-spec clean_cons_syntactic([{ast:ty(), ast:ty()}], sets:set(ast:ty_varname()), symtab:t()) -> [{ast:ty(), ast:ty()}].
+clean_cons_syntactic(CList, Fixed, SymTab) ->
+    clean_vars(drop_trivial(CList), Fixed, compute_variance_cache(SymTab)).
 
 % Eliminate a non-fixed variable via its upper and lower bounds.
 % A bare variable V is bound:
