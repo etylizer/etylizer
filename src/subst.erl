@@ -7,7 +7,8 @@
 -export_type([
     t/0,
     base_subst/0,
-    tally_subst/0
+    tally_subst/0,
+    variance_cache/0
 ]).
 
 -export([
@@ -16,6 +17,7 @@
     from_list/1,
     empty/0,
     extend/3,
+    compute_variance_cache/1,
     mk_tally_subst/2,
     base_subst/1,
     collect_vars/5,
@@ -199,11 +201,15 @@ combine_vars(_K, V1, V2) ->
 
 -spec compute_variance_cache(symtab:t()) -> variance_cache().
 compute_variance_cache(SymTab) ->
-    Types = symtab:get_types(SymTab),
-    Initial = maps:map(
-        fun(_, {ty_scheme, Vars, _}) -> [unused || _ <- Vars] end,
-        Types),
-    variance_fixpoint(Initial, Types).
+    case symtab:get_variances(SymTab) of
+        undefined ->
+            Types = symtab:get_types(SymTab),
+            Initial = maps:map(
+                fun(_, {ty_scheme, Vars, _}) -> [unused || _ <- Vars] end,
+                Types),
+            variance_fixpoint(Initial, Types);
+        Cache -> Cache
+    end.
 
 -spec variance_fixpoint(variance_cache(), map()) -> variance_cache().
 variance_fixpoint(OldCache, Types) ->
