@@ -59,19 +59,91 @@ clean_cons(CList, Fixed, SymTab) ->
     %% {named, _, Ref, Args} as a leaf, walking only Args with the correct
     %% polarity per parameter
     VCache = compute_variance_cache(SymTab),
-    VarPositions = collect_vars_clist(CList, 0, #{}, Fixed, VCache),
+    Cleaned = clean_vars(drop_trivial(CList), Fixed, VCache),
+    case drop_valid(Cleaned, Fixed, SymTab) of
+        Cleaned -> Cleaned;
+        Fewer -> clean_cons(Fewer, Fixed, SymTab)
+    end.
 
-    Apply = fun(Ty) -> maps:fold(
-        fun(VariableName, VariablePositions, Tyy) ->
-            case lists:usort(VariablePositions) of
-                [0] -> apply_base(#{VariableName => {predef, none}}, Tyy);
-                [1] -> apply_base(#{VariableName => {predef, any}}, Tyy);
-                _ -> Tyy
+% Eliminate a non-fixed variable via its upper and lower bounds.
+% A bare variable V is bound:
+%   * `S <: V` from below 
+%   * `V <: T` from above
+%   * plus nested occurrences:
+%     * only covariant -> V := union(lower bounds) preserves satisfiability
+%     * only contravariant -> V := intersection(upper bounds) preserves satisfiability
+%     * never nested: either side and anything in between is exact
+%
+% We take the one with fewer bounds. 
+%
+% Without bounds this is the old clean to none() or any(). 
+% A round substitutes simultaneously.
+-spec clean_vars([{ast:ty(), ast:ty()}], sets:set(ast:ty_varname()), variance_cache()) ->
+    [{ast:ty(), ast:ty()}].
+clean_vars(CList, Fixed, VCache) ->
+    IsBound = fun({var, V}) -> not sets:is_element(V, Fixed); (_) -> false end,
+    Bounds = maps:groups_from_list(fun({V, Dir, _}) -> {V, Dir} end, fun({_, _, B}) -> B end,
+        [{V, upper, T} || {S = {var, V}, T} <- CList, IsBound(S)] ++
+        [{V, lower, S} || {S, T = {var, V}} <- CList, IsBound(T)]),
+    Nested = lists:foldl(fun({Ty, CPos}, N) -> collect_vars(Ty, CPos, N, Fixed, VCache) end, #{},
+        [{Ty, CPos} || {S, T} <- CList, {Ty, CPos} <- [{S, 0}, {T, 1}], not IsBound(Ty)]),
+    Body = fun(V) ->
+        Uppers = maps:get({V, upper}, Bounds, []),
+        Lowers = maps:get({V, lower}, Bounds, []),
+        case maps:get(V, Nested, []) of
+            [0] -> ast_lib:mk_union(lists:usort(Lowers));
+            [1] -> ast_lib:mk_intersection(lists:usort(Uppers));
+            [] when length(Uppers) =< length(Lowers) -> ast_lib:mk_intersection(lists:usort(Uppers));
+            [] -> ast_lib:mk_union(lists:usort(Lowers));
+            _ -> keep
+        end
+    end,
+    % erlang_types variable order
+    % different orders can produce different cleaned types
+    Vars = lists:sort(fun(V1, V2) -> ty_variable:leq(ty_variable:new_with_name(V1), ty_variable:new_with_name(V2)) end,
+                      lists:usort([V || {V, _} <- maps:keys(Bounds)] ++ maps:keys(Nested))),
+    {Subst, _} = lists:foldl(
+        fun({V, B, Named}, Acc = {S, Taken}) ->
+            case lists:member(V, Named ++ Taken) orelse lists:any(fun(W) -> maps:is_key(W, S) end, Named) of
+                true -> Acc;
+                false -> {S#{V => B}, Named ++ Taken}
             end
-        end, Ty, VarPositions)
-            end,
+        end, {#{}, []}, [{V, B, vars(B)} || V <- Vars, B <- [Body(V)], B =/= keep]),
+    case map_size(Subst) of
+        0 -> CList;
+        _ -> clean_vars(drop_trivial([{apply_base(Subst, S), apply_base(Subst, T)} || {S, T} <- CList]),
+                        Fixed, VCache)
+    end.
 
-    [{Apply(C1), Apply(C2)} || {C1, C2} <- CList].
+-spec vars(term()) -> [ast:ty_varname()].
+vars(T) -> utils:everything(fun({var, V}) when is_atom(V) -> {ok, V}; (_) -> error end, T).
+
+% none() <: T, S <: any(), and S <: T where every member of S (read as a union)
+% is a member of T, or every member of T (read as an intersection) is a member
+% of S, hold under every assignment; they are what a cleaned bound leaves behind.
+% drop_valid decides the same semantically (subty treats variables as opaque),
+% for constraints naming a variable tally may instantiate; ground ones are left
+% to tally.
+-spec drop_trivial([{ast:ty(), ast:ty()}]) -> [{ast:ty(), ast:ty()}].
+drop_trivial(CList) -> [C || C = {S, T} <- CList, not trivial(S, T)].
+
+-spec drop_valid([{ast:ty(), ast:ty()}], sets:set(ast:ty_varname()), symtab:t()) ->
+    [{ast:ty(), ast:ty()}].
+drop_valid(CList, Fixed, SymTab) ->
+    [C || C = {S, T} <- CList,
+          not (lists:any(fun(V) -> not sets:is_element(V, Fixed) end, vars(C))
+               andalso subty:is_subty(SymTab, S, T))].
+
+-spec trivial(ast:ty(), ast:ty()) -> boolean().
+trivial({predef, none}, _) -> true;
+trivial(_, {predef, any}) -> true;
+trivial(S, T) ->
+    members(union, S) -- members(union, T) =:= []
+        orelse members(intersection, T) -- members(intersection, S) =:= [].
+
+-spec members(union | intersection, ast:ty()) -> [ast:ty()].
+members(K, {K, Tys}) -> Tys;
+members(_, Ty) -> [Ty].
 
 -type clean_mode() :: {clean, symtab:t()} | no_clean.
 
@@ -288,14 +360,6 @@ merge_pol(unused, X) -> X;
 merge_pol(X, unused) -> X;
 merge_pol(X, X) -> X;
 merge_pol(_, _) -> inv.
-
-% Walks a list of subtype constraints; for each {C1, C2}, C1 is in covariant
-% (CPos) and C2 in contravariant (1-CPos) position. 
-collect_vars_clist(L, CPos, Pos, Fix, VCache) when is_list(L) ->
-    lists:foldl(fun({C1, C2}, Acc) ->
-        Acc1 = collect_vars(C1, CPos, Acc, Fix, VCache),
-        collect_vars(C2, 1 - CPos, Acc1, Fix, VCache)
-                end, Pos, L).
 
 -spec collect_vars(ast:ty() | {ty_hole}, 0 | 1, #{ast:ty_varname() => [0 | 1]},
                    sets:set(ast:ty_varname()), variance_cache()) ->
