@@ -49,11 +49,34 @@ phi(BigS, [Ty | N], ST) ->
   ?METRIC_SUBPROBLEM(subty, tuple),
   maybe
     {false, ST1} ?= lists:foldl(fun(_S, {true, ST0}) -> {true, ST0}; (S, {false, ST0}) -> ?NODE:is_empty(S, ST0) end, {false, ST}, BigS),
-    lists:foldl(
-      fun(E, Acc) -> phi_solve(E, Acc, N, BigS) end,
-      {true, ST1},
-      lists:zip(lists:seq(1, length(ty_tuple:components(Ty))), lists:zip(BigS, ty_tuple:components(Ty))))
+    Components = ty_tuple:components(Ty),
+    % disjoint tuple test from Frisch PhD thesis
+    % BigS /\ not Ty = BigS
+    {Disjoint, ST2} = some_disjoint(lists:zip(BigS, Components), ST1),
+    case Disjoint of
+      true -> phi(BigS, N, ST2);
+      false ->
+        lists:foldl(
+          fun(E, Acc) -> phi_solve(E, Acc, N, BigS) end,
+          {true, ST2},
+          lists:zip(lists:seq(1, length(Components)), lists:zip(BigS, Components)))
+    end
   end.
+
+-spec some_disjoint([{Ty, Ty}], S) -> {boolean(), S} when S :: is_empty_cache(), Ty :: ty_node:type().
+some_disjoint([], ST) -> {false, ST};
+some_disjoint([{S, T} | Rest], ST0) ->
+    maybe
+        {false, ST1} ?= disjoint(S, T, ST0),
+        some_disjoint(Rest, ST1)
+    end.
+
+-spec disjoint(Ty, Ty, S) -> {boolean(), S} when S :: is_empty_cache(), Ty :: ty_node:type().
+disjoint(S, T, ST) ->
+    case ?NODE:difference(S, T) =:= S of
+        true -> {true, ST};
+        false -> ?NODE:is_empty(?NODE:intersect(S, T), ST)
+    end.
 
 -spec phi_solve({integer(), {ty:type(), ty:type()}}, {boolean(), S}, [?ATOM:type()], [ty:type()]) -> {boolean(), S} when S :: is_empty_cache().
 phi_solve(_, {false, ST2}, _, _) -> {false, ST2};
@@ -106,12 +129,23 @@ phi_norm(BigS, [Ty | N], Fixed, ST) ->
   case R1 of
     [[]] -> {[[]], ST0};
     _ ->
-      {R4, ST4} = lists:foldl(
-        fun(E, Acc) -> phi_norm_solve(E, Acc, N, BigS, Fixed) end,
-        {[[]], ST0},
-        lists:zip(lists:seq(1, length(ty_tuple:components(Ty))), lists:zip(BigS, ty_tuple:components(Ty)))
-      ),
-      {constraint_set:join(R1, R4, Fixed), ST4}
+      Components = ty_tuple:components(Ty),
+      % this is a weaker check than for the subtype algorithm because of performance reasons
+      % false caches throw away intermediate results that could be re-used as caching
+      % we investigate what happes when we implement CDuce Frisch CPS style emptiness checking
+      % and use the stronger check again
+      % but, so far, for this corpus and for type checking, this is fully sufficient
+      % 30/09/2026 albsch
+      case lists:any(fun({S, T}) -> ty_node:difference(S, T) =:= S end, lists:zip(BigS, Components)) of
+        true -> phi_norm(BigS, N, Fixed, ST0);
+        false ->
+          {R4, ST4} = lists:foldl(
+            fun(E, Acc) -> phi_norm_solve(E, Acc, N, BigS, Fixed) end,
+            {[[]], ST0},
+            lists:zip(lists:seq(1, length(Components)), lists:zip(BigS, Components))
+          ),
+          {constraint_set:join(R1, R4, Fixed), ST4}
+      end
   end.
 
 -spec phi_norm_solve({integer(), {ty_node:type(), ty_node:type()}}, {set_of_constraint_sets(), S}, [?ATOM:type()], [ty_node:type()], monomorphic_variables()) ->
