@@ -65,6 +65,8 @@ is_satisfiable(SymTab, Constraints, FixedVars) ->
     % uncomment to extract a tally test case config file
     % io:format(user, "~s~n", [utils:format_tally_config(sets:to_list(Constraints), FixedVars, SymTab)]),
 
+    ?METRIC_DO(metrics:begin_invocation()),
+
     % erlang_types has a global symtab
     ty_parser:set_symtab(SymTab),
 
@@ -93,7 +95,9 @@ is_satisfiable(SymTab, Constraints, FixedVars) ->
     Partitions = [V || {_, V} <- lists:sort(maps:to_list(MM))],
     ?METRIC_DO(record_tally_invocation(length(Partitions))),
     ?METRIC_DO(record_partition_shapes(Partitions, FixedVars)),
-    case Partitions of
+    ?METRIC_DO(metrics:record_partition_vars(Partitions, FixedVars)),
+    ?METRIC_DO(metrics:set_stage(tally)),
+    Result = case Partitions of
         [] -> {true, satisfiable}; % no subtype constraints
         [First | Rest] ->
             % Check satisfiability for each partition
@@ -101,7 +105,9 @@ is_satisfiable(SymTab, Constraints, FixedVars) ->
             lists:foldl(fun(_, {false, _}) -> {false, []};
                            (C, {true, _}) -> do_satisfiable(C, MonomorphicTallyVariables)
                         end, FirstRes, Rest)
-    end.
+    end,
+    ?METRIC_DO(metrics:flush_counts()),
+    Result.
 
 -spec do_satisfiable([{ast:ty(), ast:ty()}], map()) ->
     {false, [{error, string()}]} | {true, term()}.
@@ -140,7 +146,10 @@ tally(SymTab, Constraints, FixedVars) ->
     MonomorphicTallyVariables = maps:from_list([{ty_variable:new_with_name(Var), []} || Var <- sets:to_list(FixedVars)]),
     ?METRIC(poly_vars, var_metrics(FixedVars, InternalRawConstraints, SymTab)),
 
+    ?METRIC_DO(metrics:begin_invocation()),
+    ?METRIC_DO(metrics:set_stage(tally)),
     InternalResult = etally:tally(InternalConstraints, MonomorphicTallyVariables),
+    ?METRIC_DO(metrics:flush_counts()),
 
     Free = tyutils:free_in_subty_constrs(InlinedConstrs),
     case InternalResult of
