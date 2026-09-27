@@ -10,6 +10,9 @@
 %% Evaluate Expr only in metric builds. Used when the work itself
 %% (iteration, multi-statement recording) must vanish without metrics.
 -define(METRIC_DO(Expr), Expr).
+%% Increment a per-process counter, see metrics:count/2.
+-define(METRIC_COUNT(Via, Kind), metrics:count(Via, Kind)).
+-define(METRIC_SUBPROBLEM(Via, Kind), metrics:count(Via, Kind)).
 -else.
 -define(METRIC(Category, Expr), ok).
 -define(METRIC_SET_FUN(Label), ok).
@@ -17,6 +20,8 @@
 -define(METRIC_FUN(), '__no_fun__').
 -define(METRIC_INFER_FUN(_FileName), '__no_fun__').
 -define(METRIC_DO(_Expr), ok).
+-define(METRIC_COUNT(_Via, _Kind), ok).
+-define(METRIC_SUBPROBLEM(_Via, _Kind), ok).
 -endif.
 
 -endif.

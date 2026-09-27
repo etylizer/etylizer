@@ -18,6 +18,7 @@
 ]).
 
 -include("dnf/bdd.hrl").
+-include("metrics.hrl").
 
 -spec is_empty_line(line(), S) -> {boolean(), S} when S :: is_empty_cache().
 is_empty_line({[], [], _T}, ST) -> {false, ST};
@@ -36,6 +37,7 @@ is_empty_line({Pos, Neg, T}, ST) ->
 
 -spec phi([ty:type()], [?ATOM:type()], S) -> {boolean(), S} when S :: is_empty_cache().
 phi(BigS, [], ST) ->
+  ?METRIC_SUBPROBLEM(subty, tuple),
   % TODO how big of a performance hit is non-shortcut behavior of the true branch?
   lists:foldl(
     fun(_, {true, ST0}) -> {true, ST0};
@@ -44,6 +46,7 @@ phi(BigS, [], ST) ->
     {false, ST}, 
   BigS);
 phi(BigS, [Ty | N], ST) ->
+  ?METRIC_SUBPROBLEM(subty, tuple),
   maybe
     {false, ST1} ?= lists:foldl(fun(_S, {true, ST0}) -> {true, ST0}; (S, {false, ST0}) -> ?NODE:is_empty(S, ST0) end, {false, ST}, BigS),
     lists:foldl(
@@ -81,6 +84,7 @@ normalize_line({Pos, Neg, T}, Fixed, ST) ->
 -spec phi_norm([ty_node:type()], [T], monomorphic_variables(), S) -> 
     {set_of_constraint_sets(), S} when S :: normalize_cache(), T :: ?ATOM:type().
 phi_norm(BigS, [], Fixed, ST) ->
+  ?METRIC_SUBPROBLEM(norm, tuple),
   lists:foldl( % FIXME shortcut
     fun(S, {Res, ST0}) -> 
       {R, ST1} = ty_node:normalize(S, Fixed, ST0),
@@ -89,6 +93,7 @@ phi_norm(BigS, [], Fixed, ST) ->
     {[], ST}, 
     BigS);
 phi_norm(BigS, [Ty | N], Fixed, ST) ->
+  ?METRIC_SUBPROBLEM(norm, tuple),
   {R1, ST0} = lists:foldl(
     fun(S, {R2, ST2}) ->
       {R3, ST3} = ty_node:normalize(S, Fixed, ST2),

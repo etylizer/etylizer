@@ -77,6 +77,21 @@ stats(Json) ->
 
     NoPoly = lists:sum([1 || [_FN, _NC, 0 | _] <- Shape]),
 
+    %% Partition variables: without one, its partition splits further.
+    PVars = maps:get(<<"tally_partition_vars">>, Json, []),
+    AllVars = lists:sum([V || [_FN, V, _P] <- PVars]),
+    AvgPVars = case PVars of [] -> 0.0; _ -> lists:sum([P || [_FN, _V, P] <- PVars]) / length(PVars) end,
+    PVarShare = case AllVars of 0 -> 0.0; _ -> 100 * lists:sum([P || [_FN, _V, P] <- PVars]) / AllVars end,
+    %% Bottleneck variables: the partition variables of each invocation's biggest partition.
+    BVars = maps:get(<<"tally_bottleneck_vars">>, Json, []),
+    {AvgBVars, MaxBVars} = avg_max_int([B || [_FN, _NC, _V, B] <- BVars]),
+
+    %% Structural decompositions before tally and inside it: rewrite rules,
+    %% normalize and emptiness-check subproblems.
+    Decs = maps:get(<<"decompositions">>, Json, []),
+    DecPre = lists:sum([N || [_FN, <<"pre">>, _Via, _K, N] <- Decs]),
+    DecTally = lists:sum([N || [_FN, <<"tally">>, _Via, _K, N] <- Decs]),
+
     #{
       invocs => Invocs,
       total_parts => TotalParts,
@@ -88,7 +103,13 @@ stats(Json) ->
       p90_size => P90Sz,
       avg_poly => AvgPoly,
       max_poly => MaxPoly,
-      no_poly => NoPoly
+      no_poly => NoPoly,
+      avg_pvars => AvgPVars,
+      pvar_share => PVarShare,
+      avg_bvars => AvgBVars,
+      max_bvars => MaxBVars,
+      dec_pre => DecPre,
+      dec_tally => DecTally
     }.
 
 avg_max_int([])  -> {0.0, 0};
@@ -151,7 +172,10 @@ print_header() ->
       "Avg t/p", "Max t/p",
       "Avg sz", "Max sz", "p90 sz",
       "Avg poly", "Max poly",
-      "# no-poly"
+      "# no-poly",
+      "Avg pvars", "pvars %",
+      "Avg bvars", "Max bvars",
+      "Dec pre", "Dec tally"
     ],
     Hdr = "| " ++ lists:flatten(lists:join(" | ", Cols)) ++ " |",
     Sep = "|" ++ lists:flatten(lists:duplicate(length(Cols), "---|")),
@@ -170,7 +194,13 @@ print_row({Name, S}) ->
         ival(maps:get(p90_size, S)),
         fmt_f1(maps:get(avg_poly, S)),
         ival(maps:get(max_poly, S)),
-        ival(maps:get(no_poly, S))
+        ival(maps:get(no_poly, S)),
+        fmt_f1(maps:get(avg_pvars, S)),
+        fmt_f1(maps:get(pvar_share, S)),
+        fmt_f1(maps:get(avg_bvars, S)),
+        ival(maps:get(max_bvars, S)),
+        ival(maps:get(dec_pre, S)),
+        ival(maps:get(dec_tally, S))
     ],
     io:format("| ~s |~n", [lists:flatten(lists:join(" | ", Cols))]).
 

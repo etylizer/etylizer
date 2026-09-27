@@ -10,6 +10,7 @@
 ]).
 
 -include("dnf/bdd.hrl").
+-include("metrics.hrl").
 
 -spec is_empty_line({[T], [T], ?LEAF:type()}, S) -> {boolean(), S} when S :: is_empty_cache(), T :: ?ATOM:type().
 is_empty_line({AllPos, Neg, T}, ST) ->
@@ -52,11 +53,13 @@ explore_function(T1, T2, [Function | Ps], ST0) ->
 -spec phi(Ty, Ty, [?ATOM:type()], S) -> 
     {boolean(), S} when S :: is_empty_cache(), Ty :: ty_node:type().
 phi(T1, T2, [], ST0) ->
+  ?METRIC_SUBPROBLEM(subty, function),
   maybe
     {false, ST1} ?= ?NODE:is_empty(T1, ST0),
     ?NODE:is_empty(T2, ST1)
   end;
 phi(T1, T2, [Function | Ps], ST0) ->
+  ?METRIC_SUBPROBLEM(subty, function),
   {S1, S2} = {ty_function:domain(Function), ty_function:codomain(Function)},
   maybe 
     {false, ST1} ?= ?NODE:is_empty(T1, ST0),
@@ -110,10 +113,12 @@ normalize_line_cont(S, P, [Function | N], Fixed, ST) ->
 -spec explore_function_norm(ty_node:type(), ty_node:type(), [T], monomorphic_variables(), S) -> 
     {set_of_constraint_sets(), S} when S :: normalize_cache(), T :: ?ATOM:type().
 explore_function_norm(BigT1, T2, [], Fixed, ST0) ->
+  ?METRIC_SUBPROBLEM(norm, function),
   {NT1, ST1} = ty_node:normalize(BigT1, Fixed, ST0),
   {NT2, ST2} = ty_node:normalize(T2, Fixed, ST1),
   {constraint_set:join(NT1, NT2, Fixed), ST2};
 explore_function_norm(T1, T2, [Function | P], Fixed, ST0) ->
+  ?METRIC_SUBPROBLEM(norm, function),
   {NT1, ST1} = ty_node:normalize(T1, Fixed, ST0),
   {NT2, ST2} = ty_node:normalize(T2, Fixed, ST1),
 
