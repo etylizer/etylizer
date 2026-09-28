@@ -91,6 +91,13 @@ stats(Json) ->
     Decs = maps:get(<<"decompositions">>, Json, []),
     DecPre = lists:sum([N || [_FN, <<"pre">>, _Via, _K, N] <- Decs]),
     DecTally = lists:sum([N || [_FN, <<"tally">>, _Via, _K, N] <- Decs]),
+    %% The subproblems among them (emptiness checks and normalize, not the
+    %% rewrite rules), split by the search that takes the structure apart:
+    %% tuple (dnf_ty_tuple, which also takes lists and maps apart) and function.
+    Sub = fun(Stage, Kind) ->
+        lists:sum([N || [_FN, S, Via, K, N] <- Decs, S =:= Stage, K =:= Kind,
+                        Via =:= <<"subty">> orelse Via =:= <<"norm">>])
+    end,
 
     #{
       invocs => Invocs,
@@ -109,7 +116,11 @@ stats(Json) ->
       avg_bvars => AvgBVars,
       max_bvars => MaxBVars,
       dec_pre => DecPre,
-      dec_tally => DecTally
+      tup_pre => Sub(<<"pre">>, <<"tuple">>),
+      fun_pre => Sub(<<"pre">>, <<"function">>),
+      dec_tally => DecTally,
+      tup_tally => Sub(<<"tally">>, <<"tuple">>),
+      fun_tally => Sub(<<"tally">>, <<"function">>)
     }.
 
 avg_max_int([])  -> {0.0, 0};
@@ -175,7 +186,8 @@ print_header() ->
       "# no-poly",
       "Avg pvars", "pvars %",
       "Avg bvars", "Max bvars",
-      "Dec pre", "Dec tally"
+      "Dec pre", "Tup pre", "Fun pre",
+      "Dec tally", "Tup tally", "Fun tally"
     ],
     Hdr = "| " ++ lists:flatten(lists:join(" | ", Cols)) ++ " |",
     Sep = "|" ++ lists:flatten(lists:duplicate(length(Cols), "---|")),
@@ -200,7 +212,11 @@ print_row({Name, S}) ->
         fmt_f1(maps:get(avg_bvars, S)),
         ival(maps:get(max_bvars, S)),
         ival(maps:get(dec_pre, S)),
-        ival(maps:get(dec_tally, S))
+        ival(maps:get(tup_pre, S)),
+        ival(maps:get(fun_pre, S)),
+        ival(maps:get(dec_tally, S)),
+        ival(maps:get(tup_tally, S)),
+        ival(maps:get(fun_tally, S))
     ],
     io:format("| ~s |~n", [lists:flatten(lists:join(" | ", Cols))]).
 
