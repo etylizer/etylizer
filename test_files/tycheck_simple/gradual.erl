@@ -304,3 +304,24 @@ dyn_call_eval_02(M, F, Arg) ->
 dyn_call_eval_03(M, F, Arg1, Arg2) ->
   Res = M:F(Arg1, Arg2),
   Res.
+
+% it contains no dynamic(), so the redundancy check must still run
+-type phantom(_T) :: list(integer()).
+-spec phantom_no_dynamic_fail(phantom(dynamic())) -> integer().
+phantom_no_dynamic_fail(L) ->
+  case L of
+    [] -> 1;
+    [1 | _] -> 2;
+    [1, 2 | _] -> 3; % redundant, already covered by [1 | _]
+    _ -> 4
+  end.
+
+-type wrapped_dyn() :: list(dynamic()).
+-spec wrapped_dynamic(wrapped_dyn()) -> integer().
+wrapped_dynamic(L) ->
+  case L of
+    [] -> 1;
+    [1 | _] -> 2;
+    [1, 2 | _] -> 3;
+    _ -> 4
+  end.

@@ -64,19 +64,35 @@ check_simp_constrs_return_unmatched(Tab, FixedTyvars, Ds, What) ->
 % check unsound.
 -spec has_dynamic_constr(symtab:t(), constr:collected_constrs()) -> boolean().
 has_dynamic_constr(Tab, Constrs) ->
-    TyHasDynamic = fun(Ty) ->
-        Unfolded = ast_utils:unfold_ty(Tab, Ty),
-        utils:everything(
-            fun ({predef, dynamic}) -> {ok, true};
-                (_) -> error
-            end, Unfolded) =/= []
-    end,
-    lists:any(
-        fun ({scsubty, _, T1, T2}) -> TyHasDynamic(T1) orelse TyHasDynamic(T2);
-            ({scmater, _, T1, _}) -> TyHasDynamic(T1);
-            (_) -> false
+    Tys = lists:flatmap(
+        fun ({scsubty, _, T1, T2}) -> [T1, T2];
+            ({scmater, _, T1, _}) -> [T1];
+            (_) -> []
         end,
-        sets:to_list(Constrs)).
+        sets:to_list(Constrs)),
+    search_dynamic(Tab, Tys, #{}).
+
+-spec search_dynamic(symtab:t(), [ast:ty()], #{term() => ast:loc()}) -> boolean().
+search_dynamic(Tab, Tys, Seen) ->
+    Found = utils:everything(
+        fun ({predef, dynamic}) -> {ok, dynamic};
+            ({named, Loc, {_, M, N, A}, Args}) ->
+                {ok, {{{ty_ref, M, N, A}, ast_utils:remove_locs(Args)}, Loc}};
+            (_) -> error
+        end, Tys),
+    case lists:member(dynamic, Found) of
+        true -> true;
+        false ->
+            New = maps:without(maps:keys(Seen),
+                maps:from_list([X || X <- Found, X =/= dynamic])),
+            case maps:size(New) of
+                0 -> false;
+                _ ->
+                    Bodies = [ast_utils:unfold_named(Tab, Ref, Args, Loc)
+                              || {{Ref, Args}, Loc} <- maps:to_list(New)],
+                    search_dynamic(Tab, Bodies, maps:merge(Seen, New))
+            end
+    end.
 
 -spec check_redundant_branch(symtab:t(), sets:set(ast:ty_varname()), constr:subty_constrs(),
     {ast:loc(), constr:subty_constrs()}, ok | {error, error()}) -> ok | {error, error()}.
