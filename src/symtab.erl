@@ -26,7 +26,8 @@
     empty/0,
     extend_symtab_with_module_list/4,
     dump_symtab/2, overlay_symtab/1,
-    get_types/1
+    get_types/1,
+    get_variances/1
 ]).
 
 -ifdef(TEST). % for tally tests
@@ -49,13 +50,17 @@
               types :: ty_env(),
               records :: record_env(),
               modules :: mod_env(),
-              gradual = dynamic :: feature_flags:gradual_typing_mode()
+              gradual = dynamic :: feature_flags:gradual_typing_mode(),
+              variances = undefined :: undefined | subst:variance_cache()
 }).
 
 -type t() :: #tab{}.
 
 -spec get_types(t()) -> ty_env().
 get_types(#tab{types = Types}) -> Types.
+
+-spec get_variances(t()) -> undefined | subst:variance_cache().
+get_variances(#tab{variances = Variances}) -> Variances.
 
 -spec dump_symtab(string(), t()) -> ok.
 dump_symtab(Msg, Tab) ->
@@ -223,9 +228,12 @@ overlay_add_type(ModuleName, Name, Arity, TyScm, Tab) ->
 
 -type ref() :: ref | {qref, ModuleName::atom()}.
 
+% subst's variance cache depends on the types only, and they are final once
+% typing has added the checked file's own types.
 -spec extend_symtab(file:filename(), [ast:form()], t(), t()) -> t().
 extend_symtab(Filename, Forms, Tab, OverlaySymtab) ->
-    extend_symtab_internal(Filename, Forms, ref, Tab, OverlaySymtab).
+    Ext = extend_symtab_internal(Filename, Forms, ref, Tab, OverlaySymtab),
+    Ext#tab{variances = subst:compute_variance_cache(Ext)}.
 
 -spec extend_symtab(file:filename(), [ast:form()], atom(), t(), t()) -> t().
 extend_symtab(Filename, Forms, Module, Tab, OverlaySymtab) ->
@@ -257,7 +265,7 @@ extend_symtab_internal(Filename, Forms, RefType, Tab, OverlaySymtab) ->
         fun(Form, AccTab) ->
             extend_process_form(Form, AccTab, RefType, ModuleName, Forms, OverlaySymtab)
         end,
-        Tab#tab { modules = maps:put(ModuleName, Filename, Tab#tab.modules) },
+        Tab#tab { modules = maps:put(ModuleName, Filename, Tab#tab.modules), variances = undefined },
         Forms),
     % give every defined-but-unspecced function a dynamic() scheme here, 
     % once, so all downstream lookups resolve it 
@@ -351,7 +359,7 @@ create_ref_tuple({qref, Module}, Name, Arity) ->
 % the types from these modules, but for simplicity, we add everything.)
 -spec extend_symtab_with_module_list(symtab:t(), paths:search_path(), [atom()], t()) -> symtab:t().
 extend_symtab_with_module_list(Symtab, SearchPath, Modules, OverlaySymtab) ->
-    traverse_module_list(SearchPath, Symtab, Modules, OverlaySymtab).
+    traverse_module_list(SearchPath, Symtab#tab{variances = undefined}, Modules, OverlaySymtab).
 
 -spec traverse_module_list(paths:search_path(), t(), [ast:mod_name()], t()) -> t().
 traverse_module_list(SearchPath, Symtab, [CurrentModule | RemainingModules], OverlaySymtab) ->
