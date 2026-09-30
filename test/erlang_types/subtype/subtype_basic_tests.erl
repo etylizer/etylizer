@@ -83,3 +83,26 @@ pos_var_fun_test() ->
 
   false = is_subtype( S, T ),
   false = is_subtype( T, S ).
+
+% fun((a) -> integer()) /\ fun((b1) -> any()) /\ .. /\ fun((bk) -> any()) 
+% is a subtype of 
+% fun((a) -> integer() | c)
+%
+% Every fun((bi) -> any()) will be dropped by phi.
+% Its domain is disjoint from a, its codomain contains everything. 
+%
+% Branching on it instead leaves both branches with the same (T1, T2). 
+%
+% Only fun((a) -> integer()) covers the target, 
+% and phi reaches it last. Every branch ends in true, nothing
+% short-circuits, and the walk has 2^k leaves. 
+% The target is not fun((a) -> integer()) itself, which the BDD would cancel against its
+% negation without any search.
+many_irrelevant_arrows_test_() ->
+  {timeout, 30, fun() ->
+    Arrow = f([b(a)], tint()),
+    Others = [f([b(list_to_atom("phi_memo_b" ++ integer_to_list(I)))], tany()) || I <- lists:seq(1, 30)],
+    Target = f([b(a)], u(tint(), b(c))),
+    true = is_subtype(i([Arrow | Others]), Target),
+    false = is_subtype(i(Others), Target)
+  end}.

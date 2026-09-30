@@ -45,9 +45,20 @@ is_empty_cont(Ps, NegatedFun, ST0) ->
 explore_function(_T1, _T2, [], ST) -> {true, ST};
 explore_function(T1, T2, [Function | Ps], ST0) ->
   {S1, S2} = {ty_function:domain(Function), ty_function:codomain(Function)},
-  maybe 
-    {true, ST1} ?= phi(T1, ?NODE:intersect(T2, S2), Ps, ST0),
-    phi(?NODE:difference(T1, S1), T2, Ps, ST1)
+  case irrelevant_arrow(T1, T2, S1, S2, ST0) of
+    {true, ST1} -> phi(T1, T2, Ps, ST1);
+    {false, ST1} ->
+      maybe
+        {true, ST2} ?= phi(T1, ?NODE:intersect(T2, S2), Ps, ST1),
+        phi(?NODE:difference(T1, S1), T2, Ps, ST2)
+      end
+  end.
+
+-spec irrelevant_arrow(Ty, Ty, Ty, Ty, S) -> {boolean(), S} when S :: is_empty_cache(), Ty :: ty_node:type().
+irrelevant_arrow(T1, T2, S1, S2, ST0) ->
+  case ?NODE:is_empty(?NODE:intersect(T1, S1), ST0) of
+    {true, ST1} -> {true, ST1};
+    {false, ST1} -> ?NODE:leq(T2, S2, ST1)
   end.
 
 -spec phi(Ty, Ty, [?ATOM:type()], S) -> 
@@ -64,15 +75,19 @@ phi(T1, T2, [Function | Ps], ST0) ->
   maybe 
     {false, ST1} ?= ?NODE:is_empty(T1, ST0),
     {false, ST2} ?= ?NODE:is_empty(T2, ST1),
-    maybe
-      {true, ST4} ?= maybe
-        {false, ST3} ?= ?NODE:leq(T1, S1, ST2),
-        Codomains = lists:map(fun ty_function:codomain/1, Ps),
-        Conj = ?NODE:conjunction(Codomains),
-        ?NODE:leq(Conj, ?NODE:negate(T2), ST3)
-      end,
-      {true, ST5} ?= phi(T1, ?NODE:intersect(T2, S2), Ps, ST4),
-      phi(?NODE:difference(T1, S1), T2, Ps, ST5)
+    case irrelevant_arrow(T1, T2, S1, S2, ST2) of
+      {true, ST3} -> phi(T1, T2, Ps, ST3);
+      {false, ST3} ->
+        maybe
+          {true, ST5} ?= maybe
+            {false, ST4} ?= ?NODE:leq(T1, S1, ST3),
+            Codomains = lists:map(fun ty_function:codomain/1, Ps),
+            Conj = ?NODE:conjunction(Codomains),
+            ?NODE:leq(Conj, ?NODE:negate(T2), ST4)
+          end,
+          {true, ST6} ?= phi(T1, ?NODE:intersect(T2, S2), Ps, ST5),
+          phi(?NODE:difference(T1, S1), T2, Ps, ST6)
+        end
     end
   end.
 
@@ -131,19 +146,27 @@ explore_function_norm(T1, T2, [Function | P], Fixed, ST0) ->
         _ ->
           S1 = ty_function:domain(Function),
           S2 = ty_function:codomain(Function),
-          {NS1, ST3} = explore_function_norm(T1, ty_node:intersect(T2, S2), P, Fixed, ST2),
-          case NS1 of
-            [] ->
-              {constraint_set:join(NT1, NT2, Fixed), ST3};
-            _ ->
-              {NS2, ST4} = explore_function_norm(ty_node:difference(T1, S1), T2, P, Fixed, ST3),
-              {constraint_set:join(NT1,
-                  constraint_set:join(NT2,
-                      constraint_set:meet(NS1, NS2, Fixed), Fixed), Fixed),
-               ST4}
+          case irrelevant_arrow_norm(T1, T2, S1, S2) of
+            true -> explore_function_norm(T1, T2, P, Fixed, ST2);
+            false ->
+              {NS1, ST3} = explore_function_norm(T1, ty_node:intersect(T2, S2), P, Fixed, ST2),
+              case NS1 of
+                [] ->
+                  {constraint_set:join(NT1, NT2, Fixed), ST3};
+                _ ->
+                  {NS2, ST4} = explore_function_norm(ty_node:difference(T1, S1), T2, P, Fixed, ST3),
+                  {constraint_set:join(NT1,
+                      constraint_set:join(NT2,
+                          constraint_set:meet(NS1, NS2, Fixed), Fixed), Fixed),
+                   ST4}
+              end
           end
       end
   end.
+
+-spec irrelevant_arrow_norm(Ty, Ty, Ty, Ty) -> boolean() when Ty :: ty_node:type().
+irrelevant_arrow_norm(T1, T2, S1, S2) ->
+  ty_node:difference(T1, S1) =:= T1 orelse ty_node:intersect(T2, S2) =:= T2.
 
 -spec all_variables_line([T], [T], ?LEAF:type(), all_variables_cache()) -> sets:set(variable()) when T :: ?ATOM:type().
 all_variables_line(P, N, Leaf, Cache) ->
