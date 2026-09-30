@@ -246,6 +246,10 @@ variance_node({negation, T}, V, Pol, Cache) ->
     {ok, variance_walk(T, V, flip_pol(Pol), unused, Cache)};
 variance_node({named, _Loc, Ref, As}, V, Pol, Cache) ->
     {ok, variance_named(Ref, As, V, Pol, Cache)};
+variance_node(M = {map, _}, V, Pol, Cache) ->
+    {ok, variance_walk(ty_parser:rewrite_map_to_representation(M), V, Pol, unused, Cache)};
+variance_node({mu, _MuVar, T}, V, Pol, Cache) -> % the recursion may flip the polarity
+    {ok, merge_pol(variance_walk(T, V, Pol, unused, Cache), variance_walk(T, V, flip_pol(Pol), unused, Cache))};
 variance_node(_, _V, _Pol, _Cache) ->
     error.
 
@@ -322,8 +326,8 @@ collect_vars({nonempty_list, A}, CPos, Pos, Fix, VCache) ->
     collect_vars(A, CPos, Pos, Fix, VCache);
 collect_vars({list, A}, CPos, Pos, Fix, VCache) ->
     collect_vars(A, CPos, Pos, Fix, VCache);
-collect_vars({mu, _MuVar, A}, CPos, Pos, Fix, VCache) -> % skip recursion variables
-    collect_vars(A, CPos, Pos, Fix, VCache);
+collect_vars({mu, _MuVar, A}, CPos, Pos, Fix, VCache) -> % the recursion may flip the polarity
+    collect_vars(A, 1 - CPos, collect_vars(A, CPos, Pos, Fix, VCache), Fix, VCache);
 collect_vars({cons, A, B}, CPos, Pos, Fix, VCache) ->
     collect_vars(B, CPos, collect_vars(A, CPos, Pos, Fix, VCache), Fix, VCache);
 collect_vars({improper_list, A, B}, CPos, Pos, Fix, VCache) ->
@@ -435,9 +439,25 @@ variance_contra_through_co_test() ->
     ?assertEqual([contra], get_v('G', 1, Cache)),
     ?assertEqual([contra], get_v('F', 1, Cache)).
 
+variance_map_key_test() ->
+    % a required key is also a function argument in the map's representation
+    Body = {map, [{map_field_req, {var, 'K'}, {var, 'V'}}]},
+    Cache = run_variance_fp([{'F', ['K', 'V'], Body}]),
+    ?assertEqual([inv, co], get_v('F', 2, Cache)).
+
+variance_mu_test() ->
+    % unfolding puts A into the argument as well
+    Body = {mu, {mu_var, x}, {fun_full, [{mu_var, x}], {var, 'A'}}},
+    Cache = run_variance_fp([{'F', ['A'], Body}]),
+    ?assertEqual([inv], get_v('F', 1, Cache)).
+
+collect_vars_mu_test() ->
+    % mu X. fun(X -> T) unfolds to fun((X -> T) -> T)
+    Ty = {mu, {mu_var, x}, {fun_full, [{mu_var, x}], {var, 'T'}}},
+    ?assertEqual(#{'T' => [0, 1]}, collect_vars(Ty, 0, #{}, sets:new(), #{})).
+
 variance_list_test() ->
-    %% list(T) = empty_list() | cons(T, list(T))
-    %% T is co
+    % T is co
     Body = {union, [{empty_list}, {cons, {var, 'T'}, nref('list', [{var, 'T'}])}]},
     Cache = run_variance_fp([{'list', ['T'], Body}]),
     ?assertEqual([co], get_v('list', 1, Cache)).
