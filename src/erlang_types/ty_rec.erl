@@ -373,7 +373,7 @@ substitute(#ty{
         dnf_ty_atom = A,
         dnf_ty_interval = I,
         dnf_ty_list = dnf_ty_list:substitute(L, #{}, NodeMap),
-        dnf_ty_bitstring = B,
+        dnf_ty_bitstring = dnf_ty_bitstring:substitute(B, #{}, NodeMap),
         ty_tuples = ty_tuples:substitute(T, NodeMap),
         ty_functions = ty_functions:substitute(F, NodeMap),
         dnf_ty_map = dnf_ty_map:substitute(M, #{}, NodeMap)
