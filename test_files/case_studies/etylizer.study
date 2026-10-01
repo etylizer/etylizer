@@ -88,6 +88,8 @@
 
 {module, dnf_ty_map, #{file => "etylizer/src/erlang_types/dnf_ty_map.erl", overlays => [{library, "../../overlays/etylizer_overlay.erl"}], timeout => 10000}}.
 
+{module, dnf_ty_nominal, #{file => "etylizer/src/erlang_types/dnf_ty_nominal.erl", overlays => [{library, "../../overlays/etylizer_overlay.erl"}], timeout => 10000}}.
+
 {module, dnf_ty_predefined, #{file => "etylizer/src/erlang_types/dnf_ty_predefined.erl", overlays => [{library, "../../overlays/etylizer_overlay.erl"}], timeout => 10000}}.
 
 {module, dnf_ty_tuple, #{file => "etylizer/src/erlang_types/dnf_ty_tuple.erl", overlays => [{library, "../../overlays/etylizer_overlay.erl"}], timeout => 10000}}.
@@ -123,6 +125,8 @@
 {exception, ty_map, unparse, 2, [no_exhaustiveness], flag}.
 
 {module, ty_node, #{file => "etylizer/src/erlang_types/ty_node.erl", overlays => [{library, "../../overlays/etylizer_overlay.erl"}], timeout => 10000}}.
+
+{module, ty_nominal, #{file => "etylizer/src/erlang_types/ty_nominal.erl", overlays => [{library, "../../overlays/etylizer_overlay.erl"}], timeout => 10000}}.
 
 {module, ty_parser, #{file => "etylizer/src/erlang_types/ty_parser.erl", overlays => [{library, "../../overlays/etylizer_overlay.erl"}], timeout => 10000}}.
 
