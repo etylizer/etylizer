@@ -588,7 +588,8 @@ map_line({Pos, Neg, _}, Path, St) ->
   phi(ty_tuple:components(ty_tuple:big_intersect(Pos)), Neg, Path, St).
 
 -spec phi([ty:type()], [ty_tuple:type()], reason(), state()) -> boolean().
-phi(BigS, Neg, Path, St = #state{cache = Cache, pending = Pending}) ->
+phi(BigS, Neg0, Path, St = #state{cache = Cache, pending = Pending}) ->
+  Neg = relevant_tuples(BigS, Neg0),
   Key = {phi_tuple, BigS, Neg},
   case Cache of
     #{Key := _} -> continue(St);
@@ -603,6 +604,18 @@ phi(BigS, Neg, Path, St = #state{cache = Cache, pending = Pending}) ->
           end,
           any_of(Alternatives, Path, St#state{pending = [{{achieve, Key}, Path} | Pending]})
       end
+  end.
+
+%% A negated tuple with a component disjoint from the one of BigS takes
+%% nothing away (BigS \ Ty = BigS), so the search goes on with the next: the
+%% disjoint tuple test of dnf_ty_tuple:phi_norm. Only the head is tested, the
+%% tail when its turn comes, with the BigS it then has.
+-spec relevant_tuples([ty:type()], [ty_tuple:type()]) -> [ty_tuple:type()].
+relevant_tuples(_BigS, []) -> [];
+relevant_tuples(BigS, Neg = [Ty | N]) ->
+  case lists:any(fun({S, T}) -> ty_node:difference(S, T) =:= S end, lists:zip(BigS, ty_tuple:components(Ty))) of
+    true -> relevant_tuples(BigS, N);
+    false -> Neg
   end.
 
 -spec without([ty:type()], [ty:type()], pos_integer(), [ty_tuple:type()]) -> [goal()].
@@ -626,7 +639,8 @@ function_line({Pos, Neg, _}, Path, St) ->
   any_of(Alternatives, Path, St).
 
 -spec explore(ty:type(), ty:type(), [ty_function:type()], reason(), state()) -> boolean().
-explore(T1, T2, P, Path, St = #state{cache = Cache, pending = Pending}) ->
+explore(T1, T2, P0, Path, St = #state{cache = Cache, pending = Pending}) ->
+  P = relevant_arrows(T1, T2, P0),
   Key = {fun_explore, T1, T2, P},
   case Cache of
     #{Key := _} -> continue(St);
@@ -645,6 +659,18 @@ explore(T1, T2, P, Path, St = #state{cache = Cache, pending = Pending}) ->
           end,
           any_of([{empty, T1}, {empty, T2} | Split], Path, St#state{pending = [{{achieve, Key}, Path} | Pending]})
       end
+  end.
+
+%% An arrow whose domain is disjoint from T1, or whose codomain contains T2,
+%% changes neither side of the split, so the search goes on with the next:
+%% dnf_ty_function:irrelevant_arrow_norm.
+-spec relevant_arrows(ty:type(), ty:type(), [ty_function:type()]) -> [ty_function:type()].
+relevant_arrows(_T1, _T2, []) -> [];
+relevant_arrows(T1, T2, P = [F | Ps]) ->
+  case ty_node:difference(T1, ty_function:domain(F)) =:= T1
+       orelse ty_node:intersect(T2, ty_function:codomain(F)) =:= T2 of
+    true -> relevant_arrows(T1, T2, Ps);
+    false -> P
   end.
 
 % identical nodes need no engine call; the empty and any nodes are units
