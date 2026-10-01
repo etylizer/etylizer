@@ -111,9 +111,10 @@
 %% failure found with skips holds without them, and a failure under fewer
 %% pieces holds under more.
 
--export([is_satisfiable/2]).
+-export([is_satisfiable/2, is_satisfiable_elim/2]).
 
 -include("constraints.hrl").
+-include("metrics.hrl").
 -include("etylizer.hrl").
 
 % data structure used for caching
@@ -138,7 +139,8 @@
 % the upper bound the intersection of the upper pieces
 % if the inputs constraints are satisfiable,
 % these bounds denote one valid substitution (pre-solved) substitution
--type bounds() :: #{variable() => {ty:type(), ty:type(), [piece()], [piece()]}}.
+-type bounds() :: #{variable() => bound()}.
+-type bound() :: {ty:type(), ty:type(), [piece()], [piece()]}.
 
 % the cache for the coinductive hypothesis,
 % is modified when empty(T) starts
@@ -167,10 +169,14 @@
 % a position in a conjunction: its structural id and the index of the conjunct
 -type position() :: {term(), non_neg_integer()}.
 
+% an input constraint A <= B still to run
+-type input() :: {pos_integer(), ty:type(), ty:type()}.
+
 % A search goal
 % the lines of a node and their constructor components are goals as they are prepared
 -type goal() :: 
     {input, pos_integer(), ty:type(), ty:type()} % the input constraint A <= B
+  | {inputs, [input()]} % the inputs left, with an elimination before each (is_satisfiable_elim/2)
   | {empty, ty:type()} % make the node empty
   | {consequence, ty:type(), reason(), read(), epoch()} % a piece pair, reading one of them
   | prepared() % a prepared line of a node
@@ -237,11 +243,22 @@ is_satisfiable(Constraints, Fixed) ->
               learned = #learned{conts = #{}}, pending = [{{all, inputs, Goals}, #{}}], choices = []},
   continue(St).
 
+% The same search with variable elimination: before every input constraint,
+% the variables that the bounds and the inputs left hold at one polarity only
+% take their bound and disappear, see esaty_elim.
+-spec is_satisfiable_elim(input_constraints(), monomorphic_variables()) -> boolean().
+is_satisfiable_elim(Constraints, Fixed) ->
+  Inputs = [{I, A, B} || {I, {A, B}} <- lists:enumerate(Constraints)],
+  St = #state{fixed = Fixed, bounds = #{}, cache = #{}, epoch = 0, reads = #{}, tok = 0,
+              learned = #learned{conts = #{}}, pending = [{{inputs, Inputs}, #{}}], choices = []},
+  continue(St).
+
 % run one goal under the decisions its existence depends on
 -spec goal(goal(), reason(), state()) -> boolean().
 goal(Goal, Path, St) ->
   case Goal of
-    {input, I, A, B} -> empty(ty_node:difference(A, B), #{{input, I} => []}, St);
+    {input, I, A, B} -> empty(ty_node:difference(A, B), Path#{{input, I} => []}, St);
+    {inputs, Inputs} -> inputs(Inputs, St);
     {empty, T} -> empty(T, Path, St);
     {consequence, T, PairPath, Read, Epoch} ->
       #state{reads = Reads} = St,
@@ -266,6 +283,91 @@ goal(Goal, Path, St) ->
     {achieve, Key} ->
       #state{cache = Cache} = St,
       continue(St#state{cache = Cache#{Key => []}})
+  end.
+
+% The inputs left, one at a time. No goal is pending below them, so the bounds
+% and these inputs are everything a variable can still occur in.
+-spec inputs([input()], state()) -> boolean().
+inputs([], St) -> continue(St);
+inputs(Inputs, St) ->
+  {[{I, A, B} | Rest], Goals, St1 = #state{pending = Pending}} = ?assert_pattern({[_ | _], _, _}, eliminate(Inputs, St)),
+  continue(St1#state{pending = [{G, #{}} || G <- Goals ++ [{input, I, A, B}, {inputs, Rest}]] ++ Pending}).
+
+%% Elimination, until no variable is left to eliminate, and only while no
+%% decision on the choice stack has an alternative left: then the bounds do
+%% not depend on a choice, they hold on every path, and the rewritten problem
+%% is satisfiable exactly if the original is. With an open decision the
+%% rewrite would depend on it (which variables can go is read off all the
+%% bounds), and so would every failure after it. A rewritten piece is a new
+%% piece, so its pairs are posed again as consequences.
+-spec eliminate([input()], state()) -> {[input()], [goal()], state()}.
+eliminate(Inputs, St = #state{epoch = E0, choices = Choices}) ->
+  case lists:any(fun({decide, [_ | _], _, _, _, _, _}) -> true; (_) -> false end, Choices) of
+    true ->
+      ?METRIC_COUNT(eliminate, blocked),
+      {Inputs, [], St};
+    false ->
+      ?METRIC_COUNT(eliminate, attempt),
+      {Inputs1, St1 = #state{bounds = C}} = eliminate_rounds(Inputs, St),
+      Empty = ty_node:empty(),
+      Goals = [{consequence, T, maps:merge(RL, RU), {V, lower, L}, EL}
+               || {V, {_, _, Ls, Us}} <- maps:to_list(C), {L, RL, EL} <- Ls, {U, RU, EU} <- Us,
+                  EL >= E0 orelse EU >= E0,
+                  T <- [ty_node:difference(L, U)], T =/= Empty],
+      {Inputs1, Goals, St1}
+  end.
+
+-spec eliminate_rounds([input()], state()) -> {[input()], state()}.
+eliminate_rounds(Inputs, St = #state{fixed = Fixed, bounds = C, epoch = E}) ->
+  Sigma = esaty_elim:sigma(roots(Inputs, C), maps:map(fun(_, {L, U, _, _}) -> {L, U} end, C), Fixed),
+  case map_size(Sigma) of
+    0 -> {Inputs, St};
+    _ ->
+      Inputs1 = [{I, ty_node:substitute(A, Sigma), ty_node:substitute(B, Sigma)} || {I, A, B} <- Inputs],
+      C1 = maps:map(fun(_, Entry) -> substitute_bound(Entry, Sigma, E) end, maps:without(maps:keys(Sigma), C)),
+      % a variable that the substitution left somewhere is not gone: its
+      % bounds must stay, so the round is dropped
+      case lists:any(fun(T) -> mentions(T, Sigma) end, root_types(Inputs1, C1)) of
+        true -> {Inputs, St};
+        false -> eliminate_rounds(Inputs1, St#state{bounds = C1, epoch = E + 1})
+      end
+  end.
+
+%% The types a variable can still occur in, each with the polarity it is
+%% taken at: a lower piece and the left side of an input have to shrink,
+%% an upper piece and the right side of an input have to grow.
+-spec roots([input()], bounds()) -> [{ty:type(), pos | neg}].
+roots(Inputs, C) ->
+  lists:append([[{N, pos} || {N, _, _} <- Ls] ++ [{N, neg} || {N, _, _} <- Us] || {_, _, Ls, Us} <- maps:values(C)])
+    ++ lists:append([[{A, pos}, {B, neg}] || {_, A, B} <- Inputs]).
+
+%% The same types without their polarities.
+-spec root_types([input()], bounds()) -> [ty:type()].
+root_types(Inputs, C) ->
+  lists:append([[N || {N, _, _} <- Ls ++ Us] || {_, _, Ls, Us} <- maps:values(C)])
+    ++ lists:append([[A, B] || {_, A, B} <- Inputs]).
+
+-spec mentions(ty:type(), #{variable() => ty:type()}) -> boolean().
+mentions(T, Sigma) ->
+  lists:any(fun(V) -> is_map_key(V, Sigma) end, sets:to_list(ty_node:all_variables(T))).
+
+%% The bounds of a variable under the substitution: a piece that changes is
+%% a new piece of the round's epoch, and the merged bounds are made again.
+-spec substitute_bound(bound(), #{variable() => ty:type()}, epoch()) -> bound().
+substitute_bound(Entry = {_, _, Ls, Us}, Sigma, E) ->
+  case {[substitute_piece(P, Sigma, E) || P <- Ls], [substitute_piece(P, Sigma, E) || P <- Us]} of
+    {Ls, Us} -> Entry;
+    {Ls1, Us1} ->
+      {lists:foldl(fun({N, _, _}, Acc) -> union_bound(N, Acc) end, ty_node:empty(), Ls1),
+       lists:foldl(fun({N, _, _}, Acc) -> intersect_bound(N, Acc) end, ty_node:any(), Us1),
+       Ls1, Us1}
+  end.
+
+-spec substitute_piece(piece(), #{variable() => ty:type()}, epoch()) -> piece().
+substitute_piece(P = {N, R, _}, Sigma, E) ->
+  case ty_node:substitute(N, Sigma) of
+    N -> P;
+    N1 -> {N1, R, E}
   end.
 
 % run the next pending goal under the decisions it depends on

@@ -94,6 +94,8 @@
 
 {module, esaty, #{file => "etylizer/src/erlang_types/esaty.erl", overlays => [{library, "../../overlays/etylizer_overlay.erl"}], timeout => 10000}}.
 
+{module, esaty_elim, #{file => "etylizer/src/erlang_types/esaty_elim.erl", overlays => [{library, "../../overlays/etylizer_overlay.erl"}], timeout => 10000}}.
+
 {module, etally, #{file => "etylizer/src/erlang_types/etally.erl", overlays => [{library, "../../overlays/etylizer_overlay.erl"}], timeout => 10000}}.
 
 {module, feature_flags, #{file => "etylizer/src/erlang_types/feature_flags.erl", overlays => [{library, "../../overlays/etylizer_overlay.erl"}], timeout => 10000}}.
