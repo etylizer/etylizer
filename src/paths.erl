@@ -6,6 +6,7 @@
     compute_search_path/1,
     generate_input_file_list/1,
     index_file_name/1,
+    symtab_cache_file_name/1,
     find_module_path/2,
     rebar_lock_file/1,
     rebar_config_from_lock_file/1
@@ -210,6 +211,11 @@ index_file_name(Opts) ->
     D = etylizer_dir(Opts),
     filename:join(D, "index").
 
+-spec symtab_cache_file_name(cmd_opts()) -> file:filename().
+symtab_cache_file_name(Opts) ->
+    D = etylizer_dir(Opts),
+    filename:join(D, "symtab_cache").
+
 -spec rebar_lock_file(cmd_opts()) -> file:filename().
 rebar_lock_file(Opts) ->
     RootDir = root_dir(Opts),
@@ -227,7 +233,7 @@ find_module_path(SearchPath, Module) ->
         undefined -> ets:new(?TABLE, [set, named_table, {keypos, 1}]);
         _ -> ok
     end,
-    Key = {SearchPath, Module},
+    Key = {erlang:phash2(SearchPath), Module},
     case ets:lookup(?TABLE, Key) of
         [{_, Result}] -> ?assert_type(Result, search_path_entry());
         [] ->

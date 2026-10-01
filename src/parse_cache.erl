@@ -4,7 +4,7 @@
 -include("parse.hrl").
 -include("etylizer_main.hrl").
 
--export([init/1, cleanup/0, parse/2, with_cache/2]).
+-export([init/1, cleanup/0, parse/2, headers/1, with_cache/2]).
 -export_type([file_kind/0]).
 
 -include("etylizer.hrl").
@@ -56,8 +56,8 @@ check_kind(Kind, StoredKind, PathNorm) ->
 parse_and_cache(Kind, PathNorm, Hash) ->
     ?assert_pattern([{_, _}], ets:lookup(?TABLE, opts)),
     [{_, Opts}] = ets:lookup(?TABLE, opts),
-    Forms = really_parse_file(Kind, PathNorm, ?assert_type(Opts, #opts{})),
-    ets:insert(?TABLE, {PathNorm, {Hash, Kind, Forms}}),
+    {Forms, Headers} = really_parse_file(Kind, PathNorm, ?assert_type(Opts, #opts{})),
+    ets:insert(?TABLE, {PathNorm, {Hash, Kind, Forms, Headers}}),
     Forms.
 
 -spec parse(file_kind(), file:filename()) -> [ast:form()].
@@ -65,7 +65,7 @@ parse(Kind, Path) ->
     PathNorm = utils:normalize_path(Path),
     Hash = hash_file(PathNorm),
     case ets:lookup(?TABLE, PathNorm) of
-        [{_, {StoredHash, StoredKind, Forms}}] when Hash =:= StoredHash ->
+        [{_, {StoredHash, StoredKind, Forms, _}}] when Hash =:= StoredHash ->
             check_kind(Kind, StoredKind, PathNorm),
             ?LOG_TRACE("Retrieving parse result for ~p from cache", PathNorm),
             ?assert_type(Forms, [ast:form()]);
@@ -73,6 +73,11 @@ parse(Kind, Path) ->
             parse_and_cache(Kind, PathNorm, Hash);
         X -> ?ABORT("Unexpected entry in parse cache for key ~p: ~p", PathNorm, X)
     end.
+
+-spec headers(file:filename()) -> [file:filename()].
+headers(Path) ->
+    [{_, {_, _, _, Headers}}] = ets:lookup(?TABLE, utils:normalize_path(Path)),
+    ?assert_type(Headers, [file:filename()]).
 
 -spec make_parse_opts(file_kind(), #opts{}) -> parse_opts().
 make_parse_opts(Kind, Opts) ->
@@ -143,7 +148,7 @@ transform_forms(Kind, File, RawForms, Opts) ->
     ?LOG_TRACE("Parse result (after transform):~n~120p", Forms),
     Forms.
 
--spec really_parse_file(file_kind(), file:filename(), #opts{}) -> [ast:form()].
+-spec really_parse_file(file_kind(), file:filename(), #opts{}) -> {[ast:form()], [file:filename()]}.
 really_parse_file(Kind, File, Opts) ->
     ParseOpts = make_parse_opts(Kind, Opts),
     ?LOG_DEBUG("Parsing ~s ...", File),
@@ -157,4 +162,5 @@ really_parse_file(Kind, File, Opts) ->
 
     maybe_sanity_check(Kind, Opts#opts.sanity, File, RawForms),
 
-    transform_forms(Kind, File, RawForms, Opts).
+    Headers = lists:usort([F || {attribute, _, file, {F, _}} <- RawForms, F =/= File, filelib:is_regular(F)]),
+    {transform_forms(Kind, File, RawForms, Opts), Headers}.
