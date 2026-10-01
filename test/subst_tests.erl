@@ -61,6 +61,14 @@ all_variables_test() ->
     ok
   end).
 
+all_variables_shared_dag_test() ->
+  global_state:with_new_state(fun() ->
+    Var = ast_to_erlang_ty_var(tvar('$0')),
+    Pair = fun(T) -> ty:tuples(ty_tuples:singleton(2, dnf_ty_tuple:singleton(ty_tuple:tuple([T, T])))) end,
+    Ty = lists:foldl(fun(_, T) -> Pair(T) end, ty:variable(Var), lists:seq(1, 60)),
+    true = eq_list([Var], all_variables(Ty))
+  end).
+
 simple_subst_test() ->
   global_state:with_new_state(fun() ->
     All = [tatom(), trange_any(), stdtypes:tspecial_any(), stdtypes:tlist_any(), stdtypes:tfun_any(), stdtypes:ttuple_any()],

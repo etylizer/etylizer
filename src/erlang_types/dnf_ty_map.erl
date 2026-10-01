@@ -32,7 +32,3 @@ normalize_line({Pos, Neg, T}, Fixed, ST) ->
   BigS = ty_tuple:big_intersect(Pos),
   dnf_ty_tuple:phi_norm(ty_tuple:components(BigS), Neg, Fixed, ST).
 
--spec all_variables_line([T], [T], ?LEAF:type(), all_variables_cache()) -> 
-    sets:set(variable()) when T :: ?ATOM:type().
-all_variables_line(P, N, L, Cache) ->
-  dnf_ty_tuple:all_variables_line(P, N, L, Cache).

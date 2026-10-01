@@ -13,7 +13,6 @@
   is_empty/2,
   normalize/3,
   unparse/2,
-  all_variables/2,
   has_negative_only_line/1
 ]).
 
@@ -97,9 +96,6 @@ unparse(<<Bitmask:?ELEMENTS>>, ST) ->
                 [], 
                 [ {'[]', 1}, {float, 2}, {pid, 4}, {port, 8}, {reference, 16} ]),
     {ast_lib:mk_union(RawList), ST}.
-
--spec all_variables(_, _) -> sets:set(variable()).
-all_variables(_, _) -> sets:new().
 
 -spec has_negative_only_line(type()) -> boolean().
 has_negative_only_line(_T) -> false.

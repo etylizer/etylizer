@@ -40,7 +40,6 @@
   empty/0,
 
   all_variables/1,
-  all_variables/2,
   substitute/2,
 
   force_load/2
@@ -254,18 +253,11 @@ dump(Ty) ->
   do_dump([Ty], #{}).
 
 -spec do_dump([type()], M) -> M when M :: #{type() => type_descriptor()}.
-do_dump([], Res) -> Res;
-do_dump([Ty | T], Res) ->
-  case maps:is_key(Ty, Res) of
-    true -> do_dump(T, Res);
-    false -> 
-      Rec = load(Ty),
-      MoreTys = utils:everything(
-        fun(E = {node, Id}) when is_integer(Id) -> {ok, E}; (_) -> error end,
-        Rec
-      ),
-      do_dump(T ++ MoreTys, Res#{Ty => Rec})
-  end.
+do_dump([], Bodies) -> Bodies;
+do_dump([Ty | Todo], Bodies) when is_map_key(Ty, Bodies) -> do_dump(Todo, Bodies);
+do_dump([Ty | Todo], Bodies) ->
+  Body = load(Ty),
+  do_dump(collect_node_refs(Body) ++ Todo, Bodies#{Ty => Body}).
 
 -spec dump_list([{type(), type()}]) -> [#{type() => type_descriptor()}].
 dump_list(List) ->
@@ -573,6 +565,8 @@ do_collect_needs_sub([N | Rest], Visited, Dom, Acc) ->
       end
   end.
 
+% Only a node reference is a pair {node, Id} with an integer Id (BDD nodes are
+% 4-tuples, variables are records).
 -spec collect_node_refs(type_descriptor()) -> [type()].
 collect_node_refs(Body) ->
   utils:everything(
@@ -581,15 +575,11 @@ collect_node_refs(Body) ->
 
 -spec all_variables(type()) -> sets:set(variable()).
 all_variables(Ty) ->
-  all_variables(Ty, #{}).
+  sets:from_list([V || Body <- maps:values(dump(Ty)), V <- variables(Body)]).
 
--spec all_variables(type(), all_variables_cache()) -> sets:set(variable()).
-all_variables(Ty, Cache) ->
-  case Cache of
-    #{Ty := _}-> sets:new();
-    _ ->
-      dnf_ty_variable:all_variables(load(Ty), Cache#{Ty => []})
-  end.
+-spec variables(type_descriptor()) -> [variable()].
+variables(Body) ->
+  [V || {Pos, Neg, _Leaf} <- ?TY:dnf(Body), V <- Pos ++ Neg].
 
 % helper functions
 %-spec opcache(term(), fun(() -> A)) -> A. % TODO scoped variables extension for annotations

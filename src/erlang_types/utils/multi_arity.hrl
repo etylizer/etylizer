@@ -24,7 +24,6 @@
   is_empty/2,
   normalize/3,
   unparse/2,
-  all_variables/2,
   has_negative_only_line/1,
   substitute/2
 ]).
@@ -169,16 +168,6 @@ unparse({Default, T}, ST0) ->
     ]),
 
   {R, ST2}.
-
--spec all_variables(type(), all_variables_cache()) -> sets:set(variable()).
-all_variables({Default, All}, Cache) ->
-  V1 = ?MULTIARITY:all_variables(Default, Cache),
-  ResVars = 
-    maps:fold(fun(_Size, V, VarAcc) -> 
-      Res = ?MULTIARITY:all_variables(V, Cache),
-      sets:union(VarAcc, Res)
-              end, sets:new(), All),
-  sets:union(V1, ResVars).
 
 -spec has_negative_only_line(type()) -> boolean().
 has_negative_only_line({Default, All}) -> 

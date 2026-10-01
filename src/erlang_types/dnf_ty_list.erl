@@ -12,7 +12,3 @@ is_empty_line(Line, ST) ->
 -spec normalize_line({[T], [T], ?LEAF:type()}, monomorphic_variables(), S) -> {set_of_constraint_sets(), S} when S :: normalize_cache(), T :: ?ATOM:type().
 normalize_line(Line, Fixed, ST) ->
   dnf_ty_tuple:normalize_line(Line, Fixed, ST).
-
--spec all_variables_line([T], [T], ?LEAF:type(), all_variables_cache()) -> sets:set(variable()) when T :: ?ATOM:type().
-all_variables_line(P, N, Leaf, Cache) ->
-  dnf_ty_tuple:all_variables_line(P, N, Leaf, Cache).

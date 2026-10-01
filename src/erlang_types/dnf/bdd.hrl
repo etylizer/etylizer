@@ -19,7 +19,6 @@
     is_empty/2,
     normalize/3,
     unparse/2,
-    all_variables/2,
     has_negative_only_line/1,
     substitute/3
 ]).
@@ -286,13 +285,6 @@ unparse_line({Pos, Neg, Leaf}, C0) ->
     {Lf, C3} = ?LEAF:unparse(Leaf, C2),
 
     {ast_lib:mk_intersection(Ps ++ Ns ++ [Lf]), C3}.
-
--spec all_variables(bdd(), all_variables_cache()) -> sets:set(variable()).
-all_variables(Dnf, Cache) ->
-    AllLines = dnf(Dnf),
-    lists:foldl(fun({P, N, Leaf}, Atoms) ->
-        sets:union([Atoms, all_variables_line(P, N, Leaf, Cache)])
-    end, sets:new(), AllLines).
 
 -spec minimize_dnf(type()) -> dnf().
 minimize_dnf(T) ->

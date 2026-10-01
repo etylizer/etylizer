@@ -6,7 +6,6 @@
   tuple/1,
   any/1,
   empty/1,
-  all_variables/2,
   unparse/2,
   big_intersect/1,
   components/1,
@@ -52,12 +51,6 @@ big_intersect([X | Y]) ->
         ?assert_pattern(true, length(Refs) == length(Refs2)),
         {ty_tuple, Dim, [?NODE:intersect(S, T) || {S, T} <- lists:zip(Refs, Refs2)]}
                 end, X, Y).
-
--spec all_variables(type(), all_variables_cache()) -> sets:set(variable()).
-all_variables({ty_tuple, _, Refs}, Cache) ->
-  sets:union(
-    [ty_node:all_variables(T, Cache) || T <- Refs]
-  ).
 
 -spec unparse(type(), T) -> {ast:ty_tuple(), T} when T :: unparse_cache().
 unparse({ty_tuple, _, Refs}, ST0) ->

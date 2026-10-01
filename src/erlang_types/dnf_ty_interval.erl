@@ -18,7 +18,6 @@
   negate/1,
   normalize/3,
   unparse/2,
-  all_variables/2,
   has_negative_only_line/1
 ]).
 
@@ -177,9 +176,6 @@ unparse_single({right, R}) when R > 1 ->
   ast_lib:mk_diff({predef_alias, pos_integer}, unparse_single({range, 1, (R - 1)}));
 unparse_single({right, R}) when R < 1 ->
   ast_lib:mk_union([{predef_alias, pos_integer}, unparse_single({range, R, 1})]).
-
--spec all_variables(_, _) -> sets:set(variable()).
-all_variables(_, _) -> sets:new().
 
 -spec has_negative_only_line(type()) -> boolean().
 has_negative_only_line(_) -> false.

@@ -11,7 +11,6 @@
   domain/1,
   codomain/1,
   unparse/2,
-  all_variables/2,
   substitute/2
 ]).
 
@@ -57,13 +56,6 @@ unparse({ty_function, Refs, Codomain}, ST0) ->
                 ),
   {Cod, ST4} = ty_node:unparse(Codomain, ST3),
   {{fun_full, All, Cod}, ST4}.
-
--spec all_variables(type(), all_variables_cache()) -> sets:set(variable()).
-all_variables({ty_function, Domains, Codomain}, Cache) ->
-  sets:union(
-     [ty_node:all_variables(F, Cache) || F <- Domains]
-  ++ [ty_node:all_variables(Codomain, Cache)]
-  ).
 
 -spec substitute(type(), #{?NODE:type() => ?NODE:type()}) -> type().
 substitute({ty_function, Domains, Codomain}, NodeMap) ->

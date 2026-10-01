@@ -14,7 +14,6 @@
   difference/2,
   intersect/2,
   negate/1,
-  all_variables/2,
   unparse/2,
 
   pi/2,
@@ -388,30 +387,6 @@ tuple_to_map(#ty{ty_tuples = {_, #{2 := TupleDnf}}}) ->
   DnfMap = dnf_ty_map:singleton(T),
   map(DnfMap).
 
--spec all_variables(type(), all_variables_cache()) -> sets:set(variable()).
-all_variables(any, _Cache) -> sets:new();
-all_variables(empty, _Cache) -> sets:new();
-all_variables(#ty{
-    dnf_ty_predefined = P, dnf_ty_atom = A, dnf_ty_interval = I, dnf_ty_list = L,
-    dnf_ty_bitstring = B, ty_tuples = T, ty_functions = F, dnf_ty_map = M
-}, Cache) ->
-    sets:union([
-        dnf_ty_predefined:all_variables(P, Cache),
-        dnf_ty_atom:all_variables(A, Cache),
-        dnf_ty_interval:all_variables(I, Cache),
-        dnf_ty_list:all_variables(L, Cache),
-        dnf_ty_bitstring:all_variables(B, Cache),
-        ty_tuples:all_variables(T, Cache),
-        ty_functions:all_variables(F, Cache),
-        dnf_ty_map:all_variables(M, Cache)
-    ]).
-% all_variables(TyRec, Cache) ->
-%   fold(fun
-%         (Module, Value, Vars) -> 
-%           sets:union(Vars, Module:all_variables(Value, Cache))
-%       end, 
-%       sets:new(),
-%       TyRec).
 
 
 % ===
