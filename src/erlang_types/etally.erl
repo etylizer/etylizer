@@ -17,7 +17,7 @@
 -include("sanity.hrl").
 -include("constraints.hrl").
 
--define(TALLY_DEFAULT(), is_satisfiable_v4).
+-define(TALLY_DEFAULT(), is_satisfiable_v6).
 
 -type normalized_set_of_constraint_sets() :: set_of_constraint_sets(). % normalized set of constraint sets
 -type solutions() :: set_of_constraint_sets(). % saturated set of constraint sets
@@ -35,6 +35,7 @@ is_tally_satisfiable(Constraints, MonomorphicVariables) ->
     "v2" -> is_satisfiable_v2(Constraints, MonomorphicVariables);
     "v3" -> is_satisfiable_v3(Constraints, MonomorphicVariables);
     "v4" -> is_satisfiable_v4(Constraints, MonomorphicVariables);
+    "v6" -> is_satisfiable_v6(Constraints, MonomorphicVariables);
     _ -> ?TALLY_DEFAULT()(Constraints, MonomorphicVariables)
   end.
 
@@ -205,6 +206,51 @@ do_find(S, {Cr, CurrentResult}, Acc, MonoVars) ->
 %     {shortcut, Z} -> Z;
 %     Z -> Z
 %   end.
+
+% v6: the same slicing as v4, but the solutions are merged as a pool rather
+% than folded into one accumulator. The narrowest entry is merged with the
+% narrowest entry that shares a variable with it, and the result goes back
+% into the pool by width. Two solutions that share no variable never combine
+% a bound, so their merge is the plain cartesian product and where we 
+% can't prune anything.
+-spec is_satisfiable_v6(input_constraints(), monomorphic_variables()) -> boolean().
+is_satisfiable_v6(Constraints, MonomorphicVariables) ->
+  % First, normalize and saturate each constraint individually
+  InputSolutions = [tally_saturate(tally_normalize([C], MonomorphicVariables), MonomorphicVariables) || C <- Constraints],
+  not lists:member([], InputSolutions) andalso
+    merge_pool(by_width([{constraint_set:len(S), solution_variables(S), S} || S <- InputSolutions, S /= [[]]]),
+               MonomorphicVariables).
+
+% A pool entry is {Width, Variables, Solutions}, where Variables are the
+% constrained variables and those occurring in bounds. 
+% A merged entry takes the union of both sets.
+-type pool_entry() :: {non_neg_integer(), sets:set(variable()), solutions()}.
+
+-spec merge_pool([pool_entry()], monomorphic_variables()) -> boolean().
+merge_pool([], _MonoVars) -> true;
+merge_pool([_Single], _MonoVars) -> true;
+merge_pool([{_WidthA, VarsA, SolsA} | Rest], MonoVars) ->
+  {{_WidthB, VarsB, SolsB}, Others} = take_partner(Rest, VarsA),
+  case tally_saturate(constraint_set:meet(SolsA, SolsB, MonoVars), MonoVars) of
+    [] -> false;
+    Merged -> merge_pool(by_width([{constraint_set:len(Merged), sets:union(VarsA, VarsB), Merged} | Others]), MonoVars)
+  end.
+
+%% The narrowest entry that shares a variable with Vars, or else the narrowest.
+-spec take_partner([pool_entry(), ...], sets:set(variable())) -> {pool_entry(), [pool_entry()]}.
+take_partner(Pool = [Narrowest | Rest], Vars) ->
+  case lists:splitwith(fun({_, EntryVars, _}) -> sets:is_disjoint(Vars, EntryVars) end, Pool) of
+    {_, []} -> {Narrowest, Rest};
+    {Disjoint, [Partner | After]} -> {Partner, Disjoint ++ After}
+  end.
+
+-spec by_width([pool_entry()]) -> [pool_entry()].
+by_width(Pool) -> lists:sort(fun({W1, _, _}, {W2, _, _}) -> W1 =< W2 end, Pool).
+
+-spec solution_variables(solutions()) -> sets:set(variable()).
+solution_variables(Sols) ->
+  sets:union([sets:union([sets:from_list([Var]), ty_node:all_variables(Lower), ty_node:all_variables(Upper)])
+              || Cs <- Sols, {Var, Lower, Upper} <- Cs]).
 
 % =========================
 % full tally implementation
