@@ -37,9 +37,9 @@ maybe_match_01b_fail() ->
         Maybe -> Maybe
     end.
 
-% exhaustive pattern: fail branch is unreachable (same as multi-expression case)
--spec maybe_match_02_fail() -> ok.
-maybe_match_02_fail() ->
+% exhaustive pattern: the generated fail branch is unreachable, that is no error
+-spec maybe_match_02() -> ok.
+maybe_match_02() ->
     maybe ok ?= ok end.
 
 % maybe_match never matches
@@ -80,6 +80,15 @@ maybe_match_08_fail() ->
     maybe bad ?= ok end.
 
 
+% a ?= that always matches is no error
+-spec maybe_match_09({ok, integer()}) -> integer().
+maybe_match_09(X) ->
+    maybe
+        {ok, N} ?= X,
+        N
+    end.
+
+
 -spec maybe_else_01_fail() -> ok.
 maybe_else_01_fail() ->
     maybe ok else _ -> error(badarg) end.
@@ -103,6 +112,18 @@ maybe_else_05(X) ->
 -spec maybe_else_06_fail() -> ok.
 maybe_else_06_fail() ->
     maybe ok else bad -> bad end.
+
+% each else clause handles the value of only one of the ?= (#399)
+-spec maybe_else_07(boolean(), {boolean(), integer()}) -> {boolean(), integer()}.
+maybe_else_07(X, Y) ->
+    maybe
+        false ?= X,
+        {false, N} ?= Y,
+        {false, N}
+    else
+        true -> {true, 0};
+        R = {true, _} -> R
+    end.
 
 -spec maybe_07(string(), fun((string()) -> {ok, integer()} | {error, bad_int})) -> {ok, string()} | {error, bad_int}.
 maybe_07(Str, Convert) ->

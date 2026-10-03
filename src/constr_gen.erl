@@ -462,7 +462,7 @@ case_constrs(Ctx, L, ScrutE, Clauses, T) ->
     Cs0 = exp_constrs(InnerCtx, ScrutE, Alpha),
     NeedsUnmatchedCheck = case Ctx#ctx.disable_redundancy of
         true -> false;
-        false -> needs_unmatched_check(Clauses)
+        false -> needs_unmatched_check(L, Clauses)
     end,
     {BodyList, Lowers, _Uppers, CsCases} =
         lists:foldl(fun (Clause = {case_clause, LocClause, _, _, _},
@@ -762,10 +762,12 @@ receive_clause_constrs(Ctx, {case_clause, L, Pat, Guards, Exps}, T) ->
     InnerCs = sets:union([GuardCs, BodyCs, ResultCs]),
     utils:single({cdef, mk_locs("receive clause", L), VarEnv, InnerCs}).
 
--spec needs_unmatched_check(list(ast:case_clause())) -> boolean().
-needs_unmatched_check(Clauses) ->
+-spec needs_unmatched_check(ast:loc(), list(ast:case_clause())) -> boolean().
+needs_unmatched_check(L, Clauses) ->
     case Clauses of
-        [{case_clause, _, Pat, [], _}] -> not is_irrefutable_pat(Pat);
+        % a single else clause of a maybe is dead if every ?= matches
+        [{case_clause, _, Pat, [], _}] ->
+            ast:generated_by(L) =:= 'maybe' orelse not is_irrefutable_pat(Pat);
         _ -> true
     end.
 
@@ -839,9 +841,11 @@ case_clause_constrs(Ctx, TyScrut, Scrut, NeedsUnmatchedCheck, LowersBefore,
                     GuardCs
             end,
             Guards)),
+    % The clauses that the maybe rewrite adds are not written by the user, they may be dead.
+    CheckRedundancy = NeedsUnmatchedCheck andalso not ast:is_generated_by('maybe', L),
     RedundancyCs =
         if
-            NeedsUnmatchedCheck ->
+            CheckRedundancy ->
                 case_clause_unmatched_constraints(Ctx, LowersBefore, BodyUpper, Scrut);
             true -> none
         end,
