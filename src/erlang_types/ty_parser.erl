@@ -931,9 +931,11 @@ make_fresh_name(Counter, MuTy) ->
   (ety_ty_scheme()) -> ety_ty_scheme();
   (ast_ty()) -> ast_ty().
 replace_locs(Term) ->
-  utils:everywhere(fun
-    ({loc, _, _, _}) -> {ok, {loc, "AUTO", -1, -1}};
-    (_) -> error 
+  utils:everywhere(fun(X) ->
+    case ast:is_loc(X) of
+      true -> {ok, {internal, ty_parser}};
+      false -> error
+    end
   end, Term).
 
 -spec rewrite_map_to_representation(ast_ty()) -> ast_ty().

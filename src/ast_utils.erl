@@ -17,12 +17,11 @@
 modname_from_path(Path) -> list_to_atom(filename:basename(Path, ".erl")).
 
 -spec loc_replacer(term()) -> {ok, {loc, string(), 0, 0}} | error.
-loc_replacer({loc, File, Line, Col}) ->
-    case utils:is_string(File) andalso is_integer(Line) andalso is_integer(Col) of
+loc_replacer(X) ->
+    case ast:is_loc(X) of
         true -> {ok, {loc, "", 0, 0}};
         false -> error
-    end;
-loc_replacer(_) -> error.
+    end.
 
 -spec remove_locs(dynamic()) -> dynamic().
 remove_locs(X) ->

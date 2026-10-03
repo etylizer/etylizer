@@ -107,7 +107,7 @@ share_same_name_after_unparse_test() ->
     end,
     #{ 
       {ty_key,'.','a',0} => 
-      {ty_scheme,[], {tuple,[ {named,{loc,"AUTO", -1, -1},{ty_ref,'.','a',0},[]} ]}}
+      {ty_scheme,[], {tuple,[ {named,{internal, ty_parser},{ty_ref,'.','a',0},[]} ]}}
      }).
 
 % TODO
@@ -152,14 +152,14 @@ share_isomorphic_recursive_types_test() ->
 %     {ty_key,'.','b',0} => {ty_scheme, [], {var, alpha}},
 %     {ty_key,'.','a',0} => {ty_scheme,[],
 %       {union,[{tuple,[{union,[
-%         {named,{loc,"AUTO", -1, -1},{ty_ref,'.','a',0},[]},
-%         {named,{loc,"AUTO", -1, -1},{ty_ref,'.','b',0},[]}
+%         {named,{internal, ty_parser},{ty_ref,'.','a',0},[]},
+%         {named,{internal, ty_parser},{ty_ref,'.','b',0},[]}
 %       ]}, 
 %       {intersection,[
-%         {named,{loc,"AUTO", -1, -1},{ty_ref,'.','a',0},[]},
-%         {named,{loc,"AUTO", -1, -1},{ty_ref,'.','b',0},[]}
+%         {named,{internal, ty_parser},{ty_ref,'.','a',0},[]},
+%         {named,{internal, ty_parser},{ty_ref,'.','b',0},[]}
 %       ]}]},
-%       {tuple,[{named,{loc,"AUTO", -1, -1},{ty_ref,'.','a',0},[]}]} ]}} 
+%       {tuple,[{named,{internal, ty_parser},{ty_ref,'.','a',0},[]}]} ]}} 
 %    }).
 
 mu_overlap_test() ->

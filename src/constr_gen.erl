@@ -1303,18 +1303,18 @@ pat_env(Ctx, OuterL, T, P) ->
 % (| e |)
 -spec pat_of_exp(ast:exp()) -> ast:pat().
 pat_of_exp(E) ->
-    Wc = {wildcard, ast:loc_auto()},
+    Wc = {wildcard, ast:generated(exp_pattern, ast:loc_exp(E))},
     case E of
         {block, _L, Es} ->
             case lists:reverse(Es) of
                 [] -> Wc;
                 [Last | _] -> pat_of_exp(Last)
             end;
-        {cons, _L, Head, Tail} ->
-            {cons, ast:loc_auto(), pat_of_exp(Head), pat_of_exp(Tail)};
-        {tuple, _L, Args} ->
-            {tuple, ast:loc_auto(), lists:map(fun pat_of_exp/1, Args)};
-        {var, _L, {local_ref, V}} -> {var, ast:loc_auto(), {local_bind, V}};
+        {cons, L, Head, Tail} ->
+            {cons, ast:generated(exp_pattern, L), pat_of_exp(Head), pat_of_exp(Tail)};
+        {tuple, L, Args} ->
+            {tuple, ast:generated(exp_pattern, L), lists:map(fun pat_of_exp/1, Args)};
+        {var, L, {local_ref, V}} -> {var, ast:generated(exp_pattern, L), {local_bind, V}};
         _ -> Wc
     end.
 
@@ -1680,15 +1680,16 @@ fun_clauses_to_exp_aux(Ctx, L, FunClauses) ->
                   Rest)
         end,
     Vars = fresh_vars(Ctx, Arity),
-    ScrutExp = {tuple, L, lists:map(fun(V) -> {var, L, {local_ref, V}} end, Vars)},
+    G = ast:generated(fun_clauses, L),
+    ScrutExp = {tuple, G, lists:map(fun(V) -> {var, G, {local_ref, V}} end, Vars)},
     CaseClauses = lists:map(fun fun_clause_to_case_clause/1, FunClauses),
-    E = {'case', L, ScrutExp, CaseClauses},
+    E = {'case', G, ScrutExp, CaseClauses},
     ?LOG_TRACE("Rewrote function clauses at ~s with arguments=~w:\n~200p", ast:format_loc(L), Vars, E),
     {Vars, [E]}.
 
 -spec fun_clause_to_case_clause(ast:fun_clause()) -> ast:case_clause().
 fun_clause_to_case_clause({fun_clause, L, Pats, Guards, Exps}) ->
-    {case_clause, L, {tuple, L, Pats}, Guards, Exps}.
+    {case_clause, L, {tuple, ast:generated(fun_clauses, L), Pats}, Guards, Exps}.
 
 % if g1 -> e1;
 %    ...
@@ -1704,13 +1705,14 @@ fun_clause_to_case_clause({fun_clause, L, Pats, Guards, Exps}) ->
 % end
 -spec if_exp_to_case_exp(ast:exp_if()) -> ast:exp_case().
 if_exp_to_case_exp({'if', L, IfClauses}) ->
-    ScrutExp = {tuple, L, []},
-    Pat = {wildcard, L},
+    G = ast:generated('if', L),
+    ScrutExp = {tuple, G, []},
     CaseClauses =
         lists:map(fun({if_clause, ClauseLoc, Guards, Body}) ->
+                          Pat = {wildcard, ast:generated('if', ClauseLoc)},
                           {case_clause, ClauseLoc, Pat, Guards, Body}
                   end, IfClauses),
-    {'case', L, ScrutExp, CaseClauses}.
+    {'case', G, ScrutExp, CaseClauses}.
 
 -spec sanity_check(constr:constrs(), ast_check:ty_map()) -> ok.
 sanity_check(Cs, Spec) ->

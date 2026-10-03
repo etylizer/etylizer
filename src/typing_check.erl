@@ -306,12 +306,15 @@ sublocation_map(Term) ->
 -spec collect_locs(any(), #{ast:loc() => [ast:loc()]}) -> [ast:loc()].
 collect_locs(Term, Cache) ->
     lists:flatten(utils:everything(
-      fun({loc, _, _, _} = Loc) -> {ok, Loc};
-         ({'case', Loc, _, _}) -> cached(Loc, Cache);
+      fun({'case', Loc, _, _}) -> cached(Loc, Cache);
          ({'fun', Loc, _, _}) -> cached(Loc, Cache);
          ({case_clause, Loc, _, _, _}) -> cached(Loc, Cache);
          ({fun_clause, Loc, _, _, _}) -> cached(Loc, Cache);
-         (_) -> error
+         (X) ->
+             case ast:is_loc(X) of
+                 true -> {ok, X};
+                 false -> error
+             end
       end, Term)).
 
 cached(Loc, Cache) ->

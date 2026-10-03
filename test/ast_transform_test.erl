@@ -31,9 +31,16 @@ diff_terms(T1, T2, Del) ->
         end)
     end).
 
+% Like ast_utils:remove_locs/1, but keeps the generators of generated locations.
+-spec remove_positions(term()) -> term().
+remove_positions(X) ->
+    utils:everywhere(fun({loc, _, _, _}) -> {ok, {loc, "", 0, 0}};
+                        (_) -> error
+                     end, X).
+
 -spec check_test_spec(file:filename(), test_utils:test_spec()) -> ok.
 check_test_spec(Path, {good, Lineno, RawForms}) ->
-    Forms = ast_utils:remove_locs(ast_transform:trans(Path, RawForms)),
+    Forms = remove_positions(ast_transform:trans(Path, RawForms)),
     Opts = #parse_opts{includes = ["include", "src", "src/erlang_types", "src/erlang_types/dnf", "src/erlang_types/utils"]},
     {Spec, Mod} = ast_check:parse_spec("src/ast.erl", Opts),
     Result = ast_check:check_against_type(Spec, Mod, forms, Forms),

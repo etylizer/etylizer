@@ -8,7 +8,7 @@
 pat_guard_lower_upper_test() ->
     Symtab = symtab:empty(),
     % The guarded pattern `_ when true`
-    Loc = ast:loc_auto(),
+    Loc = {internal, test},
     P = {wildcard, Loc},
     G = [{'atom', Loc, true}],
     E = {var, Loc, {local_ref, {foo, 1}}},
@@ -35,7 +35,7 @@ assert_ty_of_pat(P, UpperAndLower) ->
 
 -spec ty_of_pat_list_test() -> ok.
 ty_of_pat_list_test() ->
-    Loc = ast:loc_auto(),
+    Loc = {internal, test},
     Pnil = {nil, Loc},
     Pa = {'atom', Loc, a},
     Pb = {'atom', Loc, b},
