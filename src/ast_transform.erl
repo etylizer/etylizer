@@ -648,7 +648,7 @@ trans_exp(Ctx, Env, Exp) ->
             % Rewrite match as a case expression. Pattern variables 
             % are available to subsequent expressions
             G = ast:generated(match, to_loc(Ctx, Anno)),
-            trans_generated_case(Ctx, Env, G, E, [match_clause(Ctx, G, Pat)]);
+            trans_generated_case(Ctx, Env, G, E, [match_clause(Ctx, G, G, Pat)]);
         {nil, Anno} -> {{nil, to_loc(Ctx, Anno)}, Env};
         {op, Anno, Op, L, R} ->
             {[NewL, NewR], NewEnv} = trans_exps(Ctx, Env, [L, R]),
@@ -786,17 +786,19 @@ trans_maybe_body(Ctx, Env, G, Exps, Else) ->
         {Es, NewEnv} -> {{block, G, Es}, NewEnv}
     end.
 
-% Pat ?= E, followed by After
+% Pat ?= E, followed by After. The clause for Pat is a clause of the source, the clause
+% for a value that Pat does not match is generated.
 -spec trans_maybe_match(ctx(), varenv_local:t(), ast:loc(), ast_erl:exp_maybe_match(),
                         [ast_erl:exp()], fun((ast:exp()) -> ast:exp()))
                        -> {ast:exp(), varenv_local:t()}.
 trans_maybe_match(Ctx, Env, G, {maybe_match, Anno, Pat, E}, After, Else) ->
-    GMatch = ast:generated('maybe', to_loc(Ctx, Anno)),
+    L = to_loc(Ctx, Anno),
+    GMatch = ast:generated('maybe', L),
     Success =
         case After of
-            [] -> match_clause(Ctx, GMatch, Pat);
+            [] -> match_clause(Ctx, L, GMatch, Pat);
             _ ->
-                generated_clause(Ctx, GMatch, Pat,
+                generated_clause(Ctx, L, Pat,
                     fun(QEnv) ->
                         {Body, BodyEnv} = trans_maybe_body(Ctx, QEnv, G, After, Else),
                         {[Body], BodyEnv}
@@ -819,23 +821,23 @@ trans_generated_case(Ctx, Env, G, Scrut, Clauses) ->
 -type generated_clause() ::
     fun((varenv_local:t()) -> {ast:case_clause(), varenv_local:t(), varenv_local:t()}).
 
-% Pat -> Body for a pattern of the source, Body is transformed in the environment after Pat
+% Pat -> Body at L, for a pattern of the source. Body is transformed in the environment after Pat
 -spec generated_clause(ctx(), ast:loc(), ast_erl:pat(),
                        fun((varenv_local:t()) -> {ast:exps(), varenv_local:t()})) -> generated_clause().
-generated_clause(Ctx, G, Pat, Body) ->
+generated_clause(Ctx, L, Pat, Body) ->
     fun(CaseEnv) ->
         {Q, QEnv} = trans_pat(Ctx, CaseEnv, Pat, bind_fresh),
         {NewBody, BodyEnv} = Body(QEnv),
-        {{case_clause, G, Q, [], NewBody}, BodyEnv, QEnv}
+        {{case_clause, L, Q, [], NewBody}, BodyEnv, QEnv}
     end.
 
-% Fresh = Pat -> Fresh for a pattern of the source and a fresh variable
--spec match_clause(ctx(), ast:loc(), ast_erl:pat()) -> generated_clause().
-match_clause(Ctx, G, Pat) ->
+% Fresh = Pat -> Fresh at L, for a pattern of the source and a fresh variable
+-spec match_clause(ctx(), ast:loc(), ast:loc(), ast_erl:pat()) -> generated_clause().
+match_clause(Ctx, L, G, Pat) ->
     fun(CaseEnv) ->
         {Q, QEnv} = trans_pat(Ctx, CaseEnv, Pat, bind_fresh),
         {V, VEnv} = varenv_local:insert_fresh(QEnv),
-        {{case_clause, G, {match, G, {var, G, {local_bind, V}}, Q}, [], [{var, G, {local_ref, V}}]},
+        {{case_clause, L, {match, G, {var, G, {local_bind, V}}, Q}, [], [{var, G, {local_ref, V}}]},
          VEnv, VEnv}
     end.
 

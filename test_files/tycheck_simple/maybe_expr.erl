@@ -37,9 +37,9 @@ maybe_match_01b_fail() ->
         Maybe -> Maybe
     end.
 
-% exhaustive pattern: fail branch is unreachable (same as multi-expression case)
--spec maybe_match_02_fail() -> ok.
-maybe_match_02_fail() ->
+% exhaustive pattern: the generated fail branch is unreachable, that is no error
+-spec maybe_match_02() -> ok.
+maybe_match_02() ->
     maybe ok ?= ok end.
 
 % maybe_match never matches
@@ -78,6 +78,15 @@ maybe_match_07(Arg, Arg2, Arg3) ->
 -spec maybe_match_08_fail() -> ok.
 maybe_match_08_fail() ->
     maybe bad ?= ok end.
+
+
+% a ?= that always matches is no error
+-spec maybe_match_09({ok, integer()}) -> integer().
+maybe_match_09(X) ->
+    maybe
+        {ok, N} ?= X,
+        N
+    end.
 
 
 -spec maybe_else_01_fail() -> ok.
