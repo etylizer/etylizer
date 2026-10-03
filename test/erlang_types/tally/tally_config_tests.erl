@@ -1,6 +1,6 @@
 -module(tally_config_tests).
 
--import(erlang_types_test_utils, [loc_auto/0, with_symtab/2, test_tally_satisfiable/2, test_tally_satisfiable/4]).
+-import(erlang_types_test_utils, [test_loc/0, with_symtab/2, test_tally_satisfiable/2, test_tally_satisfiable/4]).
 
 -include_lib("eunit/include/eunit.hrl").
 

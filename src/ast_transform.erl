@@ -288,7 +288,8 @@ resolve_ety_ty(L, Name, _) ->
     errors:ty_error(L, "Invalid use of builtin type etylizer:~w", Name).
 
 -spec mu_name(ast:loc()) -> atom().
-mu_name({loc, File, Line, Col}) ->
+mu_name(Loc) ->
+    {loc, File, Line, Col} = ast:source_loc(Loc),
     list_to_atom(lists:flatten(
         io_lib:format("$mu_~s_~p_~p_~p", [filename:basename(File), Line, Col, erlang:phash2(File)]))).
 
@@ -1115,7 +1116,7 @@ expand_record_field_other(Ctx, RecName, Fields) ->
                             fun({FieldName, _}) ->
                                 case sets:is_element(FieldName, GivenNames) of
                                     true -> false;
-                                    false -> {true, {record_field, Loc, FieldName, Exp}}
+                                    false -> {true, {record_field, ast:generated(record_field, Loc), FieldName, Exp}}
                                 end
                             end,
                             DefFields),
@@ -1154,7 +1155,7 @@ fill_record_defaults(Ctx, RecName, Loc, GivenFields) ->
                     fun(FieldName, DefaultExp, Acc) ->
                         case sets:is_element(FieldName, GivenNames) of
                             true -> Acc;
-                            false -> [{record_field, Loc, FieldName, DefaultExp} | Acc]
+                            false -> [{record_field, ast:generated(record_field, Loc), FieldName, DefaultExp} | Acc]
                         end
                     end,
                     [],

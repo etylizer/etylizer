@@ -17,6 +17,8 @@
     local_bind/0,
     local_ref_bind/0,
     loc/0,
+    source_loc/0,
+    generator/0,
     fun_with_arity/0,
     ty_with_arity/0,
     export_form/0,
@@ -163,7 +165,8 @@
 ]).
 
 -export([
-    format_loc/1, to_loc/2, loc_auto/0, min_loc/2, leq_loc/2, is_predef_name/1, is_predef_alias_name/1,
+    format_loc/1, to_loc/2, generated/2, generated_by/1, source_loc/1, is_loc/1,
+    min_loc/2, leq_loc/2, is_predef_name/1, is_predef_alias_name/1,
     local_varname_from_any_ref/1, get_fun_name/1, loc_exp/1
 ]).
 
@@ -177,24 +180,55 @@
 -type any_ref() :: global_ref() | local_ref().
 -type local_bind() :: {local_bind, local_varname()}. % bind a new local variable
 -type local_ref_bind() :: local_ref() | local_bind().
--type loc() :: {loc, string(), integer(), integer()}. % file, line, column
+
+% position in the source code, generated from the node at From, or the
+% location of something built internally without any source (e.g. by erlang_types)
+-type loc() :: source_loc()
+             | {generated, generator(), From::loc()}
+             | {internal, Who::atom()}.
+-type source_loc() :: {loc, string(), integer(), integer()}. % file, line, column
+-type generator() :: compiler | fun_clauses | 'if' | match | 'maybe' | try_of | record_field
+                   | exp_pattern.
 
 -spec format_loc(loc()) -> string().
-format_loc({loc, "AUTO", -1, -1}) -> "auto";
-format_loc({loc, Path, Line, Col}) -> utils:sformat("~s:~w:~w", [Path, Line, Col]).
+format_loc({loc, Path, Line, Col}) -> utils:sformat("~s:~w:~w", [Path, Line, Col]);
+format_loc({generated, _, From}) -> format_loc(From);
+format_loc({internal, Who}) -> utils:sformat("internal:~w", [Who]).
 
 -spec to_loc(string(), ast_erl:anno()) -> loc().
 to_loc(Path, Anno) ->
     Line = utils:with_default(erl_anno:line(Anno), -1),
     Col = utils:with_default(erl_anno:column(Anno), -1),
-    {loc, Path, Line, Col}.
+    Loc = {loc, Path, Line, Col},
+    case erl_anno:generated(Anno) of
+        true -> {generated, compiler, Loc};
+        false -> Loc
+    end.
 
--spec loc_auto() -> loc().
-loc_auto() -> {loc, "AUTO", -1, -1}.
+-spec generated(generator(), loc()) -> loc().
+generated(Generator, From) -> {generated, Generator, From}.
 
-% leq(L1, L2) yields true of L1 <= L2.
+-spec generated_by(loc()) -> generator() | none.
+generated_by({generated, Generator, _}) -> Generator;
+generated_by(_) -> none.
+
+-spec source_loc(loc()) -> source_loc() | none.
+source_loc(Loc = {loc, _, _, _}) -> Loc;
+source_loc({generated, _, From}) -> source_loc(From);
+source_loc({internal, _}) -> none.
+
+-spec is_loc(term()) -> boolean().
+is_loc({loc, File, Line, Col}) -> is_list(File) andalso is_integer(Line) andalso is_integer(Col);
+is_loc({generated, Generator, From}) -> is_atom(Generator) andalso is_loc(From);
+is_loc({internal, Who}) -> is_atom(Who);
+is_loc(_) -> false.
+
+% leq(L1, L2) yields true of L1 <= L2, comparing the source positions.
+% Internal locations come first.
 -spec leq_loc(loc(), loc()) -> boolean().
-leq_loc({loc, _, Line1, Col1}, {loc, _, Line2, Col2}) ->
+leq_loc(L1, L2) ->
+    {Line1, Col1} = line_col(L1),
+    {Line2, Col2} = line_col(L2),
     case utils:compare(Line1, Line2) of
         less -> true;
         greater -> false;
@@ -204,6 +238,13 @@ leq_loc({loc, _, Line1, Col1}, {loc, _, Line2, Col2}) ->
                 greater -> false;
                 equal -> true
             end
+    end.
+
+-spec line_col(loc()) -> {integer(), integer()}.
+line_col(Loc) ->
+    case source_loc(Loc) of
+        {loc, _, Line, Col} -> {Line, Col};
+        none -> {-1, -1}
     end.
 
 -spec min_loc(loc(), loc()) -> loc().
