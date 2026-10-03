@@ -142,3 +142,10 @@ maybe_09(Args) ->
         {ok, <<"ok">>}
     end.
 
+
+% the fresh variable of the first maybe must not capture the one of the second maybe
+-spec maybe_10({ok, integer()} | error, {ok, atom()} | error) -> ok.
+maybe_10(A, B) ->
+    maybe {ok, _} ?= A end,
+    maybe {ok, _} ?= B end,
+    ok.
