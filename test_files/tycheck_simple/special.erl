@@ -7,8 +7,8 @@
 % against its spec, inference is also tested.
 % If the name ends with _fail, the test must fail.
 
--etylizer({functions_exhaustive, off, [error03/1, error04/1]}).
--etylizer({functions_redundant, off, [error01/1, error05/1]}).
+-etylizer({functions_exhaustive, off, [error03/1, error04/1, error06_fail/1]}).
+-etylizer({functions_redundant, off, [error01/1, error05/1, error07_fail/1]}).
 
 %%%%%%%%%%%%%%%%%%%%%%%% erlang:error-only function clauses %%%%%%%%%%%%%%%%%%%%%%%
 
@@ -39,6 +39,13 @@ error04(_) -> ok.
 error05(1) -> error(impl);
 error05(2) -> ok;
 error05(_) -> error(badarg).
+
+% the attributes apply to the clauses of a function, not to a case in its body
+-spec error06_fail(a | b) -> ok.
+error06_fail(X) -> case X of a -> ok end.
+
+-spec error07_fail(a) -> ok.
+error07_fail(X) -> case X of a -> ok; b -> ok end.
 
 %% Regression test for an optimization that was dropped.
 %% Local stand-in for maps:fold/3
