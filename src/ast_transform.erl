@@ -485,32 +485,33 @@ trans_exp_seq_noenv(Ctx, Env, Es) ->
     {NewEs, _} = trans_exp_seq(Ctx, Env, Es),
     NewEs.
 
-% Statement-level match nesting
-% `Pat = Exp, Rest` becomes `case Exp of Pat -> Rest end`
-% Only matches at statement position are nested 
-% A trailing match, or a match in operand/subexpression position, 
-% is left to trans_exp, which compiles it to a standalone single-clause case. 
--spec shallow_remove_match([ast_erl:exp()]) -> [ast_erl:exp()].
-shallow_remove_match(Exps) ->
-    lists:foldr(
-      fun(E, AfterExps) ->
-              case AfterExps of
-                  [] -> [E];
-                  _ ->
-                      case E of
-                          {match, Anno, Pat, Rhs} ->
-                              Clause = {clause, Anno, [Pat], [], AfterExps},
-                              [{'case', Anno, Rhs, [Clause]}]; % ast_erl:case_clause()
-                          _ -> [E | AfterExps]
-                      end
-              end
-      end, [], Exps).
-
-% Transforms a sequence of expressions, nesting statement-level matches first.
+% Transforms a sequence of expressions.
+% A match at statement position nests the rest of the sequence:
+% `Pat = Exp, Rest` becomes `case Exp of Pat -> Rest end`.
+% A trailing match, or a match in operand/subexpression position,
+% is left to trans_exp, which compiles it to a standalone single-clause case.
 -spec trans_exp_seq(ctx(), varenv_local:t(), [ast_erl:exp()]) -> {[ast:exp()], varenv_local:t()}.
 %                  (ctx(), varenv_local:t(), ast:guard()) -> {ast:guard(), varenv_local:t()}.
 trans_exp_seq(Ctx, Env, Es) ->
-    thread_through_env(Env, shallow_remove_match(Es), fun(Env, E) -> trans_exp(Ctx, Env, E) end).
+    trans_exp_seq(Ctx, Env, Es, fun(E, LastEnv) -> trans_exp(Ctx, LastEnv, E) end).
+
+% Like trans_exp_seq/3, but the last expression of the sequence is transformed by Last.
+-spec trans_exp_seq(ctx(), varenv_local:t(), [ast_erl:exp()],
+                    fun((ast_erl:exp(), varenv_local:t()) -> {ast:exp(), varenv_local:t()}))
+                   -> {[ast:exp()], varenv_local:t()}.
+trans_exp_seq(_Ctx, Env, [], _Last) -> {[], Env};
+trans_exp_seq(_Ctx, Env, [E], Last) ->
+    {NewE, NewEnv} = Last(E, Env),
+    {[NewE], NewEnv};
+trans_exp_seq(Ctx, Env, [{match, Anno, Pat, Rhs} | Rest], Last) ->
+    G = ast:generated(match, to_loc(Ctx, Anno)),
+    Clause = generated_clause(Ctx, G, Pat, fun(QEnv) -> trans_exp_seq(Ctx, QEnv, Rest, Last) end),
+    {Case, NewEnv} = trans_generated_case(Ctx, Env, G, Rhs, [Clause]),
+    {[Case], NewEnv};
+trans_exp_seq(Ctx, Env, [E | Rest], Last) ->
+    {NewE, Env1} = trans_exp(Ctx, Env, E),
+    {NewRest, NewEnv} = trans_exp_seq(Ctx, Env1, Rest, Last),
+    {[NewE | NewRest], NewEnv}.
 
 
 -spec trans_exp_noenv(ctx(), varenv_local:t(), ast_erl:exp()) -> ast:exp().
@@ -646,15 +647,8 @@ trans_exp(Ctx, Env, Exp) ->
         {match, Anno, Pat, E} ->
             % Rewrite match as a case expression. Pattern variables 
             % are available to subsequent expressions
-            {NewExp, E1} = trans_exp(Ctx, Env, E),
-            {Q, E2} = trans_pat(Ctx, E1, Pat, bind_fresh),
-            Loc = to_loc(Ctx, Anno),
-            {MatchVar, NewEnv0} = varenv_local:insert_fresh(E2),
-            Clause = {case_clause, Loc,
-                      {match, Loc, {var, Loc, {local_bind, MatchVar}}, Q},
-                      [], % no guards
-                      [{var, Loc, {local_ref, MatchVar}}]},
-            {{'case', Loc, NewExp, [Clause]}, NewEnv0};
+            G = ast:generated(match, to_loc(Ctx, Anno)),
+            trans_generated_case(Ctx, Env, G, E, [match_clause(Ctx, G, Pat)]);
         {nil, Anno} -> {{nil, to_loc(Ctx, Anno)}, Env};
         {op, Anno, Op, L, R} ->
             {[NewL, NewR], NewEnv} = trans_exps(Ctx, Env, [L, R]),
@@ -721,21 +715,17 @@ trans_exp(Ctx, Env, Exp) ->
             {NewArgs, NewEnv} = trans_exps(Ctx, Env, Args),
             {{tuple, to_loc(Ctx, Anno), NewArgs}, NewEnv};
         {'try', Anno, Body, CaseClauses, CatchClauses, AfterBody} ->
-            % transform try-of into try without an of section to simplify constraint generation
-            RewrittenBody = case CaseClauses of
-                [] -> Body; % no of section
+            % transform try-of into try without an of section to simplify constraint generation:
+            % try Init, Last of Clauses becomes try begin Init, case Last of Clauses end end
+            TransformedBody = case CaseClauses of
+                [] -> trans_exp_seq_noenv(Ctx, Env, Body); % no of section
                 _ ->
-                    {InitExprs, LastExpr} = case Body of
-                        [] -> {[], {atom, Anno, undefined}}; % empty body edge case
-                        [Single] -> {[], Single}; % single expression
-                        _ -> {lists:droplast(Body), lists:last(Body)}
-                    end,
-                    CaseExp = {'case', Anno, LastExpr, CaseClauses},
-                    % wrap in block: begin InitExprs..., case LastExpr of Clauses end end
-                    [{block, Anno, InitExprs ++ [CaseExp]}]
+                    G = ast:generated(try_of, to_loc(Ctx, Anno)),
+                    {NewBody, _} = trans_exp_seq(Ctx, Env, Body,
+                        fun(Last, LastEnv) -> trans_generated_case(Ctx, LastEnv, G, Last, CaseClauses) end),
+                    [{block, G, NewBody}]
             end,
 
-            {TransformedBody, _UnusedEnv} = trans_exp_seq(Ctx, Env, RewrittenBody),
             % catch clauses use original Env since try body vars are unsafe
             NewCatchClauses = trans_catch_clauses(Ctx, Env, CatchClauses),
             NewAfterBody = trans_exp_seq_noenv(Ctx, Env, AfterBody),
@@ -811,6 +801,41 @@ trans_maybe(Ctx, Env, {'maybe', Anno, [Exp | Exps]}, Else) ->
             NewExp = {block, Anno, [Exp, mk_maybe_expr(Anno, Exps, Else)]},
             % not a maybe match, then it's just a block
             trans_exp(Ctx, Env, NewExp)
+    end.
+
+% A case generated by a rewrite, at location G. Its clauses are clauses of the source,
+% or generated clauses, which are built in the environment after the scrutinee.
+-spec trans_generated_case(ctx(), varenv_local:t(), ast:loc(), ast_erl:exp(),
+                           [ast_erl:case_clause() | generated_clause()]) -> {ast:exp(), varenv_local:t()}.
+trans_generated_case(Ctx, Env, G, Scrut, Clauses) ->
+    {NewScrut, Env1} = trans_exp(Ctx, Env, Scrut),
+    Results = lists:map(fun(C) when is_function(C) -> C(Env1);
+                           (C) -> trans_case_clause(Ctx, Env1, C)
+                        end, Clauses),
+    {NewClauses, BodyEnvs, _} = lists:unzip3(Results),
+    {{'case', G, NewScrut, NewClauses}, varenv_local:merge_envs(BodyEnvs)}.
+
+-type generated_clause() ::
+    fun((varenv_local:t()) -> {ast:case_clause(), varenv_local:t(), varenv_local:t()}).
+
+% Pat -> Body for a pattern of the source, Body is transformed in the environment after Pat
+-spec generated_clause(ctx(), ast:loc(), ast_erl:pat(),
+                       fun((varenv_local:t()) -> {ast:exps(), varenv_local:t()})) -> generated_clause().
+generated_clause(Ctx, G, Pat, Body) ->
+    fun(CaseEnv) ->
+        {Q, QEnv} = trans_pat(Ctx, CaseEnv, Pat, bind_fresh),
+        {NewBody, BodyEnv} = Body(QEnv),
+        {{case_clause, G, Q, [], NewBody}, BodyEnv, QEnv}
+    end.
+
+% Fresh = Pat -> Fresh for a pattern of the source and a fresh variable
+-spec match_clause(ctx(), ast:loc(), ast_erl:pat()) -> generated_clause().
+match_clause(Ctx, G, Pat) ->
+    fun(CaseEnv) ->
+        {Q, QEnv} = trans_pat(Ctx, CaseEnv, Pat, bind_fresh),
+        {V, VEnv} = varenv_local:insert_fresh(QEnv),
+        {{case_clause, G, {match, G, {var, G, {local_bind, V}}, Q}, [], [{var, G, {local_ref, V}}]},
+         VEnv, VEnv}
     end.
 
 -spec trans_exp_bin_elem(ctx(), varenv_local:t(), ast_erl:exp_bitstring_elem()) ->
