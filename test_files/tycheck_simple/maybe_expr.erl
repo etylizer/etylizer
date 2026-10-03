@@ -104,6 +104,18 @@ maybe_else_05(X) ->
 maybe_else_06_fail() ->
     maybe ok else bad -> bad end.
 
+% each else clause handles the value of only one of the ?= (#399)
+-spec maybe_else_07(boolean(), {boolean(), integer()}) -> {boolean(), integer()}.
+maybe_else_07(X, Y) ->
+    maybe
+        false ?= X,
+        {false, N} ?= Y,
+        {false, N}
+    else
+        true -> {true, 0};
+        R = {true, _} -> R
+    end.
+
 -spec maybe_07(string(), fun((string()) -> {ok, integer()} | {error, bad_int})) -> {ok, string()} | {error, bad_int}.
 maybe_07(Str, Convert) ->
     maybe

@@ -656,10 +656,10 @@ trans_exp(Ctx, Env, Exp) ->
         {op, Anno, Op, E} ->
             {NewE, NewEnv} = trans_exp(Ctx, Env, E),
             {{op, to_loc(Ctx, Anno), Op, NewE}, NewEnv};
-        {'maybe', _Anno, _Exps} ->
-            trans_maybe(Ctx, Env, Exp, none);
-        {'maybe', Anno, Exps, Else = {'else', _ElseAnno, _Cs0}} ->
-            trans_maybe(Ctx, Env, {'maybe', Anno, Exps}, Else);
+        {'maybe', Anno, Exps} ->
+            trans_maybe(Ctx, Env, Anno, Exps, none);
+        {'maybe', Anno, Exps, Else} ->
+            trans_maybe(Ctx, Env, Anno, Exps, Else);
         {'receive', Anno, CaseClauses} ->
             {NewClauses, NewEnv, _PatEnv} = trans_case_clauses(Ctx, Env, CaseClauses),
             {{'receive', to_loc(Ctx, Anno), NewClauses}, NewEnv};
@@ -744,60 +744,65 @@ trans_exp(Ctx, Env, Exp) ->
         X -> errors:uncovered_case(?FILE, ?LINE, Ctx#ctx.path, X)
     end.
 
--spec mk_maybe_expr
-    (ast_erl:anno(), ast_erl:exps(), none) -> ast_erl:exp_maybe();
-    (ast_erl:anno(), ast_erl:exps(), {'else', ast_erl:anno(), [ast_erl:maybe_else_clause()]}) -> ast_erl:exp_maybe_else().
-mk_maybe_expr(A, M, none) -> {'maybe', A, M}; 
-mk_maybe_expr(A, M, Else) -> {'maybe', A, M, Else}.
+% A value that a ?= does not match is the result of the maybe. With else clauses, it is
+% passed to a function made of them, such that they are transformed only once:
+% (fun(F) -> Body end)(fun(X) -> case X of Clauses end end)
+% The else clauses come last, such that errors in them are located there.
+-spec trans_maybe(ctx(), varenv_local:t(), ast_erl:anno(), ast_erl:exps(),
+                  none | {'else', ast_erl:anno(), [ast_erl:maybe_else_clause()]})
+                 -> {ast:exp(), varenv_local:t()}.
+trans_maybe(Ctx, Env, Anno, Exps, none) ->
+    G = ast:generated('maybe', to_loc(Ctx, Anno)),
+    trans_maybe_body(Ctx, Env, G, Exps, fun(E) -> E end);
+trans_maybe(Ctx, Env, Anno, Exps, {'else', ElseAnno, Clauses}) ->
+    G = ast:generated('maybe', to_loc(Ctx, Anno)),
+    GElse = ast:generated('maybe', to_loc(Ctx, ElseAnno)),
+    {F, FEnv} = varenv_local:insert_fresh(Env),
+    {X, XEnv} = varenv_local:insert_fresh(FEnv),
+    {ElseClauses, _, _} = trans_case_clauses(Ctx, XEnv, Clauses),
+    Else = fun(E) -> {call, ast:loc_exp(E), {var, G, {local_ref, F}}, [E]} end,
+    {Body, _} = trans_maybe_body(Ctx, XEnv, G, Exps, Else),
+    ElseFun = generated_fun(G, X, {'case', GElse, {var, GElse, {local_ref, X}}, ElseClauses}),
+    {{call, G, generated_fun(G, F, Body), [ElseFun]}, Env}.
 
--spec trans_maybe(ctx(), varenv_local:t(), ast_erl:exp(), none | {'else', ast_erl:anno(), [ast_erl:maybe_else_clause()]}) -> {ast:exp(), varenv_local:t()}.
-trans_maybe(Ctx, Env, {'maybe', Anno, [Exp]}, Else) -> 
-    case Exp of
-        {'maybe_match', L, P, E} ->
-            case Else of
-                none ->
-                    % validate that P can match E's type, then return E:
-                    % case E of P = Fresh -> Fresh; Fresh -> Fresh end
-                    G = ast:generated('maybe', to_loc(Ctx, L)),
-                    trans_generated_case(Ctx, Env, G, E, [match_clause(Ctx, G, P), fresh_clause(G)]);
-                {'else', _ElseAnno, Cs0} ->
-                    G = ast:generated('maybe', to_loc(Ctx, Anno)),
-                    trans_generated_case(Ctx, Env, G, E, [match_clause(Ctx, G, P) | Cs0])
-            end;
-        _ ->
-            case Else of
-                none ->
-                    trans_exp(Ctx, Env, Exp);
-                {'else', _ElseAnno, Cs0} ->
-                    % else clauses are semantically unreachable without ?=,
-                    % but we keep them so the type checker sees all branches
-                    G = ast:generated('maybe', to_loc(Ctx, Anno)),
-                    Success = fun(CaseEnv) ->
-                        {Body, BodyEnv} = trans_exp_seq(Ctx, CaseEnv, [Exp]),
-                        {{case_clause, G, {wildcard, G}, [], Body}, BodyEnv, CaseEnv}
-                    end,
-                    trans_generated_case(Ctx, Env, G, Exp, [Success | Cs0])
-            end
-    end;
-trans_maybe(Ctx, Env, {'maybe', Anno, [Exp | Exps]}, Else) -> 
-    case Exp of
-        {'maybe_match', L, P, E} -> 
-            G = ast:generated('maybe', to_loc(Ctx, L)),
-            % pattern matches -> continue with remaining Exps
-            Success = generated_clause(Ctx, G, P,
-                fun(QEnv) -> trans_exp_seq(Ctx, QEnv, [mk_maybe_expr(Anno, Exps, Else)]) end),
-            % pattern doesn't match -> return original E or do the else clauses
-            FailClauses =
-                case Else of
-                    none -> [fresh_clause(G)];
-                    {'else', _ElseAnno, Cs0} -> Cs0
-                end,
-            trans_generated_case(Ctx, Env, G, E, [Success | FailClauses]);
-        _ -> 
-            % not a maybe match, then it's just a block
-            {NewExps, NewEnv} = trans_exp_seq(Ctx, Env, [Exp, mk_maybe_expr(Anno, Exps, Else)]),
-            {{block, ast:generated('maybe', to_loc(Ctx, Anno)), NewExps}, NewEnv}
+% fun(V) -> Body end
+-spec generated_fun(ast:loc(), ast:local_varname(), ast:exp()) -> ast:exp().
+generated_fun(G, V, Body) ->
+    {'fun', G, no_name, [{fun_clause, G, [{var, G, {local_bind, V}}], [], [Body]}]}.
+
+% The body of a maybe. Else is applied to a value that a ?= does not match.
+-spec trans_maybe_body(ctx(), varenv_local:t(), ast:loc(), ast_erl:exps(),
+                       fun((ast:exp()) -> ast:exp())) -> {ast:exp(), varenv_local:t()}.
+trans_maybe_body(Ctx, Env, G, Exps, Else) ->
+    {Init, Rest} = lists:splitwith(fun(E) -> element(1, E) =/= maybe_match end, Exps),
+    Last = fun(E, LastEnv) ->
+               case Rest of
+                   [] -> trans_exp(Ctx, LastEnv, E);
+                   [Match | After] -> trans_maybe_match(Ctx, LastEnv, G, Match, After, Else)
+               end
+           end,
+    case trans_exp_seq(Ctx, Env, Init ++ lists:sublist(Rest, 1), Last) of
+        {[E], NewEnv} -> {E, NewEnv};
+        {Es, NewEnv} -> {{block, G, Es}, NewEnv}
     end.
+
+% Pat ?= E, followed by After
+-spec trans_maybe_match(ctx(), varenv_local:t(), ast:loc(), ast_erl:exp_maybe_match(),
+                        [ast_erl:exp()], fun((ast:exp()) -> ast:exp()))
+                       -> {ast:exp(), varenv_local:t()}.
+trans_maybe_match(Ctx, Env, G, {maybe_match, Anno, Pat, E}, After, Else) ->
+    GMatch = ast:generated('maybe', to_loc(Ctx, Anno)),
+    Success =
+        case After of
+            [] -> match_clause(Ctx, GMatch, Pat);
+            _ ->
+                generated_clause(Ctx, GMatch, Pat,
+                    fun(QEnv) ->
+                        {Body, BodyEnv} = trans_maybe_body(Ctx, QEnv, G, After, Else),
+                        {[Body], BodyEnv}
+                    end)
+        end,
+    trans_generated_case(Ctx, Env, GMatch, E, [Success, fresh_clause(GMatch, Else)]).
 
 % A case generated by a rewrite, at location G. Its clauses are clauses of the source,
 % or generated clauses, which are built in the environment after the scrutinee.
@@ -834,12 +839,13 @@ match_clause(Ctx, G, Pat) ->
          VEnv, VEnv}
     end.
 
-% Fresh -> Fresh for a fresh variable
--spec fresh_clause(ast:loc()) -> generated_clause().
-fresh_clause(G) ->
+% Fresh -> Wrap(Fresh) for a fresh variable
+-spec fresh_clause(ast:loc(), fun((ast:exp()) -> ast:exp())) -> generated_clause().
+fresh_clause(G, Wrap) ->
     fun(CaseEnv) ->
         {V, VEnv} = varenv_local:insert_fresh(CaseEnv),
-        {{case_clause, G, {var, G, {local_bind, V}}, [], [{var, G, {local_ref, V}}]}, VEnv, VEnv}
+        {{case_clause, G, {var, G, {local_bind, V}}, [], [Wrap({var, G, {local_ref, V}})]},
+         VEnv, VEnv}
     end.
 
 -spec trans_exp_bin_elem(ctx(), varenv_local:t(), ast_erl:exp_bitstring_elem()) ->
