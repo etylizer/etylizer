@@ -150,18 +150,18 @@ named(Ref) ->
 
 named(Ref, Args) ->
   % Use the dummy '.' file as the module for testing purposes
-  {named, ast:loc_auto(), {ty_ref, '.', Ref, length(Args)}, Args}.
+  {named, {internal, test}, {ty_ref, '.', Ref, length(Args)}, Args}.
 
 extend_symtab(Def, Scheme) ->
   extend_symtab(Def, Scheme, symtab:empty()).
 
 extend_symtab(Def, Scheme, Symtab) ->
   TyDef = {Def, Scheme},
-  Form = {attribute, ast:loc_auto(), type, transparent, TyDef},
+  Form = {attribute, {internal, test}, type, transparent, TyDef},
   symtab:extend_symtab(".", [Form], Symtab, symtab:empty()).
 
 extend_symtabs(DefSchemes, Symtab) ->
-  Forms = [{attribute, ast:loc_auto(), type, transparent, TyDef} || TyDef <- DefSchemes],
+  Forms = [{attribute, {internal, test}, type, transparent, TyDef} || TyDef <- DefSchemes],
   symtab:extend_symtab(".", Forms, Symtab, symtab:empty()).
 
 -type expected_subst() :: {
@@ -181,7 +181,7 @@ test_tally(ConstrList, ExpectedSubst, FixedVars) ->
 test_tally(ConstrList, ExpectedSubst, FixedVars, Symtab) ->
   Constrs = sets:from_list(
                 lists:map(
-                  fun ({T, U}) -> {scsubty, sets:from_list([ast:loc_auto()], [{version, 2}]), T, U} end,
+                  fun ({T, U}) -> {scsubty, sets:from_list([{internal, test}], [{version, 2}]), T, U} end,
                   ConstrList
                  ), [{version, 2}]),
 
@@ -206,7 +206,7 @@ test_tally(ConstrList, ExpectedSubst, FixedVars, Symtab) ->
 -spec test_tally_satisfiable(boolean(), list({ast:ty(), ast:ty()}), [ast:ty_varname()], symtab:t()) -> ok.
 test_tally_satisfiable(Satisfiable, ConstrList, FixedVars, Symtab) ->
   Constrs = sets:from_list(lists:map(
-                  fun ({T, U}) -> {scsubty, sets:from_list([ast:loc_auto()]), T, U} end,
+                  fun ({T, U}) -> {scsubty, sets:from_list([{internal, test}]), T, U} end,
                   ConstrList
                  )),
 
