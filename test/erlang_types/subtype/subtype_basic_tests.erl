@@ -84,6 +84,13 @@ pos_var_fun_test() ->
   false = is_subtype( S, T ),
   false = is_subtype( T, S ).
 
+var_fun_arities_test() ->
+  S = u(i(v(alpha), f([tint()], tint())), i(n(v(alpha)), f([tint(), tint()], tint()))),
+
+  true = is_subtype(S, f()),
+  false = is_subtype(S, f([tint()], tint())),
+  true = is_subtype(i(S, v(alpha)), f([tint()], tint())).
+
 % fun((a) -> integer()) /\ fun((b1) -> any()) /\ .. /\ fun((bk) -> any()) 
 % is a subtype of 
 % fun((a) -> integer() | c)

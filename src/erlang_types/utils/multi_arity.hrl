@@ -47,15 +47,20 @@ compare({D, M}, {D2, M2}) ->
           case maps:size(M) > maps:size(M2) of
             true -> gt;
             _ ->
-              lists:foldl(
-                fun({{_, A}, {_, B}}, eq) -> ?MULTIARITY:compare(A, B); (_, R) -> R end, 
-                eq, 
-                lists:zip(maps:to_list(M), maps:to_list(M2))
+              utils:compare(
+                fun compare_arity/2,
+                lists:keysort(1, maps:to_list(M)),
+                lists:keysort(1, maps:to_list(M2))
               )
           end
       end;
     R -> R
   end.
+
+-spec compare_arity({non_neg_integer(), T}, {non_neg_integer(), T}) -> eq | lt | gt when T :: ?MULTIARITY:type().
+compare_arity({Arity1, _}, {Arity2, _}) when Arity1 < Arity2 -> lt;
+compare_arity({Arity1, _}, {Arity2, _}) when Arity1 > Arity2 -> gt;
+compare_arity({_, Ty1}, {_, Ty2}) -> ?MULTIARITY:compare(Ty1, Ty2).
 
 -spec empty() -> type().
 empty() ->

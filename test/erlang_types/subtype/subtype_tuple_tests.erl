@@ -56,6 +56,21 @@ pos_var_prod_test() ->
   false = is_subtype(T, S),
   ok.
 
+var_prod_arities_test() ->
+  S = u(i(v(alpha), ttuple([tint()])), i(n(v(alpha)), ttuple([tint(), tint()]))),
+  true = is_subtype(S, ttuple_any()),
+  false = is_subtype(S, ttuple([tint()])),
+  true = is_subtype(i(S, v(alpha)), ttuple([tint()])),
+  ok.
+
+var_prod_negated_arities_test() ->
+  Not1 = i(ttuple_any(), n(ttuple([tany()]))),
+  Not2 = i(ttuple_any(), n(ttuple([tany(), tany()]))),
+  S = u(i(v(alpha), Not1), i(n(v(alpha)), Not2)),
+  false = is_subtype(S, Not1),
+  false = is_subtype(S, Not2),
+  ok.
+
 var_subsumption_test() ->
   S = u(
     i(ttuple([b(hello)]), v(alpha)),
