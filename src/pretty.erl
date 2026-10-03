@@ -612,7 +612,7 @@ render_exp(Exp, Indent) ->
             atom_to_list(Op) ++ render_exp(Operand, Indent);
         {op, _, Op, Operand} when is_tuple(Operand) ->
             atom_to_list(Op) ++ render_exp(Operand, Indent);
-        {'fun', _, Name, Clauses} ->
+        {'fun', _, Name, Args, Body} ->
             Pad = lists:duplicate(Indent, $\s),
             Inner = Indent + 2,
             InPad = lists:duplicate(Inner, $\s),
@@ -620,8 +620,8 @@ render_exp(Exp, Indent) ->
                 no_name -> "";
                 {local_bind, V} -> varname(V)
             end,
-            "fun " ++ NameStr ++ "\n" ++
-            string:join([InPad ++ render_fun_clause(C, Inner) || C <- Clauses], ";\n") ++ "\n" ++
+            "fun " ++ NameStr ++ "(" ++ render_varnames(Args) ++ ") ->\n" ++
+            InPad ++ string:join([render_exp(E, Inner) || E <- Body], ",\n" ++ InPad) ++ "\n" ++
             Pad ++ "end";
         {fun_ref, _, Ref} -> "fun " ++ render(ref(Ref));
         {fun_ref_dyn, _, {global_ref_dyn, Mod, Fun, Arity}} ->
@@ -714,13 +714,6 @@ render_clause({case_clause, _, Pat, Guards, Body}, Indent) ->
     GuardStr = render_guards(Guards, Indent),
     BodyStr = string:join([render_exp(E, Indent + 2) || E <- Body], ",\n" ++ lists:duplicate(Indent + 2, $\s)),
     PatStr ++ GuardStr ++ " ->\n" ++ lists:duplicate(Indent + 2, $\s) ++ BodyStr.
-
--spec render_fun_clause(ast:fun_clause(), non_neg_integer()) -> string().
-render_fun_clause({fun_clause, _, Pats, Guards, Body}, Indent) ->
-    PatStr = "(" ++ string:join([render_exp(P, Indent) || P <- Pats], ", ") ++ ")",
-    GuardStr = render_guards(Guards, Indent),
-    BodyStr = string:join([render_exp(E, Indent + 2) || E <- Body], ",\n" ++ lists:duplicate(Indent + 2, $\s)),
-    PatStr ++ GuardStr ++ " -> " ++ BodyStr.
 
 -spec render_catch_clause(ast:catch_clause(), non_neg_integer()) -> string().
 render_catch_clause({catch_clause, _, ExcType, Pat, Stack, Guards, Body}, Indent) ->

@@ -40,7 +40,7 @@ infer(Ctx, Decls) ->
     ?LOG_INFO("Inferring types of the following functions: ~s", FunsStr),
     Loc =
         case Decls of
-            [{function, L, _, _, _} | _] -> L
+            [{function, L, _, _, _, _} | _] -> L
         end,
     {Cs, Env} = constr_gen:gen_constrs_fun_group(Ctx#ctx.exhaustiveness_mode, Ctx#ctx.symtab, {Ctx#ctx.disable_exhaustiveness, Ctx#ctx.disable_redundancy}, Decls),
     case Ctx#ctx.sanity of
@@ -53,7 +53,7 @@ infer(Ctx, Decls) ->
     SimpCtx = constr_simp:new_ctx(Tab, PolyEnv, Ctx#ctx.sanity),
     Funs =
         lists:map(
-            fun({function, _Loc, Name, Arity, _}) ->
+            fun({function, _Loc, Name, Arity, _, _}) ->
                     utils:sformat("~w/~w", Name, Arity)
             end,
             Decls),
@@ -83,7 +83,7 @@ build_result_envs(Substs, Decls, Env, Ctx) ->
         fun(Subst) ->
                 ResultEnv = maps:from_list(utils:map_flip(
                     Decls,
-                    fun({function, _Loc, Name, Arity, _}) ->
+                    fun({function, _Loc, Name, Arity, _, _}) ->
                             Ref = {ref, Name, Arity},
                             case maps:find(Ref, Env) of
                                 error ->

@@ -28,7 +28,7 @@ check_all_report(Ctx, FileName, Env, Decls) ->
     F = fun(FN) -> filename:basename(filename:rootname(FN)) end,
     lists:foreach(
         fun({Decl, Ty}) ->
-            {function, _, Name, Arity, _} = Decl,
+            {function, _, Name, Arity, _, _} = Decl,
             ?METRIC_SET_FUN(list_to_atom(utils:sformat("~s:~w/~w", [F(FileName), Name, Arity]))),
             T0 = erlang:system_time(millisecond),
             try check_report(ExtCtx, Decl, Ty) of
@@ -63,7 +63,7 @@ check_all_report(Ctx, FileName, Env, Decls) ->
 
 % Checks a function against its spec, skips timeouts and does not report errors.
 -spec check_report(ctx(), ast:fun_decl(), ast:ty_scheme()) -> success | timeout.
-check_report(Ctx, Decl = {function, Loc, Name, Arity, Clauses}, PolyTy) ->
+check_report(Ctx, Decl = {function, Loc, Name, Arity, _Args, Body}, PolyTy) ->
     ?LOG_INFO("Type checking ~w/~w at ~s against type ~s",
               Name, Arity, ast:format_loc(Loc), pretty:render_tyscheme(PolyTy)),
     Timeout = Ctx#ctx.report_timeout,
@@ -93,7 +93,7 @@ check_report(Ctx, Decl = {function, Loc, Name, Arity, Clauses}, PolyTy) ->
               end,
               AltTys),
 
-            UnmatchedEverywhere = intersect_unmatched(Clauses, UnmatchedList),
+            UnmatchedEverywhere = intersect_unmatched(Body, UnmatchedList),
             case sets:to_list(UnmatchedEverywhere) of
                 [] -> success;
                 [First | _Rest] -> report_tyerror(FunStr, redundant_branch, First, "")
@@ -147,7 +147,7 @@ ensure_type_supported(Loc, T) ->
 % The type scheme comes from a type annotation, that it has the form
 % FORALL A . T1 /\ ... /\/ Tn where the Ti are function types
 -spec check(ctx(), ast:fun_decl(), ast:ty_scheme()) -> ok.
-check(Ctx, Decl = {function, Loc, Name, Arity, Clauses}, PolyTy) ->
+check(Ctx, Decl = {function, Loc, Name, Arity, _Args, Body}, PolyTy) ->
     ?LOG_INFO("Type checking ~w/~w at ~s against type~n~s",
               Name, Arity, ast:format_loc(Loc), pretty:render_tyscheme(PolyTy)),
     FunStr = utils:sformat("~w/~w", Name, Arity),
@@ -180,7 +180,7 @@ check(Ctx, Decl = {function, Loc, Name, Arity, Clauses}, PolyTy) ->
       end,
       AltTys),
 
-    UnmatchedEverywhere = intersect_unmatched(Clauses, UnmatchedList),
+    UnmatchedEverywhere = intersect_unmatched(Body, UnmatchedList),
     case sets:to_list(UnmatchedEverywhere) of
         [] ->
             ?LOG_INFO("Type ok for ~w/~w at ~s", Name, Arity, ast:format_loc(Loc)),
@@ -197,7 +197,7 @@ check(Ctx, Decl = {function, Loc, Name, Arity, Clauses}, PolyTy) ->
 % Checks a function against an alternative of an intersection type.
 -spec check_alt(ctx(), ast:fun_decl(), ast:ty_full_fun(), unmatched_branch_mode(),
     sets:set(ast:ty_varname())) -> {ok, Unmachted::sets:set(ast:loc())}.
-check_alt(Ctx, Decl = {function, Loc, Name, Arity, _}, FunTy, BranchMode, Fixed) ->
+check_alt(Ctx, Decl = {function, Loc, Name, Arity, _, _}, FunTy, BranchMode, Fixed) ->
     FunStrShort = utils:sformat("~w/~w", Name, Arity),
     FunStr = utils:sformat("~w/~w at ~s", Name, Arity, ast:format_loc(Loc)),
     ?LOG_INFO("Checking function ~s against type~n~s",
@@ -272,9 +272,9 @@ report_tyerror(FunName, Kind, Loc, Hint) ->
         _ -> errors:ty_error(Loc, "in ~s, ~s~n~s~n~n  ~s", [FunName, tyerror_msg(Kind), SrcCtx, Hint])
     end.
 
--spec intersect_unmatched([ast:fun_clause()], [sets:set(ast:loc())]) -> sets:set(ast:loc()).
-intersect_unmatched(Clauses, UnmatchedList) ->
-    SublocationMap = sublocation_map(Clauses),
+-spec intersect_unmatched(ast:exps(), [sets:set(ast:loc())]) -> sets:set(ast:loc()).
+intersect_unmatched(Body, UnmatchedList) ->
+    SublocationMap = sublocation_map(Body),
     UnmatchedListTransitive = lists:map(
       fun(UnmatchedSet) ->
           sets:fold(fun(LLoc, Acc) ->
@@ -294,9 +294,8 @@ intersect_unmatched(Clauses, UnmatchedList) ->
 sublocation_map(Term) ->
     Entries = utils:everything(
       fun({'case', Loc, Expr, Clauses}) -> {rec, {Loc, [Expr, Clauses]}};
-         ({'fun', Loc, _, Clauses}) -> {rec, {Loc, Clauses}};
+         ({'fun', Loc, _, _, Body}) -> {rec, {Loc, Body}};
          ({case_clause, Loc, Pat, _Guards, Body}) -> {rec, {Loc, [Pat, Body]}};
-         ({fun_clause, Loc, Pats, _Guards, Body}) -> {rec, {Loc, [Pats, Body]}};
          (_) -> error
       end, Term),
     lists:foldr(fun({Loc, Children}, Cache) ->
@@ -307,9 +306,8 @@ sublocation_map(Term) ->
 collect_locs(Term, Cache) ->
     lists:flatten(utils:everything(
       fun({'case', Loc, _, _}) -> cached(Loc, Cache);
-         ({'fun', Loc, _, _}) -> cached(Loc, Cache);
+         ({'fun', Loc, _, _, _}) -> cached(Loc, Cache);
          ({case_clause, Loc, _, _, _}) -> cached(Loc, Cache);
-         ({fun_clause, Loc, _, _, _}) -> cached(Loc, Cache);
          (X) ->
              case ast:is_loc(X) of
                  true -> {ok, X};

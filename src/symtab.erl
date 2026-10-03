@@ -256,7 +256,7 @@ extend_symtab_internal(Filename, Forms, RefType, Tab, OverlaySymtab) ->
     case Tab#tab.gradual of
         dynamic ->
             lists:foldl(
-                fun({function, _, Name, Arity, _}, AccTab) ->
+                fun({function, _, Name, Arity, _, _}, AccTab) ->
                         case find_fun(create_ref_tuple(RefType, Name, Arity), AccTab) of
                             {ok, _} -> AccTab;
                             error ->
