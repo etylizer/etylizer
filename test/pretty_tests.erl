@@ -56,7 +56,7 @@ variable_union_test() ->
     A = u([v(a), b(foo)]),
     B = id(A),
     true = subty:is_equivalent(symtab:empty(), A, B),
-    ?assertEqual("a | not(a) /\\ foo", pretty:render_ty(B)) % was "foo | a" before; need ty_rec factorization now
+    ?assertEqual("a | foo", pretty:render_ty(B))
   end).
 
 var_inter_test() ->
@@ -80,8 +80,7 @@ var_inter2_test() ->
       ]),
     B = id(A),
     true = subty:is_equivalent(symtab:empty(), A, B), 
-    % was "bool | mu6 /\\ mu5" before
-    ?assertEqual("not(mu6) /\\ bool | mu5 /\\ mu6 | not(mu5) /\\ bool", pretty:render_ty(B))
+    ?assertEqual("bool | mu5 /\\ mu6", pretty:render_ty(B))
   end).
 
 var_neg_dnf_test() ->
@@ -137,8 +136,7 @@ variable_union_2_test() ->
     A = u([v(a), v(b), b(foo)]),
     B = id(A),
     true = subty:is_equivalent(symtab:empty(), A, B),
-    % was "foo | a | b" before
-    ?assertEqual("b | a | not(a) /\\ not(b) /\\ foo", pretty:render_ty(B))
+    ?assertEqual("b | a | foo", pretty:render_ty(B))
   end).
 
 variable_union_3_test() ->
@@ -146,8 +144,7 @@ variable_union_3_test() ->
     A = u([v(a), v(b), v(c), b(foo)]),
     B = id(A),
     true = subty:is_equivalent(symtab:empty(), A, B),
-    % was "foo | a | b c" before
-    ?assertEqual("c | b | a | not(a) /\\ not(b) /\\ not(c) /\\ foo", pretty:render_ty(B))
+    ?assertEqual("c | b | a | foo", pretty:render_ty(B))
   end).
 
 variable_union_4_test() ->
@@ -155,8 +152,7 @@ variable_union_4_test() ->
     A = u([v(a),b()]),
     B = id(A),
     true = subty:is_equivalent(symtab:empty(), A, B),
-    % was "atom() | a" before
-    ?assertEqual("a | not(a) /\\ atom()", pretty:render_ty(B))
+    ?assertEqual("a | atom()", pretty:render_ty(B))
   end).
 
 variable_union_5_test() ->
@@ -164,8 +160,76 @@ variable_union_5_test() ->
     A = u([v(a),b(), tint(2,4)]),
     B = id(A),
     true = subty:is_equivalent(symtab:empty(), A, B),
-    % was "atom() | 2..4 | a"" before
-    ?assertEqual("a | not(a) /\\ (atom() | 2..4)", pretty:render_ty(B))
+    ?assertEqual("a | atom() | 2..4", pretty:render_ty(B))
+  end).
+
+% issue #269: not($2) /\ integer() | $2  is  integer() | $2; the two DNF lines
+% carry different leaves (integer() and any()), so the exact minimizer cannot
+% drop the not($2) literal
+variable_absorption_issue269_test() ->
+  global_state:with_new_state(fun() ->
+    A = u([ i([ n(v('$2')), tint() ]), v('$2') ]),
+    B = id(A),
+    true = subty:is_equivalent(symtab:empty(), A, B),
+    ?assertEqual("$2 | integer()", pretty:render_ty(B))
+  end).
+
+% a union under a negated variable loses the negation as well
+variable_absorption_union_leaf_test() ->
+  global_state:with_new_state(fun() ->
+    A = u([ i([ n(v(a)), u([tint(), b()]) ]), v(a) ]),
+    B = id(A),
+    true = subty:is_equivalent(symtab:empty(), A, B),
+    ?assertEqual("a | atom() | integer()", pretty:render_ty(B))
+  end).
+
+% incomparable leaves keep their literals: not(a) /\ integer() and a /\ atom()
+variable_no_spurious_merge_test() ->
+  global_state:with_new_state(fun() ->
+    A = u([ i([ n(v(a)), tint() ]), i([ v(a), b() ]) ]),
+    B = id(A),
+    true = subty:is_equivalent(symtab:empty(), A, B),
+    ?assertEqual("a /\\ atom() | not(a) /\\ integer()", pretty:render_ty(B))
+  end).
+
+% equivalent but syntactically distinct leaves: both lines lose b, then each one
+% covers the other, and exactly one of them must survive
+variable_equivalent_leaves_test() ->
+  global_state:with_new_state(fun() ->
+    A = u([ i([ n(v(b)), u([p(tint()), p(b())]) ]), i([ v(b), p(u([tint(), b()])) ]) ]),
+    B = id(A),
+    true = subty:is_equivalent(symtab:empty(), A, B),
+    ?assertEqual("{integer()} | {atom()}", pretty:render_ty(B))
+  end).
+
+% the line a /\ b /\ (atom() | integer()) is covered by the union of the other
+% two lines, but by neither of them alone
+variable_union_coverage_test() ->
+  global_state:with_new_state(fun() ->
+    A = u([ i([ v(a), tint() ]), i([ v(b), b() ]) ]),
+    B = id(A),
+    true = subty:is_equivalent(symtab:empty(), A, B),
+    ?assertEqual("b /\\ atom() | a /\\ integer()", pretty:render_ty(B))
+  end).
+
+% a line whose leaf is empty without being syntactically empty is dropped
+% (main printed b /\ not(a) /\ {c, none()} | a)
+variable_empty_leaf_test() ->
+  global_state:with_new_state(fun() ->
+    A = u([ v(a), i([ v(b), p([v(c), tnone()]) ]) ]),
+    B = id(A),
+    true = subty:is_equivalent(symtab:empty(), A, B),
+    ?assertEqual("a", pretty:render_ty(B))
+  end).
+
+% not(a) /\ not(b) cannot lose a literal: the PR #51 pairwise rule rewrote this
+% to a /\ b | integer(), which is a different type
+variable_two_negations_test() ->
+  global_state:with_new_state(fun() ->
+    A = u([ i([ v(a), v(b) ]), i([ n(v(a)), n(v(b)), tint() ]) ]),
+    B = id(A),
+    true = subty:is_equivalent(symtab:empty(), A, B),
+    ?assertEqual("a /\\ b | not(a) /\\ not(b) /\\ integer()", pretty:render_ty(B))
   end).
 
 other_test() ->
