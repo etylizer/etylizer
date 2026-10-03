@@ -8,7 +8,7 @@
                         [],
                         [{lc,{loc,[],0,0},
                              {block,{loc,[],0,0},
-                                    [{'case',{loc,[],0,0},
+                                    [{'case',{generated,match,{loc,[],0,0}},
                                              {var,{loc,[],0,0},{local_ref,{'X',1}}},
                                              [{case_clause,{loc,[],0,0},{var,{loc,[],0,0},{local_bind,{'Y',0}}},[],[{var,{loc,[],0,0},{local_ref,{'X',1}}}]}]}]},
                              [{generate,{loc,[],0,0},

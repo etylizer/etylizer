@@ -9,7 +9,7 @@
                         [{call,{loc,[],0,0},
                                {var,{loc,[],0,0},{ref,bar,1}},
                                [{block,{loc,[],0,0},
-                                       [{'case',{loc,[],0,0},
+                                       [{'case',{generated,match,{loc,[],0,0}},
                                                 {integer,{loc,[],0,0},1},
                                                 [{case_clause,{loc,[],0,0},{var,{loc,[],0,0},{local_bind,{'X',0}}},[],[{var,{loc,[],0,0},{local_ref,{'X',0}}}]}]}]}]},
                          {var,{loc,[],0,0},{local_ref,{'X',0}}}]}]}].
