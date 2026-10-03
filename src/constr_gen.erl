@@ -841,9 +841,11 @@ case_clause_constrs(Ctx, TyScrut, Scrut, NeedsUnmatchedCheck, LowersBefore,
                     GuardCs
             end,
             Guards)),
+    % The clauses that the maybe rewrite adds are not written by the user, they may be dead.
+    CheckRedundancy = NeedsUnmatchedCheck andalso ast:generated_by(L) =/= 'maybe',
     RedundancyCs =
         if
-            NeedsUnmatchedCheck ->
+            CheckRedundancy ->
                 case_clause_unmatched_constraints(Ctx, LowersBefore, BodyUpper, Scrut);
             true -> none
         end,
