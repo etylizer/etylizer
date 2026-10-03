@@ -168,17 +168,17 @@
 % to clarify the intention.
 
 % Lists with exactly three elements.
--type list3(T, U, V) :: [T | U | V].
+-type list3(T, U, V) :: [T | U | V, ...].
 
 % Lists with exactly two elements.
--type list2(T, U) :: [T | U].
--type list2(T) :: [T].
+-type list2(T, U) :: [T | U, ...].
+-type list2(T) :: [T, ...].
 
 % A list containing exactly one element of type T
--type list1(T) :: [T].
+-type list1(T) :: [T, ...].
 
 % A list with first element of type T and then arbitrary manu Us.
--type list1star(T, U) :: [T | U].
+-type list1star(T, U) :: [T | U, ...].
 
 
 % 8.1  Module Declarations and Forms
@@ -192,11 +192,11 @@
 -type mod_form() :: {attribute, anno(), module, Mod::atom()}.
 -type behavior_form() :: {attribute, anno(), behavior | behaviour, Mod::atom()}.
 -type other_attr_form() :: {attribute, anno(), atom(), term()}.
--type fun_decl() :: {function, anno(), Name::atom(), Arity::integer(), [fun_clause()]}.
+-type fun_decl() :: {function, anno(), Name::atom(), Arity::integer(), [fun_clause(), ...]}.
 -type fun_spec_q() :: {attribute, anno(), spec, {{Mod::atom(), Name::atom(), Arity::integer()},
-                                                 [ty_full_fun()]}}.
+                                                 [ty_full_fun(), ...]}}.
 -type fun_spec_unq() :: {attribute, anno(), spec | callback, {{Name::atom(), Arity::integer()},
-                                                              [ty_full_fun()]}}.
+                                                              [ty_full_fun(), ...]}}.
 -type fun_spec() :: fun_spec_q() | fun_spec_unq().
 -type record_decl() :: {attribute, anno(), record, {Name::atom(),[record_field()]}}.
 -type type_decl() :: {attribute, anno(), type|opaque|nominal, tydef()}.
@@ -250,7 +250,7 @@
 
 % 8.4  Expressions
 
--type exp_bitstring_compr() :: {bc, anno(), exp(), [qualifier()]}.
+-type exp_bitstring_compr() :: {bc, anno(), exp(), [qualifier(), ...]}.
 -type gen_bitstring_constr(T, U) :: {bin, anno(), [gen_bitstring_elem(T, U)]}.
 -type gen_bitstring_elem(T, U) :: {bin_element,
                                    anno(),
@@ -260,7 +260,7 @@
 -type exp_bitstring_constr() :: gen_bitstring_constr(exp(), exp()).
 -type exp_bitstring_elem() :: gen_bitstring_elem(exp(), exp()).
 -type exp_block() :: {block, anno(), exps()}.
--type exp_case() :: {'case', anno(), exp(), [case_clause()]}.
+-type exp_case() :: {'case', anno(), exp(), [case_clause(), ...]}.
 -type exp_catch() :: {'catch', anno(), exp()}.
 -type gen_cons(T) :: {cons, anno(), Head::T, Tail::T}.
 -type exp_cons() :: gen_cons(exp()).
@@ -269,19 +269,19 @@
 -type exp_fun_ref() :: {'fun', anno(), {function, Name::atom(), Arity::integer()}}.
 -type exp_fun_qref() :: {'fun', anno(), {function, Mod::rep_atom(), Name::rep_atom(),
                                          Arity::rep_integer()}}.
--type exp_fun() :: {'fun', anno(), {clauses, [fun_clause()]}}.
--type exp_named_fun() :: {named_fun, anno(), Name::atom(), [fun_clause()]}.
+-type exp_fun() :: {'fun', anno(), {clauses, [fun_clause(), ...]}}.
+-type exp_named_fun() :: {named_fun, anno(), Name::atom(), [fun_clause(), ...]}.
 -type gen_funcall(T) :: {call, anno(), Fun::T, Args::[T]}.
 -type exp_funcall() :: gen_funcall(exp()).
 -type gen_funcall_q(T) :: {call, anno(), {remote, anno(), Mod::T, Fun::T}, Args::[T]}.
 -type exp_funcall_q() :: gen_funcall_q(exp()).
--type exp_if() :: {'if', anno(), [if_clause()]}.
--type exp_list_compr() :: {lc, anno(), exp(), [qualifier()]}.
+-type exp_if() :: {'if', anno(), [if_clause(), ...]}.
+-type exp_list_compr() :: {lc, anno(), exp(), [qualifier(), ...]}.
 -type gen_map_create() :: {map, anno(), [map_assoc()]}.
 -type exp_map_create() :: gen_map_create().
 -type gen_map_update(T) :: {map, anno(), T, [map_assoc()]}.
 -type exp_map_update() :: gen_map_update(exp()).
--type exp_map_compr() :: {mc, anno(), map_assoc_opt(), [qualifier()]}.
+-type exp_map_compr() :: {mc, anno(), map_assoc_opt(), [qualifier(), ...]}.
 -type exp_match() :: {match, anno(), pat(), exp()}.
 -type exp_maybe_match() :: {maybe_match, anno(), pat(), exp()}.
 -type gen_nil() ::  {nil, anno()}.
@@ -290,8 +290,8 @@
 -type exp_binop() :: gen_binop(exp()).
 -type gen_unop(T) :: {op, anno(), Op::unop(), T}.
 -type exp_unop() :: gen_unop(exp()).
--type exp_recv() :: {'receive', anno(), [case_clause()]}.
--type exp_recv_after() :: {'receive', anno(), [case_clause()], exp(), [exp()]}.
+-type exp_recv() :: {'receive', anno(), [case_clause(), ...]}.
+-type exp_recv_after() :: {'receive', anno(), [case_clause()], exp(), exps()}.
 -type gen_record_create(T) :: {record, anno(), Name::atom(),
                                [{record_field, anno(), Field::rep_atom(), T}]}.
 -type exp_record_create() :: gen_record_create(exp()).
@@ -304,11 +304,11 @@
 -type gen_tuple(T) ::  {tuple, anno(), [T]}.
 -type exp_tuple() ::  gen_tuple(exp()).
 -type exp_try() :: {'try', anno(), exps(), Cases::[case_clause()], Catches::[catch_clause()],
-                    After::exps()}.
+                    After::[exp()]}.
 -type gen_var() :: {var, anno(), Var::atom()}.
 -type exp_var() :: gen_var().
 -type exp_maybe() :: {'maybe', anno(), exps()}.
--type exp_maybe_else() :: {'maybe', anno(), exps(), {'else', anno(), Clauses :: [maybe_else_clause()]}}.
+-type exp_maybe_else() :: {'maybe', anno(), exps(), {'else', anno(), Clauses :: [maybe_else_clause(), ...]}}.
 
 -type exp() :: atomic_lit() | exp_bitstring_compr() | exp_bitstring_constr() | exp_block()
     | exp_case() | exp_catch() | exp_cons() | exp_fun_ref() | exp_fun_qref() | exp_fun()
@@ -319,9 +319,9 @@
     | exp_record_index() | exp_record_update() | exp_tuple() | exp_try() | exp_var() 
     | exp_maybe() | exp_maybe_else() | exp_maybe_match().
 
--type exps() :: [exp()].
+-type exps() :: [exp(), ...].
 
--type qual_zip_gen() ::  {zip, anno(), [generators()]}. 
+-type qual_zip_gen() ::  {zip, anno(), [generators(), ...]}. 
 -type qual_list_strict_gen() ::  {generate_strict, anno(), pat(), exp()}.
 -type qual_list_gen() ::  {generate, anno(), pat(), exp()}.
 -type qual_bitstring_gen() ::  {b_generate, anno(), pat(), exp()}.
@@ -333,7 +333,7 @@
 -type qualifier() :: exp() | generators().
 
 -type bitstring_tyspec() :: atom() | {atom(), Value::integer()}.
--type bitstring_tyspec_list() :: [bitstring_tyspec()].
+-type bitstring_tyspec_list() :: [bitstring_tyspec(), ...].
 
 -type map_assoc_opt() :: {map_field_assoc, anno(), exp(), exp()}.
 -type map_assoc_req() :: {map_field_exact, anno(), exp(), exp()}.
@@ -360,7 +360,7 @@
 -type if_clause()          :: {clause, anno(), Pats::[],           Guards::[guard()], Body::exps()}.
 
 % 8.6  Guards
--type guard() :: list1(guard_test()).
+-type guard() :: [guard_test(), ...].
 -type guard_test_bitstring_constr() :: gen_bitstring_constr(guard_test(), guard_test()).
 -type guard_test_cons() :: gen_cons(guard_test()).
 -type guard_test_funcall() :: gen_funcall(guard_test()).
@@ -396,7 +396,7 @@
     {type, anno(), 'fun', list2({type, anno(), product, [ty()]}, ty())}.
 -type ty_fun_constrained_ty() ::   % fun((T1...Tn) -> T) when Fc
     {type, anno(), bounded_fun, list2(ty_fun_unconstrained_ty(), ty_fun_constraint())}.
--type ty_fun_constraint() :: [ty_constraint()].
+-type ty_fun_constraint() :: [ty_constraint(), ...].
 -type ty_constraint() :: {type, anno(), constraint, list2({atom,anno(),is_subtype}, list2(ty_var(), ty()))}.
 
 -type ty_simple_fun() :: {type, anno(), 'fun', []}. % fun()
