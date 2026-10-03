@@ -10,8 +10,8 @@
 
 -ifdef(TEST).
 -export([
-         pat_guard_lower_upper/4,
-         ty_of_pat/4
+         pat_guard_lower_upper/3,
+         ty_of_pat/3
         ]).
 -endif.
 
@@ -316,102 +316,6 @@ exp_constrs(Ctx, E, T) ->
             receive_constrs(Ctx, L, CaseClauses, T);
         {receive_after, L, CaseClauses, TimeoutExp, AfterBody} ->
             receive_after_constrs(Ctx, L, CaseClauses, TimeoutExp, AfterBody, T);
-        {record_create, L, Name, GivenFields} ->
-            {_, DefFields} = symtab:lookup_record(Name, L, Ctx#ctx.symtab),
-            VarFields =
-                lists:map(
-                    fun ({N, _}) ->
-                        Alpha = fresh_tyvar(Ctx),
-                        {N, Alpha}
-                    end,
-                    DefFields),
-            DefFieldNames = sets:from_list(lists:map(fun ({N, _}) -> N end, DefFields), [{version, 2}]),
-            GivenFieldNames =
-                % FIXME: deal with record_field_other, which assigns a value to all fields
-                % not mentioned explicitly
-                sets:from_list(lists:map(fun ({record_field, _L, N, _Exp}) -> N end, GivenFields), [{version, 2}]),
-            case sets:is_subset(GivenFieldNames, DefFieldNames) of
-                false -> errors:ty_error(L, "too many record fields given", []);
-                true ->
-                    case sets:is_subset(DefFieldNames, GivenFieldNames) of
-                        true -> ok;
-                        false -> errors:ty_error(L, "not all record fields given", [])
-                    end
-            end,
-            Cs =
-                lists:foldr(
-                    fun({record_field, _L, N, Exp}, Cs) ->
-                        {ok, Ty} = utils:assocs_find(N, VarFields), % we checked before that all fields are present
-                        ThisCs = exp_constrs(Ctx, Exp, Ty),
-                        sets:union(Cs, ThisCs)
-                    end,
-                    sets:new([{version, 2}]),
-                    GivenFields),
-            RecTupleTy = ety_records:encode_record_ty({Name, VarFields}),
-            RecConstr = {csubty, mk_locs("record value constructor", L), RecTupleTy, T},
-            sets:add_element(RecConstr, Cs);
-        {record_field, L, Exp, RecName, FieldName} ->
-            {_, DefFields} = symtab:lookup_record(RecName, L, Ctx#ctx.symtab),
-            Alpha = fresh_tyvar(Ctx),
-            VarFields =
-                lists:map(
-                    fun ({N, _}) ->
-                        Ty =
-                            case N =:= FieldName of
-                                true -> Alpha;
-                                false -> stdtypes:tany()
-                            end,
-                        {N, Ty}
-                    end,
-                    DefFields),
-            RecTupleTy = ety_records:encode_record_ty({RecName, VarFields}),
-            Cs = exp_constrs(Ctx, Exp, RecTupleTy),
-            FieldConstr = {csubty, mk_locs("record field access", L), Alpha, T},
-            sets:add_element(FieldConstr, Cs);
-        {record_index, L, RecName, FieldName} ->
-            RecTy = symtab:lookup_record(RecName, L, Ctx#ctx.symtab),
-            {_FieldTy, Idx} = ety_records:lookup_field_index(RecTy, FieldName, L),
-            Constr = {csubty, mk_locs("record field index", L), stdtypes:tint(Idx + 1), T},
-            utils:single(Constr);
-        {record_update, L, Exp, RecName, FieldUpdates} ->
-            {_, DefFields} = symtab:lookup_record(RecName, L, Ctx#ctx.symtab),
-            UpdatedFieldNames =
-                sets:from_list(
-                    lists:map(fun({record_field, _, FieldName, _}) -> FieldName end, FieldUpdates)
-                    , [{version, 2}]),
-            % For typechecking the expression Exp, the updated fields can have type any().
-            % But all fields F not updated must be of type Alpha_F (a type variable)
-            % The values for all updated fields G must have type Alpha_G
-            % The resulting record type then combines the Alpha_F and Alpha_G
-            % A list of tuples {name of field, expected type in exp, type in result}
-            FieldTypes =
-                lists:map(
-                    fun ({N, _}) ->
-                        {TyExp, TyRes} =
-                            case sets:is_element(N, UpdatedFieldNames) of
-                                true -> {stdtypes:tany(), fresh_tyvar(Ctx)};
-                                false ->
-                                    Alpha = fresh_tyvar(Ctx),
-                                    {Alpha, Alpha}
-                            end,
-                        {N, TyExp, TyRes}
-                    end,
-                    DefFields),
-            FieldsForExp = lists:map(fun ({N, Ty, _}) -> {N, Ty} end, FieldTypes),
-            RecTupleTyExp = ety_records:encode_record_ty({RecName, FieldsForExp}),
-            ExpCs = exp_constrs(Ctx, Exp, RecTupleTyExp),
-            FieldsForRes = lists:map(fun ({N, _, Ty}) -> {N, Ty} end, FieldTypes),
-            RecTyRes = {RecName, FieldsForRes},
-            RecTupleTyRes = ety_records:encode_record_ty(RecTyRes),
-            ResConstr = {csubty, mk_locs("record result", L), RecTupleTyRes, T},
-            lists:foldr(
-                fun({record_field, FieldUpdateLoc, FieldName, FieldExp}, Cs) ->
-                    FieldTy = ety_records:lookup_field_ty(RecTyRes, FieldName, FieldUpdateLoc),
-                    ThisCs = exp_constrs(Ctx, FieldExp, FieldTy),
-                    sets:union(Cs, ThisCs)
-                end,
-                sets:add_element(ResConstr, ExpCs),
-                FieldUpdates);
         {tuple, L, Args} ->
             {Tys, Cs} =
                 lists:foldr(
@@ -512,7 +416,7 @@ process_qualifiers(Ctx, Loc, [Q | Qs], Env, Cs) ->
             ExpCs = sets:from_list([{cdef, mk_locs("strict list generator source", LGen), Env, ExpCs0}]),
 
             % For strict generators, the list element type must be a subtype of the pattern type
-            TyPat = ty_of_pat(Ctx#ctx.symtab, Env, Pat, upper),
+            TyPat = ty_of_pat(Env, Pat, upper),
             StrictCs = sets:from_list([
                 {csubty, mk_locs("strict list generator", LGen), Alpha, TyPat}
             ]),
@@ -532,7 +436,7 @@ process_qualifiers(Ctx, Loc, [Q | Qs], Env, Cs) ->
             ExpCs0 = exp_constrs(Ctx, Exp, stdtypes:tlist(Alpha)),
             ExpCs = sets:from_list([{cdef, mk_locs("list generator source", LGen), Env, ExpCs0}]),
 
-            TyPat = ty_of_pat(Ctx#ctx.symtab, Env, Pat, upper),
+            TyPat = ty_of_pat(Env, Pat, upper),
             {PatCs, PatEnv} = pat_env(Ctx, LGen, Beta, Pat),
 
             GeneratorC = [
@@ -558,8 +462,8 @@ process_qualifiers(Ctx, Loc, [Q | Qs], Env, Cs) ->
             ExpCs = sets:from_list([{cdef, mk_locs("strict map generator source", LGen), Env, ExpCs0}]),
 
             % For strict generators, the map element types must be subtypes of the pattern types
-            TyKeyPat = ty_of_pat(Ctx#ctx.symtab, Env, KeyPat, upper),
-            TyValPat = ty_of_pat(Ctx#ctx.symtab, Env, ValPat, upper),
+            TyKeyPat = ty_of_pat(Env, KeyPat, upper),
+            TyValPat = ty_of_pat(Env, ValPat, upper),
             StrictCs = sets:from_list([
                 {csubty, mk_locs("strict map generator key", LGen), KeyAlpha, TyKeyPat},
                 {csubty, mk_locs("strict map generator value", LGen), ValAlpha, TyValPat}
@@ -581,8 +485,8 @@ process_qualifiers(Ctx, Loc, [Q | Qs], Env, Cs) ->
             ExpCs = sets:from_list([{cdef, mk_locs("map generator source", LGen), Env, ExpCs0}]),
 
             % Get upper bounds for filtering
-            TyKeyPat = ty_of_pat(Ctx#ctx.symtab, Env, KeyPat, upper),
-            TyValPat = ty_of_pat(Ctx#ctx.symtab, Env, ValPat, upper),
+            TyKeyPat = ty_of_pat(Env, KeyPat, upper),
+            TyValPat = ty_of_pat(Env, ValPat, upper),
 
             {KeyPatCs, KeyPatEnv} = pat_env(Ctx, LGen, KeyBeta, KeyPat),
             {ValPatCs, ValPatEnv} = pat_env(Ctx, LGen, ValBeta, ValPat),
@@ -950,7 +854,7 @@ catch_clause_pat_env(Ctx, L, ExcType, Pat, Stack) ->
 -spec case_clause_env(ctx(), ast:loc(), ast:ty(), ast:exp(), ast:pat(), [ast:guard()]) ->
           {ast:ty(), ast:ty(), constr:constrs(), constr:constr_env()}.
 case_clause_env(Ctx, L, TyScrut, Scrut, Pat, Guards) ->
-    {Lower, Upper} = pat_guard_lower_upper(Ctx#ctx.symtab, Pat, Guards, Scrut),
+    {Lower, Upper} = pat_guard_lower_upper(Pat, Guards, Scrut),
     Ti = ast_lib:mk_intersection([TyScrut, Upper]),
     {Ci0, Gamma0} = pat_env(Ctx, L, Ti, pat_of_exp(Scrut)),
     {Ci1, Gamma1} = pat_guard_env(Ctx, L, Ti, Pat, Guards),
@@ -958,8 +862,8 @@ case_clause_env(Ctx, L, TyScrut, Scrut, Pat, Guards) ->
     {Lower, Upper, sets:union(Ci0, Ci1), Gamma2}.
 
 % ⌊ p when g ⌋_e and ⌈ p when g ⌉_e
--spec pat_guard_lower_upper(symtab:t(), ast:pat(), [ast:guard()], ast:exp()) -> {ast:ty(), ast:ty()}.
-pat_guard_lower_upper(Symtab, P, Gs, E) ->
+-spec pat_guard_lower_upper(ast:pat(), [ast:guard()], ast:exp()) -> {ast:ty(), ast:ty()}.
+pat_guard_lower_upper(P, Gs, E) ->
     EPat = pat_of_exp(E),
     BoundVars = sets:union(bound_vars_pat(P), bound_vars_pat(EPat)),
     % Compute Lower and Upper as unions over disjunctive guard branches.
@@ -971,8 +875,8 @@ pat_guard_lower_upper(Symtab, P, Gs, E) ->
         ast_lib:mk_union(
             lists:map(
                 fun({UEnv, _}) ->
-                    UpperPatTy = ty_of_pat(Symtab, UEnv, P, upper),
-                    UpperETy = ty_of_pat(Symtab, UEnv, EPat, upper),
+                    UpperPatTy = ty_of_pat(UEnv, P, upper),
+                    UpperETy = ty_of_pat(UEnv, EPat, upper),
                     ast_lib:mk_intersection([UpperPatTy, UpperETy])
                 end,
                 DisjEnvs)),
@@ -984,8 +888,8 @@ pat_guard_lower_upper(Symtab, P, Gs, E) ->
                         lists:filtermap(fun ast:local_varname_from_any_ref/1, maps:keys(LEnv))),
                     case {LStatus, sets:is_subset(LVarsOfGuards, BoundVars)} of
                         {safe, true} ->
-                            LowerPatTy = ty_of_pat(Symtab, LEnv, P, lower),
-                            LowerETy = ty_of_pat(Symtab, LEnv, EPat, lower),
+                            LowerPatTy = ty_of_pat(LEnv, P, lower),
+                            LowerETy = ty_of_pat(LEnv, EPat, lower),
                             ast_lib:mk_intersection([LowerPatTy, LowerETy]);
                         _ -> {predef, none}
                     end
@@ -1037,13 +941,6 @@ bound_vars_pat(P) ->
               sets:new([{version, 2}]),
               Assocs
              );
-        {record, _L, _RecName, FieldPatterns} ->
-            lists:foldl(
-              fun({record_field, _L, _FieldName, P}, Acc) -> sets:union(Acc, bound_vars_pat(P)) end,
-              sets:new([{version, 2}]),
-              FieldPatterns
-             );
-        {record_index, _L, _Name, _Field} -> sets:new([{version, 2}]);
         {tuple, _L, Ps} ->
             lists:foldl(
               fun(P, Acc) -> sets:union(Acc, bound_vars_pat(P)) end,
@@ -1071,8 +968,8 @@ bound_vars_pat(P) ->
 %
 % - Mode lower deals with the accepting type. If e has this type, then p definitely
 %   matches.
--spec ty_of_pat(symtab:t(), constr:constr_env(), ast:pat(), upper | lower) -> ast:ty().
-ty_of_pat(Symtab, Env, P, Mode) ->
+-spec ty_of_pat(constr:constr_env(), ast:pat(), upper | lower) -> ast:ty().
+ty_of_pat(Env, P, Mode) ->
     case P of
         {'atom', _L, A} -> {singleton, A};
         {'char', _L, C} -> {singleton, C};
@@ -1082,19 +979,19 @@ ty_of_pat(Symtab, Env, P, Mode) ->
         % TODO correct binary patterns
         {bin, _L, _Elems} -> {bitstring};
         {match, _L, P1, P2} ->
-            ast_lib:mk_intersection([ty_of_pat(Symtab, Env, P1, Mode), ty_of_pat(Symtab, Env, P2, Mode)]);
+            ast_lib:mk_intersection([ty_of_pat(Env, P1, Mode), ty_of_pat(Env, P2, Mode)]);
         {nil, _L} -> {empty_list};
         {cons, _L, P1, P2} ->
-            T1 = ty_of_pat(Symtab, Env, P1, Mode),
-            T2 = ty_of_pat(Symtab, Env, P2, Mode),
+            T1 = ty_of_pat(Env, P1, Mode),
+            T2 = ty_of_pat(Env, P2, Mode),
             {cons, T1, T2};
         {op, _, '++', [P1, P2]} ->
-            ast_lib:mk_intersection([ty_of_pat(Symtab, Env, P1, Mode), ty_of_pat(Symtab, Env, P2, Mode),
+            ast_lib:mk_intersection([ty_of_pat(Env, P1, Mode), ty_of_pat(Env, P2, Mode),
                                  {predef_alias, string}]);
         {op, _, '-', [{integer, _L2, I}]} ->
             {singleton, -I};
         {op, _, '-', [SubP]} ->
-            ast_lib:mk_intersection([ty_of_pat(Symtab, Env, SubP, Mode), {predef_alias, number}]);
+            ast_lib:mk_intersection([ty_of_pat(Env, SubP, Mode), {predef_alias, number}]);
         {op, L, Op, _} -> errors:unsupported(L, "operator ~w in patterns", Op);
         {map, _L, []} ->
             Any = stdtypes:tany(),
@@ -1103,8 +1000,8 @@ ty_of_pat(Symtab, Env, P, Mode) ->
             {KeyTs, ValTs} =
                 lists:foldl(
                     fun({map_field_req, _, KeyP, ValP}, {KeyTs, ValTs}) ->
-                        K = ty_of_pat(Symtab, Env, KeyP, Mode),
-                        V = ty_of_pat(Symtab, Env, ValP, Mode),
+                        K = ty_of_pat(Env, KeyP, Mode),
+                        V = ty_of_pat(Env, ValP, Mode),
                         {[K | KeyTs], [V | ValTs]}
                     end,
                     {[], []},
@@ -1115,39 +1012,7 @@ ty_of_pat(Symtab, Env, P, Mode) ->
                     lower -> fun ast_lib:mk_intersection/1
                 end,
             stdtypes:tmap_req(F(KeyTs), F(ValTs));
-        {record, L, RecName, FieldPats} ->
-            {_, RecFields} = symtab:lookup_record(RecName, L, Symtab),
-            FieldMap =
-                lists:foldl(
-                    fun({record_field, FieldLoc, FieldName, FieldPat}, FieldMap) ->
-                        case maps:find(FieldName, FieldMap) of
-                            {ok, _} ->
-                                errors:ty_error(FieldLoc,
-                                    "Duplicated label ~w in record pattern",
-                                    [FieldName]);
-                            _ -> ok
-                        end,
-                        Ty = ty_of_pat(Symtab, Env, FieldPat, Mode),
-                        maps:put(FieldName, Ty, FieldMap)
-                    end,
-                    #{},
-                    FieldPats),
-            MatchedRecFields =
-                lists:map(
-                    fun({FieldName, _}) ->
-                        case maps:find(FieldName, FieldMap) of
-                            {ok, Ty} -> {FieldName, Ty};
-                            _ -> {FieldName, stdtypes:tany()}
-                        end
-                    end,
-                    RecFields),
-            TupleTy = ety_records:encode_record_ty({RecName, MatchedRecFields}),
-            TupleTy;
-        {record_index, L, RecName, FieldName} ->
-            RecTy = symtab:lookup_record(RecName, L, Symtab),
-            {_, Idx} = ety_records:lookup_field_index(RecTy, FieldName, L),
-            stdtypes:tint(Idx + 1);
-        {tuple, _L, Ps} -> {tuple, lists:map(fun(P) -> ty_of_pat(Symtab, Env, P, Mode) end, Ps)};
+        {tuple, _L, Ps} -> {tuple, lists:map(fun(P) -> ty_of_pat(Env, P, Mode) end, Ps)};
         {wildcard, _L} -> {predef, any};
         {var, _L, {local_bind, V}} ->
             % V binds a fresh variable
@@ -1252,32 +1117,6 @@ pat_env(Ctx, OuterL, T, P) ->
                     Assocs),
             C = {csubty, mk_locs("t // #{_}", OuterL), T, stdtypes:tmap(AlphaK, AlphaV)},
             {sets:add_element(C, AssocCs), AssocEnv};
-        {record, L, RecName, FieldPats} ->
-            {_, DefFields} = symtab:lookup_record(RecName, L, Ctx#ctx.symtab),
-            {Cs, Env, MatchedFieldTypes} =
-                lists:foldl(
-                    fun ({record_field, _FieldLoc, FieldName, FieldPat}, {AccCs, AccEnv, AccFieldTypes}) ->
-                        Alpha = fresh_tyvar(Ctx),
-                        {ThisCs, ThisEnv} = pat_env(Ctx, OuterL, Alpha, FieldPat),
-                        {sets:union(AccCs, ThisCs),
-                            intersect_envs(AccEnv, ThisEnv),
-                            maps:put(FieldName, Alpha, AccFieldTypes)}
-                    end,
-                    {sets:new([{version, 2}]), #{}, #{}},
-                    FieldPats),
-            FieldTypes =
-                lists:map(
-                    fun({FieldName, _DefFieldType}) ->
-                        case maps:find(FieldName, MatchedFieldTypes) of
-                            {ok, Ty} -> {FieldName, Ty};
-                            error -> {FieldName, stdtypes:tany()}
-                        end
-                    end,
-                    DefFields),
-            RecTupleTy = ety_records:encode_record_ty({RecName, FieldTypes}),
-            C = {csubty, mk_locs("t // #Record{...}", OuterL), T, RecTupleTy},
-            {sets:add_element(C, Cs), Env};
-        {record_index, _L, _Name, _Field} -> Empty;
         {tuple, _L, Ps} ->
             {Alphas, Cs, Env} =
                 lists:foldl(

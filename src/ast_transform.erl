@@ -26,9 +26,10 @@
           % The records seen so far. We need the record definitions to rewrite record types
           % into tuple types.
           records :: #{ atom() => ety_records:record_ty() },
-          % Default expressions for record fields, used to fill in omitted fields during
-          % record construction.
-          record_defaults = #{} :: #{ atom() => #{ atom() => ast:exp() } },
+          % Default expressions of record fields as in the source, with the file defining
+          % the record. Erlang copies a default into each record construction that omits
+          % the field, so it is translated there.
+          record_defaults = #{} :: #{ atom() => {file:filename(), #{ atom() => ast_erl:exp() }} },
           % Extra type forms generated for record override variants (e.g., #rec{field :: any()})
           extra_forms = [] :: [ast:form()],
           % ETS table for accumulating record override variants during type transformation.
@@ -155,7 +156,7 @@ trans_form(Ctx, Form, Mode) ->
                 NewFields = trans_record_fields(TmpCtx, varenv:empty("type variable"), Fields),
                 NewForm = {attribute, to_loc(TmpCtx, Anno), record, {Name, NewFields}},
                 RecordTy = ety_records:record_ty_from_decl(Name, NewFields),
-                FieldDefaults = extract_field_defaults(NewFields),
+                FieldDefaults = {Ctx#ctx.current_file, extract_field_defaults(Fields)},
                 % Generate type forms for override variants created during field processing
                 OverrideVariants = collect_record_variants(Ctx, Name),
                 Loc = to_loc(Ctx, Anno),
@@ -688,6 +689,8 @@ trans_exp(Ctx, Env, Exp) ->
                 NewAfterExp, NewAfterBody}, Env4};
         {'record', Anno, Name, Fields} ->
             % record creation
+            Loc = to_loc(Ctx, Anno),
+            RecTy = lookup_record(Ctx, Loc, Name),
             {NewFields, NewEnv} =
                 thread_through_env(
                   Env,
@@ -703,16 +706,15 @@ trans_exp(Ctx, Env, Exp) ->
                   end
                  ),
             % expand _ = Expr into individual fields, then fill in defaults for the rest
-            ExpandedFields = expand_record_field_other(Ctx, Name, NewFields),
-            AllFields = fill_record_defaults(Ctx, Name, to_loc(Ctx, Anno), ExpandedFields),
-            {{record_create, to_loc(Ctx, Anno), Name, AllFields}, NewEnv};
+            ExpandedFields = expand_record_field_other(RecTy, NewFields),
+            AllFields = fill_record_defaults(Ctx, NewEnv, RecTy, Loc, ExpandedFields),
+            {record_tuple(Loc, RecTy, AllFields), NewEnv};
         {record_field, Anno, E, Name, {'atom', _, Field}} ->
             {NewE, NewEnv} = trans_exp(Ctx, Env, E),
             % record field access
-            {{record_field, to_loc(Ctx, Anno), NewE, Name, Field}, NewEnv};
+            {record_read(Ctx, to_loc(Ctx, Anno), Name, Field, NewE), NewEnv};
         {record_index, Anno, Name, {'atom', _, Field}} ->
-            % record index
-            {{record_index, to_loc(Ctx, Anno), Name, Field}, Env};
+            {trans_record_index(Ctx, to_loc(Ctx, Anno), Name, Field), Env};
         {'record', Anno, E, Name, Fields} ->
             % record update
             {NewE, Env1} = trans_exp(Ctx, Env, E),
@@ -726,7 +728,7 @@ trans_exp(Ctx, Env, Exp) ->
                            NewEnv}
                   end
                  ),
-            {{record_update, to_loc(Ctx, Anno), NewE, Name, NewFields}, NewEnv};
+            {trans_record_update(Ctx, NewEnv, to_loc(Ctx, Anno), NewE, Name, NewFields), NewEnv};
         {tuple, Anno, Args} ->
             {NewArgs, NewEnv} = trans_exps(Ctx, Env, Args),
             {{tuple, to_loc(Ctx, Anno), NewArgs}, NewEnv};
@@ -921,9 +923,13 @@ trans_pat(Ctx, Env, Pat, BindMode) ->
                             trans_pat(Ctx, E0, FieldPat, BindMode),
                                 {{record_field, to_loc(Ctx, Anno), FieldName, NewPat}, E1}
                   end),
-            {{record, to_loc(Ctx, Anno), Name, NewFields}, NewEnv};
+            Loc = to_loc(Ctx, Anno),
+            RecTy = {_, DefFields} = lookup_record(Ctx, Loc, Name),
+            G = ast:generated(record_field, Loc),
+            Others = [{record_field, G, N, {wildcard, G}} || {N, _} <- DefFields],
+            {record_tuple(Loc, RecTy, NewFields ++ Others), NewEnv};
         {record_index, Anno, RecName, {'atom', _, FieldName}} ->
-            {{record_index, to_loc(Ctx, Anno), RecName, FieldName}, Env};
+            {trans_record_index(Ctx, to_loc(Ctx, Anno), RecName, FieldName), Env};
         {tuple, Anno, Pats} ->
             {NewPats, NewEnv} = trans_pats(Ctx, Env, Pats, BindMode),
             {{tuple, to_loc(Ctx, Anno), NewPats}, NewEnv};
@@ -1113,11 +1119,11 @@ trans_map_assoc(Ctx, Env, Assoc) ->
 
 % Expands record_field_other (the _ = Expr syntax) into individual record_field entries
 % for each field not explicitly given. The record_field_other entry is removed.
--spec expand_record_field_other(ctx(), atom(),
+-spec expand_record_field_other(ety_records:record_ty(),
     [{record_field, ast:loc(), atom(), ast:exp()}
      | {record_field_other, ast:loc(), ast:exp()}]) ->
     [{record_field, ast:loc(), atom(), ast:exp()}].
-expand_record_field_other(Ctx, RecName, Fields) ->
+expand_record_field_other({_, DefFields}, Fields) ->
     % Split into explicit fields and the optional wildcard
     {Explicit, Other} = lists:partition(
         fun({record_field, _, _, _}) -> true;
@@ -1127,63 +1133,122 @@ expand_record_field_other(Ctx, RecName, Fields) ->
     case Other of
         [] -> Explicit;
         [{record_field_other, Loc, Exp}] ->
-            case maps:find(RecName, Ctx#ctx.records) of
-                error -> Explicit;
-                {ok, {_, DefFields}} ->
-                    GivenNames = sets:from_list(
-                        [N || {record_field, _, N, _} <- Explicit],
-                        [{version, 2}]),
-                    WildcardFields =
-                        lists:filtermap(
-                            fun({FieldName, _}) ->
-                                case sets:is_element(FieldName, GivenNames) of
-                                    true -> false;
-                                    false -> {true, {record_field, ast:generated(record_field, Loc), FieldName, Exp}}
-                                end
-                            end,
-                            DefFields),
-                    Explicit ++ WildcardFields
-            end
-    end.
-
-% Extracts default expressions from transformed record field declarations.
-% Returns a map from field name to the default expression.
--spec extract_field_defaults([ast:record_field()]) -> #{ atom() => ast:exp() }.
-extract_field_defaults(Fields) ->
-    lists:foldl(
-        fun({record_field, _Loc, _Name, _Ty, no_default}, Acc) -> Acc;
-           ({record_field, _Loc, Name, _Ty, DefaultExp}, Acc) -> maps:put(Name, DefaultExp, Acc)
-        end,
-        #{},
-        Fields).
-
-% Fills in default expressions for record fields that are omitted during record creation.
-% For each field in the record definition that is not explicitly given and has a default
-% expression, a record_field entry with the default expression is appended.
--spec fill_record_defaults(ctx(), atom(), ast:loc(),
-    [{record_field, ast:loc(), atom(), ast:exp()}]) ->
-    [{record_field, ast:loc(), atom(), ast:exp()}].
-fill_record_defaults(Ctx, RecName, Loc, GivenFields) ->
-    case maps:find(RecName, Ctx#ctx.record_defaults) of
-        error ->
-            % Record not known yet (shouldn't happen for well-formed code)
-            GivenFields;
-        {ok, Defaults} ->
             GivenNames = sets:from_list(
-                [N || {record_field, _, N, _} <- GivenFields],
+                [N || {record_field, _, N, _} <- Explicit],
                 [{version, 2}]),
-            DefaultFields =
-                maps:fold(
-                    fun(FieldName, DefaultExp, Acc) ->
+            WildcardFields =
+                lists:filtermap(
+                    fun({FieldName, _}) ->
                         case sets:is_element(FieldName, GivenNames) of
-                            true -> Acc;
-                            false -> [{record_field, ast:generated(record_field, Loc), FieldName, DefaultExp} | Acc]
+                            true -> false;
+                            false -> {true, {record_field, ast:generated(record_field, Loc), FieldName, Exp}}
                         end
                     end,
-                    [],
-                    Defaults),
-            GivenFields ++ DefaultFields
+                    DefFields),
+            Explicit ++ WildcardFields
     end.
+
+% Extracts default expressions from record field declarations.
+% Returns a map from field name to the default expression.
+-spec extract_field_defaults([ast_erl:record_field()]) -> #{ atom() => ast_erl:exp() }.
+extract_field_defaults(Fields) ->
+    Untyped = [case F of {typed_record_field, U, _} -> U; _ -> F end || F <- Fields],
+    maps:from_list(
+        [{Name, DefaultExp} || {record_field, _, {'atom', _, Name}, DefaultExp} <- Untyped]).
+
+% Fills in record fields that are omitted during record creation. As in Erlang, an
+% omitted field gets its default expression, or 'undefined' if it has no default.
+% The default is evaluated in the scope of the record creation. It is annotated with the
+% declared type of the field, so a default of another type is reported in the declaration.
+-spec fill_record_defaults(ctx(), varenv_local:t(), ety_records:record_ty(), ast:loc(),
+    [{record_field, ast:loc(), atom(), ast:exp()}]) ->
+    [{record_field, ast:loc(), atom(), ast:exp()}].
+fill_record_defaults(Ctx, Env, {RecName, DefFields}, Loc, GivenFields) ->
+    {DefFile, Defaults} =
+        maps:get(RecName, Ctx#ctx.record_defaults, {Ctx#ctx.current_file, #{}}),
+    DefCtx = Ctx#ctx{ current_file = DefFile },
+    GivenNames = sets:from_list(
+        [N || {record_field, _, N, _} <- GivenFields],
+        [{version, 2}]),
+    G = ast:generated(record_field, Loc),
+    DefaultFields =
+        [{record_field, G, N,
+          case Defaults of
+              #{N := DefaultExp} ->
+                  E = trans_exp_noenv(DefCtx, Env, DefaultExp),
+                  case Ty of
+                      {predef, any} -> E;
+                      _ -> {annotate, ast:generated(record_field, ast:loc_exp(E)), E, Ty}
+                  end;
+              _ -> {'atom', G, undefined}
+          end}
+         || {N, Ty} <- DefFields, not sets:is_element(N, GivenNames)],
+    GivenFields ++ DefaultFields.
+
+% {Name, X1, ..., Xn} for a record. Fields has an entry for every field of the record,
+% the first entry of a field counts.
+-spec record_tuple(ast:loc(), ety_records:record_ty(), [{record_field, ast:loc(), atom(), T}]) ->
+          {tuple, ast:loc(), [{'atom', ast:loc(), atom()} | T]}.
+record_tuple(Loc, {Name, DefFields}, Fields) ->
+    Xs = lists:map(fun({N, _}) -> record_field_value(N, Fields) end, DefFields),
+    {tuple, Loc, [{'atom', Loc, Name} | Xs]}.
+
+-spec record_field_value(atom(), [{record_field, ast:loc(), atom(), T}]) -> T.
+record_field_value(N, [{record_field, _, N, X} | _]) -> X;
+record_field_value(N, [_ | Fields]) -> record_field_value(N, Fields);
+record_field_value(N, []) -> errors:bug("no value for record field ~w", [N]).
+
+% E#RecName.FieldName is '#RecName.FieldName'(E), a function of the symtab
+% (see ety_records:readers/1).
+-spec record_read(ctx(), ast:loc(), atom(), atom(), ast:exp()) -> ast:exp().
+record_read(Ctx, Loc, RecName, FieldName, E) ->
+    _ = record_field_pos(Loc, lookup_record(Ctx, Loc, RecName), FieldName),
+    G = ast:generated(record_field, Loc),
+    {call, G, {var, G, {ref, ety_records:reader_name(RecName, FieldName), 1}}, [E]}.
+
+% E#r{b = X} is {r, '#r.a'(E), X, '#r.c'(E)}. E is bound to a variable first, unless
+% it is one.
+-spec trans_record_update(ctx(), varenv_local:t(), ast:loc(), ast:exp(), atom(),
+                          [{record_field, ast:loc(), atom(), ast:exp()}]) -> ast:exp().
+trans_record_update(Ctx, _Env, Loc, E = {var, _, {local_ref, _}}, Name, Fields) ->
+    RecTy = {_, DefFields} = lookup_record(Ctx, Loc, Name),
+    G = ast:generated(record_field, Loc),
+    Given = [N || {record_field, _, N, _} <- Fields],
+    Kept = [{record_field, G, N, record_read(Ctx, Loc, Name, N, E)}
+            || {N, _} <- DefFields, not lists:member(N, Given)],
+    Tuple = record_tuple(Loc, RecTy, Fields ++ Kept),
+    case {Kept, Given} of
+        % all fields are replaced, E still has to be the record
+        {[], [N | _]} -> {block, G, [record_read(Ctx, Loc, Name, N, E), Tuple]};
+        _ -> Tuple
+    end;
+trans_record_update(Ctx, Env, Loc, E, Name, Fields) ->
+    G = ast:generated(record_field, Loc),
+    {V, VEnv} = varenv_local:insert_fresh(Env),
+    Ref = {var, ast:loc_exp(E), {local_ref, V}},
+    Body = trans_record_update(Ctx, VEnv, Loc, Ref, Name, Fields),
+    {'case', G, E, [{case_clause, G, {var, G, {local_bind, V}}, [], [Body]}]}.
+
+-spec lookup_record(ctx(), ast:loc(), atom()) -> ety_records:record_ty().
+lookup_record(Ctx, Loc, Name) ->
+    case maps:find(Name, Ctx#ctx.records) of
+        {ok, RecTy} -> RecTy;
+        error -> errors:name_error(Loc, "record ~w not defined", [Name])
+    end.
+
+% Position of a field in the tuple representing the record. Position 1 holds the
+% record name, so the first field is at position 2.
+-spec record_field_pos(ast:loc(), ety_records:record_ty(), atom()) -> pos_integer().
+record_field_pos(Loc, {RecName, DefFields}, FieldName) ->
+    case utils:assocs_find_index(FieldName, DefFields) of
+        {ok, _, I} -> I + 2;
+        error -> errors:name_error(Loc, "field ~w not defined in record ~w", [FieldName, RecName])
+    end.
+
+% #Name.Field is the constant position of Field in the record tuple.
+-spec trans_record_index(ctx(), ast:loc(), atom(), atom()) -> {integer, ast:loc(), pos_integer()}.
+trans_record_index(Ctx, Loc, RecName, FieldName) ->
+    {integer, Loc, record_field_pos(Loc, lookup_record(Ctx, Loc, RecName), FieldName)}.
 
 -spec trans_record_fields(ctx(), tyenv(), [ast_erl:record_field()]) -> [ast:record_field()].
 trans_record_fields(Ctx, TyEnv, Fields) ->

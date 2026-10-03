@@ -23,7 +23,6 @@
          render_poly_env/1,
          render_fun_env/1,
          render_op_env/1,
-         render_record_env/1,
          render_ty_env/1,
          render_any_ref/1,
          render_var/1,
@@ -134,9 +133,6 @@ render_ty_env(S) -> render(ty_env(S)).
 
 -spec render_op_env(symtab:op_env()) -> string().
 render_op_env(S) -> render(op_env(S)).
-
--spec render_record_env(symtab:record_env()) -> string().
-render_record_env(S) -> render(record_env(S)).
 
 -spec render_any_ref(ast:any_ref()) -> string().
 render_any_ref(R) -> render(ref(R)).
@@ -539,19 +535,6 @@ ty_env(Env) ->
 op_env(Env) ->
     pretty_map(fun({OpName, Arity}) -> arity(OpName, Arity) end, fun tyscheme/1, Env).
 
--spec record_env(symtab:record_env()) -> doc().
-record_env(Env) ->
-    pretty_map(
-        fun(RecName) -> atom(RecName) end,
-        fun({_RecName, Fields}) ->
-            pretty_list(
-                fun({FieldName, FieldTy}) ->
-                    beside(atom(FieldName), text(" :: "), ty(FieldTy))
-                end,
-                Fields)
-        end,
-        Env).
-
 -spec mono_env(constr:constr_env()) -> doc().
 mono_env(Env) ->
     Elems =
@@ -708,19 +691,6 @@ render_exp(Exp, Indent) ->
         {mc, _, Key, Val, Qualifiers} ->
             "#{" ++ render_exp(Key, Indent) ++ " => " ++ render_exp(Val, Indent) ++ " || " ++
             string:join([render_qualifier(Q, Indent) || Q <- Qualifiers], ", ") ++ "}";
-        {record_create, _, Name, Fields} ->
-            "#" ++ atom_to_list(Name) ++ "{" ++
-            string:join([render_record_field(F, Indent) || F <- Fields], ", ") ++ "}";
-        {record, _, Name, Fields} ->
-            "#" ++ atom_to_list(Name) ++ "{" ++
-            string:join([render_record_field(F, Indent) || F <- Fields], ", ") ++ "}";
-        {record_field, _, E, Name, Field} ->
-            render_exp(E, Indent) ++ "#" ++ atom_to_list(Name) ++ "." ++ atom_to_list(Field);
-        {record_index, _, Name, Field} ->
-            "#" ++ atom_to_list(Name) ++ "." ++ atom_to_list(Field);
-        {record_update, _, E, Name, Fields} ->
-            render_exp(E, Indent) ++ "#" ++ atom_to_list(Name) ++ "{" ++
-            string:join([render_record_field(F, Indent) || F <- Fields], ", ") ++ "}";
         {annotate, _, E, _Ty} ->
             render_exp(E, Indent);
         {assert, _, E, _Ty} ->
@@ -810,9 +780,3 @@ render_qualifier({zip, _, Gens}, Indent) ->
 render_qualifier(Exp, Indent) ->
     % filter expression
     render_exp(Exp, Indent).
-
--spec render_record_field(tuple(), non_neg_integer()) -> string().
-render_record_field({record_field, _, Field, Val}, Indent) ->
-    atom_to_list(Field) ++ " = " ++ render_exp(Val, Indent);
-render_record_field({record_field_other, _, Val}, Indent) ->
-    "_ = " ++ render_exp(Val, Indent).

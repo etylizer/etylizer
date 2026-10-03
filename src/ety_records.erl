@@ -5,8 +5,8 @@
     encode_record_ty/1,
     record_ty_from_decl/2,
     record_type_name/1,
-    lookup_field_ty/3,
-    lookup_field_index/3
+    reader_name/2,
+    readers/1
 ]).
 
 -export_type([
@@ -49,20 +49,26 @@ encode_record_ty({Name, Fields}, Overrides) ->
     Tys = [NameTy | UpdatedFieldTys],
     stdtypes:ttuple(Tys).
 
--spec lookup_field_ty(record_ty(), atom(), ast:loc()) -> ast:ty().
-lookup_field_ty(RecTy, FieldName, L) ->
-    {T, _} = lookup_field_index(RecTy, FieldName, L),
-    T.
-
--spec lookup_field_index(record_ty(), atom(), ast:loc()) -> {ast:ty(), integer()}.
-lookup_field_index({RecName, DefFields}, FieldName, L) ->
-    case utils:assocs_find_index(FieldName, DefFields) of
-        error ->
-            errors:ty_error(L, "Field ~w not defined for record ~w", [FieldName, RecName]);
-        {ok, FieldTy, I} ->
-            {FieldTy, I}
-    end.
-
 -spec record_type_name(atom()) -> atom().
 record_type_name(RecName) ->
     list_to_atom("$record$" ++ atom_to_list(RecName)).
+
+% '#Rec.Field', the function that reads a field of a record (see readers/1)
+-spec reader_name(atom(), atom()) -> atom().
+reader_name(RecName, FieldName) ->
+    list_to_atom("#" ++ atom_to_list(RecName) ++ "." ++ atom_to_list(FieldName)).
+
+% The reader of every field, with its type. It accepts the record with any values in the
+% other fields: '#r.b' :: fun(({r, any(), B, any()}) -> B)
+-spec readers(record_ty()) -> [{ast:global_ref(), ast:ty_scheme()}].
+readers({RecName, Fields}) ->
+    V = '$field',
+    lists:map(
+      fun({F, _}) ->
+              Arg = lists:map(fun({N, _}) when N =:= F -> {N, {var, V}};
+                                 ({N, _}) -> {N, stdtypes:tany()}
+                              end, Fields),
+              {{ref, reader_name(RecName, F), 1},
+               {ty_scheme, [{V, stdtypes:tany()}],
+                {fun_full, [encode_record_ty({RecName, Arg})], {var, V}}}}
+      end, Fields).
