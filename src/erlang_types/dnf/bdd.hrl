@@ -273,7 +273,7 @@ unparse(Dnf, ST) ->
                     {Acc ++ [Ele], ST1}
                 end,
                 {[], ST},
-                minimize_dnf(Dnf)
+                simplify_dnf(Dnf)
             ),
             {ast_lib:mk_union(ToUnion), ST2}
     end.
@@ -285,6 +285,83 @@ unparse_line({Pos, Neg, Leaf}, C0) ->
     {Lf, C3} = ?LEAF:unparse(Leaf, C2),
 
     {ast_lib:mk_intersection(Ps ++ Ns ++ [Lf]), C3}.
+
+% Simplification for pretty-printing (issue #269)
+%
+% The exact minimizer treats leaves as opaque outputs, so for the variable BDD it
+% keeps lines that are only redundant up to subtyping, e.g.
+%   not($2) /\ integer() | $2   which is   integer() | $2
+% Starting from the exact lines, whose union is the type T, we
+%  1. go through the lines from the most general (fewest positive literals) to the
+%     most specific: a line covered by the lines kept so far is dropped, otherwise
+%     we drop each of its literals for which the line stays a subtype of T, and keep it
+%  2. drop each kept line covered by the other kept lines, most specific first
+% Every step keeps the union of the lines equal to T. The result depends on the
+% order in which literals and lines are tried, so it is not guaranteed minimal.
+% No two of the resulting lines have the same literals: their leaves would be
+% equivalent, and step 2 drops one of them.
+% Atom BDDs have 0/1 leaves and expensive emptiness checks, so they stay exact.
+-ifdef(VARIABLE_BDD).
+-spec simplify_dnf(type()) -> dnf().
+simplify_dnf(T) ->
+    case minimize_dnf(T) of
+        Lines = [_, _ | _] -> reduce_lines(Lines, T);
+        Lines -> Lines
+    end.
+
+-spec reduce_lines(dnf(), type()) -> dnf().
+reduce_lines(Lines, T) ->
+    General = lists:sort(fun({_, {P1, N1, _}}, {_, {P2, N2, _}}) ->
+        {length(P1), length(N1)} =< {length(P2), length(N2)}
+    end, lists:enumerate(Lines)),
+    Kept = lists:foldl(fun({I, Line}, Acc) ->
+        case covered(Line, lines_to_bdd([L || {_, L} <- Acc])) of
+            true -> Acc;
+            false -> [{I, drop_literals(Line, T)} | Acc]
+        end
+    end, [], General),
+    Specific = lists:sort(fun({_, {P1, N1, _}}, {_, {P2, N2, _}}) ->
+        length(P1) + length(N1) >= length(P2) + length(N2)
+    end, Kept),
+    Needed = lists:foldl(fun(Indexed = {_, Line}, Acc) ->
+        Others = Acc -- [Indexed],
+        case covered(Line, lines_to_bdd([L || {_, L} <- Others])) of
+            true -> Others;
+            false -> Acc
+        end
+    end, Kept, Specific),
+    % keep the order of the exact lines
+    [Line || {_, Line} <- lists:keysort(1, Needed)].
+
+% negative literals are tried first, they are the noisier ones to print; a variable
+% is in only one of Pos and Neg, so removing it from both removes that literal
+-spec drop_literals(line(), type()) -> line().
+drop_literals({Pos, Neg, Leaf}, T) ->
+    lists:foldl(fun(A, Line = {P, N, _}) ->
+        Candidate = {P -- [A], N -- [A], Leaf},
+        case covered(Candidate, T) of
+            true -> Candidate;
+            false -> Line
+        end
+    end, {Pos, Neg, Leaf}, Neg ++ Pos).
+
+% Line is a subtype of T. This also holds for a leaf that is semantically empty,
+% so such lines are dropped.
+-spec covered(line(), type()) -> boolean().
+covered(Line, T) ->
+    {Empty, _} = is_empty(difference(lines_to_bdd([Line]), T), #{}),
+    Empty.
+
+-spec lines_to_bdd(dnf()) -> type().
+lines_to_bdd(Lines) ->
+    lists:foldl(fun union/2, empty(), [
+        lists:foldl(fun intersect/2, leaf(Leaf),
+            [singleton(A) || A <- Pos] ++ [negated_singleton(A) || A <- Neg])
+        || {Pos, Neg, Leaf} <- Lines]).
+-else.
+-spec simplify_dnf(type()) -> dnf().
+simplify_dnf(T) -> minimize_dnf(T).
+-endif.
 
 -spec minimize_dnf(type()) -> dnf().
 minimize_dnf(T) ->
