@@ -3,7 +3,6 @@
 % @doc This module defines general purpose utility functions.
 
 -include_lib("kernel/include/file.hrl").
--include("log.hrl").
 
 -etylizer({functions_exhaustive, off, [compare/3]}). % assumes equal length lists
 
