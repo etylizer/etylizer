@@ -98,29 +98,32 @@ is_string(X) -> io_lib:char_list(X).
 -spec is_char(term()) -> boolean().
 is_char(X) -> is_string([X]).
 
-% Generically traverses the lists and tuples of a term
+% Generically traverses the lists, tuples and maps of a term
 % and performs replacements as demanded by the given function.
 % - If the function given returns {ok, X}, then the term is replaced
 %   by X, no further recursive traversal is done.
 % - If the function given returns {rec, X}, then the term is replaced
 %   by X, and recursive traversal is done.
 % - If the funtion returns error, then everywhere traverses the term recursively.
-% -spec everywhere(fun((term()) -> t:opt(term())), T) -> T.
-% we can't assert the result type T without scoped variables
--spec everywhere(fun((any()) -> {rec, any()} | t:opt(any())), any()) -> dynamic().
+% The result type cannot be more precise than term(): the function given would have to
+% preserve the type of every subterm, which needs rank-2 polymorphism. Use everywhere/3
+% for trees with a known node type.
+-spec everywhere(fun((term()) -> t:opt(term()) | {rec, term()}), term()) -> term().
 everywhere(F, T) ->
-    TransList = fun(L) -> lists:map(fun(X) -> everywhere(F, X) end, L) end,
     case F(T) of
-        error ->
-            case T of
-                X when is_list(X) -> TransList(X);
-                X when is_tuple(X) -> list_to_tuple(TransList(tuple_to_list(X)));
-                X when is_map(X) -> maps:from_list(TransList(maps:to_list(X)));
-                X -> X
-            end;
+        error -> everywhere_subterms(F, T);
         {ok, X} -> X;
         {rec, X} -> everywhere(F, X)
     end.
+
+-spec everywhere_subterms(fun((term()) -> t:opt(term()) | {rec, term()}), term()) -> term().
+everywhere_subterms(F, [H | T]) when is_list(T) -> [everywhere(F, H) | everywhere_subterms(F, T)];
+everywhere_subterms(F, [H | T]) -> [everywhere(F, H) | everywhere(F, T)]; % improper list
+everywhere_subterms(F, X) when is_tuple(X) ->
+    list_to_tuple(lists:map(fun(E) -> everywhere(F, E) end, tuple_to_list(X)));
+everywhere_subterms(F, X) when is_map(X) ->
+    maps:from_list(lists:map(fun({K, V}) -> {everywhere(F, K), everywhere(F, V)} end, maps:to_list(X)));
+everywhere_subterms(_, X) -> X.
 
 % Like everywhere/2, but for trees whose structure is given by the Descend function,
 % which applies a function to the direct subnodes of a node. The function given is only
