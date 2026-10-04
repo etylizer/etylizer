@@ -5,6 +5,7 @@
 -export([empty/0, empty/1,
          insert/2,
          insert_fresh/1,
+         insert_var/2,
          lookup/3,
          find/2,
          find_ref/2,
@@ -45,6 +46,11 @@ insert(Name, {Next, Map, Remember}) ->
 insert_fresh({Next, Map, R}) ->
     Name = list_to_atom("$X_" ++ integer_to_list(Next)),
     insert(Name, {Next+1, Map, R}).
+
+% Makes the given variable visible under its name.
+-spec insert_var(ast:local_varname(), t()) -> t().
+insert_var({Name, Unique}, {Next, Map, Remember}) ->
+    {Next, Map#{ Name => Unique }, Remember}.
 
 % Looks up a variable, undefined variables cause an error.
 -spec lookup(ast:loc(), atom(), t()) -> ast:local_varname().

@@ -871,8 +871,12 @@ resolve_name(Loc, Ctx, Env, Name, Ar) ->
 
 -spec trans_pats(ctx(), varenv_local:t(), [ast_erl:pat()], bind_mode()) ->
           {[ast:pat()], varenv_local:t()}.
-trans_pats(Ctx, Env, Pats, BindMode) ->
-    thread_through_env(Env, Pats, fun(Env, P) -> trans_pat(Ctx, Env, P, BindMode) end).
+trans_pats(Ctx, Env, Pats, BindMode) -> trans_pats(Ctx, Env, Env, Pats, BindMode).
+
+-spec trans_pats(ctx(), varenv_local:t(), varenv_local:t(), [ast_erl:pat()], bind_mode()) ->
+          {[ast:pat()], varenv_local:t()}.
+trans_pats(Ctx, Outer, Env, Pats, BindMode) ->
+    thread_through_env(Env, Pats, fun(Env, P) -> trans_pat(Ctx, Outer, Env, P, BindMode) end).
 
 % - If BindMode is no_bind, then the pattern is not allowed to bind new variables
 % - If BindMode is bind_fresh, then pattern variables create a reference to existing variables
@@ -884,7 +888,13 @@ trans_pats(Ctx, Env, Pats, BindMode) ->
     (ctx(), varenv_local:t(), ast_erl:pat(), bind_mode()) -> {ast:pat(), varenv_local:t()}.
 %    (ctx(), varenv_local:t(), ast_erl:exc_type_pat(), bind_mode()) ->
 %    {ast:exc_type_pat(), varenv_local:t()}.
-trans_pat(Ctx, Env, Pat, BindMode) ->
+trans_pat(Ctx, Env, Pat, BindMode) -> trans_pat(Ctx, Env, Env, Pat, BindMode).
+
+% Outer is the scope enclosing the whole pattern. Map keys and segment sizes are
+% evaluated there, even if the pattern shadows one of their variables.
+-spec trans_pat(ctx(), varenv_local:t(), varenv_local:t(), ast_erl:pat(), bind_mode()) ->
+          {ast:pat(), varenv_local:t()}.
+trans_pat(Ctx, Outer, Env, Pat, BindMode) ->
     case Pat of
         {'atom', Anno, X} -> {{'atom', to_loc(Ctx, Anno), X}, Env};
         {'char', Anno, X} -> {{'char', to_loc(Ctx, Anno), X}, Env};
@@ -892,15 +902,17 @@ trans_pat(Ctx, Env, Pat, BindMode) ->
         {'integer', Anno, X} -> {{'integer', to_loc(Ctx, Anno), X}, Env};
         {'string', Anno, X} -> {{'string', to_loc(Ctx, Anno), X}, Env};
         {bin, Anno, Elems} ->
-            {NewElems, NewEnv} =
-                thread_through_env(Env, Elems,
-                                   fun(Env, S) -> trans_pat_bin_elem(Ctx, Env, S, BindMode) end),
+            % a size also sees the variables of the segments before it
+            {NewElems, {NewEnv, _}} =
+                lists:mapfoldl(
+                  fun(S, {E, SizeEnv}) -> trans_pat_bin_elem(Ctx, SizeEnv, E, S, BindMode) end,
+                  {Env, Outer}, Elems),
             {{bin, to_loc(Ctx, Anno), NewElems}, NewEnv};
         {match, Anno, P1, P2} ->
-            {[Q1, Q2], NewEnv} = trans_pats(Ctx, Env, [P1, P2], BindMode),
+            {[Q1, Q2], NewEnv} = trans_pats(Ctx, Outer, Env, [P1, P2], BindMode),
             {{match, to_loc(Ctx, Anno), Q1, Q2}, NewEnv};
         {cons, Anno, P1, P2} ->
-            {[Q1, Q2], NewEnv} = trans_pats(Ctx, Env, [P1, P2], BindMode),
+            {[Q1, Q2], NewEnv} = trans_pats(Ctx, Outer, Env, [P1, P2], BindMode),
             {{cons, to_loc(Ctx, Anno), Q1, Q2}, NewEnv};
         {nil, Anno} -> {{nil, to_loc(Ctx, Anno)}, Env};
         {map, Anno, Assocs} ->
@@ -908,16 +920,16 @@ trans_pat(Ctx, Env, Pat, BindMode) ->
                 thread_through_env(Env, Assocs,
                     fun(E0, {map_field_exact, Anno, P1, P2}) ->
                         % the lhs of an assoc pattern P1 := P2 must not bind new vars
-                        {Q1, E1} = trans_pat(Ctx, E0, P1, no_bind),
-                        {Q2, E2} = trans_pat(Ctx, E1, P2, BindMode),
-                        {{map_field_req, to_loc(Ctx, Anno), Q1, Q2}, E2}
+                        {Q1, _} = trans_pat(Ctx, Outer, P1, no_bind),
+                        {Q2, E1} = trans_pat(Ctx, Outer, E0, P2, BindMode),
+                        {{map_field_req, to_loc(Ctx, Anno), Q1, Q2}, E1}
                     end),
             {{map, to_loc(Ctx, Anno), NewAssocs}, ResultEnv};
         {op, Anno, Op, P1, P2} ->
-            {Pats, NewEnv} = trans_pats(Ctx, Env, [P1, P2], BindMode),
+            {Pats, NewEnv} = trans_pats(Ctx, Outer, Env, [P1, P2], BindMode),
             {{op, to_loc(Ctx, Anno), Op, Pats}, NewEnv};
         {op, Anno, Op, P} ->
-            {Q, NewEnv} = trans_pat(Ctx, Env, P, BindMode),
+            {Q, NewEnv} = trans_pat(Ctx, Outer, Env, P, BindMode),
             {{op, to_loc(Ctx, Anno), Op, [Q]}, NewEnv};
         {record, Anno, Name, Fields} ->
             {NewFields, NewEnv} =
@@ -925,7 +937,7 @@ trans_pat(Ctx, Env, Pat, BindMode) ->
                   Env, Fields,
                   fun(E0, {record_field, Anno,  {'atom', _, FieldName}, FieldPat}) ->
                         {NewPat, E1} =
-                            trans_pat(Ctx, E0, FieldPat, BindMode),
+                            trans_pat(Ctx, Outer, E0, FieldPat, BindMode),
                                 {{record_field, to_loc(Ctx, Anno), FieldName, NewPat}, E1}
                   end),
             Loc = to_loc(Ctx, Anno),
@@ -936,7 +948,7 @@ trans_pat(Ctx, Env, Pat, BindMode) ->
         {record_index, Anno, RecName, {'atom', _, FieldName}} ->
             {trans_record_index(Ctx, to_loc(Ctx, Anno), RecName, FieldName), Env};
         {tuple, Anno, Pats} ->
-            {NewPats, NewEnv} = trans_pats(Ctx, Env, Pats, BindMode),
+            {NewPats, NewEnv} = trans_pats(Ctx, Outer, Env, Pats, BindMode),
             {{tuple, to_loc(Ctx, Anno), NewPats}, NewEnv};
         {var, Anno, '_'} ->
             {{wildcard, to_loc(Ctx, Anno)}, Env};
@@ -965,18 +977,25 @@ trans_pat(Ctx, Env, Pat, BindMode) ->
         X -> errors:uncovered_case(?FILE, ?LINE, X)
     end.
 
--spec trans_pat_bin_elem(ctx(), varenv_local:t(), ast_erl:pat_bitstring_elem(), bind_mode()) ->
-          {ast:pat_bitstring_elem(), varenv_local:t()}.
-trans_pat_bin_elem(Ctx, Env, Elem, BindMode) ->
+% The size is evaluated in SizeEnv, which then gets the variable of the segment.
+-spec trans_pat_bin_elem(ctx(), varenv_local:t(), varenv_local:t(),
+                         ast_erl:pat_bitstring_elem(), bind_mode()) ->
+          {ast:pat_bitstring_elem(), {varenv_local:t(), varenv_local:t()}}.
+trans_pat_bin_elem(Ctx, SizeEnv, Env, Elem, BindMode) ->
     case Elem of
         {bin_element, Anno, ValPat, Size, Tyspecs} ->
-            {NewValPat, Env1} = trans_pat(Ctx, Env, ValPat, BindMode),
-            {NewSize, Env2} =
+            {NewValPat, NewEnv} = trans_pat(Ctx, SizeEnv, Env, ValPat, BindMode),
+            NewSize =
                 case Size of
-                    default -> {default, Env1};
-                    SizeExp -> trans_exp(Ctx, Env1, SizeExp)
+                    default -> default;
+                    SizeExp -> trans_exp_noenv(Ctx, SizeEnv, SizeExp)
                 end,
-            {{bin_element, to_loc(Ctx, Anno), NewValPat, NewSize, Tyspecs}, Env2}
+            NewSizeEnv =
+                case NewValPat of
+                    {var, _, {_, V}} -> varenv_local:insert_var(V, SizeEnv);
+                    _ -> SizeEnv
+                end,
+            {{bin_element, to_loc(Ctx, Anno), NewValPat, NewSize, Tyspecs}, {NewEnv, NewSizeEnv}}
     end.
 
 -spec trans_case_clauses(ctx(), varenv_local:t(), [ast_erl:case_clause()])
@@ -1067,7 +1086,8 @@ trans_fun_clause(Ctx, Env, C) ->
             % -> use a new local context with bind_fresh, 
             % but remember numbering of Variables in Env
             % merge afterwards, where QEnv0 takes precedence
-            {Qs, QEnv0} = trans_pats(Ctx, varenv_local:empty(Env), Ps, bind_fresh),
+            % map keys and sizes still refer to Env
+            {Qs, QEnv0} = trans_pats(Ctx, Env, varenv_local:empty(Env), Ps, bind_fresh),
             QEnv = varenv_local:merge(Env, QEnv0),
             NewGuards = trans_guards(Ctx, QEnv, Guards),
             NewBody = trans_exp_seq_noenv(Ctx, QEnv, Body),
@@ -1115,7 +1135,7 @@ trans_qualifier(Ctx, Env, Q) ->
         {K, Anno, {map_field_exact, _Anno2, KeyPat, ValPat}, Exp} when (K == m_generate orelse K == m_generate_strict)->
             NewExp = trans_exp_noenv(Ctx, Env, Exp),
             {NewK, NewEnv1} = trans_pat(Ctx, Env, KeyPat, shadow),
-            {NewV, NewEnv2} = trans_pat(Ctx, NewEnv1, ValPat, shadow),
+            {NewV, NewEnv2} = trans_pat(Ctx, Env, NewEnv1, ValPat, shadow),
             {{K, to_loc(Ctx, Anno), NewK, NewV, NewExp}, NewEnv2};
         % zip generator
         {zip, Anno, Qs} ->

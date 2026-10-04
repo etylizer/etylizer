@@ -135,3 +135,20 @@ fun_local_07_fail(X) ->
             end
         end,
     F(X).
+
+% sizes and map keys in a fun head refer to the variables around the fun
+
+-spec head_size_01(pos_integer(), bitstring()) -> integer().
+head_size_01(N, B) ->
+    F = fun(<<X:N, _/bitstring>>) -> X end,
+    F(B).
+
+-spec head_key_01(atom(), #{atom() => integer()}) -> integer().
+head_key_01(K, M) ->
+    F = fun(#{K := V}) -> V; (_) -> 0 end,
+    F(M).
+
+-spec head_key_02_fail(atom(), #{atom() => integer()}) -> atom().
+head_key_02_fail(K, M) ->
+    F = fun(#{K := V}) -> V; (_) -> 0 end,
+    F(M).
