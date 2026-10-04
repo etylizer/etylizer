@@ -10,7 +10,7 @@
 -include("log.hrl").
 -include("etylizer_main.hrl").
 
--export([load/1, save/1, cached/2]).
+-export([load/1, save/1, cached/2, stamp/1]).
 
 -define(TABLE, symtab_cache).
 -define(CODE_MODULES, [ast, ast_erl, ast_lib, ast_transform, ast_utils, attr, errors, ety_records,

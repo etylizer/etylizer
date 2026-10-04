@@ -46,3 +46,78 @@ find_dependent_files_test() ->
     ?assertEqual(["bar.erl", "foo.erl"], lists:sort(Deps)).
 
 % cycles
+
+% The cached graph: a project in a temporary directory with main.erl as its only entry
+% point, checked several times while its files change.
+
+-define(MAIN, "-module(main).\n-export([f/0]).\n-spec f() -> integer().\n").
+
+-spec with_project(fun((file:name()) -> ok)) -> ok.
+with_project(Action) ->
+    tmp:with_tmp_dir("depgraph", "root", delete,
+        fun(Dir) ->
+            utils:mkdirs(filename:join(Dir, "_build/default/lib")),
+            write(Dir, "rebar.lock", ""),
+            write(Dir, "main.erl", ?MAIN ++ "f() -> helper:g().\n"),
+            write(Dir, "helper.erl", "-module(helper).\n-export([g/0]).\n-spec g() -> integer().\ng() -> 1.\n"),
+            write(Dir, "newmod.erl", "-module(newmod).\n-export([h/0]).\n-spec h() -> integer().\nh() -> 2.\n"),
+            Action(Dir)
+        end).
+
+-spec write(file:name(), file:name(), string()) -> ok.
+write(Dir, Name, Content) -> ok = file:write_file(filename:join(Dir, Name), Content).
+
+% the files that were checked
+-spec check(file:name(), [{atom(), string()}]) -> [file:name()].
+check(Dir, Defines) ->
+    Opts = #opts{
+        files = [filename:join(Dir, "main.erl")],
+        project_root = Dir,
+        mode = test_mode,
+        defines = Defines
+    },
+    lists:sort([filename:basename(F) || F <- etylizer_main:doWork(Opts)]).
+
+% a module that becomes reachable is checked in the same run
+new_dependency_test_() ->
+    {timeout, 45, fun() -> with_project(fun(Dir) ->
+        ?assertEqual(["helper.erl", "main.erl"], check(Dir, [])),
+        ?assertEqual([], check(Dir, [])),
+        write(Dir, "main.erl", ?MAIN ++ "f() -> helper:g() + newmod:h().\n"),
+        ?assertEqual(["main.erl", "newmod.erl"], check(Dir, [])),
+        ?assertEqual([], check(Dir, []))
+    end) end}.
+
+deleted_module_test_() ->
+    {timeout, 45, fun() -> with_project(fun(Dir) ->
+        ?assertEqual(["helper.erl", "main.erl"], check(Dir, [])),
+        ok = file:delete(filename:join(Dir, "helper.erl")),
+        write(Dir, "main.erl", ?MAIN ++ "f() -> 1.\n"),
+        ?assertEqual(["main.erl"], check(Dir, [])),
+        ?assertEqual([], check(Dir, []))
+    end) end}.
+
+% the graph of other options is not used
+changed_define_test_() ->
+    {timeout, 45, fun() -> with_project(fun(Dir) ->
+        write(Dir, "main.erl",
+            ?MAIN ++ "-ifdef(WITH_NEW).\nf() -> newmod:h().\n-else.\nf() -> helper:g().\n-endif.\n"),
+        ?assertEqual(["helper.erl", "main.erl"], check(Dir, [])),
+        ?assertEqual(["main.erl", "newmod.erl"], check(Dir, [{'WITH_NEW', "true"}]))
+    end) end}.
+
+load_depgraph_test() ->
+    tmp:with_tmp_dir("depgraph", "root", delete,
+        fun(Dir) ->
+            Src = utils:normalize_path(filename:join(Dir, "a.erl")),
+            File = filename:join(Dir, "depgraph"),
+            ok = file:write_file(Src, "-module(a).\n"),
+            Graph = cm_depgraph:new([Src]),
+            ok = cm_depgraph:save_depgraph(File, key, Graph),
+            ?assertEqual({ok, Graph, []}, cm_depgraph:load_depgraph(File, key)),
+            ?assertEqual(stale, cm_depgraph:load_depgraph(File, other_key)),
+            ok = file:write_file(Src, "-module(a).\n-export([f/0]).\nf() -> 1.\n"),
+            ?assertEqual({ok, Graph, [Src]}, cm_depgraph:load_depgraph(File, key)),
+            ok = file:delete(Src),
+            ?assertEqual(stale, cm_depgraph:load_depgraph(File, key))
+        end).
