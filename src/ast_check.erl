@@ -25,6 +25,8 @@
    ]).
 -endif.
 
+-include("etylizer.hrl").
+
 
 % The first argument is the ty_map obtain from the ast module.
 % The second argument is a filename.
@@ -113,7 +115,8 @@ inst_ty(Vars, Args, Ty) ->
                 end
             end,
             ?LOG_TRACE("Instantiating type ~p with arguments ~p", Ty, Args),
-            utils:everywhere(Replace, Ty)
+            % replacing type variables by types yields a type again
+            ?assert_type(utils:everywhere(Replace, Ty), ast_erl:ty())
     end.
 
 -spec check_against_type(ty_map(), module_name(), ast_erl:ty() | atom(), term()) -> boolean().

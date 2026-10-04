@@ -8,7 +8,16 @@ hash_sha1_test() ->
     ?assertEqual("648A6A6FFFFDAA0BADB23B8BAF90B6168DD16B3A", Hash).
 
 % the generic traversals are also tested with improper lists
--dialyzer({no_improper_lists, [everything_test/0]}).
+-dialyzer({no_improper_lists, [everywhere_test/0, everything_test/0]}).
+
+everywhere_test() ->
+    Inc = fun(X) when is_integer(X) -> {ok, X + 1}; (_) -> error end,
+    ?assertEqual({a, [2, 3], #{b => 4, 5 => [6]}}, utils:everywhere(Inc, {a, [1, 2], #{b => 3, 4 => [5]}})),
+    % improper lists are traversed as well
+    ?assertEqual([2, 3 | 4], utils:everywhere(Inc, [1, 2 | 3])),
+    % {ok, X} does not traverse X, {rec, X} does
+    ?assertEqual({done, 1}, utils:everywhere(fun({todo, X}) -> {ok, {done, X}}; (X) -> Inc(X) end, {todo, 1})),
+    ?assertEqual({done, 2}, utils:everywhere(fun({todo, X}) -> {rec, {done, X}}; (X) -> Inc(X) end, {todo, 1})).
 
 everywhere_typed_test() ->
     Descend = fun(F, {node, L, R}) -> {node, F(L), F(R)}; (_, Leaf) -> Leaf end,
