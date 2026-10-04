@@ -74,7 +74,7 @@ add_dependency(Path, Dep, {Srcs, DepFiles, DepMods}) ->
     DepNorm = utils:normalize_path(Dep),
     DepMod = ast_utils:modname_from_path(Dep),
     Deps1 = maps:get(PathNorm, DepFiles, sets:new([{version, 2}])),
-    Deps2 = maps:get(PathNorm, DepMods, sets:new([{version, 2}])),
+    Deps2 = maps:get(PathMod, DepMods, sets:new([{version, 2}])),
     NewDepFiles = maps:put(PathNorm, sets:add_element(DepNorm, Deps1), DepFiles),
     NewDepMods = maps:put(PathMod, sets:add_element(DepMod, Deps2), DepMods),
     NewSrcs = sets:add_element(PathNorm, sets:add_element(DepNorm, Srcs)),

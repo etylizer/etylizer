@@ -7,8 +7,7 @@
          insert/4,
          insert_if_absent/3,
          lookup/3,
-         find/2,
-         range/1
+         find/2
         ]).
 
 -export_type([
@@ -42,10 +41,6 @@ insert_if_absent(Key, Val, {What, Map}) ->
             error -> Map#{ Key => Val}
         end,
     {What, NewMap}.
-
--spec range(t(_K, V)) -> [V].
-range({_, Map}) ->
-    lists:map(fun({_, V}) -> V end, maps:to_list(Map)).
 
 % Looks up a variable, undefined variables cause an error.
 -spec lookup(ast:loc(), K, t(K, V)) -> V.
