@@ -53,3 +53,13 @@ ty_of_pat_list_test() ->
     assert_ty_of_pat(PCons2, stdtypes:tcons_list(Ta, Tany)),
     assert_ty_of_pat(PCons3, stdtypes:tcons_list(Tb, stdtypes:tcons_list(Ta, Tany))),
     assert_ty_of_pat(PCons4, stdtypes:tcons_list(Tb, stdtypes:tcons_list(Ta, Tempty_list))).
+
+% The functions of a group get different type variables
+-spec fun_group_tyvars_test() -> ok.
+fun_group_tyvars_test() ->
+    Loc = {internal, test},
+    Decl = fun(Name) -> {function, Loc, Name, 0, [], [{'atom', Loc, ok}]} end,
+    NoFuns = sets:new([{version, 2}]),
+    {_, Env} =
+        constr_gen:gen_constrs_fun_group(enabled, symtab:empty(), {NoFuns, NoFuns}, [Decl(f), Decl(g)]),
+    ?assertNotEqual(maps:get({ref, f, 0}, Env), maps:get({ref, g, 0}, Env)).
