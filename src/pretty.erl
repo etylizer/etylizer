@@ -585,7 +585,7 @@ render_exp(Exp, Indent) ->
     case Exp of
         {atom, _, A} -> atom_to_list(A);
         {integer, _, I} -> integer_to_list(I);
-        {char, _, C} -> [$ | [C]];
+        {char, _, C} -> io_lib:write_char(C);
         {float, _, F} -> float_to_list(F);
         {string, _, S} -> io_lib:format("~p", [S]);
         {var, _, {local_ref, V}} -> varname(V);
@@ -614,17 +614,15 @@ render_exp(Exp, Indent) ->
             atom_to_list(Op) ++ render_exp(Operand, Indent);
         {'fun', _, Name, Args, Body} ->
             Pad = lists:duplicate(Indent, $\s),
-            Inner = Indent + 2,
-            InPad = lists:duplicate(Inner, $\s),
             NameStr = case Name of
                 no_name -> "";
                 {local_bind, V} -> varname(V)
             end,
             "fun " ++ NameStr ++ "(" ++ render_varnames(Args) ++ ") ->\n" ++
-            InPad ++ string:join([render_exp(E, Inner) || E <- Body], ",\n" ++ InPad) ++ "\n" ++
+            render_exps(Body, Indent + 2) ++ "\n" ++
             Pad ++ "end";
         {fun_ref, _, Ref} -> "fun " ++ render(ref(Ref));
-        {fun_ref_dyn, _, {global_ref_dyn, Mod, Fun, Arity}} ->
+        {fun_ref_dyn, _, {qref_dyn, Mod, Fun, Arity}} ->
             "fun " ++ render_exp(Mod, Indent) ++ ":" ++ render_exp(Fun, Indent) ++
             "/" ++ render_exp(Arity, Indent);
         {block, _, Exps} ->
