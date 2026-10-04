@@ -12,3 +12,12 @@ pretty_ty_test() ->
     Doc = pretty:ty(T),
     S = pretty:render(Doc),
     ?assertEqual("{integer(),\n 4,\n #{key => term()} | fun((string(), list(T)) -> doc())}", S).
+
+render_exps_test() ->
+    L = {loc, "", 0, 0},
+    Var = fun(Name) -> {var, L, {local_ref, {Name, 0}}} end,
+    Render = fun(E) -> lists:flatten(pretty:render_exps([E], 0)) end,
+    ?assertEqual("$a", Render({char, L, $a})),
+    ?assertEqual("fun M:F/1", Render({fun_ref_dyn, L, {qref_dyn, Var('M'), Var('F'), {integer, L, 1}}})),
+    ?assertEqual("fun (X) ->\n  X,\n  ok\nend",
+                 Render({'fun', L, no_name, [{'X', 0}], [Var('X'), {atom, L, ok}]})).
