@@ -5,6 +5,7 @@
 -export([
     compute_search_path/1,
     generate_input_file_list/1,
+    depgraph_file_name/1,
     index_file_name/1,
     symtab_cache_file_name/1,
     find_module_path/2,
@@ -211,6 +212,11 @@ etylizer_dir(Opts) ->
 index_file_name(Opts) ->
     D = etylizer_dir(Opts),
     filename:join(D, "index").
+
+-spec depgraph_file_name(cmd_opts()) -> file:filename().
+depgraph_file_name(Opts) ->
+    D = etylizer_dir(Opts),
+    filename:join(D, "depgraph").
 
 -spec symtab_cache_file_name(cmd_opts()) -> file:filename().
 symtab_cache_file_name(Opts) ->

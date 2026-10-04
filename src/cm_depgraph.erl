@@ -7,12 +7,13 @@
 % if an external dependency changes, you have to delete the index.
 
 -include("log.hrl").
+-include("etylizer_main.hrl").
 
 -export([
     new/0, new/1,
     find_dependent_files/2,
     all_sources/1,
-    build_dep_graph/2,
+    cached/3,
     pretty_depgraph/1
 ]).
 
@@ -21,10 +22,12 @@
 -ifdef(TEST).
 -export([
     add_dependency/3,
-    update_dep_graph/4
+    update_dep_graph/4,
+    load_depgraph/2
 ]).
 -endif.
 
+-include("etylizer.hrl").
 
 -type dep_graph() :: {
     sets:set(file:filename()),
@@ -86,6 +89,23 @@ add_file(Path, {Srcs, DepFiles, DepMods}) ->
     NewSrcs = sets:add_element(PathNorm, Srcs),
     {NewSrcs, DepFiles, DepMods}.
 
+-spec refresh([file:filename()], paths:search_path(), dep_graph()) -> dep_graph().
+refresh(Changed, SearchPath, DepGraph = {Srcs, _, _}) ->
+    Files = lists:usort(lists:flatmap(
+        fun(F) -> [utils:normalize_path(F) | find_dependent_files(F, DepGraph)] end, Changed)),
+    Others = sets:subtract(Srcs, sets:from_list(Files, [{version, 2}])),
+    build_dep_graph(Files, SearchPath, lists:foldl(fun remove_dependent/2, DepGraph, Files), Others).
+
+-spec remove_dependent(file:filename(), dep_graph()) -> dep_graph().
+remove_dependent(Path, {Srcs, DepFiles, DepMods}) ->
+    PathNorm = utils:normalize_path(Path),
+    PathMod = ast_utils:modname_from_path(PathNorm),
+    NewDepFiles = maps:map(
+        fun(_, Deps) -> sets:del_element(PathNorm, Deps) end, DepFiles),
+    NewDepMods = maps:map(
+        fun(_, Deps) -> sets:del_element(PathMod, Deps) end, DepMods),
+    {Srcs, NewDepFiles, NewDepMods}.
+
 -spec update_dep_graph(
     file:filename(),
     ast:forms(),
@@ -111,17 +131,23 @@ traverse_module_list(Path, [CurrentModule | RemainingModules], SearchPath, DepGr
             traverse_module_list(Path, RemainingModules, SearchPath, DepGraph);
         SourcePath ->
             NewDepGraph = add_dependency(SourcePath, Path, DepGraph),
-            Forms = parse_intern(SourcePath),
             PathMod = ast_utils:modname_from_path(Path),
             AdditionalModules =
                 lists:filter(
                     fun (ModName) -> not has_rev_dep(ModName, PathMod, DepGraph) end,
-                    ast_utils:referenced_modules_via_types(Forms)
+                    type_refs(SourcePath)
                 ),
             ?LOG_DEBUG("Additional modules for path ~s (current: ~w): ~200p", Path, CurrentModule, AdditionalModules),
             traverse_module_list(Path, RemainingModules ++ AdditionalModules,
                 SearchPath, NewDepGraph)
     end.
+
+-spec type_refs(file:filename()) -> [ast:mod_name()].
+type_refs(Path) ->
+    symtab_cache:cached({type_refs, Path}, fun() ->
+        Forms = parse_intern(Path),
+        {ast_utils:referenced_modules_via_types(Forms), [Path | parse_cache:headers(Path)]}
+    end).
 
 -spec find_source_for_module(atom(), paths:search_path()) -> false | file:filename().
 find_source_for_module(Module, SearchPath) ->
@@ -130,12 +156,6 @@ find_source_for_module(Module, SearchPath) ->
         {local, Src, _} -> Src;
         _ -> false
     end.
-
-% Builds the dependency graph.
--spec build_dep_graph([file:filename()], paths:search_path()) -> dep_graph().
-build_dep_graph(Files, SearchPath) ->
-    build_dep_graph(lists:map(fun utils:normalize_path/1, Files),
-        SearchPath, new(), sets:new([{version, 2}])).
 
 -spec build_dep_graph(
         [file:filename()],
@@ -162,6 +182,53 @@ build_dep_graph(Worklist, SearchPath, DepGraph, AlreadyHandled) ->
                 NewDepGraph, NewAlreadyHandled)
     end.
 
+-spec cached([file:filename()], paths:search_path(), cmd_opts()) -> dep_graph().
+cached(SourceList, SearchPath, Opts) ->
+    File = paths:depgraph_file_name(Opts),
+    Key = {lists:sort(SourceList), SearchPath, symtab_cache:stamp(Opts)},
+    Loaded = case Opts#opts.force of
+                 true -> stale;
+                 false -> load_depgraph(File, Key)
+             end,
+    {Old, Changed} = case Loaded of
+                         {ok, G0, Cs} -> {G0, Cs};
+                         stale -> {new(), SourceList}
+                     end,
+    ?LOG_DEBUG("Updating the dependency graph for ~p", Changed),
+    G = refresh(Changed, SearchPath, Old),
+    case Changed of [] -> ok; _ -> save_depgraph(File, Key, G) end,
+    G.
+
+-define(DEPGRAPH_VERSION, 3).
+
+-spec save_depgraph(file:filename(), term(), dep_graph()) -> ok.
+save_depgraph(Path, Key, DepGraph) ->
+    filelib:ensure_dir(Path),
+    Stored = {etylizer_depgraph, ?DEPGRAPH_VERSION, Key, source_hashes(all_sources(DepGraph)), DepGraph},
+    Formatted = lists:flatten(io_lib:format("~p.~n", [Stored])),
+    case file:write_file(Path, ?assert_type(Formatted, string())) of
+        ok -> ok;
+        Error -> ?LOG_WARN("Could not save the dependency graph at ~p: ~p", Path, Error)
+    end.
+
+% stale if there is none for Key or one of its sources is gone.
+-spec load_depgraph(file:filename(), term()) -> {ok, dep_graph(), [file:filename()]} | stale.
+load_depgraph(Path, Key) ->
+    case file:consult(Path) of
+        {ok, [{etylizer_depgraph, ?DEPGRAPH_VERSION, Key, Saved, DepGraph}]} ->
+            Old = ?assert_type(Saved, [{file:filename(), source_hash()}]),
+            New = source_hashes([F || {F, _} <- Old]),
+            case [F || {F, {error, _}} <- New] of
+                [] -> {ok, ?assert_type(DepGraph, dep_graph()), [F || {F, _} <- New -- Old]};
+                _ -> stale
+            end;
+        _ -> stale
+    end.
+
+-type source_hash() :: string() | {error, any()}.
+
+-spec source_hashes([file:filename()]) -> [{file:filename(), source_hash()}].
+source_hashes(Files) -> [{F, utils:hash_file(F)} || F <- lists:sort(Files)].
 
 -spec parse_intern(file:filename()) -> [ast:form()].
 parse_intern(P) -> parse_cache:parse(intern, P).
