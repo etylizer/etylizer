@@ -286,7 +286,8 @@ doWork(Opts) ->
           metrics:cleanup(),
           symtab_cache:save(Opts),
           parse_cache:cleanup(),
-          stdtypes:cleanup()
+          stdtypes:cleanup(),
+          paths:clear_module_cache()
       end
                                 end).
 
