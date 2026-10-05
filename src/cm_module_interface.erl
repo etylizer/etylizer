@@ -85,7 +85,7 @@ extract_types_from_exported_types(Forms, TypeDeclarations, ExportedTypes) ->
 
 -spec find_ty_schemes_from_types(ast:forms(), sets:set(ast:ty_with_arity())) -> [ast:ty_scheme()].
 find_ty_schemes_from_types(Forms, ExportedTypes) ->
-    utils:everything(
+    ast_traverse:everything(
       fun(T) ->
               case T of
                   {attribute, _, type, _, {TypeName, TyScheme}} ->
@@ -96,7 +96,7 @@ find_ty_schemes_from_types(Forms, ExportedTypes) ->
                       end;
                   _ -> error
               end
-      end, Forms).
+      end, [Forms]).
 
 %% Extracts and aggregates types with their arities from exported function specifications in the AST
 %% of an Erlang module.
