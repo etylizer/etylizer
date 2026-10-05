@@ -127,20 +127,20 @@ everywhere(F, T) ->
 % {ok, T} collects T and stops recursion; {rec, T} collects T and continues recursion.
 -spec everything(fun((term()) -> t:opt(T) | {rec, T}), term()) -> [T].
 everything(F, T) ->
-    TransList = fun(L) -> lists:flatmap(fun(X) -> everything(F, X) end, L) end,
-    Recurse = fun() ->
-        case T of
-            X when is_list(X) -> TransList(X);
-            X when is_tuple(X) -> TransList(tuple_to_list(X));
-            X when is_map(X) -> TransList(maps:to_list(X));
-            _ -> []
-        end
-    end,
     case F(T) of
-        error -> Recurse();
+        error -> everything_subterms(F, T);
         {ok, X} -> [X];
-        {rec, X} -> [X | Recurse()]
+        {rec, X} -> [X | everything_subterms(F, T)]
     end.
+
+-spec everything_subterms(fun((term()) -> t:opt(T) | {rec, T}), term()) -> [T].
+everything_subterms(F, [H | T]) when is_list(T) -> everything(F, H) ++ everything_subterms(F, T);
+everything_subterms(F, [H | T]) -> everything(F, H) ++ everything(F, T); % improper list
+everything_subterms(F, X) when is_tuple(X) ->
+    lists:flatmap(fun(E) -> everything(F, E) end, tuple_to_list(X));
+everything_subterms(F, X) when is_map(X) ->
+    lists:flatmap(fun(E) -> everything(F, E) end, maps:to_list(X));
+everything_subterms(_, _) -> [].
 
 % Like everything/2, but for trees whose structure is given by the Children function.
 % The given function is only applied to nodes of type N, never to arbitrary subterms,

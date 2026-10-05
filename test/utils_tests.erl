@@ -10,6 +10,19 @@ hash_test() ->
     % not SHA-1.
     ?assertEqual("E59FF97941044F85DF5297E1C302D260", Hash).
 
+% the generic traversals are also tested with improper lists
+-dialyzer({no_improper_lists, [everything_test/0]}).
+
+everything_test() ->
+    Ints = fun(X) when is_integer(X) -> {ok, X}; (_) -> error end,
+    ?assertEqual([1, 2, 3, 4, 5], utils:everything(Ints, {a, [1, 2 | 3], {4, [], "", {5}}})),
+    ?assertEqual([1, 2], lists:sort(utils:everything(Ints, #{1 => a, b => [2]}))),
+    % {ok, X} does not traverse the term, {rec, X} does
+    Pairs = fun(Res) -> fun({p, _, _} = P) -> {Res, P}; (_) -> error end end,
+    T = {p, {p, a, b}, c},
+    ?assertEqual([T], utils:everything(Pairs(ok), T)),
+    ?assertEqual([T, {p, a, b}], utils:everything(Pairs(rec), T)).
+
 everything_typed_test() ->
     Children = fun({node, L, R}) -> [L, R]; (_) -> [] end,
     Leaves = fun({leaf, N}) -> {ok, N}; (_) -> error end,
