@@ -164,21 +164,21 @@
 ]).
 
 % At several places, the AST contains lists with a fixed number of elements in a fixed order.
-% Such types are not expressible in erlang's type syntax. So we introduce various type synonyms
-% to clarify the intention.
+% Such types are not expressible in erlang's type syntax, so the type synonyms below are
+% built from etylizer:cons(Head, Tail), the type of a single list cell.
 
 % Lists with exactly three elements.
--type list3(T, U, V) :: [T | U | V, ...].
+-type list3(T, U, V) :: etylizer:cons(T, etylizer:cons(U, etylizer:cons(V, []))).
 
 % Lists with exactly two elements.
--type list2(T, U) :: [T | U, ...].
--type list2(T) :: [T, ...].
+-type list2(T, U) :: etylizer:cons(T, etylizer:cons(U, [])).
+-type list2(T) :: list2(T, T).
 
 % A list containing exactly one element of type T
--type list1(T) :: [T, ...].
+-type list1(T) :: etylizer:cons(T, []).
 
-% A list with first element of type T and then arbitrary manu Us.
--type list1star(T, U) :: [T | U, ...].
+% A list with first element of type T and then arbitrary many Us.
+-type list1star(T, U) :: etylizer:cons(T, [U]).
 
 
 % 8.1  Module Declarations and Forms
