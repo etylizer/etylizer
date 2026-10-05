@@ -72,9 +72,9 @@ has_dynamic_constr(Tab, Constrs) ->
         sets:to_list(Constrs)),
     search_dynamic(Tab, Tys, #{}).
 
--spec search_dynamic(symtab:t(), [ast:ty()], #{term() => ast:loc()}) -> boolean().
+-spec search_dynamic(symtab:t(), [ast:ty()], #{{ast:ty_ref(), [ast:ty()]} => ast:loc()}) -> boolean().
 search_dynamic(Tab, Tys, Seen) ->
-    Found = utils:everything(
+    Found = ast_traverse:everything(
         fun ({predef, dynamic}) -> {ok, dynamic};
             ({named, Loc, {_, M, N, A}, Args}) ->
                 {ok, {{{ty_ref, M, N, A}, ast_utils:remove_locs(Args)}, Loc}};
@@ -84,7 +84,7 @@ search_dynamic(Tab, Tys, Seen) ->
         true -> true;
         false ->
             New = maps:without(maps:keys(Seen),
-                maps:from_list([X || X <- Found, X =/= dynamic])),
+                maps:from_list([X || X = {_, _} <- Found])),
             case maps:size(New) of
                 0 -> false;
                 _ ->
