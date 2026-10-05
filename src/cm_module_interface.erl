@@ -180,10 +180,10 @@ find_type_declaration({TypeName, TypeArity}, TypeDeclarations) ->
 
 -spec find_named_references(ast:type_decl() | [ast:ty()]) -> [ast:ty_named()].
 find_named_references(TypeDeclaration) ->
-    utils:everything(
+    ast_traverse:everything(
       fun(T) ->
               case T of
                   {named, _, {ty_ref, _Mod, _Name, _}, _} -> {ok, T};
                   _ -> error
               end
-      end, TypeDeclaration).
+      end, [TypeDeclaration]).
