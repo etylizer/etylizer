@@ -51,20 +51,20 @@ extract_interface_declaration(Forms) ->
 
 -spec extract_exported_functions_and_types(ast:forms()) -> {sets:set(ast:fun_with_arity()), sets:set(ast:ty_with_arity())}.
 extract_exported_functions_and_types(Forms) ->
-    Functions = utils:everything(
+    Functions = ast_traverse:everything(
                   fun(T) ->
                           case T of
                               {attribute, _, export, Functions} -> {ok, Functions};
                               _ -> error
                           end
-                  end, Forms),
-    Types = utils:everything(
+                  end, [Forms]),
+    Types = ast_traverse:everything(
               fun(T) ->
                       case T of
                           {attribute, _, export_type, Types} -> {ok, Types};
                           _ -> error
                       end
-              end, Forms),
+              end, [Forms]),
     {sets:from_list(lists:flatten(Functions), [{version, 2}]), sets:from_list(lists:flatten(Types), [{version, 2}])}.
 
 %% Extracts and aggregates types with their arities from exported type declarations in the AST
