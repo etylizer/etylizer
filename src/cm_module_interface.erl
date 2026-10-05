@@ -72,7 +72,7 @@ extract_exported_functions_and_types(Forms) ->
 -spec extract_types_from_exported_types(ast:forms(), [ast:type_decl()], sets:set(ast:ty_with_arity())) -> sets:set(ast:ty_with_arity()).
 extract_types_from_exported_types(Forms, TypeDeclarations, ExportedTypes) ->
     TySchemes = find_ty_schemes_from_types(Forms, ExportedTypes),
-    NamedReferences = utils:everything(
+    NamedReferences = ast_traverse:everything(
       fun(T) ->
               case T of
                   {named, _, {ty_ref, _, _, _}, _} ->
