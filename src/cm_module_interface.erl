@@ -14,13 +14,13 @@
 %% or are used in the function signatures or exported types.
 -spec extract_interface_declaration(ast:forms()) -> ast:forms().
 extract_interface_declaration(Forms) ->
-    AllTypes = utils:everything(
+    AllTypes = ast_traverse:everything(
                  fun(T) ->
                           case T of
                               {attribute, _, type, _, {_Name, _Arity}} -> {ok, T};
                               _ -> error
                           end
-                 end, Forms),
+                 end, [Forms]),
 
     {ExportedFunctions, ExportedTypes} = extract_exported_functions_and_types(Forms),
 
@@ -31,7 +31,7 @@ extract_interface_declaration(Forms) ->
     TypesFromExportedTypes = extract_types_from_exported_types(Forms, NotExportedTypes, ExportedTypes),
     TypesFromSignatures = extract_types_from_function_signatures(Forms, NotExportedTypes, ExportedFunctions),
     RelevantTypes = sets:union([ExportedTypes, TypesFromExportedTypes, TypesFromSignatures]),
-    Result = utils:everything(
+    Result = ast_traverse:everything(
       fun(T) ->
               case T of
                   {attribute, _, spec, Name, Arity, _, _} ->
@@ -46,7 +46,7 @@ extract_interface_declaration(Forms) ->
                       end;
                   _ -> error
               end
-      end, Forms),
+      end, [Forms]),
     ast_utils:remove_locs(Result).
 
 -spec extract_exported_functions_and_types(ast:forms()) -> {sets:set(ast:fun_with_arity()), sets:set(ast:ty_with_arity())}.
