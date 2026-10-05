@@ -110,7 +110,7 @@ extract_types_from_function_signatures(Forms, NotExportedTypes, Functions) ->
 
 -spec find_ty_schemes_from_functions(ast:forms(), sets:set(ast:fun_with_arity())) -> [ast:ty_scheme()].
 find_ty_schemes_from_functions(Forms, Functions) ->
-    utils:everything(
+    ast_traverse:everything(
       fun(T) ->
               case T of
                   {attribute, _, spec, Name, Arity, TyScheme, _} ->
@@ -120,7 +120,7 @@ find_ty_schemes_from_functions(Forms, Functions) ->
                       end;
                   _ -> error
               end
-      end, Forms).
+      end, [Forms]).
 
 -spec handle_function_signature({ast:ty(), [ast:type_decl()]}, sets:set(ast:ty_with_arity())) -> sets:set(ast:ty_with_arity()).
 handle_function_signature({{fun_full, Params, ReturnType}, NotExportedTypes}, AccTypes) ->
