@@ -5,7 +5,9 @@
 % type of everything a generic traversal can come across.
 
 -export_type([
-    subterm/0
+    subterm/0,
+    erl_ty_node/0,
+    erl_ty_arg/0
 ]).
 
 %% ---------------------------------------------------------------------------
@@ -34,3 +36,15 @@
     | ast:ty() | ast:ty_map_assoc() | ast:ty_ref()
       % leaves
     | ast:loc() | atom() | number().
+
+%% ---------------------------------------------------------------------------
+%% Erlang AST (ast_erl.erl)
+%% ---------------------------------------------------------------------------
+
+% What a traversal of a type of the Erlang AST visits: types and the constraints of
+% function types.
+-type erl_ty_node() :: ast_erl:ty() | ast_erl:ty_constraint().
+
+% An argument of a type constructor: a type, a list of types or constraints, or the
+% marker for arbitrary function arguments.
+-type erl_ty_arg() :: erl_ty_node() | [erl_ty_node()] | {type, ast_erl:anno(), any}.
