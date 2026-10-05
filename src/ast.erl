@@ -33,6 +33,8 @@
     record_field/0,
     type_decl/0,
     tydef/0,
+    etylizer_opt/0,
+    etylizer_form/0,
     form/0,
     forms/0,
     rep_atom/0,
@@ -289,7 +291,13 @@ get_fun_name({function, _Loc, Name, Arity, _, _}) -> utils:sformat("~w/~w", Name
 
 % Attribute "-file(File,Line)" ignored.
 % Wild attributes ignored.
--type etylizer_form() :: {attribute, loc(), etylizer, term()}.
+% Options given via -etylizer(...) attributes, after the AST transformation.
+-type etylizer_opt() ::
+      {functions_exhaustive | functions_redundant, off}
+    | {functions_exhaustive | functions_redundant, off, [fun_with_arity()]}
+    | {msg_type, atom(), arity(), ty() | [ty_full_fun()]}
+    | {msg_type, atom(), arity(), ty() | [ty_full_fun()], noexhaustiveness}.
+-type etylizer_form() :: {attribute, loc(), etylizer, etylizer_opt()}.
 -type form() :: export_form() | export_type_form() | import_form() | mod_form() | compile_form()
     | fun_decl() | fun_spec() | record_decl() | type_decl() | etylizer_form().
 -type forms() :: [form()].
