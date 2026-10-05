@@ -930,13 +930,13 @@ make_fresh_name(Counter, MuTy) ->
 -spec replace_locs
   (ety_ty_scheme()) -> ety_ty_scheme();
   (ast_ty()) -> ast_ty().
-replace_locs(Term) ->
-  utils:everywhere(fun(X) ->
-    case ast:is_loc(X) of
-      true -> {ok, {internal, ty_parser}};
-      false -> error
-    end
-  end, Term).
+replace_locs(TyScm = {ty_scheme, _, _}) ->
+  ast_traverse:map_locs_ty_scheme(fun internal_loc/1, TyScm);
+replace_locs(Ty) ->
+  ast_traverse:map_locs_ty(fun internal_loc/1, Ty).
+
+-spec internal_loc(ast:loc()) -> ast:loc().
+internal_loc(_) -> {internal, ty_parser}.
 
 -spec rewrite_map_to_representation(ast_ty()) -> ast_ty().
 rewrite_map_to_representation({map, AssocList}) ->

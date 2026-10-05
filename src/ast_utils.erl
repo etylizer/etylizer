@@ -3,6 +3,7 @@
 -export([
     modname_from_path/1,
     remove_locs/1,
+    remove_locs_tys/1,
     referenced_modules/1,
     referenced_modules_via_types/1,
     referenced_recursive_variables/1,
@@ -18,16 +19,15 @@ modname_from_path(Path) ->
     Ext = filename:extension(Path),
     list_to_atom(filename:basename(Path, Ext)).
 
--spec loc_replacer(term()) -> {ok, {loc, string(), 0, 0}} | error.
-loc_replacer(X) ->
-    case ast:is_loc(X) of
-        true -> {ok, {loc, "", 0, 0}};
-        false -> error
-    end.
+-spec no_loc(ast:loc()) -> ast:loc().
+no_loc(_) -> {loc, "", 0, 0}.
 
--spec remove_locs(dynamic()) -> dynamic().
-remove_locs(X) ->
-    utils:everywhere(fun loc_replacer/1, X).
+% Replaces all locations by a dummy location.
+-spec remove_locs(ast:forms()) -> ast:forms().
+remove_locs(Forms) -> ast_traverse:map_locs_forms(fun no_loc/1, Forms).
+
+-spec remove_locs_tys([ast:ty()]) -> [ast:ty()].
+remove_locs_tys(Tys) -> ast_traverse:map_locs_tys(fun no_loc/1, Tys).
 
 -spec referenced_modules_via_types(ast:forms()) -> [ast:mod_name()].
 referenced_modules_via_types(Forms) ->

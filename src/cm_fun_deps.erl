@@ -58,7 +58,14 @@ hash_decls(Forms) ->
 % Hashes a part of the AST, independent of its location in the file
 -spec hash(term()) -> string().
 hash(Term) ->
-    utils:hash(?assert_type(io_lib:write(ast_utils:remove_locs(Term)), iodata())).
+    NoLocs = utils:everywhere(
+        fun(X) ->
+            case ast:is_loc(X) of
+                true -> {ok, {loc, "", 0, 0}};
+                false -> error
+            end
+        end, Term),
+    utils:hash(?assert_type(io_lib:write(NoLocs), iodata())).
 
 % The log macros pass ?FILE and ?LINE, which change when code above the call moves
 -spec normalize_log_call(dynamic()) -> {ok, dynamic()} | error.

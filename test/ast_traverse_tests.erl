@@ -39,7 +39,20 @@ for_all_files(Check) ->
     ?assert(length(Parsed) > 80),
     lists:foreach(fun({File, Forms}) -> Check(File, Forms) end, Parsed).
 
+% The right-hand sides of all specs and type declarations, with their type schemes.
+ty_schemes(Forms) ->
+    [TyScm || {attribute, _, spec, _, _, TyScm, _} <- Forms]
+        ++ [TyScm || {attribute, _, type, _, {_, TyScm}} <- Forms].
+
 %% Reference implementations based on the generic traversals
+
+old_loc_replacer(X) ->
+    case ast:is_loc(X) of
+        true -> {ok, {loc, "", 0, 0}};
+        false -> error
+    end.
+
+old_remove_locs(X) -> utils:everywhere(fun old_loc_replacer/1, X).
 
 old_referenced_modules_via_types(Forms) ->
     lists:uniq(utils:everything(
@@ -55,6 +68,34 @@ old_referenced_modules(Forms) ->
            ({ty_qref, ModuleName, _, _}) when is_atom(ModuleName) -> {ok, ModuleName};
            (_) -> error
         end, Forms)).
+
+old_replace_dynamic(Ty) ->
+    Counter = counters:new(1, []),
+    utils:everywhere(
+        fun({predef, dynamic}) ->
+                counters:add(Counter, 1, 1),
+                {ok, {var, list_to_atom(utils:sformat("%~w", counters:get(Counter, 1)))}};
+           (_) -> error
+        end, Ty).
+
+old_discriminate_framevars(Ty) ->
+    utils:everywhere(
+        fun({var, N}) when is_atom(N) ->
+                case atom_to_list(N) of
+                    [$% | _] -> {ok, {predef, dynamic}};
+                    _ -> error
+                end;
+           (_) -> error
+        end, Ty).
+
+old_replace_locs(Term) ->
+    utils:everywhere(
+        fun(X) ->
+            case ast:is_loc(X) of
+                true -> {ok, {internal, ty_parser}};
+                false -> error
+            end
+        end, Term).
 
 %% Tests
 
@@ -75,6 +116,29 @@ compile_attribute_test() ->
     ?assertEqual([Form, attribute, Loc, loc, "file.erl", $f, $i, $l, $e, $., $e, $r, $l, 1, 2, compile],
                  ast_traverse:everything(fun(T) -> {rec, T} end, [Form])).
 
+remove_locs_test_() ->
+    {timeout, 300, fun() ->
+        for_all_files(fun(File, Forms) ->
+            ?assertEqual({File, old_remove_locs(Forms)}, {File, ast_utils:remove_locs(Forms)})
+        end)
+    end}.
+
+map_locs_test_() ->
+    {timeout, 300, fun() ->
+        for_all_files(fun(File, Forms) ->
+            Old = utils:everywhere(
+                fun({loc, F, L, C}) when F =:= File -> {ok, {loc, "other", L, C}};
+                   (_) -> error
+                end, Forms),
+            New = ast_traverse:map_locs_forms(
+                fun Rename({loc, F, L, C}) when F =:= File -> {loc, "other", L, C};
+                    Rename({generated, G, From}) -> {generated, G, Rename(From)};
+                    Rename(Loc) -> Loc
+                end, Forms),
+            ?assertEqual({File, Old}, {File, New})
+        end)
+    end}.
+
 referenced_modules_test_() ->
     {timeout, 300, fun() ->
         for_all_files(fun(File, Forms) ->
@@ -82,6 +146,23 @@ referenced_modules_test_() ->
                          {File, ast_utils:referenced_modules(Forms)}),
             ?assertEqual({File, old_referenced_modules_via_types(Forms)},
                          {File, ast_utils:referenced_modules_via_types(Forms)})
+        end)
+    end}.
+
+types_test_() ->
+    {timeout, 300, fun() ->
+        for_all_files(fun(File, Forms) ->
+            lists:foreach(
+                fun(TyScm = {ty_scheme, _, Ty}) ->
+                    ?assertEqual({File, old_replace_locs(TyScm)}, {File, ty_parser:replace_locs(TyScm)}),
+                    ?assertEqual({File, old_replace_locs(Ty)}, {File, ty_parser:replace_locs(Ty)}),
+                    % make sure that there is something to replace
+                    Gradual = {union, [Ty, {predef, dynamic}, {tuple, [{predef, dynamic}, Ty]}]},
+                    Framed = gradual_utils:replace_dynamic(Gradual, gradual_utils:new_ctx()),
+                    ?assertEqual({File, old_replace_dynamic(Gradual)}, {File, Framed}),
+                    ?assertEqual({File, old_discriminate_framevars(Framed)},
+                                 {File, gradual_utils:discriminate_framevars(Framed)})
+                end, ty_schemes(Forms))
         end)
     end}.
 

@@ -77,7 +77,7 @@ search_dynamic(Tab, Tys, Seen) ->
     Found = ast_traverse:everything(
         fun ({predef, dynamic}) -> {ok, dynamic};
             ({named, Loc, {_, M, N, A}, Args}) ->
-                {ok, {{{ty_ref, M, N, A}, ast_utils:remove_locs(Args)}, Loc}};
+                {ok, {{{ty_ref, M, N, A}, ast_utils:remove_locs_tys(Args)}, Loc}};
             (_) -> error
         end, Tys),
     case lists:member(dynamic, Found) of

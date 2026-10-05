@@ -13,6 +13,12 @@ hash_test() ->
 % the generic traversals are also tested with improper lists
 -dialyzer({no_improper_lists, [everything_test/0]}).
 
+everywhere_typed_test() ->
+    Descend = fun(F, {node, L, R}) -> {node, F(L), F(R)}; (_, Leaf) -> Leaf end,
+    Double = fun({leaf, N}) -> {ok, {leaf, 2 * N}}; (_) -> error end,
+    ?assertEqual({node, {leaf, 2}, {node, {leaf, 4}, {leaf, 6}}},
+                 utils:everywhere(Descend, Double, {node, {leaf, 1}, {node, {leaf, 2}, {leaf, 3}}})).
+
 everything_test() ->
     Ints = fun(X) when is_integer(X) -> {ok, X}; (_) -> error end,
     ?assertEqual([1, 2, 3, 4, 5], utils:everything(Ints, {a, [1, 2 | 3], {4, [], "", {5}}})),

@@ -9,7 +9,7 @@
 
 -export([
     quit/3, quit/2,
-    everywhere/2, everything/2, everything/3,
+    everywhere/2, everywhere/3, everything/2, everything/3,
     error/2,
     is_string/1, is_char/1,
     sformat/2, sformat/3, sformat/4,  sformat/6, sformat/5, sformat/7, sformat1/2,
@@ -120,6 +120,17 @@ everywhere(F, T) ->
             end;
         {ok, X} -> X;
         {rec, X} -> everywhere(F, X)
+    end.
+
+% Like everywhere/2, but for trees whose structure is given by the Descend function,
+% which applies a function to the direct subnodes of a node. The function given is only
+% applied to nodes of type N and has to return such a node.
+-spec everywhere(fun((fun((N) -> N), N) -> N), fun((N) -> t:opt(N) | {rec, N}), N) -> N.
+everywhere(Descend, F, T) ->
+    case F(T) of
+        error -> Descend(fun(C) -> everywhere(Descend, F, C) end, T);
+        {ok, X} -> X;
+        {rec, X} -> everywhere(Descend, F, X)
     end.
 
 % Generically transforms the term given and collects all results T
