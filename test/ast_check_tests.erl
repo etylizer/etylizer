@@ -53,6 +53,46 @@ check_against(TyName, X) ->
     Ty = ast_check:lookup_ty_or_die(M, ast_erl, TyName, []),
     true = ast_check:check_against_type(M, ast_erl, Ty, X).
 
+check_not_against(TyName, X) ->
+    M = mk_full_spec(),
+    Ty = ast_check:lookup_ty_or_die(M, ast_erl, TyName, []),
+    false = ast_check:check_against_type(M, ast_erl, Ty, X).
+
+% Lists with a fixed number of elements in a fixed order are checked exactly,
+% see the types list1, list2, list3 and list1star in ast_erl.erl
+check_fixed_lists_test() ->
+    A = erl_anno:new({1,1}),
+    Int = {type, A, integer, []},
+    Name = {atom, A, foo},
+    Product = {type, A, product, [Int]},
+    % two elements
+    check_against(ty_map_assoc, {type, A, map_field_assoc, [Int, Int]}),
+    check_not_against(ty_map_assoc, {type, A, map_field_assoc, [Int]}),
+    check_not_against(ty_map_assoc, {type, A, map_field_assoc, [Int, Int, Int]}),
+    % two elements of different types
+    check_against(ty_fun_unconstrained_ty, {type, A, 'fun', [Product, Int]}),
+    check_not_against(ty_fun_unconstrained_ty, {type, A, 'fun', [Product, {type, A, any}]}),
+    check_not_against(ty_fun_unconstrained_ty, {type, A, 'fun', [Product]}),
+    check_against(ty_field, {type, A, field_type, [Name, Int]}),
+    check_not_against(ty_field, {type, A, field_type, [Int, Name]}),
+    % three elements
+    check_against(ty_remote, {remote_type, A, [Name, Name, [Int]]}),
+    check_not_against(ty_remote, {remote_type, A, [Name, Name]}),
+    check_not_against(ty_remote, {remote_type, A, [Name, [Int], Name]}),
+    % one element followed by arbitrary many
+    check_against(ty_record, {type, A, record, [Name]}),
+    check_against(ty_record, {type, A, record, [Name, {type, A, field_type, [Name, Int]}]}),
+    check_not_against(ty_record, {type, A, record, []}),
+    check_not_against(ty_record, {type, A, record, [Name, Name]}).
+
+% a guard is a non-empty sequence of guard tests
+check_guard_test() ->
+    A = erl_anno:new({1,1}),
+    Test = {atom, A, true},
+    check_against(guard, [Test]),
+    check_against(guard, [Test, Test]),
+    check_not_against(guard, []).
+
 check_antidote1_test() ->
     Exp0 =
         {'fun',

@@ -332,11 +332,10 @@ trans_tydef(Ctx, {Name, Ty, Tyvars}) ->
 trans_constraint(Ctx, Env, C) ->
     case C of
         {type, Anno, constraint, [{atom, _, is_subtype}, [{var, _, Name}, Ty]]} ->
-            {subty_constraint, to_loc(Ctx, Anno), Name, trans_ty(Ctx, Env, Ty)};
-        X -> errors:uncovered_case(?FILE, ?LINE, X)
+            {subty_constraint, to_loc(Ctx, Anno), Name, trans_ty(Ctx, Env, Ty)}
     end.
 
-% support for etylizer:negation, etylizer:intersection, and etylizer:without
+% support for etylizer:negation, etylizer:intersection, etylizer:without, and etylizer:cons
 -spec resolve_ety_ty(ast:loc(), atom(), [ast:ty()]) -> ast:ty().
 resolve_ety_ty(_, negation, [Ty]) -> {negation, Ty};
 resolve_ety_ty(_, intersection, Tys) ->
@@ -346,6 +345,9 @@ resolve_ety_ty(_, intersection, Tys) ->
         _ -> {intersection, Tys}
     end;
 resolve_ety_ty(_, without, [T, U]) -> {intersection, [T, {negation, U}]};
+% a list cell: etylizer:cons(T, etylizer:cons(U, [])) is the type of the lists [X, Y]
+% with X :: T and Y :: U
+resolve_ety_ty(_, cons, [Hd, Tl]) -> {cons, Hd, Tl};
 resolve_ety_ty(L, mu, [Body]) ->
     Name = mu_name(L),
     {mu, {mu_var, Name}, replace_mu_var(Body, Name)};
@@ -405,11 +407,7 @@ trans_ty(Ctx, Env, Ty) ->
         {type, _, nil, []} -> {empty_list};
         {type, _, list, [T]} -> {list, trans_ty(Ctx, Env, T)};
         {type, _, 'fun', []} -> {fun_simple};
-        {type, _, 'fun', [{type, _, any}, T]} ->
-                case T of
-                    {type, _, any} -> errors:bug("Invalid AST");
-                    T2 -> {fun_any_arg, trans_ty(Ctx, Env, T2)}
-                end;
+        {type, _, 'fun', [{type, _, any}, T]} -> {fun_any_arg, trans_ty(Ctx, Env, T)};
         {type, _, 'fun', [{type, _, product, ArgTys}, ResTy]} ->
             {fun_full, trans_tys(Ctx, Env, ArgTys), trans_ty(Ctx, Env, ResTy)};
         {type, Anno, bounded_fun, _} ->
@@ -540,8 +538,7 @@ trans_ty_map_assoc(Ctx, Env, Assoc) ->
         {type, _, map_field_assoc, [KeyTy, ValTy]} ->
             {map_field_opt, trans_ty(Ctx, Env, KeyTy), trans_ty(Ctx, Env, ValTy)};
         {type, _, map_field_exact, [KeyTy, ValTy]} ->
-            {map_field_req, trans_ty(Ctx, Env, KeyTy), trans_ty(Ctx, Env, ValTy)};
-        X -> errors:uncovered_case(?FILE, ?LINE, X)
+            {map_field_req, trans_ty(Ctx, Env, KeyTy), trans_ty(Ctx, Env, ValTy)}
     end.
 
 -spec thread_through_env(varenv_local:t(), [T], fun((varenv_local:t(), T) -> {U, varenv_local:t()}))
@@ -1099,8 +1096,7 @@ trans_case_clause(Ctx, Env, C) ->
             Loc = to_loc(Ctx, Anno),
             ?LOG_TRACE("Env for body of case clause at ~s: ~w", ast:format_loc(Loc), QEnv),
             {NewBody, NewEnv} = trans_exp_seq(Ctx, QEnv, Body),
-            {{case_clause, Loc, Q, NewGuards, NewBody}, NewEnv, QEnv};
-        X -> errors:uncovered_case(?FILE, ?LINE, X)
+            {{case_clause, Loc, Q, NewGuards, NewBody}, NewEnv, QEnv}
     end.
 
 -spec trans_catch_clauses(ctx(), varenv_local:t(),
@@ -1455,6 +1451,11 @@ parse_type_test() ->
 
     % user types are supported (no locations, though)
     {ok, {named, _, _, [{named, _, _, _}]}} = parse_type(Ctx, "parser(command())"),
+
+    % builtin types of etylizer
+    {ok, {cons, {singleton, a}, {cons, {predef, integer}, {empty_list}}}} =
+        parse_type(Ctx, "etylizer:cons(a, etylizer:cons(integer(), []))"),
+    ?assertThrow({etylizer, ty_error, _}, parse_type(Ctx, "etylizer:cons(a)")),
 
     % type error
     error = parse_type(Ctx, "not a type"),

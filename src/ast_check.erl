@@ -233,6 +233,10 @@ check_ty(Spec, CurModule, Ty, Form, Depth) ->
             utils:error("Checking of types with records not implemented: ~p", Ty);
         {remote_type, _, [{atom, _, RemoteMod}, {atom, _, Name}, Args]} ->
                 case {RemoteMod, Name, Args} of
+                    {etylizer, cons, [HdTy, TlTy]} ->
+                        raise_unless(is_list(Form) andalso Form =/= [], Ty, Form, Depth),
+                        check_ty(Spec, CurModule, HdTy, hd(Form), Depth + 1),
+                        check_ty(Spec, CurModule, TlTy, tl(Form), Depth + 1);
                     {sets, set, [Ty2]} ->
                         raise_unless(sets:is_set(Form), Ty, Form, Depth),
                         lists:foreach(fun (X) -> check_ty(Spec, CurModule, Ty2, X, Depth + 1) end,
