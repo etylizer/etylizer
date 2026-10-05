@@ -57,3 +57,24 @@ compile_attribute_test() ->
     Form = {attribute, Loc, compile, [{inline, [{f, 1}]}]},
     ?assertEqual([Form, attribute, Loc, loc, "file.erl", $f, $i, $l, $e, $., $e, $r, $l, 1, 2, compile],
                  ast_traverse:everything(fun(T) -> {rec, T} end, [Form])).
+
+% The type variables of specs are collected with a traversal that knows the structure of
+% the types of the Erlang AST. It must find the same variables as the generic traversal.
+spec_tyvars_test_() ->
+    {timeout, 300, fun() ->
+        Specs = lists:flatmap(
+            fun(File) ->
+                try parse:parse_file_or_die(File, #parse_opts{includes = ?INCLUDES}) of
+                    RawForms -> [FunTys || {attribute, _, Kind, {_, FunTys}} <- RawForms,
+                                           Kind =:= spec orelse Kind =:= callback]
+                catch
+                    throw:{etylizer, _, _} -> []
+                end
+            end, corpus()),
+        ?assert(length(Specs) > 1000),
+        lists:foreach(
+            fun(FunTys) ->
+                Old = utils:everything(fun(V = {var, _, _}) -> {ok, V}; (_) -> error end, FunTys),
+                ?assertEqual(Old, ast_transform:spec_tyvars(FunTys))
+            end, Specs)
+    end}.

@@ -8,6 +8,7 @@
 
 -ifdef(TEST).
 -include_lib("eunit/include/eunit.hrl").
+-export([spec_tyvars/1]).
 -endif.
 
 
@@ -271,12 +272,7 @@ update_current_file(Ctx, _Form) -> Ctx.
 
 -spec trans_spec_ty(ctx(), ast:loc(), [ast_erl:ty_full_fun()]) -> ast:ty_scheme().
 trans_spec_ty(Ctx, Loc, FunTys) ->
-    AllTyvars =
-        utils:everything(
-          fun (V = {var, _, _}) -> {ok, V};
-              (_) -> error
-          end,
-          FunTys),
+    AllTyvars = spec_tyvars(FunTys),
     {UnconstrFunTys, NestedConstrs} =
         lists:unzip(
           lists:map(
@@ -307,6 +303,37 @@ trans_spec_ty(Ctx, Loc, FunTys) ->
                 end,
                 TyVars),
     {ty_scheme, ConstrainedTyVars, Ty}.
+
+% All type variables of a spec, in the order in which they appear. This includes the
+% names of annotated types (Name :: T) and the variables of constraints.
+-spec spec_tyvars([ast_erl:ty_full_fun()]) -> [ast_erl:ty_var()].
+spec_tyvars(FunTys) ->
+    utils:everything(
+      fun erl_ty_children/1,
+      fun (V = {var, _, _}) -> {ok, V};
+          (_) -> error
+      end,
+      FunTys).
+
+% The direct subtypes of a type of the Erlang AST.
+% Annotations are opaque, they are passed over and never looked into.
+-spec erl_ty_children(external_types:erl_ty_node()) -> [external_types:erl_ty_node()].
+erl_ty_children({var, _, _}) -> [];
+erl_ty_children({atom, _, _}) -> [];
+erl_ty_children({integer, _, _}) -> [];
+erl_ty_children({char, _, _}) -> [];
+erl_ty_children({op, _, _, A}) -> [A];
+erl_ty_children({op, _, _, A, B}) -> [A, B];
+erl_ty_children({ann_type, _, Args}) -> Args;
+erl_ty_children({user_type, _, _, Args}) -> Args;
+erl_ty_children({remote_type, _, Args}) -> lists:flatmap(fun erl_ty_arg/1, Args);
+erl_ty_children({type, _, _, any}) -> [];
+erl_ty_children({type, _, _, Args}) -> lists:flatmap(fun erl_ty_arg/1, Args).
+
+-spec erl_ty_arg(external_types:erl_ty_arg()) -> [external_types:erl_ty_node()].
+erl_ty_arg(L) when is_list(L) -> L;
+erl_ty_arg({type, _, any}) -> [];
+erl_ty_arg(T) -> [T].
 
 -spec make_tyenv(ctx(), [ast_erl:ty_var()], ignore_dups | fail_dups) -> tyenv().
 make_tyenv(Ctx, Tyvars, Mode) ->
