@@ -39,6 +39,23 @@ for_all_files(Check) ->
     ?assert(length(Parsed) > 80),
     lists:foreach(fun({File, Forms}) -> Check(File, Forms) end, Parsed).
 
+%% Reference implementations based on the generic traversals
+
+old_referenced_modules_via_types(Forms) ->
+    lists:uniq(utils:everything(
+        fun({attribute, _, import, {ModuleName, _}}) when is_atom(ModuleName) -> {ok, ModuleName};
+           ({ty_qref, ModuleName, _, _}) when is_atom(ModuleName) -> {ok, ModuleName};
+           (_) -> error
+        end, Forms)).
+
+old_referenced_modules(Forms) ->
+    lists:uniq(utils:everything(
+        fun({attribute, _, import, {ModuleName, _}}) when is_atom(ModuleName) -> {ok, ModuleName};
+           ({qref, ModuleName, _, _}) when is_atom(ModuleName) -> {ok, ModuleName};
+           ({ty_qref, ModuleName, _, _}) when is_atom(ModuleName) -> {ok, ModuleName};
+           (_) -> error
+        end, Forms)).
+
 %% Tests
 
 % The typed query visits the same subterms as the generic one, in the same order.
@@ -57,6 +74,16 @@ compile_attribute_test() ->
     Form = {attribute, Loc, compile, [{inline, [{f, 1}]}]},
     ?assertEqual([Form, attribute, Loc, loc, "file.erl", $f, $i, $l, $e, $., $e, $r, $l, 1, 2, compile],
                  ast_traverse:everything(fun(T) -> {rec, T} end, [Form])).
+
+referenced_modules_test_() ->
+    {timeout, 300, fun() ->
+        for_all_files(fun(File, Forms) ->
+            ?assertEqual({File, old_referenced_modules(Forms)},
+                         {File, ast_utils:referenced_modules(Forms)}),
+            ?assertEqual({File, old_referenced_modules_via_types(Forms)},
+                         {File, ast_utils:referenced_modules_via_types(Forms)})
+        end)
+    end}.
 
 % The type variables of specs are collected with a traversal that knows the structure of
 % the types of the Erlang AST. It must find the same variables as the generic traversal.
