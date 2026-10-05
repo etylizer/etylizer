@@ -23,6 +23,8 @@ var_metrics(FixedVars, Constraints, _SymTab) ->
 %% Compute {NumConstraints, Poly, Frame, MonoUsed, MonoUnused} for a list of
 %% constraints. Poly = non-fixed vars whose atom name does not start with "%";
 %% Frame = non-fixed vars whose name starts with "%" (gradual framevars).
+-spec shape_metrics([{ast:ty(), ast:ty()}], sets:set(ast:ty_varname())) ->
+    {non_neg_integer(), integer(), integer(), non_neg_integer(), integer()}.
 shape_metrics(Constraints, FixedVars) ->
     NumConstrs = length(Constraints),
     AllVars = sets:from_list(utils:everything(

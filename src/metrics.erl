@@ -122,6 +122,7 @@ record_partition_vars(Partitions, Fixed) ->
         end, hd(Counts), tl(Counts)),
     record(tally_bottleneck_vars, erlang:insert_element(1, Biggest, Fun)).
 
+-spec free_vars({ast:ty(), ast:ty()}, sets:set(ast:ty_varname())) -> [ast:ty_varname()].
 free_vars(Constraint, Fixed) ->
     lists:usort(utils:everything(
         fun({var, V}) when is_atom(V) ->

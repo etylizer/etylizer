@@ -31,28 +31,28 @@ remove_locs(X) ->
 
 -spec referenced_modules_via_types(ast:forms()) -> [ast:mod_name()].
 referenced_modules_via_types(Forms) ->
-    Modules = utils:everything(
+    Modules = ast_traverse:everything(
                 fun(T) ->
                         case T of
-                            {attribute, _, import, {ModuleName, _}} when is_atom(ModuleName) -> {ok, ModuleName};
-                            {ty_qref, ModuleName, _, _} when is_atom(ModuleName) -> {ok, ModuleName};
+                            {attribute, _, import, {ModuleName, _}} -> {ok, ModuleName};
+                            {ty_qref, ModuleName, _, _} -> {ok, ModuleName};
                             _ -> error
                         end
-                end, Forms),
-    ?assert_type(lists:uniq(Modules), [ast:mod_name()]).
+                end, [Forms]),
+    lists:uniq(Modules).
 
 -spec referenced_modules(ast:forms()) -> [ast:mod_name()].
 referenced_modules(Forms) ->
-    Modules = utils:everything(
+    Modules = ast_traverse:everything(
                 fun(T) ->
                         case T of
-                            {attribute, _, import, {ModuleName, _}} when is_atom(ModuleName) -> {ok, ModuleName};
-                            {qref, ModuleName, _, _} when is_atom(ModuleName) -> {ok, ModuleName};
-                            {ty_qref, ModuleName, _, _} when is_atom(ModuleName) -> {ok, ModuleName};
+                            {attribute, _, import, {ModuleName, _}} -> {ok, ModuleName};
+                            {qref, ModuleName, _, _} -> {ok, ModuleName};
+                            {ty_qref, ModuleName, _, _} -> {ok, ModuleName};
                             _ -> error
                         end
-                end, Forms),
-    ?assert_type(lists:uniq(Modules), [ast:mod_name()]).
+                end, [Forms]),
+    lists:uniq(Modules).
 
 -spec referenced_recursive_variables(ast:ty()) -> [ast:ty_mu_var()].
 referenced_recursive_variables(Forms) ->
