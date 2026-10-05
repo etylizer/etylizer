@@ -144,7 +144,7 @@ check_all(Ctx, FileName, Env, Decls) ->
     end.
 
 % Ensures that a mono type used as a spec is supported. Throws a ty_error if not.
--spec ensure_type_supported(ast:loc(), ast:ty()) -> _.
+-spec ensure_type_supported(ast:loc(), ast:ty()) -> ok.
 ensure_type_supported(_Loc, _T) -> ok.
 
 % Checks a function against its spec. Throws a ty_error.

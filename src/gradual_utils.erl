@@ -87,7 +87,7 @@ inline_subst(UnificationSubst, SubtyConstrs) ->
 
 -spec replace_dynamic(ast:ty(), ctx()) -> ast:ty().
 replace_dynamic(Ty, Ctx) ->
-  utils:everywhere(fun
+  ast_traverse:ty_everywhere(fun
     ({predef, dynamic}) -> {ok, fresh_framevar(Ctx)};
     (_) -> error
   end, Ty).
@@ -237,8 +237,8 @@ apply_subst(S, Sigma2) ->
 
 -spec discriminate_framevars(ast:ty()) -> ast:ty().
 discriminate_framevars(Ty) ->
-    utils:everywhere(fun
-        ({var, N}) when is_atom(N) ->
+    ast_traverse:ty_everywhere(fun
+        ({var, N}) ->
             case is_framevar(N) of
                 true -> {ok, {predef, dynamic}};
                 false -> error

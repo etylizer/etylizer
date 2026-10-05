@@ -6,6 +6,7 @@
 
 -export_type([
     subterm/0,
+    bin_elem/2,
     erl_ty_node/0,
     erl_ty_arg/0
 ]).
@@ -36,6 +37,10 @@
     | ast:ty() | ast:ty_map_assoc() | ast:ty_ref()
       % leaves
     | ast:loc() | atom() | number().
+
+% Parts of expressions, patterns and guard tests that ast.erl defines without a name.
+% They are needed for the specs of the functions that rebuild these parts.
+-type bin_elem(T, U) :: {bin_element, ast:loc(), T, U | default, ast:bitstring_tyspec_list() | default}.
 
 %% ---------------------------------------------------------------------------
 %% Erlang AST (ast_erl.erl)

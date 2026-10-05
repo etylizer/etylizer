@@ -55,4 +55,11 @@ hash_decls(Forms) ->
 % location-independent AST hash 
 -spec hash(term()) -> string().
 hash(Term) ->
-    utils:hash_sha1(?assert_type(io_lib:write(ast_utils:remove_locs(Term)), iodata())).
+    NoLocs = utils:everywhere(
+        fun(X) ->
+            case ast:is_loc(X) of
+                true -> {ok, {loc, "", 0, 0}};
+                false -> error
+            end
+        end, Term),
+    utils:hash_sha1(?assert_type(io_lib:write(NoLocs), iodata())).
