@@ -9,7 +9,7 @@
 
 -export([
     quit/3, quit/2,
-    everywhere/2, everything/2,
+    everywhere/2, everything/2, everything/3,
     error/2,
     is_string/1, is_char/1,
     sformat/2, sformat/3, sformat/4,  sformat/6, sformat/5, sformat/7, sformat1/2,
@@ -141,6 +141,21 @@ everything(F, T) ->
         {ok, X} -> [X];
         {rec, X} -> [X | Recurse()]
     end.
+
+% Like everything/2, but for trees whose structure is given by the Children function.
+% The given function is only applied to nodes of type N, never to arbitrary subterms,
+% so it can match on the nodes precisely.
+-spec everything(fun((N) -> [N]), fun((N) -> t:opt(R) | {rec, R}), [N]) -> [R].
+everything(Children, F, Nodes) ->
+    lists:flatmap(
+        fun(N) ->
+            case F(N) of
+                error -> everything(Children, F, Children(N));
+                {ok, X} -> [X];
+                {rec, X} -> [X | everything(Children, F, Children(N))]
+            end
+        end,
+        Nodes).
 
 -spec if_true(boolean(), fun(() -> _T)) -> ok.
 if_true(B, Action) ->

@@ -9,3 +9,9 @@ hash_test() ->
     % BEAM cannot load the OpenSSL-backed crypto NIF, so this is deliberately
     % not SHA-1.
     ?assertEqual("E59FF97941044F85DF5297E1C302D260", Hash).
+
+everything_typed_test() ->
+    Children = fun({node, L, R}) -> [L, R]; (_) -> [] end,
+    Leaves = fun({leaf, N}) -> {ok, N}; (_) -> error end,
+    ?assertEqual([1, 2, 3],
+                 utils:everything(Children, Leaves, [{node, {leaf, 1}, {node, {leaf, 2}, {leaf, 3}}}])).
