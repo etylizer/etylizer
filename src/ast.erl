@@ -229,7 +229,7 @@ local_varname_from_any_ref(Ref) ->
 -type mod_name() :: atom().
 -type mod_form() :: {attribute, loc(), module, mod_name()}.
 -type compile_form() :: {attribute, loc(), compile, term()}.
--type fun_decl() :: {function, loc(), Name::atom(), Arity::arity(), [fun_clause()]}.
+-type fun_decl() :: {function, loc(), Name::atom(), Arity::arity(), [fun_clause(), ...]}.
 
 -spec get_fun_name(fun_decl()) -> string().
 get_fun_name({function, _Loc, Name, Arity, _}) -> utils:sformat("~w/~w", Name, Arity).
@@ -284,7 +284,7 @@ get_fun_name({function, _Loc, Name, Arity, _}) -> utils:sformat("~w/~w", Name, A
 
 % 8.4  Expressions
 
--type exp_bitstring_compr() :: {bc, loc(), exp(), [qualifier()]}.
+-type exp_bitstring_compr() :: {bc, loc(), exp(), [qualifier(), ...]}.
 -type gen_bitstring_constr(T, U) :: {bin, loc(), [gen_bitstring_elem(T, U)]}.
 -type gen_bitstring_elem(T, U) :: {bin_element,
                                    loc(),
@@ -294,32 +294,32 @@ get_fun_name({function, _Loc, Name, Arity, _}) -> utils:sformat("~w/~w", Name, A
 -type exp_bitstring_constr() :: gen_bitstring_constr(exp(), exp()).
 -type exp_bitstring_elem() :: gen_bitstring_elem(exp(), exp()).
 -type exp_block() :: {block, loc(), exps()}.
--type exp_case() :: {'case', loc(), exp(), [case_clause()]}.
+-type exp_case() :: {'case', loc(), exp(), [case_clause(), ...]}.
 -type exp_catch() :: {'catch', loc(), exp()}.
 -type gen_cons(T) :: {cons, loc(), Head::T, Tail::T}.
 -type exp_cons() :: gen_cons(exp()).
 -type exp_fun_ref() :: {fun_ref, loc(), global_ref()}.
 -type exp_fun_ref_dyn() :: {fun_ref_dyn, loc(), global_ref_dyn()}.
 -type rec_fun_name() :: no_name | local_bind().
--type exp_fun() :: {'fun', loc(), Name::rec_fun_name(), [fun_clause()]}.
+-type exp_fun() :: {'fun', loc(), Name::rec_fun_name(), [fun_clause(), ...]}.
 -type gen_funcall(T) :: {call, loc(), Fun::T, Args::[T]}
                       | {call_remote, loc(), Mod::T, Fun::T, Args::[T]}.
 -type exp_funcall() :: gen_funcall(exp()).
--type exp_if() :: {'if', loc(), [if_clause()]}.
--type exp_list_compr() :: {lc, loc(), exp(), [qualifier()]}.
+-type exp_if() :: {'if', loc(), [if_clause(), ...]}.
+-type exp_list_compr() :: {lc, loc(), exp(), [qualifier(), ...]}.
 -type gen_map_create() :: {map_create, loc(), [map_assoc_opt()]}.
 -type exp_map_create() :: gen_map_create().
 -type gen_map_update(T) :: {map_update, loc(), T, [map_assoc()]}.
 -type exp_map_update() :: gen_map_update(exp()).
--type exp_map_compr() :: {mc, loc(), Key::exp(), Val::exp(), [qualifier()]}.
+-type exp_map_compr() :: {mc, loc(), Key::exp(), Val::exp(), [qualifier(), ...]}.
 -type gen_nil() ::  {nil, loc()}.
 -type exp_nil() :: gen_nil().
 -type gen_binop(T) :: {op, loc(), Op::binop(), T, T}.
 -type exp_binop() :: gen_binop(exp()).
 -type gen_unop(T) :: {op, loc(), Op::unop(), T}.
 -type exp_unop() :: gen_unop(exp()).
--type exp_recv() :: {'receive', loc(), [case_clause()]}.
--type exp_recv_after() :: {receive_after, loc(), [case_clause()], exp(), [exp()]}.
+-type exp_recv() :: {'receive', loc(), [case_clause(), ...]}.
+-type exp_recv_after() :: {receive_after, loc(), [case_clause()], exp(), exps()}.
 -type gen_record_create(T) :: {record_create, loc(), Name::atom(),
                                [{record_field, loc(), Field::atom(), T} |
                                 {record_field_other, loc(), T}]}.
@@ -337,7 +337,7 @@ get_fun_name({function, _Loc, Name, Arity, _}) -> utils:sformat("~w/~w", Name, A
 %   try Exp of Pat -> Body end  becomes  try case Exp of Pat -> Body end end
 % This simplifies constraint generation and ensures proper variable scoping.
 -type exp_try() :: {'try', loc(), exps(), Cases::[case_clause()], Catches::[catch_clause()],
-                    After::exps()}.
+                    After::[exp()]}.
 -type gen_var() :: {var, loc(), any_ref()}.
 -type exp_var() :: gen_var().
 
@@ -353,7 +353,7 @@ get_fun_name({function, _Loc, Name, Arity, _}) -> utils:sformat("~w/~w", Name, A
     | exp_record_access() | exp_record_index() | exp_record_update() | exp_tuple() | exp_try()
     | exp_var() | exp_annotate() | exp_assert().
 
--type exps() :: [exp()].
+-type exps() :: [exp(), ...].
 
 -spec loc_exp(exp()) -> loc().
 loc_exp({_, L}) -> L;
@@ -362,7 +362,7 @@ loc_exp({_, L, _, _}) -> L;
 loc_exp({_, L, _, _, _}) -> L;
 loc_exp({_, L, _, _, _, _}) -> L.
 
--type qual_zip_gen() ::  {zip, loc(), [generators()]}. 
+-type qual_zip_gen() ::  {zip, loc(), [generators(), ...]}. 
 -type qual_list_strict_gen() ::  {generate_strict, loc(), pat(), exp()}.
 -type qual_list_gen() ::  {generate, loc(), pat(), exp()}.
 -type qual_bitstring_gen() ::  {b_generate, loc(), pat(), exp()}.
@@ -374,7 +374,7 @@ loc_exp({_, L, _, _, _, _}) -> L.
 -type qualifier() :: exp() | generators().
 
 -type bitstring_tyspec() :: atom() | {atom(), Value::integer()}.
--type bitstring_tyspec_list() :: [bitstring_tyspec()].
+-type bitstring_tyspec_list() :: [bitstring_tyspec(), ...].
 
 -type map_assoc_opt() :: {map_field_opt, loc(), exp(), exp()}.
 -type map_assoc_req() :: {map_field_req, loc(), exp(), exp()}.
@@ -404,7 +404,7 @@ loc_exp({_, L, _, _, _, _}) -> L.
 % A guard is a sequence of guard tests, separated by comma (,). The guard is true if all
 % guard tests evaluate to true.
 
--type guard() :: [guard_test()]. % list not empty
+-type guard() :: [guard_test(), ...].
 -type guard_test_bitstring_constr() :: gen_bitstring_constr(guard_test(), guard_test()).
 -type guard_test_cons() :: gen_cons(guard_test()).
 -type guard_test_funcall() :: gen_funcall(guard_test()).
