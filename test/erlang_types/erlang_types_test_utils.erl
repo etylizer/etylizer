@@ -35,7 +35,7 @@ test_tally(ConstrList, ExpectedSubst, FixedVars, Symtab) ->
     Constrs = 
     sets:from_list( 
       lists:map( 
-        fun ({T, U}) -> {scsubty, sets:from_list([loc_auto()]), T, U} end, 
+        fun ({T, U}) -> {scsubty, sets:from_list([test_loc()]), T, U} end, 
         ConstrList
        )),
 
@@ -66,7 +66,7 @@ test_tally_satisfiable(Satisfiable, ConstrList, FixedVars, Symtab) ->
     Constrs = 
       sets:from_list(
         lists:map( 
-          fun ({T, U}) -> {scsubty, sets:from_list([loc_auto()]), T, U} end,
+          fun ({T, U}) -> {scsubty, sets:from_list([test_loc()]), T, U} end,
           ConstrList
       )),
 
@@ -113,4 +113,4 @@ find_subst(X = [{Low, High} | OtherTests], [TallySubst | Others], AllTally) ->
 base_subst({tally_subst, S, _}) -> S;
 base_subst(S) -> S.
 
-loc_auto() -> {loc, "AUTO", -1, -1}.
+test_loc() -> {internal, test}.

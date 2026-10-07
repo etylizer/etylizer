@@ -11,7 +11,7 @@ is_more_general_test() ->
         AlphaToAlpha = tyscm([alpha], tfun([tvar(alpha)], tvar(alpha))),
         AlphaToBeta = tyscm([alpha, beta], tfun([tvar(alpha)], tvar(beta))),
         Tab = symtab:empty(),
-        L = ast:loc_auto(),
+        L = {internal, test},
         true = typing_infer:more_general(L, AtomToAtom, AtomToAtom, Tab),
         true = typing_infer:more_general(L, AtomToInt, AtomToInt, Tab),
         false = typing_infer:more_general(L, AtomToAtom, AtomToInt, Tab),

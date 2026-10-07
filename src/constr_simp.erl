@@ -126,7 +126,7 @@ simp_case_branch(Ctx, {ccase_branch, BranchLocs, Payload}) ->
         end,
     NewGuardsCtx = inter_env(Ctx, GuardsGammaI),
     GuardsDs = simp_constrs(NewGuardsCtx, GuardCsI),
-    GuardsLoc = loc(GuardCsI, ast:loc_auto()), % GuardCsI can be empty
+    GuardsLoc = loc(GuardCsI, LocBranch), % GuardCsI can be empty
     NewBodyCtx = inter_env(Ctx, BodyGammaI),
     ResultCs = constr:case_branch_result(Payload),
     BodyDs = simp_constrs(NewBodyCtx, BodyCsI),
@@ -185,9 +185,9 @@ loc({_, Locs}, Def) -> loc(Locs, Def);
 loc(Set, Def) ->
     GetLoc = fun(X) ->
         % X is either a constr:constr() or a ast:loc()
-        case X of
-            {loc, _, _, _} -> X;
-            _ -> loc(constr:locs_of_constr(X))
+        case ast:is_loc(X) of
+            true -> X;
+            false -> loc(constr:locs_of_constr(X))
         end
     end,
     case sets:to_list(Set) of

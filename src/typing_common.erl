@@ -14,7 +14,14 @@
 -include("etylizer.hrl").
 
 -spec format_src_loc(ast:loc()) -> string().
-format_src_loc({loc, File, LineNo, ColumnNo}) ->
+format_src_loc(Loc) ->
+    case ast:source_loc(Loc) of
+        {loc, File, LineNo, ColumnNo} -> format_src_loc(File, LineNo, ColumnNo);
+        none -> ""
+    end.
+
+-spec format_src_loc(string(), integer(), integer()) -> string().
+format_src_loc(File, LineNo, ColumnNo) ->
     ErrMsg = "",
     case utils:file_get_lines(File) of
         {error, _} -> ErrMsg;

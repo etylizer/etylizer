@@ -482,7 +482,11 @@ locs({Msg, Locs}) ->
            end).
 
 -spec loc(ast:loc()) -> doc().
-loc({loc, _, Line,Col}) -> text(utils:sformat("~w:~w", Line, Col)).
+loc(Loc) ->
+    case ast:source_loc(Loc) of
+        {loc, _, Line, Col} -> text(utils:sformat("~w:~w", Line, Col));
+        none -> text(ast:format_loc(Loc))
+    end.
 
 -spec substs([subst:t()]) -> doc().
 substs(L) ->
