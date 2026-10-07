@@ -101,7 +101,7 @@ gen_constrs_annotated_fun(ExhaustivenessMode, Symtab, {DisableExhaustiveness, Di
     end,
     ArgRefs = lists:map(fun(V) -> {local_ref, V} end, Args),
     Env = maps:from_list(lists:zip(ArgRefs, ArgTys)),
-    BodyCs = exps_constrs(Ctx, L, Body, ResTy),
+    BodyCs = exps_constrs(fun_body_ctx(Ctx, Body), L, Body, ResTy),
     Msg = utils:sformat("definition of ~w/~w", Name, Arity),
     utils:single({cdef, mk_locs(Msg, L), Env, BodyCs}).
 
@@ -205,7 +205,7 @@ exp_constrs(Ctx, E, T) ->
             ArgEnv = maps:from_list(ArgTys),
             ResTy = fresh_tyvar(Ctx),
             FunTy = {fun_full, lists:map(fun({_, Ty}) -> Ty end, ArgTys), ResTy},
-            CsBody = exps_constrs(Ctx, L, BodyExps, ResTy),
+            CsBody = exps_constrs(fun_body_ctx(Ctx, BodyExps), L, BodyExps, ResTy),
             BodyEnv =
                 case RecName of
                     no_name -> ArgEnv;
@@ -1690,6 +1690,16 @@ fun_clauses_to_exp_aux(Ctx, L, FunClauses) ->
 -spec fun_clause_to_case_clause(ast:fun_clause()) -> ast:case_clause().
 fun_clause_to_case_clause({fun_clause, L, Pats, Guards, Exps}) ->
     {case_clause, L, {tuple, ast:generated(fun_clauses, L), Pats}, Guards, Exps}.
+
+% The disable flags of a function only apply to the case built from its clauses.
+-spec fun_body_ctx(ctx(), ast:exps()) -> ctx().
+fun_body_ctx(Ctx, [{'case', L, _, _}]) ->
+    case ast:generated_by(L) of
+        fun_clauses -> Ctx;
+        _ -> Ctx#ctx{ disable_exhaustiveness = false, disable_redundancy = false }
+    end;
+fun_body_ctx(Ctx, _) ->
+    Ctx#ctx{ disable_exhaustiveness = false, disable_redundancy = false }.
 
 % if g1 -> e1;
 %    ...
