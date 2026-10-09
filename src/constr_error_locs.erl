@@ -10,8 +10,6 @@
     constr_block/0
 ]).
 
--include("etylizer.hrl").
-
 -type constr_error_kind() :: tyerror | redundant_branch | non_exhaustive_case.
 
 -type constr_blocks() :: list(constr_block()).
@@ -43,13 +41,8 @@ simp_constrs_to_blocks(Ds) ->
 
 -spec simp_constr_branch_to_blocks(constr:simp_constr_case_branch()) -> constr_blocks().
 simp_constr_branch_to_blocks({sccase_branch, {LocGuard, Guards}, _Cond,
-        {LocBody, Body}, {LocResult, Result}}) ->
-    BodyBlocks =
-        case sets:size(Body) of
-            1 -> simp_constr_to_blocks(lists:nth(1, ?assert_type(sets:to_list(Body), nonempty_list(constr:simp_constr()))));
-            _ -> [{tyerror, LocBody, "branch body",
-                    constr_collect:collect_constrs_no_matching_cond(Body)}]
-        end,
+        {_LocBody, Body}, {LocResult, Result}}) ->
+    BodyBlocks = simp_constrs_to_blocks(Body),
     GuardBlocks =
         case sets:is_empty(Guards) of
             true -> [];
