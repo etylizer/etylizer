@@ -163,7 +163,7 @@ traverse_named_references([CurrentReference | RemainingReferences], TypeDeclarat
                          {value, TyDecl} -> find_named_references(TyDecl);
                          false -> []
                      end,
-    ParameterReferences = handle_parameter_types(ParameterTypes),
+    ParameterReferences = find_named_references(ParameterTypes),
     % Filter out existing Names from the NextReferences list to prevent infinite loops
     % when we encounter cyclic type definitions.
     FilteredNextReferences = lists:filter(fun({named, _, {ty_ref, _ModName, Name, Arity}, _}) ->
@@ -178,21 +178,7 @@ find_type_declaration({TypeName, TypeArity}, TypeDeclarations) ->
               Name == TypeName andalso TypeArity == length(VariableList)
       end, TypeDeclarations).
 
--spec handle_parameter_types([ast:ty()]) -> [ast:ty_named()].
-handle_parameter_types(ParameterTypes) ->
-    References = handle_parameter_types_internal(ParameterTypes, sets:new([{version, 2}])),
-    sets:to_list(References).
-
--spec handle_parameter_types_internal([ast:ty()], sets:set(ast:ty_named())) -> sets:set(ast:ty_named()).
-handle_parameter_types_internal([Head | Tail], References) ->
-    case Head of
-        {named, _, _, _} -> handle_parameter_types_internal(Tail, sets:add_element(Head, References));
-        _ -> handle_parameter_types_internal(Tail, References)
-    end;
-handle_parameter_types_internal([], References) ->
-    References.
-
--spec find_named_references(ast:type_decl()) -> [ast:ty_named()].
+-spec find_named_references(ast:type_decl() | [ast:ty()]) -> [ast:ty_named()].
 find_named_references(TypeDeclaration) ->
     utils:everything(
       fun(T) ->

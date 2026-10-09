@@ -29,6 +29,13 @@ parametrized_types_test() ->
     verify_contains_type(parametrized_type, 1, Interface),
     verify_contains_type(parameter_type, 0, Interface).
 
+remote_type_argument_test() ->
+    Interface = load_interface("./test_files/extract_interface/remote_type_argument.erl"),
+
+    verify_contains_type(exported_type, 0, Interface),
+    verify_contains_type(wrapper, 1, Interface),
+    verify_contains_type(local_type, 0, Interface).
+
 overloaded_functions_test() ->
     Interface = load_interface("./test_files/extract_interface/overloaded_functions.erl"),
 
