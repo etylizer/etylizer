@@ -273,7 +273,7 @@ unparse(Dnf, ST) ->
                     {Acc ++ [Ele], ST1}
                 end,
                 {[], ST},
-                minimize_dnf(Dnf)
+                simplify_dnf(Dnf)
             ),
             {ast_lib:mk_union(ToUnion), ST2}
     end.
@@ -285,6 +285,65 @@ unparse_line({Pos, Neg, Leaf}, C0) ->
     {Lf, C3} = ?LEAF:unparse(Leaf, C2),
 
     {ast_lib:mk_intersection(Ps ++ Ns ++ [Lf]), C3}.
+
+% Simplification for unparsing for better variable handling
+-ifdef(VARIABLE_BDD).
+-spec simplify_dnf(type()) -> dnf().
+simplify_dnf(T) ->
+    case minimize_dnf(T) of
+        Lines = [_, _ | _] -> reduce_lines(Lines, T);
+        Lines -> Lines
+    end.
+
+-spec reduce_lines(dnf(), type()) -> dnf().
+reduce_lines(Lines, T) ->
+    General = lists:sort(fun({_, {P1, N1, _}}, {_, {P2, N2, _}}) ->
+        {length(P1), length(N1)} =< {length(P2), length(N2)}
+    end, lists:enumerate(Lines)),
+    Kept = lists:foldl(fun({I, Line}, Acc) ->
+        case covered(Line, lines_to_bdd([L || {_, L} <- Acc])) of
+            true -> Acc;
+            false -> [{I, drop_literals(Line, T)} | Acc]
+        end
+    end, [], General),
+    Specific = lists:sort(fun({_, {P1, N1, _}}, {_, {P2, N2, _}}) ->
+        length(P1) + length(N1) >= length(P2) + length(N2)
+    end, Kept),
+    Needed = lists:foldl(fun(Indexed = {_, Line}, Acc) ->
+        Others = Acc -- [Indexed],
+        case covered(Line, lines_to_bdd([L || {_, L} <- Others])) of
+            true -> Others;
+            false -> Acc
+        end
+    end, Kept, Specific),
+    % keep the order of the exact lines
+    [Line || {_, Line} <- lists:keysort(1, Needed)].
+
+-spec drop_literals(line(), type()) -> line().
+drop_literals({Pos, Neg, Leaf}, T) ->
+    lists:foldl(fun(A, Line = {P, N, _}) ->
+        Candidate = {P -- [A], N -- [A], Leaf},
+        case covered(Candidate, T) of
+            true -> Candidate;
+            false -> Line
+        end
+    end, {Pos, Neg, Leaf}, Neg ++ Pos).
+
+-spec covered(line(), type()) -> boolean().
+covered(Line, T) ->
+    {Empty, _} = is_empty(difference(lines_to_bdd([Line]), T), #{}),
+    Empty.
+
+-spec lines_to_bdd(dnf()) -> type().
+lines_to_bdd(Lines) ->
+    lists:foldl(fun union/2, empty(), [
+        lists:foldl(fun intersect/2, leaf(Leaf),
+            [singleton(A) || A <- Pos] ++ [negated_singleton(A) || A <- Neg])
+        || {Pos, Neg, Leaf} <- Lines]).
+-else.
+-spec simplify_dnf(type()) -> dnf().
+simplify_dnf(T) -> minimize_dnf(T).
+-endif.
 
 -spec minimize_dnf(type()) -> dnf().
 minimize_dnf(T) ->
