@@ -10,7 +10,6 @@
     t/0,
     fun_env/0,
     ty_env/0,
-    record_env/0,
     op_env/0
 ]).
 
@@ -19,7 +18,6 @@
     find_fun/2,
     lookup_op/4,
     lookup_ty/3,
-    lookup_record/3,
     std_symtab/3,
     extend_symtab/4,
     extend_symtab_with_fun_env/2,
@@ -41,14 +39,12 @@
 -type fun_env() :: #{ ast:global_ref() => ast:ty_scheme() }.
 -type ty_key() :: {ty_key, Module::atom(), Name::atom(), Arity::arity()}.
 -type ty_env() :: #{ ty_key() => ast:ty_scheme() }.
--type record_env() :: #{ atom() => ety_records:record_ty() }.
 -type op_env() :: #{ {atom(), arity()} => ast:ty_scheme() }.
 -type mod_env() :: #{ ast:mod_name() => file:filename() }.
 -record(tab, {
               funs :: fun_env(),
               ops :: op_env(),
               types :: ty_env(),
-              records :: record_env(),
               modules :: mod_env(),
               gradual = dynamic :: feature_flags:gradual_typing_mode(),
               variances = undefined :: undefined | subst:variance_cache()
@@ -64,18 +60,16 @@ get_variances(#tab{variances = Variances}) -> Variances.
 
 -spec dump_symtab(string(), t()) -> ok.
 dump_symtab(Msg, Tab) ->
-    ?LOG_DEBUG("~s~nFunctions: ~w~nTypes: ~w~nOperators: ~w~nRecords: ~w",
+    ?LOG_DEBUG("~s~nFunctions: ~w~nTypes: ~w~nOperators: ~w",
         Msg,
         maps:keys(Tab#tab.funs),
         maps:keys(Tab#tab.types),
-        maps:keys(Tab#tab.ops),
-        maps:keys(Tab#tab.records)),
-    ?LOG_TRACE("~s~nFunctions:~n~s~ntypes:~n~s~nOperators:~n~s~nRecords:~n~s",
+        maps:keys(Tab#tab.ops)),
+    ?LOG_TRACE("~s~nFunctions:~n~s~ntypes:~n~s~nOperators:~n~s",
         Msg,
         pretty:render_fun_env(Tab#tab.funs),
         pretty:render_ty_env(Tab#tab.types),
-        pretty:render_op_env(Tab#tab.ops),
-        pretty:render_record_env(Tab#tab.records)).
+        pretty:render_op_env(Tab#tab.ops)).
 
 -spec dump_symtab_not_defined(string(), string(), t()) -> ok.
 dump_symtab_not_defined(Key, What, Tab) ->
@@ -131,18 +125,6 @@ find_ty(Ref, Tab) ->
             end ,
     maps:find(TyRef, Tab#tab.types).
 
--spec lookup_record(atom(), ast:loc(), t()) -> ety_records:record_ty().
-lookup_record(Name, Loc, Tab) ->
-    case find_record(Name, Tab) of
-        {ok, X} -> X;
-        error ->
-            dump_symtab_not_defined(utils:sformat("~w", Name), "record", Tab),
-            errors:name_error(Loc, "record ~w undefined", Name)
-    end.
-
--spec find_record(atom(), t()) -> t:opt(ety_records:record_ty()).
-find_record(Name, Tab) -> maps:find(Name, Tab#tab.records).
-
 -spec symbols_for_module(atom(), t()) -> [{ref, atom(), arity()}].
 symbols_for_module(Mod, Tab) ->
     lists:filtermap(
@@ -157,7 +139,7 @@ symbols_for_module(Mod, Tab) ->
         ).
 
 -spec empty() -> t().
-empty() -> #tab { funs = #{}, ops = #{}, types = #{}, records = #{}, modules = #{} }.
+empty() -> #tab { funs = #{}, ops = #{}, types = #{}, modules = #{} }.
 
 -spec std_symtab(paths:search_path(), t(), feature_flags:gradual_typing_mode()) -> t().
 std_symtab(SearchPath, OverlaySymtab, Gradual) ->
@@ -184,7 +166,7 @@ build_std_symtab(SearchPath, OverlaySymtab, Gradual) ->
         lists:foldl(fun({Name, Arity, T}, Map) -> maps:put({Name, Arity}, T, Map) end,
                     #{},
                     stdtypes:builtin_ops()),
-    Tab = #tab { funs = Funs, ops = Ops, types = #{}, records = #{}, modules = #{}, gradual = Gradual },
+    Tab = #tab { funs = Funs, ops = Ops, types = #{}, modules = #{}, gradual = Gradual },
     ExtTab = extend_symtab_with_module_list(Tab, SearchPath, [erlang], OverlaySymtab),
     % Merge overlay types into the main symtab so they are available for type resolution
     ExtTab2 = ExtTab#tab { types = maps:merge(ExtTab#tab.types, OverlaySymtab#tab.types) },
@@ -298,8 +280,8 @@ extend_process_form({attribute, _, spec, Name, Arity, T, _}, AccTab, RefType, Mo
     extend_add_spec(Name, Arity, T, AccTab, RefType, ModuleName, Forms, OverlaySymtab);
 extend_process_form({attribute, _, type, _, {Name, TyScm = {ty_scheme, TyVars, _}}}, AccTab, _RefType, ModuleName, _Forms, _OverlaySymtab) ->
     extend_add_type(Name, TyScm, TyVars, ModuleName, AccTab);
-extend_process_form({attribute, _, record, {RecordName, Fields}}, AccTab, _RefType, ModuleName, _Forms, _OverlaySymtab) ->
-    extend_add_record(RecordName, Fields, ModuleName, AccTab);
+extend_process_form({attribute, _, record, {RecordName, Fields}}, AccTab, RefType, ModuleName, _Forms, _OverlaySymtab) ->
+    extend_add_record(RecordName, Fields, RefType, ModuleName, AccTab);
 extend_process_form(_, AccTab, _RefType, _ModuleName, _Forms, _OverlaySymtab) ->
     AccTab.
 
@@ -323,15 +305,21 @@ extend_add_type(Name, TyScm, TyVars, ModuleName, AccTab) ->
     Arity = length(TyVars),
     AccTab#tab { types = maps:put({ty_key, ModuleName, Name, Arity}, TyScm, AccTab#tab.types) }.
 
--spec extend_add_record(atom(), list(), atom(), t()) -> t().
-extend_add_record(RecordName, Fields, ModuleName, AccTab) ->
+-spec extend_add_record(atom(), list(), ref(), atom(), t()) -> t().
+extend_add_record(RecordName, Fields, RefType, ModuleName, AccTab) ->
     RecordTy = ety_records:record_ty_from_decl(RecordName, Fields),
     RecTypeName = ety_records:record_type_name(RecordName),
     RecTupleType = ety_records:encode_record_ty(RecordTy),
     RecTyScheme = {ty_scheme, [], RecTupleType},
+    % a record is local to its module, and so are the functions reading its fields
+    Readers =
+        case RefType of
+            ref -> maps:from_list(ety_records:readers(RecordTy));
+            {qref, _} -> #{}
+        end,
     AccTab#tab {
-        records = maps:put(RecordName, RecordTy, AccTab#tab.records),
-        types = maps:put({ty_key, ModuleName, RecTypeName, 0}, RecTyScheme, AccTab#tab.types)
+        types = maps:put({ty_key, ModuleName, RecTypeName, 0}, RecTyScheme, AccTab#tab.types),
+        funs = maps:merge(AccTab#tab.funs, Readers)
     }.
 
 -spec extend_symtab_with_fun_env(fun_env(), t()) -> t().
@@ -401,7 +389,6 @@ merge_contribution(Tab, Contribution) ->
     Tab#tab{
         funs = maps:merge(Tab#tab.funs, Contribution#tab.funs),
         types = maps:merge(Tab#tab.types, Contribution#tab.types),
-        records = maps:merge(Tab#tab.records, Contribution#tab.records),
         modules = maps:merge(Tab#tab.modules, Contribution#tab.modules)
     }.
 

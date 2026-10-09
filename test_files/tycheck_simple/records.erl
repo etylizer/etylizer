@@ -40,6 +40,9 @@ get_age_02(P) -> P#person.age.
 -spec get_age_02_fail(#person{ age :: string() }) -> integer().
 get_age_02_fail(P) -> P#person.age.
 
+-spec get_age_03_fail(#person{} | undefined) -> integer().
+get_age_03_fail(P) -> P#person.age.
+
 %%%%%%%%%%%%%%%%%%%%%%%% FIELD INDEX %%%%%%%%%%%%%%%%%%%%%%%
 
 -spec age_index() -> integer().
@@ -68,6 +71,22 @@ set_age_02_fail(P, I) -> P#person{age = I}.
 -spec set_age_03_fail(#person{ age :: string() }, string()) -> #person{ age :: atom() }.
 set_age_03_fail(P, I) -> P#person{age = I}.
 
+-spec set_name_02_fail(#person{} | undefined, string()) -> #person{}.
+set_name_02_fail(P, X) -> P#person{name = X}.
+
+% all fields are replaced, the updated value still has to be the record
+-spec set_all(#person{}) -> #person{}.
+set_all(P) -> P#person{name = "max", age = 13, address = "blub"}.
+
+-spec set_all_fail(#person{} | undefined) -> #person{}.
+set_all_fail(P) -> P#person{name = "max", age = 13, address = "blub"}.
+
+% several fields of a record with many fields
+-record(wide, {f1, f2, f3, f4, f5, f6, f7, f8, f9, f10, f11, f12}).
+
+-spec set_wide(#wide{}) -> #wide{}.
+set_wide(W) -> W#wide{f1 = 1, f5 = 2, f9 = 3, f12 = 4}.
+
 %%%%%%%%%%%%%%%%%%%%%%%% PATTERNS %%%%%%%%%%%%%%%%%%%%%%%
 
 -spec get_name_pattern(#person{}) -> string().
@@ -94,20 +113,20 @@ get_age_02_pattern_fail(P) ->
         #person{name=_, age=I} -> I
     end.
 
--spec index_pattern_01(1) -> 2.
+-spec index_pattern_01(2) -> 3.
 index_pattern_01(I) ->
     case I of
         #person.name -> #person.age
     end.
 
--spec index_pattern_02(integer()) -> 1.
+-spec index_pattern_02(integer()) -> 2.
 index_pattern_02(I) ->
     case I of
         #person.name -> I;
-        _ -> 1
+        _ -> 2
     end.
 
--spec index_pattern_03_fail(integer()) -> 2.
+-spec index_pattern_03_fail(integer()) -> 3.
 index_pattern_03_fail(I) ->
     case I of
         #person.name -> #person.age
@@ -136,6 +155,21 @@ get_name_from_invoice_02(X) -> X#invoice.person#person.name.
 -spec get_name_from_invoice_02_fail(#invoice{ person :: #person { name :: integer() }}) -> string().
 get_name_from_invoice_02_fail(X) -> X#invoice.person#person.name.
 
+%%%%%%%%%%%%%%%%%%%%%%%% GUARDS %%%%%%%%%%%%%%%%%%%%%%%
+
+% a field read in a guard has the type of the field
+-spec guard_01(#person{}) -> boolean().
+guard_01(P) when P#person.age + 1 > 18 -> true;
+guard_01(_) -> false.
+
+-spec guard_02_fail(#person{}) -> boolean().
+guard_02_fail(P) when P#person.name + 1 > 18 -> true;
+guard_02_fail(_) -> false.
+
+-spec guard_03(#invoice{}) -> boolean().
+guard_03(X) when X#invoice.person#person.age > 18 -> true;
+guard_03(_) -> false.
+
 %%%%%%%%%%%%%%%%%%%%%%%% DEFAULT VALUES %%%%%%%%%%%%%%%%%%%%%%%
 
 % Omitting a field with a default value should work
@@ -149,6 +183,62 @@ default_02() -> #item{value=1, label="hello", count=5}.
 % Omitting a field without a default should fail
 -spec default_03_fail() -> #item{}.
 default_03_fail() -> #item{value=1}.
+
+% A default is evaluated in the scope of the record creation: variables generated for
+% the default must not clash with the ones generated there
+-record(conv, {f = fun(Y) -> atom_to_list(_ = Y) end :: fun((integer()) -> string())}).
+
+-spec default_04_fail() -> #conv{}.
+default_04_fail() -> #conv{}.
+
+-spec default_05_fail(foo) -> #conv{}.
+default_05_fail(foo) -> #conv{}.
+
+-spec default_06_fail(foo | bar) -> #conv{} | error.
+default_06_fail(Z) ->
+    maybe
+        foo ?= Z,
+        #conv{}
+    else
+        _ -> error
+    end.
+
+% X = Y in the default is a match against an X bound at the record creation
+-record(same, {f = fun(Y) -> X = Y, X end :: fun((integer()) -> integer())}).
+
+-spec default_07() -> #same{}.
+default_07() -> #same{}.
+
+-spec default_08_fail(integer()) -> {integer(), #same{}}.
+default_08_fail(X) -> {X, #same{}}.
+
+% A default is checked against the declared type of its field, also where nothing asks
+% for the type of the record
+-record(wrong_default, {n = foo :: integer()}).
+
+-spec default_09_fail() -> any().
+default_09_fail() -> #wrong_default{}.
+
+-spec default_10() -> #wrong_default{}.
+default_10() -> #wrong_default{n = 1}.
+
+% An omitted field has its declared type, not the type of its default
+-record(conn, {state = closed :: closed | open}).
+
+-spec default_11() -> ok | error.
+default_11() ->
+    C = #conn{},
+    case C#conn.state of
+        closed -> ok;
+        open -> error
+    end.
+
+-spec default_12_fail() -> ok.
+default_12_fail() ->
+    C = #conn{},
+    case C#conn.state of
+        closed -> ok
+    end.
 
 %%%%%%%%%%%%%%%%%%%%%%%% WILDCARD FIELD (record_field_other) %%%%%%%%%%%%%%%%%%%%%%%
 

@@ -6,13 +6,12 @@
 
 -spec pat_guard_lower_upper_test() -> ok.
 pat_guard_lower_upper_test() ->
-    Symtab = symtab:empty(),
     % The guarded pattern `_ when true`
     Loc = {internal, test},
     P = {wildcard, Loc},
     G = [{'atom', Loc, true}],
     E = {var, Loc, {local_ref, {foo, 1}}},
-    {Upper, Lower} = constr_gen:pat_guard_lower_upper(Symtab, P, [G], E),
+    {Upper, Lower} = constr_gen:pat_guard_lower_upper(P, [G], E),
     ?LOG_WARN("Upper: ~w, Lower: ~w", Upper, Lower),
     % Upper and Lower should be equiv to any()
     Any = {predef, any},
@@ -20,10 +19,9 @@ pat_guard_lower_upper_test() ->
     ?assertEqual(true, is_equiv(Lower, Any)).
 
 assert_ty_of_pat(P, Upper, Lower) ->
-    Symtab = symtab:empty(),
     Env = #{},
-    GivenUpper = constr_gen:ty_of_pat(Symtab, Env, P, upper),
-    GivenLower = constr_gen:ty_of_pat(Symtab, Env, P, lower),
+    GivenUpper = constr_gen:ty_of_pat(Env, P, upper),
+    GivenLower = constr_gen:ty_of_pat(Env, P, lower),
     ?LOG_WARN("ty_of_pat, P=~200p, Upper=~w, GivenUpper=~w, Lower=~w, GivenLower=~w",
         P, Upper, GivenUpper, Lower, GivenLower),
     ?assertEqual(true, is_equiv(Upper, GivenUpper)),

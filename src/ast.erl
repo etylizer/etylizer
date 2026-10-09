@@ -49,8 +49,6 @@
     pat_op/0,
     pat_map/0,
     pat_map_assoc/0,
-    pat_record/0,
-    pat_record_fld_idx/0,
     pat_tuple/0,
     pat_wildcard/0,
     pat_var/0,
@@ -76,10 +74,6 @@
     exp_unop/0,
     exp_recv/0,
     exp_recv_after/0,
-    exp_record_create/0,
-    exp_record_access/0,
-    exp_record_index/0,
-    exp_record_update/0,
     exp_tuple/0,
     exp_try/0,
     exp_var/0,
@@ -117,9 +111,6 @@
     guard_test_nil/0,
     guard_test_binop/0,
     guard_test_unop/0,
-    guard_test_record_create/0,
-    guard_test_record_access/0,
-    guard_test_record_index/0,
     guard_test_tuple/0,
     guard_test_var/0,
     guard_test/0,
@@ -317,15 +308,12 @@ get_fun_name({function, _Loc, Name, Arity, _}) -> utils:sformat("~w/~w", Name, A
 -type pat_op() :: {op, loc(), atom(), [pat()]}.
 -type pat_map() :: {map, loc(), [pat_map_assoc()]}. %  #{A_1, ..., A_k} with Ai: P_i_1 := P_i_2
 -type pat_map_assoc() :: {map_field_req, loc(), pat(), pat()}.
--type pat_record() :: {record, loc(), RecordName::atom(),
-                       [{record_field, loc(), FieldName::atom(), pat()}]}.
--type pat_record_fld_idx() ::  {record_index, loc(), RecordName::atom(), FieldName::atom()}.
 -type pat_tuple() :: {tuple, loc(), [pat()]}.
 -type pat_wildcard() :: {wildcard, loc()}.
 -type pat_var() :: {var, loc(), local_ref_bind()}.
 
 -type pat() :: atomic_lit() | pat_bitstring() | pat_compound() | pat_nil() | pat_cons() | pat_map()
-    | pat_op() | pat_record_fld_idx() | pat_record() | pat_tuple()
+    | pat_op() | pat_tuple()
     | pat_wildcard() | pat_var().
 
 % 8.4  Expressions
@@ -365,16 +353,6 @@ get_fun_name({function, _Loc, Name, Arity, _}) -> utils:sformat("~w/~w", Name, A
 -type exp_unop() :: gen_unop(exp()).
 -type exp_recv() :: {'receive', loc(), [case_clause(), ...]}.
 -type exp_recv_after() :: {receive_after, loc(), [case_clause()], exp(), exps()}.
--type gen_record_create(T) :: {record_create, loc(), Name::atom(),
-                               [{record_field, loc(), Field::atom(), T} |
-                                {record_field_other, loc(), T}]}.
--type exp_record_create() :: gen_record_create(exp()).
--type gen_record_access(T) :: {record_field, loc(), T, Name::atom(), Field::atom()}.
--type exp_record_access() :: gen_record_access(exp()).
--type gen_record_index() :: {record_index, loc(), Name::atom(), Field::atom()}.
--type exp_record_index() :: gen_record_index().
--type exp_record_update() ::  {record_update, loc(), exp(), Name::atom(),
-                               [{record_field, loc(), Field::atom(), exp()}]}.
 -type gen_tuple(T) ::  {tuple, loc(), [T]}.
 -type exp_tuple() ::  gen_tuple(exp()).
 % Note: In the internal AST, the Cases field is always empty ([]) after transformation.
@@ -391,12 +369,15 @@ get_fun_name({function, _Loc, Name, Arity, _}) -> utils:sformat("~w/~w", Name, A
 
 % There is no match expression, because match expressions are represented as case expressions.
 % There is no if expression, because if expressions are represented as case expressions over the empty tuple.
+% There are no record expressions and patterns, because a record is represented as a tuple.
+% A field is read with a function of the symtab (see ety_records:readers/1), and #Name.Field
+% is an integer literal.
 -type exp() :: atomic_lit() | exp_bitstring_compr() | exp_bitstring_constr() | exp_block()
     | exp_case() | exp_catch() | exp_cons() | exp_fun_ref() | exp_fun_ref_dyn() | exp_fun()
     | exp_funcall() | exp_list_compr()
     | exp_map_create() | exp_map_update() | exp_map_compr()
-    | exp_nil() | exp_binop() | exp_unop() | exp_recv() | exp_recv_after() | exp_record_create()
-    | exp_record_access() | exp_record_index() | exp_record_update() | exp_tuple() | exp_try()
+    | exp_nil() | exp_binop() | exp_unop() | exp_recv() | exp_recv_after()
+    | exp_tuple() | exp_try()
     | exp_var() | exp_annotate() | exp_assert().
 
 -type exps() :: [exp(), ...].
@@ -458,16 +439,12 @@ loc_exp({_, L, _, _, _, _}) -> L.
 -type guard_test_nil() :: gen_nil().
 -type guard_test_binop() :: gen_binop(guard_test()).
 -type guard_test_unop() :: gen_unop(guard_test()).
--type guard_test_record_create() :: gen_record_create(guard_test()).
--type guard_test_record_access() :: gen_record_access(guard_test()).
--type guard_test_record_index() :: gen_record_index().
 -type guard_test_tuple() :: gen_tuple(guard_test()).
 -type guard_test_var() :: gen_var().
 
 -type guard_test() :: atomic_lit() | guard_test_bitstring_constr() | guard_test_cons()
     | guard_test_funcall() | guard_test_map_create() | guard_test_map_update() | guard_test_nil()
-    | guard_test_binop() | guard_test_unop() | guard_test_record_create()
-    | guard_test_record_access() | guard_test_record_index() | guard_test_tuple()
+    | guard_test_binop() | guard_test_unop() | guard_test_tuple()
     | guard_test_var().
 
 % 8.7  Types
