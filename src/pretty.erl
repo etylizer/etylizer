@@ -650,13 +650,6 @@ render_exp(Exp, Indent) ->
             render_exp(Pat, Indent) ++ " = " ++ render_exp(E, Indent);
         {'catch', _, E} ->
             "catch " ++ render_exp(E, Indent);
-        {'if', _, Clauses} ->
-            Pad = lists:duplicate(Indent, $\s),
-            Inner = Indent + 2,
-            InPad = lists:duplicate(Inner, $\s),
-            "if\n" ++
-            string:join([InPad ++ render_if_clause(C, Inner) || C <- Clauses], ";\n") ++ "\n" ++
-            Pad ++ "end";
         {'receive', _, Clauses} ->
             Pad = lists:duplicate(Indent, $\s),
             Inner = Indent + 2,
@@ -758,13 +751,6 @@ render_fun_clause({fun_clause, _, Pats, Guards, Body}, Indent) ->
     GuardStr = render_guards(Guards, Indent),
     BodyStr = string:join([render_exp(E, Indent + 2) || E <- Body], ",\n" ++ lists:duplicate(Indent + 2, $\s)),
     PatStr ++ GuardStr ++ " -> " ++ BodyStr.
-
--spec render_if_clause(ast:if_clause(), non_neg_integer()) -> string().
-render_if_clause({if_clause, _, Guards, Body}, Indent) ->
-    GuardStr = string:join(
-        [string:join([render_exp(G, Indent) || G <- Guard], ", ") || Guard <- Guards], "; "),
-    BodyStr = string:join([render_exp(E, Indent + 2) || E <- Body], ",\n" ++ lists:duplicate(Indent + 2, $\s)),
-    GuardStr ++ " ->\n" ++ lists:duplicate(Indent + 2, $\s) ++ BodyStr.
 
 -spec render_catch_clause(ast:catch_clause(), non_neg_integer()) -> string().
 render_catch_clause({catch_clause, _, ExcType, Pat, Stack, Guards, Body}, Indent) ->

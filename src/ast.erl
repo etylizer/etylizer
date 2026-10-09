@@ -67,7 +67,6 @@
     rec_fun_name/0,
     exp_fun/0,
     exp_funcall/0,
-    exp_if/0,
     exp_list_compr/0,
     exp_map_create/0,
     exp_map_update/0,
@@ -109,7 +108,6 @@
     stacktrace_pat/0,
     case_clause/0,
     fun_clause/0,
-    if_clause/0,
     guard/0,
     guard_test_bitstring_constr/0,
     guard_test_cons/0,
@@ -353,7 +351,6 @@ get_fun_name({function, _Loc, Name, Arity, _}) -> utils:sformat("~w/~w", Name, A
 -type gen_funcall(T) :: {call, loc(), Fun::T, Args::[T]}
                       | {call_remote, loc(), Mod::T, Fun::T, Args::[T]}.
 -type exp_funcall() :: gen_funcall(exp()).
--type exp_if() :: {'if', loc(), [if_clause(), ...]}.
 -type exp_list_compr() :: {lc, loc(), exp(), [qualifier(), ...]}.
 -type gen_map_create() :: {map_create, loc(), [map_assoc_opt()]}.
 -type exp_map_create() :: gen_map_create().
@@ -393,9 +390,10 @@ get_fun_name({function, _Loc, Name, Arity, _}) -> utils:sformat("~w/~w", Name, A
 -type exp_assert() :: {assert, loc(), exp(), ty()}.
 
 % There is no match expression, because match expressions are represented as case expressions.
+% There is no if expression, because if expressions are represented as case expressions over the empty tuple.
 -type exp() :: atomic_lit() | exp_bitstring_compr() | exp_bitstring_constr() | exp_block()
     | exp_case() | exp_catch() | exp_cons() | exp_fun_ref() | exp_fun_ref_dyn() | exp_fun()
-    | exp_funcall() | exp_if() | exp_list_compr()
+    | exp_funcall() | exp_list_compr()
     | exp_map_create() | exp_map_update() | exp_map_compr()
     | exp_nil() | exp_binop() | exp_unop() | exp_recv() | exp_recv_after() | exp_record_create()
     | exp_record_access() | exp_record_index() | exp_record_update() | exp_tuple() | exp_try()
@@ -440,7 +438,6 @@ loc_exp({_, L, _, _, _, _}) -> L.
 
 -type case_clause() :: {case_clause, loc(), Pat::pat(), Guards::[guard()], Body::exps()}.
 -type fun_clause()  :: {fun_clause, loc(), Pats::[pat()], Guards::[guard()], Body::exps()}.
--type if_clause()   :: {if_clause, loc(), Guards::[guard()], Body::exps()}.
 
 % 8.6  Guards
 
