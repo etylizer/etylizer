@@ -56,9 +56,10 @@ string_to_cons_ty([X | Xs]) ->
 % Inference for a group of mutually recursive functions without type annotations.
 -spec gen_constrs_fun_group(feature_flags:exhaustiveness_mode(), symtab:t(), {sets:set({atom(), arity()}), sets:set({atom(), arity()})}, [ast:fun_decl()]) -> {constr:constrs(), constr:constr_env()}.
 gen_constrs_fun_group(ExhaustivenessMode, Symtab, {DisableExhaustiveness, DisableRedundancy}, Decls) ->
+    % type variables must be fresh across functions
+    Ctx0 = new_ctx(Symtab, ExhaustivenessMode),
     lists:foldl(
       fun({function, L, Name, Arity, Args, Body}, {Cs, Env}) ->
-              Ctx0 = new_ctx(Symtab, ExhaustivenessMode),
               Ctx = Ctx0#ctx{
                   disable_exhaustiveness = sets:is_element({Name, Arity}, DisableExhaustiveness),
                   disable_redundancy = sets:is_element({Name, Arity}, DisableRedundancy)
