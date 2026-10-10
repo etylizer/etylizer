@@ -119,6 +119,10 @@ cmd_spec() ->
               help => "Disable exhaustiveness checking for a function (name/arity). May be given multiple times."},
             #{name => no_redundancy, long => "-no-redundancy", action => append, default => [],
               help => "Disable redundancy checking for a function (name/arity). May be given multiple times."},
+            #{name => only_recheck_changed, long => "-only-recheck-changed", type => boolean, default => false,
+              help => "Skip rechecking previously-failed functions whose body and spec are unchanged. "
+                      "Default behavior is to always retry failed functions. Intended for watch-mode "
+                      "drivers (e.g. ety-watch) where re-running an unchanged failed function is noise."},
             #{name => verbose, short => $v, long => "-verbose", type => boolean, default => false,
               help => "Verbose output (e.g. preprocessor warnings)"},
             #{name => metrics_file, long => "-metrics-file",
@@ -167,6 +171,7 @@ parse_args(Args) ->
         load_end = maps:get(load_end, ArgMap),
         no_exhaustiveness = maps:get(no_exhaustiveness, ArgMap),
         no_redundancy = maps:get(no_redundancy, ArgMap),
+        only_recheck_changed = maps:get(only_recheck_changed, ArgMap),
         files = maps:get(files, ArgMap),
         type_overlay = maps:get(type_overlay, ArgMap, []),
         verbose = maps:get(verbose, ArgMap, false),
@@ -228,7 +233,7 @@ dump_transformed_ast(Opts) ->
         end, FunDecls)
     end, Opts#opts.files).
 
--spec doWork(#opts{}) -> [file:filename()].
+-spec doWork(#opts{}) -> cm_check:check_list().
 doWork(Opts) ->
     global_state:with_new_state(fun() ->
       ?LOG_TRACE("Initializing ETS tables"),
@@ -257,18 +262,13 @@ doWork(Opts) ->
           end,
           SourceList = paths:generate_input_file_list(Opts),
           SearchPath = paths:compute_search_path(Opts),
-          DepGraph =
+          {DepGraphOrigin, DepGraph} =
               case Opts#opts.no_deps of
                   true ->
                       % only typecheck the files given
-                      cm_depgraph:new(SourceList);
+                      {built, cm_depgraph:new(SourceList)};
                   false ->
-                      ?LOG_DEBUG("Entry points: ~p, now building dependency graph", SourceList),
-                      G = cm_depgraph:build_dep_graph(
-                          SourceList,
-                          SearchPath),
-                      ?LOG_DEBUG("Reverse dependency graph: ~p", cm_depgraph:pretty_depgraph(G)),
-                      G
+                      dep_graph(SourceList, SearchPath, Opts)
               end,
           case Opts#opts.dump_transformed of
               true ->
@@ -276,7 +276,16 @@ doWork(Opts) ->
                   [];
               false ->
                   ?LOG_INFO("Performing type checking"),
-                  cm_check:perform_type_checks(SearchPath, cm_depgraph:all_sources(DepGraph), DepGraph, Opts)
+                  CheckList = cm_check:perform_type_checks(
+                      SearchPath, cm_depgraph:all_sources(DepGraph), DepGraph, Opts),
+                  case {DepGraphOrigin, [F || {F, _} <- CheckList]} of
+                      {cached, Changed = [_ | _]} ->
+                          % bring the cached graph up to date with the changed files
+                          cm_depgraph:save_depgraph(paths:depgraph_file_name(Opts), SourceList,
+                              cm_depgraph:refresh(Changed, SearchPath, DepGraph));
+                      _ -> ok
+                  end,
+                  CheckList
           end
       after
           case Opts#opts.metrics_file of
@@ -286,9 +295,28 @@ doWork(Opts) ->
           metrics:cleanup(),
           symtab_cache:save(Opts),
           parse_cache:cleanup(),
-          stdtypes:cleanup()
+          stdtypes:cleanup(),
+          paths:clear_module_cache()
       end
                                 end).
+
+% The dependency graph for the entry points: the cached one, or a new one if there is
+% none for them or a rebuild is forced.
+-spec dep_graph([file:filename()], paths:search_path(), cmd_opts()) ->
+    {cached | built, cm_depgraph:dep_graph()}.
+dep_graph(SourceList, SearchPath, Opts) ->
+    File = paths:depgraph_file_name(Opts),
+    case Opts#opts.force orelse cm_depgraph:load_depgraph(File, SourceList) of
+        {ok, CachedGraph} ->
+            ?LOG_DEBUG("Using cached dependency graph"),
+            {cached, CachedGraph};
+        _ ->
+            ?LOG_DEBUG("Entry points: ~p, now building dependency graph", SourceList),
+            G = cm_depgraph:build_dep_graph(SourceList, SearchPath),
+            ?LOG_DEBUG("Reverse dependency graph: ~p", cm_depgraph:pretty_depgraph(G)),
+            cm_depgraph:save_depgraph(File, SourceList, G),
+            {built, G}
+    end.
 
 -spec main([string()]) -> ok.
 main(Args) ->

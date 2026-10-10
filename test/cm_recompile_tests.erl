@@ -17,16 +17,18 @@ parse_versions(S) ->
     end.
 
 % Parse a filename such as "foo_V1+2.erl" to return {ok, "foo.erl", sets:from_list([1,2])}
+% Headers (.hrl) have versions, too.
 -spec parse_filename(file:name()) -> {ok, string(), sets:set(integer())} | error.
 parse_filename(Name) ->
-    case filename:extension(Name) =:= ".erl" of
+    Ext = filename:extension(Name),
+    case lists:member(Ext, [".erl", ".hrl"]) of
         false -> error;
         true ->
             Root = filename:rootname(Name),
             case string:split(Root, "_", trailing) of
                 [Start, "V" ++ VersionsString] ->
                     case parse_versions(VersionsString) of
-                        {ok, Versions} -> {ok, Start ++ ".erl", Versions};
+                        {ok, Versions} -> {ok, Start ++ Ext, Versions};
                         error -> error
                     end;
                 _ -> error
@@ -56,20 +58,46 @@ get_files_with_version(Dir, Version) ->
         end,
         Files).
 
--type tycheck_mode() :: tycheck | dont_tycheck.
+-type tycheck_mode() :: tycheck | dont_tycheck | report.
 
--spec run_typechecker(file:name(), tycheck_mode()) -> [file:name()].
+-spec run_typechecker(file:name(), tycheck_mode()) -> cm_check:check_list().
 run_typechecker(SrcDir, Mode) ->
     Opts = #opts{
         files = [filename:join(SrcDir, "main.erl")],
         project_root = SrcDir,
         mode = test_mode,
-        no_type_checking = (Mode =:= dont_tycheck)
+        no_type_checking = (Mode =:= dont_tycheck),
+        report_mode = case Mode of report -> report; _ -> early_exit end
     },
     etylizer_main:doWork(Opts).
 
+% What a run is expected to check. An entry naming only a file accepts any functions.
+-type expected() :: type_error | [string() | {string(), all | [{atom(), arity()}]}].
+
+% The check list with the files' base names, sorted
+-spec normalize_check_list(cm_check:check_list()) -> cm_check:check_list().
+normalize_check_list(CheckList) ->
+    lists:sort([{filename:basename(F), sort_filter(Funs)} || {F, Funs} <- CheckList]).
+
+-spec sort_filter(all | [{atom(), arity()}]) -> all | [{atom(), arity()}].
+sort_filter(all) -> all;
+sort_filter(Funs) -> lists:sort(Funs).
+
+-spec expected_check_list(expected(), cm_check:check_list() | type_error) ->
+    cm_check:check_list() | type_error.
+expected_check_list(type_error, _) -> type_error;
+expected_check_list(Expected, Real) ->
+    RealFilter =
+        fun(F) when is_list(Real) -> proplists:get_value(F, Real, missing);
+           (_) -> missing
+        end,
+    lists:sort(lists:map(
+        fun({F, Funs}) -> {F, sort_filter(Funs)};
+           (F) -> {F, RealFilter(F)}
+        end, Expected)).
+
 -spec test_recompile_version(
-    file:name(), file:name(), integer(), string(), [string()] | type_error, tycheck_mode()
+    file:name(), file:name(), integer(), string(), expected(), tycheck_mode()
 ) -> ok.
 test_recompile_version(TargetDir, Dir, Version, RebarLockContent, ExpectedChanges, Mode) ->
     ?LOG_NOTE("Testing code version ~p in ~p", Version, Dir),
@@ -93,22 +121,13 @@ test_recompile_version(TargetDir, Dir, Version, RebarLockContent, ExpectedChange
     utils:mkdirs(filename:join(TargetDir, "_build/default/lib")),
     file:write_file(filename:join(TargetDir, "rebar.lock"), RebarLockContent),
     RealChanges =
-        try
-            run_typechecker(TargetDir, Mode)
+        try normalize_check_list(run_typechecker(TargetDir, Mode))
         catch throw:{etylizer, ty_error, _}:_ -> type_error
         end,
-    ExpectedChangesSorted =
-        if is_list(ExpectedChanges) -> lists:sort(ExpectedChanges);
-           true -> ExpectedChanges
-        end,
-    RealChangesSorted =
-        if is_list(RealChanges) -> lists:sort(lists:map(fun filename:basename/1, RealChanges));
-           true -> RealChanges
-        end,
-    ?assertEqual(ExpectedChangesSorted, RealChangesSorted),
+    ?assertEqual(expected_check_list(ExpectedChanges, RealChanges), RealChanges),
     ?LOG_NOTE("Test successful for code version ~p in ~p", Version, Dir).
 
--type changes_map() :: #{integer() => [string()] | type_error }.
+-type changes_map() :: #{integer() => expected()}.
 
 -spec test_recompile(file:name(), changes_map()) -> ok.
 test_recompile(Dir, VersionMap) ->
@@ -159,9 +178,7 @@ test_rebar_changes() ->
         end).
 
 file_changes_test_() ->
-    [ 
-     % TODO building the std_symtab takes longer than 5 seconds and causes timeouts;
-     % why is symtab rebuilt everytime?
+    [
      ?_timeout(?_test(test_recompile("simple", #{1 => ["main.erl"], 2 => []}))),
      ?_timeout(?_test(test_recompile("file_changes",
         #{1 => ["bar.erl", "foo.erl", "main.erl"], 2 => ["foo.erl"]}))),
@@ -191,3 +208,86 @@ file_changes_test_() ->
      ?_timeout(?_test(test_rebar_changes()))
     ].
 
+% @doc Test function-level incremental rechecking after fixing a type error.
+% Module foo has 3 functions: safe1, safe2, broken. V1: all OK. V2: broken has type error.
+% V3: broken fixed. Only broken/0 should be rechecked in V3.
+fun_level_fix_then_recheck_test_() ->
+    [?_timeout(?_test(test_recompile("fix_then_recheck", #{
+        1 => [{"foo.erl", all}, {"main.erl", all}],
+        2 => type_error,
+        3 => [{"foo.erl", [{broken, 0}]}]
+    }, tycheck)))].
+
+% @doc Test that changing only a function body does not trigger rechecking of dependents.
+% foo has f1 (calls f2) and f2. bar has b1 (calls foo:f1). Changing f2's body (not spec)
+% should only recheck f2, not f1 or b1.
+fun_level_body_change_test_() ->
+    [?_timeout(?_test(test_recompile("body_change_no_recheck", #{
+        1 => [{"bar.erl", all}, {"foo.erl", all}, {"main.erl", all}],
+        2 => [{"foo.erl", [{f2, 0}]}]
+    }, tycheck)))].
+
+% @doc Test that changing a function's spec triggers rechecking of its dependents.
+% foo has f1. bar has b1 (calls foo:f1) and b2 (independent). Changing f1's spec
+% should recheck f1 and b1, but not b2 or main.
+fun_level_spec_change_test_() ->
+    [?_timeout(?_test(test_recompile("spec_change_recheck", #{
+        1 => [{"bar.erl", all}, {"foo.erl", all}, {"main.erl", all}],
+        2 => [{"foo.erl", [{f1, 0}]}, {"bar.erl", [{b1, 0}]}]
+    }, dont_tycheck)))].
+
+% @doc Test that callers are still found after an unrelated edit of the called module,
+% also when the call is nested in another call. V2 changes the body of foo:f2, V3 the
+% spec of foo:f1, which bar:b1 and bar:b2 call.
+fun_level_spec_change_after_edit_test_() ->
+    [?_timeout(?_test(test_recompile("spec_change_after_edit", #{
+        1 => [{"bar.erl", all}, {"foo.erl", all}, {"main.erl", all}],
+        2 => [{"foo.erl", [{f2, 0}]}],
+        3 => [{"foo.erl", [{f1, 0}]}, {"bar.erl", [{b1, 0}, {b2, 0}]}]
+    }, dont_tycheck)))].
+
+% @doc Test that a change of an included header is noticed. V2 changes a type in the
+% header that foo exports in a spec, V3 a macro that only foo:g uses.
+header_change_test_() ->
+    [?_timeout(?_test(test_recompile("header_change", #{
+        1 => [{"foo.erl", all}, {"main.erl", all}],
+        2 => [{"foo.erl", all}, {"main.erl", all}],
+        3 => [{"foo.erl", [{g, 0}]}]
+    }, dont_tycheck)))].
+
+% @doc Test that a persistent type error is still detected on re-run.
+% foo has broken/0 which returns integer() instead of boolean(). Both runs
+% should produce a type error (the index is not saved after a type error,
+% so the second run rechecks everything and still fails).
+persistent_type_error_test_() ->
+    [?_timeout(?_test(test_recompile("persistent_type_error",
+        #{1 => type_error, 2 => type_error})))].
+
+% @doc Test that a failed function does not cause false caller propagation.
+% foo:broken/0 has a type error (report mode). On re-run, broken/0 is retried
+% but its spec_hash is unchanged, so bar:b1/0 (its caller) is NOT rechecked.
+failed_no_caller_recheck_test_() ->
+    [?_timeout(?_test(test_recompile("failed_no_caller_recheck", #{
+        1 => [{"bar.erl", all}, {"foo.erl", all}, {"main.erl", all}],
+        2 => [{"foo.erl", [{broken, 0}]}]
+    }, report)))].
+
+% @doc Test that modifying one function's body (adding lines) does not cause
+% other functions in the same file to be rechecked due to unstable hashes.
+% foo has f1, f2, f3. V2 changes only f1's body (adds lines, shifting f2/f3 line numbers).
+% Only f1/0 should be rechecked - f2, f3, and cross-module caller bar:b1 should not.
+body_change_hash_stable_test_() ->
+    [?_timeout(?_test(test_recompile("body_change_hash_stable", #{
+        1 => [{"bar.erl", all}, {"foo.erl", all}, {"main.erl", all}],
+        2 => [{"foo.erl", [{f1, 0}]}]
+    }, tycheck)))].
+
+% @doc Test that report mode re-detects type errors on re-run.
+% In report mode, type errors don't throw - the index is saved. Without the fix,
+% the second run would find nothing to check (empty check list). With the fix,
+% the failed function is excluded from the index and re-checked on the next run.
+report_mode_redetect_test_() ->
+    [?_timeout(?_test(test_recompile("report_mode_redetect", #{
+        1 => [{"foo.erl", all}, {"main.erl", all}],
+        2 => [{"foo.erl", [{broken, 0}]}]
+    }, report)))].

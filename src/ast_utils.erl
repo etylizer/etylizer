@@ -70,17 +70,38 @@ unfold_ty(Tab, Ty) -> unfold_ty(Tab, Ty, #{}).
 
 -spec unfold_ty(symtab:t(), ast:ty(), map()) -> ast:ty() | {ty_hole}.
 unfold_ty(Tab, {named, Loc, Ref, Args}, Memo) ->
-    unfold_ty_named(Tab, Loc, Ref, Args, Memo);
-unfold_ty(Tab, Ty, Memo) ->
-    unfold_ty_compound_2(Tab, Ty, Memo).
-
--spec unfold_ty_named(symtab:t(), ast:loc(), ast:ty_ref(), [ast:ty()], map()) -> ast:ty() | {ty_hole}.
-unfold_ty_named(Tab, Loc, Ref, Args, Memo) ->
     case Memo of
         #{{Ref, Args} := _} -> {ty_hole};
         _ ->
             unfold_ty(Tab, unfold_named(Tab, Ref, Args, Loc), Memo#{{Ref, Args} => []})
-    end.
+    end;
+unfold_ty(Tab, {union, Args}, Memo) ->
+    {union, [unfold_ty(Tab, T, Memo) || T <- Args]};
+unfold_ty(Tab, {intersection, Args}, Memo) ->
+    {intersection, [unfold_ty(Tab, T, Memo) || T <- Args]};
+unfold_ty(Tab, {tuple, Args}, Memo) ->
+    {tuple, [unfold_ty(Tab, T, Memo) || T <- Args]};
+unfold_ty(Tab, {fun_full, Args, Ret}, Memo) ->
+    {fun_full, [unfold_ty(Tab, T, Memo) || T <- Args], unfold_ty(Tab, Ret, Memo)};
+unfold_ty(Tab, {fun_any_arg, Ret}, Memo) ->
+    {fun_any_arg, unfold_ty(Tab, Ret, Memo)};
+unfold_ty(Tab, {negation, T}, Memo) ->
+    {negation, unfold_ty(Tab, T, Memo)};
+unfold_ty(Tab, {list, T}, Memo) ->
+    {list, unfold_ty(Tab, T, Memo)};
+unfold_ty(Tab, {nonempty_list, T}, Memo) ->
+    {nonempty_list, unfold_ty(Tab, T, Memo)};
+unfold_ty(Tab, {cons, A, B}, Memo) ->
+    {cons, unfold_ty(Tab, A, Memo), unfold_ty(Tab, B, Memo)};
+unfold_ty(Tab, {improper_list, A, B}, Memo) ->
+    {improper_list, unfold_ty(Tab, A, Memo), unfold_ty(Tab, B, Memo)};
+unfold_ty(Tab, {nonempty_improper_list, A, B}, Memo) ->
+    {nonempty_improper_list, unfold_ty(Tab, A, Memo), unfold_ty(Tab, B, Memo)};
+unfold_ty(Tab, {map, Assocs}, Memo) ->
+    {map, [{Kind, unfold_ty(Tab, K, Memo), unfold_ty(Tab, V, Memo)} || {Kind, K, V} <- Assocs]};
+unfold_ty(Tab, {mu, Var, T}, Memo) ->
+    {mu, Var, unfold_ty(Tab, T, Memo)};
+unfold_ty(_Tab, T, _Memo) -> T.
 
 % the body of the named type Ref applied to Args
 % fails with a name error at Loc if Ref is not defined
@@ -93,48 +114,3 @@ unfold_named(Tab, Ref, Args, Loc) ->
 -spec instantiate_scheme(ast:ty_scheme(), [ast:ty()]) -> ast:ty().
 instantiate_scheme({ty_scheme, Vars, Body}, Args) ->
     subst:apply(subst:from_list(lists:zip([V || {V, _Bound} <- Vars], Args)), Body, no_clean).
-
--spec unfold_ty_compound_2(symtab:t(), ast:ty(), map()) -> ast:ty() | {ty_hole}.
-unfold_ty_compound_2(Tab, {fun_full, Args, Ret}, Memo) ->
-    {fun_full, unfold_ty_list(Tab, Args, Memo), unfold_ty_single(Tab, Ret, Memo)};
-unfold_ty_compound_2(Tab, {fun_any_arg, Ret}, Memo) ->
-    {fun_any_arg, unfold_ty_single(Tab, Ret, Memo)};
-unfold_ty_compound_2(Tab, {negation, T}, Memo) ->
-    {negation, unfold_ty_single(Tab, T, Memo)};
-unfold_ty_compound_2(Tab, Ty, Memo) ->
-    unfold_ty_compound_3(Tab, Ty, Memo).
-
--spec unfold_ty_compound_3(symtab:t(), ast:ty(), map()) -> ast:ty() | {ty_hole}.
-unfold_ty_compound_3(Tab, {cons, A, B}, Memo) ->
-    {cons, unfold_ty_single(Tab, A, Memo), unfold_ty_single(Tab, B, Memo)};
-unfold_ty_compound_3(Tab, {improper_list, A, B}, Memo) ->
-    {improper_list, unfold_ty_single(Tab, A, Memo), unfold_ty_single(Tab, B, Memo)};
-unfold_ty_compound_3(Tab, {nonempty_improper_list, A, B}, Memo) ->
-    {nonempty_improper_list, unfold_ty_single(Tab, A, Memo), unfold_ty_single(Tab, B, Memo)};
-unfold_ty_compound_3(Tab, Ty, Memo) ->
-    unfold_ty_list_or_leaf(Tab, Ty, Memo).
-
--spec unfold_ty_list_or_leaf(symtab:t(), ast:ty(), map()) -> ast:ty() | {ty_hole}.
-unfold_ty_list_or_leaf(Tab, {union, Args}, Memo) ->
-    {union, unfold_ty_list(Tab, Args, Memo)};
-unfold_ty_list_or_leaf(Tab, {intersection, Args}, Memo) ->
-    {intersection, unfold_ty_list(Tab, Args, Memo)};
-unfold_ty_list_or_leaf(Tab, {tuple, Args}, Memo) ->
-    {tuple, unfold_ty_list(Tab, Args, Memo)};
-unfold_ty_list_or_leaf(Tab, {list, T}, Memo) ->
-    {list, unfold_ty_single(Tab, T, Memo)};
-unfold_ty_list_or_leaf(Tab, {nonempty_list, T}, Memo) ->
-    {nonempty_list, unfold_ty_single(Tab, T, Memo)};
-unfold_ty_list_or_leaf(Tab, {map, Assocs}, Memo) ->
-    {map, [{Kind, unfold_ty_single(Tab, K, Memo), unfold_ty_single(Tab, V, Memo)} || {Kind, K, V} <- Assocs]};
-unfold_ty_list_or_leaf(Tab, {mu, Var, T}, Memo) ->
-    {mu, Var, unfold_ty_single(Tab, T, Memo)};
-unfold_ty_list_or_leaf(_Tab, T, _Memo) -> T.
-
--spec unfold_ty_list(symtab:t(), [ast:ty()], map()) -> [ast:ty() | {ty_hole}].
-unfold_ty_list(Tab, Types, Memo) ->
-    [unfold_ty(Tab, T, Memo) || T <- Types].
-
--spec unfold_ty_single(symtab:t(), ast:ty(), map()) -> ast:ty() | {ty_hole}.
-unfold_ty_single(Tab, T, Memo) ->
-    unfold_ty(Tab, T, Memo).

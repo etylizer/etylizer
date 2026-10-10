@@ -5,9 +5,11 @@
 -export([
     compute_search_path/1,
     generate_input_file_list/1,
+    depgraph_file_name/1,
     index_file_name/1,
     symtab_cache_file_name/1,
     find_module_path/2,
+    clear_module_cache/0,
     rebar_lock_file/1,
     rebar_config_from_lock_file/1
 ]).
@@ -211,6 +213,11 @@ index_file_name(Opts) ->
     D = etylizer_dir(Opts),
     filename:join(D, "index").
 
+-spec depgraph_file_name(cmd_opts()) -> file:filename().
+depgraph_file_name(Opts) ->
+    D = etylizer_dir(Opts),
+    filename:join(D, "depgraph").
+
 -spec symtab_cache_file_name(cmd_opts()) -> file:filename().
 symtab_cache_file_name(Opts) ->
     D = etylizer_dir(Opts),
@@ -226,6 +233,16 @@ rebar_config_from_lock_file(F) ->
     filename:join(filename:dirname(F), "rebar.config").
 
 -define(TABLE, mod_table).
+
+% @doc Clear the module path cache. Must be called between independent runs
+% to avoid stale path entries (e.g., paths pointing to deleted temp directories).
+-spec clear_module_cache() -> ok.
+clear_module_cache() ->
+    case ets:whereis(?TABLE) of
+        undefined -> ok;
+        _ -> ets:delete(?TABLE)
+    end,
+    ok.
 
 -spec find_module_path(search_path(), atom()) -> search_path_entry().
 find_module_path(SearchPath, Module) ->

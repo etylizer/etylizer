@@ -1,0 +1,21 @@
+#!/bin/bash
+set -e
+
+# Typechecks the etylizer project 
+#
+
+./ety \
+    -P . \
+    -S ./src \
+    -S ./src/erlang_types \
+    -I ./include \
+    -I ./src \
+    -I ./src/erlang_types \
+    -I ./src/erlang_types/dnf \
+    -I ./src/erlang_types/utils \
+    --report-mode report \
+    --report-timeout 10000 \
+    -l error \
+    --type-overlay overlays/etylizer_overlay.erl \
+    --no-deps \
+    "$@"

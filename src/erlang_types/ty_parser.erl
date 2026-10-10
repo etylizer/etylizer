@@ -64,54 +64,6 @@
 -type local_cache() :: #{ast:ty_mu_var() | {Ref :: ety_ref(), Args :: ety_args()} => temporary_ref()}.
 -type queue() :: queue:queue({temporary_ref(), ast_ty()}).
 
-% Subset types for split do_convert helpers.
--type ast_ty_predef() :: ast:ty_singleton() | ast:ty_bitstring() | ast:ty_some_list()
-    | ast:ty_fun() | ast:ty_integer_range() | ast:ty_map_any() | ast:ty_map()
-    | ast:ty_predef() | ast:ty_predef_alias()
-    | ast:ty_tuple_any() | ast:ty_tuple() | ast:ty_var()
-    | ast:ty_union() | ast:ty_intersection() | ast:ty_negation().
--type ast_ty_compound() :: ast:ty_cons() | ast:ty_list() | ast:ty_nonempty_list()
-    | ast:ty_improper_list() | ast:ty_nonempty_improper_list()
-    | ast:ty_full_fun() | ast:ty_map() | ast:ty_tuple()
-    | ast:ty_var() | ast:ty_union() | ast:ty_intersection() | ast:ty_negation().
--type ast_ty_rewrite() :: ast:ty_cons() | ast:ty_list() | ast:ty_nonempty_list()
-    | ast:ty_improper_list() | ast:ty_nonempty_improper_list()
-    | ast:ty_full_fun() | ast:ty_map() | ast:ty_tuple()
-    | ast:ty_var().
--type ast_ty_rewrite_list() :: ast:ty_cons() | ast:ty_list() | ast:ty_nonempty_list()
-    | ast:ty_improper_list() | ast:ty_nonempty_improper_list()
-    | ast:ty_full_fun() | ast:ty_map() | ast:ty_tuple().
--type ast_ty_rewrite_map() :: ast:ty_cons() | ast:ty_improper_list()
-    | ast:ty_full_fun() | ast:ty_map() | ast:ty_tuple().
--type ast_ty_data() :: ast:ty_cons() | ast:ty_improper_list()
-    | ast:ty_full_fun() | ast:ty_tuple().
-% Subset types for debruijn helpers
--type ast_ty_db1() :: ast:ty_singleton() | ast:ty_bitstring() | ast:ty_some_list()
-    | ast:ty_fun() | ast:ty_integer_range() | ast:ty_map_any() | ast:ty_map()
-    | ast:ty_predef() | ast:ty_predef_alias() | ast:ty_named()
-    | ast:ty_tuple_any() | ast:ty_tuple() | ast:ty_var()
-    | ast:ty_union() | ast:ty_intersection() | ast:ty_negation().
--type ast_ty_db2() :: ast:ty_nonempty_list() | ast:ty_improper_list() | ast:ty_nonempty_improper_list()
-    | ast:ty_fun() | ast:ty_integer_range() | ast:ty_map_any() | ast:ty_map()
-    | ast:ty_predef() | ast:ty_predef_alias() | ast:ty_named()
-    | ast:ty_tuple_any() | ast:ty_tuple() | ast:ty_var()
-    | ast:ty_union() | ast:ty_intersection() | ast:ty_negation().
--type ast_ty_db3() :: ast:ty_integer_range() | ast:ty_map_any() | ast:ty_map()
-    | ast:ty_predef() | ast:ty_predef_alias() | ast:ty_named()
-    | ast:ty_tuple_any() | ast:ty_tuple() | ast:ty_var()
-    | ast:ty_union() | ast:ty_intersection() | ast:ty_negation().
--type ast_ty_db4() :: ast:ty_tuple_any() | ast:ty_tuple() | ast:ty_var()
-    | ast:ty_union() | ast:ty_intersection() | ast:ty_negation().
-% Subset types for convert_back helpers
--type ast_ty_cb_other() :: ast:ty_singleton() | ast:ty_bitstring() | ast:ty_some_list()
-    | ast:ty_fun() | ast:ty_integer_range() | ast:ty_map_any() | ast:ty_map()
-    | ast:ty_predef() | ast:ty_predef_alias() | ast:ty_named()
-    | ast:ty_tuple_any() | ast:ty_negation().
--type ast_ty_cb_rest() :: ast:ty_singleton() | ast:ty_bitstring() | ast:ty_empty_list()
-    | ast:ty_fun() | ast:ty_integer_range() | ast:ty_map_any() | ast:ty_map()
-    | ast:ty_predef() | ast:ty_predef_alias() | ast:ty_named()
-    | ast:ty_tuple_any() | ast:ty_negation().
-
 % global state
 -spec init() -> _.
 init() ->
@@ -464,21 +416,7 @@ group(M, Key, Value) ->
 
 % entrypoint for recursion: named type
 -spec do_convert({ast_ty(), database()}, queue(), local_cache()) -> {ty_rec(), queue(), database(), local_cache()}.
-do_convert({X = {named, _, _Ref, _Args}, R}, Q, Cache) ->
-  do_convert_named(X, R, Q, Cache);
-% entrypoint for recursion: local equation
-do_convert({AstTy = {mu, _RecVar = {mu_var, _Name}, _Ty}, R}, Q, Cache) ->
-  do_convert_recursive(AstTy, R, Q, Cache);
-% exit for recursion: local equation variable
-do_convert({AstTy = {mu_var, _Name}, R}, Q, Cache) ->
-  do_convert_mu_var(AstTy, R, Q, Cache);
-% all other (non-named, non-mu) types
-do_convert({Ty, R}, Q, Cache) ->
-  do_convert_predef(?assert_type(Ty, ast_ty_predef()), R, Q, Cache).
-
-% --- named type ---
--spec do_convert_named(ast:ty_named(), database(), queue(), local_cache()) -> {ty_rec(), queue(), database(), local_cache()}.
-do_convert_named(X = {named, _, Ref, Args}, R = {IdTy, _}, Q, Cache) ->
+do_convert({X = {named, _, Ref, Args}, R = {IdTy, _}}, Q, Cache) ->
   % add to create a reverse mapping between the internal result node and the named type
   case ets:lookup(?UNPARSE_NAMED_FINISHED, X) of
     [] -> ets:insert(?UNPARSE_NAMED_QUEUE, {X, []});
@@ -490,41 +428,33 @@ do_convert_named(X = {named, _, Ref, Args}, R = {IdTy, _}, Q, Cache) ->
       #{NewRef := Ty} = IdTy,
       {Ty, Q, R, Cache};
     _ ->
-      do_convert_named_new(X, Ref, Args, R, Q, Cache)
-  end.
+      % find ty in global table
+      % io:format(user,"Lookup ~p~n", [Ref]),
+      Scheme = lookup_ty(Ref),
 
--spec do_convert_named_new(ast:ty_named(), ety_ref(), ety_args(), database(), queue(), local_cache()) -> {ty_rec(), queue(), database(), local_cache()}.
-do_convert_named_new(X, Ref, Args, R, Q, Cache) ->
-  % find ty in global table
-  % io:format(user,"Lookup ~p~n", [Ref]),
-  Scheme = lookup_ty(Ref),
+      % we can do this since recursive variables should not descend "into" a named type
+      NewTy = convert_back(debruijn(ast_utils:instantiate_scheme(Scheme, Args))),
 
-  % we can do this since recursive variables should not descend "into" a named type
-  NewTy = convert_back(debruijn(ast_utils:instantiate_scheme(Scheme, Args))),
+      % sanity
+      ?assert_pattern(false, maps:is_key({Ref, Args}, Cache)),
 
-  % sanity
-  ?assert_pattern(false, maps:is_key({Ref, Args}, Cache)),
+      NewRef = new_local_ref(X),
+      case ets:lookup(?CACHE, NewRef) of
+        [] ->
+          % create a new reference (ref args pair), memoize, and add continue converting
+          {InternalTy, NewQ, {R0, R1}, C0} = do_convert({NewTy, R}, Q, Cache#{{Ref, Args} => NewRef}),
+          {InternalTy, NewQ, {R0#{NewRef => InternalTy}, group(R1, InternalTy, NewRef)}, C0};
+        [{NewRef, CachedNode}] ->
+          % reuse type representation of the global cache
+          InternalTy = ?NODE:load(CachedNode),
+          {InternalTy, Q, R, Cache}
+      end
+  end;
 
-  NewRef = new_local_ref(X),
-  case ets:lookup(?CACHE, NewRef) of
-    [] ->
-      % create a new reference (ref args pair), memoize, and add continue converting
-      {InternalTy, NewQ, {R0, R1}, C0} = do_convert({NewTy, R}, Q, Cache#{{Ref, Args} => NewRef}),
-      {InternalTy, NewQ, {R0#{NewRef => InternalTy}, group(R1, InternalTy, NewRef)}, C0};
-    [{NewRef, CachedNode}] ->
-      % reuse type representation of the global cache
-      InternalTy = ?NODE:load(CachedNode),
-      {InternalTy, Q, R, Cache}
-  end.
-
-% --- recursive (mu) types ---
--spec do_convert_recursive(ast:ty_mu(), database(), queue(), local_cache()) -> {ty_rec(), queue(), database(), local_cache()}.
-do_convert_recursive(AstTy = {mu, RecVar = {mu_var, Name}, Ty}, R, Q, Cache) ->
+% entrypoint for recursion: local equation
+do_convert({AstTy = {mu, RecVar = {mu_var, Name}, Ty}, R}, Q, Cache) ->
   ?assert_pattern(true, is_atom(Name)),
-  do_convert_mu(AstTy, RecVar, Ty, R, Q, Cache).
 
--spec do_convert_mu(ast:ty_mu(), ast:ty_mu_var(), ast_ty(), database(), queue(), local_cache()) -> {ty_rec(), queue(), database(), local_cache()}.
-do_convert_mu(AstTy, RecVar, Ty, R, Q, Cache) ->
   NewRef = new_local_ref(AstTy),
   % all binders should be unique,
   % only binders with the same body are allowed to share the name
@@ -535,11 +465,10 @@ do_convert_mu(AstTy, RecVar, Ty, R, Q, Cache) ->
   NewCache = Cache#{RecVar => NewRef},
   {InternalTy, NewQ, {R0, R1}, C0} = do_convert({Ty, R}, Q, NewCache),
   % return record
-  {InternalTy, NewQ, {R0#{NewRef => InternalTy}, group(R1, InternalTy, NewRef)}, C0}.
+  {InternalTy, NewQ, {R0#{NewRef => InternalTy}, group(R1, InternalTy, NewRef)}, C0};
 
-% --- mu_var ---
--spec do_convert_mu_var(ast:ty_mu_var(), database(), queue(), local_cache()) -> {ty_rec(), queue(), database(), local_cache()}.
-do_convert_mu_var(AstTy = {mu_var, Name}, R = {IdTy, _}, Q, Cache) ->
+% exit for recursion: local equation variable
+do_convert({AstTy = {mu_var, Name}, R = {IdTy, _}}, Q, Cache) ->
   ?assert_pattern(true, is_atom(Name)),
 
   #{AstTy := Ref} = Cache,
@@ -548,59 +477,63 @@ do_convert_mu_var(AstTy = {mu_var, Name}, R = {IdTy, _}, Q, Cache) ->
   % is below a type constructor,
   % i.e. the memoized reference is fully defined
   #{Ref := Ty} = IdTy,
-  {Ty, Q, R, Cache}.
+  {Ty, Q, R, Cache};
 
-% --- predef types (built-ins, literals, boolean ops, variables, rewrites, data) ---
--spec do_convert_predef(ast_ty_predef(), database(), queue(), local_cache()) -> {ty_rec(), queue(), database(), local_cache()}.
-do_convert_predef({predef, dynamic}, R, Q, Cache) -> {?TY:singleton(ty_variable:new_as_frame()), Q, R, Cache};
-do_convert_predef({predef, any}, R, Q, Cache) -> {?TY:any(), Q, R, Cache};
-do_convert_predef({predef, none}, R, Q, Cache) -> {?TY:empty(), Q, R, Cache};
-do_convert_predef({predef, atom}, R, Q, Cache) -> {?TY:atom(dnf_ty_atom:any()), Q, R, Cache};
-do_convert_predef({predef, integer}, R, Q, Cache) -> {?TY:interval(dnf_ty_interval:any()), Q, R, Cache};
-do_convert_predef({predef_alias, Alias}, R, Q, Cache) -> do_convert({stdtypes:expand_predef_alias(Alias), R}, Q, Cache);
-do_convert_predef({predef, T}, R, Q, Cache) when T == pid; T == port; T == reference; T == float ->
-  do_convert_predef_atom(T, R, Q, Cache);
-do_convert_predef(Ty, R, Q, Cache) ->
-  do_convert_builtin(?assert_type(Ty, ast_ty_compound()), R, Q, Cache).
+% built-ins
+do_convert({{predef, dynamic}, R}, Q, Cache) -> {?TY:singleton(ty_variable:new_as_frame()), Q, R, Cache};
+do_convert({{predef, any}, R}, Q, Cache) -> {?TY:any(), Q, R, Cache};
+do_convert({{predef, none}, R}, Q, Cache) -> {?TY:empty(), Q, R, Cache};
+do_convert({{predef, atom}, R}, Q, Cache) -> {?TY:atom(dnf_ty_atom:any()), Q, R, Cache};
+do_convert({{predef, integer}, R}, Q, Cache) -> {?TY:interval(dnf_ty_interval:any()), Q, R, Cache};
+do_convert({{predef_alias, Alias}, R}, Q, Cache) -> do_convert({stdtypes:expand_predef_alias(Alias), R}, Q, Cache);
 
--spec do_convert_predef_atom(atom(), database(), queue(), local_cache()) -> {ty_rec(), queue(), database(), local_cache()}.
-do_convert_predef_atom(T, R, Q, Cache) ->
-  {?TY:predefined(dnf_ty_predefined:predefined(T)), Q, R, Cache}.
+% predefined
+do_convert({{fun_simple}, R}, Q, Cache) -> {?TY:functions(ty_functions:any()), Q, R, Cache};
+do_convert({{tuple_any}, R}, Q, Cache) -> {?TY:tuples(ty_tuples:any()), Q, R, Cache};
+do_convert({{empty_list}, R}, Q, Cache) -> {?TY:predefined(dnf_ty_predefined:predefined('[]')), Q, R, Cache};
+do_convert({{predef, T}, R}, Q, Cache) when T == pid; T == port; T == reference; T == float ->
+  {?TY:predefined(dnf_ty_predefined:predefined(T)), Q, R, Cache};
+do_convert({{map_any}, R}, Q, Cache) ->
+  {?TY:map(dnf_ty_map:any()), Q, R, Cache};
 
-% --- builtin types ---
--spec do_convert_builtin(ast_ty_compound(), database(), queue(), local_cache()) -> {ty_rec(), queue(), database(), local_cache()}.
-do_convert_builtin({fun_simple}, R, Q, Cache) -> {?TY:functions(ty_functions:any()), Q, R, Cache};
-do_convert_builtin({tuple_any}, R, Q, Cache) -> {?TY:tuples(ty_tuples:any()), Q, R, Cache};
-do_convert_builtin({empty_list}, R, Q, Cache) -> {?TY:predefined(dnf_ty_predefined:predefined('[]')), Q, R, Cache};
-do_convert_builtin({map_any}, R, Q, Cache) -> {?TY:map(dnf_ty_map:any()), Q, R, Cache};
-do_convert_builtin({bitstring}, R, Q, Cache) -> {?TY:bitstring(dnf_ty_bitstring:any()), Q, R, Cache};
-do_convert_builtin(Ty, R, Q, Cache) ->
-  do_convert_literal(Ty, R, Q, Cache).
+% bitstrings
+do_convert({{bitstring}, R}, Q, Cache) ->
+  {?TY:bitstring(dnf_ty_bitstring:any()), Q, R, Cache};
 
-% --- literal types (atoms, integers, ranges) ---
--spec do_convert_literal(ast_ty_compound(), database(), queue(), local_cache()) -> {ty_rec(), queue(), database(), local_cache()}.
-do_convert_literal({singleton, Atom}, R, Q, Cache) when is_atom(Atom) ->
+% atoms
+do_convert({{singleton, Atom}, R}, Q, Cache) when is_atom(Atom) ->
   TAtom = dnf_ty_atom:finite([Atom]),
   {?TY:atom(TAtom), Q, R, Cache};
-do_convert_literal({singleton, I}, R, Q, Cache) when is_integer(I) ->
+
+% intervals
+do_convert({{singleton, I}, R}, Q, Cache) when is_integer(I) ->
   Int = dnf_ty_interval:interval(I, I),
   {?TY:interval(Int), Q, R, Cache};
-do_convert_literal({range, From, To}, R, Q, Cache) ->
+do_convert({{range, From, To}, R}, Q, Cache) ->
   Int = dnf_ty_interval:interval(From, To),
   {?TY:interval(Int), Q, R, Cache};
-do_convert_literal(Ty, R, Q, Cache) ->
-  do_convert_compound(Ty, R, Q, Cache).
 
-% --- compound types (boolean ops, variables, rewrites, data) ---
--spec do_convert_compound(ast_ty_compound(), database(), queue(), local_cache()) -> {ty_rec(), queue(), database(), local_cache()}.
-do_convert_compound({union, Args}, R, Q, Cache) ->
-  do_convert_union(Args, R, Q, Cache);
-do_convert_compound({intersection, Args}, R, Q, Cache) ->
-  do_convert_intersect(Args, R, Q, Cache);
-do_convert_compound({negation, Ty}, R, Q, Cache) ->
+% boolean operators
+do_convert({{union, []}, R}, Q, Cache) -> {?TY:empty(), Q, R, Cache};
+do_convert({{union, [A]}, R}, Q, Cache) -> do_convert({A, R}, Q, Cache);
+do_convert({{union, [A|T]}, R}, Q, Cache) ->
+  {R1, Q1, RR1, C1} = do_convert({A, R}, Q, Cache),
+  {R2, Q2, RR2, C2} = do_convert({{union, T}, RR1}, Q1, C1),
+  {?TY:union(R1, R2), Q2, RR2, C2};
+
+do_convert({{intersection, []}, R}, Q, Cache) -> {?TY:any(), Q, R, Cache};
+do_convert({{intersection, [A]}, R}, Q, Cache) -> do_convert({A, R}, Q, Cache);
+do_convert({{intersection, [A|T]}, R}, Q, Cache) ->
+  {R1, Q1, RR0, C0} = do_convert({A, R}, Q, Cache),
+  {R2, Q2, RR1, C1} = do_convert({{intersection, T}, RR0}, Q1, C0),
+  {?TY:intersect(R1, R2), Q2, RR1, C1};
+
+do_convert({{negation, Ty}, R}, Q, Cache) ->
   {NewR, Q0, RR0, C0} = do_convert({Ty, R}, Q, Cache),
   {?TY:negate(NewR), Q0, RR0, C0};
-do_convert_compound({var, A}, R, Q, Cache) ->
+
+% variables
+do_convert({{var, A}, R}, Q, Cache) ->
   % if this is a special $ety_integer()_name() variable, convert to that representation
   case string:prefix(atom_to_list(A), "$ety_") of
     nomatch ->
@@ -611,57 +544,31 @@ do_convert_compound({var, A}, R, Q, Cache) ->
       [Id, Name] = string:split(IdName, "_"),
       {?TY:singleton(ty_variable:with_name_and_id(list_to_integer(Id), list_to_atom(Name))), Q, R, Cache}
   end;
-do_convert_compound(Ty, R, Q, Cache) ->
-  do_convert_rewrite(?assert_type(Ty, ast_ty_rewrite()), R, Q, Cache).
-
--spec do_convert_union([ast_ty()], database(), queue(), local_cache()) -> {ty_rec(), queue(), database(), local_cache()}.
-do_convert_union([], R, Q, Cache) -> {?TY:empty(), Q, R, Cache};
-do_convert_union([A], R, Q, Cache) -> do_convert({A, R}, Q, Cache);
-do_convert_union([A|T], R, Q, Cache) ->
-  {R1, Q1, RR1, C1} = do_convert({A, R}, Q, Cache),
-  {R2, Q2, RR2, C2} = do_convert_union(T, RR1, Q1, C1),
-  {?TY:union(R1, R2), Q2, RR2, C2}.
-
--spec do_convert_intersect([ast_ty()], database(), queue(), local_cache()) -> {ty_rec(), queue(), database(), local_cache()}.
-do_convert_intersect([], R, Q, Cache) -> {?TY:any(), Q, R, Cache};
-do_convert_intersect([A], R, Q, Cache) -> do_convert({A, R}, Q, Cache);
-do_convert_intersect([A|T], R, Q, Cache) ->
-  {R1, Q1, RR0, C0} = do_convert({A, R}, Q, Cache),
-  {R2, Q2, RR1, C1} = do_convert_intersect(T, RR0, Q1, C0),
-  {?TY:intersect(R1, R2), Q2, RR1, C1}.
 
 % === term rewrites
--spec do_convert_rewrite(ast_ty_rewrite(), database(), queue(), local_cache()) -> {ty_rec(), queue(), database(), local_cache()}.
-do_convert_rewrite({nonempty_list, Ty}, R, Q, Cache) ->
-  do_convert_rewrite_list({cons, Ty, {list, Ty}}, R, Q, Cache);
-do_convert_rewrite({nonempty_improper_list, Ty, Term}, R, Q, Cache) ->
-  do_convert_rewrite_list({cons, Ty, {improper_list, Ty, Term}}, R, Q, Cache);
-do_convert_rewrite({list, Ty}, R, Q, Cache) ->
-  do_convert_rewrite_list({improper_list, Ty, {empty_list}}, R, Q, Cache);
-do_convert_rewrite(Ty, R, Q, Cache) ->
-  do_convert_rewrite_list(?assert_type(Ty, ast_ty_rewrite_list()), R, Q, Cache).
-
--spec do_convert_rewrite_list(ast_ty_rewrite_list(), database(), queue(), local_cache()) -> {ty_rec(), queue(), database(), local_cache()}.
-do_convert_rewrite_list(M = {map, _}, R, Q, Cache) ->
-  do_convert_rewrite_map(M, R, Q, Cache);
-do_convert_rewrite_list(Ty, R, Q, Cache) ->
-  do_convert_rewrite_map(?assert_type(Ty, ast_ty_rewrite_map()), R, Q, Cache).
+do_convert({{nonempty_list, Ty}, R}, Q, Cache) ->
+  do_convert({{cons, Ty, {list, Ty}} , R}, Q, Cache);
+do_convert({{nonempty_improper_list, Ty, Term}, R}, Q, Cache) ->
+  do_convert({{cons, Ty, {improper_list, Ty, Term}} , R}, Q, Cache);
+do_convert({{list, Ty}, R}, Q, Cache) ->
+  do_convert({{improper_list, Ty, {empty_list}}, R}, Q, Cache);
 
 % rewrite maps into {Tuple, Function} tuples
--spec do_convert_rewrite_map(ast_ty_rewrite_map(), database(), queue(), local_cache()) -> {ty_rec(), queue(), database(), local_cache()}.
-do_convert_rewrite_map(M = {map, _}, R, Q, Cache) ->
+do_convert({M = {map, _}, R}, Q, Cache) ->
   MapTuple = rewrite_map_to_representation(M),
   {Recc, Q0, R0, C0} = do_convert({MapTuple, R}, Q, Cache),
   {?TY:tuple_to_map(Recc), Q0, R0, C0};
-do_convert_rewrite_map(Ty, R, Q, Cache) ->
-  do_convert_data(?assert_type(Ty, ast_ty_data()), R, Q, Cache).
 
 % === nested data structures
 % === these can potentially create temporary references and can extend the queue
--spec do_convert_data(ast_ty_data(), database(), queue(), local_cache()) -> {ty_rec(), queue(), database(), local_cache()}.
+
 % functions
-do_convert_data({fun_full, Domains, CoDomain}, R, Q, Cache) ->
-  {ParsedDomains, Q0} = queue_all(Domains, Q),
+do_convert({{fun_full, Domains, CoDomain}, R}, Q, Cache) ->
+  {ParsedDomains, Q0} = lists:foldl(
+    fun(Element, {Components, OldQ}) ->
+      {IdOrNode, QQ} = queue_if_new(Element, OldQ),
+      {Components ++ [IdOrNode], QQ}
+   end, {[], Q}, Domains),
 
   {ParsedCoDomain, Q1} = queue_if_new(CoDomain, Q0),
 
@@ -669,37 +576,30 @@ do_convert_data({fun_full, Domains, CoDomain}, R, Q, Cache) ->
   {?TY:functions(T), Q1, R, Cache};
 
 % tuples
-do_convert_data({tuple, Comps}, R, Q, Cache) ->
-  {ParsedComponents, Q0} = queue_all(Comps, Q),
+do_convert({{tuple, Comps}, R}, Q, Cache) ->
+  {ParsedComponents, Q0} = lists:foldl(
+    fun(Element, {Components, OldQ}) ->
+      {IdOrNode, QQ} = queue_if_new(Element, OldQ),
+      {Components ++ [IdOrNode], QQ}
+    end, {[], Q}, Comps),
 
   T = ty_tuples:singleton(length(Comps), dnf_ty_tuple:singleton(ty_tuple:tuple(ParsedComponents))),
   {?TY:tuples(T), Q0, R, Cache};
 
 % lists
-do_convert_data({improper_list, A, B}, R, Q, Cache) ->
+do_convert({{improper_list, A, B}, R}, Q, Cache) ->
   RVar = {mu_var, list_to_atom(integer_to_list(erlang:unique_integer()))},
   NewTerm = {mu, RVar, {union, [B, {cons, A, RVar}]}},
   do_convert({NewTerm, R}, Q, Cache);
-do_convert_data({cons, A, B}, R, Q, Cache) ->
+do_convert({{cons, A, B}, R}, Q, Cache) ->
   {T1, Q0} = queue_if_new(A, Q),
   {T2, Q1} = queue_if_new(B, Q0),
 
   {?TY:list(dnf_ty_list:singleton(ty_list:list([T1, T2]))), Q1, R, Cache};
 
-do_convert_data(T, _R, _Q, _Cache) ->
-  convert_error(T).
-
--spec convert_error(_) -> no_return().
-convert_error(T) ->
+do_convert(T, _Q, _) ->
+  % io:format(user,"~p~n", [T]),
   erlang:error({"Transformation from ast:ty() to ty_rec:ty() not implemented or malformed type", T}).
-
--spec queue_all([ast_ty()], queue()) -> {[type() | temporary_ref()], queue()}.
-queue_all(Elements, Q) ->
-  lists:foldl(
-    fun(Element, {Components, OldQ}) ->
-      {IdOrNode, QQ} = queue_if_new(Element, OldQ),
-      {Components ++ [IdOrNode], QQ}
-    end, {[], Q}, Elements).
 
 -spec queue_if_new(ast_ty(), queue()) -> {type() | temporary_ref(), queue()}.
 queue_if_new(Element, Queue) ->
@@ -778,43 +678,31 @@ debruijn({bitstring}, _Env) -> {bitstring};
 debruijn({empty_list}, _Env) -> {empty_list};
 debruijn({cons, U, L}, Env) -> {cons, debruijn(U, Env), debruijn(L, Env)};
 debruijn({list, U}, Env) -> {list, debruijn(U, Env)};
-debruijn(Ty, Env) -> debruijn_1(?assert_type(Ty, ast_ty_db1()), Env).
-
--spec debruijn_1(ast_ty_db1(), var_env()) -> ast_ty().
-debruijn_1({nonempty_list, U}, Env) -> {nonempty_list, debruijn(U, Env)};
-debruijn_1({improper_list, U, V}, Env) ->
+debruijn({nonempty_list, U}, Env) -> {nonempty_list, debruijn(U, Env)};
+debruijn({improper_list, U, V}, Env) ->
   {improper_list, debruijn(U, Env), debruijn(V, Env)};
-debruijn_1({nonempty_improper_list, U, V}, Env) ->
+debruijn({nonempty_improper_list, U, V}, Env) ->
   {nonempty_improper_list, debruijn(U, Env), debruijn(V, Env)};
-debruijn_1(Ty, Env) -> debruijn_2(?assert_type(Ty, ast_ty_db2()), Env).
-
--spec debruijn_2(ast_ty_db2(), var_env()) -> ast_ty().
-debruijn_2({fun_simple}, _Env) -> {fun_simple};
-debruijn_2({fun_any_arg, U}, Env) -> {fun_any_arg, debruijn(U, Env)};
-debruijn_2({fun_full, Args, U}, Env) ->
+debruijn({fun_simple}, _Env) -> {fun_simple};
+debruijn({fun_any_arg, U}, Env) -> {fun_any_arg, debruijn(U, Env)};
+debruijn({fun_full, Args, U}, Env) ->
   {fun_full, debruijn_list(Args, Env), debruijn(U, Env)};
-debruijn_2({range, Min, Max}, _Env) -> {range, Min, Max};
-debruijn_2({map_any}, _Env) -> {map_any};
-debruijn_2({map, Assocs}, Env) ->
+debruijn({range, Min, Max}, _Env) -> {range, Min, Max};
+debruijn({map_any}, _Env) -> {map_any};
+debruijn({map, Assocs}, Env) ->
   {map, lists:map(fun({Kind, U, V}) ->
     {Kind, debruijn(U, Env), debruijn(V, Env)}
   end, Assocs)};
-debruijn_2(Ty, Env) -> debruijn_3(?assert_type(Ty, ast_ty_db3()), Env).
-
--spec debruijn_3(ast_ty_db3(), var_env()) -> ast_ty().
-debruijn_3({predef, Name}, _Env) -> {predef, Name};
-debruijn_3({predef_alias, Name}, _Env) -> {predef_alias, Name};
-debruijn_3({named, Loc, Ref, Args}, Env) ->
+debruijn({predef, Name}, _Env) -> {predef, Name};
+debruijn({predef_alias, Name}, _Env) -> {predef_alias, Name};
+debruijn({named, Loc, Ref, Args}, Env) ->
   {named, Loc, Ref, debruijn_list(Args, Env)};
-debruijn_3(Ty, Env) -> debruijn_4(?assert_type(Ty, ast_ty_db4()), Env).
-
--spec debruijn_4(ast_ty_db4(), var_env()) -> ast_ty().
-debruijn_4({tuple_any}, _Env) -> {tuple_any};
-debruijn_4({tuple, Args}, Env) -> {tuple, debruijn_list(Args, Env)};
-debruijn_4({var, Alpha}, _Env) -> {var, Alpha};
-debruijn_4({union, Args}, Env) -> {union, debruijn_list(Args, Env)};
-debruijn_4({intersection, Args}, Env) -> {intersection, debruijn_list(Args, Env)};
-debruijn_4({negation, U}, Env) -> {negation, debruijn(U, Env)}.
+debruijn({tuple_any}, _Env) -> {tuple_any};
+debruijn({tuple, Args}, Env) -> {tuple, debruijn_list(Args, Env)};
+debruijn({var, Alpha}, _Env) -> {var, Alpha};
+debruijn({union, Args}, Env) -> {union, debruijn_list(Args, Env)};
+debruijn({intersection, Args}, Env) -> {intersection, debruijn_list(Args, Env)};
+debruijn({negation, U}, Env) -> {negation, debruijn(U, Env)}.
 
 %% Helper to debruijn lists of types
 
@@ -861,51 +749,42 @@ convert_back({intersection, Args}, Env, Counter) ->
   {{intersection, ConvertedArgs}, NewCounter};
 %% Handle all other type constructors similarly
 convert_back(Type, Env, Counter) when is_tuple(Type) ->
-  convert_back_other(?assert_type(Type, ast_ty_cb_other()), Env, Counter);
+  case element(1, Type) of
+    Constructor when Constructor =:= list;
+                     Constructor =:= nonempty_list ->
+      [Constructor, Arg] = tuple_to_list(Type),
+      {ConvertedArg, NewCounter} = convert_back(Arg, Env, Counter),
+      {list_to_tuple([Constructor, ConvertedArg]), NewCounter};
+    Constructor when Constructor =:= cons;
+                     Constructor =:= improper_list;
+                     Constructor =:= nonempty_improper_list ->
+      [Constructor, Arg, Arg2] = tuple_to_list(Type),
+      {ConvertedArg, NewCounter} = convert_back(Arg, Env, Counter),
+      {ConvertedArg2, NewCounter2} = convert_back(Arg2, Env, NewCounter),
+      {list_to_tuple([Constructor, ConvertedArg, ConvertedArg2]), NewCounter2};
+    Constructor when Constructor =:= fun_any_arg;
+                     Constructor =:= negation ->
+      [Constructor, Arg] = tuple_to_list(Type),
+      {ConvertedArg, NewCounter} = convert_back(Arg, Env, Counter),
+      {list_to_tuple([Constructor, ConvertedArg]), NewCounter};
+    fun_full ->
+      [fun_full, Args, Ret] = tuple_to_list(Type),
+      {ConvertedArgs, Counter1} = convert_back_list(Args, Env, Counter),
+      {ConvertedRet, NewCounter} = convert_back(Ret, Env, Counter1),
+      {{fun_full, ConvertedArgs, ConvertedRet}, NewCounter};
+    map ->
+      [map, Assocs] = tuple_to_list(Type),
+      {ConvertedAssocs, NewCounter} = convert_back_assocs(Assocs, Env, Counter),
+      {{map, ConvertedAssocs}, NewCounter};
+    named ->
+      [named, Loc, Ref, Args] = tuple_to_list(Type),
+      {ConvertedArgs, NewCounter} = convert_back_list(Args, Env, Counter),
+      {{named, Loc, Ref, ConvertedArgs}, NewCounter};
+    _ ->
+      {Type, Counter} % For atomic types
+  end;
 convert_back(Type, _Env, Counter) ->
   {Type, Counter}. % For non-tuple types
-
--spec convert_back_other(ast_ty_cb_other(), var_env(), non_neg_integer()) -> {ast_ty(), non_neg_integer()}.
-convert_back_other({list, Arg}, Env, Counter) ->
-  {ConvertedArg, NewCounter} = convert_back(Arg, Env, Counter),
-  {{list, ConvertedArg}, NewCounter};
-convert_back_other({nonempty_list, Arg}, Env, Counter) ->
-  {ConvertedArg, NewCounter} = convert_back(Arg, Env, Counter),
-  {{nonempty_list, ConvertedArg}, NewCounter};
-convert_back_other({cons, Arg, Arg2}, Env, Counter) ->
-  {ConvertedArg, NewCounter} = convert_back(Arg, Env, Counter),
-  {ConvertedArg2, NewCounter2} = convert_back(Arg2, Env, NewCounter),
-  {{cons, ConvertedArg, ConvertedArg2}, NewCounter2};
-convert_back_other({improper_list, Arg, Arg2}, Env, Counter) ->
-  {ConvertedArg, NewCounter} = convert_back(Arg, Env, Counter),
-  {ConvertedArg2, NewCounter2} = convert_back(Arg2, Env, NewCounter),
-  {{improper_list, ConvertedArg, ConvertedArg2}, NewCounter2};
-convert_back_other({nonempty_improper_list, Arg, Arg2}, Env, Counter) ->
-  {ConvertedArg, NewCounter} = convert_back(Arg, Env, Counter),
-  {ConvertedArg2, NewCounter2} = convert_back(Arg2, Env, NewCounter),
-  {{nonempty_improper_list, ConvertedArg, ConvertedArg2}, NewCounter2};
-convert_back_other({fun_any_arg, Arg}, Env, Counter) ->
-  {ConvertedArg, NewCounter} = convert_back(Arg, Env, Counter),
-  {{fun_any_arg, ConvertedArg}, NewCounter};
-convert_back_other({negation, Arg}, Env, Counter) ->
-  {ConvertedArg, NewCounter} = convert_back(Arg, Env, Counter),
-  {{negation, ConvertedArg}, NewCounter};
-convert_back_other({fun_full, Args, Ret}, Env, Counter) ->
-  {ConvertedArgs, Counter1} = convert_back_list(Args, Env, Counter),
-  {ConvertedRet, NewCounter} = convert_back(Ret, Env, Counter1),
-  {{fun_full, ConvertedArgs, ConvertedRet}, NewCounter};
-convert_back_other({map, Assocs}, Env, Counter) ->
-  {ConvertedAssocs, NewCounter} = convert_back_assocs(Assocs, Env, Counter),
-  {{map, ConvertedAssocs}, NewCounter};
-convert_back_other({named, Loc, Ref, Args}, Env, Counter) ->
-  {ConvertedArgs, NewCounter} = convert_back_list(Args, Env, Counter),
-  {{named, Loc, Ref, ConvertedArgs}, NewCounter};
-convert_back_other(Type, _Env, Counter) ->
-  convert_back_rest(?assert_type(Type, ast_ty_cb_rest()), Counter).
-
--spec convert_back_rest(ast_ty_cb_rest(), non_neg_integer()) -> {ast_ty(), non_neg_integer()}.
-convert_back_rest(Type, Counter) ->
-  {Type, Counter}. % For atomic types
 
 -spec convert_back_list([ast_ty()], var_env(), non_neg_integer()) -> {[ast_ty()], non_neg_integer()}.
 convert_back_list([], _Env, Counter) -> {[], Counter};
