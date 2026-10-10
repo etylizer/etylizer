@@ -42,7 +42,7 @@ resolve_disabled_funs(Feature, Forms) ->
             lists:foldl(
                 fun(Form, Acc) ->
                     case Form of
-                        {function, _, Name, Arity, _} -> sets:add_element({Name, Arity}, Acc);
+                        {function, _, Name, Arity, _, _} -> sets:add_element({Name, Arity}, Acc);
                         _ -> Acc
                     end
                 end, sets:new(), Forms);
@@ -76,7 +76,7 @@ check_forms(Ctx, FileName, Forms, Only, Ignore, CheckExports, {CliNoExhaustivene
         lists:foldr(
           fun(Form, Acc = {With, Without, Knowns}) ->
             case Form of
-                {function, Loc, Name, Arity, _Clauses} ->
+                {function, Loc, Name, Arity, _Args, _Body} ->
                     ModuleName = ast_utils:modname_from_path(FileName),
                     Ref = {ref, Name, Arity},
                     RefStr = utils:sformat("~w/~w", Name, Arity),

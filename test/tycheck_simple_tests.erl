@@ -9,7 +9,7 @@
 -include("typing.hrl").
 
 -spec check_ok_fun(string(), symtab:t(), symtab:t(), sets:set({atom(), arity()}), sets:set({atom(), arity()}), ast:fun_decl(), ast:ty_scheme()) -> ok.
-check_ok_fun(Filename, Tab, OverlayTab, DisableExhaustiveness, DisableRedundancy, Decl = {function, L, Name, Arity, _}, Ty) ->
+check_ok_fun(Filename, Tab, OverlayTab, DisableExhaustiveness, DisableRedundancy, Decl = {function, L, Name, Arity, _, _}, Ty) ->
     Includes = ["include", "src", "src/erlang_types", "src/erlang_types/dnf", "src/erlang_types/utils"],
     SanityCheck = cm_check:perform_sanity_check(Filename, [Decl], true, Includes),
     Ctx0 = typing:new_ctx(Tab, OverlayTab, SanityCheck), % FIXME: perform sanity check!
@@ -25,7 +25,7 @@ check_ok_fun(Filename, Tab, OverlayTab, DisableExhaustiveness, DisableRedundancy
     ok.
 
 -spec check_infer_ok_fun(string(), symtab:t(), symtab:t(), sets:set({atom(), arity()}), sets:set({atom(), arity()}), ast:fun_decl(), ast:ty_scheme()) -> ok.
-check_infer_ok_fun(Filename, Tab, OverlayTab, DisableExhaustiveness, DisableRedundancy, Decl = {function, L, Name, Arity, _}, Ty) ->
+check_infer_ok_fun(Filename, Tab, OverlayTab, DisableExhaustiveness, DisableRedundancy, Decl = {function, L, Name, Arity, _, _}, Ty) ->
     % Check that the inferred type is more general then the type in the spec
     Ctx0 = typing:new_ctx(Tab, OverlayTab, error),
     Ctx = Ctx0#ctx{ disable_exhaustiveness = DisableExhaustiveness, disable_redundancy = DisableRedundancy },
@@ -67,7 +67,7 @@ check_infer_ok_fun(Filename, Tab, OverlayTab, DisableExhaustiveness, DisableRedu
     ok.
 
 -spec check_fail_fun(string(), symtab:t(), symtab:t(), sets:set({atom(), arity()}), sets:set({atom(), arity()}), ast:fun_decl(), ast:ty_scheme()) -> ok.
-check_fail_fun(Filename, Tab, OverlayTab, DisableExhaustiveness, DisableRedundancy, Decl = {function, L, Name, Arity, _}, Ty) ->
+check_fail_fun(Filename, Tab, OverlayTab, DisableExhaustiveness, DisableRedundancy, Decl = {function, L, Name, Arity, _, _}, Ty) ->
     Ctx0 = typing:new_ctx(Tab, OverlayTab, error),
     Ctx = Ctx0#ctx{ disable_exhaustiveness = DisableExhaustiveness, disable_redundancy = DisableRedundancy },
     try
@@ -102,7 +102,7 @@ check_decls_in_file(F, What, NoInfer) ->
 
   CollectDecls = fun(Decl, TestCases) ->
     case Decl of
-      {function, Loc, Name, Arity, _} ->
+      {function, Loc, Name, Arity, _, _} ->
         NameStr = atom_to_list(Name),
         FullNameStr = F ++ "/" ++ atom_to_list(Name),
         Ty = symtab:lookup_fun({ref, Name, Arity}, Loc, Tab),

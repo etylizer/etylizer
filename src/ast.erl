@@ -101,7 +101,6 @@
     exc_type_pat/0,
     stacktrace_pat/0,
     case_clause/0,
-    fun_clause/0,
     guard/0,
     guard_test_bitstring_constr/0,
     guard_test_cons/0,
@@ -266,10 +265,13 @@ local_varname_from_any_ref(Ref) ->
 -type mod_name() :: atom().
 -type mod_form() :: {attribute, loc(), module, mod_name()}.
 -type compile_form() :: {attribute, loc(), compile, term()}.
--type fun_decl() :: {function, loc(), Name::atom(), Arity::arity(), [fun_clause(), ...]}.
+% Functions and funs have a single list of argument variables. Multiple clauses, or a
+% clause with guards or non-variable patterns, become a body consisting of a case over
+% the tuple of the arguments, generated from the clauses (see generator()).
+-type fun_decl() :: {function, loc(), Name::atom(), Arity::arity(), Args::[local_varname()], Body::exps()}.
 
 -spec get_fun_name(fun_decl()) -> string().
-get_fun_name({function, _Loc, Name, Arity, _}) -> utils:sformat("~w/~w", Name, Arity).
+get_fun_name({function, _Loc, Name, Arity, _, _}) -> utils:sformat("~w/~w", Name, Arity).
 
 -type fun_spec() :: {attribute, loc(), spec | callback, Name::atom(), Arity::arity(),
                      ty_scheme(),
@@ -335,7 +337,7 @@ get_fun_name({function, _Loc, Name, Arity, _}) -> utils:sformat("~w/~w", Name, A
 -type exp_fun_ref() :: {fun_ref, loc(), global_ref()}.
 -type exp_fun_ref_dyn() :: {fun_ref_dyn, loc(), global_ref_dyn()}.
 -type rec_fun_name() :: no_name | local_bind().
--type exp_fun() :: {'fun', loc(), Name::rec_fun_name(), [fun_clause(), ...]}.
+-type exp_fun() :: {'fun', loc(), Name::rec_fun_name(), Args::[local_varname()], Body::exps()}.
 -type gen_funcall(T) :: {call, loc(), Fun::T, Args::[T]}
                       | {call_remote, loc(), Mod::T, Fun::T, Args::[T]}.
 -type exp_funcall() :: gen_funcall(exp()).
@@ -418,7 +420,6 @@ loc_exp({_, L, _, _, _, _}) -> L.
 -type stacktrace_pat() :: pat_wildcard() | pat_var().
 
 -type case_clause() :: {case_clause, loc(), Pat::pat(), Guards::[guard()], Body::exps()}.
--type fun_clause()  :: {fun_clause, loc(), Pats::[pat()], Guards::[guard()], Body::exps()}.
 
 % 8.6  Guards
 

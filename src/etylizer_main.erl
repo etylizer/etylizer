@@ -204,9 +204,9 @@ dump_transformed_ast(Opts) ->
     Only = sets:from_list(Opts#opts.type_check_only),
     lists:foreach(fun(File) ->
         Forms = parse_cache:parse(intern, File),
-        FunDecls = [F || F = {function, _, _, _, _} <- Forms],
+        FunDecls = [F || F = {function, _, _, _, _, _} <- Forms],
         ModName = ast_utils:modname_from_path(File),
-        lists:foreach(fun({function, L, Name, Arity, FunClauses}) ->
+        lists:foreach(fun({function, _L, Name, Arity, Args, Body}) ->
             RefStr = utils:sformat("~w/~w", Name, Arity),
             QRefStr = utils:sformat("~w:~s", ModName, RefStr),
             NameStr = utils:sformat("~w", Name),
@@ -222,8 +222,6 @@ dump_transformed_ast(Opts) ->
             case ShouldDump of
                 false -> ok;
                 true ->
-                    Ctx = constr_gen:new_ctx(symtab:empty(), enabled),
-                    {Args, Body} = constr_gen:fun_clauses_to_exp(Ctx, L, FunClauses),
                     io:format("~s(~s) ->~n", [Name, pretty:render_varnames(Args)]),
                     io:format("~s.~n~n", [pretty:render_exps(Body, 2)])
             end

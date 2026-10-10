@@ -5,7 +5,7 @@
 -export([
          gen_constrs_fun_group/4, gen_constrs_annotated_fun/5,
          sanity_check/2,
-         new_ctx/2, fun_clauses_to_exp/3
+         new_ctx/2
         ]).
 
 -ifdef(TEST).
@@ -30,7 +30,7 @@
 
 -spec new_ctx(symtab:t(), feature_flags:exhaustiveness_mode()) -> ctx().
 new_ctx(Symtab, ExhaustivenessMode) ->
-    Counter = counters:new(2, []),
+    Counter = counters:new(1, []),
     #ctx{ var_counter = Counter, symtab = Symtab, exhaustiveness_mode = ExhaustivenessMode }.
 
 -spec fresh_ty_varname(ctx()) -> ast:ty_varname().
@@ -45,22 +45,6 @@ fresh_tyvar(Ctx) ->
     Alpha = fresh_ty_varname(Ctx),
     {var, Alpha}.
 
--spec fresh_vars(ctx(), arity()) -> [ast:local_varname()].
-fresh_vars(Ctx, N) ->
-    I = counters:get(Ctx#ctx.var_counter, 2),
-    counters:add(Ctx#ctx.var_counter, 2, 1),
-    Loop =
-        fun Loop(J) ->
-                if
-                    J > N -> [];
-                    true ->
-                        ArgJ = list_to_atom(utils:sformat("$A~w", J)),
-                        X = {ArgJ, I},
-                        [X | Loop(J + 1)]
-                end
-        end,
-    Loop(1).
-
 -spec mk_locs(string(), ast:loc()) -> constr:locs().
 mk_locs(Label, X) -> {Label, utils:single(X)}.
 
@@ -73,13 +57,13 @@ string_to_cons_ty([X | Xs]) ->
 -spec gen_constrs_fun_group(feature_flags:exhaustiveness_mode(), symtab:t(), {sets:set({atom(), arity()}), sets:set({atom(), arity()})}, [ast:fun_decl()]) -> {constr:constrs(), constr:constr_env()}.
 gen_constrs_fun_group(ExhaustivenessMode, Symtab, {DisableExhaustiveness, DisableRedundancy}, Decls) ->
     lists:foldl(
-      fun({function, L, Name, Arity, FunClauses}, {Cs, Env}) ->
+      fun({function, L, Name, Arity, Args, Body}, {Cs, Env}) ->
               Ctx0 = new_ctx(Symtab, ExhaustivenessMode),
               Ctx = Ctx0#ctx{
                   disable_exhaustiveness = sets:is_element({Name, Arity}, DisableExhaustiveness),
                   disable_redundancy = sets:is_element({Name, Arity}, DisableRedundancy)
               },
-              Exp = {'fun', L, no_name, FunClauses},
+              Exp = {'fun', L, no_name, Args, Body},
               Alpha = fresh_tyvar(Ctx),
               ThisCs = exp_constrs(Ctx, Exp, Alpha),
               Ref = {ref, Name, Arity},
@@ -91,10 +75,9 @@ gen_constrs_fun_group(ExhaustivenessMode, Symtab, {DisableExhaustiveness, Disabl
 % The idea is that we can give better error messages by pointing out which part of the
 % intersection did not type check.
 -spec gen_constrs_annotated_fun(feature_flags:exhaustiveness_mode(), symtab:t(), {boolean(), boolean()}, ast:ty_full_fun(), ast:fun_decl()) -> constr:constrs().
-gen_constrs_annotated_fun(ExhaustivenessMode, Symtab, {DisableExhaustiveness, DisableRedundancy}, {fun_full, ArgTys, ResTy}, {function, L, Name, Arity, FunClauses}) ->
+gen_constrs_annotated_fun(ExhaustivenessMode, Symtab, {DisableExhaustiveness, DisableRedundancy}, {fun_full, ArgTys, ResTy}, {function, L, Name, Arity, Args, Body}) ->
     Ctx0 = new_ctx(Symtab, ExhaustivenessMode),
     Ctx = Ctx0#ctx{ disable_exhaustiveness = DisableExhaustiveness, disable_redundancy = DisableRedundancy },
-    {Args, Body} = fun_clauses_to_exp(Ctx, L, FunClauses),
     if length(Args) =/= length(ArgTys) orelse length(Args) =/= Arity ->
             errors:ty_error(L, "Arity mismatch for function ~w", Name);
        true -> ok
@@ -199,8 +182,7 @@ exp_constrs(Ctx, E, T) ->
             sets:add_element(ListC, Cs);
         {fun_ref, L, GlobalRef} ->
             utils:single({cvar, mk_locs("function ref", L), GlobalRef, T});
-        {'fun', L, RecName, FunClauses} ->
-            {Args, BodyExps} = fun_clauses_to_exp(Ctx, L, FunClauses),
+        {'fun', L, RecName, Args, BodyExps} ->
             ArgTys = lists:map(fun(X) -> {{local_ref, X}, fresh_tyvar(Ctx)} end, Args),
             ArgEnv = maps:from_list(ArgTys),
             ResTy = fresh_tyvar(Ctx),
@@ -1472,65 +1454,6 @@ var_test_env(FunExp, X, RestArgs) ->
     ?LOG_TRACE("Env resulting from var test ~200p for ~w and args ~200p: ~w", FunExp, X, RestArgs, Env),
     Env.
 
-
-% f(p11, p12, ..., p1n) -> e1;
-% ...
-% f(pm1, pm2, ..., pmn) -> em
-%
-% is transformed into
-%
-% case {X1, ..., Xn} of
-%   (p11, p12, ..., p1n) -> e1;
-%   ...
-%   (pm1, pm2, ..., pmn) -> em
-% end
--spec fun_clauses_to_exp(ctx(), ast:loc(), [ast:fun_clause()]) -> {[ast:local_varname()], ast:exps()}.
-fun_clauses_to_exp(Ctx, _, FunClauses = [{fun_clause, L, Pats, [], Body}]) ->
-    % special case: only one clause, no guards, all patterns are variables
-    Vars =
-        lists:foldr(fun (Pat, Acc) ->
-                            case {Acc, Pat} of
-                                {error, _} -> error;
-                                {Vars, {var, _, {local_bind, V}}} -> [V | Vars];
-                                _ -> error
-                            end
-                    end, [], Pats),
-    case Vars of
-        error -> fun_clauses_to_exp_aux(Ctx, L, FunClauses);
-        VarList -> {VarList, Body}
-    end;
-fun_clauses_to_exp(Ctx, L, FunClauses) ->
-    fun_clauses_to_exp_aux(Ctx, L, FunClauses).
-
--spec fun_clauses_to_exp_aux(ctx(), ast:loc(), [ast:fun_clause()]) -> {[ast:local_varname()], ast:exps()}.
-fun_clauses_to_exp_aux(Ctx, L, FunClauses) ->
-    Arity =
-        case FunClauses of
-            [] -> errors:ty_error(L, "expected function clauses");
-            [{fun_clause, _, FirstPats, _, _} | Rest] ->
-                lists:foldl(
-                  fun({fun_clause, ThisLoc, ThisPats, _, _}, Arity) ->
-                          if
-                              length(ThisPats) =:= Arity -> Arity;
-                              true -> errors:ty_error(ThisLoc,
-                                                      "expected ~w arguments, but given ~w",
-                                                      [Arity, length(ThisPats)])
-                          end
-                  end,
-                  length(FirstPats),
-                  Rest)
-        end,
-    Vars = fresh_vars(Ctx, Arity),
-    G = ast:generated(fun_clauses, L),
-    ScrutExp = {tuple, G, lists:map(fun(V) -> {var, G, {local_ref, V}} end, Vars)},
-    CaseClauses = lists:map(fun fun_clause_to_case_clause/1, FunClauses),
-    E = {'case', G, ScrutExp, CaseClauses},
-    ?LOG_TRACE("Rewrote function clauses at ~s with arguments=~w:\n~200p", ast:format_loc(L), Vars, E),
-    {Vars, [E]}.
-
--spec fun_clause_to_case_clause(ast:fun_clause()) -> ast:case_clause().
-fun_clause_to_case_clause({fun_clause, L, Pats, Guards, Exps}) ->
-    {case_clause, L, {tuple, ast:generated(fun_clauses, L), Pats}, Guards, Exps}.
 
 % The disable flags of a function only apply to the case built from its clauses.
 -spec fun_body_ctx(ctx(), ast:exps()) -> ctx().
