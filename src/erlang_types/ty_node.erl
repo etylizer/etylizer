@@ -40,6 +40,7 @@
   empty/0,
 
   all_variables/1,
+  is_ground/2,
   substitute/2,
 
   force_load/2
@@ -142,7 +143,7 @@ force_load(Reference = {node, Id}, Node) ->
   % update counter
   CurrentId = ets:update_counter(?ID, id, 0),
   case CurrentId < Id of
-    true -> 
+    true ->
       ets:update_counter(?ID, id, (Id - CurrentId + 1));
     _ -> ok
   end,
@@ -305,10 +306,16 @@ normalize(TyNode, FixedVariables) ->
 normalize(TyNode, FixedVariables, Cache) ->
   Ty = load(TyNode),
 
-  case Cache of
-    #{{Ty, FixedVariables} := Res} -> 
+  case {is_ground(TyNode, FixedVariables), Cache} of
+    % ground hand-over: nothing can be constrained, so the subtype check decides
+    {true, _} ->
+      case is_empty(TyNode) of
+        true -> {[[]], Cache};
+        false -> {[], Cache}
+      end;
+    {false, #{{Ty, FixedVariables} := Res}} -> 
       {Res, Cache};
-    _ -> 
+    {false, _} -> 
       % assume type is normalized and add to local cache
       {Result, LC_0} = dnf_ty_variable:normalize(Ty, FixedVariables, Cache#{{Ty, FixedVariables} => [[]]}),
 
@@ -330,6 +337,16 @@ normalize(TyNode, FixedVariables, Cache) ->
           {Normalized, Cache#{{Ty, FixedVariables} => Normalized}}
       end
   end.
+
+% A type whose variables are all monomorphic is ground for tallying: normalizing it
+% yields [[]] if it is empty and [] otherwise. The subtype check gives the same answer,
+% because it ignores variables (dnf_ty_variable:is_empty_line/2) and normalization
+% drops the monomorphic variables of a line that has no polymorphic ones
+% (dnf_ty_variable:normalize_line/3).
+% all_variables/1 is not cached, it walks everything reachable from the type.
+-spec is_ground(type(), monomorphic_variables()) -> boolean().
+is_ground(TyNode, FixedVariables) ->
+  lists:all(fun(V) -> maps:is_key(V, FixedVariables) end, sets:to_list(all_variables(TyNode))).
 
 -spec unparse(type(), ST) -> {ast_ty(), ST} when ST :: unparse_cache().
 unparse(Node = {node, Id}, Cache) -> 

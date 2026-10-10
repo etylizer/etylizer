@@ -2,10 +2,12 @@
 
 -export([
     check_forms/6, check_forms/7,
+    collect_diagnostics/6, collect_diagnostics/7,
     new_ctx/3,
     new_ctx/7,
     resolve_disabled_funs/2
 ]).
+-export([should_check/4]).
 
 -include("log.hrl").
 -include("typing.hrl").
@@ -51,12 +53,12 @@ resolve_disabled_funs(Feature, Forms) ->
     end.
 
 % Checks all forms of a module
--spec check_forms(ctx(), string(), ast:forms(), sets:set(string()), sets:set(string()), boolean()) -> ok.
+-spec check_forms(ctx(), string(), ast:forms(), sets:set(string()), sets:set(string()), boolean()) -> [{atom(), arity()}].
 check_forms(Ctx, FileName, Forms, Only, Ignore, CheckExports) ->
     check_forms(Ctx, FileName, Forms, Only, Ignore, CheckExports, {sets:new(), sets:new()}).
 
--spec check_forms(ctx(), string(), ast:forms(), sets:set(string()), sets:set(string()), boolean(), {sets:set({atom(), arity()}), sets:set({atom(), arity()})}) -> ok.
-check_forms(Ctx, FileName, Forms, Only, Ignore, CheckExports, {CliNoExhaustiveness, CliNoRedundancy}) ->
+-spec prepare_check(ctx(), string(), ast:forms(), sets:set(string()), sets:set(string()), boolean(), {sets:set({atom(), arity()}), sets:set({atom(), arity()})}) -> {ctx(), [{ast:fun_decl(), ast:ty_scheme()}], [symtab:fun_env()]}.
+prepare_check(Ctx, FileName, Forms, Only, Ignore, CheckExports, {CliNoExhaustiveness, CliNoRedundancy}) ->
     case CheckExports orelse Ctx#ctx.gradual_typing_mode =:= infer of
         true ->
             ?LOG_DEBUG("Checking whether exported functions in ~s have a type spec", FileName),
@@ -136,7 +138,12 @@ check_forms(Ctx, FileName, Forms, Only, Ignore, CheckExports, {CliNoExhaustivene
     ?LOG_DEBUG("Checking ~w functions in ~s against their specs (~w environments)",
               length(FunsWithSpec), FileName, length(InferredTyEnvs)),
 
-    % if in report mode, continue type checking
+    {ExtCtx, FunsWithSpec, InferredTyEnvs}.
+
+-spec check_forms(ctx(), string(), ast:forms(), sets:set(string()), sets:set(string()), boolean(), {sets:set({atom(), arity()}), sets:set({atom(), arity()})}) -> [{atom(), arity()}].
+check_forms(Ctx, FileName, Forms, Only, Ignore, CheckExports, NoExhaustivenessRedundancy) ->
+    {ExtCtx, FunsWithSpec, InferredTyEnvs} =
+        prepare_check(Ctx, FileName, Forms, Only, Ignore, CheckExports, NoExhaustivenessRedundancy),
     ReportMode = Ctx#ctx.report_mode,
     Loop =
         fun Loop(Envs, Errs) ->
@@ -164,19 +171,41 @@ check_forms(Ctx, FileName, Forms, Only, Ignore, CheckExports, {CliNoExhaustivene
                         end;
                     [E | RestEnvs] ->
                         case ReportMode of
-                            early_exit -> 
+                            early_exit ->
                                 case typing_check:check_all(ExtCtx, FileName, E, FunsWithSpec) of
-                                    ok -> ok; % we are done
+                                    ok -> []; % we are done
                                     {error, Msg} -> Loop(RestEnvs, [{E, Msg} | Errs])
                                 end;
-                            report -> 
+                            report ->
                                 typing_check:check_all_report(ExtCtx, FileName, E, FunsWithSpec)
                         end
                 end
         end,
-    Loop(InferredTyEnvs, []),
+    Result = Loop(InferredTyEnvs, []),
     ?LOG_INFO("Checking ~w functions in ~s against their specs finished successfully",
-              length(FunsWithSpec), FileName).
+              length(FunsWithSpec), FileName),
+    Result.
+
+-spec collect_diagnostics(ctx(), string(), ast:forms(), sets:set(string()), sets:set(string()), boolean()) -> [diagnostics:diagnostic()].
+collect_diagnostics(Ctx, FileName, Forms, Only, Ignore, CheckExports) ->
+    collect_diagnostics(Ctx, FileName, Forms, Only, Ignore, CheckExports, {sets:new(), sets:new()}).
+
+-spec collect_diagnostics(ctx(), string(), ast:forms(), sets:set(string()), sets:set(string()), boolean(), {sets:set({atom(), arity()}), sets:set({atom(), arity()})}) -> [diagnostics:diagnostic()].
+collect_diagnostics(Ctx, FileName, Forms, Only, Ignore, CheckExports, NoExhaustivenessRedundancy) ->
+    {ExtCtx, FunsWithSpec, InferredTyEnvs} =
+        prepare_check(Ctx, FileName, Forms, Only, Ignore, CheckExports, NoExhaustivenessRedundancy),
+    ?LOG_DEBUG("Collecting diagnostics for ~w functions in ~s", length(FunsWithSpec), FileName),
+    case InferredTyEnvs of
+        [Env | _] -> typing_check:check_all_collect(ExtCtx, FileName, Env, FunsWithSpec);
+        [] -> []
+    end.
+
+% Whether the only and ignore options select a function for checking
+-spec should_check(atom(), ast:fun_with_arity(), sets:set(string()), sets:set(string())) -> boolean().
+should_check(ModName, {Name, Arity}, Only, Ignore) ->
+    RefStr = utils:sformat("~w/~w", Name, Arity),
+    should_check(utils:sformat("~w:~s", ModName, RefStr), RefStr,
+        utils:sformat("~w", Name), utils:sformat("~w", ModName), Only, Ignore).
 
 -spec should_check(string(), string(), string(), string(), sets:set(string()), sets:set(string())) -> boolean().
 should_check(QRefStr, RefStr, NameStr, ModStr, Only, Ignore) ->

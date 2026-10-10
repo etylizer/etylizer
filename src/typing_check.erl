@@ -2,7 +2,8 @@
 
 -export([
     check_all/4,
-    check_all_report/4
+    check_all_report/4,
+    check_all_collect/4
 ]).
 
 -ifdef(TEST).
@@ -16,17 +17,19 @@
 -include("log.hrl").
 -include("typing.hrl").
 -include("metrics.hrl").
+-include("etylizer.hrl").
 
 % Checks all functions against their specs, only print a report.
+% Returns the list of functions that failed type checking.
 -spec check_all_report(
         ctx(), string(), symtab:fun_env(), [{ast:fun_decl(), ast:ty_scheme()}]
-       ) -> ok.
+       ) -> [{atom(), arity()}].
 check_all_report(Ctx, FileName, Env, Decls) ->
     ?LOG_NOTE("Checking ~w functions in ~s against their specs", length(Decls), FileName),
     ExtSymtab = symtab:extend_symtab_with_fun_env(Env, Ctx#ctx.symtab),
     ExtCtx = Ctx#ctx { symtab = ExtSymtab },
     F = fun(FN) -> filename:basename(filename:rootname(FN)) end,
-    lists:foreach(
+    lists:filtermap(
         fun({Decl, Ty}) ->
             {function, _, Name, Arity, _, _} = Decl,
             ?METRIC_SET_FUN(list_to_atom(utils:sformat("~s:~w/~w", [F(FileName), Name, Arity]))),
@@ -35,31 +38,36 @@ check_all_report(Ctx, FileName, Env, Decls) ->
                 success ->
                     Time = ?TIME(T0),
                     ?METRIC(typecheck_time, {list_to_atom(utils:sformat("~s:~w/~w", [F(FileName), Name, Arity])), Time, ok}),
-                    io:format(user,"Ok: ~s:~w/~w (~p ms)~n", [F(FileName), Name, Arity, Time]);
+                    io:format(user,"Ok: ~s:~w/~w (~p ms)~n", [F(FileName), Name, Arity, Time]),
+                    false;
                 timeout ->
                     Time = ?TIME(T0),
                     ?METRIC(typecheck_time, {list_to_atom(utils:sformat("~s:~w/~w", [F(FileName), Name, Arity])), Time, timeout}),
-                    io:format(user,"Timeout: ~s:~w/~w (~p ms)~n", [F(FileName), Name, Arity, Time])
+                    io:format(user,"Timeout: ~s:~w/~w (~p ms)~n", [F(FileName), Name, Arity, Time]),
+                    {true, {Name, Arity}}
             catch
                 throw:{etylizer, ty_error, Msg} ->
                     Time = ?TIME(T0),
                     ?METRIC(typecheck_time, {list_to_atom(utils:sformat("~s:~w/~w", [F(FileName), Name, Arity])), Time, error}),
-                    io:format(user,"Error: ~s:~w/~w (~p ms)~n  ~s~n", [F(FileName), Name, Arity, Time, Msg]);
+                    io:format(user,"Error: ~s:~w/~w (~p ms)~n  ~s~n", [F(FileName), Name, Arity, Time, Msg]),
+                    {true, {Name, Arity}};
                 throw:{etylizer, unsupported, Msg} ->
-                    io:format(user,"Unsupported: ~s:~w/~w~n  ~s~n", [F(FileName), Name, Arity, Msg]);
+                    io:format(user,"Unsupported: ~s:~w/~w~n  ~s~n", [F(FileName), Name, Arity, Msg]),
+                    {true, {Name, Arity}};
                 throw:{etylizer, Type, _Msg} ->
                     Time = ?TIME(T0),
                     ?METRIC(typecheck_time, {list_to_atom(utils:sformat("~s:~w/~w", [F(FileName), Name, Arity])), Time, error}),
-                    io:format(user,"Error: (~p) ~s:~w/~w (~p ms)~n", [Type, F(FileName), Name, Arity, Time]);
+                    io:format(user,"Error: (~p) ~s:~w/~w (~p ms)~n", [Type, F(FileName), Name, Arity, Time]),
+                    {true, {Name, Arity}};
                 _:T ->
                     Time = ?TIME(T0),
                     ?METRIC(typecheck_time, {list_to_atom(utils:sformat("~s:~w/~w", [F(FileName), Name, Arity])), Time, error}),
-                    io:format(user,"Other: (~p) ~s:~w/~w (~p ms)~n", [{T}, F(FileName), Name, Arity, Time])
+                    io:format(user,"Other: (~p) ~s:~w/~w (~p ms)~n", [{T}, F(FileName), Name, Arity, Time]),
+                    {true, {Name, Arity}}
             end
         end,
         Decls
-    ),
-    ok.
+    ).
 
 % Checks a function against its spec, skips timeouts and does not report errors.
 -spec check_report(ctx(), ast:fun_decl(), ast:ty_scheme()) -> success | timeout.
@@ -93,8 +101,7 @@ check_report(Ctx, Decl = {function, Loc, Name, Arity, _Args, Body}, PolyTy) ->
               end,
               AltTys),
 
-            UnmatchedEverywhere = intersect_unmatched(Body, UnmatchedList),
-            case sets:to_list(UnmatchedEverywhere) of
+            case unmatched_everywhere(Body, UnmatchedList) of
                 [] -> success;
                 [First | _Rest] -> report_tyerror(FunStr, redundant_branch, First, "")
             end
@@ -124,6 +131,36 @@ check_all(Ctx, FileName, Env, Decls) ->
             ?LOG_NOTE("Checking failed: ~s", Msg),
             {error, Msg}
     end.
+
+% Checks all functions against their specs, collecting all diagnostics as data instead of
+% throwing on the first error. Mirrors check_all_report/4's per-function try/catch, but
+% accumulates diagnostics:diagnostic() values rather than printing them. Continues to the
+% next function after an error, so all functions are reported (first located error per
+% function). The structured location is currently the function declaration location; the
+% precise per-expression location is embedded in the message text.
+-spec check_all_collect(
+        ctx(), string(), symtab:fun_env(), [{ast:fun_decl(), ast:ty_scheme()}]
+       ) -> [diagnostics:diagnostic()].
+check_all_collect(Ctx, FileName, Env, Decls) ->
+    ?LOG_INFO("Collecting diagnostics for ~w functions in ~s", length(Decls), FileName),
+    ExtSymtab = symtab:extend_symtab_with_fun_env(Env, Ctx#ctx.symtab),
+    ExtCtx = Ctx#ctx { symtab = ExtSymtab },
+    lists:foldr(
+        fun({Decl, Ty}, Acc) ->
+            {function, Loc, Name, Arity, _, _} = Decl,
+            try check(ExtCtx, Decl, Ty) of
+                ok -> Acc
+            catch
+                throw:{etylizer, Kind, Msg} ->
+                    % Prefer the precise location embedded in the message; fall back to
+                    % the function declaration location.
+                    PreciseLoc = diagnostics:loc_from_message(Msg, Loc),
+                    [diagnostics:from_error(Kind, PreciseLoc, Msg, Name, Arity) | Acc]
+            end
+        end,
+        [],
+        Decls
+    ).
 
 % Ensures that a mono type used as a spec is supported. Throws a ty_error if not.
 -spec ensure_type_supported(ast:loc(), ast:ty()) -> _.
@@ -180,8 +217,7 @@ check(Ctx, Decl = {function, Loc, Name, Arity, _Args, Body}, PolyTy) ->
       end,
       AltTys),
 
-    UnmatchedEverywhere = intersect_unmatched(Body, UnmatchedList),
-    case sets:to_list(UnmatchedEverywhere) of
+    case unmatched_everywhere(Body, UnmatchedList) of
         [] ->
             ?LOG_INFO("Type ok for ~w/~w at ~s", Name, Arity, ast:format_loc(Loc)),
             ok;
@@ -272,51 +308,36 @@ report_tyerror(FunName, Kind, Loc, Hint) ->
         _ -> errors:ty_error(Loc, "in ~s, ~s~n~s~n~n  ~s", [FunName, tyerror_msg(Kind), SrcCtx, Hint])
     end.
 
--spec intersect_unmatched(ast:exps(), [sets:set(ast:loc())]) -> sets:set(ast:loc()).
-intersect_unmatched(Body, UnmatchedList) ->
-    SublocationMap = sublocation_map(Body),
-    UnmatchedListTransitive = lists:map(
-      fun(UnmatchedSet) ->
-          sets:fold(fun(LLoc, Acc) ->
-              Sublocs = sets:from_list(maps:get(LLoc, SublocationMap, [])),
-              sets:union(Acc, Sublocs)
-          end, UnmatchedSet, UnmatchedSet)
+% The branches that match for no alternative of an intersection type, in source order.
+% UnmatchedList has the locations of the unmatched branches of each alternative.
+% A location shared by several clauses (e.g. from a macro) does not identify a branch
+% and is ignored.
+-spec unmatched_everywhere(ast:exps(), [sets:set(ast:loc())]) -> [ast:loc()].
+unmatched_everywhere(Body, UnmatchedList) ->
+    Clauses = case_clauses(Body),
+    ClauseLocs = [Loc || {case_clause, Loc, _, _, _} <- Clauses],
+    Shared = sets:from_list(ClauseLocs -- lists:usort(ClauseLocs), [{version, 2}]),
+    % the branches inside each branch
+    Nested = maps:from_list([{Loc, [L || {case_clause, L, _, _, _} <- case_clauses(B)]}
+                             || {case_clause, Loc, _, _, B} <- Clauses]),
+    Inside = fun(Loc) -> maps:get(Loc, Nested, []) end,
+    Branches = [sets:subtract(Unmatched, Shared) || Unmatched <- UnmatchedList],
+    % the branches inside an unmatched branch are unmatched, too
+    Transitive = lists:map(
+      fun(Bs) ->
+          sets:fold(fun(Loc, Acc) ->
+              sets:union(Acc, sets:from_list(Inside(Loc), [{version, 2}]))
+          end, Bs, Bs)
       end,
-      UnmatchedList),
-    sets:intersection(UnmatchedListTransitive).
+      Branches),
+    Everywhere = sets:to_list(sets:intersection([sets:union(Branches) | Transitive])),
+    % only the outermost branches are reported
+    Inner = lists:append([Inside(Loc) || Loc <- Everywhere]),
+    lists:sort(fun ast:leq_loc/2, lists:sort(Everywhere -- Inner)).
 
-% Builds a map from each branching location to all descendant locations.
-% Uses everything with {rec, _} to match branching constructs while continuing
-% recursion into their children to find nested constructs.
-% Entries are returned outermost-first, so foldr processes bottom-up,
-% allowing collect_locs to reuse cached results for inner constructs.
--spec sublocation_map(any()) -> #{ast:loc() => [ast:loc()]}.
-sublocation_map(Term) ->
-    Entries = utils:everything(
-      fun({'case', Loc, Expr, Clauses}) -> {rec, {Loc, [Expr, Clauses]}};
-         ({'fun', Loc, _, _, Body}) -> {rec, {Loc, Body}};
-         ({case_clause, Loc, Pat, _Guards, Body}) -> {rec, {Loc, [Pat, Body]}};
+-spec case_clauses(term()) -> [ast:case_clause()].
+case_clauses(Term) ->
+    utils:everything(
+      fun(C = {case_clause, _, _, _, _}) -> {rec, ?assert_type(C, ast:case_clause())};
          (_) -> error
-      end, Term),
-    lists:foldr(fun({Loc, Children}, Cache) ->
-        maps:put(Loc, collect_locs(Children, Cache), Cache)
-    end, #{}, Entries).
-
--spec collect_locs(any(), #{ast:loc() => [ast:loc()]}) -> [ast:loc()].
-collect_locs(Term, Cache) ->
-    lists:flatten(utils:everything(
-      fun({'case', Loc, _, _}) -> cached(Loc, Cache);
-         ({'fun', Loc, _, _, _}) -> cached(Loc, Cache);
-         ({case_clause, Loc, _, _, _}) -> cached(Loc, Cache);
-         (X) ->
-             case ast:is_loc(X) of
-                 true -> {ok, X};
-                 false -> error
-             end
-      end, Term)).
-
-cached(Loc, Cache) ->
-    case Cache of
-        #{Loc := Locs} -> {ok, [Loc | Locs]};
-        _ -> {rec, Loc}
-    end.
+      end, Term).
