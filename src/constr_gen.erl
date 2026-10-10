@@ -3,7 +3,7 @@
 -include("log.hrl").
 
 -export([
-         gen_constrs_fun_group/4, gen_constrs_annotated_fun/5,
+         gen_constrs_fun_group/4, gen_constrs_annotated_fun/6,
          sanity_check/2,
          new_ctx/2
         ]).
@@ -24,9 +24,19 @@
           % when true, exhaustiveness checking is disabled for the top-level function clauses
           disable_exhaustiveness = false :: boolean(),
           % when true, redundancy checking is disabled for the top-level function clauses
-          disable_redundancy = false :: boolean()
+          disable_redundancy = false :: boolean(),
+          % declared receive message type (from -etylizer({msg_type, T})), if any
+          recv_msg_ty = none :: none | ast:ty(),
+          % per-receive exhaustiveness: exhaust (default) or noexhaust
+          recv_exhaust = exhaust :: exhaust | noexhaust,
+          % Message types of the function arguments whose spec type is pid(T): maps the
+          % argument to T. The T of pid(T) is only visible syntactically (pid(T) = pid()
+          % set-theoretically), so it is extracted once from the spec for pid_send_constrs.
+          pid_msg_tys = #{} :: #{ ast:any_ref() => ast:ty() }
         }).
 -type ctx() :: #ctx{}.
+
+-include("etylizer.hrl").
 
 -spec new_ctx(symtab:t(), feature_flags:exhaustiveness_mode()) -> ctx().
 new_ctx(Symtab, ExhaustivenessMode) ->
@@ -75,16 +85,22 @@ gen_constrs_fun_group(ExhaustivenessMode, Symtab, {DisableExhaustiveness, Disabl
 % This function is invoked for each branch of the intersection type in the type spec.
 % The idea is that we can give better error messages by pointing out which part of the
 % intersection did not type check.
--spec gen_constrs_annotated_fun(feature_flags:exhaustiveness_mode(), symtab:t(), {boolean(), boolean()}, ast:ty_full_fun(), ast:fun_decl()) -> constr:constrs().
-gen_constrs_annotated_fun(ExhaustivenessMode, Symtab, {DisableExhaustiveness, DisableRedundancy}, {fun_full, ArgTys, ResTy}, {function, L, Name, Arity, Args, Body}) ->
+-spec gen_constrs_annotated_fun(feature_flags:exhaustiveness_mode(), symtab:t(), {boolean(), boolean()}, none | {ast:ty(), exhaust | noexhaust}, ast:ty_full_fun(), ast:fun_decl()) -> constr:constrs().
+gen_constrs_annotated_fun(ExhaustivenessMode, Symtab, {DisableExhaustiveness, DisableRedundancy}, RecvMsgTyArg, {fun_full, ArgTys, ResTy}, {function, L, Name, Arity, Args, Body}) ->
     Ctx0 = new_ctx(Symtab, ExhaustivenessMode),
-    Ctx = Ctx0#ctx{ disable_exhaustiveness = DisableExhaustiveness, disable_redundancy = DisableRedundancy },
+    Ctx1 = Ctx0#ctx{ disable_exhaustiveness = DisableExhaustiveness, disable_redundancy = DisableRedundancy },
     if length(Args) =/= length(ArgTys) orelse length(Args) =/= Arity ->
             errors:ty_error(L, "Arity mismatch for function ~w", Name);
        true -> ok
     end,
     ArgRefs = lists:map(fun(V) -> {local_ref, V} end, Args),
     Env = maps:from_list(lists:zip(ArgRefs, ArgTys)),
+    % recv_msg_ty for typed receive; recv_exhaust for per-receive exhaustiveness opt-out
+    {RecvTy, RecvExhaust} = case RecvMsgTyArg of
+        none -> {none, exhaust};
+        {Ty, Exhaust} -> {Ty, Exhaust}
+    end,
+    Ctx = Ctx1#ctx{ pid_msg_tys = pid_msg_tys(Env), recv_msg_ty = RecvTy, recv_exhaust = RecvExhaust },
     BodyCs = exps_constrs(fun_body_ctx(Ctx, Body), L, Body, ResTy),
     Msg = utils:sformat("definition of ~w/~w", Name, Arity),
     utils:single({cdef, mk_locs(Msg, L), Env, BodyCs}).
@@ -110,12 +126,17 @@ exp_constrs(Ctx, E, T) ->
         {'float', L, _F} -> utils:single({csubty, mk_locs("float literal", L), {predef, float}, T});
         {'string', L, ""} -> utils:single({csubty, mk_locs("empty string literal", L), {empty_list}, T});
         {'string', L, S} -> utils:single({csubty, mk_locs("string literal", L), string_to_cons_ty(S), T});
-        {bin, L, []} -> utils:single({csubty, mk_locs("empty bitstring", L), {bitstring}, T});
-        {bin, L, _Cs} ->
-            % TODO constraints for inner binary pattern elements
-            ?LOG_WARN("Skipping verification of binary pattern elements of ~s", ast:format_loc(L)),
-            utils:single({csubty, mk_locs("bitstring", L), {bitstring}, T});
-        {bc, L, _E, _Qs} -> errors:unsupported(L, "bitstrings");
+        {bin, L, []} -> utils:single({csubty, mk_locs("empty bitstring", L), {bitstring, 0, 0}, T});
+        {bin, L, BinElems} ->
+            {ElemCs, ResultTy} = bin_expr_constrs(Ctx, L, BinElems),
+            sets:add_element({csubty, mk_locs("bitstring", L), ResultTy, T}, ElemCs);
+        {bc, L, Exp, Qs} ->
+            {Env, Cs0} = process_qualifiers(Ctx, L, Qs, #{}, sets:new()),
+            Beta = fresh_tyvar(Ctx),
+            ExpCs = exps_constrs(Ctx, L, [Exp], Beta),
+            BodyCs = sets:from_list([{cdef, mk_locs("binary comprehension body", L), Env, ExpCs}], []),
+            Cs1 = sets:add_element({csubty, mk_locs("binary comprehension result", L), {bitstring, 0, 8}, T}, BodyCs),
+            sets:union(Cs0, Cs1);
         {block, L, Es} ->
             exps_constrs(Ctx, L, Es, T);
         {'case', L, ScrutE, Clauses} ->
@@ -273,6 +294,20 @@ exp_constrs(Ctx, E, T) ->
             sets:add_element(ResultC, Cs2);
         {nil, L} ->
             utils:single({csubty, mk_locs("result of nil", L), {empty_list}, T});
+        {op, L, '!', PidExp, MsgExp} ->
+            % Send operator: Pid ! Msg
+            % Standard cop constraint (checks Pid is a valid receiver, returns Msg).
+            Alpha1 = fresh_tyvar(Ctx),
+            Cs1 = exp_constrs(Ctx, PidExp, Alpha1),
+            Alpha2 = fresh_tyvar(Ctx),
+            Cs2 = exp_constrs(Ctx, MsgExp, Alpha2),
+            Beta = fresh_tyvar(Ctx),
+            OpCs = sets:from_list(
+                     [{cop, mk_locs("type of op !", L), '!', 2, {fun_full, [Alpha1, Alpha2], Beta}},
+                      {csubty, mk_locs("result of op !", L), Beta, T}], [{version, 2}]),
+            % Additional pid(T) check: if Pid has type pid(T), require Msg <: T
+            PidMsgCs = pid_send_constrs(Ctx, L, PidExp, Alpha2),
+            sets:union([Cs1, Cs2, OpCs, PidMsgCs]);
         {op, L, Op, Lhs, Rhs} ->
             Alpha1 = fresh_tyvar(Ctx),
             Cs1 = exp_constrs(Ctx, Lhs, Alpha1),
@@ -431,12 +466,30 @@ process_qualifiers(Ctx, Loc, [Q | Qs], Env, Cs) ->
         {zip, LGen, NestedQualifiers} ->
             {NewEnv, NewCs} = process_qualifiers(Ctx, LGen, NestedQualifiers, Env, Cs),
             process_qualifiers(Ctx, Loc, Qs, NewEnv, NewCs);
-        % Pat <= Exp
-        {b_generate, _, _, _} ->
-            errors:unsupported(Loc, "generator ~w", Q);
-        % Pat <:= Exp
-        {b_generate_strict, _, _, _} ->
-            errors:unsupported(Loc, "generator ~w", Q);
+        % Pat <= Exp (binary generator)
+        {b_generate, LGen, Pat, Exp} ->
+            Alpha = fresh_tyvar(Ctx),
+            Beta = fresh_tyvar(Ctx),
+            ExpCs = exp_constrs(Ctx, Exp, {bitstring}),
+            TyPat = ty_of_pat(Env, Pat, upper),
+            {PatCs, PatEnv} = pat_env(Ctx, LGen, Beta, Pat),
+            GeneratorC = [
+                {csubty, mk_locs("binary pattern lower bound", LGen), ast_lib:mk_intersection([Alpha, TyPat]), Beta},
+                {csubty, mk_locs("binary pattern upper bound", LGen), Beta, Alpha}
+            ],
+            NewEnv = intersect_envs(Env, PatEnv),
+            process_qualifiers(Ctx, Loc, Qs, NewEnv, sets:union([Cs, ExpCs, PatCs, sets:from_list(GeneratorC)]));
+        % Pat <:= Exp (strict binary generator)
+        {b_generate_strict, LGen, Pat, Exp} ->
+            Alpha = fresh_tyvar(Ctx),
+            ExpCs = exp_constrs(Ctx, Exp, {bitstring}),
+            TyPat = ty_of_pat(Env, Pat, upper),
+            StrictCs = sets:from_list([
+                {csubty, mk_locs("strict binary generator", LGen), Alpha, TyPat}
+            ]),
+            {PatCs, PatEnv} = pat_env(Ctx, LGen, Alpha, Pat),
+            NewEnv = intersect_envs(Env, PatEnv),
+            process_qualifiers(Ctx, Loc, Qs, NewEnv, sets:union([Cs, ExpCs, PatCs, StrictCs]));
         % strict map generator: KeyPat := ValPat <:- Exp
         {m_generate_strict, LGen, KeyPat, ValPat, Exp} ->
             KeyAlpha = fresh_tyvar(Ctx),
@@ -588,16 +641,130 @@ dyncall_constrs(Ctx, L, ModExp, FunExp, Args, T) ->
 -spec ty_without(ast:ty(), ast:ty()) -> ast:ty().
 ty_without(T1, T2) -> ast_lib:mk_intersection([T1, ast_lib:mk_negation(T2)]).
 
+% Extracts the message type T of every function argument declared as pid(T) in the spec.
+-spec pid_msg_tys(constr:constr_env()) -> #{ ast:any_ref() => ast:ty() }.
+pid_msg_tys(ArgEnv) ->
+    maps:filtermap(
+        fun (_Ref, {named, _, TyRef, [T]})
+                when TyRef =:= {ty_ref, erlang, pid, 1};
+                     TyRef =:= {ty_qref, erlang, pid, 1} -> {true, T};
+            (_Ref, _Ty) -> false
+        end,
+        ArgEnv).
+
+% Checks if the receiver of a send expression is an argument declared as pid(T).
+% If so, generates a constraint that the message type is a subtype of T.
+% This implements the Marlow-Wadler pid(T) parametric process type.
+-spec pid_send_constrs(ctx(), ast:loc(), ast:exp(), ast:ty()) -> constr:constrs().
+pid_send_constrs(Ctx, L, PidExp, MsgTy) ->
+    case PidExp of
+        {var, _, {local_ref, Var}} ->
+            case maps:find({local_ref, Var}, Ctx#ctx.pid_msg_tys) of
+                {ok, T} ->
+                    utils:single({csubty, mk_locs("pid(T) message type constraint", L), MsgTy, T});
+                error ->
+                    sets:new([{version, 2}])
+            end;
+        _ ->
+            sets:new([{version, 2}])
+    end.
+
 % Generates constraints for a receive expression.
-% Pattern variables are bound to dynamic() since we don't know message types.
-% Guards override dynamic with specific types (e.g., is_integer(X) makes X :: integer()).
--spec receive_constrs(ctx(), ast:loc(), [ast:case_clause()], ast:ty()) ->
-    constr:constrs().
-receive_constrs(Ctx, _L, CaseClauses, T) ->
-    ClauseCs = lists:map(
-        fun(Clause) -> receive_clause_constrs(Ctx, Clause, T) end,
+% When recv_msg_ty is set, applies full case-like exhaustiveness and redundancy checking
+% against the declared message type. Otherwise, pattern variables default to dynamic().
+-spec receive_constrs(ctx(), ast:loc(), [ast:case_clause()], ast:ty()) -> constr:constrs().
+receive_constrs(Ctx, L, CaseClauses, T) ->
+    case Ctx#ctx.recv_msg_ty of
+        none ->
+            ClauseCs = lists:map(
+                fun(Clause) -> receive_clause_constrs(Ctx, Clause, T) end,
+                CaseClauses),
+            sets:union(ClauseCs);
+        MsgTy ->
+            typed_receive_constrs(Ctx, L, MsgTy, CaseClauses, T)
+    end.
+
+% Generates constraints for a typed receive using the declared message type as the scrutinee.
+% Applies exhaustiveness and redundancy checking, mirroring case_constrs.
+-spec typed_receive_constrs(ctx(), ast:loc(), ast:ty(), [ast:case_clause()],
+                            ast:ty()) -> constr:constrs().
+typed_receive_constrs(Ctx, L, MsgTy, CaseClauses, T) ->
+    HasBinPat = lists:any(
+        fun({case_clause, _, Pat, _, _}) -> has_bin_pat(Pat) end,
         CaseClauses),
-    sets:union(ClauseCs).
+    NeedsUnmatchedCheck = needs_unmatched_check(L, CaseClauses),
+    % A neutral atom literal serves as the virtual scrutinee: pat_of_exp maps any
+    % non-structural expression to a wildcard pattern, so Lower/Upper are determined
+    % purely by the clause pattern (the receive has no real scrutinee expression).
+    WildScrut = {atom, L, '_'},
+    {BodyList, Lowers, PatCs} =
+        lists:foldl(
+            fun({case_clause, CL, Pat, Guards, Exps}, {AccBodyList, PrevLowers, AccPatCs}) ->
+                % Compute bounds and environments with/without guards (mirrors case_clause_constrs).
+                {_GuardLower, GuardUpper, GuardPatCs, GuardPatEnv} =
+                    case_clause_env(Ctx, CL, MsgTy, WildScrut, Pat, []),
+                {BodyLower, _BodyUpper, BodyPatCs, BodyPatEnv} =
+                    case_clause_env(Ctx, CL, MsgTy, WildScrut, Pat, Guards),
+                % Redundancy: clause is redundant iff MsgTy <: not(GuardUpper) | union(PrevLowers)
+                RedundancyCs =
+                    if NeedsUnmatchedCheck ->
+                        recv_clause_unmatched_constraints(MsgTy, PrevLowers, GuardUpper, CL);
+                    true -> none
+                    end,
+                % Guard constraints
+                CGuards = sets:union(lists:map(
+                    fun(Guard) ->
+                        exps_constrs(Ctx, CL, Guard, {predef_alias, boolean})
+                    end, Guards)),
+                % Body constraints
+                Beta = fresh_tyvar(Ctx),
+                BodyCs = exps_constrs(Ctx, CL, Exps, Beta),
+                RL = case Exps of [E | _] -> ast:loc_exp(E) end,
+                ResultCs = utils:single({csubty, mk_locs("typed receive result", RL), Beta, T}),
+                % Build ccase_branch payload (same structure as case_clause_constrs)
+                Payload = constr:mk_case_branch_payload(
+                    {GuardPatEnv, CGuards},
+                    {BodyPatEnv, BodyCs},
+                    RedundancyCs,
+                    ResultCs),
+                BranchC = {ccase_branch, mk_locs("typed receive branch", CL), Payload},
+                % BranchC goes into BodyList; pattern constraints accumulate in PatCs
+                NewPatCs = sets:union(AccPatCs, sets:union(GuardPatCs, BodyPatCs)),
+                {AccBodyList ++ [BranchC], PrevLowers ++ [BodyLower], NewPatCs}
+            end,
+            {[], [], sets:new([{version, 2}])},
+            CaseClauses),
+    % Exhaustiveness: all message values must be covered by some clause.
+    % Suppressed when recv_exhaust is noexhaust (per-receive opt-out).
+    ExhaustCs =
+        case {Ctx#ctx.exhaustiveness_mode, Ctx#ctx.recv_exhaust, HasBinPat} of
+            {enabled, exhaust, false} ->
+                utils:single({csubty, mk_locs("typed receive exhaustiveness", L),
+                    MsgTy, ast_lib:mk_union(Lowers)});
+            _ -> sets:new([{version, 2}])
+        end,
+    % PatCs may be empty if all patterns are wildcards/vars (no constraints generated).
+    % loc(PatCs) in constr_simp requires at least one location-carrying constraint,
+    % so add a trivially-true baseline: MsgTy <: any().
+    BaseCs = utils:single({csubty, mk_locs("typed receive", L), MsgTy, {predef, any}}),
+    FinalPatCs = sets:union(PatCs, BaseCs),
+    CcaseC = {ccase, mk_locs("typed receive", L), FinalPatCs, ExhaustCs, BodyList},
+    utils:single(CcaseC).
+
+% Computes the redundancy constraint for a typed receive clause.
+% The clause is redundant iff the constraint MsgTy <: not(Upper) | union(LowersBefore) is satisfiable.
+-spec recv_clause_unmatched_constraints(ast:ty(), [ast:ty()], ast:ty(), ast:loc()) ->
+    constr:constr_case_branch_cond().
+recv_clause_unmatched_constraints(MsgTy, LowersBefore, Upper, L) ->
+    Ui = ast_lib:mk_union([ast_lib:mk_negation(Upper) | LowersBefore]),
+    utils:single({csubty, mk_locs("redundant receive clause", L), MsgTy, Ui}).
+
+% Check if a pattern contains a binary pattern at the top level (possibly inside a tuple).
+-spec has_bin_pat(ast:pat()) -> boolean().
+has_bin_pat({bin, _, _}) -> true;
+has_bin_pat({tuple, _, Ps}) -> lists:any(fun has_bin_pat/1, Ps);
+has_bin_pat({match, _, P1, P2}) -> has_bin_pat(P1) orelse has_bin_pat(P2);
+has_bin_pat(_) -> false.
 
 % Generates constraints for a receive...after expression.
 % Combines receive clause constraints with the after body constraints.
@@ -618,20 +785,31 @@ receive_after_constrs(Ctx, L, CaseClauses, TimeoutExp, AfterBody, T) ->
 
 % Generates constraints for a single receive clause.
 % Pattern variables get type dynamic(). Guards override with specific types.
+% If the context has a recv_msg_ty (typed receive...after), pattern variables are
+% bound to types inferred from the declared message type instead.
 -spec receive_clause_constrs(ctx(), ast:case_clause(), ast:ty()) -> constr:constrs().
 receive_clause_constrs(Ctx, {case_clause, L, Pat, Guards, Exps}, T) ->
-    % Bind pattern variables to dynamic
-    BoundVars = bound_vars_pat(Pat),
-    DynamicPatEnv = sets:fold(
-        fun(V, Acc) -> maps:put({local_ref, V}, {predef, dynamic}, Acc) end,
-        #{},
-        BoundVars),
-    {GuardEnv, _} = guard_seq_env(Guards),
-    % #FIXME HACK until #329 is fixed
-    % Guard refinements override dynamic(), not intersect with it.
-    % Overriding ensures guarded variables get only the guard type.
-    % Unguarded variables remain dynamic().
-    VarEnv = maps:merge(DynamicPatEnv, GuardEnv),
+    {VarEnv, ExtraCs} =
+        case Ctx#ctx.recv_msg_ty of
+            none ->
+                % Bind pattern variables to dynamic
+                BoundVars = bound_vars_pat(Pat),
+                DynamicPatEnv = sets:fold(
+                    fun(V, Acc) -> maps:put({local_ref, V}, {predef, dynamic}, Acc) end,
+                    #{},
+                    BoundVars),
+                {GuardEnv, _} = guard_seq_env(Guards),
+                % #FIXME HACK until #329 is fixed
+                % Guard refinements override dynamic(), not intersect with it.
+                % Overriding ensures guarded variables get only the guard type.
+                % Unguarded variables remain dynamic().
+                {maps:merge(DynamicPatEnv, GuardEnv), sets:new([{version, 2}])};
+            MsgTy ->
+                % Typed receive: bind pattern variables to types inferred from the
+                % declared message type (like a case clause scrutinizing MsgTy).
+                {PatCs, PatEnv} = pat_guard_env(Ctx, L, MsgTy, Pat, Guards),
+                {PatEnv, PatCs}
+        end,
     % Generate guard constraints to evaluate to boolean()
     GuardCs = sets:union(
         lists:map(
@@ -644,7 +822,7 @@ receive_clause_constrs(Ctx, {case_clause, L, Pat, Guards, Exps}, T) ->
     BodyCs = exps_constrs(Ctx, L, Exps, Beta),
     ResultCs = utils:single({csubty, mk_locs("receive clause result", L), Beta, T}),
     % Wrap in cdef with variable bindings
-    InnerCs = sets:union([GuardCs, BodyCs, ResultCs]),
+    InnerCs = sets:union([ExtraCs, GuardCs, BodyCs, ResultCs]),
     utils:single({cdef, mk_locs("receive clause", L), VarEnv, InnerCs}).
 
 -spec needs_unmatched_check(ast:loc(), list(ast:case_clause())) -> boolean().
@@ -726,8 +904,13 @@ case_clause_constrs(Ctx, TyScrut, Scrut, NeedsUnmatchedCheck, LowersBefore,
                     GuardCs
             end,
             Guards)),
-    % The clauses that the maybe rewrite adds are not written by the user, they may be dead.
-    CheckRedundancy = NeedsUnmatchedCheck andalso not ast:is_generated_by('maybe', L),
+    % Clauses that the programmer never wrote are exempt from the redundancy check: those
+    % that the maybe rewrite adds, and compiler-generated clauses, which are defensive
+    % branches (e.g. those Elixir emits for `cond`, string interpolation and strict
+    % `and`/`or`). They still contribute their lower bound to the exhaustiveness check.
+    CheckRedundancy = NeedsUnmatchedCheck
+        andalso not ast:is_generated_by('maybe', L)
+        andalso not ast:is_generated_by(compiler, L),
     RedundancyCs =
         if
             CheckRedundancy ->
@@ -959,8 +1142,8 @@ ty_of_pat(Env, P, Mode) ->
         {'integer', _L, I} -> {singleton, I};
         {'float', _L, _F} -> {predef, float};
         {'string', _L, Z} -> string_to_cons_ty(Z);
-        % TODO correct binary patterns
-        {bin, _L, _Elems} -> {bitstring};
+        {bin, _L, []} -> {bitstring, 0, 0};
+        {bin, _L, Elems} -> ty_of_bin_pat(Elems);
         {match, _L, P1, P2} ->
             ast_lib:mk_intersection([ty_of_pat(Env, P1, Mode), ty_of_pat(Env, P2, Mode)]);
         {nil, _L} -> {empty_list};
@@ -1021,6 +1204,329 @@ ty_of_pat(Env, P, Mode) ->
             end
     end.
 
+% Compute the type of a non-empty binary pattern.
+% Builds nested bitstring_cons types for fixed-size segments,
+% enabling content-based pattern discrimination (analogous to list cons cells).
+-spec ty_of_bin_pat([ast:gen_bitstring_elem(ast:pat(), ast:exp())]) -> ast:ty().
+ty_of_bin_pat(Elems) ->
+    ty_of_bin_pat_elems(Elems).
+
+% Process binary pattern elements left-to-right, building 1-bit cons cells.
+% Each segment is decomposed into individual bits for maximum precision.
+-spec ty_of_bin_pat_elems([ast:gen_bitstring_elem(ast:pat(), ast:exp())]) -> ast:ty().
+ty_of_bin_pat_elems([]) ->
+    {empty_bitstring};
+ty_of_bin_pat_elems([Elem | Rest]) ->
+    {bin_element, _, Value, Size, TyspecList} = Elem,
+    {SegType, Signed, DefaultSize, Unit} = analyze_bin_tyspec(TyspecList),
+    case bin_elem_cons_info(SegType, Signed, DefaultSize, Size, Unit, Value) of
+        {cons, Bits} ->
+            TailTy = ty_of_bin_pat_elems(Rest),
+            build_bit_cons_from_pat(SegType, Value, Bits, TailTy);
+        rest_binary ->
+            case Value of
+                {bin, _, InnerElems} ->
+                    ty_of_bin_pat_elems(InnerElems ++ Rest);
+                _ -> {bitstring, 0, 8}
+            end;
+        rest_bitstring ->
+            case Value of
+                {bin, _, InnerElems} ->
+                    ty_of_bin_pat_elems(InnerElems ++ Rest);
+                _ -> {bitstring}
+            end;
+        variable_size ->
+            % Variable-size segment (e.g. <<X:Size>>, <<C/utf8>>):
+            % can't determine bit count, fall back to flat bitstring type
+            ty_of_bin_pat_flat([Elem | Rest])
+    end.
+
+% Determine how a binary element contributes to the cons-cell type.
+-spec bin_elem_cons_info(atom(), boolean(), integer() | default, ast:exp() | default, pos_integer(), ast:exp() | ast:pat()) ->
+    {cons, pos_integer()} | rest_binary | rest_bitstring | variable_size.
+bin_elem_cons_info(SegType, _Signed, DefaultSize, Size, Unit, Value) ->
+    case SegType of
+        integer ->
+            case {Size, DefaultSize} of
+                {default, DS} when is_integer(DS) -> {cons, DS * Unit};
+                {{integer, _, V}, _} when is_integer(V) -> {cons, V * Unit};
+                _ -> variable_size
+            end;
+        float ->
+            case {Size, DefaultSize} of
+                {default, DS} when is_integer(DS) -> {cons, DS * Unit};
+                {{integer, _, V}, _} when is_integer(V) -> {cons, V * Unit};
+                _ -> variable_size
+            end;
+        binary ->
+            case {Size, DefaultSize} of
+                {default, default} -> rest_binary;
+                {{integer, _, V}, _} when is_integer(V) -> {cons, V * Unit};
+                {default, DS} when is_integer(DS) -> {cons, DS * Unit};
+                _ -> variable_size
+            end;
+        bitstring ->
+            case {Size, DefaultSize} of
+                {default, default} -> rest_bitstring;
+                {{integer, _, V}, _} when is_integer(V) -> {cons, V * Unit};
+                {default, DS} when is_integer(DS) -> {cons, DS * Unit};
+                _ -> variable_size
+            end;
+        utf32 -> {cons, 32};
+        utf8 -> utf_cons_info(Value, fun utf8_size/1);
+        utf16 -> utf_cons_info(Value, fun utf16_size/1)
+    end.
+
+% For UTF types with literal values, compute the encoded size in bits.
+-spec utf_cons_info(ast:exp() | default, fun((integer()) -> pos_integer())) ->
+    {cons, pos_integer()} | variable_size.
+utf_cons_info({integer, _, V}, SizeFun) when is_integer(V), V >= 0 -> {cons, SizeFun(V)};
+utf_cons_info({char, _, V}, SizeFun) when is_integer(V), V >= 0 -> {cons, SizeFun(V)};
+utf_cons_info(_, _) -> variable_size.
+
+-spec utf8_size(non_neg_integer()) -> pos_integer().
+utf8_size(V) when V =< 16#7F -> 8;
+utf8_size(V) when V =< 16#7FF -> 16;
+utf8_size(V) when V =< 16#FFFF -> 24;
+utf8_size(_) -> 32.
+
+-spec utf16_size(non_neg_integer()) -> pos_integer().
+utf16_size(V) when V =< 16#FFFF -> 16;
+utf16_size(_) -> 32.
+
+% Build 1-bit cons cells for a binary pattern element.
+% For literal values, decompose into individual bits (MSB first).
+% For wildcards/variables, each bit is {range, 0, 1}.
+-spec build_bit_cons_from_pat(atom(), ast:pat(), pos_integer(), ast:ty()) -> ast:ty().
+build_bit_cons_from_pat(SegType, Value, Bits, TailTy) ->
+    case Value of
+        {'integer', _, I} ->
+            build_literal_bit_cons(encode_segment_value(SegType, I, Bits), Bits, TailTy);
+        {'char', _, C} ->
+            build_literal_bit_cons(encode_segment_value(SegType, C, Bits), Bits, TailTy);
+        {'string', _, S} ->
+            lists:foldr(
+                fun(C, Acc) -> build_literal_bit_cons(encode_segment_value(SegType, C, Bits), Bits, Acc) end,
+                TailTy, S);
+        {bin, _, InnerElems} ->
+            InnerTy = ty_of_bin_pat_elems(InnerElems),
+            take_bits(Bits, InnerTy, TailTy);
+        _ ->
+            build_wildcard_bit_cons(Bits, TailTy)
+    end.
+
+% Encode a literal value according to the segment type.
+% For integer/float, the value is used as-is (bit representation).
+% For UTF types, the value is the codepoint which must be encoded.
+-spec encode_segment_value(atom(), integer(), pos_integer()) -> integer().
+encode_segment_value(utf8, V, _Bits) -> utf8_encode(V);
+encode_segment_value(utf16, V, _Bits) -> utf16_encode(V);
+encode_segment_value(_, V, _Bits) -> V.
+
+-spec utf8_encode(non_neg_integer()) -> non_neg_integer().
+utf8_encode(V) when V =< 16#7F -> V;
+utf8_encode(V) when V =< 16#7FF ->
+    ((16#C0 bor (V bsr 6)) bsl 8) bor (16#80 bor (V band 16#3F));
+utf8_encode(V) when V =< 16#FFFF ->
+    ((16#E0 bor (V bsr 12)) bsl 16) bor
+    ((16#80 bor ((V bsr 6) band 16#3F)) bsl 8) bor
+    (16#80 bor (V band 16#3F));
+utf8_encode(V) ->
+    ((16#F0 bor (V bsr 18)) bsl 24) bor
+    ((16#80 bor ((V bsr 12) band 16#3F)) bsl 16) bor
+    ((16#80 bor ((V bsr 6) band 16#3F)) bsl 8) bor
+    (16#80 bor (V band 16#3F)).
+
+-spec utf16_encode(non_neg_integer()) -> non_neg_integer().
+utf16_encode(V) when V =< 16#FFFF -> V;
+utf16_encode(V) ->
+    U = V - 16#10000,
+    Hi = 16#D800 bor (U bsr 10),
+    Lo = 16#DC00 bor (U band 16#3FF),
+    (Hi bsl 16) bor Lo.
+
+% Take the first N bits from a cons-cell type and replace the tail.
+-spec take_bits(non_neg_integer(), ast:ty(), ast:ty()) -> ast:ty().
+take_bits(0, _InnerTy, TailTy) -> TailTy;
+take_bits(N, {bitstring_cons, Head, Rest}, TailTy) ->
+    {bitstring_cons, Head, take_bits(N - 1, Rest, TailTy)};
+take_bits(N, _, TailTy) ->
+    % Inner type ran out of cons cells or is flat — fill with wildcards
+    build_wildcard_bit_cons(N, TailTy).
+
+% Build N 1-bit cons cells for a literal integer value (MSB first).
+-spec build_literal_bit_cons(integer(), pos_integer(), ast:ty()) -> ast:ty().
+build_literal_bit_cons(V, Bits, TailTy) ->
+    % Convert to unsigned representation for bit extraction
+    UV = V band ((1 bsl Bits) - 1),
+    build_literal_bit_cons_h(UV, Bits - 1, TailTy).
+
+build_literal_bit_cons_h(_V, -1, TailTy) -> TailTy;
+build_literal_bit_cons_h(V, BitPos, TailTy) ->
+    Bit = (V bsr BitPos) band 1,
+    {bitstring_cons, {singleton, Bit}, build_literal_bit_cons_h(V, BitPos - 1, TailTy)}.
+
+% Build N 1-bit cons cells for a wildcard/variable (any bit value).
+-spec build_wildcard_bit_cons(non_neg_integer(), ast:ty()) -> ast:ty().
+build_wildcard_bit_cons(0, TailTy) -> TailTy;
+build_wildcard_bit_cons(N, TailTy) when N > 0 ->
+    {bitstring_cons, {range, 0, 1}, build_wildcard_bit_cons(N - 1, TailTy)}.
+
+% Flat (non-structural) fallback for binary patterns that can't be decomposed.
+% Flat (non-structural) fallback for binary patterns with variable-size segments.
+% Returns a flat bitstring type based on alignment and unit GCD analysis.
+-spec ty_of_bin_pat_flat([ast:gen_bitstring_elem(ast:pat(), ast:exp())]) -> ast:ty().
+ty_of_bin_pat_flat(Elems) ->
+    {TotalFixedBits, _HasRestBinary, HasRestBitstring, AllFixed} =
+        lists:foldl(
+            fun({bin_element, _, Value, Size, TyspecList}, {AccBits, AccRestBin, AccRestBits, AccFixed}) ->
+                {SegType, _Signed, DefaultSize, Unit} = analyze_bin_tyspec(TyspecList),
+                % String values contribute length(Str) repetitions
+                Multiplier = case Value of
+                    {'string', _, S} -> length(S);
+                    _ -> 1
+                end,
+                case {Size, DefaultSize, SegType} of
+                    {default, default, binary} ->
+                        {AccBits, true, AccRestBits, false};
+                    {default, default, bitstring} ->
+                        {AccBits, AccRestBin, true, false};
+                    {default, default, utf8} ->
+                        {AccBits, AccRestBin, AccRestBits, false};
+                    {default, default, utf16} ->
+                        {AccBits, AccRestBin, AccRestBits, false};
+                    {default, default, utf32} ->
+                        {AccBits + 32 * Multiplier, AccRestBin, AccRestBits, AccFixed};
+                    {default, DS, _} ->
+                        Bits = DS * Unit * Multiplier,
+                        {AccBits + Bits, AccRestBin, AccRestBits, AccFixed};
+                    {{integer, _, V}, _, _} when is_integer(V) ->
+                        Bits = V * Unit * Multiplier,
+                        {AccBits + Bits, AccRestBin, AccRestBits, AccFixed};
+                    _ ->
+                        {AccBits, AccRestBin, AccRestBits, false}
+                end
+            end,
+            {0, false, false, true},
+            Elems),
+    % Compute the unit as the GCD of all segment output alignments.
+    SegmentUnits = lists:map(
+        fun({bin_element, _, _, _, TyspecList}) ->
+            {SegType, _, _, Unit} = analyze_bin_tyspec(TyspecList),
+            case SegType of
+                utf8 -> 8;   % UTF-8 always produces whole bytes
+                utf16 -> 16; % UTF-16 produces 2 or 4 bytes
+                utf32 -> 32; % UTF-32 always produces 4 bytes
+                _ -> Unit
+            end
+        end, Elems),
+    UnitGcd = lists:foldl(fun gcd/2, 0, SegmentUnits),
+    case {AllFixed, HasRestBitstring} of
+        {true, _} -> {bitstring, TotalFixedBits, 0};
+        {false, true} -> {bitstring, TotalFixedBits, UnitGcd};
+        {false, false} when UnitGcd > 0 -> {bitstring, TotalFixedBits, UnitGcd};
+        _ -> {bitstring}
+    end.
+
+-spec gcd(non_neg_integer(), non_neg_integer()) -> non_neg_integer().
+gcd(A, 0) -> A;
+gcd(0, B) -> B;
+gcd(A, B) when A > B -> gcd(A rem B, B);
+gcd(A, B) -> gcd(A, B rem A).
+
+% Analyze a bitstring type specifier list to determine segment type, signedness, default size, and unit.
+-spec analyze_bin_tyspec(default | ast:bitstring_tyspec_list()) ->
+    {integer | float | binary | bitstring | utf8 | utf16 | utf32, boolean(), integer() | default, integer()}.
+analyze_bin_tyspec(default) -> {integer, false, 8, 1};
+analyze_bin_tyspec(TyspecList0) ->
+    TyspecList = ?assert_type(TyspecList0, ast:bitstring_tyspec_list()),
+    Type = determine_segment_type(TyspecList),
+    Signed = lists:member(signed, TyspecList),
+    TupleTyspecs = ?assert_type([X || X <- TyspecList, is_tuple(X)], [{atom(), integer()}]),
+    Unit = case lists:keyfind(unit, 1, TupleTyspecs) of
+        {unit, U} -> ?assert_type(U, integer());
+        _ -> default_unit(Type)
+    end,
+    DefaultSize = default_size(Type),
+    {Type, Signed, DefaultSize, Unit}.
+
+-spec determine_segment_type(ast:bitstring_tyspec_list()) -> integer | float | binary | bitstring | utf8 | utf16 | utf32.
+determine_segment_type([]) -> integer;
+determine_segment_type([integer | _]) -> integer;
+determine_segment_type([float | _]) -> float;
+determine_segment_type([binary | _]) -> binary;
+determine_segment_type([bytes | _]) -> binary;
+determine_segment_type([bitstring | _]) -> bitstring;
+determine_segment_type([bits | _]) -> bitstring;
+determine_segment_type([utf8 | _]) -> utf8;
+determine_segment_type([utf16 | _]) -> utf16;
+determine_segment_type([utf32 | _]) -> utf32;
+determine_segment_type([_ | Rest]) -> determine_segment_type(Rest).
+
+-spec default_unit(integer | float | binary | bitstring | utf8 | utf16 | utf32) -> integer().
+default_unit(integer) -> 1;
+default_unit(float) -> 1;
+default_unit(binary) -> 8;
+default_unit(bitstring) -> 1;
+default_unit(utf8) -> 1;
+default_unit(utf16) -> 1;
+default_unit(utf32) -> 1.
+
+-spec default_size(integer | float | binary | bitstring | utf8 | utf16 | utf32) -> integer() | default.
+default_size(integer) -> 8;
+default_size(float) -> 64;
+default_size(binary) -> default;
+default_size(bitstring) -> default;
+default_size(utf8) -> default;
+default_size(utf16) -> default;
+default_size(utf32) -> default.
+
+% Generate constraints for binary expression elements (non-empty binary construction).
+-spec bin_expr_constrs(ctx(), ast:loc(), [ast:exp_bitstring_elem()]) -> {constr:constrs(), ast:ty()}.
+bin_expr_constrs(Ctx, _L, BinElems) ->
+    Cs = lists:foldl(
+        fun({bin_element, ElemL, Value, Size, TyspecList}, AccCs) ->
+            {SegType, _Signed, _DefaultSize, Unit} = analyze_bin_tyspec(TyspecList),
+            % Generate constraint for the value expression
+            IsStringValue = case Value of
+                {'string', _, _} -> true;
+                _ -> false
+            end,
+            % Upper bound for the value expression, validating that it has the
+            % right type for the segment specifier (e.g. <<X/float>> requires X
+            % to be a number, <<X/binary>> requires X to be a binary).
+            % The precise type of the value is captured separately by exp_constrs.
+            ValueTy = case {SegType, IsStringValue} of
+                {_, true} -> {predef, any};  % strings in binaries are always valid
+                {integer, _} -> {predef, integer};
+                {float, _} -> {predef_alias, number};  % floats accept integers too
+                {binary, _} when Unit =:= 8 -> {bitstring, 0, 8};
+                {binary, _} -> {bitstring};  % binary with non-default unit accepts any bitstring
+                {bitstring, _} -> {bitstring};
+                {utf8, _} -> {predef, integer};
+                {utf16, _} -> {predef, integer};
+                {utf32, _} -> {predef, integer}
+            end,
+            Alpha = fresh_tyvar(Ctx),
+            ValCs = exp_constrs(Ctx, Value, Alpha),
+            ValConstr = {csubty, mk_locs("bin element value", ElemL), Alpha, ValueTy},
+            % Generate constraint for the size expression (if present)
+            SizeCs = case Size of
+                default -> sets:new([{version, 2}]);
+                _ ->
+                    SizeAlpha = fresh_tyvar(Ctx),
+                    SCs = exp_constrs(Ctx, Size, SizeAlpha),
+                    sets:add_element(
+                        {csubty, mk_locs("bin element size", ElemL), SizeAlpha, {predef, integer}},
+                        SCs)
+            end,
+            sets:union([AccCs, ValCs, SizeCs, sets:from_list([ValConstr])])
+        end,
+        sets:new([{version, 2}]),
+        BinElems),
+    ResultTy = ty_of_bin_pat_elems(BinElems),
+    {Cs, ResultTy}.
+
 % t // pg
 -spec pat_guard_env(ctx(), ast:loc(), ast:ty(), ast:pat(), [ast:guard()]) ->
           {constr:constrs(), constr:constr_env()}.
@@ -1039,26 +1545,17 @@ pat_env(Ctx, OuterL, T, P) ->
         {'integer', _L, _I} -> Empty;
         {'float', _L, _F} -> Empty;
         {'string', _L, _S} -> Empty;
-        % TODO correct pattern environment for binaries
-        {bin, _L, Elems} -> 
-            {Cs, Env} =
-                lists:foldl(
-                  fun (P, {Cs, Env}) ->
-                          % unused type variables
-                          Alpha = fresh_tyvar(Ctx),
-                          {ThisCs, ThisEnv} = pat_env(Ctx, OuterL, Alpha, P),
-                          {sets:union(Cs, ThisCs),
-                           intersect_envs(Env, ThisEnv)}
-                  end,
-                  {sets:new([{version, 2}]), #{}},
-                  Elems),
-            C = {csubty, mk_locs("t // <<...>>", OuterL), T, {bitstring}},
+        {bin, _L, []} ->
+            C = {csubty, mk_locs("t // <<>>", OuterL), T, {empty_bitstring}},
+            {sets:from_list([C], [{version, 2}]), #{}};
+        {bin, _L, Elems} ->
+            % Build a structural cons-based type with fresh type variables for
+            % rest segments, analogous to how list cons uses Alpha for the tail.
+            % This propagates precise tail types through pattern matching.
+            {ConsTy, Cs, Env} = bin_pat_env_elems(Ctx, OuterL, Elems),
+            C = {csubty, mk_locs("t // <<...>>", OuterL), T, ConsTy},
             {sets:add_element(C, Cs), Env};
         default -> Empty;
-        {bin_element, _L, Value, Size, _TyspecList} -> 
-            {Cs1, Env1} = pat_env(Ctx, OuterL, T, Value),
-            {Cs2, Env2} = pat_env(Ctx, OuterL, T, Size),
-            {sets:union(Cs1, Cs2), intersect_envs(Env1, Env2)};
         {match, _L, P1, P2} ->
             {Cs1, Env1} = pat_env(Ctx, OuterL, T, P1),
             {Cs2, Env2} = pat_env(Ctx, OuterL, T, P2),
@@ -1123,6 +1620,90 @@ pat_env(Ctx, OuterL, T, P) ->
             % V refers to an existing variable
             {sets:new([{version, 2}]), #{ LocalRef => T }}
     end.
+
+% Build a structural cons-based type for a binary pattern while generating
+% constraints and environment bindings. Rest segments get fresh type variables
+% so the scrutiny's tail type flows through (like Alpha2 in list cons).
+-spec bin_pat_env_elems(ctx(), ast:loc(), [ast:gen_bitstring_elem(ast:pat(), ast:exp())]) ->
+    {ast:ty(), constr:constrs(), constr:constr_env()}.
+bin_pat_env_elems(_Ctx, _OuterL, []) ->
+    {{empty_bitstring}, sets:new([{version, 2}]), #{}};
+bin_pat_env_elems(Ctx, OuterL, [Elem | Rest]) ->
+    {bin_element, _, Value, Size, TyspecList} = Elem,
+    {SegType, Signed, DefaultSize, Unit} = analyze_bin_tyspec(TyspecList),
+    case bin_elem_cons_info(SegType, Signed, DefaultSize, Size, Unit, Value) of
+        {cons, Bits} ->
+            {TailTy, TailCs, TailEnv} = bin_pat_env_elems(Ctx, OuterL, Rest),
+            ConsTy = build_bit_cons_from_pat(SegType, Value, Bits, TailTy),
+            {ElemCs, ElemEnv} = bin_elem_pat_env(Ctx, OuterL, Elem),
+            {ConsTy, sets:union(TailCs, ElemCs), intersect_envs(TailEnv, ElemEnv)};
+        rest_binary ->
+            case Value of
+                {bin, _, InnerElems} ->
+                    bin_pat_env_elems(Ctx, OuterL, InnerElems ++ Rest);
+                _ ->
+                    Alpha = fresh_tyvar(Ctx),
+                    {ValueCs, ValueEnv} = pat_env(Ctx, OuterL, Alpha, Value),
+                    SizeCs = case Size of
+                        default -> sets:new([{version, 2}]);
+                        _ -> pat_env_cs(Ctx, OuterL, {predef, integer}, Size)
+                    end,
+                    {Alpha, sets:union(ValueCs, SizeCs), ValueEnv}
+            end;
+        rest_bitstring ->
+            case Value of
+                {bin, _, InnerElems} ->
+                    bin_pat_env_elems(Ctx, OuterL, InnerElems ++ Rest);
+                _ ->
+                    Alpha = fresh_tyvar(Ctx),
+                    {ValueCs, ValueEnv} = pat_env(Ctx, OuterL, Alpha, Value),
+                    SizeCs = case Size of
+                        default -> sets:new([{version, 2}]);
+                        _ -> pat_env_cs(Ctx, OuterL, {predef, integer}, Size)
+                    end,
+                    {Alpha, sets:union(ValueCs, SizeCs), ValueEnv}
+            end;
+        variable_size ->
+            % Can't decompose: fall back to flat type, process all elements
+            FlatTy = ty_of_bin_pat_flat([Elem | Rest]),
+            {Cs, Env} = lists:foldl(
+                fun(E, {AccCs, AccEnv}) ->
+                    {ThisCs, ThisEnv} = bin_elem_pat_env(Ctx, OuterL, E),
+                    {sets:union(AccCs, ThisCs), intersect_envs(AccEnv, ThisEnv)}
+                end,
+                {sets:new([{version, 2}]), #{}},
+                [Elem | Rest]),
+            {FlatTy, Cs, Env}
+    end.
+
+% Helper: get just the constraints from pat_env (discard env).
+-spec pat_env_cs(ctx(), ast:loc(), ast:ty(), ast:pat()) -> constr:constrs().
+pat_env_cs(Ctx, OuterL, T, P) ->
+    {Cs, _} = pat_env(Ctx, OuterL, T, P),
+    Cs.
+
+% Process a single bin_element in a binary pattern, computing proper types for Value and Size.
+-spec bin_elem_pat_env(ctx(), ast:loc(), ast:gen_bitstring_elem(ast:pat(), ast:exp())) ->
+    {constr:constrs(), constr:constr_env()}.
+bin_elem_pat_env(Ctx, OuterL, {bin_element, _L, Value, Size, TyspecList}) ->
+    {SegType, Signed, _, Unit} = analyze_bin_tyspec(TyspecList),
+    ValueTy = case SegType of
+        integer when Signed -> {predef, integer};
+        integer -> {predef_alias, non_neg_integer};  % non_neg_integer for unsigned
+        float -> {predef, float};
+        binary when Unit =:= 8 -> {bitstring, 0, 8};
+        binary -> {bitstring};  % binary with non-default unit accepts any bitstring
+        bitstring -> {bitstring};
+        utf8 -> {predef, integer};
+        utf16 -> {predef, integer};
+        utf32 -> {predef, integer}
+    end,
+    {Cs1, Env1} = pat_env(Ctx, OuterL, ValueTy, Value),
+    {Cs2, Env2} = case Size of
+        default -> {sets:new([{version, 2}]), #{}};
+        _ -> pat_env(Ctx, OuterL, {predef, integer}, Size)
+    end,
+    {sets:union(Cs1, Cs2), intersect_envs(Env1, Env2)}.
 
 % (| e |)
 -spec pat_of_exp(ast:exp()) -> ast:pat().

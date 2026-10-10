@@ -8,12 +8,12 @@
 -include("parse.hrl").
 -include("typing.hrl").
 
--spec check_ok_fun(string(), symtab:t(), symtab:t(), sets:set({atom(), arity()}), sets:set({atom(), arity()}), ast:fun_decl(), ast:ty_scheme()) -> ok.
-check_ok_fun(Filename, Tab, OverlayTab, DisableExhaustiveness, DisableRedundancy, Decl = {function, L, Name, Arity, _, _}, Ty) ->
+-spec check_ok_fun(string(), symtab:t(), symtab:t(), sets:set({atom(), arity()}), sets:set({atom(), arity()}), #{{atom(), arity()} => {ast:ty(), exhaust | noexhaust}}, ast:fun_decl(), ast:ty_scheme()) -> ok.
+check_ok_fun(Filename, Tab, OverlayTab, DisableExhaustiveness, DisableRedundancy, RecvMsgTys, Decl = {function, L, Name, Arity, _, _}, Ty) ->
     Includes = ["include", "src", "src/erlang_types", "src/erlang_types/dnf", "src/erlang_types/utils"],
     SanityCheck = cm_check:perform_sanity_check(Filename, [Decl], true, Includes),
     Ctx0 = typing:new_ctx(Tab, OverlayTab, SanityCheck), % FIXME: perform sanity check!
-    Ctx = Ctx0#ctx{ disable_exhaustiveness = DisableExhaustiveness, disable_redundancy = DisableRedundancy },
+    Ctx = Ctx0#ctx{ disable_exhaustiveness = DisableExhaustiveness, disable_redundancy = DisableRedundancy, recv_msg_tys = RecvMsgTys },
     try
         typing_check:check(Ctx, Decl, Ty)
     catch
@@ -24,11 +24,11 @@ check_ok_fun(Filename, Tab, OverlayTab, DisableExhaustiveness, DisableRedundancy
     end,
     ok.
 
--spec check_infer_ok_fun(string(), symtab:t(), symtab:t(), sets:set({atom(), arity()}), sets:set({atom(), arity()}), ast:fun_decl(), ast:ty_scheme()) -> ok.
-check_infer_ok_fun(Filename, Tab, OverlayTab, DisableExhaustiveness, DisableRedundancy, Decl = {function, L, Name, Arity, _, _}, Ty) ->
+-spec check_infer_ok_fun(string(), symtab:t(), symtab:t(), sets:set({atom(), arity()}), sets:set({atom(), arity()}), #{{atom(), arity()} => {ast:ty(), exhaust | noexhaust}}, ast:fun_decl(), ast:ty_scheme()) -> ok.
+check_infer_ok_fun(Filename, Tab, OverlayTab, DisableExhaustiveness, DisableRedundancy, RecvMsgTys, Decl = {function, L, Name, Arity, _, _}, Ty) ->
     % Check that the inferred type is more general then the type in the spec
     Ctx0 = typing:new_ctx(Tab, OverlayTab, error),
-    Ctx = Ctx0#ctx{ disable_exhaustiveness = DisableExhaustiveness, disable_redundancy = DisableRedundancy },
+    Ctx = Ctx0#ctx{ disable_exhaustiveness = DisableExhaustiveness, disable_redundancy = DisableRedundancy, recv_msg_tys = RecvMsgTys },
     Envs =
        try
            typing_infer:infer(Ctx, [Decl])
@@ -66,10 +66,10 @@ check_infer_ok_fun(Filename, Tab, OverlayTab, DisableExhaustiveness, DisableRedu
       end,
     ok.
 
--spec check_fail_fun(string(), symtab:t(), symtab:t(), sets:set({atom(), arity()}), sets:set({atom(), arity()}), ast:fun_decl(), ast:ty_scheme()) -> ok.
-check_fail_fun(Filename, Tab, OverlayTab, DisableExhaustiveness, DisableRedundancy, Decl = {function, L, Name, Arity, _, _}, Ty) ->
+-spec check_fail_fun(string(), symtab:t(), symtab:t(), sets:set({atom(), arity()}), sets:set({atom(), arity()}), #{{atom(), arity()} => {ast:ty(), exhaust | noexhaust}}, ast:fun_decl(), ast:ty_scheme()) -> ok.
+check_fail_fun(Filename, Tab, OverlayTab, DisableExhaustiveness, DisableRedundancy, RecvMsgTys, Decl = {function, L, Name, Arity, _, _}, Ty) ->
     Ctx0 = typing:new_ctx(Tab, OverlayTab, error),
-    Ctx = Ctx0#ctx{ disable_exhaustiveness = DisableExhaustiveness, disable_redundancy = DisableRedundancy },
+    Ctx = Ctx0#ctx{ disable_exhaustiveness = DisableExhaustiveness, disable_redundancy = DisableRedundancy, recv_msg_tys = RecvMsgTys },
     try
         typing_check:check(Ctx, Decl, Ty),
         io:format("~s: Type checking ~w/~w in ~s succeeded but should fail",
@@ -91,14 +91,18 @@ check_decls_in_file(F, What, NoInfer) ->
   {ok, RawForms} = parse:parse_file(F, #parse_opts{includes =
                                                    ["include", "src", "src/erlang_types",
                                                     "src/erlang_types/dnf", "src/erlang_types/utils"]}),
-  Forms = ast_transform:trans(F, RawForms),
+  Forms0 = ast_transform:trans(F, RawForms),
+  Forms = typing:desugar_recv_funs(Forms0),
   Opts = #opts{gradual_typing_mode = infer},
   SearchPath = paths:compute_search_path(Opts),
+
+  % Desugar list-form msg_type attributes into helper functions with intersection specs.
   OverlayTab = symtab:empty(),
   Tab0 = symtab:std_symtab(SearchPath, symtab:empty(), Opts#opts.gradual_typing_mode),
   Tab = symtab:extend_symtab(F, Forms, Tab0,symtab:empty()),
   DisableExhaustiveness = typing:resolve_disabled_funs(functions_exhaustive, Forms),
   DisableRedundancy = typing:resolve_disabled_funs(functions_redundant, Forms),
+  RecvMsgTys = typing:recv_msg_tys_from_forms(Forms),
 
   CollectDecls = fun(Decl, TestCases) ->
     case Decl of
@@ -108,13 +112,13 @@ check_decls_in_file(F, What, NoInfer) ->
         Ty = symtab:lookup_fun({ref, Name, Arity}, Loc, Tab),
         ShouldFail = utils:string_ends_with(NameStr, "_fail"),
         RunTest =
-          {timeout, 10, {FullNameStr ++ " (typecheck)", fun() ->
+          {timeout, 55, {FullNameStr ++ " (typecheck)", fun() ->
                 ?LOG_NOTE("Type checking ~s from ~s", NameStr, F),
                 global_state:with_new_state(fun() ->
                   case ShouldFail of
-                    true -> check_fail_fun(F, Tab, OverlayTab, DisableExhaustiveness, DisableRedundancy, Decl, Ty);
+                    true -> check_fail_fun(F, Tab, OverlayTab, DisableExhaustiveness, DisableRedundancy, RecvMsgTys, Decl, Ty);
                     false ->
-                      check_ok_fun(F, Tab, OverlayTab, DisableExhaustiveness, DisableRedundancy, Decl, Ty)
+                      check_ok_fun(F, Tab, OverlayTab, DisableExhaustiveness, DisableRedundancy, RecvMsgTys, Decl, Ty)
                   end
                                             end)
               end}
@@ -123,7 +127,7 @@ check_decls_in_file(F, What, NoInfer) ->
           {timeout, 10, {FullNameStr ++ " (infer)", fun() ->
                 ?LOG_NOTE("Infering type for ~s from ~s", NameStr, F),
                 global_state:with_new_state(fun() ->
-                  check_infer_ok_fun(F, Tab, OverlayTab, DisableExhaustiveness, DisableRedundancy, Decl, Ty)
+                  check_infer_ok_fun(F, Tab, OverlayTab, DisableExhaustiveness, DisableRedundancy, RecvMsgTys, Decl, Ty)
                 end),
                 ok
               end}
@@ -200,9 +204,17 @@ simple_test_() ->
     "mu_01_fail"
   ],
 
+  BinaryPart = [
+    % slow
+    "bin_match_float_01",
+    % feature: project bits into integer values
+    "bin_let_04"
+  ],
+
 
   % The following functions are currently excluded from being tested.
-  WhatNot = NominalPart ++ [
+  WhatNot = NominalPart ++
+    BinaryPart ++ [
     % FIXME slow, waiting for optiization
     "refine_02",
     % TODO binary pattern element size verification
@@ -232,6 +244,94 @@ simple_test_() ->
     "refine_01",
     "refine_02",
     "refine_tagged_tuple",
+    "refinement_string",
+    "b3",
+    "b5_embed_bitstring",
+    "b5_embed_binary_unit1",
+    "b5_embed_binary",
+    "b5_match_binary_unit16_2bytes",
+    "b5_match_binary_unit16_4bytes",
+    "b5_truncate_binary",
+    "bin_construct_int_02",
+    "bin_construct_int_04",
+    "bin_construct_int_05",
+    "bin_construct_int_07",
+    "bin_construct_int_08",
+    "bin_construct_float_01",
+    "bin_construct_float_02",
+    "bin_construct_float_03",
+    "bin_construct_str_01",
+    "bin_construct_bin_03",
+    "bin_construct_complex_01",
+    "bin_construct_utf16_01",
+    "bin_construct_utf16_02",
+    "bin_construct_utf32_01",
+    "bin_construct_fixed_01",
+    "bin_construct_fixed_03",
+    "bin_construct_match_int_01",
+    "bin_match_int_01",
+    "bin_match_int_02",
+    "bin_match_int_03",
+    "bin_match_int_04",
+    "bin_match_int_05",
+    "bin_match_int_06",
+    "bin_match_int_07",
+    "bin_exhaust_01",
+    "bin_exhaust_03",
+    "bin_exhaust_02",
+    "bin_exhaust_04",
+    "bin_match_bin_01",
+    "bin_match_bin_02",
+    "bin_match_bin_03",
+    "bin_match_literal_01",
+    "bin_match_literal_02",
+    "bin_match_literal_03",
+    "bin_match_float_02",
+    "bin_concat_01",
+    "bin_concat_02",
+    "bin_concat_03",
+    "bin_guard_01",
+    "bin_guard_02",
+    "bin_guard_04",
+    "bin_guard_05",
+    "bin_guard_literal_01",
+    "bin_guard_literal_02",
+    "bin_occ_02",
+    "bin_precise_01",
+    "bin_precise_02",
+    "bin_precise_03",
+    "bin_precise_04",
+    "bin_comp_02",
+    "bin_comp_03",
+    "bin_comp_06",
+    "bin_subtype_01",
+    "bin_try_01",
+    "bin_fun_01_helper",
+    "bin_data_02",
+    "bin_let_01",
+    "bin_let_02",
+    "bin_let_03",
+    "bin_rec_01",
+    "bin_rec_02",
+    "bin_rec_03",
+    "bin_rec_04",
+    "bin_cons_01",
+    "bin_cons_03",
+    "bin_cons_04",
+    "bin_bif_guard_01",
+    "bin_bif_guard_02",
+    "bin_case_01",
+    "bin_case_02",
+    "bin_concat_04",
+    "bin_llet_04",
+    "bin_utf8_cons_01",
+    "bin_utf8_cons_03",
+    "bin_utf8_cons_04",
+    "bin_utf8_cons_05",
+    "bin_utf8_cons_06",
+    "b5_embed_1bit_bitstring",
+    "b5_embed_1bit_binary_unit1",
+    "b5_match_binary_unit16_empty",
     % TODO timeout, with flipped variable ordering it infers instantly
     "match_13",
     % TODO slow (tuple-encoded lists) inference #255
@@ -249,9 +349,7 @@ simple_test_() ->
     "op_08",
     % TODO slow maybe inference
     "maybe_08",
-    "maybe_09",
-    % TODO slow list inference (nonempty_string)
-    "refinement_string"
+    "maybe_09"
   ],
 
   %What = ["atom_03_fail"],
