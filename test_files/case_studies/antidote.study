@@ -8,7 +8,7 @@
 %% fields) that were wrong or too imprecise are corrected, see the list below. 414 of the 722
 %% functions have a spec in the source. overlay_antidote.erl gives a spec to each of the other 308,
 %% and every module is checked with it, so that a call into another module of antidote is checked
-%% against the spec of the callee. No flag, no assertion.
+%% against the spec of the callee.
 %%
 %% The dependencies are case studies of their own in this directory, and the driver passes every
 %% directory below this one that holds sources or headers to the engine. So all modules that
@@ -31,10 +31,44 @@
 %% The driver defines no macro. So the tests under -ifdef(TEST) are not checked, and meta_data_sender
 %% takes the variant of -else for -ifdef(EUNIT): get_node_list/0 and get_node_and_partition_list/0.
 %%
-%% All 55 modules run: 470 functions type check, 252 do not. One of the 252 is a name error
-%% (zmq_utils:connection_string/1 calls inet_parse:ntoa/1, which has no spec in OTP), none is an
-%% internal error. The source of each of the 252 was read, no exception has the reason unknown.
-%% 65 of them type check without the overlays, where the 308 functions without a spec are dynamic().
+%% Library specs, flags and assertions (step IV). All 55 modules run: 634 functions type check as
+%% they are, 13 with a flag (without the exhaustiveness check of their clauses), 75 are ignored; 253
+%% assertions (184 assert_type, 63 assert_pattern, 6 annotate_type) in 41 modules. Each flag and
+%% each assertion is needed: without it exactly its function fails. With the spec overlays only
+%% (step III) 470 functions type checked and 252 did not.
+%%   Every module has two library overlays. overlay_riak_core_lite_lib.erl, of the study of
+%%     riak_core_lite, has specs for functions of OTP whose spec says too little (the key functions
+%%     of lists, lists:foldl/3 and seq/2, filename:join/2, max/2, min/2, hd/1, length/1, ...) and
+%%     says term() where OTP gives a result as a type variable that is bound only in when and that
+%%     so fits every type (application:get_env/2,3, dict:find/2, fetch/2, fetch_keys/1, to_list/1
+%%     and fold/3: the parameters of dict:dict(K, V) do not appear in the definition of the type).
+%%     overlay_antidote_lib.erl has what antidote needs beyond that: erlang:apply/3 with a clause
+%%     for logger:macro_log, which the ?LOG_ macros of logger.hrl end in and which gives ok;
+%%     rpc:call/4,5, rpc:multicall/4, ets:first/1 and dets:open_file/2, sync/1, insert/2,
+%%     delete_all_objects/1 and to_ets/2 with term() for the results and error reasons that OTP
+%%     binds only in when; maps:put/3 and maps:get/3 with the type of the map in the result.
+%%   The library overlays alone make 16 functions type check: the macro ?STATS of antidote.hrl, a
+%%     case on application:get_env/3, in six of them, lists:foldl/3 with a fun on a tuple,
+%%     lists:seq/2, lists:keyreplace/4, filename:join/2, dict:find/2, ets:first/1, rpc:call/5 and a
+%%     ?LOG_ macro as the value of a catch clause. With term() for the results eight functions that
+%%     type checked before need an assertion for a value of the application environment, of a dict
+%%     or of an rpc (9 assertions), and one turns out to be wrong:
+%%     clocksi_interactive_coord:process_prepared/2 takes max/2 of the field prepare_time, which
+%%     can be undefined.
+%%   An assertion is an unchecked cast (assert_type, assert_pattern) of a value whose type the
+%%     checker cannot know: the reply of a call to a process or a vnode (37), a value out of ets,
+%%     disk_log, a dict, the stable meta data, an rpc or the application environment (68), the
+%%     parts of a message (25), a match or a case that the program lets crash (64). The 6
+%%     annotate_type are checked: the subject of a case that has a clause which is dead for its
+%%     type (3), and the type of a fun (3).
+%%   A function that also has a real error (class real) gets no assertion and stays ignored: 30, 13
+%%     more than after step III, where a real error came up behind the first one or with a library
+%%     overlay (the declarations are listed at the end of this comment). So does a function that
+%%     needs an assertion that cannot be written: for a pattern that repeats a bound variable (17),
+%%     inside a fun (15), at a position where the assertion crashes the engine (7), or with a type
+%%     variable of the spec (3). The other 3 are zmq_utils:connection_string/1, a name error
+%%     (inet_parse:ntoa/1 has no spec in OTP), and the two supervisors whose flags or child specs
+%%     are maps.
 %%
 %% Declarations corrected in the source: 82 in 28 modules and 2 headers, old -> new. Only -type,
 %% -spec, -export_type and the types of record fields; no function body, clause head, guard or macro.
@@ -156,15 +190,16 @@
 %%
 %% Left as they are, although a declaration is the cause:
 %%   clocksi_interactive_coord: the fields transaction, from and commit_time of #state{} say T |
-%%     undefined (7 exceptions with record_undefined). init_state/3 builds the state with undefined in
+%%     undefined (9 exceptions with record_undefined; the tenth, process_prepared/2, is for the field
+%%     prepare_time). init_state/3 builds the state with undefined in
 %%     them and start_tx_internal/3 sets the transaction in the same callback, so the declaration is
 %%     true. Without the undefined 4 more functions type check (wait_for_start_transaction/3,
 %%     committing/3, prepare_done/2, abort/1) and init_state/3 fails (measured, not applied).
 %%   antidote.hrl: the three fields of #op_number{} say T | undefined (3 exceptions), with a comment
 %%     that inter_dc_log_sender_vnode needs it: its state starts with #op_number{}. Without the
 %%     undefined logging_vnode:read_from_to_internal2/8 type checks and no function that type checks
-%%     fails: inter_dc_log_sender_vnode:init/1, which builds #op_number{}, is an exception already
-%%     (measured, not applied).
+%%     fails: inter_dc_log_sender_vnode:init/1, which builds #op_number{}, was an exception already
+%%     (measured in step III, not applied).
 %%   clocksi_interactive_coord:execute_command/4, (atom(), term(), _, _): the type of the argument
 %%     depends on the command. With one clause per command in the spec the function is not checked
 %%     within the 10 s and execute_op/3, which passes a command and its argument on, fails (measured,
@@ -172,691 +207,1169 @@
 %%   dc_meta_data_utilities:get_env_meta_data/2 promises atom() for the value of a setting, which can
 %%     be any term; logging_vnode:is_sync_log/0 gives it as its boolean(). It type checks if the
 %%     promise is boolean() (measured, not applied: the function is not only for flags).
+%%   Found in step IV, behind an error that an overlay or an assertion takes away (not corrected:
+%%     the declarations are those of step III):
+%%   logging_vnode: read_internal/3, read_from_to_internal/6, read_from_to_internal2/8,
+%%     get_last_op_from_log/4 and get_ops_from_log/8 say log_id() for the log that they hand to
+%%     disk_log; the callers pass the log of disk_log:open/1 or of get_log_from_map/3, a term()
+%%     (open_logs/5 and handle_command/3, spec_wrong). The field senders_awaiting_ack of #state{}
+%%     says dict:dict(log_id(), sender()), handle_info/2 takes a value as a list of {Sender, OpId}.
+%%     join_logs/3 says fun() for the fold fun (fold_log/4, spec_imprecise).
+%%   materializer_vnode: load_ops/2 promises true and gives the ok of lists:foreach/2 for a dict
+%%     that is not empty.
+%%   inter_dc_query_response, meta_data_manager, meta_data_sender: init/1 says [Num] when Num ::
+%%     any() or [term()] for an argument that is used as a non_neg_integer() or an atom()
+%%     (spec_imprecise; the three also need the flag for their clause, which takes a list of one
+%%     element).
+%%   inter_dc_repl.hrl: the field func of #request_cache_entry{} says function() | undefined,
+%%     inter_dc_query_dealer:handle_info/2 applies it (record_undefined).
 
 {study, antidote}.
 {deps, ["antidote_crdt", "antidote_pb_codec", "erlzmq", "poolboy", "ranch", "riak_core", "vectorclock"]}.
 
 %% {reason, Id, Class, Text}. Class: real (the program or its spec is wrong), inherent (correct at
-%% run time, not provable by types), fixable (gap in the type system or checker), unknown.
-%% The reason of an exception is the one of the first error that the checker reports for the function.
+%% run time, not provable by types), fixable (gap in the type system or checker), benign (dead for the spec, kept on purpose), unknown.
+%% The reason of an exception with ignore is the one of what blocks the function in the end: the first error that no library
+%% spec, flag or assertion takes away without hiding a real error. Its comment names what is in front of it and behind it.
+%% The reason of an assertion is the one of the value that it casts, the reason of a flag the one of the clauses.
 {reason, otp_no_spec,          fixable,  "calls an OTP function that has no spec, which is a name error"}.
-{reason, log_macro,            fixable,  "the ?LOG_ macros of logger.hrl end in erlang:apply(logger, macro_log, [..]), a term() for the checker and not the ok of that call: a function that gives the value of the macro as its result, or branches on it, fails"}.
-{reason, free_result,          fixable,  "library spec whose type variables are bound only in when (rpc:call/4,5, application:get_env/2,3, ets:first/1, dets:sync/1, lists:foldl/3): any use of the result passes, a pattern or a branch on such a value is dead. The macro ?STATS of antidote.hrl is such a case on application:get_env/3"}.
-{reason, dict_types,           fixable,  "key and value type of a dict:dict(K, V) are lost: the branches on a result of dict:find/2 or dict:fetch/2 and the patterns of a fun for dict:filter/2, dict:fold/3 or the pairs of dict:to_list/1 are dead"}.
 {reason, map_types,            fixable,  "map types with more than one association or with mandatory associations are not supported: supervisor:sup_flags() and supervisor:child_spec() given as maps do not check"}.
-{reason, bound_pattern,        fixable,  "a pattern with an already bound variable is not handled: the match counts as not exhaustive, a case clause whose pattern is the scrutinee variable as matching nothing"}.
-{reason, narrowing,            fixable,  "a type test does not narrow: a filter X /= undefined in a comprehension, a case on is_binary(X) for its branches, X == undefined on the left of orelse for the right"}.
-{reason, library_spec,         fixable,  "spec of a library function too imprecise"}.
+{reason, bound_pattern,        fixable,  "a pattern with an already bound variable is not handled: the match counts as not exhaustive, a case clause whose pattern is the scrutinee variable as matching nothing; no assertion closes it"}.
+{reason, in_fun,               fixable,  "needs an assertion inside a fun (a match that the program lets crash, a value that is term()), which the assertions do not reach: assertions:visit/4 skips the clauses of a fun"}.
+{reason, assertion_crash,      fixable,  "needs an assertion that crashes the engine: assertions:hash/1 fails when the hash is a code point; the comment names the position"}.
+{reason, assert_tyvar,         fixable,  "needs an assertion with a type variable of the spec, which the type of an assertion cannot name"}.
+{reason, dict_types,           fixable,  "key and value type of a dict:dict(K, V) are lost: a fun for dict:filter/2 that takes the key by a pattern is reported as dead; annotated with its type it type checks"}.
+{reason, keyfind_tuple,        fixable,  "lists:keyfind/3 with a literal key: the tuple found has that key, the spec of keyfind cannot relate them"}.
+{reason, format_chars,         fixable,  "io_lib:format/2 gives chars(), without the modifier t the output is bytes"}.
+{reason, fun_any,              fixable,  "a fun whose head takes its argument by a pattern, given where the type is function(): its clause is reported as dead; annotated with its type it type checks"}.
+{reason, narrowing,            fixable,  "a type test does not narrow: a filter X /= undefined in a comprehension, X == undefined on the left of orelse for the right"}.
+{reason, arith_pos,            fixable,  "the sum of a positive and a non-negative integer (Id + 1, ?FIRST_OP + Len) is a non_neg_integer() for the checker: the type of + has clauses for non_neg_integer() and integer() only"}.
+{reason, arith_range,          fixable,  "the range of an arithmetic result follows from the operand types, the type of the operator or BIF is too coarse"}.
+{reason, guard_arith,          fixable,  "A - B for non-negative operands is a non_neg_integer() for the checker (the type of - is the one of +): a clause with the guard N < 0 on it is reported as dead; the subject is annotated integer()"}.
+{reason, bit_segment,          fixable,  "a segment of a binary pattern with a fixed size (ReqId:2/binary) is a binary() for the checker, its size is not in the type"}.
 {reason, body_exhaustiveness,  inherent, "exhaustiveness of a match or a case inside the body: the program lets it crash for the other values"}.
-{reason, partial,              inherent, "partial function, the callers rule out the missing case"}.
-{reason, defensive,            inherent, "defensive clause, dead for the spec"}.
-{reason, nonempty_list,        inherent, "hd/1, lists:last/1 or a match with [H | _] on a list that the program knows is not empty"}.
-{reason, number_range,         inherent, "range of a number (positive, not negative) that the types do not show"}.
+{reason, partial,              inherent, "partial function, the callers rule out the missing case; as an assertion: a value that only the missing case does not fit"}.
+{reason, defensive,            benign,   "defensive clause of a case, dead for the type of its subject: the subject is annotated with the wider type that the clause is for"}.
+{reason, nonempty_list,        inherent, "hd/1, lists:last/1 or lists:nth/2 on a list that the program knows is not empty"}.
+{reason, number_range,         inherent, "range of a number (positive, not negative, a byte) that the types do not show"}.
 {reason, bit_size,             fixable,  "a binary built with a segment of variable size is a bitstring() for the checker; that the size N * 8 makes whole bytes is arithmetic"}.
 {reason, unchecked_result,     inherent, "a result that can be an error value, used as the success value"}.
-{reason, untyped_value,        inherent, "term() from ets, disk_log, the stable meta data, element/2 of a tuple() or a container with term() values, used at the type the program expects"}.
-{reason, call_reply,           inherent, "the reply of gen_server:call, gen_statem:call or a vnode command (riak_core_vnode_master:sync_command) is term(): the spec promises the type of the reply, or the body matches it"}.
+{reason, untyped_value,        inherent, "term() from ets, disk_log, a dict, the stable meta data, an rpc, the application environment, element/2 of a tuple(), a record field without a type or a container with term() values, used at the type the program expects"}.
+{reason, call_reply,           inherent, "the reply of gen_server:call, gen_statem:call or a vnode command (riak_core_vnode_master:sync_command, dc_utilities:call_vnode_sync) is term(): the spec promises the type of the reply, or the body matches it"}.
 {reason, message_term,         inherent, "the message of a process callback with a catch-all clause is term(), a clause uses its payload at the type the sender gives"}.
-{reason, start_ret,            inherent, "result of starting a process, typed by the init function of the module: it gives neither ignore nor an error"}.
+{reason, start_ret,            fixable,  "result of starting a process: the type of start_link has ignore (and an error), which the init function of the module does not give"}.
 {reason, ets_new,              fixable,  "ets:new/2 gives a tid() when the table is not named"}.
-{reason, correlated,           inherent, "the type of a value depends on another value (the op_type of a log operation for its payload, the CRDT type for its operation, the size kept next to a list, the state of a process for a field of its data, the result of a test in another function)"}.
+{reason, correlated,           inherent, "the type of a value depends on another value (the op_type of a log operation for its payload, the CRDT type for its operation, the key of lists:keyfind/3 for the pair it finds, the size kept next to a list, the state of a process for a field of its data, the result of a test in another function)"}.
 {reason, deserialize,          inherent, "binary_to_term/1 gives term()"}.
 {reason, record_undefined,     real,     "a record field declared T | undefined is used as T; the field is undefined at some time, so the declaration is true"}.
 {reason, dep_spec,             real,     "imprecise type spec in the source of a dependency"}.
 {reason, spec_misuse,          real,     "a function is used against its spec, without effect at run time"}.
-{reason, spec_imprecise,       real,     "imprecise type spec in the source, of the function or of a function it calls, that a more precise one does not repair (see the header)"}.
+{reason, spec_imprecise,       real,     "imprecise type spec in the source, of the function or of a function it calls (see the header)"}.
+{reason, spec_wrong,           real,     "a declaration in the source (a spec, the type of a record field) says something else than the code does; it came up in step IV behind an error that an overlay or an assertion takes away (see the header)"}.
 {reason, source_bug,           real,     "error in the program"}.
 
+%% Library specs that overlays correct
+{correction, maps, put, 3, spec_imprecise}.
+{correction, erlang, hd, 1, spec_imprecise}.
+{correction, erlang, max, 2, spec_imprecise}.
+{correction, erlang, min, 2, spec_imprecise}.
+{correction, erlang, length, 1, spec_imprecise}.
+{correction, erlang, integer_to_list, 1, spec_imprecise}.
+{correction, lists, foldl, 3, spec_imprecise}.
+{correction, lists, seq, 2, spec_imprecise}.
+{correction, filename, join, 2, spec_imprecise}.
+{correction, lists, flatten, 1, spec_imprecise}. % doubtful, as in riak_core_lite
+
 {module, antidote, #{file => "antidote/src/antidote.erl",
-                     overlays => [{specs, "overlay_antidote.erl"}, {deps, "overlay_antidote_crdt.erl"}], timeout => 10000}}.
-%% [Node] = log_utilities:get_preflist_from_key(..), a preflist of ?N = 1 nodes
-{exception, antidote, get_log_operations_internal, 2, [ignore], body_exhaustiveness}.
-%% lists:keyfind/3 gives tuple() | false, the case has {update_clock, ShouldUpdate}; behind it the list also has pairs {certify,
-%% _}, which the key rules out
-{exception, antidote, get_txn_property, 2, [ignore], library_spec}.
+                     overlays => [{specs, "overlay_antidote.erl"},
+                                  {deps, "overlay_antidote_crdt.erl"},
+                                  {library, "overlay_riak_core_lite_lib.erl"},
+                                  {library, "overlay_antidote_lib.erl"}],
+                     timeout => 10000}}.
+%% get_log_operations_internal/2: [Node] = log_utilities:get_preflist_from_key(..), a preflist of ?N = 1 nodes; the field
+%% ops_list of the response is a list or a tuple, lists:reverse/1 takes the list that logging_vnode:get_from_time/5 gives
+{assertion, antidote, {84, 13, "b17416"}, assert_pattern, "[_]", body_exhaustiveness}.
+{assertion, antidote, {87, 70, "86bf06"}, assert_type, "[{op_num(), clocksi_payload()}]", correlated}.
+%% get_txn_property/2: lists:keyfind/3 with the key update_clock or certify gives the pair with that key, the list has both
+%% kinds of pairs; the value of application:get_env/3, a term(), is the boolean() of the second clause
+{assertion, antidote, {220, 10, "7f9d48"}, assert_type, "false | {update_clock, boolean()}", keyfind_tuple}.
+{assertion, antidote, {232, 10, "9ba7a5"}, assert_type, "false | {certify, use_default | certify | dont_certify}", keyfind_tuple}.
+{assertion, antidote, {234, 13, "147f00"}, assert_type, "boolean()", untyped_value}.
+{assertion, antidote, {238, 21, "147f00"}, assert_type, "boolean()", untyped_value}.
 
 {module, antidote_app, #{file => "antidote/src/antidote_app.erl",
                          overlays => [{specs, "overlay_antidote.erl"},
-                                      {deps, "overlay_riak_core_lite.erl"}],
+                                      {deps, "overlay_riak_core_lite.erl"},
+                                      {library, "overlay_riak_core_lite_lib.erl"},
+                                      {library, "overlay_antidote_lib.erl"}],
                          timeout => 10000}}.
-{exception, antidote_app, start, 2, [ignore], body_exhaustiveness}. % ok = logger:add_handler/3
-%% {ok, DataDir} = application:get_env(antidote, data_dir)
-{exception, antidote_app, validate_data_dir, 0, [ignore], body_exhaustiveness}.
+%% start/2: ok = logger:add_handler/3 (twice), ok = riak_core_ring_events:add_guarded_handler/2 and ok =
+%% riak_core_node_watcher_events:add_guarded_handler/2; the case on antidote_sup:start_link/0 has {ok, Pid} and {error, Reason},
+%% supervisor:start_link/3 can give ignore, which the init function of antidote_sup does not
+{assertion, antidote_app, {50, 5, "5e513e"}, assert_pattern, "ok", body_exhaustiveness}.
+{assertion, antidote_app, {53, 5, "32f72b"}, assert_pattern, "ok", body_exhaustiveness}.
+{assertion, antidote_app, {55, 10, "81569d"}, assert_type, "{ok, pid()} | {error, term()}", start_ret}.
+{assertion, antidote_app, {76, 13, "7ca3ac"}, assert_pattern, "ok", body_exhaustiveness}.
+{assertion, antidote_app, {77, 13, "4e6490"}, assert_pattern, "ok", body_exhaustiveness}.
+%% validate_data_dir/0: {ok, DataDir} = application:get_env(antidote, data_dir), which can be undefined and has term() for the
+%% value: the directory name
+{assertion, antidote_app, {95, 21, "473734"}, assert_type, "{ok, string()}", untyped_value}.
 
 {module, antidote_console, #{file => "antidote/src/antidote_console.erl",
                              overlays => [{specs, "overlay_antidote.erl"},
-                                          {deps, "overlay_riak_core_lite.erl"}],
+                                          {deps, "overlay_riak_core_lite.erl"},
+                                          {library, "overlay_riak_core_lite_lib.erl"},
+                                          {library, "overlay_antidote_lib.erl"}],
                              timeout => 10000}}.
 %% the clause takes [NodeStr], the one argument of the console command
-{exception, antidote_console, staged_join, 1, [ignore], partial}.
-{exception, antidote_console, down, 1, [ignore], partial}. % the clause takes [Node], the one argument of the console command
+{exception, antidote_console, staged_join, 1, [no_exhaustiveness], partial}.
+%% the clause takes [Node], the one argument of the console command
+{exception, antidote_console, down, 1, [no_exhaustiveness], partial}.
 %% riak_core_status:ringready/0 promises {error, any()}, the case has the two errors it gives
 {exception, antidote_console, ringready, 1, [ignore], dep_spec}.
 
 {module, antidote_dc_manager, #{file => "antidote/src/antidote_dc_manager.erl",
                                 overlays => [{specs, "overlay_antidote.erl"},
-                                             {deps, "overlay_riak_core_lite.erl"}],
+                                             {deps, "overlay_riak_core_lite.erl"},
+                                             {library, "overlay_riak_core_lite_lib.erl"},
+                                             {library, "overlay_antidote_lib.erl"}],
                                 timeout => 10000}}.
-%% {ok, CurrentRing} = riak_core_ring_manager:get_my_ring()
-{exception, antidote_dc_manager, join_new_nodes, 1, [ignore], body_exhaustiveness}.
-%% the first clause gives the value of ?LOG_WARNING as ok
-{exception, antidote_dc_manager, plan_and_commit, 1, [ignore], log_macro}.
-%% {ok, CurrentRing} = riak_core_ring_manager:get_my_ring()
-{exception, antidote_dc_manager, wait_until_ring_no_pending_changes, 0, [ignore], body_exhaustiveness}.
-{exception, antidote_dc_manager, wait_until_ring_ready, 1, [ignore], free_result}. % case on rpc:call/4
+%% join_new_nodes/1: {ok, CurrentRing} = riak_core_ring_manager:get_my_ring()
+{assertion, antidote_dc_manager, {97, 5, "4712e6"}, assert_pattern, "{ok, _}", body_exhaustiveness}.
+%% pong = net_adm:ping(Node) in the fun of lists:foreach/2. The first clause, which gives the value of ?LOG_WARNING as ok, type
+%% checks with the library overlay
+{exception, antidote_dc_manager, plan_and_commit, 1, [ignore], in_fun}.
+%% in the fun F the rings out of the results of rpc:multicall/4 are term(), riak_core_ring:pending_changes/1 takes a ring; the
+%% error shows as a dead branch of case F() of true. In front of it {ok, CurrentRing} = riak_core_ring_manager:get_my_ring()
+{exception, antidote_dc_manager, wait_until_ring_no_pending_changes, 0, [ignore], in_fun}.
+%% wait_until_ring_ready/1: case on the result of rpc:call/4, a term(), with true and false
+{assertion, antidote_dc_manager, {182, 14, "c44ef6"}, assert_type, "boolean()", untyped_value}.
 
 {module, antidote_error_monitor, #{file => "antidote/src/antidote_error_monitor.erl",
-                                   overlays => [{specs, "overlay_antidote.erl"}], timeout => 10000}}.
-{exception, antidote_error_monitor, log, 2, [ignore], free_result}. % ?STATS(..): the case of the macro on application:get_env/3
+                                   overlays => [{specs, "overlay_antidote.erl"},
+                                                {library, "overlay_riak_core_lite_lib.erl"},
+                                                {library, "overlay_antidote_lib.erl"}],
+                                   timeout => 10000}}.
 
 {module, antidote_ets_meta_data, #{file => "antidote/src/antidote_ets_meta_data.erl",
-                                   overlays => [{specs, "overlay_antidote.erl"}], timeout => 10000}}.
-%% case on ets:lookup/2 with [] and [{merged_data, Other}]
-{exception, antidote_ets_meta_data, get_meta_data_sender_merged_data, 2, [ignore], untyped_value}.
-%% ets:tab2list/1 gives [tuple()], maps:from_list/1 wants pairs
-{exception, antidote_ets_meta_data, get_meta_data_as_map, 1, [ignore], untyped_value}.
-%% ets:tab2list/1 gives [tuple()], maps:from_list/1 wants pairs
-{exception, antidote_ets_meta_data, get_remote_meta_data_as_map, 1, [ignore], untyped_value}.
+                                   overlays => [{specs, "overlay_antidote.erl"},
+                                                {library, "overlay_riak_core_lite_lib.erl"},
+                                                {library, "overlay_antidote_lib.erl"}],
+                                   timeout => 10000}}.
+%% case on ets:lookup/2 with [] and [{merged_data, Other}]: Other out of the table, a term(), is the result, the X of the spec
+%% (atom(), X) -> X
+{exception, antidote_ets_meta_data, get_meta_data_sender_merged_data, 2, [ignore], assert_tyvar}.
+%% get_meta_data_as_map/1: ets:tab2list/1 gives [tuple()], maps:from_list/1 takes the pairs of the table
+{assertion, antidote_ets_meta_data, {114, 20, "c56b2a"}, assert_type, "[{term(), term()}]", untyped_value}.
+%% get_remote_meta_data_as_map/1: ets:tab2list/1 gives [tuple()], maps:from_list/1 takes the pairs of the table
+{assertion, antidote_ets_meta_data, {118, 20, "a401cd"}, assert_type, "[{term(), term()}]", untyped_value}.
 
 {module, antidote_ets_txn_caches, #{file => "antidote/src/antidote_ets_txn_caches.erl",
-                                    overlays => [{specs, "overlay_antidote.erl"}], timeout => 10000}}.
-%% case on ets:lookup/2 with [] and [{Key, List}]
-{exception, antidote_ets_txn_caches, get_prepared_txn_by_key_and_table, 2, [ignore], untyped_value}.
+                                    overlays => [{specs, "overlay_antidote.erl"},
+                                                 {library, "overlay_riak_core_lite_lib.erl"},
+                                                 {library, "overlay_antidote_lib.erl"}],
+                                    timeout => 10000}}.
+%% case ets:lookup(Table, Key) of []; [{Key, List}] with Key bound: with the result asserted as [] or one pair (ets:lookup/2
+%% gives [tuple()]) the case counts as not exhaustive
+{exception, antidote_ets_txn_caches, get_prepared_txn_by_key_and_table, 2, [ignore], bound_pattern}.
 
 {module, antidote_hooks, #{file => "antidote/src/antidote_hooks.erl",
-                           overlays => [{specs, "overlay_antidote.erl"}], timeout => 10000}}.
-%% value of stable_meta_data_server:read_meta_data/1, a term(), as the hook {Module, Function}
-{exception, antidote_hooks, get_hooks, 2, [ignore], untyped_value}.
+                           overlays => [{specs, "overlay_antidote.erl"},
+                                        {library, "overlay_riak_core_lite_lib.erl"},
+                                        {library, "overlay_antidote_lib.erl"}],
+                           timeout => 10000}}.
+%% get_hooks/2: value of stable_meta_data_server:read_meta_data/1, a term(), as the hook {Module, Function} or undefined
+{assertion, antidote_hooks, {113, 24, "c8b71e"}, assert_type, "{module_name(), function_name()} | undefined", untyped_value}.
+{assertion, antidote_hooks, {119, 24, "c8b71e"}, assert_type, "{module_name(), function_name()} | undefined", untyped_value}.
 %% the one clause takes {increment, 1} on an antidote_crdt_counter_pn: the example hook of the documentation
-{exception, antidote_hooks, test_increment_hook, 1, [ignore], partial}.
-{exception, antidote_hooks, test_post_hook, 1, [ignore], body_exhaustiveness}. % {ok, _CT} = antidote:update_objects/3
+{exception, antidote_hooks, test_increment_hook, 1, [no_exhaustiveness], partial}.
+%% test_post_hook/1: {ok, _CT} = antidote:update_objects/3
+{assertion, antidote_hooks, {170, 5, "4736b8"}, assert_pattern, "{ok, _}", body_exhaustiveness}.
 
 {module, antidote_node_event_handler, #{file => "antidote/src/antidote_node_event_handler.erl",
-                                        overlays => [{specs, "overlay_antidote.erl"}], timeout => 10000}}.
+                                        overlays => [{specs, "overlay_antidote.erl"},
+                                                     {library, "overlay_riak_core_lite_lib.erl"},
+                                                     {library, "overlay_antidote_lib.erl"}],
+                                        timeout => 10000}}.
 
 {module, antidote_pb_process, #{file => "antidote/src/antidote_pb_process.erl",
                                 overlays => [{specs, "overlay_antidote.erl"},
-                                             {deps, "overlay_antidote_pb_codec.erl"}],
+                                             {deps, "overlay_antidote_pb_codec.erl"},
+                                             {library, "overlay_riak_core_lite_lib.erl"},
+                                             {library, "overlay_antidote_lib.erl"}],
                                 timeout => 10000}}.
-{exception, antidote_pb_process, from_bin, 1, [ignore], deserialize}. % binary_to_term(Clock) for snapshot_time() | ignore | txid()
+%% from_bin/1: binary_to_term(Clock), a term(), is the snapshot time or the transaction id. (In the catch-all clause of
+%% case Clock of undefined -> ignore; _ -> .. end Clock is still binary() | undefined for the checker; the cast of the call
+%% covers its argument.)
+{assertion, antidote_pb_process, {44, 14, "5725e6"}, assert_type, "snapshot_time() | ignore | txid()", deserialize}.
 %% no clause for {validate_or_read_objects, _, _, _}, which antidote_pb_codec:request() has and the codec decodes
 {exception, antidote_pb_process, process, 1, [ignore], source_bug}.
 
 {module, antidote_pb_protocol, #{file => "antidote/src/antidote_pb_protocol.erl",
                                  overlays => [{specs, "overlay_antidote.erl"},
                                               {deps, "overlay_antidote_pb_codec.erl"},
-                                              {deps, "overlay_ranch.erl"}],
+                                              {deps, "overlay_ranch.erl"},
+                                              {library, "overlay_riak_core_lite_lib.erl"},
+                                              {library, "overlay_antidote_lib.erl"}],
                                  timeout => 10000}}.
-%% {ok, Socket} = ranch:handshake(Ref), which can give {continue, _}
-{exception, antidote_pb_protocol, init, 3, [ignore], body_exhaustiveness}.
-%% io_lib:format/2 gives io_lib:chars(), a list of char(); iolist_to_binary/1 takes an iolist() of byte()
-{exception, antidote_pb_protocol, handle, 3, [ignore], library_spec}.
+%% init/3: {ok, Socket} = ranch:handshake(Ref), which can give {continue, _}
+{assertion, antidote_pb_protocol, {45, 5, "cdebb5"}, assert_pattern, "{ok, _}", body_exhaustiveness}.
+%% handle/3: io_lib:format/2 gives chars(), a deep list of char(); erlang:iolist_to_binary/1 takes bytes. The format has no
+%% modifier t, so all characters are in Latin-1
+{assertion, antidote_pb_protocol, {86, 17, "1813d3"}, assert_type, "iolist()", format_chars}.
 
 {module, antidote_pb_sup, #{file => "antidote/src/antidote_pb_sup.erl",
-                            overlays => [{specs, "overlay_antidote.erl"}, {deps, "overlay_ranch.erl"}], timeout => 10000}}.
+                            overlays => [{specs, "overlay_antidote.erl"},
+                                         {deps, "overlay_ranch.erl"},
+                                         {library, "overlay_riak_core_lite_lib.erl"},
+                                         {library, "overlay_antidote_lib.erl"}],
+                            timeout => 10000}}.
 {exception, antidote_pb_sup, init, 1, [ignore], map_types}. % the supervisor flags as a map with three keys
 
 {module, antidote_ring_event_handler, #{file => "antidote/src/antidote_ring_event_handler.erl",
                                         overlays => [{specs, "overlay_antidote.erl"},
-                                                     {deps, "overlay_riak_core_lite.erl"}],
+                                                     {deps, "overlay_riak_core_lite.erl"},
+                                                     {library, "overlay_riak_core_lite_lib.erl"},
+                                                     {library, "overlay_antidote_lib.erl"}],
                                         timeout => 10000}}.
-%% {ok, Ring} = riak_core_ring_manager:get_my_ring()
-{exception, antidote_ring_event_handler, handle_event, 2, [ignore], body_exhaustiveness}.
-%% {ok, Ring} = riak_core_ring_manager:get_my_ring()
-{exception, antidote_ring_event_handler, update_status, 0, [ignore], body_exhaustiveness}.
+%% handle_event/2: {ok, Ring} = riak_core_ring_manager:get_my_ring()
+{assertion, antidote_ring_event_handler, {55, 18, "6ecad7"}, assert_pattern, "{ok, _}", body_exhaustiveness}.
+%% update_status/0: {ok, Ring} = riak_core_ring_manager:get_my_ring()
+{assertion, antidote_ring_event_handler, {92, 18, "6ecad7"}, assert_pattern, "{ok, _}", body_exhaustiveness}.
 
 {module, antidote_stats, #{file => "antidote/src/antidote_stats.erl",
-                           overlays => [{specs, "overlay_antidote.erl"}], timeout => 10000}}.
-%% erlang:cancel_timer(ExpensiveTimer): the field timer_expensive is undefined | reference(), undefined after the last tick,
-%% when no message periodic_expensive_update comes anymore
-{exception, antidote_stats, handle_info, 2, [ignore], correlated}.
-%% ?STATS(..): the case of the macro on application:get_env/3
-{exception, antidote_stats, update_staleness, 0, [ignore], free_result}.
-%% round/1 gives integer(); the staleness is not negative, the maximum of the fold starts at 0
-{exception, antidote_stats, calculate_staleness, 0, [ignore], number_range}.
-%% ?STATS(..): the case of the macro on application:get_env/3
-{exception, antidote_stats, update_dc_count, 0, [ignore], free_result}.
-%% the filter ProcessInfo /= undefined does not narrow the result of erlang:process_info/1 for proplists:get_value/2
-{exception, antidote_stats, update_processes_info, 1, [ignore], narrowing}.
+                           overlays => [{specs, "overlay_antidote.erl"},
+                                        {library, "overlay_riak_core_lite_lib.erl"},
+                                        {library, "overlay_antidote_lib.erl"}],
+                           timeout => 10000}}.
+%% handle_info/2: erlang:cancel_timer(ExpensiveTimer): the field timer_expensive is undefined | reference(), undefined after the
+%% last tick, when no message periodic_expensive_update comes anymore
+{assertion, antidote_stats, {118, 29, "225663"}, assert_type, "reference()", correlated}.
+%% calculate_staleness/0: round/1 gives integer(); the staleness is not negative, the maximum of the fold starts at 0
+{assertion, antidote_stats, {163, 5, "7e59aa"}, assert_type, "non_neg_integer()", arith_range}.
+%% update_processes_info/1: the filter ProcessInfo /= undefined does not narrow the result of erlang:process_info/1 for
+%% proplists:get_value/2; the values of the property list are term(), the fold fun adds up the queue lengths and the reductions
+{assertion, antidote_stats, {184, 50, "fcb3f2"}, assert_type, "[{atom(), term()}]", narrowing}.
+{assertion, antidote_stats, {185, 52, "fcb3f2"}, assert_type, "[{atom(), term()}]", narrowing}.
+{assertion, antidote_stats, {186, 45, "fcb3f2"}, assert_type, "[{atom(), term()}]", narrowing}.
+{assertion, antidote_stats, {200, 9, "24296b"}, assert_type, "[{term(), non_neg_integer(), non_neg_integer()}]", untyped_value}.
 
 {module, antidote_sup, #{file => "antidote/src/antidote_sup.erl",
-                         overlays => [{specs, "overlay_antidote.erl"}], timeout => 10000}}.
+                         overlays => [{specs, "overlay_antidote.erl"},
+                                      {library, "overlay_riak_core_lite_lib.erl"},
+                                      {library, "overlay_antidote_lib.erl"}],
+                         timeout => 10000}}.
 %% the child spec of antidote_pb_sup as a map with six keys, next to ten child specs that are tuples
 {exception, antidote_sup, init, 1, [ignore], map_types}.
 
 {module, antidote_warning_monitor, #{file => "antidote/src/antidote_warning_monitor.erl",
-                                     overlays => [{specs, "overlay_antidote.erl"}], timeout => 10000}}.
-%% ?STATS(..): the case of the macro on application:get_env/3
-{exception, antidote_warning_monitor, log, 2, [ignore], free_result}.
+                                     overlays => [{specs, "overlay_antidote.erl"},
+                                                  {library, "overlay_riak_core_lite_lib.erl"},
+                                                  {library, "overlay_antidote_lib.erl"}],
+                                     timeout => 10000}}.
 
 {module, bcounter_mgr, #{file => "antidote/src/bcounter_mgr.erl",
-                         overlays => [{specs, "overlay_antidote.erl"}, {deps, "overlay_antidote_crdt.erl"}], timeout => 10000}}.
-{exception, bcounter_mgr, generate_downstream, 3, [ignore], call_reply}. % reply of gen_server:call/2 for a decrement
+                         overlays => [{specs, "overlay_antidote.erl"},
+                                      {deps, "overlay_antidote_crdt.erl"},
+                                      {library, "overlay_riak_core_lite_lib.erl"},
+                                      {library, "overlay_antidote_lib.erl"}],
+                         timeout => 10000}}.
+%% generate_downstream/3: the reply of gen_server:call/2 to {consume, _, _, _} for a decrement, a term(), is the result
+{assertion, bcounter_mgr, {86, 5, "f60c20"}, assert_type, "{ok, overlay_antidote:bcounter_effect()} | {error, no_permissions}", call_reply}.
 %% case Queue of []; Queue in the fun of orddict:fold/3: the last pattern is the scrutinee, so the fun counts as taking [] only
 %% and does not fit the queue
 {exception, bcounter_mgr, handle_info, 2, [ignore], bound_pattern}.
-{exception, bcounter_mgr, request_remote, 2, [ignore], body_exhaustiveness}. % {ok, [Obj], _} = antidote:read_objects/3
+%% request_remote/2: {ok, [Obj], _} = antidote:read_objects/3, which promises {ok, list(), vectorclock()} | {error, reason()};
+%% the object read, a term(), is the value of the bounded counter that pref_list/1 takes
+{assertion, bcounter_mgr, {186, 5, "29e45a"}, assert_pattern, "{ok, [_], _}", body_exhaustiveness}.
+{assertion, bcounter_mgr, {187, 26, "35baae"}, assert_type, "overlay_antidote:bcounter()", untyped_value}.
 
 {module, clocksi_downstream, #{file => "antidote/src/clocksi_downstream.erl",
                                overlays => [{specs, "overlay_antidote.erl"},
-                                            {deps, "overlay_antidote_crdt.erl"}],
+                                            {deps, "overlay_antidote_crdt.erl"},
+                                            {library, "overlay_riak_core_lite_lib.erl"},
+                                            {library, "overlay_antidote_lib.erl"}],
                                timeout => 10000}}.
-%% for the type antidote_crdt_counter_b the update is an operation of the bounded counter: Update is an op(),
-%% bcounter_mgr:generate_downstream/3 takes the three operations of the counter
-{exception, clocksi_downstream, generate_downstream_op, 6, [ignore], correlated}.
+%% generate_downstream_op/6: for the type antidote_crdt_counter_b the update is an operation of the bounded counter and the
+%% state that was read its value: bcounter_mgr:generate_downstream/3 takes them, Update is an op() and the snapshot a term()
+{assertion, clocksi_downstream, {72, 59, "9ccc3a"}, assert_type, "overlay_antidote:bcounter_op()", correlated}.
+{assertion, clocksi_downstream, {72, 67, "161c33"}, assert_type, "overlay_antidote:bcounter()", correlated}.
 
 {module, clocksi_interactive_coord, #{file => "antidote/src/clocksi_interactive_coord.erl",
-                                      overlays => [{specs, "overlay_antidote.erl"}], timeout => 10000}}.
-%% promises {ok, pid()}, gen_statem:start_link/3 gives gen_statem:start_ret()
-{exception, clocksi_interactive_coord, start_link, 0, [ignore], start_ret}.
-%% hd(Preflist) of log_utilities:get_preflist_from_key/1
-{exception, clocksi_interactive_coord, perform_singleitem_operation, 4, [ignore], nonempty_list}.
+                                      overlays => [{specs, "overlay_antidote.erl"},
+                                                   {library, "overlay_riak_core_lite_lib.erl"},
+                                                   {library, "overlay_antidote_lib.erl"}],
+                                      timeout => 10000}}.
+%% start_link/0: promises {ok, pid()}, gen_statem:start_link/3 gives gen_statem:start_ret(): the init function of the module
+%% gives neither ignore nor an error
+{assertion, clocksi_interactive_coord, {82, 5, "ec0cbb"}, assert_type, "{ok, pid()}", start_ret}.
+%% perform_singleitem_operation/4: hd(Preflist) of log_utilities:get_preflist_from_key/1, a preflist of one node
+{assertion, clocksi_interactive_coord, {99, 16, "8cc281"}, assert_type, "[index_node(), ...]", nonempty_list}.
 %% case on antidote_hooks:execute_pre_commit_hook/3 with {Key, Type, Params1}, Key and Type bound by the head
 {exception, clocksi_interactive_coord, perform_singleitem_update, 5, [ignore], bound_pattern}.
 %% (State#state.transaction)#transaction.txn_id, the field transaction is undefined | tx()
 {exception, clocksi_interactive_coord, wait_for_start_transaction, 3, [ignore], record_undefined}.
-%% the clause for info hands the value of the message, any(), to the clause for cast, which takes {prepared, Time}, abort or
-%% timeout
-{exception, clocksi_interactive_coord, receive_prepared, 3, [ignore], message_term}.
+%% receive_prepared/3: the clause for info hands the value of the message, any(), to the clause for cast, which takes {prepared,
+%% Time}, abort or timeout
+{assertion, clocksi_interactive_coord, {277, 28, "3ce9b5"}, assert_type, "{prepared, clock_time()} | abort | timeout", message_term}.
 %% the field transaction is undefined | tx(), clocksi_vnode:commit/3 takes a tx(); the field commit_time is undefined |
 %% clock_time() as well
 {exception, clocksi_interactive_coord, committing, 3, [ignore], record_undefined}.
 %% {reply, From, {ok, CommitTime}} with the field from, undefined | gen_statem:from(); behind it the clause for info hands the
 %% value of the message, any(), to the clause for cast
 {exception, clocksi_interactive_coord, single_committing, 3, [ignore], record_undefined}.
-%% the field return_accumulator is list() | ok | {error, reason()}; while the reads come in it is the list that replace_first/3
-%% takes. Behind it replace_first/3 can give error and the field from can be undefined
-{exception, clocksi_interactive_coord, receive_read_objects_result, 3, [ignore], correlated}.
-%% the field return_accumulator is list() | ok | {error, reason()}; while the reads come in it is the list that replace_first/3
-%% takes. Behind it the field from can be undefined
-{exception, clocksi_interactive_coord, receive_validate_or_read_objects_result, 3, [ignore], correlated}.
+%% {reply, CoordState#state.from, {ok, _}} with the field from, undefined | gen_statem:from(). In front of it the field
+%% return_accumulator is list() | ok | {error, reason()}; while the reads come in it is the list that replace_first/3 takes, and
+%% replace_first/3 can give error: with both asserted as list() the function still fails against the clause of its spec for cast
+{exception, clocksi_interactive_coord, receive_read_objects_result, 3, [ignore], record_undefined}.
+%% {reply, CoordState#state.from, {ok, _}} with the field from, undefined | gen_statem:from(). In front of it the field
+%% return_accumulator is list() | ok | {error, reason()}; while the reads come in it is the list that replace_first/3 takes (not
+%% tried with assertions, the function is as receive_read_objects_result/3)
+{exception, clocksi_interactive_coord, receive_validate_or_read_objects_result, 3, [ignore], record_undefined}.
 %% {reply, State#state.from, NewAcc}, the field from is undefined | gen_statem:from(); behind it the clause for info as in
 %% receive_prepared/3
 {exception, clocksi_interactive_coord, receive_logging_responses, 3, [ignore], record_undefined}.
-%% the clause for info hands the value of the message, any(), to the clause for cast, which takes committed
-{exception, clocksi_interactive_coord, receive_committed, 3, [ignore], message_term}.
-%% ?STATS(..): the case of the macro on application:get_env/3
-{exception, clocksi_interactive_coord, start_tx_internal, 3, [ignore], free_result}.
+%% receive_committed/3: the clause for info hands the value of the message, any(), to the clause for cast, which takes committed
+{assertion, clocksi_interactive_coord, {518, 29, "3ce9b5"}, assert_type, "committed", message_term}.
 %% the spec says atom() and term() for the command and its argument, the clauses take seven commands, four of them with a tuple
 {exception, clocksi_interactive_coord, execute_command, 4, [ignore], source_bug}.
 %% Transaction#transaction.txn_id, the field transaction is undefined | tx()
 {exception, clocksi_interactive_coord, reply_to_client, 1, [ignore], record_undefined}.
-%% lists:keyfind/3 gives tuple() | false, the case has {Partition, WS} with Partition bound
-{exception, clocksi_interactive_coord, apply_tx_updates_to_snapshot, 4, [ignore], library_spec}.
-%% [NotMyKey | replace_first(..)]: the rest is error when the key is not in the list; the callers put every key there first
-{exception, clocksi_interactive_coord, replace_first, 3, [ignore], unchecked_result}.
-%% lists:keyfind/3 gives tuple() | false, the case has {Partition, WS} with Partition bound
-{exception, clocksi_interactive_coord, perform_read, 4, [ignore], library_spec}.
-%% lists:keyfind/3 gives tuple() | false, the case has {Partition, WS} with Partition bound
-{exception, clocksi_interactive_coord, perform_validate_or_read, 4, [ignore], library_spec}.
-%% lists:keyfind/3 gives tuple() | false, the case has {Partition, WS} with Partition bound
-{exception, clocksi_interactive_coord, perform_update, 5, [ignore], library_spec}.
-%% lists:keyreplace/4 gives [tuple()]
-{exception, clocksi_interactive_coord, append_updated_partitions, 4, [ignore], library_spec}.
+%% case lists:keyfind(Partition, 1, ..) of false; {Partition, WS} with Partition bound: the case counts as not exhaustive
+{exception, clocksi_interactive_coord, apply_tx_updates_to_snapshot, 4, [ignore], bound_pattern}.
+%% replace_first/3: [NotMyKey | replace_first(..)]: the rest is error when the key is not in the list; the callers put every key
+%% there first
+{assertion, clocksi_interactive_coord, {869, 17, "9c79a0"}, assert_type, "list()", unchecked_result}.
+%% case lists:keyfind(Partition, 1, UpdatedPartitions) of false; {Partition, WS} with Partition bound: the case counts as not
+%% exhaustive
+{exception, clocksi_interactive_coord, perform_read, 4, [ignore], bound_pattern}.
+%% case lists:keyfind(Partition, 1, UpdatedPartitions) of false; {Partition, WS} with Partition bound: the case counts as not
+%% exhaustive
+{exception, clocksi_interactive_coord, perform_validate_or_read, 4, [ignore], bound_pattern}.
+%% case lists:keyfind(Partition, 1, UpdatedPartitions) of false; {Partition, WS} with Partition bound: the case counts as not
+%% exhaustive
+{exception, clocksi_interactive_coord, perform_update, 5, [ignore], bound_pattern}.
 %% Transaction = State#state.transaction with Transaction bound by the head; behind it the field is undefined | tx()
 {exception, clocksi_interactive_coord, prepare, 1, [ignore], bound_pattern}.
 %% the field transaction is undefined | tx(), clocksi_vnode:single_commit/2 and commit/3 take a tx()
 {exception, clocksi_interactive_coord, prepare_done, 2, [ignore], record_undefined}.
+%% max(PrepareTime, ReceivedPrepareTime) with the field prepare_time, undefined | clock_time(): prepare_done/2 takes a
+%% clock_time(). It type checked before step IV because max/2 of OTP gives a type variable that is bound only in when; with the
+%% library overlay the result is the type of one of the arguments
+{exception, clocksi_interactive_coord, process_prepared, 2, [ignore], record_undefined}.
 %% the field transaction is undefined | tx(), clocksi_vnode:abort/2 takes a tx()
 {exception, clocksi_interactive_coord, abort, 1, [ignore], record_undefined}.
 
 {module, clocksi_interactive_coord_sup, #{file => "antidote/src/clocksi_interactive_coord_sup.erl",
-                                          overlays => [{specs, "overlay_antidote.erl"}], timeout => 10000}}.
+                                          overlays => [{specs, "overlay_antidote.erl"},
+                                                       {library, "overlay_riak_core_lite_lib.erl"},
+                                                       {library, "overlay_antidote_lib.erl"}],
+                                          timeout => 10000}}.
 
 {module, clocksi_materializer, #{file => "antidote/src/clocksi_materializer.erl",
-                                 overlays => [{specs, "overlay_antidote.erl"}], timeout => 10000}}.
-%% {Length, _ListLen} = element(2, Tuple) for a tuple()
-{exception, clocksi_materializer, get_first_id, 1, [ignore], untyped_value}.
-%% {Length, _ListLen} = element(2, TupleOps) for a tuple()
-{exception, clocksi_materializer, materialize_intern, 11, [ignore], untyped_value}.
-%% OpId - 1 is an integer(), the first hole is the id of an operation and not negative
-{exception, clocksi_materializer, materialize_intern_perform, 12, [ignore], number_range}.
+                                 overlays => [{specs, "overlay_antidote.erl"},
+                                              {library, "overlay_riak_core_lite_lib.erl"},
+                                              {library, "overlay_antidote_lib.erl"}],
+                                 timeout => 10000}}.
+%% case Length of 0; Length: the second pattern is the scrutinee, the case counts as not exhaustive. In front of it {Length,
+%% _ListLen} = element(2, Tuple) for a tuple(), behind it {Id, _Op} = element(.., Tuple)
+{exception, clocksi_materializer, get_first_id, 1, [ignore], bound_pattern}.
+%% materialize_intern/11: {Length, _ListLen} = element(2, TupleOps) and the operation element(.., TupleOps) for a tuple():
+%% element/2 gives term(); its position (?FIRST_OP + Length - 1) - Location is an integer(), element/2 takes a pos_integer()
+{assertion, clocksi_materializer, {234, 26, "850d46"}, assert_type, "{non_neg_integer(), non_neg_integer()}", untyped_value}.
+{assertion, clocksi_materializer, {246, 17, "5f4f22"}, assert_type, "{integer(), clocksi_payload()}", untyped_value}.
+{assertion, clocksi_materializer, {246, 50, "7b8b7a"}, assert_type, "pos_integer()", number_range}.
+%% materialize_intern_perform/12: OpId - 1 is an integer(), the first hole is the id of an operation and not negative
+{assertion, clocksi_materializer, {287, 60, "5114a5"}, assert_type, "non_neg_integer()", number_range}.
 
 {module, clocksi_readitem, #{file => "antidote/src/clocksi_readitem.erl",
-                             overlays => [{specs, "overlay_antidote.erl"}], timeout => 10000}}.
-%% the case on perform_read_internal/5 has {ok, Snapshot} only; the clause for {error, Reason} is commented out in the source
-%% (TODO: dialyzer says this can never happen)
-{exception, clocksi_readitem, async_read_data_item, 6, [ignore], body_exhaustiveness}.
+                             overlays => [{specs, "overlay_antidote.erl"},
+                                          {library, "overlay_riak_core_lite_lib.erl"},
+                                          {library, "overlay_antidote_lib.erl"}],
+                             timeout => 10000}}.
+%% read_data_item/5: result of rpc:call/4, a term(), as the result of perform_read_internal/5
+{assertion, clocksi_readitem, {63, 5, "c4e289"}, assert_type, "{ok, snapshot()} | {error, term()}", untyped_value}.
+%% the case on perform_read_internal/5 has {ok, Snapshot} only (the clause for {error, Reason} is commented out in the source,
+%% TODO: dialyzer says this can never happen); it is in the fun of spawn_link/2
+{exception, clocksi_readitem, async_read_data_item, 6, [ignore], in_fun}.
+%% validate_or_read_data_item/6: result of rpc:call/4, a term(), as the result of perform_validate_or_read_internal/6
+{assertion, clocksi_readitem, {87, 5, "9450d5"}, assert_type, "{ok, {invalid, snapshot(), object_token()}} | {ok, valid} | {error, term()}", untyped_value}.
 
 {module, clocksi_vnode, #{file => "antidote/src/clocksi_vnode.erl",
                           overlays => [{specs, "overlay_antidote.erl"},
-                                       {deps, "overlay_riak_core_lite.erl"}],
+                                       {deps, "overlay_riak_core_lite.erl"},
+                                       {library, "overlay_riak_core_lite_lib.erl"},
+                                       {library, "overlay_antidote_lib.erl"}],
                           timeout => 10000}}.
-{exception, clocksi_vnode, get_active_txns_key, 2, [ignore], call_reply}. % reply of riak_core_vnode_master:sync_command/4
+%% get_active_txns_key/2: the reply of riak_core_vnode_master:sync_command/4 to {get_active_txns, _}, a term(), is the result
+{assertion, clocksi_vnode, {141, 13, "2eb7c1"}, assert_type, "{ok, [{txid(), clock_time()}]}", call_reply}.
 %% the clause takes [{Node, WriteSet}]: a transaction that wrote to one partition
-{exception, clocksi_vnode, single_commit, 2, [ignore], partial}.
-%% the clause takes [{Node, WriteSet}]: a transaction that wrote to one partition
-{exception, clocksi_vnode, single_commit_sync, 2, [ignore], partial}.
+{exception, clocksi_vnode, single_commit, 2, [no_exhaustiveness], partial}.
+%% single_commit_sync/2: the clause takes [{Node, WriteSet}]: a transaction that wrote to one partition; the reply of
+%% riak_core_vnode_master:sync_command/3 to {single_commit, _, _}, a term(), is the result
+{assertion, clocksi_vnode, {180, 5, "450808"}, assert_type, "{committed, clock_time()} | abort | {error, reason()}", call_reply}.
+{exception, clocksi_vnode, single_commit_sync, 2, [no_exhaustiveness], partial}.
 %% the clause takes [Partition] as riak_core_vnode passes it, a list type cannot say one element
-{exception, clocksi_vnode, init, 1, [ignore], partial}.
-%% case on the reply of riak_core_vnode_master:sync_command/4 with true and false
-{exception, clocksi_vnode, check_table_ready, 1, [ignore], call_reply}.
-%% the request is term(): {prepare, Transaction, WriteSet} hands its parts to prepare/6
-{exception, clocksi_vnode, handle_command, 3, [ignore], message_term}.
-%% case on logging_vnode:append_commit/3 with {ok, _} and {error, timeout}, it promises {error, term()}
-{exception, clocksi_vnode, commit, 5, [ignore], body_exhaustiveness}.
-%% lists:foldl/3 with a fun that takes a tuple {Key, Type, Op}
-{exception, clocksi_vnode, update_materializer, 3, [ignore], free_result}.
-%% lists:foldl/3 with a fun that takes a tuple {KeyPrime, _Type, Op}
-{exception, clocksi_vnode, reverse_and_filter_updates_per_key, 2, [ignore], free_result}.
-{exception, clocksi_vnode, get_committed_txn, 2, [ignore], untyped_value}. % case on ets:lookup/2 with [{_, CommitTime}] and []
+{exception, clocksi_vnode, init, 1, [no_exhaustiveness], partial}.
+%% check_table_ready/1: case on the reply of riak_core_vnode_master:sync_command/4 to {check_tables_ready}, a term(), with true
+%% and false
+{assertion, clocksi_vnode, {240, 13, "d66158"}, assert_type, "boolean()", call_reply}.
+%% handle_command/3: the request is term(): the transaction, the write set and the commit time of {prepare, _, _},
+%% {single_commit, _, _}, {commit, _, _, _} and {abort, _, _} go to prepare/6, commit/5 and clean_and_notify/3 at their types.
+%% The cases on the result of prepare/6, which promises {error, reason()}, have timeout, no_updates and write_conflict; the case
+%% on logging_vnode:append/3 has {error, timeout}
+{assertion, clocksi_vnode, {281, 45, "d898e1"}, assert_type, "{{ok, op_id()} | {error, timeout | no_updates | write_conflict}, clock_time(), overlay_antidote:prepared_dict()}", call_reply}.
+{assertion, clocksi_vnode, {282, 9, "1a35d8"}, assert_type, "tx()", message_term}.
+{assertion, clocksi_vnode, {282, 22, "d9cb6c"}, assert_type, "overlay_antidote:write_set()", message_term}.
+{assertion, clocksi_vnode, {308, 45, "d898e1"}, assert_type, "{{ok, op_id()} | {error, timeout | no_updates | write_conflict}, clock_time(), overlay_antidote:prepared_dict()}", call_reply}.
+{assertion, clocksi_vnode, {309, 9, "1a35d8"}, assert_type, "tx()", message_term}.
+{assertion, clocksi_vnode, {309, 22, "d9cb6c"}, assert_type, "overlay_antidote:write_set()", message_term}.
+{assertion, clocksi_vnode, {314, 35, "1a35d8"}, assert_type, "tx()", message_term}.
+{assertion, clocksi_vnode, {314, 60, "d9cb6c"}, assert_type, "overlay_antidote:write_set()", message_term}.
+{assertion, clocksi_vnode, {345, 21, "1a35d8"}, assert_type, "tx()", message_term}.
+{assertion, clocksi_vnode, {345, 34, "607721"}, assert_type, "clock_time()", message_term}.
+{assertion, clocksi_vnode, {345, 48, "1f9ac8"}, assert_type, "overlay_antidote:write_set()", message_term}.
+{assertion, clocksi_vnode, {361, 12, "1a35d8"}, assert_type, "tx()", message_term}.
+{assertion, clocksi_vnode, {369, 22, "afca6d"}, assert_type, "{ok, op_id()} | {error, timeout}", call_reply}.
+{assertion, clocksi_vnode, {374, 48, "1f9ac8"}, assert_type, "overlay_antidote:write_set()", message_term}.
+{assertion, clocksi_vnode, {376, 48, "1f9ac8"}, assert_type, "overlay_antidote:write_set()", message_term}.
+%% reset_prepared/5: the value of dict:fetch/2, a term(), is the tail of the list of the prepared transactions of the key (the
+%% assertion is on the list, on the call it crashes the engine)
+{assertion, clocksi_vnode, {472, 82, "869048"}, assert_type, "[{txid(), clock_time()}]", dict_types}.
+%% commit/5: case on logging_vnode:append_commit/3 with {ok, _} and {error, timeout}, it promises {error, term()}
+{assertion, clocksi_vnode, {503, 18, "fc0fa1"}, assert_type, "{ok, op_id()} | {error, timeout}", call_reply}.
+%% get_committed_txn/2: case on ets:lookup/2, which gives [tuple()], with [{_, CommitTime}] and []: the table is a set with at
+%% most one object for a key, the commit time of the transaction
+{assertion, clocksi_vnode, {691, 10, "e033c1"}, assert_type, "[] | etylizer:cons({term(), clock_time()}, [])", untyped_value}.
 
 {module, cure, #{file => "antidote/src/cure.erl",
-                 overlays => [{specs, "overlay_antidote.erl"}, {deps, "overlay_antidote_crdt.erl"}], timeout => 10000}}.
-{exception, cure, abort_transaction, 1, [ignore], call_reply}. % case on the reply of gen_statem:call/2
-{exception, cure, validate_or_read_objects, 3, [ignore], call_reply}. % case on the reply of gen_statem:call/3
-{exception, cure, obtain_objects, 3, [ignore], call_reply}. % case on the reply of gen_statem:call/3
-{exception, cure, update_objects, 2, [ignore], call_reply}. % case on the reply of gen_statem:call/3
-%% {ok, TxId} = clocksi_istart_tx/2, which promises {error, reason()} as well
-{exception, cure, update_objects, 3, [ignore], body_exhaustiveness}.
+                 overlays => [{specs, "overlay_antidote.erl"},
+                              {deps, "overlay_antidote_crdt.erl"},
+                              {library, "overlay_riak_core_lite_lib.erl"},
+                              {library, "overlay_antidote_lib.erl"}],
+                 timeout => 10000}}.
+%% abort_transaction/1: case on the reply of gen_statem:call/2 to {abort, []}, a term(), with {error, aborted} and {error,
+%% Reason}
+{assertion, cure, {66, 10, "7bafa1"}, assert_type, "{error, reason()}", call_reply}.
+%% validate_or_read_objects/3: case on the reply of gen_statem:call/3 to {validate_or_read_objects, _}, a term(), with {ok,
+%% Results} and {error, Reason}
+{assertion, cure, {95, 9, "5f1c16"}, assert_type, "{ok, [valid | {invalid, snapshot(), object_token()}]} | {error, reason()}", call_reply}.
+%% obtain_objects/3: case on the reply of gen_statem:call/3 to {read_objects, _}, a term(), with {ok, Res} and {error, Reason}
+{assertion, cure, {111, 10, "42a1b7"}, assert_type, "{ok, [snapshot()]} | {error, reason()}", call_reply}.
+%% case on the reply of gen_statem:call/3 with ok, {aborted, TxId} and {error, Reason}, TxId bound by the head: with the reply
+%% asserted as ok | {aborted, txid()} | {error, reason()} the case counts as not exhaustive
+{exception, cure, update_objects, 2, [ignore], bound_pattern}.
+%% update_objects/3: {ok, TxId} = clocksi_istart_tx/2, which promises {error, reason()} as well
+{assertion, cure, {139, 5, "b01f18"}, assert_pattern, "{ok, _}", body_exhaustiveness}.
 %% case Objects of [_O]; [_H | _T]: no clause for [], a static read of no objects ends in case_clause (obtain_objects/3 answers
 %% it with {ok, []})
 {exception, cure, obtain_objects, 4, [ignore], source_bug}.
-%% {ok, Pid} = clocksi_interactive_coord_sup:start_fsm(), the result of supervisor:start_child/2; behind it the reply of
-%% gen_statem:call/2
-{exception, cure, clocksi_istart_tx, 2, [ignore], body_exhaustiveness}.
-{exception, cure, clocksi_full_icommit, 1, [ignore], call_reply}. % reply of gen_statem:call/3
-{exception, cure, clocksi_iprepare, 1, [ignore], call_reply}. % reply of gen_statem:call/3
-{exception, cure, clocksi_icommit, 1, [ignore], call_reply}. % reply of gen_statem:call/3
+%% clocksi_istart_tx/2: {ok, Pid} = clocksi_interactive_coord_sup:start_fsm(), the result of supervisor:start_child/2; the reply
+%% of gen_statem:call/2 to {start_tx, _, _}, a term(), is the result
+{assertion, cure, {220, 5, "a17b27"}, assert_pattern, "{ok, _}", body_exhaustiveness}.
+{assertion, cure, {221, 5, "67d41a"}, assert_type, "{ok, txid()} | {error, reason()}", call_reply}.
+%% clocksi_full_icommit/1: the replies of gen_statem:call/3 to {prepare, empty} (given as the result when it is not {ok, _}) and
+%% to commit are term()
+{assertion, cure, {230, 13, "a5ac1d"}, assert_type, "{aborted, txid()} | {ok, {txid(), snapshot_time()}} | {error, reason()}", call_reply}.
+{assertion, cure, {232, 13, "8bdb36"}, assert_type, "{aborted, txid()} | {error, reason()}", call_reply}.
+%% clocksi_iprepare/1: the reply of gen_statem:call/3 to {prepare, two_phase}, a term(), is the result when it is not {error,
+%% {aborted, TxId}}
+{assertion, cure, {258, 13, "b0c93b"}, assert_type, "{aborted, txid()} | {ok, non_neg_integer()}", call_reply}.
+%% clocksi_icommit/1: the reply of gen_statem:call/3 to commit, a term(), is the result
+{assertion, cure, {263, 5, "dfd1b9"}, assert_type, "{aborted, txid()} | {ok, {txid(), snapshot_time()}}", call_reply}.
 
 {module, dc_meta_data_utilities, #{file => "antidote/src/dc_meta_data_utilities.erl",
-                                   overlays => [{specs, "overlay_antidote.erl"}], timeout => 10000}}.
-%% value of stable_meta_data_server:read_meta_data/1, a term(), as boolean()
-{exception, dc_meta_data_utilities, is_restart, 0, [ignore], untyped_value}.
-%% value of stable_meta_data_server:read_meta_data/1, a term(), as atom()
-{exception, dc_meta_data_utilities, get_env_meta_data, 2, [ignore], untyped_value}.
-%% the key of a pair of stable_meta_data_server:read_all_meta_data/0 is a term(): Name of {env, Name} goes to
-%% application:set_env/3 as an atom()
-{exception, dc_meta_data_utilities, load_env_meta_data, 0, [ignore], untyped_value}.
-%% value of stable_meta_data_server:read_meta_data/1, a term(), as atom()
-{exception, dc_meta_data_utilities, get_meta_data_name, 0, [ignore], untyped_value}.
-%% lists:foldl/3 with a fun that takes a record #descriptor{}
-{exception, dc_meta_data_utilities, store_dc_descriptors, 1, [ignore], free_result}.
-%% value of stable_meta_data_server:read_meta_data/1, a term(), as the dict for dict:fold/3
-{exception, dc_meta_data_utilities, get_dc_descriptors, 0, [ignore], untyped_value}.
+                                   overlays => [{specs, "overlay_antidote.erl"},
+                                                {library, "overlay_riak_core_lite_lib.erl"},
+                                                {library, "overlay_antidote_lib.erl"}],
+                                   timeout => 10000}}.
+%% is_restart/0: value of stable_meta_data_server:read_meta_data/1, a term(), as the flag has_started
+{assertion, dc_meta_data_utilities, {64, 13, "2caa2e"}, assert_type, "boolean()", untyped_value}.
+%% get_env_meta_data/2: the value of a setting out of stable_meta_data_server:read_meta_data/1 or application:get_env/3, a
+%% term(), as the atom() that the spec promises
+{assertion, dc_meta_data_utilities, {78, 13, "2caa2e"}, assert_type, "atom()", untyped_value}.
+{assertion, dc_meta_data_utilities, {82, 13, "8ef7f9"}, assert_type, "atom()", untyped_value}.
+%% load_env_meta_data/0: the key of a pair of stable_meta_data_server:read_all_meta_data/0 is a term(): Name of {env, Name} goes
+%% to application:set_env/3 as an atom(). The match is in the fun of lists:foreach/2: the fun is annotated with a type that says
+%% an {env, _} key has an atom(), and cast to the fun type for the pairs
+{assertion, dc_meta_data_utilities, {90, 9, "aac595"}, assert_type, "fun(({key(), term()}) -> ok)", untyped_value}.
+{assertion, dc_meta_data_utilities, {90, 9, "aac595"}, annotate_type, "fun(({{env, atom()} | etylizer:without(term(), {env, term()}), term()}) -> ok)", untyped_value}.
+%% get_meta_data_name/0: value of stable_meta_data_server:read_meta_data/1, a term(), as the name of the meta data, an atom()
+{assertion, dc_meta_data_utilities, {108, 5, "79de2d"}, assert_type, "{ok, atom()} | error", untyped_value}.
+%% store_dc_descriptors/1: MergeFunc goes to stable_meta_data_server:broadcast_meta_data_merge/4 as a function(): the fun inside
+%% it that takes #descriptor{} is reported as dead (this branch never matches); the fun is annotated with its type
+{assertion, dc_meta_data_utilities, {113, 17, "3a97ca"}, annotate_type, "fun(([descriptor()], dict:dict(dcid(), descriptor())) -> dict:dict(dcid(), descriptor()))", fun_any}.
+%% get_dc_descriptors/0: value of stable_meta_data_server:read_meta_data/1, a term(), as the dict of the descriptors that
+%% store_dc_descriptors/1 keeps; its values, term() for dict:fold/3, are the result
+{assertion, dc_meta_data_utilities, {129, 10, "8821ff"}, assert_type, "{ok, dict:dict(dcid(), descriptor())} | error", untyped_value}.
+{assertion, dc_meta_data_utilities, {131, 13, "912380"}, assert_type, "[descriptor()]", dict_types}.
 
 {module, dc_utilities, #{file => "antidote/src/dc_utilities.erl",
                          overlays => [{specs, "overlay_antidote.erl"},
-                                      {deps, "overlay_riak_core_lite.erl"}],
+                                      {deps, "overlay_riak_core_lite.erl"},
+                                      {library, "overlay_riak_core_lite_lib.erl"},
+                                      {library, "overlay_antidote_lib.erl"}],
                          timeout => 10000}}.
-{exception, dc_utilities, get_my_dc_id, 0, [ignore], body_exhaustiveness}. % {ok, Ring} = riak_core_ring_manager:get_my_ring()
-%% {ok, Ring} = riak_core_ring_manager:get_my_ring()
-{exception, dc_utilities, get_my_dc_nodes, 0, [ignore], body_exhaustiveness}.
-%% {ok, Ring} = riak_core_ring_manager:get_my_ring()
-{exception, dc_utilities, partition_to_indexnode, 1, [ignore], body_exhaustiveness}.
-%% {ok, Ring} = riak_core_ring_manager:get_my_ring()
-{exception, dc_utilities, get_all_partitions, 0, [ignore], body_exhaustiveness}.
-%% {ok, Ring} = riak_core_ring_manager:get_my_ring()
-{exception, dc_utilities, get_all_partitions_nodes, 0, [ignore], body_exhaustiveness}.
-%% {ok, Ring} = riak_core_ring_manager:get_my_ring()
-{exception, dc_utilities, get_my_partitions, 0, [ignore], body_exhaustiveness}.
+%% get_my_dc_id/0: {ok, Ring} = riak_core_ring_manager:get_my_ring(); riak_core_ring:cluster_name/1 gives term(), the name of
+%% the cluster is the id of the DC
+{assertion, dc_utilities, {67, 18, "6ecad7"}, assert_pattern, "{ok, _}", body_exhaustiveness}.
+{assertion, dc_utilities, {68, 5, "e185da"}, assert_type, "dcid()", untyped_value}.
+%% get_my_dc_nodes/0: {ok, Ring} = riak_core_ring_manager:get_my_ring()
+{assertion, dc_utilities, {73, 18, "6ecad7"}, assert_pattern, "{ok, _}", body_exhaustiveness}.
+%% partition_to_indexnode/1: {ok, Ring} = riak_core_ring_manager:get_my_ring()
+{assertion, dc_utilities, {79, 18, "6ecad7"}, assert_pattern, "{ok, _}", body_exhaustiveness}.
+%% get_all_partitions/0: {ok, Ring} = riak_core_ring_manager:get_my_ring()
+{assertion, dc_utilities, {92, 22, "6ecad7"}, assert_pattern, "{ok, _}", body_exhaustiveness}.
+%% get_all_partitions_nodes/0: {ok, Ring} = riak_core_ring_manager:get_my_ring()
+{assertion, dc_utilities, {107, 22, "6ecad7"}, assert_pattern, "{ok, _}", body_exhaustiveness}.
+%% get_my_partitions/0: {ok, Ring} = riak_core_ring_manager:get_my_ring()
+{assertion, dc_utilities, {119, 18, "6ecad7"}, assert_pattern, "{ok, _}", body_exhaustiveness}.
 %% vectorclock:map/2 as a foreach: the fun gives the value of ?LOG_DEBUG where the spec wants a pos_integer()
 {exception, dc_utilities, check_staleness, 0, [ignore], spec_misuse}.
-%% case on meta_data_sender:get_merged_data/2 with a clause for undefined; the result has the type of the default, a
-%% vectorclock()
-{exception, dc_utilities, get_stable_snapshot, 0, [ignore], defensive}.
-%% now_microsec() - ?OLD_SS_MICROSEC is an integer(), the spec promises pos_integer()
-{exception, dc_utilities, get_scalar_stable_time, 0, [ignore], number_range}.
-%% erlang:system_time/1 gives integer(), the spec promises non_neg_integer()
-{exception, dc_utilities, now_microsec, 0, [ignore], number_range}.
+%% get_stable_snapshot/0: case on meta_data_sender:get_merged_data/2 with a clause for undefined; the result has the type of the
+%% default, a vectorclock(): the subject is annotated vectorclock() | undefined
+{assertion, dc_utilities, {254, 10, "39d2d2"}, annotate_type, "vectorclock() | undefined", defensive}.
+%% get_scalar_stable_time/0: now_microsec() - ?OLD_SS_MICROSEC is no pos_integer() for the checker, the spec promises one;
+%% vectorclock:min_clock/2 gives non_neg_integer(), the result takes a pos_integer(): the entries of a clock are positive
+{assertion, dc_utilities, {276, 47, "e86fb0"}, assert_type, "pos_integer()", number_range}.
+{assertion, dc_utilities, {280, 19, "9e18d1"}, assert_type, "pos_integer()", number_range}.
+%% now_microsec/0: erlang:system_time/1 gives integer(), the spec promises non_neg_integer()
+{assertion, dc_utilities, {298, 5, "11d3bc"}, assert_type, "non_neg_integer()", number_range}.
 
 {module, inter_dc_dep_vnode, #{file => "antidote/src/inter_dc_dep_vnode.erl",
                                overlays => [{specs, "overlay_antidote.erl"},
-                                            {deps, "overlay_riak_core_lite.erl"}],
+                                            {deps, "overlay_riak_core_lite.erl"},
+                                            {library, "overlay_riak_core_lite_lib.erl"},
+                                            {library, "overlay_antidote_lib.erl"}],
                                timeout => 10000}}.
-%% dc_utilities:call_local_vnode_sync/3 gives any(), the reply to {txn, Txn} is ok
-{exception, inter_dc_dep_vnode, handle_transaction, 1, [ignore], call_reply}.
-%% dc_utilities:call_local_vnode_sync/3 gives any(), the reply to {set_dependency_clock, Vector} is ok
-{exception, inter_dc_dep_vnode, set_dependency_clock, 2, [ignore], call_reply}.
+%% handle_transaction/1: dc_utilities:call_local_vnode_sync/3 gives the reply of the vnode as any(), the reply to {txn, Txn} is
+%% ok
+{assertion, inter_dc_dep_vnode, {82, 5, "5cd200"}, assert_type, "ok", call_reply}.
+%% set_dependency_clock/2: dc_utilities:call_local_vnode_sync/3 gives the reply of the vnode as any(), the reply to
+%% {set_dependency_clock, Vector} is ok
+{assertion, inter_dc_dep_vnode, {88, 5, "15835d"}, assert_type, "ok", call_reply}.
 %% the spec says [partition_id()], the clause takes [Partition] as riak_core_vnode passes it
-{exception, inter_dc_dep_vnode, init, 1, [ignore], partial}.
-%% case on NumUpdated out of the result of lists:foldl/3
-{exception, inter_dc_dep_vnode, process_all_queues, 1, [ignore], free_result}.
-%% the value of dict:fetch/2 has no type: the case on queue:peek/1 of it has a dead branch
-{exception, inter_dc_dep_vnode, process_queue, 2, [ignore], dict_types}.
-{exception, inter_dc_dep_vnode, try_store, 2, [ignore], body_exhaustiveness}. % {ok, _} = logging_vnode:append_group/4
+{exception, inter_dc_dep_vnode, init, 1, [no_exhaustiveness], partial}.
+%% process_all_queues/1: the keys of the dict of the queues, term() from dict:fetch_keys/1, go to process_queue/2 as dcid()
+{assertion, inter_dc_dep_vnode, {111, 13, "2bcc00"}, assert_type, "[dcid()]", dict_types}.
+%% process_queue/2: the value of dict:fetch/2 is term(): the queue of the transactions of a DC, its head goes to try_store/2
+{assertion, inter_dc_dep_vnode, {121, 13, "595541"}, assert_type, "queue:queue(interdc_txn())", dict_types}.
+%% try_store/2: {ok, _} = logging_vnode:append_group/4
+{assertion, inter_dc_dep_vnode, {162, 13, "a60ffb"}, assert_pattern, "{ok, _}", body_exhaustiveness}.
 {exception, inter_dc_dep_vnode, push_txn, 2, [ignore], bound_pattern}. % DCID = Txn#interdc_txn.dcid with DCID bound by the head
-%% the fun of lists:map/2 matches the payload with #update_log_payload{}, inter_dc_txn:ops_by_type(Txn, update) gives
-%% [log_record()] with any_log_payload()
-{exception, inter_dc_dep_vnode, updates_to_clocksi_payloads, 1, [ignore], correlated}.
+%% pop_txn/2: the value of dict:fetch/2 is term(), queue:drop/1 takes a queue (the assertion is on the variable, on the call it
+%% crashes the engine)
+{assertion, inter_dc_dep_vnode, {224, 27, "ee1127"}, assert_type, "queue:queue(interdc_txn())", dict_types}.
+%% #update_log_payload{} = LogRecord#log_operation.log_payload in the fun of lists:map/2: inter_dc_txn:ops_by_type(Txn, update)
+%% gives the operations with op_type update as [log_record()], with any_log_payload()
+{exception, inter_dc_dep_vnode, updates_to_clocksi_payloads, 1, [ignore], in_fun}.
 
 {module, inter_dc_log_sender_vnode, #{file => "antidote/src/inter_dc_log_sender_vnode.erl",
                                       overlays => [{specs, "overlay_antidote.erl"},
-                                                   {deps, "overlay_riak_core_lite.erl"}],
+                                                   {deps, "overlay_riak_core_lite.erl"},
+                                                   {library, "overlay_riak_core_lite_lib.erl"},
+                                                   {library, "overlay_antidote_lib.erl"}],
                                       timeout => 10000}}.
-%% dc_utilities:call_vnode_sync/3 gives any(), the reply to {start_timer} is ok
-{exception, inter_dc_log_sender_vnode, start_timer, 1, [ignore], call_reply}.
-%% dc_utilities:call_vnode_sync/3 gives any(), the reply to {update_last_log_id, OpId} is ok
-{exception, inter_dc_log_sender_vnode, update_last_log_id, 2, [ignore], call_reply}.
+%% start_timer/1: dc_utilities:call_vnode_sync/3 gives the reply of the vnode as any(), the reply to {start_timer} is ok
+{assertion, inter_dc_log_sender_vnode, {91, 5, "502f63"}, assert_type, "ok", call_reply}.
+%% update_last_log_id/2: dc_utilities:call_vnode_sync/3 gives the reply of the vnode as any(), the reply to {update_last_log_id,
+%% OpId} is ok
+{assertion, inter_dc_log_sender_vnode, {97, 5, "c0c6fe"}, assert_type, "ok", call_reply}.
 %% the clause takes [Partition] as riak_core_vnode passes it, a list type cannot say one element
-{exception, inter_dc_log_sender_vnode, init, 1, [ignore], partial}.
-%% {ok, Ring} = riak_core_ring_manager:get_my_ring()
-{exception, inter_dc_log_sender_vnode, set_timer, 2, [ignore], body_exhaustiveness}.
+{exception, inter_dc_log_sender_vnode, init, 1, [no_exhaustiveness], partial}.
+%% set_timer/2: {ok, Ring} = riak_core_ring_manager:get_my_ring()
+{assertion, inter_dc_log_sender_vnode, {198, 26, "6ecad7"}, assert_pattern, "{ok, _}", body_exhaustiveness}.
 
 {module, inter_dc_manager, #{file => "antidote/src/inter_dc_manager.erl",
-                             overlays => [{specs, "overlay_antidote.erl"}], timeout => 10000}}.
-{exception, inter_dc_manager, connect_nodes, 6, [ignore], free_result}. % case on rpc:call/5
-%% the replies of the vnodes in the pairs of dc_utilities:bcast_vnode_sync/2 are any(), the fun of lists:foreach/2 takes {_, ok}
-{exception, inter_dc_manager, start_bg_processes, 1, [ignore], call_reply}.
-%% {ok, MetaDataName} = dc_meta_data_utilities:get_meta_data_name()
-{exception, inter_dc_manager, check_node_restart, 0, [ignore], body_exhaustiveness}.
-{exception, inter_dc_manager, forget_dc, 2, [ignore], free_result}. % ok = rpc:call/4
-%% the replies of the vnodes in the pairs of dc_utilities:bcast_vnode_sync/2 are any(), the fun of lists:foreach/2 takes {_, ok}
-{exception, inter_dc_manager, drop_ping, 1, [ignore], call_reply}.
+                             overlays => [{specs, "overlay_antidote.erl"},
+                                          {library, "overlay_riak_core_lite_lib.erl"},
+                                          {library, "overlay_antidote_lib.erl"}],
+                             timeout => 10000}}.
+%% get_descriptor/0: the address lists of the nodes come out of rpc:call/4 as term() and go into the fields publishers and
+%% logreaders of the descriptor
+{assertion, inter_dc_manager, {73, 22, "d24731"}, assert_type, "[[socket_address()]]", untyped_value}.
+{assertion, inter_dc_manager, {74, 22, "9c7895"}, assert_type, "[{[partition_id()], [socket_address()]}]", untyped_value}.
+%% ok = rpc:call/4, a term(), four times in the fun of lists:foreach/2. Behind it the replies of the vnodes in the pairs of
+%% dc_utilities:bcast_vnode_sync/2 are any(), the second fun of lists:foreach/2 takes {_, ok}
+{exception, inter_dc_manager, start_bg_processes, 1, [ignore], in_fun}.
+%% Responses3 = [X = ok || X <- Responses3]: both matches have a bound variable as their pattern and count as not exhaustive. In
+%% front of it {ok, MetaDataName} = dc_meta_data_utilities:get_meta_data_name() and the replies of the vnodes in the pairs of
+%% dc_utilities:bcast_my_vnode_sync/2, any(), which the fun of lists:foreach/2 takes as {_, ok}
+{exception, inter_dc_manager, check_node_restart, 0, [ignore], bound_pattern}.
+%% ok = rpc:call/4, a term(), in the funs of lists:foreach/2
+{exception, inter_dc_manager, forget_dc, 2, [ignore], in_fun}.
+%% drop_ping/1: the replies of the vnodes in the pairs of dc_utilities:bcast_vnode_sync/2 are any(), the fun of lists:foreach/2
+%% takes {_, ok}
+{assertion, inter_dc_manager, {308, 9, "a741ce"}, assert_type, "[{partition_id(), ok}]", call_reply}.
 
 {module, inter_dc_pub, #{file => "antidote/src/inter_dc_pub.erl",
-                         overlays => [{specs, "overlay_antidote.erl"}, {deps, "overlay_erlzmq.erl"}], timeout => 10000}}.
-%% the clause for {'EXIT', _} gives the value of ?LOG_WARNING as ok; behind it the reply of gen_server:call/2
-{exception, inter_dc_pub, broadcast, 1, [ignore], log_macro}.
-{exception, inter_dc_pub, handle_call, 3, [ignore], body_exhaustiveness}. % ok = erlzmq:send/2
+                         overlays => [{specs, "overlay_antidote.erl"},
+                                      {deps, "overlay_erlzmq.erl"},
+                                      {library, "overlay_riak_core_lite_lib.erl"},
+                                      {library, "overlay_antidote_lib.erl"}],
+                         timeout => 10000}}.
+%% broadcast/1: the reply of gen_server:call/2 to {publish, _} out of the catch is term(), given as the ok of the spec. The
+%% clause for {'EXIT', _}, which gives the value of ?LOG_WARNING as ok, type checks with the library overlay
+{assertion, inter_dc_pub, {61, 19, "6e3884"}, assert_type, "ok", call_reply}.
+%% handle_call/3: ok = erlzmq:send/2
+{assertion, inter_dc_pub, {90, 10, "39e5b4"}, assert_pattern, "ok", body_exhaustiveness}.
+%% get_pub_port/0: value of application:get_env/3, a term(), as the port number
+{assertion, inter_dc_pub, {110, 5, "6a1587"}, assert_type, "inet:port_number()", untyped_value}.
 
 {module, inter_dc_query_dealer, #{file => "antidote/src/inter_dc_query_dealer.erl",
                                   overlays => [{specs, "overlay_antidote.erl"},
-                                               {deps, "overlay_erlzmq.erl"}],
+                                               {deps, "overlay_erlzmq.erl"},
+                                               {library, "overlay_riak_core_lite_lib.erl"},
+                                               {library, "overlay_antidote_lib.erl"}],
                                   timeout => 10000}}.
-{exception, inter_dc_query_dealer, perform_request, 4, [ignore], call_reply}. % reply of gen_server:call/2
-{exception, inter_dc_query_dealer, add_dc, 2, [ignore], call_reply}. % ok = gen_server:call/3
-{exception, inter_dc_query_dealer, del_dc, 1, [ignore], call_reply}. % ok = gen_server:call/3
-{exception, inter_dc_query_dealer, handle_call, 3, [ignore], body_exhaustiveness}. % ok = erlzmq:send/2
-%% the message is term(): {zmq, _, BinaryMsg, _} hands BinaryMsg to inter_dc_utils:check_message_version/1
-{exception, inter_dc_query_dealer, handle_info, 2, [ignore], message_term}.
-{exception, inter_dc_query_dealer, terminate, 2, [ignore], dict_types}. % the fun for the pairs of dict:to_list/1
-%% the fun of dict:filter/2 takes the key as {DictDCID, _DictPartition}
-{exception, inter_dc_query_dealer, del_dc, 2, [ignore], dict_types}.
-{exception, inter_dc_query_dealer, connect_to_node, 1, [ignore], body_exhaustiveness}. % ok = erlzmq:setsockopt/3
-%% promises ets:tid(), ets:new(queries, [set]) gives ets:table()
-{exception, inter_dc_query_dealer, create_queries_table, 0, [ignore], ets_new}.
-%% case on ets:lookup/2 with [] and [{ReqIdBinary, Val}]
-{exception, inter_dc_query_dealer, get_request, 2, [ignore], untyped_value}.
+%% perform_request/4: the reply of gen_server:call/2 to {any_request, ..}, a term(), is the result
+{assertion, inter_dc_query_dealer, {85, 5, "23ad93"}, assert_type, "ok | unknown_dc", call_reply}.
+%% add_dc/2: ok = gen_server:call/3
+{assertion, inter_dc_query_dealer, {90, 5, "dedbe9"}, assert_pattern, "ok", call_reply}.
+%% del_dc/1: ok = gen_server:call/3
+{assertion, inter_dc_query_dealer, {95, 5, "c23211"}, assert_pattern, "ok", call_reply}.
+%% error = dict:find(Key, CurrentDict) and {ok, Socket} = connect_to_node(AddressList) in the funs of the clause for {add_dc, _,
+%% _}. In front of them, in the clause for {any_request, ..}: the socket out of dict:find/2 is term(), and ok = erlzmq:send/2
+{exception, inter_dc_query_dealer, handle_call, 3, [ignore], in_fun}.
+%% Func(RestBinary) with the field func of #request_cache_entry{}, function() | undefined. In front of it the message is term():
+%% BinaryMsg of {zmq, _, BinaryMsg, _} goes to inter_dc_utils:check_message_version/1, and the binary match on its result
+{exception, inter_dc_query_dealer, handle_info, 2, [ignore], record_undefined}.
+%% terminate/2: the pairs of dict:to_list/1 are {term(), term()}, the fun closes the socket of each
+{assertion, inter_dc_query_dealer, {188, 22, "f2d79a"}, assert_type, "[{{dcid(), term()}, zmq_socket()}]", dict_types}.
+%% del_dc/2: the fun of dict:filter/2 takes the key as {DictDCID, _DictPartition}: it is reported as dead (key and value of a
+%% dict have no type), annotated with its type it type checks. The pairs of dict:to_list/1 are {term(), term()}, the fold fun
+%% closes the socket of each
+{assertion, inter_dc_query_dealer, {205, 20, "8d351d"}, annotate_type, "fun(({dcid(), term()}, zmq_socket()) -> boolean())", dict_types}.
+{assertion, inter_dc_query_dealer, {216, 49, "917ba4"}, assert_type, "[{{dcid(), term()}, zmq_socket()}]", dict_types}.
+%% ok = zmq_utils:close_socket(Socket1) at 233:5: the match (hash 01a833) and the call at 233:10 (hash 01e56a) both crash the
+%% engine with an assertion. In front of it ok = erlzmq:setsockopt/3 and ok = erlzmq:send/2 take assert_pattern
+{exception, inter_dc_query_dealer, connect_to_node, 1, [ignore], assertion_crash}.
+%% create_queries_table/0: promises ets:tid(), ets:new/2 gives ets:table(): the table is not named
+{assertion, inter_dc_query_dealer, {257, 5, "e018fc"}, assert_type, "ets:tid()", ets_new}.
+%% case ets:lookup(Table, ReqIdBinary) of []; [{ReqIdBinary, Val}] with ReqIdBinary bound: with the result asserted as [] or one
+%% pair (ets:lookup/2 gives [tuple()]) the case counts as not exhaustive
+{exception, inter_dc_query_dealer, get_request, 2, [ignore], bound_pattern}.
 
 {module, inter_dc_query_response, #{file => "antidote/src/inter_dc_query_response.erl",
-                                    overlays => [{specs, "overlay_antidote.erl"}], timeout => 10000}}.
-%% the spec says [Num], the clause takes a list of one element as start_link/1 passes it
-{exception, inter_dc_query_response, init, 1, [ignore], partial}.
-%% the message is term(): {get_entries, BinaryQuery, QueryState} hands BinaryQuery to binary_to_term/1
-{exception, inter_dc_query_response, handle_cast, 2, [ignore], message_term}.
+                                    overlays => [{specs, "overlay_antidote.erl"},
+                                                 {library, "overlay_riak_core_lite_lib.erl"},
+                                                 {library, "overlay_antidote_lib.erl"}],
+                                    timeout => 10000}}.
+%% the spec says [Num] when Num :: any(), the field id of the state is a non_neg_integer(); start_link/1 passes the number of
+%% the worker. Behind it the clause takes a list of one element (flag)
+{exception, inter_dc_query_response, init, 1, [ignore], spec_imprecise}.
+%% handle_cast/2: the message is term(): the binaries of {get_entries, BinaryQuery, QueryState} and {request_permissions,
+%% BinaryRequest, QueryState} go to binary_to_term/1 and the query state to inter_dc_query_router:send_response/2;
+%% binary_to_term/1 gives term(), matched with {read_log, Partition, From, To} for get_entries_internal/3 and with
+%% {request_permissions, Operation, _, _, _} for bcounter_mgr:process_transfer/1 (that match takes assert_pattern: the call
+%% crashes the engine with an assertion)
+{assertion, inter_dc_query_response, {90, 39, "685eb4"}, assert_type, "{read_log, partition_id(), log_opid(), log_opid()}", deserialize}.
+{assertion, inter_dc_query_response, {90, 54, "bd3484"}, assert_type, "binary()", message_term}.
+{assertion, inter_dc_query_response, {97, 60, "f42301"}, assert_type, "inter_dc_query_state()", message_term}.
+{assertion, inter_dc_query_response, {100, 5, "d6a0bf"}, assert_pattern, "{request_permissions, _, _, _, _}", deserialize}.
+{assertion, inter_dc_query_response, {100, 79, "3bf8f2"}, assert_type, "binary()", message_term}.
+{assertion, inter_dc_query_response, {101, 18, "3bf8f2"}, assert_type, "binary()", message_term}.
+{assertion, inter_dc_query_response, {102, 40, "b9e022"}, assert_type, "{transfer, overlay_antidote:bcounter_transfer()}", deserialize}.
+{assertion, inter_dc_query_response, {103, 58, "f42301"}, assert_type, "inter_dc_query_state()", message_term}.
 %% [FirstOp | _] = Ops in the fun of lists:map/2, log_txn_assembler:process_all/2 gives [[log_record()]]; behind it
 %% #op_number.local - 1 with the field undefined | non_neg_integer()
-{exception, inter_dc_query_response, get_entries_internal, 3, [ignore], nonempty_list}.
-%% {ok, RawOpList} = logging_vnode:read_from_to/4
-{exception, inter_dc_query_response, log_read_range, 4, [ignore], body_exhaustiveness}.
+{exception, inter_dc_query_response, get_entries_internal, 3, [ignore], in_fun}.
+%% log_read_range/4: {ok, RawOpList} = logging_vnode:read_from_to/4
+{assertion, inter_dc_query_response, {144, 5, "d351bf"}, assert_pattern, "{ok, _}", body_exhaustiveness}.
 
 {module, inter_dc_query_response_sup, #{file => "antidote/src/inter_dc_query_response_sup.erl",
-                                        overlays => [{specs, "overlay_antidote.erl"}], timeout => 10000}}.
-%% lists:seq/2 gives [integer()], generate_worker_spec/1 takes a non_neg_integer()
-{exception, inter_dc_query_response_sup, init, 1, [ignore], library_spec}.
+                                        overlays => [{specs, "overlay_antidote.erl"},
+                                                     {library, "overlay_riak_core_lite_lib.erl"},
+                                                     {library, "overlay_antidote_lib.erl"}],
+                                        timeout => 10000}}.
 
 {module, inter_dc_query_router, #{file => "antidote/src/inter_dc_query_router.erl",
                                   overlays => [{specs, "overlay_antidote.erl"},
-                                               {deps, "overlay_erlzmq.erl"}],
+                                               {deps, "overlay_erlzmq.erl"},
+                                               {library, "overlay_riak_core_lite_lib.erl"},
+                                               {library, "overlay_antidote_lib.erl"}],
                                   timeout => 10000}}.
-%% [_, Hostname] = string:tokens/2 of the node name
-{exception, inter_dc_query_router, get_address, 0, [ignore], body_exhaustiveness}.
-{exception, inter_dc_query_router, get_address_list, 0, [ignore], body_exhaustiveness}. % {ok, List} = inet:getif()
-%% the message is term(): {zmq, Socket, BinaryMsg, _} hands BinaryMsg to inter_dc_utils:check_version_and_req_id/1
-{exception, inter_dc_query_router, handle_info, 2, [ignore], message_term}.
-%% the message is term(): the request type and the response of {send_response, _, _} go into a binary
-{exception, inter_dc_query_router, handle_cast, 2, [ignore], message_term}.
-{exception, inter_dc_query_router, finish_send_response, 4, [ignore], body_exhaustiveness}. % ok = erlzmq:send/3
+%% get_address/0: [_, Hostname] = string:tokens/2 of the node name; {ok, List} = inet:getif() and hd(List), the node has an
+%% interface; the value of application:get_env/3, a term(), is the port number
+{assertion, inter_dc_query_router, {71, 5, "c9de2b"}, assert_pattern, "[_, _]", body_exhaustiveness}.
+{assertion, inter_dc_query_router, {79, 17, "e1a26e"}, assert_pattern, "{ok, _}", body_exhaustiveness}.
+{assertion, inter_dc_query_router, {80, 34, "74ec78"}, assert_type, "[{inet:ip_address(), inet:ip_address() | undefined, inet:ip_address()}, ...]", nonempty_list}.
+{assertion, inter_dc_query_router, {83, 12, "32ef36"}, assert_type, "inet:port_number()", untyped_value}.
+%% get_address_list/0: {ok, List} = inet:getif(); [_, Hostname] = string:tokens/2 of the node name; the value of
+%% application:get_env/3, a term(), is the port number
+{assertion, inter_dc_query_router, {89, 5, "e1a26e"}, assert_pattern, "{ok, _}", body_exhaustiveness}.
+{assertion, inter_dc_query_router, {92, 5, "c9de2b"}, assert_pattern, "[_, _]", body_exhaustiveness}.
+{assertion, inter_dc_query_router, {98, 12, "32ef36"}, assert_type, "inet:port_number()", untyped_value}.
+%% handle_info/2: the message is term(): BinaryMsg of {zmq, Socket, BinaryMsg, _} goes to
+%% inter_dc_utils:check_version_and_req_id/1 and Socket to finish_send_response/4 as a zmq_socket(); the field id of the state
+%% has no type, it is the binary that the first message of a request brings
+{assertion, inter_dc_query_router, {128, 64, "b8948e"}, assert_type, "<<_:32, _:_*8>>", message_term}.
+{assertion, inter_dc_query_router, {143, 52, "9b7137"}, assert_type, "binary()", untyped_value}.
+{assertion, inter_dc_query_router, {143, 63, "f1bb56"}, assert_type, "zmq_socket()", message_term}.
+{assertion, inter_dc_query_router, {151, 75, "9b7137"}, assert_type, "binary()", untyped_value}.
+{assertion, inter_dc_query_router, {151, 86, "f1bb56"}, assert_type, "zmq_socket()", message_term}.
+%% the message is term(): the request type of {send_response, BinaryResponse, #inter_dc_query_state{}} goes into the binary
+%% <<ReqType, BinaryResponse/binary>> as an integer; the variable ReqType at 171:28 (hash 04edf6) crashes the engine with an
+%% assertion. The response, the zmq id and the request id take assert_type binary()
+{exception, inter_dc_query_router, handle_cast, 2, [ignore], assertion_crash}.
+%% finish_send_response/4: ok = erlzmq:send/3
+{assertion, inter_dc_query_router, {186, 5, "ee50dd"}, assert_pattern, "ok", body_exhaustiveness}.
+{assertion, inter_dc_query_router, {187, 5, "f3d469"}, assert_pattern, "ok", body_exhaustiveness}.
+{assertion, inter_dc_query_router, {188, 5, "4c8c06"}, assert_pattern, "ok", body_exhaustiveness}.
+%% get_router_bind_ip/0: value of application:get_env/3, a term(), as the address string
+{assertion, inter_dc_query_router, {192, 5, "bdebfe"}, assert_type, "string()", untyped_value}.
 
 {module, inter_dc_sub, #{file => "antidote/src/inter_dc_sub.erl",
-                         overlays => [{specs, "overlay_antidote.erl"}, {deps, "overlay_erlzmq.erl"}], timeout => 10000}}.
-{exception, inter_dc_sub, add_dc, 2, [ignore], call_reply}. % reply of gen_server:call/2
-{exception, inter_dc_sub, del_dc, 1, [ignore], call_reply}. % reply of gen_server:call/2
-{exception, inter_dc_sub, terminate, 2, [ignore], dict_types}. % the fun for the pairs of dict:to_list/1
-{exception, inter_dc_sub, del_dc, 2, [ignore], dict_types}. % case on dict:find/2
-{exception, inter_dc_sub, connect_to_node, 1, [ignore], body_exhaustiveness}. % ok = erlzmq:setsockopt/3
+                         overlays => [{specs, "overlay_antidote.erl"},
+                                      {deps, "overlay_erlzmq.erl"},
+                                      {library, "overlay_riak_core_lite_lib.erl"},
+                                      {library, "overlay_antidote_lib.erl"}],
+                         timeout => 10000}}.
+%% add_dc/2: the reply of gen_server:call/2 to {add_dc, _, _}, a term(), is the result
+{assertion, inter_dc_sub, {59, 5, "82869c"}, assert_type, "ok | error", call_reply}.
+%% del_dc/1: the reply of gen_server:call/2 to {del_dc, _}, a term(), is the result
+{assertion, inter_dc_sub, {63, 5, "d92134"}, assert_type, "ok", call_reply}.
+%% terminate/2: the pairs of dict:to_list/1 are {term(), term()}, the fun closes the sockets of each DC
+{assertion, inter_dc_sub, {103, 22, "55b791"}, assert_type, "[{dcid(), [zmq_socket()]}]", dict_types}.
+%% del_dc/2: the value of dict:find/2 is term(): the sockets of the DC, which are closed
+{assertion, inter_dc_sub, {110, 10, "670d8d"}, assert_type, "{ok, [zmq_socket()]} | error", dict_types}.
+%% ok = zmq_utils:close_socket(Socket1) at 140:5: the match (hash 01a833) and the call at 140:10 (hash 01e56a) both crash the
+%% engine with an assertion. In front of it ok = erlzmq:setsockopt/3 and ok = erlzmq:send/2 take assert_pattern
+{exception, inter_dc_sub, connect_to_node, 1, [ignore], assertion_crash}.
 
 {module, inter_dc_sub_buf, #{file => "antidote/src/inter_dc_sub_buf.erl",
                              overlays => [{specs, "overlay_antidote.erl"},
-                                          {deps, "overlay_riak_core_lite.erl"}],
+                                          {deps, "overlay_riak_core_lite.erl"},
+                                          {library, "overlay_riak_core_lite_lib.erl"},
+                                          {library, "overlay_antidote_lib.erl"}],
                              timeout => 10000}}.
-%% {ok, EnableLogging} = application:get_env(antidote, enable_logging)
-{exception, inter_dc_sub_buf, new_state, 1, [ignore], body_exhaustiveness}.
-%% the catch clause gives the value of ?LOG_DEBUG, so {ok, OpId} of the case on the result has a term() as OpId, which goes into
-%% the field last_observed_opid
-{exception, inter_dc_sub_buf, process, 2, [ignore], log_macro}.
+%% new_state/1: {ok, EnableLogging} = application:get_env(antidote, enable_logging), which can be undefined and has term() for
+%% the value: the flag of the field logging_enabled
+{assertion, inter_dc_sub_buf, {55, 27, "8785ed"}, assert_type, "{ok, boolean()}", untyped_value}.
 %% cmp(TxnLast, Last) with TxnLast = #op_number.local, which is undefined | non_neg_integer(); the field last_observed_opid can
 %% be init as well
 {exception, inter_dc_sub_buf, process_queue, 1, [ignore], record_undefined}.
 
 {module, inter_dc_sub_vnode, #{file => "antidote/src/inter_dc_sub_vnode.erl",
                                overlays => [{specs, "overlay_antidote.erl"},
-                                            {deps, "overlay_riak_core_lite.erl"}],
+                                            {deps, "overlay_riak_core_lite.erl"},
+                                            {library, "overlay_riak_core_lite_lib.erl"},
+                                            {library, "overlay_antidote_lib.erl"}],
                                timeout => 10000}}.
-%% <<Partition:20/big-unsigned-integer-unit:8, RestBinary/binary>> = BinaryRep
-{exception, inter_dc_sub_vnode, deliver_log_reader_resp, 1, [ignore], body_exhaustiveness}.
+%% deliver_log_reader_resp/1: <<Partition:20/big-unsigned-integer-unit:8, RestBinary/binary>> = BinaryRep
+{assertion, inter_dc_sub_vnode, {80, 5, "3fe818"}, assert_pattern, "<<_:20/big-unsigned-integer-unit:8,_/binary>>", body_exhaustiveness}.
 %% the clause takes [Partition] as riak_core_vnode passes it, a list type cannot say one element
-{exception, inter_dc_sub_vnode, init, 1, [ignore], partial}.
-%% {{DCID, _Partition}, Txns} = binary_to_term(BinaryRep)
-{exception, inter_dc_sub_vnode, handle_command, 3, [ignore], deserialize}.
-{exception, inter_dc_sub_vnode, get_buf, 2, [ignore], dict_types}. % case on dict:find/2
+{exception, inter_dc_sub_vnode, init, 1, [no_exhaustiveness], partial}.
+%% handle_command/3: {{DCID, _Partition}, Txns} = binary_to_term(BinaryRep), a term(): the reply of the log reader, {pdcid(),
+%% [interdc_txn()]} as the comment in the source says
+{assertion, inter_dc_sub_vnode, {94, 34, "2c00db"}, assert_type, "{pdcid(), [interdc_txn()]}", deserialize}.
+%% get_buf/2: the value of dict:find/2 is term(), given as the buffer of the DC
+{assertion, inter_dc_sub_vnode, {122, 10, "b5e911"}, assert_type, "{ok, inter_dc_sub_buf()} | error", dict_types}.
 
 {module, inter_dc_sup, #{file => "antidote/src/inter_dc_sup.erl",
-                         overlays => [{specs, "overlay_antidote.erl"}], timeout => 10000}}.
+                         overlays => [{specs, "overlay_antidote.erl"},
+                                      {library, "overlay_riak_core_lite_lib.erl"},
+                                      {library, "overlay_antidote_lib.erl"}],
+                         timeout => 10000}}.
 
 {module, inter_dc_txn, #{file => "antidote/src/inter_dc_txn.erl",
-                         overlays => [{specs, "overlay_antidote.erl"}], timeout => 10000}}.
-%% lists:last(Ops), the log records of a transaction end with its commit
-{exception, inter_dc_txn, from_ops, 3, [ignore], nonempty_list}.
-%% lists:last(Ops), the log records of a transaction that is not a ping
-{exception, inter_dc_txn, last_log_opid, 1, [ignore], nonempty_list}.
-{exception, inter_dc_txn, from_bin, 1, [ignore], deserialize}. % binary_to_term(Msg) as interdc_txn()
-{exception, inter_dc_txn, pad, 2, [ignore], bit_size}. % <<0:(N * 8), Binary/binary>>
-{exception, inter_dc_txn, pad_or_trim, 2, [ignore], bit_size}. % <<0:(N * 8), Binary/binary>>
+                         overlays => [{specs, "overlay_antidote.erl"},
+                                      {library, "overlay_riak_core_lite_lib.erl"},
+                                      {library, "overlay_antidote_lib.erl"}],
+                         timeout => 10000}}.
+%% from_ops/3: lists:last(Ops), the log records of a transaction end with its commit; commit = the op_type of the last record
+%% (the sanity check of the source), and so its payload is matched as #commit_log_payload{}
+{assertion, inter_dc_txn, {51, 25, "86bf06"}, assert_type, "[log_record(), ...]", nonempty_list}.
+{assertion, inter_dc_txn, {54, 5, "e4e4cf"}, assert_pattern, "commit", body_exhaustiveness}.
+{assertion, inter_dc_txn, {55, 5, "de4856"}, assert_pattern, "#commit_log_payload{commit_time = {_, _}, snapshot_time = _}", correlated}.
+%% last_log_opid/1: lists:last(Ops), the log records of a transaction that is not a ping; commit = the op_type of the last
+%% record (the sanity check of the source)
+{assertion, inter_dc_txn, {83, 33, "86bf06"}, assert_type, "[log_record(), ...]", nonempty_list}.
+{assertion, inter_dc_txn, {86, 13, "377430"}, assert_pattern, "commit", body_exhaustiveness}.
+%% from_bin/1: binary_to_term(Msg), a term(), as the interdc_txn() that to_bin/1 packed
+{assertion, inter_dc_txn, {111, 5, "f8fbdb"}, assert_type, "interdc_txn()", deserialize}.
+%% pad/2: <<0:(N * 8), Binary/binary>> is a bitstring() for the checker, the spec promises binary()
+{assertion, inter_dc_txn, {117, 14, "e1d7d4"}, assert_type, "binary()", bit_size}.
+%% pad_or_trim/2: case Width - byte_size(Binary) of N when N == 0; N when N < 0; N: the difference counts as not negative, the
+%% second clause as dead; the subject is annotated integer(). <<0:(N * 8), Binary/binary>> is a bitstring() for the checker, the
+%% spec promises binary()
+{assertion, inter_dc_txn, {125, 16, "665fd3"}, annotate_type, "integer()", guard_arith}.
+{assertion, inter_dc_txn, {132, 13, "e1d7d4"}, assert_type, "binary()", bit_size}.
 
 {module, inter_dc_utils, #{file => "antidote/src/inter_dc_utils.erl",
                            overlays => [{specs, "overlay_antidote.erl"},
-                                        {deps, "overlay_riak_core_lite.erl"}],
+                                        {deps, "overlay_riak_core_lite.erl"},
+                                        {library, "overlay_riak_core_lite_lib.erl"},
+                                        {library, "overlay_antidote_lib.erl"}],
                            timeout => 10000}}.
-{exception, inter_dc_utils, get_address, 0, [ignore], body_exhaustiveness}. % [_, Hostname] = string:tokens/2 of the node name
-{exception, inter_dc_utils, get_address_list, 1, [ignore], body_exhaustiveness}. % {ok, List} = inet:getif()
-%% {ok, Ring} = riak_core_ring_manager:get_my_ring()
-{exception, inter_dc_utils, get_my_partitions, 0, [ignore], body_exhaustiveness}.
-%% ?MESSAGE_VERSION = Version, the check of the version
-{exception, inter_dc_utils, check_message_version, 1, [ignore], body_exhaustiveness}.
-%% <<ReqId:2/binary, Rest/binary>> = check_message_version(Binary), which promises <<_:_*8>>
-{exception, inter_dc_utils, check_version_and_req_id, 1, [ignore], body_exhaustiveness}.
+%% get_address/0: [_, Hostname] = string:tokens/2 of the node name; {ok, List} = inet:getif() and hd(List), the node has an
+%% interface
+{assertion, inter_dc_utils, {51, 5, "c9de2b"}, assert_pattern, "[_, _]", body_exhaustiveness}.
+{assertion, inter_dc_utils, {58, 13, "e1a26e"}, assert_pattern, "{ok, _}", body_exhaustiveness}.
+{assertion, inter_dc_utils, {59, 30, "74ec78"}, assert_type, "[{inet:ip_address(), inet:ip_address() | undefined, inet:ip_address()}, ...]", nonempty_list}.
+%% get_address_list/1: {ok, List} = inet:getif()
+{assertion, inter_dc_utils, {65, 5, "e1a26e"}, assert_pattern, "{ok, _}", body_exhaustiveness}.
+{assertion, inter_dc_utils, {69, 5, "c9de2b"}, assert_pattern, "[_, _]", body_exhaustiveness}.
+%% get_my_partitions/0: {ok, Ring} = riak_core_ring_manager:get_my_ring()
+{assertion, inter_dc_utils, {87, 18, "6ecad7"}, assert_pattern, "{ok, _}", body_exhaustiveness}.
+%% check_message_version/1: ?MESSAGE_VERSION = Version, the check of the version
+{assertion, inter_dc_utils, {105, 6, "8f0e83"}, assert_pattern, "<<0,1>>", body_exhaustiveness}.
+%% check_version_and_req_id/1: <<ReqId:2/binary, Rest/binary>> = check_message_version(Binary), which promises <<_:_*8>>; ReqId
+%% out of the segment of two bytes is a binary(), the spec promises <<_:16>>
+{assertion, inter_dc_utils, {113, 5, "bcf94c"}, assert_pattern, "<<_:2/binary,_/binary>>", body_exhaustiveness}.
+{assertion, inter_dc_utils, {114, 6, "18f136"}, assert_type, "<<_:16>>", bit_segment}.
 
 {module, log_txn_assembler, #{file => "antidote/src/log_txn_assembler.erl",
-                              overlays => [{specs, "overlay_antidote.erl"}], timeout => 10000}}.
-{exception, log_txn_assembler, find_or_default, 3, [ignore], dict_types}. % case on dict:find/2
+                              overlays => [{specs, "overlay_antidote.erl"},
+                                           {library, "overlay_riak_core_lite_lib.erl"},
+                                           {library, "overlay_antidote_lib.erl"}],
+                              timeout => 10000}}.
+%% case dict:find(Key, Dict) of {ok, Val} -> Val: with the spec of OTP the branch is dead, with the library overlay the value is
+%% term() and has to be asserted as Val, the type variable of the spec (Key, Val, dict:dict(Key, Val)) -> Val
+{exception, log_txn_assembler, find_or_default, 3, [ignore], assert_tyvar}.
 
 {module, log_utilities, #{file => "antidote/src/log_utilities.erl",
                           overlays => [{specs, "overlay_antidote.erl"},
-                                       {deps, "overlay_riak_core_lite.erl"}],
+                                       {deps, "overlay_riak_core_lite.erl"},
+                                       {library, "overlay_riak_core_lite_lib.erl"},
+                                       {library, "overlay_antidote_lib.erl"}],
                           timeout => 10000}}.
-{exception, log_utilities, get_key_partition, 1, [ignore], nonempty_list}. % hd(get_preflist_from_key(Key))
-%% {ok, Ring} = riak_core_ring_manager:get_my_ring()
-{exception, log_utilities, get_primaries_preflist, 1, [ignore], body_exhaustiveness}.
-{exception, log_utilities, get_my_node, 1, [ignore], body_exhaustiveness}. % {ok, Ring} = riak_core_ring_manager:get_my_ring()
-%% case is_binary(Key) of true -> does not narrow Key for binary_to_list/1
-{exception, log_utilities, convert_key, 1, [ignore], narrowing}.
-%% ?LOG_RECORD_VERSION = LogRecord#log_record.version, the check of the version
-{exception, log_utilities, check_log_record_version, 1, [ignore], body_exhaustiveness}.
+%% get_key_partition/1: hd(get_preflist_from_key(Key)), a preflist of one node
+{assertion, log_utilities, {63, 20, "bc3131"}, assert_type, "[index_node(), ...]", nonempty_list}.
+%% get_primaries_preflist/1: {ok, Ring} = riak_core_ring_manager:get_my_ring(); Key rem NumPartitions + 1 is an integer(),
+%% lists:nth/2 takes a pos_integer() and a list that is not empty: the partitions of the ring
+{assertion, log_utilities, {80, 18, "6ecad7"}, assert_pattern, "{ok, _}", body_exhaustiveness}.
+{assertion, log_utilities, {83, 31, "7f4f57"}, assert_type, "pos_integer()", arith_pos}.
+{assertion, log_utilities, {83, 36, "d8e45e"}, assert_type, "[{chash:index_as_int(), node()}, ...]", nonempty_list}.
+%% get_my_node/1: {ok, Ring} = riak_core_ring_manager:get_my_ring()
+{assertion, log_utilities, {88, 18, "6ecad7"}, assert_pattern, "{ok, _}", body_exhaustiveness}.
+%% case is_integer(KeyInt) of true -> abs(KeyInt): the test does not narrow KeyInt, the term() of a catch; the variable at
+%% 111:25 (hash 0da961) crashes the engine with an assertion. In front of it case is_binary(Key) of true does not narrow Key for
+%% binary_to_list/1
+{exception, log_utilities, convert_key, 1, [ignore], assertion_crash}.
+%% check_log_record_version/1: ?LOG_RECORD_VERSION = LogRecord#log_record.version, the check of the version
+{assertion, log_utilities, {136, 6, "7d9e27"}, assert_pattern, "0", body_exhaustiveness}.
 
 {module, logging_vnode, #{file => "antidote/src/logging_vnode.erl",
                           overlays => [{specs, "overlay_antidote.erl"},
-                                       {deps, "overlay_riak_core_lite.erl"}],
+                                       {deps, "overlay_riak_core_lite.erl"},
+                                       {library, "overlay_riak_core_lite_lib.erl"},
+                                       {library, "overlay_antidote_lib.erl"}],
                           timeout => 10000}}.
-{exception, logging_vnode, read_from_to, 4, [ignore], call_reply}. % reply of riak_core_vnode_master:sync_command/3
-{exception, logging_vnode, read, 2, [ignore], call_reply}. % reply of riak_core_vnode_master:sync_command/3
-{exception, logging_vnode, append, 3, [ignore], call_reply}. % reply of riak_core_vnode_master:sync_command/4
-{exception, logging_vnode, append_commit, 3, [ignore], call_reply}. % reply of riak_core_vnode_master:sync_command/4
-{exception, logging_vnode, append_group, 4, [ignore], call_reply}. % reply of riak_core_vnode_master:sync_command/4
+%% read_from_to/4: the reply of riak_core_vnode_master:sync_command/3 to {read_from_to, _, _, _}, a term(), is the result
+{assertion, logging_vnode, {117, 5, "25c12f"}, assert_type, "{ok, [{non_neg_integer(), log_record()}]} | {error, term()}", call_reply}.
+%% read/2: the reply of riak_core_vnode_master:sync_command/3 to {read, _}, a term(), is the result
+{assertion, logging_vnode, {145, 5, "800312"}, assert_type, "{error, term()} | {ok, [term()]}", call_reply}.
+%% append/3: the reply of riak_core_vnode_master:sync_command/4 to {append, _, _, _}, a term(), is the result
+{assertion, logging_vnode, {164, 5, "bd6e5f"}, assert_type, "{ok, op_id()} | {error, term()}", call_reply}.
+%% append_commit/3: the reply of riak_core_vnode_master:sync_command/4 to {append, _, _, _}, a term(), is the result
+{assertion, logging_vnode, {175, 5, "dabd04"}, assert_type, "{ok, op_id()} | {error, term()}", call_reply}.
+%% append_group/4: the reply of riak_core_vnode_master:sync_command/4 to {append_group, _, _, _, _}, a term(), is the result
+{assertion, logging_vnode, {187, 5, "2e2967"}, assert_type, "{ok, op_id()} | {error, term()}", call_reply}.
 %% riak_core_vnode_master:command/4 takes (Dest, Request, Sender, VMaster): the call has ?LOGGING_MASTER as the sender and
 %% infinity as the master, the arguments of sync_command/4. No caller in antidote
 {exception, logging_vnode, asyn_append_group, 4, [ignore], source_bug}.
-{exception, logging_vnode, get_up_to_time, 5, [ignore], call_reply}. % reply of riak_core_vnode_master:sync_command/4
-{exception, logging_vnode, get_from_time, 5, [ignore], call_reply}. % reply of riak_core_vnode_master:sync_command/4
-{exception, logging_vnode, get_range, 6, [ignore], call_reply}. % reply of riak_core_vnode_master:sync_command/4
-{exception, logging_vnode, get_all, 4, [ignore], call_reply}. % reply of riak_core_vnode_master:sync_command/4
-{exception, logging_vnode, request_op_id, 3, [ignore], call_reply}. % reply of riak_core_vnode_master:sync_command/4
-{exception, logging_vnode, request_bucket_op_id, 4, [ignore], call_reply}. % reply of riak_core_vnode_master:sync_command/4
+%% get_up_to_time/5: the reply of riak_core_vnode_master:sync_command/4 to {get, _, _, _, _, _}, a term(), is the result
+{assertion, logging_vnode, {209, 5, "50b657"}, assert_type, "snapshot_get_response() | {error, reason()}", call_reply}.
+%% get_from_time/5: the reply of riak_core_vnode_master:sync_command/4 to {get, _, _, _, _, _}, a term(), is the result
+{assertion, logging_vnode, {222, 5, "9937d4"}, assert_type, "snapshot_get_response() | {error, reason()}", call_reply}.
+%% get_range/6: the reply of riak_core_vnode_master:sync_command/4 to {get, _, _, _, _, _}, a term(), is the result
+{assertion, logging_vnode, {235, 5, "a67187"}, assert_type, "snapshot_get_response() | {error, reason()}", call_reply}.
+%% get_all/4: the reply of riak_core_vnode_master:sync_command/4 to {get_all, _, _, _}, a term(), is the result
+{assertion, logging_vnode, {264, 5, "cec91a"}, assert_type, "{disk_log:continuation(), dict:dict(txid(), [any_log_payload()]), dict:dict(key(), [{non_neg_integer(), clocksi_payload()}])} | {error, reason()} | {eof, dict:dict(key(), [{non_neg_integer(), clocksi_payload()}])}", call_reply}.
+%% the reply of riak_core_vnode_master:sync_command/4 to {get_op_id, _, _}, a term(), is the result; the call at 274:5 (hash
+%% 07efb9) is the body of the function and crashes the engine with an assertion
+{exception, logging_vnode, request_op_id, 3, [ignore], assertion_crash}.
+%% request_bucket_op_id/4: the reply of riak_core_vnode_master:sync_command/4 to {get_op_id, _, _, _}, a term(), is the result
+{assertion, logging_vnode, {284, 5, "f7a18f"}, assert_type, "{ok, non_neg_integer()}", call_reply}.
 %% dc_meta_data_utilities:get_env_meta_data/2 promises atom(), the setting sync_log is a boolean()
 {exception, logging_vnode, is_sync_log, 0, [ignore], spec_imprecise}.
-%% the clause takes [Partition] as riak_core_vnode passes it, a list type cannot say one element
-{exception, logging_vnode, init, 1, [ignore], partial}.
-%% the request is term(): {get_op_id, DCID, Partition} hands its parts to get_op_id/2
-{exception, logging_vnode, handle_command, 3, [ignore], message_term}.
-%% the terms of disk_log:chunk/2 are [term()], used as [{non_neg_integer(), clocksi_payload()}]
-{exception, logging_vnode, read_internal, 3, [ignore], untyped_value}.
-%% the terms of disk_log:chunk/2 are [term()], read_from_to_internal2/8 takes [{non_neg_integer(), log_record()}]
-{exception, logging_vnode, read_from_to_internal, 6, [ignore], untyped_value}.
+%% init/1: the clause takes [Partition] as riak_core_vnode passes it, a list type cannot say one element; {ok, Ring} =
+%% riak_core_ring_manager:get_my_ring(); {ok, EnableLoggingToDisk} = application:get_env(antidote, enable_logging), which can be
+%% undefined and has term() for the value
+{assertion, logging_vnode, {312, 18, "6ecad7"}, assert_pattern, "{ok, _}", body_exhaustiveness}.
+{assertion, logging_vnode, {322, 41, "8785ed"}, assert_type, "{ok, boolean()}", untyped_value}.
+{exception, logging_vnode, init, 1, [no_exhaustiveness], partial}.
+%% read_internal/3 says log_id() for its first argument (as read_from_to_internal/6, get_last_op_from_log/4 and
+%% get_ops_from_log/8 do); it is the log that get_log_from_map/3 gives, a term(), which goes to disk_log:chunk/2. In front of it
+%% the request is term(): the parts of {get_op_id, ..}, {start_timer, Sender}, {send_min_prepared, Time} and {read, LogId} are
+%% used at their types
+{exception, logging_vnode, handle_command, 3, [ignore], spec_wrong}.
+%% read_internal/3: the terms of disk_log:chunk/2 are [term()], used as [{non_neg_integer(), clocksi_payload()}]
+{assertion, logging_vnode, {714, 48, "ee1833"}, assert_type, "[{non_neg_integer(), clocksi_payload()}]", untyped_value}.
+%% read_from_to_internal/6: the terms of disk_log:chunk/2 are [term()], read_from_to_internal2/8 takes [{non_neg_integer(),
+%% log_record()}]
+{assertion, logging_vnode, {749, 59, "ee1833"}, assert_type, "[{non_neg_integer(), log_record()}]", untyped_value}.
+{assertion, logging_vnode, {753, 59, "ee1833"}, assert_type, "[{non_neg_integer(), log_record()}]", untyped_value}.
 %% NewLastLOpId + 1 with #op_number.local, which is undefined | non_neg_integer()
 {exception, logging_vnode, read_from_to_internal2, 8, [ignore], record_undefined}.
-{exception, logging_vnode, get_last_op_from_log, 4, [ignore], body_exhaustiveness}. % ok = disk_log:sync(Log)
+%% get_last_op_from_log/4: ok = disk_log:sync(Log); the terms of disk_log:chunk/2 are [term()], get_max_op_numbers/3 takes
+%% [{log_id(), log_record()}]
+{assertion, logging_vnode, {823, 5, "566d30"}, assert_pattern, "ok", body_exhaustiveness}.
+{assertion, logging_vnode, {830, 47, "87f97c"}, assert_type, "[{log_id(), log_record()}]", untyped_value}.
+{assertion, logging_vnode, {837, 55, "87f97c"}, assert_type, "[{log_id(), log_record()}]", untyped_value}.
 %% #op_number{node = {_, DCID}} = NewBucketOp, the field node is undefined | {node(), dcid()}
 {exception, logging_vnode, get_max_op_numbers, 3, [ignore], record_undefined}.
-%% the terms of disk_log:chunk/2 are [term()], filter_terms_for_key/6 takes [{non_neg_integer(), log_record()}]
-{exception, logging_vnode, get_ops_from_log, 8, [ignore], untyped_value}.
-%% the payload of an operation with op_type update goes to handle_update/8 as update_log_payload(), the field log_payload is
-%% any_log_payload()
-{exception, logging_vnode, filter_terms_for_key, 6, [ignore], correlated}.
-{exception, logging_vnode, handle_commit, 8, [ignore], dict_types}. % case on dict:find/2
-%% MinSnapshotTime == undefined on the left of orelse does not narrow it for vectorclock:ge/2 on the right
-{exception, logging_vnode, check_min_time, 2, [ignore], narrowing}.
-%% MaxSnapshotTime == undefined on the left of orelse does not narrow it for vectorclock:le/2 on the right
-{exception, logging_vnode, check_max_time, 2, [ignore], narrowing}.
-%% the request is term(): the fold fun out of #riak_core_fold_req_v2{} is applied
-{exception, logging_vnode, handle_handoff_command, 3, [ignore], message_term}.
-{exception, logging_vnode, handle_handoff_data, 2, [ignore], deserialize}. % {LogId, LogRecord} = binary_to_term(Data)
-%% case on no_elements/2 with true and false: it gives {error, no_log_for_preflist} for a log id that is not in the map, here
-%% the ids are the keys of the map
-{exception, logging_vnode, is_empty, 1, [ignore], body_exhaustiveness}.
-%% filename:join/2 gives file:filename_all(), which has binary(); LogPath ++ ".LOG" takes a list
-{exception, logging_vnode, delete, 1, [ignore], library_spec}.
-%% case on dets:sync/1, the reason of its error is a type variable
-{exception, logging_vnode, handle_info, 2, [ignore], free_result}.
-{exception, logging_vnode, no_elements, 2, [ignore], dict_types}. % case on dict:find/2
-%% filename:join/2 gives file:filename_all(), which has binary(); LogPath ++ ".LOG" takes a list
-{exception, logging_vnode, open_logs, 5, [ignore], library_spec}.
-{exception, logging_vnode, get_log_from_map, 3, [ignore], dict_types}. % case on dict:find/2
-{exception, logging_vnode, fold_log, 4, [ignore], body_exhaustiveness}. % case on disk_log:chunk/2 with eof and {Next, Ops}
-%% ?STATS(..): the case of the macro on application:get_env/3
-{exception, logging_vnode, insert_log_record, 4, [ignore], free_result}.
-{exception, logging_vnode, get_op_number, 2, [ignore], untyped_value}. % case on ets:lookup/2 with [] and [{Key, Val}]
-%% ets:tab2list/1 gives [tuple()], the entries of the table are pairs {Key, OpNumber}
-{exception, logging_vnode, get_op_numbers, 1, [ignore], untyped_value}.
-{exception, logging_vnode, data_dir, 0, [ignore], free_result}. % case on application:get_env/2
+%% get_ops_from_log/8: the terms of disk_log:chunk/2 are [term()], filter_terms_for_key/6 takes [{non_neg_integer(),
+%% log_record()}]
+{assertion, logging_vnode, {919, 17, "87f97c"}, assert_type, "[{non_neg_integer(), log_record()}]", untyped_value}.
+{assertion, logging_vnode, {942, 25, "87f97c"}, assert_type, "[{non_neg_integer(), log_record()}]", untyped_value}.
+%% finish_op_load/1: the fun of dict:fold/3 takes the value as the list of the operations of the key, the dict has term(): the
+%% fun is cast to the fun type of dict:fold/3
+{assertion, logging_vnode, {966, 9, "39ea97"}, assert_type, "fun((term(), term(), dict:dict(key(), [{non_neg_integer(), clocksi_payload()}])) -> dict:dict(key(), [{non_neg_integer(), clocksi_payload()}]))", dict_types}.
+%% filter_terms_for_key/6: the payload of an operation with op_type update goes to handle_update/8 as update_log_payload(), the
+%% one with op_type commit to handle_commit/8 as commit_log_payload(); the field log_payload is any_log_payload()
+{assertion, logging_vnode, {996, 23, "3f3561"}, assert_type, "update_log_payload()", correlated}.
+{assertion, logging_vnode, {1000, 23, "3f3561"}, assert_type, "commit_log_payload()", correlated}.
+%% handle_commit/8: the value of dict:find/2 is term(): the operations of the transaction that are logged before its commit, the
+%% fold fun takes them as #update_log_payload{}
+{assertion, logging_vnode, {1047, 10, "ff6ce9"}, assert_type, "{ok, [update_log_payload()]} | error", dict_types}.
+%% check_min_time/2: MinSnapshotTime == undefined on the left of orelse does not narrow it for vectorclock:ge/2 on the right
+{assertion, logging_vnode, {1087, 74, "cb4095"}, assert_type, "snapshot_time()", narrowing}.
+%% check_max_time/2: MaxSnapshotTime == undefined on the left of orelse does not narrow it for vectorclock:le/2 on the right
+{assertion, logging_vnode, {1090, 74, "80b852"}, assert_type, "snapshot_time()", narrowing}.
+%% the request is term(): the fold fun out of #riak_core_fold_req_v2{} is applied inside the fun VisitElement
+{exception, logging_vnode, handle_handoff_command, 3, [ignore], in_fun}.
+%% handle_handoff_data/2: {LogId, LogRecord} = binary_to_term(Data), a term(): the pair that encode_handoff_item/2 packed; {ok,
+%% _OpId} = insert_log_record/4 and ok = disk_log:sync(Log)
+{assertion, logging_vnode, {1133, 26, "7185d9"}, assert_type, "{log_id(), log_record()}", deserialize}.
+{assertion, logging_vnode, {1137, 13, "568d6f"}, assert_pattern, "{ok, _}", body_exhaustiveness}.
+{assertion, logging_vnode, {1138, 13, "566d30"}, assert_pattern, "ok", body_exhaustiveness}.
+%% is_empty/1: the keys of the map of the logs, term() from dict:fetch_keys/1, are the log ids; case on no_elements/2 with true
+%% and false: it gives {error, no_log_for_preflist} for a log id that is not in the map, here the ids are the keys of the map
+{assertion, logging_vnode, {1146, 10, "e62c13"}, assert_type, "boolean()", body_exhaustiveness}.
+{assertion, logging_vnode, {1146, 22, "1264a9"}, assert_type, "[log_id()]", dict_types}.
+%% the field senders_awaiting_ack is declared dict:dict(log_id(), sender()), the clause for {sync, Log, LogId} takes a value of
+%% it as a list of {Sender, OpId}. Nothing in the module puts an entry into the dict. The case on dets:sync/1 in front of it
+%% type checks with the library overlay
+{exception, logging_vnode, handle_info, 2, [ignore], spec_wrong}.
+%% get_last_op_from_log/4 says log_id() for its first argument; it is the log that disk_log:open/1 gives, a term(), which it
+%% hands to disk_log:sync/1 and disk_log:chunk/2. filename:join/2 in front of it type checks with the library overlay; behind it
+%% {eof, NewMaxVector} = get_last_op_from_log(..)
+{exception, logging_vnode, open_logs, 5, [ignore], spec_wrong}.
+%% the spec of join_logs/3 says fun() for the fold fun, and so does the overlay spec of fold_log/4: lists:foldl/3 takes a fun of
+%% two arguments. In front of it the case on disk_log:chunk/2 with eof and {Next, Ops}
+{exception, logging_vnode, fold_log, 4, [ignore], source_bug}.
+%% case ets:lookup(ClockTable, Key) of []; [{Key, Val}] with Key bound: with the result asserted as [] or one pair (ets:lookup/2
+%% gives [tuple()]) the case counts as not exhaustive
+{exception, logging_vnode, get_op_number, 2, [ignore], bound_pattern}.
+%% get_op_numbers/1: ets:tab2list/1 gives [tuple()], the entries of the table are pairs {Key, OpNumber}
+{assertion, logging_vnode, {1397, 5, "65861f"}, assert_type, "[{{log_id(), dcid()} | {log_id(), bucket(), dcid()}, op_number()}]", untyped_value}.
+%% data_dir/0: value of application:get_env/2, a term(), as the directory name
+{assertion, logging_vnode, {1405, 10, "473734"}, assert_type, "{ok, string()} | undefined", untyped_value}.
 
 {module, materializer, #{file => "antidote/src/materializer.erl",
-                         overlays => [{specs, "overlay_antidote.erl"}, {deps, "overlay_antidote_crdt.erl"}], timeout => 10000}}.
+                         overlays => [{specs, "overlay_antidote.erl"},
+                                      {deps, "overlay_antidote_crdt.erl"},
+                                      {library, "overlay_riak_core_lite_lib.erl"},
+                                      {library, "overlay_antidote_lib.erl"}],
+                         timeout => 10000}}.
 
 {module, materializer_vnode, #{file => "antidote/src/materializer_vnode.erl",
                                overlays => [{specs, "overlay_antidote.erl"},
-                                            {deps, "overlay_riak_core_lite.erl"}],
+                                            {deps, "overlay_riak_core_lite.erl"},
+                                            {library, "overlay_riak_core_lite_lib.erl"},
+                                            {library, "overlay_antidote_lib.erl"}],
                                timeout => 10000}}.
-{exception, materializer_vnode, update, 2, [ignore], call_reply}. % reply of riak_core_vnode_master:sync_command/3
+%% update/2: the reply of riak_core_vnode_master:sync_command/3 to {update, _, _}, a term(), is the result
+{assertion, materializer_vnode, {148, 5, "a3e4a1"}, assert_type, "ok | {error, reason()}", call_reply}.
 %% the clause takes [Partition] as riak_core_vnode passes it, a list type cannot say one element
-{exception, materializer_vnode, init, 1, [ignore], partial}.
-%% case on the reply of riak_core_vnode_master:sync_command/4 with true and false
-{exception, materializer_vnode, check_table_ready, 1, [ignore], call_reply}.
-%% the request is term(): {read, Key, Type, SnapshotTime, TxId} hands its parts to read/6. That clause also gives read/6 the
-%% state where it takes the partition; nothing in antidote sends the request
-{exception, materializer_vnode, handle_command, 3, [ignore], message_term}.
-%% [Key1 | _] = tuple_to_list(Key) in the fold fun
-{exception, materializer_vnode, handle_handoff_command, 3, [ignore], nonempty_list}.
-{exception, materializer_vnode, handle_handoff_data, 2, [ignore], deserialize}. % {_Key, Operation} = binary_to_term(Data)
-%% the fun of dict:fold/3: the patterns on the values of the dict are dead
-{exception, materializer_vnode, load_ops, 2, [ignore], dict_types}.
-%% vector_orddict:first/1 gives {vectorclock(), term()}, matched with #materialized_snapshot{}
-{exception, materializer_vnode, internal_store_ss, 5, [ignore], untyped_value}.
-%% vector_orddict:get_smaller/2 gives {undefined | {vectorclock(), term()}, boolean()}, update_snapshot_from_cache/3 takes a
-%% materialized_snapshot(); the clause {undefined, _} does not narrow it either
-{exception, materializer_vnode, get_from_snapshot_cache, 5, [ignore], untyped_value}.
-%% logging_vnode:get_up_to_time/5 gives snapshot_get_response() | {error, reason()}, the spec promises the response
-{exception, materializer_vnode, get_from_snapshot_log, 3, [ignore], unchecked_result}.
+{exception, materializer_vnode, init, 1, [no_exhaustiveness], partial}.
+%% check_table_ready/1: case on the reply of riak_core_vnode_master:sync_command/4 to {check_ready}, a term(), with true and
+%% false
+{assertion, materializer_vnode, {198, 13, "d0bc91"}, assert_type, "boolean()", call_reply}.
+%% the clause for {read, Key, Type, SnapshotTime, TxId} gives read/6 the state where it takes the partition; nothing in antidote
+%% sends the request. In front of it the request is term() and hands its parts to read/6
+{exception, materializer_vnode, handle_command, 3, [ignore], source_bug}.
+%% [Key1 | _] = tuple_to_list(Key) in the fold fun F
+{exception, materializer_vnode, handle_handoff_command, 3, [ignore], in_fun}.
+%% handle_handoff_data/2: {_Key, Operation} = binary_to_term(Data), a term(): the entry of the operations cache that
+%% encode_handoff_item/2 packed, a tuple() for insert_ops_cache_tuple/2
+{assertion, materializer_vnode, {292, 25, "7185d9"}, assert_type, "{term(), tuple()}", deserialize}.
+%% the spec promises true: the fun of dict:fold/3 gives the ok of lists:foreach/2, so the result is ok for a dict that is not
+%% empty (the caller does not use it). Behind it the keys and values of the dict are term() for the fun
+{exception, materializer_vnode, load_ops, 2, [ignore], spec_wrong}.
+%% internal_store_ss/5: vector_orddict:first/1 gives {vectorclock(), term()}, the value is matched with #materialized_snapshot{}
+%% and its last_op_id subtracted
+{assertion, materializer_vnode, {399, 75, "4f94ee"}, assert_type, "{vectorclock(), materialized_snapshot()}", untyped_value}.
+%% get_from_snapshot_cache/5: vector_orddict:get_smaller/2 gives {undefined | {vectorclock(), term()}, boolean()},
+%% update_snapshot_from_cache/3 takes a snapshot time and a materialized_snapshot(); the clause {undefined, _} in front does not
+%% narrow it either
+{assertion, materializer_vnode, {511, 48, "6c01fc"}, assert_type, "{{snapshot_time(), materialized_snapshot()}, boolean()}", untyped_value}.
+%% get_from_snapshot_log/3: logging_vnode:get_up_to_time/5 gives snapshot_get_response() | {error, reason()}, the spec promises
+%% the response
+{assertion, materializer_vnode, {519, 5, "255c36"}, assert_type, "snapshot_get_response()", spec_wrong}. % get_from_snapshot_log/3 passes {error, Reason} of logging_vnode:get_up_to_time/5 on as the response (read: needs a vnode)
 %% {Key, Length, OpId, ListLen, OpsDict} = case .. end with Key bound by the head
 {exception, materializer_vnode, snapshot_insert_gc, 4, [ignore], bound_pattern}.
-%% ?FIRST_OP + Len is an integer(), element/2 takes a pos_integer()
-{exception, materializer_vnode, prune_ops, 2, [ignore], number_range}.
-%% element/2 of a tuple() gives term(), the filter fun takes {non_neg_integer(), clocksi_payload()}
-{exception, materializer_vnode, check_filter, 7, [ignore], untyped_value}.
-%% {Length, ListLen} = element(2, Tuple) for a tuple()
-{exception, materializer_vnode, deconstruct_opscache_entry, 1, [ignore], untyped_value}.
-%% NewLength + ?FIRST_OP is an integer(), update_ops_element/3 takes positions that are pos_integer(); behind it true =
-%% update_ops_element/3, which promises boolean()
-{exception, materializer_vnode, op_insert_gc, 3, [ignore], number_range}.
-{exception, materializer_vnode, cache_is_empty, 1, [ignore], free_result}. % case on ets:first/1
-%% case on ets:lookup/2 with [] and [{Key, SnapshotDictA}]
-{exception, materializer_vnode, get_snapshot_dict, 2, [ignore], untyped_value}.
-{exception, materializer_vnode, get_ops_from_cache, 2, [ignore], untyped_value}. % case on ets:lookup/2 with [] and [Tuple]
-%% ets:update_counter/3 gives integer(), the spec promises non_neg_integer()
-{exception, materializer_vnode, increment_op_id, 2, [ignore], number_range}.
-{exception, materializer_vnode, get_op_list_length, 2, [ignore], untyped_value}. % ets:lookup_element/3 gives term()
+%% prune_ops/2: ?FIRST_OP + Len with Len a non_neg_integer() is the position for element/2, a pos_integer(); element/2 of a
+%% tuple() gives term(), the first operation goes into the result as op_and_id()
+{assertion, materializer_vnode, {711, 21, "e7295a"}, assert_type, "op_and_id()", untyped_value}.
+{assertion, materializer_vnode, {711, 39, "9bfb33"}, assert_type, "pos_integer()", arith_pos}.
+%% check_filter/7: element/2 of a tuple() gives term(), the filter fun takes the operation as {non_neg_integer(),
+%% clocksi_payload()}; Id + 1 for the position Id, a pos_integer(), is the next position
+{assertion, materializer_vnode, {735, 10, "8bf4e3"}, assert_type, "op_and_id()", untyped_value}.
+{assertion, materializer_vnode, {738, 34, "4bb557"}, assert_type, "pos_integer()", arith_pos}.
+{assertion, materializer_vnode, {740, 34, "4bb557"}, assert_type, "pos_integer()", arith_pos}.
+%% deconstruct_opscache_entry/1: {Length, ListLen} = element(2, Tuple) and OpId = element(3, Tuple) for a tuple(): element/2
+%% gives term()
+{assertion, materializer_vnode, {753, 25, "c12e29"}, assert_type, "{non_neg_integer(), non_neg_integer()}", untyped_value}.
+{assertion, materializer_vnode, {754, 12, "635afe"}, assert_type, "non_neg_integer()", untyped_value}.
+%% op_insert_gc/3: NewLength + ?FIRST_OP and Length + ?FIRST_OP with a non_neg_integer() length are positions for
+%% update_ops_element/3, pos_integer(); true = update_ops_element/3, which promises boolean()
+{assertion, materializer_vnode, {786, 13, "11ee57"}, assert_pattern, "true", body_exhaustiveness}.
+{assertion, materializer_vnode, {787, 28, "be81c8"}, assert_type, "pos_integer()", arith_pos}.
+{assertion, materializer_vnode, {790, 13, "e25f91"}, assert_pattern, "true", body_exhaustiveness}.
+{assertion, materializer_vnode, {791, 25, "702783"}, assert_type, "pos_integer()", arith_pos}.
+%% case ets:lookup(SnapshotCache, Key) of []; [{Key, SnapshotDictA}] with Key bound: with the result asserted as [] or one pair
+%% (ets:lookup/2 gives [tuple()]) the case counts as not exhaustive
+{exception, materializer_vnode, get_snapshot_dict, 2, [ignore], bound_pattern}.
+%% get_ops_from_cache/2: case on ets:lookup/2, which gives [tuple()], with [] and [Tuple]: the table is a set with at most one
+%% object for a key
+{assertion, materializer_vnode, {885, 10, "7a4c15"}, assert_type, "[] | etylizer:cons(tuple(), [])", untyped_value}.
+%% increment_op_id/2: ets:update_counter/3 gives integer(), the spec promises non_neg_integer()
+{assertion, materializer_vnode, {898, 5, "d66ad6"}, assert_type, "non_neg_integer()", number_range}.
+%% ets:lookup_element/3 gives term(), the spec promises the pair of the lengths; the call at 902:5 (hash 0dc36c) is the body of
+%% the function and crashes the engine with an assertion
+{exception, materializer_vnode, get_op_list_length, 2, [ignore], assertion_crash}.
 
 {module, meta_data_manager, #{file => "antidote/src/meta_data_manager.erl",
-                              overlays => [{specs, "overlay_antidote.erl"}], timeout => 10000}}.
-%% the spec says [term()], the clause takes [Name] as start_link/1 passes it
-{exception, meta_data_manager, init, 1, [ignore], partial}.
-%% the message is term(): {send_meta_data, NodeId, Data} hands NodeId to antidote_ets_meta_data:insert_remote_meta_data/3 as an
-%% atom()
-{exception, meta_data_manager, handle_cast, 2, [ignore], message_term}.
+                              overlays => [{specs, "overlay_antidote.erl"},
+                                           {library, "overlay_riak_core_lite_lib.erl"},
+                                           {library, "overlay_antidote_lib.erl"}],
+                              timeout => 10000}}.
+%% the spec says [term()], antidote_ets_meta_data:create_remote_meta_data_table/1 takes the name as an atom(); start_link/1
+%% passes one. Behind it the clause takes [Name], a list of one element (flag)
+{exception, meta_data_manager, init, 1, [ignore], source_bug}.
+%% handle_cast/2: the message is term(): the node id of {send_meta_data, NodeId, Data}, {add_node, NodeId, Initial} and
+%% {remove_node, NodeId} goes to antidote_ets_meta_data as an atom(); true =
+%% antidote_ets_meta_data:insert_remote_meta_data_new/3, which gives boolean()
+{assertion, meta_data_manager, {91, 66, "ab55e0"}, assert_type, "atom()", message_term}.
+{assertion, meta_data_manager, {94, 5, "54fcd0"}, assert_pattern, "true", body_exhaustiveness}.
+{assertion, meta_data_manager, {94, 70, "ab55e0"}, assert_type, "atom()", message_term}.
+{assertion, meta_data_manager, {97, 71, "ab55e0"}, assert_type, "atom()", message_term}.
 
 {module, meta_data_manager_sup, #{file => "antidote/src/meta_data_manager_sup.erl",
-                                  overlays => [{specs, "overlay_antidote.erl"}], timeout => 10000}}.
+                                  overlays => [{specs, "overlay_antidote.erl"},
+                                               {library, "overlay_riak_core_lite_lib.erl"},
+                                               {library, "overlay_antidote_lib.erl"}],
+                                  timeout => 10000}}.
 
 {module, meta_data_sender, #{file => "antidote/src/meta_data_sender.erl",
                              overlays => [{specs, "overlay_antidote.erl"},
-                                          {deps, "overlay_riak_core_lite.erl"}],
+                                          {deps, "overlay_riak_core_lite.erl"},
+                                          {library, "overlay_riak_core_lite_lib.erl"},
+                                          {library, "overlay_antidote_lib.erl"}],
                              timeout => 10000}}.
-{exception, meta_data_sender, start, 1, [ignore], call_reply}. % reply of gen_statem:call/2
-%% the spec says [term()], the clause takes [Name] as start_link/1 passes it
-{exception, meta_data_sender, init, 1, [ignore], partial}.
-%% {WillChange, Data} = get_merged_meta_data(Name, CheckNodes), which can give not_ready
-{exception, meta_data_sender, send_meta_data, 3, [ignore], body_exhaustiveness}.
-%% the fun of lists:foldl/3: its case on maps:find/2 has a dead branch
-{exception, meta_data_sender, update, 6, [ignore], free_result}.
-%% {ok, Ring} = riak_core_ring_manager:get_my_ring()
-{exception, meta_data_sender, get_node_list, 0, [ignore], body_exhaustiveness}.
-%% {ok, Ring} = riak_core_ring_manager:get_my_ring()
-{exception, meta_data_sender, get_node_and_partition_list, 0, [ignore], body_exhaustiveness}.
+%% start/1: the reply of gen_statem:call/2 to start, a term(), is the result
+{assertion, meta_data_sender, {103, 5, "7d8a28"}, assert_type, "ok", call_reply}.
+%% the spec says [term()], antidote_ets_meta_data:create_meta_data_table/1 takes the name as an atom(); start_link/1 passes one.
+%% Behind it the clause takes [Name], a list of one element (flag)
+{exception, meta_data_sender, init, 1, [ignore], source_bug}.
+%% send_meta_data/3: {WillChange, Data} = get_merged_meta_data(Name, CheckNodes), which can give not_ready; Data, a term(), is
+%% the map of the merged meta data that maps:get/2 takes
+{assertion, meta_data_sender, {161, 5, "959f6b"}, assert_pattern, "{_, _}", body_exhaustiveness}.
+{assertion, meta_data_sender, {163, 42, "e13d42"}, assert_type, "map()", untyped_value}.
+%% maps:map(fun(NodeId, _Val) -> ok = RemoveFun(Name, NodeId) end, NodeErase): the keys of the map() are term(), RemoveFun takes
+%% the E of the spec ([E] for the entries); the map cannot be asserted as #{E => term()}. The case on maps:find/2 in the fold
+%% fun type checks with the library overlay; behind it the match ok = RemoveFun(..) is inside a fun
+{exception, meta_data_sender, update, 6, [ignore], assert_tyvar}.
+%% get_node_list/0: {ok, Ring} = riak_core_ring_manager:get_my_ring()
+{assertion, meta_data_sender, {291, 18, "6ecad7"}, assert_pattern, "{ok, _}", body_exhaustiveness}.
+%% get_node_and_partition_list/0: {ok, Ring} = riak_core_ring_manager:get_my_ring()
+{assertion, meta_data_sender, {302, 18, "6ecad7"}, assert_pattern, "{ok, _}", body_exhaustiveness}.
 
 {module, meta_data_sender_sup, #{file => "antidote/src/meta_data_sender_sup.erl",
-                                 overlays => [{specs, "overlay_antidote.erl"}], timeout => 10000}}.
+                                 overlays => [{specs, "overlay_antidote.erl"},
+                                              {library, "overlay_riak_core_lite_lib.erl"},
+                                              {library, "overlay_antidote_lib.erl"}],
+                                 timeout => 10000}}.
 
 {module, stable_meta_data_server, #{file => "antidote/src/stable_meta_data_server.erl",
-                                    overlays => [{specs, "overlay_antidote.erl"}], timeout => 10000}}.
-{exception, stable_meta_data_server, sync_meta_data, 0, [ignore], call_reply}. % ok = gen_server:call/2
-{exception, stable_meta_data_server, broadcast_meta_data_list, 1, [ignore], call_reply}. % ok = gen_server:call/2
-{exception, stable_meta_data_server, broadcast_meta_data_internal, 3, [ignore], call_reply}. % ok = gen_server:call/2
-{exception, stable_meta_data_server, broadcast_meta_data_merge, 4, [ignore], call_reply}. % ok = gen_server:call/2
-%% {ok, DataDir} = application:get_env(antidote, data_dir)
-{exception, stable_meta_data_server, init, 1, [ignore], body_exhaustiveness}.
-%% the request is term(): case IsEnv of true; false for {update_meta_data, KeyValueList, IsEnv}
-{exception, stable_meta_data_server, handle_call, 3, [ignore], message_term}.
-%% ets:tab2list/1 gives [tuple()], the entries of the table are pairs {key(), term()}
-{exception, stable_meta_data_server, get_all_values_from_stable_meta_data_table, 0, [ignore], untyped_value}.
-%% case on ets:lookup/2 with [] and [{Key, Value}]
-{exception, stable_meta_data_server, get_value_by_table, 2, [ignore], untyped_value}.
+                                    overlays => [{specs, "overlay_antidote.erl"},
+                                                 {library, "overlay_riak_core_lite_lib.erl"},
+                                                 {library, "overlay_antidote_lib.erl"}],
+                                    timeout => 10000}}.
+%% ok = gen_server:call/2, whose reply is term(), in the fun of lists:foreach/2
+{exception, stable_meta_data_server, sync_meta_data, 0, [ignore], in_fun}.
+%% ok = gen_server:call/2, whose reply is term(), in the fun of lists:foreach/2
+{exception, stable_meta_data_server, broadcast_meta_data_list, 1, [ignore], in_fun}.
+%% ok = gen_server:call/2, whose reply is term(), in the fun of lists:foreach/2
+{exception, stable_meta_data_server, broadcast_meta_data_internal, 3, [ignore], in_fun}.
+%% ok = gen_server:call/2, whose reply is term(), in the fun of lists:foreach/2
+{exception, stable_meta_data_server, broadcast_meta_data_merge, 4, [ignore], in_fun}.
+%% init/1: {ok, DataDir} = application:get_env(antidote, data_dir), which can be undefined and has term() for the value; {ok,
+%% DetsTable} = dets:open_file/2; the setting recover_meta_data_on_start, a term(), is the flag of the case; dets:to_ets/2 can
+%% give an error, the result goes into the field table; ok = dets:delete_all_objects/1 and ok = dets:sync/1
+{assertion, stable_meta_data_server, {159, 21, "473734"}, assert_type, "{ok, string()}", untyped_value}.
+{assertion, stable_meta_data_server, {162, 5, "1df9b5"}, assert_pattern, "{ok, _}", body_exhaustiveness}.
+{assertion, stable_meta_data_server, {165, 20, "46a264"}, assert_type, "boolean()", untyped_value}.
+{assertion, stable_meta_data_server, {170, 33, "ec97c4"}, assert_type, "ets:tab()", unchecked_result}.
+{assertion, stable_meta_data_server, {174, 17, "1e239d"}, assert_pattern, "ok", body_exhaustiveness}.
+{assertion, stable_meta_data_server, {177, 5, "95189a"}, assert_pattern, "ok", body_exhaustiveness}.
+%% ok = gen_server:call/2, whose reply is term(), in the fun of lists:foreach/2 in the clause for {broadcast_meta_data}. In
+%% front of it the request is term(): the flag, the list of the pairs, the two funs of {merge_meta_data, ..} and the list of
+%% {sync_meta_data, NewList} are used at their types
+{exception, stable_meta_data_server, handle_call, 3, [ignore], in_fun}.
+%% ets:tab2list/1 gives [tuple()], the entries of the table are pairs {key(), term()}; the call at 279:5 (hash 00b81b) is the
+%% body of the function and crashes the engine with an assertion
+{exception, stable_meta_data_server, get_all_values_from_stable_meta_data_table, 0, [ignore], assertion_crash}.
+%% case ets:lookup(Table, Key) of []; [{Key, Value}] with Key bound: with the result asserted as [] or one pair (ets:lookup/2
+%% gives [tuple()]) the case counts as not exhaustive
+{exception, stable_meta_data_server, get_value_by_table, 2, [ignore], bound_pattern}.
 
 {module, stable_time_functions, #{file => "antidote/src/stable_time_functions.erl",
-                                  overlays => [{specs, "overlay_antidote.erl"}], timeout => 10000}}.
-{exception, stable_time_functions, update, 2, [ignore], defensive}. % case Last of undefined, Last is an integer()
-%% all_defined/1 has ruled out undefined for the values of the map, their type still has it: vectorclock:min/1 takes
+                                  overlays => [{specs, "overlay_antidote.erl"},
+                                               {library, "overlay_riak_core_lite_lib.erl"},
+                                               {library, "overlay_antidote_lib.erl"}],
+                                  timeout => 10000}}.
+%% update/2: case Last of undefined; _: Last is an integer(), the subject is annotated integer() | undefined
+{assertion, stable_time_functions, {70, 10, "45df89"}, annotate_type, "integer() | undefined", defensive}.
+%% merge/1: all_defined/1 has ruled out undefined for the values of the map, their type still has it: vectorclock:min/1 takes
 %% [vectorclock()]
-{exception, stable_time_functions, merge, 1, [ignore], correlated}.
+{assertion, stable_time_functions, {83, 29, "c245d7"}, assert_type, "[vectorclock:vectorclock()]", correlated}.
 
 {module, vector_orddict, #{file => "antidote/src/vector_orddict.erl",
-                           overlays => [{specs, "overlay_antidote.erl"}], timeout => 10000}}.
+                           overlays => [{specs, "overlay_antidote.erl"},
+                                        {library, "overlay_riak_core_lite_lib.erl"},
+                                        {library, "overlay_antidote_lib.erl"}],
+                           timeout => 10000}}.
 %% the clauses take [] with size 0 and a non-empty list: the size is 0 exactly for the empty list
-{exception, vector_orddict, insert_bigger_internal, 4, [ignore], correlated}.
+{exception, vector_orddict, insert_bigger_internal, 4, [no_exhaustiveness], correlated}.
 %% no clause for the empty vector_orddict(); the one caller checks the size before
-{exception, vector_orddict, first, 1, [ignore], partial}.
-%% lists:last/1 on the list of a vector_orddict(), which can be empty; no caller in antidote
-{exception, vector_orddict, last, 1, [ignore], partial}.
+{exception, vector_orddict, first, 1, [no_exhaustiveness], partial}.
+%% last/1: lists:last/1 on the list of a vector_orddict(), which can be empty: the function is partial as first/1 is; no caller
+%% in antidote
+{assertion, vector_orddict, {183, 16, "74ec78"}, assert_type, "[{vectorclock(), term()}, ...]", partial}.
 
-{module, wait_init, #{file => "antidote/src/wait_init.erl", overlays => [{specs, "overlay_antidote.erl"}], timeout => 10000}}.
-{exception, wait_init, check_ready, 1, [ignore], free_result}. % case on rpc:call/4
+{module, wait_init, #{file => "antidote/src/wait_init.erl",
+                      overlays => [{specs, "overlay_antidote.erl"},
+                                   {library, "overlay_riak_core_lite_lib.erl"},
+                                   {library, "overlay_antidote_lib.erl"}],
+                      timeout => 10000}}.
+%% check_ready/1: the three cases on the result of rpc:call/4, a term(), with true and false
+{assertion, wait_init, {66, 10, "546ff7"}, assert_type, "boolean()", untyped_value}.
+{assertion, wait_init, {68, 18, "1eb443"}, assert_type, "boolean()", untyped_value}.
+{assertion, wait_init, {70, 26, "63efb5"}, assert_type, "boolean()", untyped_value}.
 
 {module, zmq_context, #{file => "antidote/src/zmq_context.erl",
-                        overlays => [{specs, "overlay_antidote.erl"}, {deps, "overlay_erlzmq.erl"}], timeout => 10000}}.
-{exception, zmq_context, init, 1, [ignore], body_exhaustiveness}. % {ok, Ctx} = erlzmq:context()
-{exception, zmq_context, get, 0, [ignore], call_reply}. % reply of gen_server:call/2
+                        overlays => [{specs, "overlay_antidote.erl"},
+                                     {deps, "overlay_erlzmq.erl"},
+                                     {library, "overlay_riak_core_lite_lib.erl"},
+                                     {library, "overlay_antidote_lib.erl"}],
+                        timeout => 10000}}.
+%% init/1: {ok, Ctx} = erlzmq:context()
+{assertion, zmq_context, {47, 5, "853962"}, assert_pattern, "{ok, _}", body_exhaustiveness}.
+%% get/0: the reply of gen_server:call/2 to get_context, a term(), is the result
+{assertion, zmq_context, {67, 5, "e8b785"}, assert_type, "erlzmq:erlzmq_context()", call_reply}.
 
 {module, zmq_utils, #{file => "antidote/src/zmq_utils.erl",
-                      overlays => [{specs, "overlay_antidote.erl"}, {deps, "overlay_erlzmq.erl"}], timeout => 10000}}.
-{exception, zmq_utils, create_connect_socket, 3, [ignore], body_exhaustiveness}. % ok = erlzmq:connect/2
-{exception, zmq_utils, create_bind_socket, 3, [ignore], body_exhaustiveness}. % ok = erlzmq:bind/2
+                      overlays => [{specs, "overlay_antidote.erl"},
+                                   {deps, "overlay_erlzmq.erl"},
+                                   {library, "overlay_riak_core_lite_lib.erl"},
+                                   {library, "overlay_antidote_lib.erl"}],
+                      timeout => 10000}}.
+%% create_connect_socket/3: ok = erlzmq:connect/2
+{assertion, zmq_utils, {50, 5, "cf5cce"}, assert_pattern, "ok", body_exhaustiveness}.
+%% create_bind_socket/3: ok = erlzmq:bind/2
+{assertion, zmq_utils, {55, 5, "4b0658"}, assert_pattern, "ok", body_exhaustiveness}.
 {exception, zmq_utils, connection_string, 1, [ignore], otp_no_spec}. % inet_parse:ntoa/1
