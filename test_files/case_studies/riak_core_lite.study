@@ -1,0 +1,468 @@
+#!/usr/bin/env -S sh -c 'exec "$(dirname "$0")/../../.github/scripts/ety_case_study" "$0" "$@"'
+%% -*- erlang -*-
+%% Case study manifest, see .github/scripts/ety_case_study.
+%%
+%% The Hex package riak_core_lite, version 0.10.1, which antidote (commit
+%% ed9cfbcaad53c9b5de15bfcef7befef44b5b4221) locks as its riak_core; both checksums of the downloaded
+%% package are the ones in antidote's rebar.lock. Vendored unchanged: src (47 modules, without
+%% riak_core.app.src), include and LICENSE. The directory is called riak_core, the name of the OTP
+%% application, so that -include_lib("riak_core/include/riak_core_vnode.hrl") in other code resolves
+%% from the directory of the manifests.
+%%
+%% Raw: no overlay, no flag, no assertion. 267 of the 1149 functions have a spec, the other 882 are
+%% checked with dynamic() arguments and result.
+%%
+%% The driver defines no macro. So the code under -ifdef(TEST) (34 places), -ifdef(PROPER) and
+%% -ifdef(PULSE) is not checked; riak_core_test_util has nothing else. riak_core:stop/1 is the
+%% variant of -else (init:stop()), and the -ifndef(namespaced_types) of chashbin selects the first of
+%% two identical declarations of the record chashbin.
+%%
+%% poolboy, the one dependency, is not vendored: 6 functions of riak_core_vnode_worker_pool call it.
+
+{study, riak_core_lite}.
+{deps, ["poolboy"]}.
+
+%% {reason, Id, Class, Text}. Class: real (the program or its spec is wrong), inherent (correct at
+%% run time, not provable by types), fixable (gap in the type system or checker), benign (dead for the spec, kept on purpose), unknown.
+%% The reasons of this step are from reading the place of the first error of each function.
+{reason, unresolved_dep,      fixable,  "a module of another app is not on the search path of the driver"}.
+{reason, otp_no_spec,         fixable,  "calls an OTP function that has no spec, which is a name error"}.
+{reason, unknown_type,        real,     "the record chashbin names the type erlang:tuple/1, which does not exist; internal error of the checker"}.
+{reason, crash_follow_up,     fixable,  "internal error only in the run of the whole module, after a function with the unknown type"}.
+{reason, catch_pattern,       fixable,  "a catch clause with a tuple pattern fails to type check"}.
+{reason, guard_float,         fixable,  "a guard that compares a float() with an integer makes the next clause dead"}.
+{reason, map_keys,            fixable,  "a map expression with two keys is rejected by a map type with these keys"}.
+{reason, narrowing,           fixable,  "the type test on the left of andalso does not narrow the variable for the right"}.
+{reason, library_spec,        fixable,  "spec of a library function too imprecise"}.
+{reason, body_exhaustiveness, inherent, "exhaustiveness of a match or a case inside the body"}.
+{reason, partial,             inherent, "partial function, the callers rule out the missing case"}.
+{reason, defensive,           benign,   "defensive clause, dead for the spec"}.
+{reason, nonempty_list,       inherent, "hd/1, tl/1 or lists:nth/2 on a list that the program knows is not empty"}.
+{reason, number_range,        inherent, "range of a number (positive, not negative) that the types do not show"}.
+{reason, unchecked_result,    inherent, "a result that can be undefined or an error value, used as the success value"}.
+{reason, untyped_value,       inherent, "term() from a proplist, a dict, ets, a persistent term, an rpc or a tuple(), used at the type the program expects"}.
+{reason, call_reply,          inherent, "the reply of gen_server:call or gen_statem:call is term(), the spec promises the type of the reply"}.
+{reason, deserialize,         inherent, "binary_to_term/1 gives term()"}.
+{reason, spec_imprecise,      real,     "imprecise type spec in the source"}.
+{reason, spec_wrong,          real,     "wrong type in the source"}.
+{reason, source_bug,          real,     "error in the program"}.
+
+{module, chash, #{file => "riak_core/src/chash.erl", timeout => 10000}}.
+%% {IndexAsInt, X} = proplists:lookup(IndexAsInt, Nodes), which can give none
+{exception, chash, lookup, 2, [ignore], body_exhaustiveness}.
+{exception, chash, merge_rings, 2, [ignore], body_exhaustiveness}. % {NumPartitions, NodesB} = CHashB with NumPartitions bound
+{exception, chash, predecessors, 3, [ignore], spec_imprecise}. % max_n/2 gives integer(), lists:split/2 wants non_neg_integer()
+{exception, chash, ring_increment, 1, [ignore], number_range}. % div gives integer(), the spec says pos_integer()
+{exception, chash, successors, 3, [ignore], spec_imprecise}. % max_n/2 gives integer(), lists:split/2 wants non_neg_integer()
+{exception, chash, update, 3, [ignore], library_spec}. % lists:keyreplace/4 gives [tuple()]
+
+{module, chashbin, #{file => "riak_core/src/chashbin.erl", timeout => 10000}}.
+{exception, chashbin, create, 1, [ignore], unknown_type}.
+{exception, chashbin, to_chash, 1, [ignore], unknown_type}.
+{exception, chashbin, to_list, 1, [ignore], unknown_type}.
+{exception, chashbin, to_list_filter, 2, [ignore], unknown_type}.
+{exception, chashbin, responsible_index, 2, [ignore], unknown_type}.
+{exception, chashbin, responsible_position, 2, [ignore], unknown_type}.
+{exception, chashbin, num_partitions, 1, [ignore], unknown_type}.
+{exception, chashbin, iterator, 2, [ignore], unknown_type}.
+{exception, chashbin, itr_value, 1, [ignore], unknown_type}.
+{exception, chashbin, itr_next, 1, [ignore], unknown_type}.
+{exception, chashbin, itr_pop, 2, [ignore], unknown_type}.
+{exception, chashbin, itr_next_while, 2, [ignore], unknown_type}.
+{exception, chashbin, create_bin, 3, [ignore], crash_follow_up}. % alone: an expression fails to type check
+{exception, chashbin, index_position, 2, [ignore], crash_follow_up}. % alone it type checks
+
+{module, gen_fsm_compat, #{file => "riak_core/src/gen_fsm_compat.erl", timeout => 10000}}.
+{exception, gen_fsm_compat, stop, 1, [ignore], otp_no_spec}. % gen:stop/1
+{exception, gen_fsm_compat, stop, 3, [ignore], otp_no_spec}. % gen:stop/3
+{exception, gen_fsm_compat, sync_send_event, 2, [ignore], otp_no_spec}. % gen:call/3
+{exception, gen_fsm_compat, sync_send_event, 3, [ignore], otp_no_spec}. % gen:call/4
+{exception, gen_fsm_compat, sync_send_all_state_event, 2, [ignore], otp_no_spec}. % gen:call/3
+{exception, gen_fsm_compat, sync_send_all_state_event, 3, [ignore], otp_no_spec}. % gen:call/4
+%% gen:debug_options/2, gen:get_parent/0, gen:get_proc_name/1, gen:hibernate_after/1
+{exception, gen_fsm_compat, enter_loop, 6, [ignore], otp_no_spec}.
+%% gen:debug_options/2, gen:hibernate_after/1, gen:name/1, gen:unregister_name/1
+{exception, gen_fsm_compat, init_it, 6, [ignore], otp_no_spec}.
+{exception, gen_fsm_compat, decode_msg, 10, [ignore], otp_no_spec}. % sys:handle_system_msg/7
+{exception, gen_fsm_compat, system_terminate, 4, [ignore], partial}.
+{exception, gen_fsm_compat, handle_msg, 8, [ignore], body_exhaustiveness}. % {'EXIT', R} = (catch terminate(..))
+{exception, gen_fsm_compat, handle_msg, 9, [ignore], body_exhaustiveness}. % {'EXIT', R} = (catch terminate(..))
+{exception, gen_fsm_compat, format_status, 2, [ignore], otp_no_spec}. % gen:format_status_header/2
+
+{module, gen_nb_server, #{file => "riak_core/src/gen_nb_server.erl", timeout => 10000}}.
+{exception, gen_nb_server, handle_info, 2, [ignore], otp_no_spec}. % inet_db:register_socket/2, prim_inet:async_accept/2
+{exception, gen_nb_server, listen_on, 3, [ignore], otp_no_spec}. % inet_parse:address/1, prim_inet:async_accept/2
+
+{module, riak_core, #{file => "riak_core/src/riak_core.erl", timeout => 10000}}.
+{exception, riak_core, health_check, 1, [ignore], library_spec}. % lists:keyfind/3 gives tuple() | false
+{exception, riak_core, app_for_module, 2, [ignore], body_exhaustiveness}. % {ok, Mods} = application:get_key(App, modules)
+%% case .. of true when Elapsed == 0; true when Elapsed > 0; false
+{exception, riak_core, wait_for_application, 2, [ignore], body_exhaustiveness}.
+%% case .. of true when Elapsed == 0; true when Elapsed > 0; false
+{exception, riak_core, wait_for_service, 2, [ignore], body_exhaustiveness}.
+
+{module, riak_core_apl, #{file => "riak_core/src/riak_core_apl.erl", timeout => 10000}}.
+{exception, riak_core_apl, active_owners, 1, [ignore], body_exhaustiveness}. % {ok, Ring} = riak_core_ring_manager:get_my_ring()
+%% riak_core_ring:all_owners/1 gives Node :: term(), check_up/4 wants node()
+{exception, riak_core_apl, active_owners, 2, [ignore], spec_imprecise}.
+{exception, riak_core_apl, get_apl_chbin, 4, [ignore], unknown_type}.
+{exception, riak_core_apl, get_apl, 4, [ignore], crash_follow_up}. % alone it type checks
+{exception, riak_core_apl, get_apl_ann, 4, [ignore], crash_follow_up}. % alone: an expression fails to type check
+{exception, riak_core_apl, get_apl_ann, 2, [ignore], crash_follow_up}. % alone: not all cases are covered
+%% {ok, Ring} = riak_core_ring_manager:get_my_ring()
+{exception, riak_core_apl, get_apl_ann_with_pnum, 1, [ignore], body_exhaustiveness}.
+{exception, riak_core_apl, get_apl_ann_chbin, 4, [ignore], unknown_type}.
+{exception, riak_core_apl, get_primary_apl, 3, [ignore], crash_follow_up}. % alone it type checks
+{exception, riak_core_apl, get_primary_apl_chbin, 4, [ignore], unknown_type}.
+{exception, riak_core_apl, get_primary_apl, 4, [ignore], crash_follow_up}. % alone: an expression fails to type check
+{exception, riak_core_apl, first_up, 2, [ignore], unknown_type}.
+{exception, riak_core_apl, find_fallbacks_chbin, 4, [ignore], unknown_type}.
+{exception, riak_core_apl, apl_with_partition_nums, 2, [ignore], crash_follow_up}. % alone it type checks
+
+{module, riak_core_app, #{file => "riak_core/src/riak_core_app.erl", timeout => 10000}}.
+%% {ok, RingStateDir} = application:get_env(..)
+{exception, riak_core_app, validate_ring_state_directory_exists, 0, [ignore], body_exhaustiveness}.
+
+{module, riak_core_base64url, #{file => "riak_core/src/riak_core_base64url.erl", timeout => 10000}}.
+{exception, riak_core_base64url, encode, 1, [ignore], spec_wrong}. % takes iodata(), base64:encode/1 takes a binary or a string
+%% takes iodata(), base64:encode_to_string/1 takes a binary or a string
+{exception, riak_core_base64url, encode_to_string, 1, [ignore], spec_wrong}.
+
+{module, riak_core_bucket, #{file => "riak_core/src/riak_core_bucket.erl", timeout => 10000}}.
+
+{module, riak_core_bucket_props, #{file => "riak_core/src/riak_core_bucket_props.erl", timeout => 10000}}.
+{exception, riak_core_bucket_props, merge, 2, [ignore], library_spec}. % lists:ukeymerge/3 and lists:ukeysort/2 give [tuple()]
+{exception, riak_core_bucket_props, validate_core_prop, 4, [ignore], library_spec}. % lists:keyfind/3 gives tuple() | false
+
+{module, riak_core_claim, #{file => "riak_core/src/riak_core_claim.erl", timeout => 10000}}.
+{exception, riak_core_claim, wants_claim_v2, 2, [ignore], untyped_value}. % proplists:get_value/3
+%% length/1 gives non_neg_integer(), get_deltas/4 wants pos_integer()
+{exception, riak_core_claim, choose_claim_v2, 3, [ignore], number_range}.
+%% rebalance_deltas/3 takes triples {Node, Own, Delta}, its spec says pairs
+{exception, riak_core_claim, get_deltas, 4, [ignore], spec_wrong}.
+{exception, riak_core_claim, normalise_delta, 1, [ignore], guard_float}. % normalise_delta(Delta) when Delta < 0
+{exception, riak_core_claim, rebalance_deltas, 3, [ignore], body_exhaustiveness}. % case Sum - RingSize of 0; N when N < 0
+{exception, riak_core_claim, increase_keeps, 4, [ignore], partial}.
+{exception, riak_core_claim, increase_takes, 4, [ignore], partial}.
+%% lists:keytake/3 gives {value, tuple(), [tuple()]} | false
+{exception, riak_core_claim, meets_target_n, 5, [ignore], library_spec}.
+{exception, riak_core_claim, claim_diagonal, 3, [ignore], untyped_value}. % proplists:get_value/3
+%% integer() in the spec, lists:sublist/3 wants non_neg_integer()
+{exception, riak_core_claim, build_nodelist, 6, [ignore], source_bug}.
+{exception, riak_core_claim, backfill_ring, 4, [ignore], spec_wrong}. % Acc is a list of lists of nodes, the spec says [node()]
+{exception, riak_core_claim, find_violations, 2, [ignore], library_spec}. % lists:keyfind/3 gives tuple() | false
+{exception, riak_core_claim, get_counts, 2, [ignore], library_spec}. % lists:foldl/3 with a fun on a tuple
+%% lists:keyfind/3 gives tuple() | false, the fun of lists:all/2 takes {CNth, _}
+{exception, riak_core_claim, prefilter_violations, 6, [ignore], library_spec}.
+{exception, riak_core_claim, wants_owns_diff, 2, [ignore], library_spec}. % lists:keyfind/3 gives tuple() | false
+
+{module, riak_core_claim_util, #{file => "riak_core/src/riak_core_claim_util.erl", timeout => 10000}}.
+
+{module, riak_core_claimant, #{file => "riak_core/src/riak_core_claimant.erl", timeout => 10000}}.
+{exception, riak_core_claimant, plan, 0, [ignore], call_reply}.
+{exception, riak_core_claimant, commit, 0, [ignore], call_reply}.
+{exception, riak_core_claimant, claimant, 0, [ignore], body_exhaustiveness}. % {ok, Ring} = riak_core_ring_manager:get_my_ring()
+{exception, riak_core_claimant, compute_resize, 2, [ignore], catch_pattern}. % error:{badmatch, false}
+{exception, riak_core_claimant, schedule_first_resize_transfer, 4, [ignore], nonempty_list}. % hd(riak_core_ring:preflist(..))
+{exception, riak_core_claimant, replace_node_during_resize, 4, [ignore], body_exhaustiveness}. % {ok, FutureCHash} = ..
+
+{module, riak_core_eventhandler_guard, #{file => "riak_core/src/riak_core_eventhandler_guard.erl", timeout => 10000}}.
+{exception, riak_core_eventhandler_guard, init, 1, [ignore], body_exhaustiveness}. % ok = gen_event:add_sup_handler(..)
+
+{module, riak_core_eventhandler_sup, #{file => "riak_core/src/riak_core_eventhandler_sup.erl", timeout => 10000}}.
+%% ok = supervisor:terminate_child(?MODULE, Id)
+{exception, riak_core_eventhandler_sup, stop_guarded_handler, 3, [ignore], body_exhaustiveness}.
+
+{module, riak_core_gossip, #{file => "riak_core/src/riak_core_gossip.erl", timeout => 10000}}.
+{exception, riak_core_gossip, recursive_gossip, 2, [ignore], untyped_value}. % orddict:fetch/2, used as a list
+%% riak_core_ring:owner_node/1 gives term(), member_status/2 wants node()
+{exception, riak_core_gossip, reconcile, 2, [ignore], spec_imprecise}.
+{exception, riak_core_gossip, remove_from_cluster, 3, [ignore], nonempty_list}. % hd(lists:delete(ExitingNode, Members))
+
+{module, riak_core_handoff_listener, #{file => "riak_core/src/riak_core_handoff_listener.erl", timeout => 10000}}.
+%% ok = gen_tcp:controlling_process(Socket, Pid)
+{exception, riak_core_handoff_listener, new_connection, 2, [ignore], body_exhaustiveness}.
+
+{module, riak_core_handoff_listener_sup, #{file => "riak_core/src/riak_core_handoff_listener_sup.erl", timeout => 10000}}.
+
+{module, riak_core_handoff_manager, #{file => "riak_core/src/riak_core_handoff_manager.erl", timeout => 10000}}.
+{exception, riak_core_handoff_manager, set_recv_data, 2, [ignore], call_reply}.
+{exception, riak_core_handoff_manager, kill_handoffs_in_direction, 1, [ignore], call_reply}.
+{exception, riak_core_handoff_manager, handle_call, 3, [ignore], library_spec}. % lists:keyfind/3 gives tuple() | false
+%% lists:keyfind/3 gives tuple(), used as #handoff_status{}
+{exception, riak_core_handoff_manager, handle_cast, 2, [ignore], library_spec}.
+%% lists:keytake/3 gives {value, tuple(), [tuple()]} | false
+{exception, riak_core_handoff_manager, handle_info, 2, [ignore], library_spec}.
+{exception, riak_core_handoff_manager, record_seen_index, 8, [ignore], untyped_value}. % proplists:get_value/3
+{exception, riak_core_handoff_manager, handoff_concurrency_limit_reached, 0, [ignore], untyped_value}. % proplists:get_value/2
+%% HS is list() in the spec, lists:keyfind/3 wants a list of tuples
+{exception, riak_core_handoff_manager, send_handoff, 8, [ignore], spec_imprecise}.
+%% lists:keytake/3 gives tuple(), matched with #handoff_status{}
+{exception, riak_core_handoff_manager, kill_xfer_i, 3, [ignore], library_spec}.
+
+{module, riak_core_handoff_receiver, #{file => "riak_core/src/riak_core_handoff_receiver.erl", timeout => 10000}}.
+{exception, riak_core_handoff_receiver, handle_call, 3, [ignore], body_exhaustiveness}. % ok = inet:setopts(Socket0, SockOpts)
+{exception, riak_core_handoff_receiver, handle_info, 2, [ignore], body_exhaustiveness}. % case catch process_message(..)
+{exception, riak_core_handoff_receiver, process_message, 3, [ignore], deserialize}.
+{exception, riak_core_handoff_receiver, safe_peername, 2, [ignore], otp_no_spec}. % inet_parse:ntoa/1
+
+{module, riak_core_handoff_receiver_sup, #{file => "riak_core/src/riak_core_handoff_receiver_sup.erl", timeout => 10000}}.
+
+{module, riak_core_handoff_sender, #{file => "riak_core/src/riak_core_handoff_sender.erl", timeout => 10000}}.
+{exception, riak_core_handoff_sender, start_fold_, 8, [ignore], body_exhaustiveness}. % [_Name, Host] = string:tokens(..)
+{exception, riak_core_handoff_sender, start_fold, 4, [ignore], catch_pattern}. % exit:{shutdown, max_concurrency}
+{exception, riak_core_handoff_sender, visit_item2, 3, [ignore], body_exhaustiveness}. % case gen_tcp:recv(Sock, 0, RecvTimeout)
+{exception, riak_core_handoff_sender, get_filter, 1, [ignore], untyped_value}. % proplists:get_value/2
+
+{module, riak_core_handoff_sender_sup, #{file => "riak_core/src/riak_core_handoff_sender_sup.erl", timeout => 10000}}.
+%% supervisor:start_child/2 can give {ok, undefined} and {ok, Pid, Info}
+{exception, riak_core_handoff_sender_sup, start_sender, 5, [ignore], unchecked_result}.
+
+{module, riak_core_handoff_sup, #{file => "riak_core/src/riak_core_handoff_sup.erl", timeout => 10000}}.
+
+{module, riak_core_node_watcher, #{file => "riak_core/src/riak_core_node_watcher.erl", timeout => 10000}}.
+{exception, riak_core_node_watcher, service_up, 4, [ignore], call_reply}.
+%% gen_server:call(.., infinitiy): the timeout is misspelled
+{exception, riak_core_node_watcher, service_down, 2, [ignore], source_bug}.
+{exception, riak_core_node_watcher, init, 1, [ignore], body_exhaustiveness}. % ok = net_kernel:monitor_nodes(true)
+{exception, riak_core_node_watcher, handle_call, 3, [ignore], untyped_value}. % proplists:get_value/3
+%% {ok, Ring} = riak_core_ring_manager:get_my_ring()
+{exception, riak_core_node_watcher, check_node_valid, 1, [ignore], body_exhaustiveness}.
+%% {ok, Interval} = application:get_env(..)
+{exception, riak_core_node_watcher, schedule_broadcast, 1, [ignore], body_exhaustiveness}.
+{exception, riak_core_node_watcher, internal_get_services, 1, [ignore], untyped_value}. % ets:lookup/2
+{exception, riak_core_node_watcher, internal_get_nodes, 1, [ignore], untyped_value}. % ets:lookup/2
+
+{module, riak_core_node_watcher_events, #{file => "riak_core/src/riak_core_node_watcher_events.erl", timeout => 10000}}.
+
+{module, riak_core_priority_queue, #{file => "riak_core/src/riak_core_priority_queue.erl", timeout => 10000}}.
+%% is_queue({pqueue, [x]}) fails in the fun on {P, Q} instead of giving false
+{exception, riak_core_priority_queue, is_queue, 1, [ignore], source_bug}.
+{exception, riak_core_priority_queue, len, 1, [ignore], library_spec}. % lists:sum/1 gives number()
+{exception, riak_core_priority_queue, in, 3, [ignore], library_spec}. % lists:keysearch/3 gives {value, tuple()} | false
+{exception, riak_core_priority_queue, out, 1, [ignore], partial}.
+{exception, riak_core_priority_queue, out, 2, [ignore], partial}.
+{exception, riak_core_priority_queue, pout, 1, [ignore], partial}.
+%% join/2 gives pqueue(), the queue of a priority is an squeue()
+{exception, riak_core_priority_queue, join, 2, [ignore], spec_imprecise}.
+
+{module, riak_core_rand, #{file => "riak_core/src/riak_core_rand.erl", timeout => 10000}}.
+
+{module, riak_core_ring, #{file => "riak_core/src/riak_core_ring.erl", timeout => 10000}}.
+{exception, riak_core_ring, nearly_equal, 2, [ignore], spec_imprecise}. % record chstate: vclock is vclock:vclock() | undefined
+{exception, riak_core_ring, chash, 1, [ignore], spec_imprecise}. % record chstate: chring is chash:chash() | undefined
+{exception, riak_core_ring, all_owners, 1, [ignore], spec_imprecise}. % record chstate: chring is chash:chash() | undefined
+%% N is integer() in the spec, lists:sublist/2 wants non_neg_integer()
+{exception, riak_core_ring, all_preflists, 2, [ignore], spec_imprecise}.
+{exception, riak_core_ring, diff_nodes, 2, [ignore], spec_imprecise}. % all_owners/1 gives Node :: term(), the spec says [node()]
+{exception, riak_core_ring, equal_rings, 2, [ignore], spec_imprecise}. % record chstate: meta is dict:dict() | undefined
+%% RingSize is integer() in the spec, chash:fresh/2 wants pos_integer()
+{exception, riak_core_ring, fresh, 2, [ignore], spec_imprecise}.
+%% ring_size() is non_neg_integer(), chash:fresh/2 wants pos_integer()
+{exception, riak_core_ring, resize, 2, [ignore], spec_imprecise}.
+{exception, riak_core_ring, get_meta, 2, [ignore], spec_imprecise}. % record chstate: meta is dict:dict() | undefined
+{exception, riak_core_ring, get_buckets, 1, [ignore], spec_imprecise}. % record chstate: meta is dict:dict() | undefined
+%% {Idx, Owner} = lists:keyfind(Idx, 1, all_owners(State))
+{exception, riak_core_ring, index_owner, 2, [ignore], body_exhaustiveness}.
+{exception, riak_core_ring, num_partitions, 1, [ignore], spec_imprecise}. % record chstate: chring is chash:chash() | undefined
+%% record chstate: chring is chash:chash() | undefined
+{exception, riak_core_ring, future_num_partitions, 1, [ignore], spec_imprecise}.
+{exception, riak_core_ring, preflist, 2, [ignore], spec_imprecise}. % record chstate: chring is chash:chash() | undefined
+{exception, riak_core_ring, random_node, 1, [ignore], nonempty_list}. % lists:nth(.., all_members(State))
+{exception, riak_core_ring, random_other_index, 1, [ignore], nonempty_list}. % hd(my_indices(State))
+%% proplists:substitute_aliases/2 gives [term()], orddict:from_list/1 wants pairs
+{exception, riak_core_ring, rename_node, 3, [ignore], library_spec}.
+{exception, riak_core_ring, responsible_index, 2, [ignore], body_exhaustiveness}. % <<IndexAsInt:160/integer>> = ChashKey
+{exception, riak_core_ring, transfer_node, 3, [ignore], spec_imprecise}. % record chstate: chring is chash:chash() | undefined
+{exception, riak_core_ring, update_meta, 3, [ignore], spec_imprecise}. % record chstate: meta is dict:dict() | undefined
+{exception, riak_core_ring, remove_meta, 2, [ignore], spec_imprecise}. % record chstate: meta is dict:dict() | undefined
+{exception, riak_core_ring, claimant, 1, [ignore], spec_imprecise}. % record chstate: claimant is term(), the spec says node()
+{exception, riak_core_ring, member_status, 2, [ignore], spec_imprecise}. % record chstate: members is a list | undefined
+{exception, riak_core_ring, all_member_status, 1, [ignore], spec_imprecise}. % record chstate: members is a list | undefined
+{exception, riak_core_ring, change_owners, 2, [ignore], catch_pattern}. % error:{badmatch, _}
+{exception, riak_core_ring, schedule_resize_transfer, 3, [ignore], library_spec}. % lists:keystore/4 gives [tuple()]
+{exception, riak_core_ring, resize_transfer_status, 4, [ignore], library_spec}. % lists:keyfind/3 gives tuple() | false
+{exception, riak_core_ring, resize_transfer_complete, 4, [ignore], library_spec}. % lists:keyfind/3 gives tuple()
+{exception, riak_core_ring, resize_transfers, 2, [ignore], untyped_value}. % a value of the meta dict
+{exception, riak_core_ring, resized_ring, 1, [ignore], spec_imprecise}. % record chstate: chring is chash:chash() | undefined
+{exception, riak_core_ring, vnode_type, 3, [ignore], catch_pattern}. % error:{badmatch, _}
+{exception, riak_core_ring, future_ring, 2, [ignore], body_exhaustiveness}. % {ok, FutureCHash} = resized_ring(State0)
+{exception, riak_core_ring, pretty_print, 2, [ignore], untyped_value}. % proplists:get_value/3
+%% {Idx, Owner, NextOwner, Transfers, Status} = ..
+{exception, riak_core_ring, transfer_complete, 3, [ignore], body_exhaustiveness}.
+
+{module, riak_core_ring_events, #{file => "riak_core/src/riak_core_ring_events.erl", timeout => 10000}}.
+%% {ok, Ring} = riak_core_ring_manager:get_my_ring()
+{exception, riak_core_ring_events, force_update, 0, [ignore], body_exhaustiveness}.
+%% {ok, Ring} = riak_core_ring_manager:get_my_ring()
+{exception, riak_core_ring_events, force_sync_update, 0, [ignore], body_exhaustiveness}.
+{exception, riak_core_ring_events, init, 1, [ignore], body_exhaustiveness}. % {ok, Ring} = riak_core_ring_manager:get_my_ring()
+
+{module, riak_core_ring_handler, #{file => "riak_core/src/riak_core_ring_handler.erl", timeout => 10000}}.
+{exception, riak_core_ring_handler, init, 1, [ignore], body_exhaustiveness}. % {ok, Ring} = riak_core_ring_manager:get_my_ring()
+{exception, riak_core_ring_handler, ensure_vnodes_started, 2, [ignore], unchecked_result}. % whereis/1 can give undefined
+{exception, riak_core_ring_handler, startable_vnodes, 2, [ignore], nonempty_list}. % hd(AllMembers)
+
+{module, riak_core_ring_manager, #{file => "riak_core/src/riak_core_ring_manager.erl", timeout => 10000}}.
+%% case Ring of Ring when is_tuple(Ring); undefined, on a persistent term
+{exception, riak_core_ring_manager, get_my_ring, 0, [ignore], body_exhaustiveness}.
+{exception, riak_core_ring_manager, get_bucket_meta, 1, [ignore], untyped_value}. % ets:lookup/2
+{exception, riak_core_ring_manager, do_write_ringfile, 2, [ignore], body_exhaustiveness}. % ok = filelib:ensure_dir(FN)
+{exception, riak_core_ring_manager, find_latest_ringfile, 0, [ignore], untyped_value}. % elements of list_to_tuple(..)
+{exception, riak_core_ring_manager, prune_ringfiles, 0, [ignore], untyped_value}. % elements of list_to_tuple(..)
+%% {ok, Ring} = riak_core_ring_manager:get_my_ring()
+{exception, riak_core_ring_manager, handle_cast, 2, [ignore], body_exhaustiveness}.
+{exception, riak_core_ring_manager, setup_ets, 1, [ignore], body_exhaustiveness}. % (?ETS) = ets:new(..)
+{exception, riak_core_ring_manager, reset_ring_id, 0, [ignore], untyped_value}. % persistent_term:get/2
+{exception, riak_core_ring_manager, set_ring_global, 1, [ignore], unknown_type}.
+%% {ok, Ring} = riak_core_ring_manager:get_my_ring()
+{exception, riak_core_ring_manager, promote_ring, 0, [ignore], body_exhaustiveness}.
+{exception, riak_core_ring_manager, is_stable_ring, 1, [ignore], crash_follow_up}. % alone it type checks
+
+{module, riak_core_ring_util, #{file => "riak_core/src/riak_core_ring_util.erl", timeout => 10000}}.
+%% {ok, Ring} = riak_core_ring_manager:get_my_ring()
+{exception, riak_core_ring_util, check_ring, 0, [ignore], body_exhaustiveness}.
+{exception, riak_core_ring_util, check_ring, 1, [ignore], body_exhaustiveness}. % {ok, Props} = application:get_env(..)
+%% ring_size() is non_neg_integer(), chash:ring_increment/1 wants pos_integer()
+{exception, riak_core_ring_util, hash_to_partition_id, 2, [ignore], spec_imprecise}.
+
+{module, riak_core_send_msg, #{file => "riak_core/src/riak_core_send_msg.erl", timeout => 10000}}.
+
+{module, riak_core_status, #{file => "riak_core/src/riak_core_status.erl", timeout => 10000}}.
+{exception, riak_core_status, ring_status, 0, [ignore], body_exhaustiveness}. % RingReady = RingReady
+{exception, riak_core_status, active_partitions, 1, [ignore], untyped_value}. % result of an rpc
+
+{module, riak_core_sup, #{file => "riak_core/src/riak_core_sup.erl", timeout => 10000}}.
+
+{module, riak_core_test_util, #{file => "riak_core/src/riak_core_test_util.erl", timeout => 10000}}. % no function outside -ifdef(TEST)
+
+{module, riak_core_util, #{file => "riak_core/src/riak_core_util.erl", timeout => 10000}}.
+{exception, riak_core_util, rfc1123_to_now, 1, [ignore], unchecked_result}. % httpd_util:convert_request_date/1 can give bad_date
+{exception, riak_core_util, make_tmp_dir, 0, [ignore], body_exhaustiveness}. % false -> ok = file:make_dir(TempDir), TempDir
+{exception, riak_core_util, replace_file, 2, [ignore], body_exhaustiveness}. % try ok = file:write(FH, Data)
+{exception, riak_core_util, read_file, 1, [ignore], body_exhaustiveness}. % {ok, FD} = file:open(FName, [read, raw, binary])
+{exception, riak_core_util, read_file, 2, [ignore], body_exhaustiveness}. % case file:read(FD, 4096)
+{exception, riak_core_util, reload_all, 1, [ignore], body_exhaustiveness}. % {ok, Ring} = riak_core_ring_manager:get_my_ring()
+%% {ok, DepApps} = application:get_key(App, applications)
+{exception, riak_core_util, start_app_deps, 1, [ignore], body_exhaustiveness}.
+{exception, riak_core_util, count, 2, [ignore], library_spec}. % lists:foldl/3, the case in the fun
+%% N is non_neg_integer() in the spec, lists:keydelete/3 wants pos_integer()
+{exception, riak_core_util, multi_keydelete, 3, [ignore], spec_imprecise}.
+{exception, riak_core_util, compose, 1, [ignore], body_exhaustiveness}. % [Fun | Rest] = lists:reverse(Funs)
+{exception, riak_core_util, pmap, 2, [ignore], library_spec}. % lists:keysort/2 gives [tuple()]
+{exception, riak_core_util, safe_rpc, 4, [ignore], catch_pattern}. % exit:{noproc, _}
+%% timeout() in the spec, rpc:call/5 wants 0..4294967295 | infinity
+{exception, riak_core_util, safe_rpc, 5, [ignore], number_range}.
+%% {ok, Ring} = riak_core_ring_manager:get_my_ring()
+{exception, riak_core_util, rpc_every_member, 4, [ignore], body_exhaustiveness}.
+%% {ok, Ring} = riak_core_ring_manager:get_my_ring()
+{exception, riak_core_util, rpc_every_member_ann, 4, [ignore], body_exhaustiveness}.
+%% N is integer() in the spec, lists:duplicate/2 wants non_neg_integer()
+{exception, riak_core_util, build_tree, 3, [ignore], spec_imprecise}.
+%% erlang:system_info/1 gives string(), string:to_lower/1 wants a latin1 string
+{exception, riak_core_util, get_arch, 0, [ignore], library_spec}.
+{exception, riak_core_util, format_ip_and_port, 2, [ignore], otp_no_spec}. % inet_parse:ntoa/1
+{exception, riak_core_util, enable_job_class, 2, [ignore], defensive}. % clause for arguments that are not atoms
+{exception, riak_core_util, disable_job_class, 2, [ignore], defensive}. % clause for arguments that are not atoms
+{exception, riak_core_util, job_class_enabled, 2, [ignore], defensive}. % clause for arguments that are not atoms
+%% application:get_env/3: the type of the result is free, every branch of the case is dead
+{exception, riak_core_util, enable_job_class, 1, [ignore], library_spec}.
+%% application:get_env/3: the type of the result is free, every branch of the case is dead
+{exception, riak_core_util, disable_job_class, 1, [ignore], library_spec}.
+%% application:get_env/3: the type of the result is free, every branch of the case is dead
+{exception, riak_core_util, job_class_enabled, 1, [ignore], library_spec}.
+{exception, riak_core_util, job_class_disabled_message, 2, [ignore], partial}.
+{exception, riak_core_util, report_job_request_disposition, 6, [ignore], map_keys}. % logger:debug/3 with a metadata map
+{exception, riak_core_util, get_index_n, 1, [ignore], untyped_value}. % proplists:get_value/2
+%% {ok, Ring} = riak_core_ring_manager:get_my_ring()
+{exception, riak_core_util, preflist_siblings, 1, [ignore], body_exhaustiveness}.
+{exception, riak_core_util, preflist_siblings, 3, [ignore], nonempty_list}. % tl(RevIndices)
+%% {ok, Ring} = riak_core_ring_manager:get_my_ring()
+{exception, riak_core_util, responsible_preflists, 1, [ignore], body_exhaustiveness}.
+%% riak_core_ring:preflist/2 gives integer() indices, index() is non_neg_integer()
+{exception, riak_core_util, responsible_preflists, 3, [ignore], spec_imprecise}.
+
+{module, riak_core_vnode, #{file => "riak_core/src/riak_core_vnode.erl", timeout => 10000}}.
+%% {ok, Ring} = riak_core_ring_manager:get_my_ring()
+{exception, riak_core_vnode, forward_or_vnode_command, 3, [ignore], body_exhaustiveness}.
+{exception, riak_core_vnode, vnode_command, 3, [ignore], body_exhaustiveness}. % case catch Mod:handle_command(..)
+{exception, riak_core_vnode, vnode_resize_command, 4, [ignore], library_spec}. % lists:keyfind/3 gives tuple() | false
+{exception, riak_core_vnode, active, 2, [ignore], body_exhaustiveness}. % {ok, Ring} = riak_core_ring_manager:get_my_ring()
+%% {ok, Ring} = riak_core_ring_manager:get_my_ring()
+{exception, riak_core_vnode, mark_handoff_complete, 5, [ignore], body_exhaustiveness}.
+{exception, riak_core_vnode, maybe_handoff, 3, [ignore], body_exhaustiveness}. % {ok, Ring} = riak_core_ring_manager:get_my_ring()
+%% no clause for {server, undefined, undefined} and the other senders without a pid
+{exception, riak_core_vnode, monitor, 1, [ignore], partial}.
+
+{module, riak_core_vnode_manager, #{file => "riak_core/src/riak_core_vnode_manager.erl", timeout => 10000}}.
+%% {ok, Ring} = riak_core_ring_manager:get_my_ring()
+{exception, riak_core_vnode_manager, repair, 3, [ignore], body_exhaustiveness}.
+%% {ok, Ring} = riak_core_ring_manager:get_my_ring()
+{exception, riak_core_vnode_manager, repair_status, 1, [ignore], body_exhaustiveness}.
+{exception, riak_core_vnode_manager, all_handoffs, 0, [ignore], call_reply}.
+{exception, riak_core_vnode_manager, xfer_complete, 2, [ignore], call_reply}.
+{exception, riak_core_vnode_manager, find_vnodes, 1, [ignore], narrowing}. % is_pid(Pid) andalso is_process_alive(Pid)
+%% {ok, Ring} = riak_core_ring_manager:get_my_ring()
+{exception, riak_core_vnode_manager, maybe_create_repair, 7, [ignore], body_exhaustiveness}.
+%% {ok, Ring} = riak_core_ring_manager:get_my_ring()
+{exception, riak_core_vnode_manager, handle_cast, 2, [ignore], body_exhaustiveness}.
+{exception, riak_core_vnode_manager, idx2vnode, 3, [ignore], untyped_value}. % ets:lookup/2
+{exception, riak_core_vnode_manager, delmon, 2, [ignore], untyped_value}. % ets:lookup/2
+%% riak_core_util:pmap/3 gives list(), dict:from_list/1 wants pairs
+{exception, riak_core_vnode_manager, get_vnode, 3, [ignore], spec_imprecise}.
+%% lists:flatten/1 gives [term()], dict:from_list/1 wants pairs
+{exception, riak_core_vnode_manager, update_handoff, 4, [ignore], library_spec}.
+%% lists:keysearch/3 gives {value, tuple()} | false
+{exception, riak_core_vnode_manager, app_for_vnode_module, 1, [ignore], library_spec}.
+%% {ok, Ring} = riak_core_ring_manager:get_my_ring()
+{exception, riak_core_vnode_manager, maybe_trigger_handoff, 4, [ignore], body_exhaustiveness}.
+%% {ok, Ring} = riak_core_ring_manager:get_my_ring()
+{exception, riak_core_vnode_manager, get_all_vnodes_status, 1, [ignore], body_exhaustiveness}.
+{exception, riak_core_vnode_manager, check_repairs, 1, [ignore], library_spec}. % lists:foldl/3 with a fun on a record
+{exception, riak_core_vnode_manager, maybe_retry, 3, [ignore], partial}.
+{exception, riak_core_vnode_manager, repair_pairs, 2, [ignore], body_exhaustiveness}. % [_, Before] = ..
+{exception, riak_core_vnode_manager, get_repair, 2, [ignore], library_spec}. % lists:keyfind/3 gives tuple()
+{exception, riak_core_vnode_manager, remove_repair, 2, [ignore], library_spec}. % lists:keydelete/3 gives [tuple()]
+{exception, riak_core_vnode_manager, replace_repair, 2, [ignore], library_spec}. % lists:keyreplace/4 gives [tuple()]
+{exception, riak_core_vnode_manager, get_minus_one, 1, [ignore], partial}.
+{exception, riak_core_vnode_manager, get_plus_one, 1, [ignore], partial}.
+
+{module, riak_core_vnode_master, #{file => "riak_core/src/riak_core_vnode_master.erl", timeout => 10000}}.
+{exception, riak_core_vnode_master, handle_call, 3, [ignore], body_exhaustiveness}. % {ok, Pid} = ..
+
+{module, riak_core_vnode_proxy, #{file => "riak_core/src/riak_core_vnode_proxy.erl", timeout => 10000}}.
+%% integer_to_list/1 gives string(), list_to_binary/1 wants iolist()
+{exception, riak_core_vnode_proxy, reg_name, 2, [ignore], library_spec}.
+{exception, riak_core_vnode_proxy, call, 2, [ignore], otp_no_spec}. % gen:call/3
+{exception, riak_core_vnode_proxy, call, 3, [ignore], otp_no_spec}. % gen:call/4
+{exception, riak_core_vnode_proxy, call_reply, 1, [ignore], partial}.
+{exception, riak_core_vnode_proxy, loop, 2, [ignore], otp_no_spec}. % gen:reply/2
+
+{module, riak_core_vnode_proxy_sup, #{file => "riak_core/src/riak_core_vnode_proxy_sup.erl", timeout => 10000}}.
+
+{module, riak_core_vnode_sup, #{file => "riak_core/src/riak_core_vnode_sup.erl", timeout => 10000}}.
+
+{module, riak_core_vnode_worker, #{file => "riak_core/src/riak_core_vnode_worker.erl", timeout => 10000}}.
+%% [VNodeIndex, WorkerArgs, WorkerProps, Caller] = ..
+{exception, riak_core_vnode_worker, start_link, 1, [ignore], body_exhaustiveness}.
+
+{module, riak_core_vnode_worker_pool, #{file => "riak_core/src/riak_core_vnode_worker_pool.erl", timeout => 10000}}.
+{exception, riak_core_vnode_worker_pool, shutdown_pool, 2, [ignore], call_reply}.
+{exception, riak_core_vnode_worker_pool, init, 1, [ignore], unresolved_dep}. % poolboy:start_link/1
+{exception, riak_core_vnode_worker_pool, terminate, 3, [ignore], unresolved_dep}. % poolboy:stop/1
+{exception, riak_core_vnode_worker_pool, ready, 3, [ignore], unresolved_dep}. % poolboy:checkout/2
+{exception, riak_core_vnode_worker_pool, shutdown, 3, [ignore], unresolved_dep}. % poolboy:checkin/2
+{exception, riak_core_vnode_worker_pool, monitor_worker, 4, [ignore], library_spec}. % lists:keyfind/3 gives tuple() | false
+{exception, riak_core_vnode_worker_pool, demonitor_worker, 2, [ignore], library_spec}. % lists:keyfind/3 gives tuple() | false
+{exception, riak_core_vnode_worker_pool, worker_started, 2, [ignore], unresolved_dep}. % poolboy:checkout/2
+{exception, riak_core_vnode_worker_pool, checkin, 2, [ignore], unresolved_dep}. % poolboy:checkin/2
+{exception, riak_core_vnode_worker_pool, exit_worker, 3, [ignore], library_spec}. % lists:keyfind/3 gives tuple() | false
+
+{module, vclock, #{file => "riak_core/src/vclock.erl", timeout => 10000}}.
+{exception, vclock, descends, 2, [ignore], library_spec}. % lists:keyfind/3 gives tuple() | false
+{exception, vclock, get_counter, 2, [ignore], library_spec}. % lists:keyfind/3 gives tuple() | false
+{exception, vclock, get_timestamp, 2, [ignore], library_spec}. % lists:keyfind/3 gives tuple() | false
+{exception, vclock, get_dot, 2, [ignore], library_spec}. % lists:keyfind/3 gives tuple()
+{exception, vclock, valid_dot, 1, [ignore], defensive}. % valid_dot(_) after the clause for a dot
+{exception, vclock, increment, 3, [ignore], library_spec}. % lists:keytake/3 gives {value, tuple(), [tuple()]} | false
+{exception, vclock, get_property, 2, [ignore], library_spec}. % lists:keyfind/3 gives tuple() | false
