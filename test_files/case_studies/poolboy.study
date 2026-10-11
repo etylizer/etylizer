@@ -3,7 +3,10 @@
 %% Case study manifest, see .github/scripts/ety_case_study.
 %%
 %% src of the hex package poolboy 1.5.2, the one riak_core_lite depends on (checksum as in its
-%% rebar.lock), unchanged. overlay_poolboy.erl gives a spec to each of the 18 functions that have none
+%% rebar.lock). One declaration is corrected, no function is changed:
+%%   poolboy.erl, pid_queue(): queue:queue({gen_server:from(), reference(), reference()}), not a queue:queue()
+%%     of anything: these are the items that handle_call/3 puts in and handle_checkin/2 takes out.
+%% overlay_poolboy.erl gives a spec to each of the 18 functions that have none
 %% in the source.
 
 {study, poolboy}.
@@ -14,9 +17,8 @@
 {reason, call_reply, inherent, "reply of a gen_server call, typed by the handle_call clause that answers it"}.
 {reason, ets_value,  inherent, "term() from an ets table, used at the type of its content"}.
 {reason, ets_new,    fixable,  "ets:new/2 gives a tid() when the table is not named"}.
-{reason, start_ret,  inherent, "result of starting a process: {ok, Pid} when it works, the caller lets it crash otherwise"}.
+{reason, start_ret,  fixable,  "result of starting or stopping a process: the caller matches the good case and lets it crash otherwise"}.
 {reason, sup_set,    inherent, "#state.supervisor is undefined | pid(), it is a pid once init/3 has seen worker_module"}.
-{reason, spec_imprecise, real, "imprecise type spec in the source"}.
 
 {module, poolboy, #{file => "poolboy/src/poolboy.erl", overlays => [{specs, "overlay_poolboy.erl"}], timeout => 20000}}.
 {exception, poolboy, checkout, 1, [ignore], blocking}. % checkout(Pool, true)
@@ -30,9 +32,7 @@
 {exception, poolboy, handle_info, 2, [ignore], ets_value}. % case ets:match(...) of [[Pid]] -> ...; [] -> ... end
 {exception, poolboy, terminate, 2, [ignore], sup_set}. % exit(State#state.supervisor, shutdown)
 {exception, poolboy, new_worker, 1, [ignore], start_ret}. % {ok, Pid} = supervisor:start_child(Sup, [])
-%% case queue:out(Waiting) of {{value, {From, CRef, MRef}}, Left} -> ...: pid_queue() is a queue:queue() of anything
-{exception, poolboy, handle_checkin, 2, [ignore], spec_imprecise}.
-{exception, poolboy, handle_worker_exit, 2, [ignore], spec_imprecise}.
+{exception, poolboy, handle_checkin, 2, [ignore], start_ret}. % ok = dismiss_worker(Sup, Pid)
 
 {module, poolboy_sup, #{file => "poolboy/src/poolboy_sup.erl", overlays => [{specs, "overlay_poolboy.erl"}], timeout => 20000}}.
 

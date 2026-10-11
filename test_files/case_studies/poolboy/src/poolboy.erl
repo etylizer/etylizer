@@ -15,7 +15,7 @@
 -ifdef(pre17).
 -type pid_queue() :: queue().
 -else.
--type pid_queue() :: queue:queue().
+-type pid_queue() :: queue:queue({gen_server:from(), reference(), reference()}).
 -endif.
 
 -ifdef(OTP_RELEASE). %% this implies 21 or higher
