@@ -58,9 +58,9 @@
                                     node()},
                                    primary | fallback}].
 
--type iterator() :: term().
+-type iterator() :: chashbin:iterator() | done.
 
--type chashbin() :: term().
+-type chashbin() :: chashbin:chashbin().
 
 -type docidx() :: chash:index().
 
@@ -119,7 +119,7 @@ get_apl_ann(DocIdx, N, UpNodes) ->
 %% @doc Get the active preflist taking account of which nodes are up
 %%      for a given ring/upnodes list and annotate each node with type of
 %%      primary/fallback.
--spec get_apl_ann(binary(), n_val(), ring(),
+-spec get_apl_ann(docidx(), n_val(), ring(),
                   [node()]) -> preflist_ann().
 
 get_apl_ann(DocIdx, N, Ring, UpNodes) ->
@@ -131,7 +131,7 @@ get_apl_ann(DocIdx, N, Ring, UpNodes) ->
 
 %% @doc Get the active preflist for a given {bucket, key} and list of nodes
 %%      and annotate each node with type of primary/fallback.
--spec get_apl_ann(riak_core_bucket:bucket(),
+-spec get_apl_ann({riak_core_bucket:bucket(), binary()},
                   [node()]) -> preflist_ann().
 
 get_apl_ann({Bucket, Key}, UpNodes) ->
@@ -143,8 +143,8 @@ get_apl_ann({Bucket, Key}, UpNodes) ->
 %% @doc Get the active preflist taking account of which nodes are up
 %%      for a given {bucket, key} and annotate each node with type of
 %%      primary/fallback
--spec
-     get_apl_ann_with_pnum(riak_core_bucket:bucket()) -> preflist_with_pnum_ann().
+-spec get_apl_ann_with_pnum({riak_core_bucket:bucket(),
+                             binary()}) -> preflist_with_pnum_ann().
 
 get_apl_ann_with_pnum(BKey) ->
     {ok, Ring} = riak_core_ring_manager:get_my_ring(),
@@ -156,7 +156,7 @@ get_apl_ann_with_pnum(BKey) ->
 %% @doc Get the active preflist taking account of which nodes are up
 %%      for a given chash/upnodes list and annotate each node with type of
 %%      primary/fallback.
--spec get_apl_ann_chbin(binary(), n_val(), chashbin(),
+-spec get_apl_ann_chbin(docidx(), n_val(), chashbin(),
                         [node()]) -> preflist_ann().
 
 get_apl_ann_chbin(DocIdx, N, CHBin, UpNodes) ->
@@ -167,7 +167,7 @@ get_apl_ann_chbin(DocIdx, N, CHBin, UpNodes) ->
     Up ++ find_fallbacks_chbin(Pangs, Itr2, UpNodes1, []).
 
 %% @doc Same as get_apl, but returns only the primaries.
--spec get_primary_apl(binary(), n_val(),
+-spec get_primary_apl(docidx(), n_val(),
                       atom()) -> preflist_ann().
 
 get_primary_apl(DocIdx, N, Service) ->
@@ -176,7 +176,7 @@ get_primary_apl(DocIdx, N, Service) ->
                           riak_core_node_watcher:nodes(Service)).
 
 %% @doc Same as get_apl, but returns only the primaries.
--spec get_primary_apl_chbin(binary(), n_val(),
+-spec get_primary_apl_chbin(docidx(), n_val(),
                             chashbin(), [node()]) -> preflist_ann().
 
 get_primary_apl_chbin(DocIdx, N, CHBin, UpNodes) ->
@@ -187,7 +187,7 @@ get_primary_apl_chbin(DocIdx, N, CHBin, UpNodes) ->
     Up.
 
 %% @doc Same as get_apl, but returns only the primaries.
--spec get_primary_apl(binary(), n_val(), ring(),
+-spec get_primary_apl(docidx(), n_val(), ring(),
                       [node()]) -> preflist_ann().
 
 get_primary_apl(DocIdx, N, Ring, UpNodes) ->

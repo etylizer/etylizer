@@ -641,8 +641,8 @@ reply(Name, {To, Tag}, Reply, Debug, StateName) ->
 %%% Terminate the server.
 %%% ---------------------------------------------------
 
--spec terminate(term(), _, _, atom(), _, _,
-                _) -> no_return().
+-spec terminate(term(), _, _, atom(), atom(), _,
+                [sys:dbg_opt()]) -> no_return().
 
 terminate(Reason, Name, Msg, Mod, StateName, StateData,
           Debug) ->

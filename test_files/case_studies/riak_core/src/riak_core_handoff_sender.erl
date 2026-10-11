@@ -56,8 +56,9 @@
 %% Accumulator for the visit item HOF
 -record(ho_acc,
         {ack  :: non_neg_integer(),
-         error  :: ok | {error, any()}, filter  :: function(),
-         module  :: module(), parent  :: pid(), socket  :: any(),
+         error  :: ok | {error, any()}, filter  :: predicate(),
+         module  :: module(), parent  :: pid(),
+         socket  :: gen_tcp:socket(),
          src_target  :: {non_neg_integer(), non_neg_integer()},
          stats  :: #ho_stats{},
          total_objects  :: non_neg_integer(),

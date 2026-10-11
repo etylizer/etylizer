@@ -57,13 +57,13 @@
 %% A Node is the unique identifier for the owner of a given partition.
 %% An Erlang Pid works well here, but the chash module allows it to
 %% be any term.
--type chash_node() :: term().
+-type chash_node() :: node().
 
 %% Indices into the ring, used as keys for object location, are binary
 %% representations of 160-bit integers.
 -type index() :: <<_:160>>.
 
--type index_as_int() :: integer().
+-type index_as_int() :: non_neg_integer().
 
 -type node_entry() :: {index_as_int(), chash_node()}.
 
@@ -134,7 +134,7 @@ merge_rings(CHashA, CHashB) ->
 
 %% @doc Given the integer representation of a chash key,
 %%      return the next ring index integer value.
--spec next_index(IntegerKey :: integer(),
+-spec next_index(IntegerKey :: non_neg_integer(),
                  CHash :: chash()) -> index_as_int().
 
 next_index(IntegerKey, {NumPartitions, _}) ->
@@ -168,7 +168,8 @@ predecessors(Index, CHash) ->
 %% @doc Given an object key, return the next N NodeEntries in reverse order
 %%      starting at Index.
 -spec predecessors(Index :: index() | index_as_int(),
-                   CHash :: chash(), N :: integer()) -> [node_entry()].
+                   CHash :: chash(),
+                   N :: non_neg_integer()) -> [node_entry()].
 
 predecessors(Index, CHash, N) when is_integer(Index) ->
     predecessors(<<Index:160/integer>>, CHash, N);
@@ -187,7 +188,7 @@ ring_increment(NumPartitions) ->
     (?RINGTOP) div NumPartitions.
 
 %% @doc Return the number of partitions in the ring.
--spec size(CHash :: chash()) -> integer().
+-spec size(CHash :: chash()) -> non_neg_integer().
 
 size(CHash) ->
     {_NumPartitions, Nodes} = CHash, length(Nodes).
@@ -203,7 +204,7 @@ successors(Index, CHash) ->
 %% @doc Given an object key, return the next N NodeEntries in order
 %%      starting at Index.
 -spec successors(Index :: index(), CHash :: chash(),
-                 N :: integer()) -> [node_entry()].
+                 N :: non_neg_integer()) -> [node_entry()].
 
 successors(Index, CHash, N) ->
     Num = max_n(N, CHash),
@@ -230,8 +231,8 @@ update(IndexAsInt, Name, CHash) ->
 %% @private
 %% @doc Return either N or the number of partitions in the ring, whichever
 %%      is lesser.
--spec max_n(N :: integer(),
-            CHash :: chash()) -> integer().
+-spec max_n(N :: non_neg_integer(),
+            CHash :: chash()) -> non_neg_integer().
 
 max_n(N, {NumPartitions, _Nodes}) ->
     erlang:min(N, NumPartitions).

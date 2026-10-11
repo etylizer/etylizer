@@ -247,7 +247,7 @@ equal(VA, VB) -> lists:sort(VA) =:= lists:sort(VB).
 
 % @doc Possibly shrink the size of a vclock, depending on current age and size.
 -spec prune(V :: vclock(), Now :: integer(),
-            BucketProps :: term()) -> vclock().
+            BucketProps :: [{atom(), term()}]) -> vclock().
 
 prune(V, Now, BucketProps) ->
     %% This sort need to be deterministic, to avoid spurious merge conflicts later.

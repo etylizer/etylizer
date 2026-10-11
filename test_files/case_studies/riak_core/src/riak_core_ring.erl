@@ -82,7 +82,7 @@
 
 -record(chstate,
         {nodename  ::
-             term(),          % the Node responsible for this chstate
+             node(),          % the Node responsible for this chstate
          vclock  ::
              vclock:vclock() |
              undefined, % for this chstate object, entries are
@@ -95,15 +95,15 @@
          % bucket N-value, etc)
          clustername  :: {term(), term()} | undefined,
          next  ::
-             [{integer(), term(), term(), [module()],
+             [{chash:index_as_int(), node(), node(), [module()],
                awaiting | complete}],
          members  ::
              [{node(),
                {member_status(), vclock:vclock(),
                 [{atom(), term()}]}}] |
              undefined,
-         claimant  :: term(),
-         seen  :: [{term(), vclock:vclock()}] | undefined,
+         claimant  :: node(),
+         seen  :: [{node(), vclock:vclock()}] | undefined,
          rvsn  :: vclock:vclock() | undefined}).
 
 -type member_status() :: joining | valid | invalid |
@@ -125,10 +125,10 @@
                            NextOwner :: node(), awaiting | complete} |
                           {undefined, undefined, undefined}.
 
--type resize_transfer() :: {{integer(), term()},
-                            ordsets:ordset(node()), awaiting | complete}.
+-type resize_transfer() :: {{chash:index_as_int(), node()},
+                            ordsets:ordset(module()), awaiting | complete}.
 
--type ring_size() :: non_neg_integer().
+-type ring_size() :: pos_integer().
 
 %% @type partition_id(). This integer represents a value in the range [0, ring_size-1].
 -type partition_id() :: non_neg_integer().
@@ -184,7 +184,7 @@ set_chash(State, CHash) ->
 
 %% @doc Produce a list of all nodes that are members of the cluster
 -spec all_members(State :: chstate()) -> [Node ::
-                                              term()].
+                                              node()].
 
 all_members(#chstate{members = Members}) ->
     get_members(Members).
@@ -203,15 +203,16 @@ ready_members(#chstate{members = Members}) ->
 
 %% @doc Provide all ownership information in the form of {Index,Node} pairs.
 -spec all_owners(State :: chstate()) -> [{Index ::
-                                              integer(),
-                                          Node :: term()}].
+                                              chash:index_as_int(),
+                                          Node :: node()}].
 
 all_owners(State) -> chash:nodes(State#chstate.chring).
 
 %% @doc Provide every preflist in the ring, truncated at N.
 -spec all_preflists(State :: chstate(),
-                    N :: integer()) -> [[{Index :: integer(),
-                                          Node :: term()}]].
+                    N :: non_neg_integer()) -> [[{Index ::
+                                                      chash:index_as_int(),
+                                                  Node :: node()}]].
 
 all_preflists(State, N) ->
     [lists:sublist(preflist(Key, State), N)
@@ -248,7 +249,7 @@ fresh() ->
 
 %% @doc Equivalent to fresh/0 but allows specification of the local node name.
 %%      Called by fresh/0, and otherwise only intended for testing purposes.
--spec fresh(NodeName :: term()) -> chstate().
+-spec fresh(NodeName :: node()) -> chstate().
 
 fresh(NodeName) ->
     fresh(application:get_env(riak_core, ring_creation_size,
@@ -258,7 +259,7 @@ fresh(NodeName) ->
 %% @doc Equivalent to fresh/1 but allows specification of the ring size.
 %%      Called by fresh/1, and otherwise only intended for testing purposes.
 -spec fresh(ring_size(),
-            NodeName :: term()) -> chstate().
+            NodeName :: node()) -> chstate().
 
 fresh(RingSize, NodeName) ->
     VClock = vclock:increment(NodeName, vclock:fresh()),
@@ -306,7 +307,8 @@ get_meta(Key, Default, State) ->
     end.
 
 %% @doc return the names of all the custom buckets stored in the ring.
--spec get_buckets(State :: chstate()) -> [term()].
+-spec get_buckets(State ::
+                      chstate()) -> [riak_core_bucket:bucket()].
 
 get_buckets(State) ->
     Keys = dict:fetch_keys(State#chstate.meta),
@@ -318,7 +320,7 @@ get_buckets(State) ->
 
 %% @doc Return the node that owns the given index.
 -spec index_owner(State :: chstate(),
-                  Idx :: chash:index_as_int()) -> Node :: term().
+                  Idx :: chash:index_as_int()) -> Node :: node().
 
 index_owner(State, Idx) ->
     {Idx, Owner} = lists:keyfind(Idx, 1, all_owners(State)),
@@ -328,7 +330,7 @@ index_owner(State, Idx) ->
 %%      this function will error if the ring is shrinking and Idx no longer exists
 %%      in it
 -spec future_owner(chstate(),
-                   chash:index_as_int()) -> term().
+                   chash:index_as_int()) -> node().
 
 future_owner(State, Idx) ->
     index_owner(future_ring(State), Idx).
@@ -359,21 +361,21 @@ future_num_partitions(State = #chstate{chring =
     end.
 
 %% @doc Return the node that is responsible for a given chstate.
--spec owner_node(State :: chstate()) -> Node :: term().
+-spec owner_node(State :: chstate()) -> Node :: node().
 
 owner_node(State) -> State#chstate.nodename.
 
 %% @doc For a given object key, produce the ordered list of
 %%      {partition,node} pairs that could be responsible for that object.
--spec preflist(Key :: binary(),
+-spec preflist(Key :: chash:index(),
                State :: chstate()) -> [{Index :: chash:index_as_int(),
-                                        Node :: term()}].
+                                        Node :: node()}].
 
 preflist(Key, State) ->
     chash:successors(Key, State#chstate.chring).
 
 %% @doc Return a randomly-chosen node from amongst the owners.
--spec random_node(State :: chstate()) -> Node :: term().
+-spec random_node(State :: chstate()) -> Node :: node().
 
 random_node(State) ->
     L = all_members(State),
@@ -409,7 +411,7 @@ random_other_index(State, Exclude)
 
 %% @doc Return a randomly-chosen node from amongst the owners other than this one.
 -spec random_other_node(State :: chstate()) -> Node ::
-                                                   term() | no_node.
+                                                   node() | no_node.
 
 random_other_node(State) ->
     case lists:delete(node(), all_members(State)) of
@@ -419,7 +421,7 @@ random_other_node(State) ->
 
 %% @doc Return a randomly-chosen active node other than this one.
 -spec random_other_active_node(State ::
-                                   chstate()) -> Node :: term() | no_node.
+                                   chstate()) -> Node :: node() | no_node.
 
 random_other_active_node(State) ->
     case lists:delete(node(), active_members(State)) of
@@ -486,8 +488,8 @@ rename_node(State = #chstate{chring = Ring,
 
 %% @doc Determine the integer ring index responsible
 %%      for a chash key.
--spec responsible_index(binary(),
-                        chstate()) -> integer().
+-spec responsible_index(chash:index(),
+                        chstate()) -> chash:index_as_int().
 
 responsible_index(ChashKey, #chstate{chring = Ring}) ->
     <<IndexAsInt:160/integer>> = ChashKey,
@@ -501,15 +503,15 @@ responsible_index(ChashKey, #chstate{chring = Ring}) ->
 %%      for `CHashKey' in the future ring. For regular transitions
 %%      the returned index will always be `OrigIdx'. If the ring is
 %%      resizing the index may be different
--spec future_index(chash:index(), integer(),
-                   chstate()) -> integer() | undefined.
+-spec future_index(chash:index(), chash:index_as_int(),
+                   chstate()) -> chash:index_as_int() | undefined.
 
 future_index(CHashKey, OrigIdx, State) ->
     future_index(CHashKey, OrigIdx, undefined, State).
 
--spec future_index(chash:index(), integer(),
-                   undefined | integer(), chstate()) -> integer() |
-                                                        undefined.
+-spec future_index(chash:index(), chash:index_as_int(),
+                   undefined | integer(),
+                   chstate()) -> chash:index_as_int() | undefined.
 
 future_index(CHashKey, OrigIdx, NValCheck, State) ->
     OrigCount = num_partitions(State),
@@ -571,7 +573,7 @@ check_invalid_future_index(OrigDist, NextCount,
 %% in the current preflist for the key. Returns true if `TargetIdx'
 %% is in the same position in the future preflist for that key.
 %% @see future_index/4
--spec is_future_index(chash:index(), integer(),
+-spec is_future_index(chash:index(), chash:index_as_int(),
                       integer(), chstate()) -> boolean().
 
 is_future_index(CHashKey, OrigIdx, TargetIdx, State) ->
@@ -579,8 +581,8 @@ is_future_index(CHashKey, OrigIdx, TargetIdx, State) ->
                                State),
     FutureIndex =:= TargetIdx.
 
--spec transfer_node(Idx :: integer(), Node :: term(),
-                    MyState :: chstate()) -> chstate().
+-spec transfer_node(Idx :: chash:index_as_int(),
+                    Node :: node(), MyState :: chstate()) -> chstate().
 
 transfer_node(Idx, Node, MyState) ->
     case chash:lookup(Idx, MyState#chstate.chring) of
@@ -660,7 +662,10 @@ increment_ring_version(Node, State) ->
     State#chstate{rvsn = RVsn}.
 
 %% @doc Returns the current membership status for a node in the cluster.
--spec member_status(chstate() | [node()],
+-spec member_status(chstate() |
+                    [{node(),
+                      {member_status(), vclock:vclock(),
+                       [{atom(), term()}]}}],
                     Node :: node()) -> member_status().
 
 member_status(#chstate{members = Members}, Node) ->
@@ -782,7 +787,7 @@ set_owner(State, Node) ->
 
 %% @doc Return all partition indices owned by a node.
 -spec indices(State :: chstate(),
-              Node :: node()) -> [integer()].
+              Node :: node()) -> [chash:index_as_int()].
 
 indices(State, Node) ->
     AllOwners = all_owners(State),
@@ -791,13 +796,13 @@ indices(State, Node) ->
 %% @doc Return all partition indices that will be owned by a node after all
 %%      pending ownership transfers have completed.
 -spec future_indices(State :: chstate(),
-                     Node :: node()) -> [integer()].
+                     Node :: node()) -> [chash:index_as_int()].
 
 future_indices(State, Node) ->
     indices(future_ring(State), Node).
 
--spec all_next_owners(chstate()) -> [{integer(),
-                                      term()}].
+-spec all_next_owners(chstate()) -> [{chash:index_as_int(),
+                                      node()}].
 
 all_next_owners(CState) ->
     Next = riak_core_ring:pending_changes(CState),
@@ -908,8 +913,9 @@ set_pending_resize_abort(State) ->
     update_meta('$resized_ring_abort', true, State).
 
 -spec schedule_resize_transfer(chstate(),
-                               {integer(), term()},
-                               integer() | {integer(), term()}) -> chstate().
+                               {chash:index_as_int(), node()},
+                               chash:index_as_int() |
+                               {chash:index_as_int(), node()}) -> chstate().
 
 schedule_resize_transfer(State, Source, TargetIdx)
     when is_integer(TargetIdx) ->
@@ -930,8 +936,8 @@ schedule_resize_transfer(State, Source, Target) ->
     end.
 
 %% @doc reassign all outbound and inbound resize transfers from `Node' to `NewNode'
--spec reschedule_resize_transfers(chstate(), term(),
-                                  term()) -> chstate().
+-spec reschedule_resize_transfers(chstate(), node(),
+                                  node()) -> chstate().
 
 reschedule_resize_transfers(State = #chstate{next =
                                                  Next},
@@ -1005,9 +1011,9 @@ reschedule_outbound_resize_transfers(State, Idx, Node,
 %% @doc returns the first awaiting resize_transfer for a {SourceIdx, SourceNode}
 %%      pair. If all transfers for the pair are complete, undefined is returned
 -spec awaiting_resize_transfer(chstate(),
-                               {integer(), term()}, atom()) -> {integer(),
-                                                                term()} |
-                                                               undefined.
+                               {chash:index_as_int(), node()},
+                               atom()) -> {chash:index_as_int(), node()} |
+                                          undefined.
 
 awaiting_resize_transfer(State, Source, Mod) ->
     ResizeTransfers = resize_transfers(State, Source),
@@ -1024,7 +1030,8 @@ awaiting_resize_transfer(State, Source, Mod) ->
 %%      is marked as such or `Mod' is contained in the completed modules set. awaiting is
 %%      returned otherwise
 -spec resize_transfer_status(chstate(),
-                             {integer(), term()}, {integer(), term()},
+                             {chash:index_as_int(), node()},
+                             {chash:index_as_int(), node()},
                              atom()) -> awaiting | complete | undefined.
 
 resize_transfer_status(State, Source, Target, Mod) ->
@@ -1049,7 +1056,8 @@ resize_transfer_status(State, Source, Target, Mod) ->
 %%      for `Source' that need to be started to be scheduled before calling
 %%      this fuction
 -spec resize_transfer_complete(chstate(),
-                               {integer(), term()}, {integer(), term()},
+                               {chash:index_as_int(), node()},
+                               {chash:index_as_int(), node()},
                                atom()) -> chstate().
 
 resize_transfer_complete(State, {SrcIdx, _} = Source,
@@ -1118,8 +1126,8 @@ is_resize_complete(#chstate{next = Next}) ->
                 Next).
 
 -spec complete_resize_transfers(chstate(),
-                                {integer(), term()}, atom()) -> [{integer(),
-                                                                  term()}].
+                                {chash:index_as_int(), node()},
+                                atom()) -> [{chash:index_as_int(), node()}].
 
 complete_resize_transfers(State, Source, Mod) ->
     [Target
@@ -1128,21 +1136,22 @@ complete_resize_transfers(State, Source, Mod) ->
         Status =:= complete orelse
           ordsets:is_element(Mod, Mods)].
 
--spec deletion_complete(chstate(), integer(),
+-spec deletion_complete(chstate(), chash:index_as_int(),
                         atom()) -> chstate().
 
 deletion_complete(State, Idx, Mod) ->
     transfer_complete(State, Idx, Mod).
 
 -spec resize_transfers(chstate(),
-                       {integer(), term()}) -> [resize_transfer()].
+                       {chash:index_as_int(),
+                        node()}) -> [resize_transfer()].
 
 resize_transfers(State, Source) ->
     {ok, Transfers} = get_meta({resize, Source}, [], State),
     Transfers.
 
 -spec set_resize_transfers(chstate(),
-                           {integer(), term()},
+                           {chash:index_as_int(), node()},
                            [resize_transfer()]) -> chstate().
 
 set_resize_transfers(State, Source, Transfers) ->
@@ -1174,9 +1183,9 @@ set_resized_ring(State, FutureCHash) ->
 cleanup_after_resize(State) ->
     update_meta('$resized_ring', '$cleanup', State).
 
--spec vnode_type(chstate(), integer()) -> primary |
-                                          {fallback, term()} | future_primary |
-                                          resized_primary.
+-spec vnode_type(chstate(),
+                 chash:index_as_int()) -> primary | {fallback, node()} |
+                                          future_primary | resized_primary.
 
 vnode_type(State, Idx) ->
     vnode_type(State, Idx, node()).
@@ -1283,7 +1292,8 @@ ring_ready_info(State0) ->
 
 %% @doc Marks a pending transfer as completed.
 -spec handoff_complete(State :: chstate(),
-                       Idx :: integer(), Mod :: module()) -> chstate().
+                       Idx :: chash:index_as_int(),
+                       Mod :: module()) -> chstate().
 
 handoff_complete(State, Idx, Mod) ->
     transfer_complete(State, Idx, Mod).

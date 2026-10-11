@@ -64,8 +64,8 @@
 
 -record(state,
         {idxtab, forwarding  :: dict:dict(),
-         handoff  :: dict:dict(), known_modules  :: [term()],
-         never_started  :: [{integer(), term()}],
+         handoff  :: dict:dict(), known_modules  :: [module()],
+         never_started  :: [{partition(), module()}],
          vnode_start_tokens  :: integer(),
          last_ring_id  :: term(), repairs  :: repairs()}).
 
@@ -967,7 +967,7 @@ check_repairs(Repairs) ->
     lists:reverse(lists:foldl(Check, [], Repairs)).
 
 %% TODO: get all this repair, xfer status and Src business figured out.
--spec maybe_retry(repair(), tuple(),
+-spec maybe_retry(repair(), {index(), node()},
                   xfer_status()) -> Xfer2 :: xfer_status().
 
 maybe_retry(R, {SrcPartition, _} = Src, Xfer) ->

@@ -263,7 +263,8 @@ normalise_delta(Delta) ->
 %% node has more vnodes than it should (e.g. [{n1, 6}, {n2, 6}, {n3,
 %% 6}, {n4, 8}, {n5,6} we rebalance the deltas so that select_indices
 %% doesn't leave some node not giving up enough partitions
--spec rebalance_deltas([{node(), integer()}],
+-spec rebalance_deltas([{node(), non_neg_integer(),
+                         integer()}],
                        pos_integer(), pos_integer()) -> [{node(), integer()}].
 
 rebalance_deltas(NodeDeltas, Max, RingSize) ->
@@ -277,10 +278,12 @@ rebalance_deltas(NodeDeltas, Max, RingSize) ->
 
 %% @private increases the delta for (some) nodes giving away
 %% partitions to the max they can keep
--spec increase_keeps(Deltas :: [{node(), integer()}],
+-spec increase_keeps(Deltas :: [{node(), non_neg_integer(),
+                                  integer()}],
                      WantsError :: integer(), Max :: pos_integer(),
-                     Acc :: [{node(), integer()}]) -> Rebalanced :: [{node(),
-                                                                      integer()}].
+                     Acc :: [{node(), non_neg_integer(),
+                              integer()}]) -> Rebalanced :: [{node(),
+                                                              integer()}].
 
 increase_keeps(Rest, 0, _Max, Acc) ->
     [{Node, Delta}
@@ -302,10 +305,12 @@ increase_keeps([NodeDelta | Rest], N, Max, Acc) ->
 
 %% @private increases the delta for (some) nodes taking partitions to the max
 %% they can ask for
--spec increase_takes(Deltas :: [{node(), integer()}],
+-spec increase_takes(Deltas :: [{node(), non_neg_integer(),
+                                  integer()}],
                      WantsError :: integer(), Max :: pos_integer(),
-                     Acc :: [{node(), integer()}]) -> Rebalanced :: [{node(),
-                                                                      integer()}].
+                     Acc :: [{node(), non_neg_integer(),
+                              integer()}]) -> Rebalanced :: [{node(),
+                                                              integer()}].
 
 increase_takes(Rest, 0, _Max, Acc) ->
     [{Node, Delta}
@@ -449,7 +454,7 @@ ceiling(F) ->
 %% preflist violation, by taking a `Shortfall' number nodes from
 %% earlier in the preflist
 -spec solve_tail_violations(integer(), [node()],
-                            integer(), integer()) -> [node()].
+                            integer(), integer()) -> [node() | [node()]].
 
 solve_tail_violations(RingSize, Nodes, Shortfall,
                       MinFetchesPerSeq) ->
@@ -460,7 +465,8 @@ solve_tail_violations(RingSize, Nodes, Shortfall,
 %% @private build the node list by building tail to satisfy TargetN, then removing
 %% the added nodes from earlier segments
 -spec build_nodelist(integer(), [node()], integer(),
-                     integer(), integer(), [node()]) -> [node()].
+                     integer(), integer(),
+                     [node() | [node()]]) -> [node() | [node()]].
 
 build_nodelist(RingSize, Nodes, _Shortfall = 0,
                _NodeCounter, _MinFetchesPerSeq, Acc) ->
@@ -494,7 +500,7 @@ build_nodelist(RingSize, Nodes, Shortfall, NodeCounter,
 
 %% @private Backfill the ring with full sequences
 -spec backfill_ring(integer(), [node()], integer(),
-                    [node()]) -> [node()].
+                    [node() | [node()]]) -> [node() | [node()]].
 
 backfill_ring(_RingSize, _Nodes, _Remaining = 0, Acc) ->
     Acc;

@@ -83,7 +83,7 @@ service_up(Id, Pid) ->
 %% @doc {@link service_up/4} with default options.
 %% @see service_up/4
 -spec service_up(Id :: atom(), Pid :: pid(),
-                 MFA :: mfa()) -> ok.
+                 MFA :: {atom(), atom(), [any()]}) -> ok.
 
 service_up(Id, Pid, MFA) ->
     service_up(Id, Pid, MFA, []).
@@ -121,7 +121,8 @@ service_up(Id, Pid, MFA) ->
 %% any other, using {@link service_down/1}.
 %% @see service_up/2
 -spec service_up(Id :: atom(), Pid :: pid(),
-                 Callback :: mfa(), Options :: health_opts()) -> ok.
+                 Callback :: {atom(), atom(), [any()]},
+                 Options :: health_opts()) -> ok.
 
 service_up(Id, Pid, {Module, Function, Args},
            Options) ->

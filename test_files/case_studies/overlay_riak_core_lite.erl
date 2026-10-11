@@ -133,7 +133,7 @@
 %% the result is the one of set_bucket/2
 -spec 'riak_core_bucket:set_bucket'(fun((riak_core_bucket:bucket(), riak_core_bucket:properties()) -> ok),
                                     riak_core_bucket:bucket(), riak_core_bucket:properties()) ->
-          ok | {error, no_type | [{atom(), atom()}]}.
+          ok | {error, no_type | [{atom(), string()}]}.
 'riak_core_bucket:set_bucket'(_, _, _) -> error(overlay).
 
 -spec 'riak_core_bucket:set_bucket_in_ring'(riak_core_bucket:bucket(), riak_core_bucket:properties()) -> ok.
@@ -177,7 +177,7 @@
 %% the types that the spec of validate/4 spells out
 -type bp_props() :: [{atom(), any()}].
 -type bp_bucket() :: {riak_core_bucket:bucket_type(), undefined | binary()} | binary().
-%% an error of the validation: the property and a message. validate/4 says {atom(), atom()}.
+%% an error of the validation: the property and a message
 -type bp_error() :: {atom(), string()}.
 
 %% the fifth argument is riak_core:bucket_validators(), the sixth the errors so far, a list per validator
@@ -212,10 +212,8 @@
 %% riak_core_ring
 %% ---------------------------------------------------------------------------------------------
 
-%% Nodes: the module says node() for the members of the cluster (members field, claimant/1,
-%% member_status/2, indices/2, pending_change()) and term() for the owner of a chstate, for the
-%% owners in the chash and for the keys of the seen list (nodename and seen fields, owner_node/1,
-%% all_owners/1, transfer_node/3, resize_transfer()). The specs below keep that split.
+%% Nodes: node() everywhere, as the declarations of the module say since step III (the source had
+%% term() for the owner of a chstate, for the owners in the chash and for the keys of the seen list).
 
 %% the members field of a chstate (without undefined): an orddict from the node to its status,
 %% the vclock of the status and the meta data of the member
@@ -224,17 +222,17 @@
 
 %% the seen field of a chstate (without undefined): an orddict from the node to the vclock of
 %% the last ring it has seen
--type ring_seen() :: [{term(), vclock:vclock()}].
+-type ring_seen() :: [{node(), vclock:vclock()}].
 
 %% an element of the next field of a chstate: index, owner, next owner (or '$resize', '$delete'),
 %% the vnode modules that have finished their handoff, status
--type ring_next_entry() :: {chash:index_as_int(), term(), term(), [module()], awaiting | complete}.
+-type ring_next_entry() :: {chash:index_as_int(), node(), node(), [module()], awaiting | complete}.
 
 %% a next entry of a ring that is being resized, the only kind that the reschedule functions take
--type ring_resize_entry() :: {chash:index_as_int(), term(), '$resize', [module()], awaiting | complete}.
+-type ring_resize_entry() :: {chash:index_as_int(), node(), '$resize', [module()], awaiting | complete}.
 
-%% the source or the target of a resize transfer; the specs of the module spell it {integer(), term()}
--type ring_idx_node() :: {chash:index_as_int(), term()}.
+%% the source or the target of a resize transfer
+-type ring_idx_node() :: {chash:index_as_int(), node()}.
 
 %% the record meta_entry (no field has a type): the value and the time of the last change in
 %% gregorian seconds
@@ -255,7 +253,6 @@
 -spec 'riak_core_ring:members'(riak_core_ring:chstate(), [riak_core_ring:member_status()]) -> [node()].
 'riak_core_ring:members'(_, _) -> error(overlay).
 
-%% node() as in claiming_members/1 and down_members/1 (all_members/1 says term())
 -spec 'riak_core_ring:active_members'(riak_core_ring:chstate()) -> [node()].
 'riak_core_ring:active_members'(_) -> error(overlay).
 
@@ -272,7 +269,6 @@
 -spec 'riak_core_ring:check_invalid_future_index'(integer(), pos_integer(), undefined | integer()) -> boolean().
 'riak_core_ring:check_invalid_future_index'(_, _, _) -> error(overlay).
 
-%% node() as the result of claimant/1 (the field says term())
 -spec 'riak_core_ring:set_claimant'(riak_core_ring:chstate(), node()) -> riak_core_ring:chstate().
 'riak_core_ring:set_claimant'(_, _) -> error(overlay).
 
@@ -334,7 +330,7 @@
 'riak_core_ring:set_member'(_, _, _, _, _) -> error(overlay).
 
 %% the pairs are the arguments of transfer_node/3, e.g. the result of all_next_owners/1
--spec 'riak_core_ring:change_owners'(riak_core_ring:chstate(), [{chash:index_as_int(), term()}]) ->
+-spec 'riak_core_ring:change_owners'(riak_core_ring:chstate(), [{chash:index_as_int(), node()}]) ->
           riak_core_ring:chstate().
 'riak_core_ring:change_owners'(_, _) -> error(overlay).
 
@@ -342,7 +338,7 @@
 'riak_core_ring:disowning_indices'(_, _) -> error(overlay).
 
 %% the owner comes from all_owners/1
--spec 'riak_core_ring:disowned_during_resize'(riak_core_ring:chstate(), chash:index_as_int(), term()) -> boolean().
+-spec 'riak_core_ring:disowned_during_resize'(riak_core_ring:chstate(), chash:index_as_int(), node()) -> boolean().
 'riak_core_ring:disowned_during_resize'(_, _, _) -> error(overlay).
 
 -spec 'riak_core_ring:pending_changes'(riak_core_ring:chstate()) -> [ring_next_entry()].
@@ -352,24 +348,24 @@
           riak_core_ring:chstate().
 'riak_core_ring:set_pending_changes'(_, _) -> error(overlay).
 
-%% node and new node are term() as in reschedule_resize_transfers/3; both clauses want a '$resize' entry
--spec 'riak_core_ring:reschedule_resize_operation'(term(), term(), ring_resize_entry(),
+%% node and new node as in reschedule_resize_transfers/3; both clauses want a '$resize' entry
+-spec 'riak_core_ring:reschedule_resize_operation'(node(), node(), ring_resize_entry(),
                                                    riak_core_ring:chstate()) ->
           {ring_resize_entry(), riak_core_ring:chstate()}.
 'riak_core_ring:reschedule_resize_operation'(_, _, _, _) -> error(overlay).
 
 %% the boolean says whether a transfer of the source was changed
--spec 'riak_core_ring:reschedule_inbound_resize_transfers'(ring_idx_node(), term(), term(),
+-spec 'riak_core_ring:reschedule_inbound_resize_transfers'(ring_idx_node(), node(), node(),
                                                            riak_core_ring:chstate()) ->
           {boolean(), riak_core_ring:chstate()}.
 'riak_core_ring:reschedule_inbound_resize_transfers'(_, _, _, _) -> error(overlay).
 
--spec 'riak_core_ring:reschedule_inbound_resize_transfer'(riak_core_ring:resize_transfer(), term(), term()) ->
+-spec 'riak_core_ring:reschedule_inbound_resize_transfer'(riak_core_ring:resize_transfer(), node(), node()) ->
           {riak_core_ring:resize_transfer(), boolean()}.
 'riak_core_ring:reschedule_inbound_resize_transfer'(_, _, _) -> error(overlay).
 
 -spec 'riak_core_ring:reschedule_outbound_resize_transfers'(riak_core_ring:chstate(), chash:index_as_int(),
-                                                            term(), term()) -> riak_core_ring:chstate().
+                                                            node(), node()) -> riak_core_ring:chstate().
 'riak_core_ring:reschedule_outbound_resize_transfers'(_, _, _, _) -> error(overlay).
 
 -spec 'riak_core_ring:clear_all_resize_transfers'(riak_core_ring:chstate()) -> riak_core_ring:chstate().
@@ -385,7 +381,7 @@
 
 %% the result is the one of vnode_type/2
 -spec 'riak_core_ring:vnode_type'(riak_core_ring:chstate(), chash:index_as_int(), node()) ->
-          primary | {fallback, term()} | future_primary | resized_primary.
+          primary | {fallback, node()} | future_primary | resized_primary.
 'riak_core_ring:vnode_type'(_, _, _) -> error(overlay).
 
 %% false is the result of lists:keyfind/3 on the next list
@@ -425,10 +421,10 @@
 'riak_core_ring:internal_ring_changed'(_, _) -> error(overlay).
 
 %% the pairs are the nodename and the meta field of the two rings
--spec 'riak_core_ring:merge_meta'({term(), dict:dict()}, {term(), dict:dict()}) -> dict:dict().
+-spec 'riak_core_ring:merge_meta'({node(), dict:dict()}, {node(), dict:dict()}) -> dict:dict().
 'riak_core_ring:merge_meta'(_, _) -> error(overlay).
 
--spec 'riak_core_ring:pick_val'({term(), ring_meta_entry()}, {term(), ring_meta_entry()}) -> ring_meta_entry().
+-spec 'riak_core_ring:pick_val'({node(), ring_meta_entry()}, {node(), ring_meta_entry()}) -> ring_meta_entry().
 'riak_core_ring:pick_val'(_, _) -> error(overlay).
 
 -spec 'riak_core_ring:log_meta_merge'(dict:dict(), dict:dict(), dict:dict()) -> ok.
@@ -443,7 +439,7 @@
 'riak_core_ring:internal_reconcile'(_, _) -> error(overlay).
 
 %% the first argument is owner_node/1 of the first ring
--spec 'riak_core_ring:reconcile_divergent'(term(), riak_core_ring:chstate(), riak_core_ring:chstate()) ->
+-spec 'riak_core_ring:reconcile_divergent'(node(), riak_core_ring:chstate(), riak_core_ring:chstate()) ->
           riak_core_ring:chstate().
 'riak_core_ring:reconcile_divergent'(_, _, _) -> error(overlay).
 
@@ -489,7 +485,7 @@
 'riak_core_ring:get_members'(_, _) -> error(overlay).
 
 %% the node is a key of the seen list; ring_ready/1 and internal_reconcile/2 give owner_node/1
--spec 'riak_core_ring:update_seen'(term(), riak_core_ring:chstate()) -> riak_core_ring:chstate().
+-spec 'riak_core_ring:update_seen'(node(), riak_core_ring:chstate()) -> riak_core_ring:chstate().
 'riak_core_ring:update_seen'(_, _) -> error(overlay).
 
 -spec 'riak_core_ring:equal_cstate'(riak_core_ring:chstate(), riak_core_ring:chstate()) -> boolean().
@@ -517,8 +513,8 @@
 -type util_bkey() :: {riak_core_bucket:bucket(), binary()}.
 
 %% the records riak_core_fold_req_v1 and riak_core_fold_req_v2 of riak_core_vnode.hrl
--type util_fold_req_v1() :: {riak_core_fold_req_v1, fun(), term()}.
--type util_fold_req_v2() :: {riak_core_fold_req_v2, fun(), term(), boolean(), list()}.
+-type util_fold_req_v1() :: {riak_core_fold_req_v1, fun((term(), term(), term()) -> term()), term()}.
+-type util_fold_req_v2() :: {riak_core_fold_req_v2, fun((term(), term(), term()) -> term()), term(), boolean(), list()}.
 %% make_fold_reqv/5 wants a fun of arity 3: key, value and accumulator to the new accumulator
 -type util_fold_fun() :: fun((term(), term(), term()) -> term()).
 
@@ -666,7 +662,6 @@
 %% riak_core_apl
 %% ---------------------------------------------------------------------------------------------
 
-%% docidx() as in get_apl/3; get_apl_ann/4 says binary()
 -spec 'riak_core_apl:get_apl_ann'(riak_core_apl:docidx(), riak_core_apl:n_val(), [node()]) ->
           riak_core_apl:preflist_ann().
 'riak_core_apl:get_apl_ann'(_, _, _) -> error(overlay).
@@ -678,8 +673,7 @@
 -spec 'riak_core_apl:offline_owners'(atom()) -> riak_core_apl:preflist().
 'riak_core_apl:offline_owners'(_) -> error(overlay).
 
-%% a service or the ordset of the nodes that are up. chashbin:chashbin() as in get_apl_chbin/4;
-%% the type chashbin() of riak_core_apl is term().
+%% a service or the ordset of the nodes that are up
 -spec 'riak_core_apl:offline_owners'(atom() | [node()], chashbin:chashbin()) -> riak_core_apl:preflist().
 'riak_core_apl:offline_owners'(_, _) -> error(overlay).
 
@@ -690,7 +684,7 @@
 %% riak_core_ring_util
 %% ---------------------------------------------------------------------------------------------
 
-%% a preflist of riak_core_ring:all_preflists/2, which says Node :: term() for the owner
+%% a preflist of riak_core_ring:all_preflists/2
 -type ring_util_preflist() :: [{chash:index_as_int(), node()}].
 
 -spec 'riak_core_ring_util:assign'(chash:index_as_int(), node()) -> ok.
@@ -1346,9 +1340,9 @@
 %% riak_core_claimant
 %% ---------------------------------------------------------------------------------------------
 
-%% what can be staged for a node. action() and the changes field of the state name only the first four;
-%% resize_ring/1 and abort_resize/0 stage the other two through the same stage/2.
--type cl_action() :: riak_core_claimant:action() | {resize, integer()} | abort_resize.
+%% what can be staged for a node: action() of the module, which since step III has the resize and the
+%% abort_resize that resize_ring/1 and abort_resize/0 stage through the same stage/2.
+-type cl_action() :: riak_core_claimant:action().
 
 %% the staged changes, an orddict from the node to its action (the changes field of the state)
 -type cl_changes() :: [{node(), cl_action()}].
@@ -1384,8 +1378,7 @@
 
 %% an element of the list of pending ownership changes of a ring: index, owner, next owner ('$resize'
 %% while the ring is resized), the modules whose handoff is complete, status. riak_core_ring has no name
-%% for it. The next field of its chstate record says term() for the two owners; they are nodes here, as
-%% in riak_core_ring:pending_change(): the claimant compares them with the members of the ring.
+%% for it; the two owners are nodes, as in the next field of its chstate record.
 -type cl_next() :: {chash:index_as_int(), node(), node(), [module()], awaiting | complete}.
 
 %% a Log fun (log/2 or no_log/2) gets the kind of the event and its data:
@@ -1538,7 +1531,8 @@
 
 %% the second argument is the staged changes that valid_request/4 hands over. The only clause is for [],
 %% a resize together with other staged changes ends in a function_clause error.
--spec 'riak_core_claimant:valid_resize_request'(integer(), cl_changes(), riak_core_claimant:riak_core_ring()) ->
+-spec 'riak_core_claimant:valid_resize_request'(riak_core_ring:ring_size(), cl_changes(),
+                                                riak_core_claimant:riak_core_ring()) ->
           true | {error, same_size | single_node | pending_changes}.
 'riak_core_claimant:valid_resize_request'(_, _, _) -> error(overlay).
 
@@ -2027,7 +2021,8 @@
 %% ---------------------------------------------------------------------------------------------
 
 %% the record state as a tuple
--type wp_state() :: {state, queue:queue() | list(), pid(), list(), fifo | filo, undefined | {pid(), reference()}}.
+-type wp_state() :: {state, queue:queue() | list(), pid(), [{pid(), reference(), term(), term()}], fifo | filo,
+                     undefined | gen_statem:from()}.
 %% the names of the states of the gen_statem
 -type wp_state_name() :: ready | queue | shutdown.
 %% work as it waits in the queue: the cast of handle_work/3
@@ -2039,8 +2034,8 @@
 %% the casts, and the message of the monitor of a worker
 -type wp_cast() :: wp_work() | worker_start | {checkin, pid()}.
 -type wp_down() :: {'DOWN', reference(), process, pid(), term()}.
-%% the From of a gen_statem call. The field shutdown, which keeps it, says {pid(), reference()}.
--type wp_from() :: {pid(), term()}.
+%% the From of a gen_statem call, which the field shutdown keeps
+-type wp_from() :: gen_statem:from().
 %% what a cast leads to: the next state is ready or queue, or stays shutdown (see worker_started/2)
 -type wp_next() :: {next_state, wp_state_name(), wp_state()}.
 %% the call of shutdown_pool/2 in the states ready and queue: the state timeout forces the shutdown
@@ -2158,10 +2153,11 @@
 
 %% The index of a vnode is written partition() throughout, as in repair/3. index() of
 %% riak_core_handoff.hrl is the same type and comes in through mod_partition() and known_handoff().
-%% The owner of an index is a node(), as in repair_pairs/2 and #repair{}; riak_core_ring says term().
+%% The owner of an index is a node(), as in repair_pairs/2, #repair{} and riak_core_ring.
 
 %% #state{}. idxtab has no declared type: it is the table that find_vnodes/1 creates.
--type vm_state() :: {state, ets:tab(), dict:dict(), dict:dict(), [term()], [{integer(), term()}], integer(),
+-type vm_state() :: {state, ets:tab(), dict:dict(), dict:dict(), [module()],
+                     [{riak_core_vnode_manager:partition(), module()}], integer(),
                      term(), riak_core_vnode_manager:repairs()}.
 
 %% #idxrec{} and #monrec{}, the rows of the table; none of their fields has a declared type
@@ -2173,16 +2169,15 @@
 -type vm_vnode() :: {module(), riak_core_vnode_manager:partition(), pid()}.
 
 %% chashbin:chashbin(), which this module only hands on (should_handoff/4 ignores it) and never names.
-%% The last field is erlang:tuple(node()) in chashbin.erl.
+%% The last field is the tuple of the nodes.
 -type vm_chashbin() :: {chashbin, pos_integer(), <<_:_*176>>, tuple()}.
 
 %% riak_core_ring_manager:get_ring_id/0: epoch and counter. The field last_ring_id says term().
 -type vm_ring_id() :: {non_neg_integer(), non_neg_integer()}.
 
 %% an entry of riak_core_ring:pending_changes/1: index, owner, next owner (a node, '$resize' or
-%% '$delete'), the modules that are done, status. The two owners are term() in the field next of
-%% #chstate{}; this module only compares the owner with node().
--type vm_transfer() :: {riak_core_vnode_manager:partition(), term(), term(), [module()], awaiting | complete}.
+%% '$delete'), the modules that are done, status, as the field next of #chstate{} has it
+-type vm_transfer() :: {riak_core_vnode_manager:partition(), node(), node(), [module()], awaiting | complete}.
 
 %% the target of a handoff as in known_handoff(): a node or an action of a resize
 -type vm_target() :: node() | '$resize' | '$delete'.
@@ -3172,7 +3167,8 @@
 %% the record ho_acc, the accumulator of the fold: ack, error, filter, module, parent, socket, src_target,
 %% stats, total_objects, total_bytes, use_batching, item_queue, item_queue_length, item_queue_byte_size,
 %% acksync_threshold, acksync_timer, type, notsent_acc, notsent_fun
--type hs_acc() :: {ho_acc, non_neg_integer(), ok | {error, any()}, function(), module(), pid(), any(),
+-type hs_acc() :: {ho_acc, non_neg_integer(), ok | {error, any()}, riak_core_handoff_sender:predicate(), module(),
+                   pid(), gen_tcp:socket(),
                    {non_neg_integer(), non_neg_integer()}, riak_core_handoff_sender:ho_stats(),
                    non_neg_integer(), non_neg_integer(), boolean(), [binary()], non_neg_integer(),
                    non_neg_integer(), non_neg_integer(), timer:tref() | undefined,
@@ -3380,7 +3376,7 @@
           riak_core_ring:riak_core_ring().
 'riak_core_gossip:remove_from_cluster'(_, _, _) -> error(overlay).
 
-%% seed, ring, its owners and the node that leaves. riak_core_ring:all_owners/1 says term() for an owner.
+%% seed, ring, its owners and the node that leaves
 -spec 'riak_core_gossip:attempt_simple_transfer'(erlang:timestamp(), riak_core_ring:riak_core_ring(),
                                                  [{integer(), node()}], node()) ->
           {ok, riak_core_ring:riak_core_ring()} | target_n_fail.
@@ -3410,8 +3406,7 @@
 %% bucket_fixups, ...): the application, undefined if it is not known, and its module
 -type core_app_mod() :: {atom(), module()}.
 
-%% a health check of a service: riak_core_node_watcher applies it to [ServicePid | Args].
-%% riak_core_node_watcher:service_up/3 calls it mfa(), which has an arity in the third place.
+%% a health check of a service: riak_core_node_watcher applies it to [ServicePid | Args]
 -type core_health_mfa() :: {module(), atom(), [term()]}.
 
 %% ---------------------------------------------------------------------------------------------
@@ -3938,8 +3933,8 @@
 -spec 'riak_core_node_watcher:init'([]) -> {ok, nw_state()}.
 'riak_core_node_watcher:init'(_) -> error(overlay).
 
-%% the callback of a health check is typed as the record field that takes it: the third component is
-%% the list of arguments (start_health_check/2 applies it), not the arity of the mfa() in service_up/4
+%% the callback of a health check is typed as the record field that takes it and as service_up/4: the
+%% third component is the list of arguments (start_health_check/2 applies it)
 -spec 'riak_core_node_watcher:handle_call'
         ({set_bcast_mod, module(), atom()} | get_avsn | {service_up, atom(), pid()} |
          {service_up, atom(), pid(), {atom(), atom(), [any()]}, riak_core_node_watcher:health_opts()} |
@@ -4112,7 +4107,7 @@
 -type rm_trans_reply() :: {ok, riak_core_ring:riak_core_ring()} | not_changed | {not_changed, term()}.
 
 %% chashbin:chashbin(). riak_core_ring_manager only calls chashbin and its callers do not all load it,
-%% so the record is spelled out. The last field is erlang:tuple(node()) in chashbin.erl.
+%% so the record is spelled out. The last field is the tuple of the nodes.
 -type rm_chashbin() :: {chashbin, pos_integer(), <<_:_*176>>, tuple()}.
 
 %% the error reasons of file:list_dir/1

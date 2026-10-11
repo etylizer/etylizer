@@ -504,7 +504,8 @@ send_handoff(HOType, ModSrcTarget, Node, Pid, HS,
 %%      `Origin' is the node this request originated from so a reply
 %%      can't be sent on completion.
 -spec send_handoff(ho_type(),
-                   {module(), index(), index()}, node(), pid(), list(),
+                   {module(), index(), index()}, node(), pid(),
+                   [handoff_status()],
                    {predicate() | none, {module(), atom()} | none}, node(),
                    [{atom(), term()}]) -> {ok, handoff_status()} |
                                           {error, max_concurrency} |

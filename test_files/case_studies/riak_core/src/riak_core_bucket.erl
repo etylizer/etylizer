@@ -64,7 +64,8 @@ append_bucket_defaults(Items) when is_list(Items) ->
 %% exist, or is not active, {error, no_type} is returned.
 -spec set_bucket(bucket(), [{atom(), any()}]) -> ok |
                                                  {error,
-                                                  no_type | [{atom(), atom()}]}.
+                                                  no_type |
+                                                  [{atom(), string()}]}.
 
 set_bucket({<<"default">>, Name}, BucketProps) ->
     set_bucket(Name, BucketProps);
@@ -147,7 +148,8 @@ reset_bucket(Bucket) ->
 
 %% @doc Get bucket properties `Props' for all the buckets in the given
 %%      `Ring' and stored in metadata
--spec get_buckets(riak_core_ring()) -> Props :: list().
+-spec get_buckets(riak_core_ring()) -> Props ::
+                                           [properties()].
 
 get_buckets(Ring) ->
     RingNames = riak_core_ring:get_buckets(Ring),

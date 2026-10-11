@@ -323,7 +323,7 @@ multi_keydelete(KeysToDelete, TupleList) ->
 %% @doc Returns a copy of `TupleList' where the Nth occurrence of a tuple whose
 %% first element compares equal to any key in `KeysToDelete' is deleted, if
 %% there is such a tuple.
--spec multi_keydelete([atom()], non_neg_integer(),
+-spec multi_keydelete([atom()], pos_integer(),
                       [tuple()]) -> [tuple()].
 
 multi_keydelete(KeysToDelete, N, TupleList) ->
@@ -564,8 +564,8 @@ multicall_ann(Nodes, Mod, Fun, Args, Timeout) ->
 %%      the array is logically wrapped around to ensure leaf nodes also
 %%      have children by giving them backedges to other elements.
 
--spec build_tree(N :: integer(), Nodes :: [term()],
-                 Opts :: [term()]) -> orddict:orddict().
+-spec build_tree(N :: non_neg_integer(), Nodes :: [Node],
+                 Opts :: [term()]) -> orddict:orddict(Node, [Node]).
 
 build_tree(N, Nodes, Opts) ->
     case lists:member(cycles, Opts) of
@@ -816,8 +816,9 @@ job_class_enabled(Class) ->
           false
     end.
 
--spec job_class_disabled_message(ReturnType :: atom(),
-                                 Class :: term()) -> binary() | string().
+-spec job_class_disabled_message(ReturnType :: binary,
+                                 Class :: term()) -> binary();
+                                (ReturnType :: text, Class :: term()) -> string().
 
 %% @doc The error message to be returned to a client for a disabled job class.
 %% WARNING:

@@ -101,9 +101,10 @@ shutdown_pool(Pid, Wait) ->
 
 -record(state,
         {queue  :: queue:queue() | list(), pool  :: pid(),
-         monitors = []  :: list(),
+         monitors = []  ::
+             [{pid(), reference(), term(), term()}], % worker, monitor, sender, work
          queue_strategy = fifo  :: fifo | filo,
-         shutdown  :: undefined | {pid(), reference()}}).
+         shutdown  :: undefined | gen_statem:from()}).
 
 callback_mode() -> [state_functions, state_enter].
 

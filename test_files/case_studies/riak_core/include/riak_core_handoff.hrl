@@ -32,7 +32,7 @@
           direction             :: inbound | outbound,
           transport_pid         :: pid(),
           transport_mon         :: reference(),
-          timestamp             :: tuple(),
+          timestamp             :: erlang:timestamp(),
           status                :: any(),
           stats                 :: riak_core_handoff_dict(),
           vnode_pid             :: pid() | undefined,
@@ -40,7 +40,7 @@
           type                  :: ho_type() | undefined,
           req_origin            :: node(),
           filter_mod_fun        :: {module(), atom()} | undefined,
-          size                  :: {function(), dynamic} | {non_neg_integer(), bytes | objects}  | undefined
+          size                  :: {fun(() -> {non_neg_integer(), bytes | objects} | undefined), dynamic} | {non_neg_integer(), bytes | objects}  | undefined
         }).
 -type handoff_status() :: #handoff_status{}.
 

@@ -223,8 +223,8 @@
 -record(state,
         {index  :: partition(), mod  :: module(),
          modstate  :: term(),
-         forward  :: node() | [{integer(), node()}],
-         handoff_target = none  :: none | {integer(), node()},
+         forward  :: node() | [{partition(), node()}],
+         handoff_target = none  :: none | {partition(), node()},
          handoff_pid  :: pid() | undefined,
          handoff_type  ::
              riak_core_handoff_manager:ho_type() | undefined,
@@ -250,7 +250,7 @@ send_command(Pid, Request) ->
 
 %% Sends a command to the FSM that called it after Time
 %% has passed.
--spec send_command_after(integer(),
+-spec send_command_after(non_neg_integer(),
                          term()) -> reference().
 
 send_command_after(Time, Request) ->
@@ -1214,7 +1214,7 @@ mod_set_forwarding(Forward,
 -type state() :: #state{}.
 
 %% @doc Reveal the underlying module state for testing
--spec get_modstate(pid()) -> {atom(), state()}.
+-spec get_modstate(pid()) -> {atom(), term()}.
 
 get_modstate(Pid) ->
     {_StateName, State} =

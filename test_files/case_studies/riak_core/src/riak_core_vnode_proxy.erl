@@ -125,7 +125,7 @@ call(Name, Msg, Timeout) ->
     call_reply(catch gen:call(Name, '$vnode_proxy_call',
                               Msg, Timeout)).
 
--spec call_reply({atom(), term()}) -> term().
+-spec call_reply({ok, term()} | {'EXIT', term()}) -> term().
 
 call_reply({ok, Res}) -> Res;
 call_reply({'EXIT', Reason}) -> {error, Reason}.

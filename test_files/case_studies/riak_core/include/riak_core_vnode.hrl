@@ -1,5 +1,6 @@
 -type sender_type() :: fsm | server | raw.
--type sender() :: {sender_type(), reference() | tuple(), pid()} |
+-type sender() :: {fsm | raw, reference() | tuple(), pid()} |
+                  {server, reference() | tuple() | undefined, {pid(), term()}} | % the From of a gen_server call
                   %% TODO: Double-check that these special cases are kosher
                     {fsm, undefined, pid()} | % what are these special cases and what is the reference used for??
                     {server, undefined, undefined} | % special case in riak_core_vnode_master.erl
@@ -21,10 +22,10 @@
           request :: vnode_req()}).
 
 -record(riak_core_fold_req_v1, {
-          foldfun :: fun(),
+          foldfun :: fun((term(), term(), term()) -> term()),
           acc0 :: term()}).
 -record(riak_core_fold_req_v2, {
-          foldfun :: fun(),
+          foldfun :: fun((term(), term(), term()) -> term()),
           acc0 :: term(),
           forwardable :: boolean(),
           opts = [] :: list()}).

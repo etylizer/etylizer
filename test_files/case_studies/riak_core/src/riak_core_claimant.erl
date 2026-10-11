@@ -37,7 +37,8 @@
          handle_info/2, terminate/2, code_change/3]).
 
 -type action() :: leave | remove | {replace, node()} |
-                  {force_replace, node()}.
+                  {force_replace, node()} |
+                  {resize, riak_core_ring:ring_size()} | abort_resize.
 
 -type
      riak_core_ring() :: riak_core_ring:riak_core_ring().
@@ -80,7 +81,7 @@ start_link() ->
 %%      (eg. the initial transition that applies the staged changes, and
 %%      any additional transitions triggered by later rebalancing).
 -spec plan() -> {error, term()} |
-                {ok, [action()], [ring_transition()]}.
+                {ok, [{node(), action() | join}], [ring_transition()]}.
 
 plan() -> gen_server:call(claimant(), plan, infinity).
 
@@ -88,7 +89,7 @@ plan() -> gen_server:call(claimant(), plan, infinity).
 %%      A commit is only allowed to succeed if the ring is ready and if the
 %%      current set of changes matches those computed by the most recent
 %%      call to plan/0.
--spec commit() -> ok | {error, term()}.
+-spec commit() -> ok | error | {error, term()}.
 
 commit() ->
     gen_server:call(claimant(), commit, infinity).
@@ -127,7 +128,8 @@ force_replace(Node, NewNode) ->
 %%      After completion, the new ring is installed and data is safely
 %%      removed from partitons no longer owner by a node or present
 %%      in the ring.
--spec resize_ring(integer()) -> ok | {error, atom()}.
+-spec resize_ring(riak_core_ring:ring_size()) -> ok |
+                                                 {error, atom()}.
 
 resize_ring(NewRingSize) ->
     %% use the node making the request. it will be ignored

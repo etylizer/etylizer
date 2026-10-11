@@ -40,7 +40,7 @@ merge(Overriding, Other) ->
                binary(),
                undefined | [{atom(), any()}],
                [{atom(), any()}]) -> {ok, [{atom(), any()}]} |
-                                     {error, [{atom(), atom()}]}.
+                                     {error, [{atom(), string()}]}.
 
 validate(CreateOrUpdate, Bucket, ExistingProps,
          BucketProps) ->

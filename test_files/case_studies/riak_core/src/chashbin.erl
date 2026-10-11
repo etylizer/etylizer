@@ -31,7 +31,7 @@
 -export([iterator/2, exact_iterator/2, itr_value/1,
          itr_pop/2, itr_next/1, itr_next_while/2]).
 
--export_type([chashbin/0]).
+-export_type([chashbin/0, iterator/0]).
 
 %% 160 bits for hash, 16 bits for node id
 %% these macros break edoc
@@ -52,13 +52,13 @@
 
 -record(chashbin,
         {size  :: pos_integer(), owners  :: owners_bin(),
-         nodes  :: erlang:tuple(node())}).
+         nodes  :: tuple()}).  % of node()
 
 -else.
 
 -record(chashbin,
         {size  :: pos_integer(), owners  :: owners_bin(),
-         nodes  :: erlang:tuple(node())}).
+         nodes  :: tuple()}).  % of node()
 
 -endif.
 
@@ -189,9 +189,9 @@ itr_next(Itr = #iterator{pos = Pos, start = Start,
 %% @doc
 %% Advance the iterator `N' times, returning a list of the traversed
 %% `{Index, Owner}' pairs as well as the new iterator state
--spec itr_pop(pos_integer(), iterator()) -> {[{index(),
-                                               node()}],
-                                             iterator()}.
+-spec itr_pop(non_neg_integer(), iterator()) -> {[{index(),
+                                                   node()}],
+                                                 iterator()}.
 
 itr_pop(N, Itr = #iterator{pos = Pos, chbin = CHBin}) ->
     #chashbin{size = Size, owners = Bin, nodes = Nodes} =
@@ -233,7 +233,8 @@ itr_next_while(Pred, Itr) ->
 
 %% Convert list of {Index, Owner} pairs into `chashbin' binary representation
 -spec create_bin([{index(), node()}],
-                 [{node(), pos_integer()}], binary()) -> owners_bin().
+                 [{node(), pos_integer()}],
+                 owners_bin()) -> owners_bin().
 
 create_bin([], _, Bin) -> Bin;
 create_bin([{Idx, Owner} | Owners], Nodes, Bin) ->
