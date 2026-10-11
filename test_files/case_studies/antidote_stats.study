@@ -1,0 +1,25 @@
+#!/usr/bin/env -S sh -c 'exec "$(dirname "$0")/../../.github/scripts/ety_case_study" "$0" "$@"'
+%% -*- erlang -*-
+%% Case study manifest, see .github/scripts/ety_case_study.
+%%
+%% apps/antidote_stats (src) of https://github.com/AntidoteDB/antidote as of commit
+%% ed9cfbcaad53c9b5de15bfcef7befef44b5b4221, unchanged. Its dependencies (prometheus, elli) are not
+%% here.
+
+{study, antidote_stats}.
+
+%% {reason, Id, Class, Text}. Class: real (the program or its spec is wrong), inherent (correct at
+%% run time, not provable by types), fixable (gap in the type system or checker), unknown.
+{reason, app_env,        inherent, "value from the application environment, used at the type of the setting"}.
+{reason, spec_imprecise, real,     "imprecise type spec in the source"}.
+{reason, unresolved_dep, fixable,  "a module of another app is not on the search path of the driver"}.
+
+{module, antidote_stats_app, #{file => "antidote_stats/src/antidote_stats_app.erl", timeout => 10000}}.
+
+{module, antidote_stats_collector, #{file => "antidote_stats/src/antidote_stats_collector.erl", timeout => 10000}}.
+{exception, antidote_stats_collector, init, 1, [ignore], spec_imprecise}. % init([term()]), the clause is init([])
+{exception, antidote_stats_collector, handle_cast, 2, [ignore], unresolved_dep}. % prometheus_counter, prometheus_gauge, prometheus_histogram
+{exception, antidote_stats_collector, init_metrics, 0, [ignore], unresolved_dep}. % prometheus_counter, prometheus_gauge, prometheus_histogram
+
+{module, antidote_stats_sup, #{file => "antidote_stats/src/antidote_stats_sup.erl", timeout => 10000}}.
+{exception, antidote_stats_sup, init, 1, [ignore], app_env}. % {ok, MetricsPort} = application:get_env(antidote_stats, metrics_port)
