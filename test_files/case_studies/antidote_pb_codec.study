@@ -16,16 +16,39 @@
 %% that have none in the source. 49 functions type check, 22 do not, 3 of them for a declaration of
 %% the source.
 %%
-%% Declarations (step III): no flag, no assertion, no library overlay. 49 functions type check, 22
-%% do not and are ignored; none of them for a declaration any more (no reason of the class real).
-%% The corrections make 2 functions type check: encode_message/1 and encode_error_code/1.
-%% encode_response/1 gets past the declaration and fails with another first error, see its
-%% exception. 2 functions fail newly, decode_bound_object/1 and decode_map_key/1: now that a
+%% Declarations (step III): 49 functions type check, 22 do not, none of them for a declaration any
+%% more. The corrections make 2 functions type check: encode_message/1 and encode_error_code/1.
+%% encode_response/1 gets past the declaration and fails with another first error (the read results
+%% it has tagged). 2 functions fail newly, decode_bound_object/1 and decode_map_key/1: now that a
 %% message() is a request() or a response(), their specs in the overlay give the types of the
 %% module, a binary() where the generated records say iodata(). By class: 20 for what types do not
 %% show (9 the record types of gpb, wider than a decoded message; 5 a partial function; 3 a value
 %% whose type depends on the tag next to it; 2 a match in the body; 1 a property list), 2 for the
 %% checker (element/2, a pattern that is a bound variable).
+%%
+%% Flags and assertions (step IV), no library overlay; the source is that of step III. 62 functions
+%% type check as they are, 7 with a flag (without the exhaustiveness check of their clauses), 2 are
+%% ignored; 79 assertions (75 assert_type, 4 assert_pattern) in 16 functions. Each flag and each
+%% assertion is needed: without it exactly its function fails. No exception has a reason of the
+%% class real or unknown.
+%%   Flags: 5 partial functions (the names and the codes of the messages, the operation of an
+%%     update and the value of a read result, of which the encoder always sets one, and
+%%     encode_crdt_type/1); decode_flag_update/1 and decode_message/1 for clauses with a field true
+%%     and with the field false, which gpb types boolean() | 0 | 1.
+%%   An assertion is an unchecked cast. 37 say what a decoded message holds where the generated
+%%     records say more: a binary() for iodata(), a list for [T] | undefined, a boolean(), the
+%%     values of an enum; 26 of them are in decode_message/1, which gives a request() or a
+%%     response() with them. 12 more there are for an optional field that the peer always sets in
+%%     the case at hand: the transaction, the commit time or the descriptor of a success, the error
+%%     code of a failure. 18 give a value the type that goes with the CRDT type or the tag of its
+%%     clause (encode_update_operation/2, encode_read_object_resp/2, and the read results that
+%%     encode_response/1 has tagged). 2 say that decode_request/1 decodes a request and
+%%     decode_response/1 a response, 2 that the binary they take has a first byte, 2 give a
+%%     property its type. 6 are for the checker: the operation after a guard Op /= undefined, and
+%%     element(1, Msg).
+%%   Ignored: decode_counter_update/1, a case whose last pattern is its scrutinee variable, which no
+%%     assertion and no flag closes; decode_map_update/1, where the assertion that the removed keys
+%%     are a list would sit on an expression whose hash crashes the engine.
 %%
 %% Declarations corrected in the source: 14 in antidote_pb_codec.erl, old -> new. Only -type, -spec
 %% and -export_type; no function body, clause head, guard, macro or comment, and nothing in the
@@ -112,53 +135,146 @@
 {reason, body_exhaustiveness, inherent, "exhaustiveness of a match inside the body"}.
 {reason, partial,             inherent, "partial function, the callers rule out the missing case"}.
 {reason, gpb_types,           inherent, "the generated record types are wider than a decoded message: iodata() for a binary, [T] | undefined, boolean() | 0 | 1, an enum | integer()"}.
+{reason, gpb_decoder,         unknown,  "to review: the generated decoder builds narrower shapes than the generated record types (repeated fields are lists, bytes are binaries, booleans are booleans); proving it needs the code of the decoder"}.
+{reason, source_bug,          real,     "error in the program"}.
+{reason, optional_field,      inherent, "an optional field of a message that the peer always sets in this case: the result of a success, the error code of a failure"}.
+{reason, decoded,             inherent, "a decoded message: its code says whether it is a request or a response, the peer sends the kind that the caller decodes"}.
 {reason, proplist,            inherent, "value from a property list, used at the type of the property"}.
 {reason, dependent,           inherent, "the type of a value depends on the tag or CRDT type given next to it"}.
 {reason, element_type,        fixable,  "element/2 is not typed by the tuple it is applied to"}.
+{reason, neq_guard,           fixable,  "a guard X /= undefined does not narrow the type of X"}.
 {reason, bound_pattern,       fixable,  "the last pattern of a case is its scrutinee variable, which always matches"}.
+{reason, assertion_crash,     fixable,  "needs an assertion that crashes the engine: assertions:hash/1 fails for a hash below 16#110000"}.
 
 {module, antidote_pb_codec, #{file => "antidote_pb_codec/src/antidote_pb_codec.erl",
                               overlays => [{specs, "overlay_antidote_pb_codec.erl"}], timeout => 10000}}.
 
-%% <<MsgCode:8, MsgData/binary>> = Data at 133 and 138: a binary() can be empty
-{exception, antidote_pb_codec, decode_request, 1, [ignore], body_exhaustiveness}.
-{exception, antidote_pb_codec, decode_response, 1, [ignore], body_exhaustiveness}.
+%% decode_request/1, decode_response/1: <<MsgCode:8, MsgData/binary>> = Data, then decode/2 gives a message()
+{assertion, antidote_pb_codec, {133, 5, "554f77"}, assert_pattern, "<<_:8, _/binary>>", body_exhaustiveness}.
+{assertion, antidote_pb_codec, {134, 5, "826025"}, assert_type, "request()", decoded}.
+{assertion, antidote_pb_codec, {138, 5, "554f77"}, assert_pattern, "<<_:8, _/binary>>", body_exhaustiveness}.
+{assertion, antidote_pb_codec, {139, 5, "826025"}, assert_type, "response()", decoded}.
 
-%% 170: encode(TransformReadResponse). The read results are {encode_crdt_type(Type), Value}, any tag with any
-%% value, where response() has the pairs that go together
-{exception, antidote_pb_codec, encode_response, 1, [ignore], dependent}.
+%% encode_response/1: encode(TransformReadResponse). The read results are {encode_crdt_type(Type), Value}, for the
+%% checker any tag with any value; the value of a bound object goes with its CRDT type
+{assertion, antidote_pb_codec, {170, 12, "65820b"}, assert_type, "response()", dependent}.
 
-{exception, antidote_pb_codec, message_type_to_code, 1, [ignore], partial}. % 174: only the names of messages
-{exception, antidote_pb_codec, message_code_to_type, 1, [ignore], partial}. % 206: only the codes of messages
-{exception, antidote_pb_codec, encode_msg, 1, [ignore], element_type}. % 249: message_type_to_code(MsgType), MsgType = element(1, Msg)
+{exception, antidote_pb_codec, message_type_to_code, 1, [no_exhaustiveness], partial}. % only the names of messages
+{exception, antidote_pb_codec, message_code_to_type, 1, [no_exhaustiveness], partial}. % only the codes of messages
+{assertion, antidote_pb_codec, {249, 27, "d014e0"}, assert_type, "atom()", element_type}. % encode_msg/1: element(1, Msg)
 
-%% 301: the clauses with success = false and success = true (325-342) leave 0 and 1 of boolean() | 0 | 1
-{exception, antidote_pb_codec, decode_message, 1, [ignore], gpb_types}.
+%% decode_message/1. The flag: the clauses with success = false and success = true (325-342) leave 0 and 1 of
+%% boolean() | 0 | 1. The assertions, on the variables that the patterns of the clause heads bind:
+%% the requests: timestamp (optional: a request can come without), transaction descriptor, updates, objects, tokens
+{exception, antidote_pb_codec, decode_message, 1, [no_exhaustiveness], gpb_decoder}.
+{assertion, antidote_pb_codec, {302, 25, "266260"}, assert_type, "binary() | undefined", gpb_decoder}.
+{assertion, antidote_pb_codec, {304, 25, "2eb80d"}, assert_type, "binary()", gpb_decoder}.
+{assertion, antidote_pb_codec, {306, 26, "2eb80d"}, assert_type, "binary()", gpb_decoder}.
+{assertion, antidote_pb_codec, {308, 51, "1f9ac8"}, assert_type, "[antidote_pb:'ApbUpdateOp'()]", gpb_decoder}.
+{assertion, antidote_pb_codec, {308, 61, "2eb80d"}, assert_type, "binary()", gpb_decoder}.
+{assertion, antidote_pb_codec, {312, 29, "266260"}, assert_type, "binary() | undefined", gpb_decoder}.
+{assertion, antidote_pb_codec, {312, 77, "1f9ac8"}, assert_type, "[antidote_pb:'ApbUpdateOp'()]", gpb_decoder}.
+{assertion, antidote_pb_codec, {316, 27, "266260"}, assert_type, "binary() | undefined", gpb_decoder}.
+{assertion, antidote_pb_codec, {316, 78, "aeaf18"}, assert_type, "[antidote_pb:'ApbBoundObject'()]", gpb_decoder}.
+{assertion, antidote_pb_codec, {318, 52, "aeaf18"}, assert_type, "[antidote_pb:'ApbBoundObject'()]", gpb_decoder}.
+{assertion, antidote_pb_codec, {318, 62, "2eb80d"}, assert_type, "binary()", gpb_decoder}.
+{assertion, antidote_pb_codec, {322, 64, "aeaf18"}, assert_type, "[antidote_pb:'ApbBoundObject'()]", gpb_decoder}.
+{assertion, antidote_pb_codec, {322, 74, "5170f8"}, assert_type, "[binary()]", gpb_decoder}.
+{assertion, antidote_pb_codec, {322, 82, "2eb80d"}, assert_type, "binary()", gpb_decoder}.
+%% cluster management: the nodes, the error code of a failure, the descriptor of a success, the descriptors
+{assertion, antidote_pb_codec, {324, 50, "44a00f"}, assert_type, "[binary()]", gpb_decoder}.
+{assertion, antidote_pb_codec, {326, 52, "b2c572"}, assert_type, "non_neg_integer()", optional_field}.
+{assertion, antidote_pb_codec, {332, 68, "b2c572"}, assert_type, "non_neg_integer()", optional_field}.
+{assertion, antidote_pb_codec, {336, 47, "e1e50b"}, assert_type, "binary()", optional_field}.
+{assertion, antidote_pb_codec, {338, 22, "2c6264"}, assert_type, "[binary()]", gpb_decoder}.
+{assertion, antidote_pb_codec, {340, 57, "b2c572"}, assert_type, "non_neg_integer()", optional_field}.
+{assertion, antidote_pb_codec, {344, 53, "417a53"}, assert_type, "binary()", gpb_decoder}. % the message of an error response
+%% the responses: case Success of true -> ..; false -> .. end, then the transaction descriptor or the commit time
+%% of a success and the error code of a failure; the objects and the tokens that were read
+{assertion, antidote_pb_codec, {349, 14, "d16945"}, assert_type, "boolean()", gpb_decoder}.
+{assertion, antidote_pb_codec, {350, 26, "2eb80d"}, assert_type, "binary()", optional_field}.
+{assertion, antidote_pb_codec, {351, 48, "5d7ce2"}, assert_type, "non_neg_integer()", optional_field}.
+{assertion, antidote_pb_codec, {356, 14, "d16945"}, assert_type, "boolean()", gpb_decoder}.
+{assertion, antidote_pb_codec, {357, 26, "d2e992"}, assert_type, "binary()", optional_field}.
+{assertion, antidote_pb_codec, {358, 48, "5d7ce2"}, assert_type, "non_neg_integer()", optional_field}.
+{assertion, antidote_pb_codec, {365, 51, "aeaf18"}, assert_type, "[antidote_pb:'ApbReadObjectResp'()]", gpb_decoder}.
+{assertion, antidote_pb_codec, {366, 46, "d2e992"}, assert_type, "binary()", optional_field}.
+{assertion, antidote_pb_codec, {368, 10, "d16945"}, assert_type, "boolean()", gpb_decoder}.
+{assertion, antidote_pb_codec, {370, 56, "aeaf18"}, assert_type, "[antidote_pb:'ApbReadObjectResp'()]", gpb_decoder}.
+{assertion, antidote_pb_codec, {373, 63, "5d7ce2"}, assert_type, "non_neg_integer()", optional_field}.
+{assertion, antidote_pb_codec, {381, 10, "d16945"}, assert_type, "boolean()", gpb_decoder}.
+{assertion, antidote_pb_codec, {383, 57, "aeaf18"}, assert_type, "[antidote_pb:'ApbReadObjectResp'()]", gpb_decoder}.
+{assertion, antidote_pb_codec, {383, 67, "5170f8"}, assert_type, "[binary()]", gpb_decoder}.
+{assertion, antidote_pb_codec, {386, 75, "5d7ce2"}, assert_type, "non_neg_integer()", optional_field}.
+{assertion, antidote_pb_codec, {389, 10, "4cd178"}, assert_type, "boolean()", gpb_decoder}.
+{assertion, antidote_pb_codec, {393, 60, "b2c572"}, assert_type, "non_neg_integer()", optional_field}.
 
-{exception, antidote_pb_codec, encode_txn_properties, 1, [ignore], proplist}. % 431, 432: proplists:get_value/3 gives term()
-{exception, antidote_pb_codec, decode_txn_properties, 1, [ignore], gpb_types}. % 440, 441: all_to_binary/1 of [iodata()] | undefined
+%% encode_txn_properties/1, decode_txn_properties/1
+{assertion, antidote_pb_codec, {431, 24, "c8efa9"}, assert_type, "[iodata()]", proplist}.
+{assertion, antidote_pb_codec, {432, 27, "124dc0"}, assert_type, "[iodata()]", proplist}.
+{assertion, antidote_pb_codec, {440, 35, "b170b0"}, assert_type, "[iodata()]", gpb_decoder}.
+{assertion, antidote_pb_codec, {441, 42, "607072"}, assert_type, "[iodata()]", gpb_decoder}.
 
-%% 463: {Key, decode_type(Type), Bucket}. Key and bucket of #'ApbBoundObject'{} are iodata(), a bound_object() has binaries
-{exception, antidote_pb_codec, decode_bound_object, 1, [ignore], gpb_types}.
-%% 482: {Op, OpParam} = decode_update_operation(Operation), which has [] from decode_set_update/1 for adds = undefined
-{exception, antidote_pb_codec, decode_update_op, 1, [ignore], gpb_types}.
+%% decode_bound_object/1: #'ApbBoundObject'{key = Key, type = Type, bucket = Bucket} = Obj, key and bucket are binaries.
+%% On the match, as the Bucket of the result (463:30) has the hash 106958, which crashes the engine
+{assertion, antidote_pb_codec, {462, 5, "795eb3"}, assert_pattern, "#'ApbBoundObject'{key = <<_/binary>>, bucket = <<_/binary>>}", gpb_decoder}.
 
-%% 636-656: the operation goes with the CRDT type of the clause, encode_counter_update(Op_Param) and the like
-{exception, antidote_pb_codec, encode_update_operation, 2, [ignore], dependent}.
-%% 660: one of the operations is always set; each clause has "when Op /= undefined"
-{exception, antidote_pb_codec, decode_update_operation, 1, [ignore], partial}.
+%% decode_update_op/1: {Op, OpParam} = ..., decode_set_update/1 gives [] for adds = undefined
+{assertion, antidote_pb_codec, {482, 5, "a96d81"}, assert_pattern, "{_, _}", gpb_decoder}.
 
-%% 673: no clause for antidote_crdt_counter_b, the one crdt_type() without a read response
-{exception, antidote_pb_codec, encode_crdt_type, 1, [ignore], partial}.
+%% encode_update_operation/2: the operation goes with the CRDT type of the clause
+{assertion, antidote_pb_codec, {636, 61, "f2f737"}, assert_type, "{increment | decrement, integer()}", dependent}.
+{assertion, antidote_pb_codec, {638, 61, "f2f737"}, assert_type, "{increment | decrement, integer()}", dependent}.
+{assertion, antidote_pb_codec, {640, 61, "f2f737"}, assert_type, "{increment | decrement, integer()}", dependent}.
+{assertion, antidote_pb_codec, {642, 53, "f2f737"}, assert_type, "{add | remove, binary()} | {add_all | remove_all, [binary()]}", dependent}.
+{assertion, antidote_pb_codec, {644, 53, "f2f737"}, assert_type, "{add | remove, binary()} | {add_all | remove_all, [binary()]}", dependent}.
+{assertion, antidote_pb_codec, {646, 53, "f2f737"}, assert_type, "{assign, binary()}", dependent}.
+{assertion, antidote_pb_codec, {648, 53, "f2f737"}, assert_type, "{assign, binary()}", dependent}.
+{assertion, antidote_pb_codec, {650, 53, "f2f737"}, assert_type,
+ "{update, {{binary(), atom()}, {atom(), any()}} | [{{binary(), atom()}, {atom(), any()}}]} | {remove, {binary(), atom()} | [{binary(), atom()}]} | {batch, {[{{binary(), atom()}, {atom(), any()}}], [{binary(), atom()}]}}",
+ dependent}.
+{assertion, antidote_pb_codec, {652, 53, "f2f737"}, assert_type,
+ "{update, {{binary(), atom()}, {atom(), any()}} | [{{binary(), atom()}, {atom(), any()}}]} | {remove, {binary(), atom()} | [{binary(), atom()}]} | {batch, {[{{binary(), atom()}, {atom(), any()}}], [{binary(), atom()}]}}",
+ dependent}.
+{assertion, antidote_pb_codec, {654, 55, "f2f737"}, assert_type, "{enable, {}} | {disable, {}}", dependent}.
+{assertion, antidote_pb_codec, {656, 55, "f2f737"}, assert_type, "{enable, {}} | {disable, {}}", dependent}.
 
-%% 695-705: the value goes with the tag of the clause
-{exception, antidote_pb_codec, encode_read_object_resp, 2, [ignore], dependent}.
-{exception, antidote_pb_codec, decode_read_object_resp, 1, [ignore], partial}. % 707: one of the values is always set
+%% decode_update_operation/1: one of the operations is always set; each clause has "when Op /= undefined"
+{exception, antidote_pb_codec, decode_update_operation, 1, [no_exhaustiveness], partial}.
+{assertion, antidote_pb_codec, {661, 27, "b959b5"}, assert_type, "antidote_pb:'ApbCounterUpdate'()", neq_guard}.
+{assertion, antidote_pb_codec, {663, 23, "b959b5"}, assert_type, "antidote_pb:'ApbSetUpdate'()", neq_guard}.
+{assertion, antidote_pb_codec, {665, 23, "b959b5"}, assert_type, "antidote_pb:'ApbRegUpdate'()", neq_guard}.
+{assertion, antidote_pb_codec, {667, 23, "b959b5"}, assert_type, "antidote_pb:'ApbMapUpdate'()", neq_guard}.
+{assertion, antidote_pb_codec, {669, 24, "b959b5"}, assert_type, "antidote_pb:'ApbFlagUpdate'()", neq_guard}.
 
-{exception, antidote_pb_codec, decode_set_update, 1, [ignore], gpb_types}. % 737: case OpType of 'ADD'; 'REMOVE', the enum has | integer()
-{exception, antidote_pb_codec, decode_counter_update, 1, [ignore], bound_pattern}. % 761: case I of undefined -> ..; I -> .. end
-{exception, antidote_pb_codec, decode_flag_update, 1, [ignore], gpb_types}. % 784: value :: boolean() | 0 | 1
+%% no clause for antidote_crdt_counter_b, the one crdt_type() without a read response: a bounded counter is not read
+%% through this interface, the server answers such a read with an error_response
+{exception, antidote_pb_codec, encode_crdt_type, 1, [no_exhaustiveness], source_bug}. % encode_crdt_type(antidote_crdt_counter_b): function_clause, crdt_type() has it (run)
 
-{exception, antidote_pb_codec, decode_map_update, 1, [ignore], gpb_types}. % 807: U <- Updates, [T] | undefined
-{exception, antidote_pb_codec, decode_map_key, 1, [ignore], gpb_types}. % 834: {Key, decode_type(Type)}, the key is iodata()
-{exception, antidote_pb_codec, decode_map_get_resp, 1, [ignore], gpb_types}. % 842: E <- Entries, [T] | undefined
+%% encode_read_object_resp/2: the value goes with the tag of the clause
+{assertion, antidote_pb_codec, {695, 57, "8ef7f9"}, assert_type, "binary()", dependent}.
+{assertion, antidote_pb_codec, {697, 62, "8ef7f9"}, assert_type, "[binary()]", dependent}.
+{assertion, antidote_pb_codec, {699, 65, "8ef7f9"}, assert_type, "integer()", dependent}.
+{assertion, antidote_pb_codec, {701, 57, "8ef7f9"}, assert_type, "[binary()]", dependent}.
+{assertion, antidote_pb_codec, {703, 52, "8ef7f9"}, assert_type, "[{{binary(), crdt_type()}, read_value()}]", dependent}.
+{assertion, antidote_pb_codec, {705, 59, "8ef7f9"}, assert_type, "boolean()", dependent}.
+
+%% decode_read_object_resp/1: one of the values is always set. The values of a set, a register, a multi-value
+%% register and a flag, as read_result() has them
+{exception, antidote_pb_codec, decode_read_object_resp, 1, [no_exhaustiveness], partial}.
+{assertion, antidote_pb_codec, {710, 11, "8ef7f9"}, assert_type, "[binary()]", gpb_decoder}.
+{assertion, antidote_pb_codec, {712, 11, "8ef7f9"}, assert_type, "binary()", gpb_decoder}.
+{assertion, antidote_pb_codec, {714, 13, "e275d9"}, assert_type, "[binary()]", gpb_decoder}.
+{assertion, antidote_pb_codec, {718, 12, "8ef7f9"}, assert_type, "boolean()", gpb_decoder}.
+
+{assertion, antidote_pb_codec, {737, 10, "6f6ccb"}, assert_type, "'ADD' | 'REMOVE'", gpb_types}. % decode_set_update/1: case OpType of
+%% case I of undefined -> ..; I -> .. end. Neither a flag nor an assertion on I or on the case closes it
+{exception, antidote_pb_codec, decode_counter_update, 1, [ignore], bound_pattern}.
+{exception, antidote_pb_codec, decode_flag_update, 1, [no_exhaustiveness], gpb_decoder}. % value :: boolean() | 0 | 1
+
+%% Generators over updates and removedKeys, both [T] | undefined: four assertions for gpb_types, and the two on
+%% Keys (811:41, 813:88, hash 0a1ccf) crash the engine. An assertion on the comprehension does not help, its
+%% generator is still checked; the keys are bound in the clause head, so no other expression holds them.
+{exception, antidote_pb_codec, decode_map_update, 1, [ignore], assertion_crash}.
+{assertion, antidote_pb_codec, {834, 6, "7e98e6"}, assert_type, "binary()", gpb_decoder}. % decode_map_key/1: the key
+{assertion, antidote_pb_codec, {842, 34, "b14066"}, assert_type, "[antidote_pb:'ApbMapEntry'()]", gpb_decoder}. % decode_map_get_resp/1
