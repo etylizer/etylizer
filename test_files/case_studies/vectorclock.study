@@ -12,20 +12,27 @@
 %%     fun((non_neg_integer(), non_neg_integer()) -> boolean()). F gets what get/2 gives, which is 0
 %%     for a node that only the other clock has.
 %%
-%% As the source is, 17 functions type check and 7 do not. With the two corrections it is 19 and 5:
-%% set_all/2 and for_all_keys/3 type check, no other function changes.
+%% As the source is, 17 functions type check and 7 do not. With the two corrections it is 19 and 5.
+%% With library specs and two assertions all 24 type check, none with a flag:
+%%   overlay.erl for maps:remove/2 in set/3 and maps:from_list/1 in from_list/1, both give map() in OTP;
+%%   overlay_vectorclock.erl for min/2 in min2/2: OTP gives a term(), the overlay one of the arguments;
+%%   an assertion each in min_clock/2 and lt/2.
 
 {study, vectorclock}.
 
 %% {reason, Id, Class, Text}. Class: real (the program or its spec is wrong), inherent (correct at
 %% run time, not provable by types), fixable (gap in the type system or checker), unknown.
-{reason, thrown,       inherent, "type of a caught value, known from the throws of the function"}.
-{reason, library_spec, fixable,  "spec of a library function too imprecise"}.
-{reason, nonempty,     fixable,  "a comprehension over a non-empty list is not typed as non-empty"}.
+{reason, thrown,   fixable,  "type of a caught value, known from the throws of the function"}.
+{reason, nonempty, fixable,  "a comprehension over a non-empty list is not typed as non-empty"}.
+{reason, spec_imprecise, real, "imprecise type spec in the source"}.
 
-{module, vectorclock, #{file => "vectorclock/src/vectorclock.erl", timeout => 10000}}.
-{exception, vectorclock, set, 3, [ignore], library_spec}. % maps:remove/2 gives map() in OTP
-{exception, vectorclock, from_list, 1, [ignore], library_spec}. % maps:from_list/1 gives map() in OTP
-{exception, vectorclock, min_clock, 2, [ignore], nonempty}. % lists:min/1 of a comprehension over Nodes, which is not []
-{exception, vectorclock, min2, 2, [ignore], library_spec}. % min/2 gives a term() that fits every type: the branch for 0 counts as dead
-{exception, vectorclock, lt, 2, [ignore], thrown}. % catch R -> R: the throws are true and false
+%% Library specs that overlays correct
+{correction, maps, from_list, 1, spec_imprecise}.
+{correction, maps, merge, 2, spec_imprecise}.
+{correction, maps, remove, 2, spec_imprecise}.
+{correction, erlang, min, 2, spec_imprecise}.
+
+{module, vectorclock, #{file => "vectorclock/src/vectorclock.erl",
+                        overlays => [{library, "overlay.erl"}, {library, "overlay_vectorclock.erl"}], timeout => 10000}}.
+{assertion, vectorclock, {100, 15, "e14d75"}, assert_type, "[non_neg_integer(), ...]", nonempty}. % min_clock/2: Nodes is not []
+{assertion, vectorclock, {212, 14, "59e606"}, assert_type, "boolean()", thrown}. % lt/2: catch R -> R
