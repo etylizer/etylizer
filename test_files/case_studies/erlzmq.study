@@ -17,17 +17,30 @@
 {reason, partial,      inherent, "partial function, the callers rule out the missing case"}.
 {reason, sockopt,      inherent, "the type of the value of a socket option depends on the option"}.
 {reason, no_timeout,   fixable,  "with the timeout infinity the result for a timeout cannot come"}.
+{reason, body_exhaustiveness, inherent, "exhaustiveness of a match inside the body"}.
 {reason, library_spec, fixable,  "spec of a library function too imprecise"}.
+{reason, spec_imprecise, real, "imprecise type spec in the source"}.
+
+%% Library specs that overlays correct
+{correction, filename, join, 1, spec_imprecise}. % filename_all() for strings
 
 {module, erlzmq, #{file => "erlzmq/src/erlzmq.erl", overlays => [{specs, "overlay_erlzmq.erl"}], timeout => 10000}}.
-{exception, erlzmq, socket, 2, [ignore], partial}. % no clause for [] and for longer lists of options
-{exception, erlzmq, socket, 3, [ignore], partial}. % {active_pid, Pid} only for a pid of this node
-%% after case erlzmq_nif:getsockopt(Socket, Timeout option) of {ok, -1} -> infinity; {ok, Else} -> Else end
-{exception, erlzmq, send, 3, [ignore], sockopt}.
-{exception, erlzmq, recv, 2, [ignore], sockopt}.
-%% close(Socket, infinity), term(Context, infinity) can give {error, {timeout, reference()}} by their specs
-{exception, erlzmq, close, 1, [ignore], no_timeout}.
-{exception, erlzmq, term, 1, [ignore], no_timeout}.
+{exception, erlzmq, socket, 2, [no_exhaustiveness], partial}. % no clause for [] and for longer lists of options
+{exception, erlzmq, socket, 3, [no_exhaustiveness], partial}. % {active_pid, Pid} only for a pid of this node
+%% socket/2: case T of [] -> ...; [Active] -> ... end, T is the list after the type of the socket
+{assertion, erlzmq, {103, 10, "1a79a8"}, assert_type, "[] | etylizer:cons({active, boolean()} | {active_pid, pid()}, [])", partial}.
+{assertion, erlzmq, {112, 21, "57a03f"}, assert_type, "erlzmq_socket_type()", partial}. % socket/2: [H | [Type]] when is_tuple(H)
+%% socket/3: true = (Type =/= pub) and (Type =/= push) and (Type =/= xpub)
+{assertion, erlzmq, {120, 5, "b68d06"}, assert_pattern, "true", body_exhaustiveness}.
+{assertion, erlzmq, {124, 5, "b68d06"}, assert_pattern, "true", body_exhaustiveness}.
+%% send/3, recv/2: after case erlzmq_nif:getsockopt(Socket, Timeout option) of {ok, -1} -> infinity; {ok, Else} -> Else end
+{assertion, erlzmq, {189, 25, "6096d4"}, assert_type, "{ok, -1 | non_neg_integer()}", sockopt}.
+{assertion, erlzmq, {254, 24, "a82b9d"}, assert_type, "{ok, -1 | non_neg_integer()}", sockopt}.
+%% close(Socket, infinity), term(Context, infinity)
+{assertion, erlzmq, {323, 5, "32e4e7"}, assert_type, "ok | erlzmq_error()", no_timeout}.
+{assertion, erlzmq, {354, 5, "dfcb0c"}, assert_type, "ok | erlzmq_error()", no_timeout}.
 
-{module, erlzmq_nif, #{file => "erlzmq/src/erlzmq_nif.erl", overlays => [{specs, "overlay_erlzmq.erl"}], timeout => 10000}}.
-{exception, erlzmq_nif, init, 0, [ignore], library_spec}. % filename:join/1 gives a file:filename_all(), erlang:load_nif/2 takes a string()
+%% init/0: overlay.erl for filename:join/1, which gives a file:filename_all() in OTP, as does filename:dirname/1
+{module, erlzmq_nif, #{file => "erlzmq/src/erlzmq_nif.erl", overlays => [{library, "overlay.erl"}, {specs, "overlay_erlzmq.erl"}],
+                       timeout => 10000}}.
+{assertion, erlzmq_nif, {29, 52, "afdce6"}, assert_type, "string()", library_spec}.
