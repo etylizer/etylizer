@@ -15,17 +15,42 @@
 %% behaviour antidote_crdt. 129 functions type check, 39 do not, 14 of them for a declaration of the
 %% source.
 %%
-%% Declarations (step III): no flag, no assertion, no library overlay. 136 functions type check, 32
-%% do not and are ignored; none of them for a declaration any more (no reason of the class real).
-%% The corrections make 7 functions type check: is_type/1 and alias/1 of antidote_crdt, downstream/2
-%% of antidote_crdt_counter_pn and of antidote_crdt_register_mv, antidote_crdt_map_go:update/2,
-%% antidote_crdt_map_rr:get/2 and is_bottom/2. 7 get past the declaration and fail with another
-%% first error, see their exceptions: downstream/2 and is_operation/1 of antidote_crdt_map_go, and
-%% generate_downstream_update/2, generate_downstream_remove/2, update_entry/2, remove_entry/2 and
-%% is_operation/1 of antidote_crdt_map_rr. No function fails that type checked before. By class: 27
-%% for what types do not show (10 a match or an if in the body, 9 a from_binary/1 that takes only
-%% the tagged binary, 5 binary_to_term/1, 2 a type tested with is_type/1, 1 a defensive clause), 5
-%% for the checker and the specs of OTP.
+%% Declarations (step III): 136 functions type check, 32 do not, none of them for a declaration any
+%% more. The corrections make 7 functions type check: is_type/1 and alias/1 of antidote_crdt,
+%% downstream/2 of antidote_crdt_counter_pn and of antidote_crdt_register_mv,
+%% antidote_crdt_map_go:update/2, antidote_crdt_map_rr:get/2 and is_bottom/2. 7 get past the
+%% declaration and fail with another first error, see their exceptions: downstream/2 and
+%% is_operation/1 of antidote_crdt_map_go, and generate_downstream_update/2,
+%% generate_downstream_remove/2, update_entry/2, remove_entry/2 and is_operation/1 of
+%% antidote_crdt_map_rr. No function fails that type checked before. By class: 27 for what types do
+%% not show (10 a match or an if in the body, 9 a from_binary/1 that takes only the tagged binary, 5
+%% binary_to_term/1, 2 a type tested with is_type/1, 1 a defensive clause), 5 for the checker and
+%% the specs of OTP.
+%%
+%% Library specs, flags and assertions (step IV); the source is that of step III. 157 functions type
+%% check as they are, 10 with a flag (9 without the exhaustiveness check of their clauses, 1 without
+%% the redundancy check), 1 is ignored; 29 assertions (20 assert_type, 9 assert_pattern) in 25
+%% functions of 14 modules. Each flag and each assertion is needed: without it exactly its function
+%% fails. No exception has a reason of the class real or unknown.
+%%   Library overlays: the shared overlay.erl on antidote_crdt_set_aw for lists:foldl/3, with whose
+%%     spec in OTP the fun of apply_downstreams/2 never matches. overlay_antidote_crdt_lib.erl has
+%%     two specs: lists:sum/1, an integer() for integers where OTP says number()
+%%     (antidote_crdt_counter_fat:value/1), and dict:find/2 with the value as a term(), which the
+%%     spec of OTP leaves unbound for the checker (update_entry/2 and remove_entry/2 of
+%%     antidote_crdt_map_rr). The overlays alone make these 4 functions type check.
+%%   Flags: 9 from_binary/1 take only a binary that starts with the tag and the version of the
+%%     module and fail for any other (partial); antidote_crdt_counter_pn:new/1 has a defensive
+%%     clause.
+%%   An assertion is an unchecked cast (assert_type, assert_pattern): 13 for the state that
+%%     binary_to_term/1 gives in a from_binary/1; 9 for a match that the program lets crash (true =
+%%     is_type(T) in six functions of antidote_crdt, {ok, _} = antidote_crdt:downstream(..) in the
+%%     two maps, where a nested bounded counter can give {error, no_permissions}); 1 for the setting
+%%     binary_compression of the application environment; 6 in is_operation/1 of the two maps: the
+%%     type that is_type/1 has just accepted, and the lists that is_list/1 has accepted, which
+%%     lists:all/2 takes only if they are proper.
+%%   Ignored: antidote_crdt_counter_b:generate_downstream_check/4, for an if that is exhaustive by
+%%     arithmetic (Available >= V; Available < V). No flag covers an if, and it has no expression
+%%     that an assertion could close it with.
 %%
 %% Declarations corrected in the source: 17 in 5 modules, old -> new. Only -type, -spec, -callback
 %% and -export_type; no function body, clause head, guard, macro or comment, and nothing in
@@ -99,98 +124,123 @@
 
 %% {reason, Id, Class, Text}. Class: real (the program or its spec is wrong), inherent (correct at
 %% run time, not provable by types), fixable (gap in the type system or checker), benign (dead for the spec, kept on purpose), unknown.
-{reason, body_exhaustiveness, inherent, "exhaustiveness of a match or an if inside the body"}.
 {reason, partial,             inherent, "partial function, the callers rule out the missing case"}.
 {reason, defensive,           benign,   "defensive clause, dead for the spec"}.
+{reason, source_bug,          real,     "error in the program"}.
 {reason, deserialize,         inherent, "binary_to_term/1 gives term(), the spec promises the type of the state"}.
+{reason, app_env,             inherent, "value from the application environment, used at the type of the setting"}.
 {reason, validated,           fixable,  "a term that the program has tested with antidote_crdt:is_type/1, used as a typ()"}.
-{reason, library_spec,        fixable,  "spec of a library function too imprecise"}.
-{reason, free_result,         fixable,  "library spec whose type variables are bound only in when (application:get_env/3, lists:foldl/3): a branch on such a result is dead, and so is the clause of a fun for lists:foldl/3 that takes its argument apart"}.
-{reason, dict_types,          fixable,  "key and value type of a dict:dict(K, V) are lost: a branch on a result of dict:find/2 is dead"}.
+{reason, precise_result,      fixable,  "the clauses of the callee give a narrower result than its spec: is_type/1 is true for every typ()"}.
+{reason, complementary_guards, fixable, "the guards A >= B and A < B of two clauses cover all values"}.
+{reason, spec_imprecise, real, "imprecise type spec in the source"}.
+
+%% Library specs that overlays correct
+{correction, lists, foldl, 3, spec_imprecise}. % unrelated accumulator variables
+{correction, lists, sum, 1, spec_imprecise}. % -> number() for a list of integers
 
 {module, antidote_crdt, #{file => "antidote_crdt/src/antidote_crdt.erl",
                           overlays => [{specs, "overlay_antidote_crdt.erl"}], timeout => 10000}}.
-%% true = is_type(T) at 146, 153, 164, 176, 184 and 191
-{exception, antidote_crdt, new, 1, [ignore], body_exhaustiveness}.
-{exception, antidote_crdt, value, 2, [ignore], body_exhaustiveness}.
-{exception, antidote_crdt, downstream, 3, [ignore], body_exhaustiveness}.
-{exception, antidote_crdt, update, 3, [ignore], body_exhaustiveness}.
-{exception, antidote_crdt, require_state_downstream, 2, [ignore], body_exhaustiveness}.
-{exception, antidote_crdt, is_operation, 2, [ignore], body_exhaustiveness}.
-%% case application:get_env(antidote_crdt, binary_compression, 1) of true -> ..; N when N >= 0, N =< 9 -> ..; _ -> .. end:
-%% the second branch (199) is reported as dead
-{exception, antidote_crdt, to_binary, 1, [ignore], free_result}.
+%% true = is_type(T) in new/1, value/2, downstream/3, update/3, require_state_downstream/2, is_operation/2
+{assertion, antidote_crdt, {146, 5, "e684ba"}, assert_pattern, "true", precise_result}.
+{assertion, antidote_crdt, {153, 5, "e684ba"}, assert_pattern, "true", precise_result}.
+{assertion, antidote_crdt, {164, 5, "e684ba"}, assert_pattern, "true", precise_result}.
+{assertion, antidote_crdt, {176, 5, "e684ba"}, assert_pattern, "true", precise_result}.
+{assertion, antidote_crdt, {184, 5, "e684ba"}, assert_pattern, "true", precise_result}.
+{assertion, antidote_crdt, {191, 5, "e684ba"}, assert_pattern, "true", precise_result}.
+%% to_binary/1: application:get_env(antidote_crdt, binary_compression, 1). With boolean() | 0..9 a false
+%% reaches {compressed, N}, the guard N >= 0, N =< 9 does not rule it out.
+{assertion, antidote_crdt, {197, 14, "c0c5c2"}, assert_type, "true | integer()", app_env}.
 
 {module, antidote_crdt_counter_b, #{file => "antidote_crdt/src/antidote_crdt_counter_b.erl",
                                     overlays => [{specs, "overlay_antidote_crdt.erl"}], timeout => 10000}}.
-{exception, antidote_crdt_counter_b, generate_downstream_check, 4, [ignore], body_exhaustiveness}. % 174: if A >= V; A < V
-{exception, antidote_crdt_counter_b, from_binary, 1, [ignore], deserialize}. % 214: {ok, binary_to_term(B)}
+%% 174: if Available >= V -> ..; Available < V -> .. end. No flag covers an if, and it has no expression to assert
+{exception, antidote_crdt_counter_b, generate_downstream_check, 4, [ignore], complementary_guards}.
+{assertion, antidote_crdt_counter_b, {214, 35, "1c56e0"}, assert_type, "antidote_crdt_counter_b()", deserialize}.
 
+%% value/1: overlay_antidote_crdt_lib.erl for lists:sum/1, which gives number() in OTP
 {module, antidote_crdt_counter_fat, #{file => "antidote_crdt/src/antidote_crdt_counter_fat.erl",
-                                      overlays => [{specs, "overlay_antidote_crdt.erl"}], timeout => 10000}}.
-{exception, antidote_crdt_counter_fat, value, 1, [ignore], library_spec}. % 79: lists:sum/1 gives number(), the spec integer()
-{exception, antidote_crdt_counter_fat, from_binary, 1, [ignore], partial}. % 132: only the tagged binary
+                                      overlays => [{library, "overlay_antidote_crdt_lib.erl"}, {specs, "overlay_antidote_crdt.erl"}],
+                                      timeout => 10000}}.
+{exception, antidote_crdt_counter_fat, from_binary, 1, [no_exhaustiveness], partial}. % only the tagged binary
+{assertion, antidote_crdt_counter_fat, {133, 10, "779a2c"}, assert_type, "state()", deserialize}.
 
 {module, antidote_crdt_counter_pn, #{file => "antidote_crdt/src/antidote_crdt_counter_pn.erl",
                                      overlays => [{specs, "overlay_antidote_crdt.erl"}], timeout => 10000}}.
-{exception, antidote_crdt_counter_pn, new, 1, [ignore], defensive}. % 69: new(_) after new(Value) when is_integer(Value)
-{exception, antidote_crdt_counter_pn, from_binary, 1, [ignore], deserialize}. % 115: {ok, binary_to_term(Bin)}
+{exception, antidote_crdt_counter_pn, new, 1, [no_redundancy], defensive}. % new(_) after new(Value) when is_integer(Value)
+{assertion, antidote_crdt_counter_pn, {115, 10, "70c69b"}, assert_type, "state()", deserialize}.
 
 {module, antidote_crdt_flag_dw, #{file => "antidote_crdt/src/antidote_crdt_flag_dw.erl",
                                   overlays => [{specs, "overlay_antidote_crdt.erl"}], timeout => 10000}}.
-{exception, antidote_crdt_flag_dw, from_binary, 1, [ignore], partial}. % 100: only the tagged binary
+{exception, antidote_crdt_flag_dw, from_binary, 1, [no_exhaustiveness], partial}. % only the tagged binary
+{assertion, antidote_crdt_flag_dw, {102, 10, "70c69b"}, assert_type, "flag_dw()", deserialize}.
 
 {module, antidote_crdt_flag_ew, #{file => "antidote_crdt/src/antidote_crdt_flag_ew.erl",
                                   overlays => [{specs, "overlay_antidote_crdt.erl"}], timeout => 10000}}.
-{exception, antidote_crdt_flag_ew, from_binary, 1, [ignore], partial}. % 94: only the tagged binary
+{exception, antidote_crdt_flag_ew, from_binary, 1, [no_exhaustiveness], partial}. % only the tagged binary
+{assertion, antidote_crdt_flag_ew, {96, 10, "70c69b"}, assert_type, "flag_ew()", deserialize}.
 
 {module, antidote_crdt_flag_helper, #{file => "antidote_crdt/src/antidote_crdt_flag_helper.erl",
                                       overlays => [{specs, "overlay_antidote_crdt.erl"}], timeout => 10000}}.
-{exception, antidote_crdt_flag_helper, from_binary, 1, [ignore], partial}. % 67: only the tagged binary
+{exception, antidote_crdt_flag_helper, from_binary, 1, [no_exhaustiveness], partial}. % only the tagged binary
 
 {module, antidote_crdt_map_go, #{file => "antidote_crdt/src/antidote_crdt_map_go.erl",
                                  overlays => [{specs, "overlay_antidote_crdt.erl"}], timeout => 10000}}.
-%% 94: {ok, DownstreamOp} = antidote_crdt:downstream(Type, Op, CurrentValue), which can give {error, Reason}
-{exception, antidote_crdt_map_go, downstream, 2, [ignore], body_exhaustiveness}.
-{exception, antidote_crdt_map_go, from_binary, 1, [ignore], partial}. % 145: only the tagged binary
-%% 152: antidote_crdt:is_type(Type) andalso antidote_crdt:is_operation(Type, Op), the Type of any term
-{exception, antidote_crdt_map_go, is_operation, 1, [ignore], validated}.
+%% downstream/2: {ok, DownstreamOp} = antidote_crdt:downstream(Type, Op, CurrentValue), which can give {error, Reason}
+{assertion, antidote_crdt_map_go, {94, 5, "c5d6fd"}, assert_pattern, "{ok, _}", source_bug}. % downstream of a decrement of a nested bounded counter without permissions: {badmatch, {error, no_permissions}} (run)
+{exception, antidote_crdt_map_go, from_binary, 1, [no_exhaustiveness], partial}. % only the tagged binary
+{assertion, antidote_crdt_map_go, {147, 10, "70c69b"}, assert_type, "antidote_crdt_map_go()", deserialize}.
+%% is_operation/1: antidote_crdt:is_type(Type) andalso antidote_crdt:is_operation(Type, Op), the second Type
+{assertion, antidote_crdt_map_go, {152, 76, "57a03f"}, assert_type, "antidote_crdt:typ()", validated}.
+%% is_operation/1: {update, Ops} when is_list(Ops) -> lists:all(fun(Op) -> .. end, Ops)
+{assertion, antidote_crdt_map_go, {154, 66, "86bf06"}, assert_type, "[term()]", source_bug}. % is_operation({update, [Op | b]}) with a valid Op: function_clause in lists:all/2 (run)
 
+%% update_entry/2, remove_entry/2: overlay_antidote_crdt_lib.erl for dict:find/2, whose result fits every type
+%% with the spec of OTP: the branch {ok, State} of the case on it counted as dead
 {module, antidote_crdt_map_rr, #{file => "antidote_crdt/src/antidote_crdt_map_rr.erl",
-                                 overlays => [{specs, "overlay_antidote_crdt.erl"}], timeout => 10000}}.
-%% 143: {ok, DownstreamEffect} = antidote_crdt:downstream(Type, Op, CurrentState), 156: {ok, _} =
-%% antidote_crdt:downstream(Type, {reset, {}}, CurrentState); it can give {error, Reason}
-{exception, antidote_crdt_map_rr, generate_downstream_update, 2, [ignore], body_exhaustiveness}.
-{exception, antidote_crdt_map_rr, generate_downstream_remove, 2, [ignore], body_exhaustiveness}.
-%% case dict:find({Key, Type}, Map) of {ok, State} -> ..; error -> .. end: the first branch (171, 182) is reported as dead
-{exception, antidote_crdt_map_rr, update_entry, 2, [ignore], dict_types}.
-{exception, antidote_crdt_map_rr, remove_entry, 2, [ignore], dict_types}.
-{exception, antidote_crdt_map_rr, from_binary, 1, [ignore], partial}. % 218: only the tagged binary
-%% 224: antidote_crdt:is_type(Type) andalso antidote_crdt:is_operation(Type, Op), the Type of any term
-{exception, antidote_crdt_map_rr, is_operation, 1, [ignore], validated}.
+                                 overlays => [{library, "overlay_antidote_crdt_lib.erl"}, {specs, "overlay_antidote_crdt.erl"}],
+                                 timeout => 10000}}.
+%% generate_downstream_update/2: {ok, DownstreamEffect} = antidote_crdt:downstream(Type, Op, CurrentState), and
+%% generate_downstream_remove/2: {ok, _} = antidote_crdt:downstream(Type, {reset, {}}, CurrentState); it can give
+%% {error, Reason}
+{assertion, antidote_crdt_map_rr, {143, 5, "929e19"}, assert_pattern, "{ok, _}", source_bug}. % downstream of a decrement of a nested bounded counter without permissions: {badmatch, {error, no_permissions}} (run)
+{assertion, antidote_crdt_map_rr, {156, 17, "cccaac"}, assert_pattern, "{ok, _}", source_bug}. % downstream of a decrement of a nested bounded counter without permissions: {badmatch, {error, no_permissions}} (run)
+{exception, antidote_crdt_map_rr, from_binary, 1, [no_exhaustiveness], partial}. % only the tagged binary
+{assertion, antidote_crdt_map_rr, {219, 10, "70c69b"}, assert_type, "state()", deserialize}.
+%% is_operation/1: case Operation of .. {update, Ops} when is_list(Ops) -> lists:all(fun(Op) -> .. end, Ops); ..
+%% {remove, Keys} when is_list(Keys) -> lists:all(fun(Key) -> .. end, Keys). The subject of the case says it for both
+%% lists: Keys at 230:68 cannot carry an assertion, its hash 0a1ccf is a code point, which crashes the engine
+{assertion, antidote_crdt_map_rr, {222, 10, "b9e022"}, assert_type, "etylizer:without(term(), {update | remove, etylizer:without(maybe_improper_list(), [term()])})", source_bug}. % is_operation of an improper list after a valid element: function_clause in lists:all/2 (run)
+%% is_operation/1: antidote_crdt:is_type(Type) andalso antidote_crdt:is_operation(Type, Op), the second Type
+{assertion, antidote_crdt_map_rr, {224, 76, "57a03f"}, assert_type, "antidote_crdt:typ()", validated}.
+%% is_operation/1: is_list(Updates) andalso is_list(Removes) andalso lists:all(.., Removes) andalso lists:all(.., Updates).
+%% A test on the left of andalso does not narrow either
+{assertion, antidote_crdt_map_rr, {234, 72, "a4657e"}, assert_type, "[term()]", source_bug}. % is_operation of an improper list after a valid element: function_clause in lists:all/2 (run)
+{assertion, antidote_crdt_map_rr, {235, 70, "1f9ac8"}, assert_type, "[term()]", source_bug}. % is_operation of an improper list after a valid element: function_clause in lists:all/2 (run)
 
 {module, antidote_crdt_register_lww, #{file => "antidote_crdt/src/antidote_crdt_register_lww.erl",
                                        overlays => [{specs, "overlay_antidote_crdt.erl"}], timeout => 10000}}.
-{exception, antidote_crdt_register_lww, from_binary, 1, [ignore], deserialize}. % 92: {ok, erlang:binary_to_term(Bin)}
+{assertion, antidote_crdt_register_lww, {92, 10, "de4f64"}, assert_type, "antidote_crdt_register_lww()", deserialize}.
 
 {module, antidote_crdt_register_mv, #{file => "antidote_crdt/src/antidote_crdt_register_mv.erl",
                                       overlays => [{specs, "overlay_antidote_crdt.erl"}], timeout => 10000}}.
-{exception, antidote_crdt_register_mv, from_binary, 1, [ignore], partial}. % 124: only the tagged binary
+{exception, antidote_crdt_register_mv, from_binary, 1, [no_exhaustiveness], partial}. % only the tagged binary
+{assertion, antidote_crdt_register_mv, {125, 10, "779a2c"}, assert_type, "antidote_crdt_register_mv()", deserialize}.
 
 {module, antidote_crdt_secure_counter_pn, #{file => "antidote_crdt/src/antidote_crdt_secure_counter_pn.erl",
                                             overlays => [{specs, "overlay_antidote_crdt.erl"}], timeout => 10000}}.
-{exception, antidote_crdt_secure_counter_pn, from_binary, 1, [ignore], deserialize}. % 116: {ok, binary_to_term(Bin)}
+{assertion, antidote_crdt_secure_counter_pn, {116, 10, "70c69b"}, assert_type, "state()", deserialize}.
 
+%% overlay.erl for lists:foldl/3: with the spec of OTP the fun of apply_downstreams/2 never matches
 {module, antidote_crdt_set_aw, #{file => "antidote_crdt/src/antidote_crdt_set_aw.erl",
-                                 overlays => [{specs, "overlay_antidote_crdt.erl"}], timeout => 10000}}.
-{exception, antidote_crdt_set_aw, from_binary, 1, [ignore], partial}. % 153: only the tagged binary
-%% 198: lists:foldl(fun({Elem, ToAdd, ToRemove}, Set_aw) -> .. end, [], Ops): the clause of the fun never matches
-{exception, antidote_crdt_set_aw, apply_downstreams, 2, [ignore], free_result}.
+                                 overlays => [{library, "overlay.erl"}, {specs, "overlay_antidote_crdt.erl"}], timeout => 10000}}.
+{exception, antidote_crdt_set_aw, from_binary, 1, [no_exhaustiveness], partial}. % only the tagged binary
+{assertion, antidote_crdt_set_aw, {155, 10, "70c69b"}, assert_type, "antidote_crdt_set_aw()", deserialize}.
 
 {module, antidote_crdt_set_go, #{file => "antidote_crdt/src/antidote_crdt_set_go.erl",
                                  overlays => [{specs, "overlay_antidote_crdt.erl"}], timeout => 10000}}.
-{exception, antidote_crdt_set_go, from_binary, 1, [ignore], deserialize}. % 88: {ok, erlang:binary_to_term(Bin)}
+{assertion, antidote_crdt_set_go, {88, 10, "de4f64"}, assert_type, "antidote_crdt_set_go()", deserialize}.
 
 {module, antidote_crdt_set_rw, #{file => "antidote_crdt/src/antidote_crdt_set_rw.erl",
                                  overlays => [{specs, "overlay_antidote_crdt.erl"}], timeout => 10000}}.
-{exception, antidote_crdt_set_rw, from_binary, 1, [ignore], partial}. % 221: only the tagged binary
+{exception, antidote_crdt_set_rw, from_binary, 1, [no_exhaustiveness], partial}. % only the tagged binary
+{assertion, antidote_crdt_set_rw, {223, 10, "70c69b"}, assert_type, "antidote_crdt_set_rw()", deserialize}.
