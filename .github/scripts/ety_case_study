@@ -1,0 +1,69 @@
+#!/usr/bin/env escript
+%%! -noinput
+
+main([Manifest | Engine]) ->
+    Ety = filename:absname(case Engine of [E] -> E; [] -> default_engine() end),
+    Study = filename:basename(Manifest, ".study"),
+    Work = filename:join([root(), "_build", "case_study", Study]),
+    Plain = plain(Manifest, Work),
+    {ok, Terms} = file:consult(Plain),
+    Exceptions = [X || X = {exception, _, _, _, _, _} <- Terms],
+    Dir = filename:dirname(filename:absname(Manifest)),
+    Metrics = [run(Ety, Dir, Plain, Work, Mod, Opts, Exceptions) || {module, Mod, Opts} <- Terms],
+    Merged = lists:foldl(fun(M, Acc) -> maps:merge_with(fun(_, A, B) -> A ++ B end, Acc, M) end, #{}, Metrics),
+    Classes = #{Id => Class || {reason, Id, Class, _} <- Terms},
+    Rows = [[label(M, F, A), Handling, Reason, maps:get(Reason, Classes)] || {exception, M, F, A, Handling, Reason} <- Exceptions],
+    Asserted = [[iolist_to_binary(io_lib:format("~w:~w:~w", [M, element(1, At), element(2, At)])), Kind, Reason, maps:get(Reason, Classes)]
+                || {assertion, M, At, Kind, _, Reason} <- Terms],
+    Json = [json:encode(Merged#{case_study_exception => Rows, case_study_assertion => Asserted}), "\n"],
+    % JSON: files and pipes, terminal: tables
+    case proplists:get_value(stdout, io:getopts()) of
+        true -> report(Study, filename:join(Work, Study ++ ".study.json"), Json);
+        _ -> io:put_chars(Json)
+    end.
+
+root() -> filename:dirname(filename:dirname(filename:dirname(filename:absname(escript:script_name())))).
+
+default_engine() -> filename:join([root(), "_build", "metrics", "bin", "etylizer"]).
+
+% #! handling
+plain(Manifest, Work) ->
+    {ok, <<"#!", Rest/binary>>} = file:read_file(Manifest),
+    Copy = filename:join(Work, filename:basename(Manifest)),
+    ok = filelib:ensure_dir(Copy),
+    ok = file:write_file(Copy, ["%!", Rest]),
+    Copy.
+
+report(Title, File, Json) ->
+    ok = filelib:ensure_dir(File),
+    ok = file:write_file(File, Json),
+    Report = filename:join(filename:dirname(escript:script_name()), "ety_metrics_report"),
+    Port = open_port({spawn_executable, Report}, [{args, ["--title", Title, File]}, exit_status, binary]),
+    0 = wait(Port, standard_io).
+
+label(M, F, A) -> iolist_to_binary(io_lib:format("~w:~w/~w", [M, F, A])).
+
+run(Ety, Dir, Manifest, Work, Mod, Opts = #{file := File, timeout := Timeout}, Exceptions) ->
+    Base = filename:join(Work, atom_to_list(Mod)),
+    ok = filelib:ensure_path(Base),
+    Flags = [Arg || {exception, M, F, A, Handling, _} <- Exceptions, M =:= Mod, H <- Handling, H =/= ignore,
+                    Arg <- [flag(H), atom_to_list(F) ++ "/" ++ integer_to_list(A)]],
+    Args = ["--no-deps", "-f", "-l", "error", "--report-mode", "report", "--report-timeout", integer_to_list(Timeout),
+            "-P", Base, "--log-file", Base ++ ".log", "--metrics-file", Base ++ ".json", "--assertions", Manifest]
+        ++ [Arg || {_, Overlay} <- maps:get(overlays, Opts, []), Arg <- ["--type-overlay", Overlay]]
+        ++ [Arg || Inc <- lists:usort([filename:dirname(H) || H <- filelib:wildcard("**/*.hrl", Dir)]), Arg <- ["-I", Inc]]
+        ++ [Arg || Src <- lists:usort([filename:dirname(E) || E <- filelib:wildcard("*/**/*.erl", Dir)]), Arg <- ["-I", Src]]
+        ++ Flags ++ [File],
+    Port = open_port({spawn_executable, Ety}, [{args, Args}, {cd, Dir}, exit_status, stderr_to_stdout, binary]),
+    0 = wait(Port, standard_error),
+    {ok, Json} = file:read_file(Base ++ ".json"),
+    json:decode(Json).
+
+flag(no_redundancy) -> "--no-redundancy";
+flag(no_exhaustiveness) -> "--no-exhaustiveness".
+
+wait(Port, Out) ->
+    receive
+        {Port, {data, Data}} -> io:put_chars(Out, Data), wait(Port, Out);
+        {Port, {exit_status, Status}} -> Status
+    end.

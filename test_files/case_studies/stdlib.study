@@ -1,0 +1,111 @@
+#!/usr/bin/env -S sh -c 'exec "$(dirname "$0")/../../.github/scripts/ety_case_study" "$0" "$@"'
+%% -*- erlang -*-
+%% Case study manifest, see .github/scripts/ety_case_study.
+
+{study, stdlib}.
+
+%% {reason, Id, Class, Text}. Class: real (the program or its spec is wrong), inherent (correct at
+%% run time, not provable by types), fixable (gap in the type system or checker), unknown.
+{reason, spec_imprecise,      real,     "imprecise type spec in the source"}.
+{reason, tuple_any,           fixable,  "needs a type for tuples of any size, {T, ...}"}.
+{reason, body_exhaustiveness, inherent, "exhaustiveness of a case inside the body"}.
+{reason, map_generator,       fixable,  "map generator in a comprehension (crashed the checker)"}.
+{reason, unknown,             unknown,  "not analysed"}.
+{reason, unreviewed,          unknown,  "flag taken over from an -etylizer attribute, no reason recorded"}.
+{reason, masked_on_main,      unknown,  "failed unnoticed while check-stdlib.sh dropped exit codes"}.
+
+{module, proplists2, #{file => "stdlib/proplists2.erl", overlays => [{library, "overlay.erl"}], timeout => 10000}}.
+{exception, proplists2, expand, 2, [ignore], tuple_any}.
+{exception, proplists2, normalize, 2, [ignore], tuple_any}.
+{exception, proplists2, to_map, 2, [ignore], tuple_any}.
+{exception, proplists2, lookup, 2, [ignore], tuple_any}.
+{exception, proplists2, lookup_all, 2, [ignore], tuple_any}.
+{exception, proplists2, is_defined, 3, [ignore], tuple_any}.
+{exception, proplists2, get_all_value, 2, [ignore], tuple_any}.
+{exception, proplists2, append_values, 2, [ignore], tuple_any}.
+{exception, proplists2, get_bool, 2, [ignore], tuple_any}.
+{exception, proplists2, get_keys, 2, [ignore], tuple_any}.
+{exception, proplists2, delete, 2, [ignore], tuple_any}.
+{exception, proplists2, substitute_aliases_1, 2, [ignore], tuple_any}.
+{exception, proplists2, substitute_negations_1, 2, [ignore], tuple_any}.
+{exception, proplists2, expand_1, 3, [ignore], tuple_any}.
+{exception, proplists2, expand_2, 4, [ignore], tuple_any}.
+{exception, proplists2, is_defined, 2, [ignore], tuple_any}.
+{exception, proplists2, get_value, 3, [ignore], tuple_any}.
+{exception, proplists2, get_all_values, 2, [ignore], tuple_any}.
+{exception, proplists2, split, 3, [ignore], tuple_any}.
+{exception, proplists2, to_map, 1, [ignore], tuple_any}.
+{exception, proplists2, flatten, 1, [ignore], masked_on_main}.
+
+{module, ordsets2, #{file => "stdlib/ordsets2.erl", timeout => 10000}}.
+{exception, ordsets2, is_set, 1, [ignore], unknown}.
+{exception, ordsets2, filtermap, 2, [ignore], unknown}.
+
+{module, orddict2, #{file => "stdlib/orddict2.erl", overlays => [{library, "overlay.erl"}], timeout => 13000}}.
+{exception, orddict2, append, 3, [ignore], spec_imprecise}.
+{exception, orddict2, append_list, 3, [ignore], spec_imprecise}.
+{exception, orddict2, update_counter, 3, [ignore], spec_imprecise}.
+{exception, orddict2, merge, 3, [ignore], spec_imprecise}.
+{exception, orddict2, fetch, 2, [no_exhaustiveness], unreviewed}.
+{exception, orddict2, update, 3, [no_exhaustiveness], unreviewed}.
+
+{module, queue2, #{file => "stdlib/queue2.erl", overlays => [{library, "overlay_queue.erl"}], timeout => 150000}}.
+{exception, queue2, get, 2, [ignore], spec_imprecise}.
+{exception, queue2, get, 1, [ignore, no_redundancy], spec_imprecise}. % get/2
+{exception, queue2, head, 1, [ignore, no_redundancy], spec_imprecise}. % get/2
+{exception, queue2, split_f1_to_r2, 5, [no_exhaustiveness], unreviewed}.
+{exception, queue2, split_r1_to_f2, 5, [no_exhaustiveness], unreviewed}.
+{exception, queue2, split, 2, [ignore, no_redundancy, no_exhaustiveness], masked_on_main}.
+{exception, queue2, is_empty, 1, [no_redundancy], unreviewed}.
+{exception, queue2, len, 1, [no_redundancy], unreviewed}.
+{exception, queue2, to_list, 1, [no_redundancy], unreviewed}.
+{exception, queue2, from_list, 1, [no_redundancy], unreviewed}.
+{exception, queue2, member, 2, [no_redundancy], unreviewed}.
+{exception, queue2, in, 2, [no_redundancy], unreviewed}.
+{exception, queue2, in_r, 2, [no_redundancy], unreviewed}.
+{exception, queue2, out, 1, [no_redundancy], unreviewed}.
+{exception, queue2, out_r, 1, [no_redundancy], unreviewed}.
+{exception, queue2, get_r, 1, [no_redundancy], unreviewed}.
+{exception, queue2, peek, 1, [no_redundancy], unreviewed}.
+{exception, queue2, peek_r, 1, [no_redundancy], unreviewed}.
+{exception, queue2, drop, 1, [no_redundancy], unreviewed}.
+{exception, queue2, drop_r, 1, [no_redundancy], unreviewed}.
+{exception, queue2, filter, 2, [no_redundancy], unreviewed}.
+{exception, queue2, filtermap, 2, [no_redundancy], unreviewed}.
+{exception, queue2, fold, 3, [no_redundancy], unreviewed}.
+{exception, queue2, any, 2, [no_redundancy], unreviewed}.
+{exception, queue2, all, 2, [no_redundancy], unreviewed}.
+{exception, queue2, delete, 2, [no_redundancy], unreviewed}.
+{exception, queue2, delete_r, 2, [no_redundancy], unreviewed}.
+{exception, queue2, delete_with, 2, [no_redundancy], unreviewed}.
+{exception, queue2, delete_with_r, 2, [no_redundancy], unreviewed}.
+{exception, queue2, reverse, 1, [ignore], masked_on_main}.
+{exception, queue2, join, 2, [ignore], masked_on_main}.
+
+{module, sets2, #{file => "stdlib/sets2.erl", overlays => [{library, "overlay.erl"}], timeout => 190000}}.
+{exception, sets2, rehash, 4, [ignore, no_exhaustiveness], unknown}.
+{exception, sets2, new, 1, [ignore, no_exhaustiveness], body_exhaustiveness}.
+{exception, sets2, from_list, 2, [ignore, no_exhaustiveness], body_exhaustiveness}.
+{exception, sets2, filter, 2, [ignore], map_generator}.
+{exception, sets2, map, 2, [ignore], map_generator}.
+{exception, sets2, is_element, 2, [ignore], unknown}. % transitive
+{exception, sets2, add_element, 2, [ignore], unknown}. % transitive
+{exception, sets2, del_element, 2, [ignore], unknown}. % transitive
+{exception, sets2, filtermap, 2, [ignore], unknown}. % folding over empty instatiation of new
+{exception, sets2, update_bucket, 3, [ignore], unknown}. % works only for version 1
+{exception, sets2, get_slot, 2, [ignore], unknown}. % only works for version 1
+{exception, sets2, get_bucket, 2, [ignore], unknown}. % only works for version 1
+{exception, sets2, maybe_expand, 1, [ignore], unknown}. % only works for version 1
+{exception, sets2, maybe_expand_segs, 1, [ignore], unknown}. % only works for version 1
+{exception, sets2, maybe_contract, 2, [ignore], unknown}. % only works for version 1
+{exception, sets2, maybe_contract_segs, 1, [ignore], unknown}. % only works for version 1
+{exception, sets2, fold_segs, 4, [ignore], tuple_any}.
+{exception, sets2, fold_seg, 4, [ignore], tuple_any}.
+{exception, sets2, filter_set, 2, [ignore], tuple_any}.
+{exception, sets2, filter_seg_list, 4, [ignore], tuple_any}.
+{exception, sets2, get_bucket_s, 2, [ignore], tuple_any}.
+{exception, sets2, put_bucket_s, 3, [ignore], tuple_any}.
+{exception, sets2, intersection_heuristic, 6, [no_exhaustiveness], unreviewed}.
+{exception, sets2, intersection_decided, 3, [no_exhaustiveness], unreviewed}.
+{exception, sets2, subtract_heuristic, 6, [no_exhaustiveness], unreviewed}.
+{exception, sets2, subtract_decided, 3, [no_exhaustiveness], unreviewed}.

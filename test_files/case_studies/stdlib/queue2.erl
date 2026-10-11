@@ -72,17 +72,6 @@ Okasaki. It regards queues as lists. This API is by many regarded as strange and
 avoidable. For example, many reverse operations have lexically reversed names,
 some with more readable but perhaps less understandable aliases.
 """.
--etylizer({functions_exhaustive, off, [split_f1_to_r2/5, split_r1_to_f2/5, split/2]}).
--etylizer({functions_redundant, off, [
-    is_empty/1, len/1, to_list/1, from_list/1, member/2,
-    in/2, in_r/2, out/1, out_r/1,
-    get/1, get_r/1, peek/1, peek_r/1,
-    drop/1, drop_r/1, split/2,
-    filter/2, filtermap/2, fold/3, any/2, all/2,
-    delete/2, delete_r/2, delete_with/2, delete_with_r/2,
-    head/1
-]}).
-
 -spec f2r([Item]) -> queue(Item).
 -spec r2f([Item]) -> queue(Item).
 -spec delete_with_rear(Pred, R1) -> false | R2 when Pred :: fun((Item) -> boolean()), R1 :: [Item], R2 :: [Item], Item :: term().
