@@ -1,0 +1,27 @@
+#!/usr/bin/env -S sh -c 'exec "$(dirname "$0")/../../.github/scripts/ety_case_study" "$0" "$@"'
+%% -*- erlang -*-
+%% Case study manifest, see .github/scripts/ety_case_study.
+%%
+%% src of the hex package poolboy 1.5.2, the one riak_core_lite depends on (checksum as in its
+%% rebar.lock), unchanged.
+
+{study, poolboy}.
+
+%% {reason, Id, Class, Text}. Class: real (the program or its spec is wrong), inherent (correct at
+%% run time, not provable by types), fixable (gap in the type system or checker), unknown.
+{reason, blocking,   inherent, "a blocking checkout gives a worker, never full"}.
+{reason, call_reply, inherent, "reply of a gen_server call, typed by the handle_call clause that answers it"}.
+{reason, ets_value,  inherent, "term() from an ets table, used at the type of its content"}.
+
+{module, poolboy, #{file => "poolboy/src/poolboy.erl", timeout => 20000}}.
+{exception, poolboy, checkout, 1, [ignore], blocking}. % checkout(Pool, true)
+{exception, poolboy, checkout, 3, [ignore], call_reply}.
+{exception, poolboy, transaction, 3, [ignore], blocking}. % Fun(Worker), Worker from checkout(Pool, true, Timeout)
+{exception, poolboy, stop, 1, [ignore], call_reply}.
+{exception, poolboy, status, 1, [ignore], call_reply}.
+{exception, poolboy, handle_cast, 2, [ignore], ets_value}. % case ets:lookup(Monitors, Pid) of [{Pid, _, MRef}] -> ...; [] -> ... end
+{exception, poolboy, handle_info, 2, [ignore], ets_value}. % case ets:match(...) of [[Pid]] -> ...; [] -> ... end
+
+{module, poolboy_sup, #{file => "poolboy/src/poolboy_sup.erl", timeout => 20000}}.
+
+{module, poolboy_worker, #{file => "poolboy/src/poolboy_worker.erl", timeout => 20000}}.
