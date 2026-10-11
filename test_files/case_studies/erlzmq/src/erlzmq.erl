@@ -330,7 +330,8 @@ close(Socket) ->
 -spec close(Socket :: erlzmq_socket(),
             Timeout :: timeout()) ->
     ok |
-    erlzmq_error().
+    erlzmq_error() |
+    {error, {timeout, reference()}}.
 close({I, Socket}, Timeout) when is_integer(I) ->
     case erlzmq_nif:close(Socket) of
         Ref when is_reference(Ref) ->

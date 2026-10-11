@@ -3,7 +3,11 @@
 %% Case study manifest, see .github/scripts/ety_case_study.
 %%
 %% src and include of https://github.com/zeromq/erlzmq2 as of commit
-%% 573d583930c4b1134e504bec83926d188112b401, the one antidote depends on, unchanged.
+%% 573d583930c4b1134e504bec83926d188112b401, the one antidote depends on. Two declarations are
+%% corrected, no function is changed:
+%%   erlzmq.hrl, erlzmq_send_recv_flag(): dontwait | sndmore, without recvmore | {timeout, timeout()},
+%%     for which erlzmq:sendrecv_flags/1 has no clause;
+%%   erlzmq:close/2: its result can be {error, {timeout, reference()}} as well, as that of term/2.
 %% overlay_erlzmq.erl gives a spec to each of the 12 functions that have none in the source, the NIFs.
 
 {study, erlzmq}.
@@ -13,7 +17,6 @@
 {reason, partial,      inherent, "partial function, the callers rule out the missing case"}.
 {reason, sockopt,      inherent, "the type of the value of a socket option depends on the option"}.
 {reason, no_timeout,   fixable,  "with the timeout infinity the result for a timeout cannot come"}.
-{reason, spec_wrong,   real,     "wrong type in the source"}.
 {reason, library_spec, fixable,  "spec of a library function too imprecise"}.
 
 {module, erlzmq, #{file => "erlzmq/src/erlzmq.erl", overlays => [{specs, "overlay_erlzmq.erl"}], timeout => 10000}}.
@@ -22,10 +25,9 @@
 %% after case erlzmq_nif:getsockopt(Socket, Timeout option) of {ok, -1} -> infinity; {ok, Else} -> Else end
 {exception, erlzmq, send, 3, [ignore], sockopt}.
 {exception, erlzmq, recv, 2, [ignore], sockopt}.
-{exception, erlzmq, close, 2, [ignore], spec_wrong}. % gives {error, {timeout, Ref}}, which is no erlzmq_error()
-{exception, erlzmq, term, 1, [ignore], no_timeout}. % term(Context, infinity) can give {error, {timeout, reference()}} by its spec
-%% erlzmq_send_recv_flag() has recvmore and {timeout, timeout()}, the function has no clause for them
-{exception, erlzmq, sendrecv_flags, 1, [ignore], spec_wrong}.
+%% close(Socket, infinity), term(Context, infinity) can give {error, {timeout, reference()}} by their specs
+{exception, erlzmq, close, 1, [ignore], no_timeout}.
+{exception, erlzmq, term, 1, [ignore], no_timeout}.
 
 {module, erlzmq_nif, #{file => "erlzmq/src/erlzmq_nif.erl", overlays => [{specs, "overlay_erlzmq.erl"}], timeout => 10000}}.
 {exception, erlzmq_nif, init, 0, [ignore], library_spec}. % filename:join/1 gives a file:filename_all(), erlang:load_nif/2 takes a string()

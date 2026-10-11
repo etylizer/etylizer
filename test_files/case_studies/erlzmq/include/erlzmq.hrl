@@ -102,7 +102,7 @@
 %% <i>For more information see
 %% <a href="http://api.zeromq.org/master:zmq_send">zmq_send</a> or
 %% <a href="http://api.zeromq.org/master:zmq_recv">zmq_recv</a></i>
--type erlzmq_send_recv_flag() :: dontwait | sndmore | recvmore | {timeout, timeout()}.
+-type erlzmq_send_recv_flag() :: dontwait | sndmore.
 
 %% A list of flags to use with {@link ezqm:send/3. send/3} and
 %% {@link erlzmq:recv/2. recv/2}
