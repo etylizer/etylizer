@@ -3,8 +3,10 @@
 %% Case study manifest, see .github/scripts/ety_case_study.
 %%
 %% apps/antidote_stats (src) of https://github.com/AntidoteDB/antidote as of commit
-%% ed9cfbcaad53c9b5de15bfcef7befef44b5b4221, unchanged. Its dependencies (prometheus, elli) are not
-%% here. overlay_antidote_stats.erl gives a spec to each of the 10 functions that have none in the source.
+%% ed9cfbcaad53c9b5de15bfcef7befef44b5b4221. Its dependencies (prometheus, elli) are not here.
+%% One declaration is corrected, no function is changed:
+%%   antidote_stats_collector:init/1 takes [], not [term()]: that is its only clause and what start_link/0 passes.
+%% overlay_antidote_stats.erl gives a spec to each of the 10 functions that have none in the source.
 
 {study, antidote_stats}.
 
@@ -12,14 +14,12 @@
 %% run time, not provable by types), fixable (gap in the type system or checker), unknown.
 {reason, start_ret,      inherent, "result of starting a process, typed by the init function of the module: it never gives ignore"}.
 {reason, app_env,        inherent, "value from the application environment, used at the type of the setting"}.
-{reason, spec_imprecise, real,     "imprecise type spec in the source"}.
 {reason, unresolved_dep, fixable,  "a module of another app is not on the search path of the driver"}.
 
 {module, antidote_stats_app, #{file => "antidote_stats/src/antidote_stats_app.erl", overlays => [{specs, "overlay_antidote_stats.erl"}], timeout => 10000}}.
 
 {module, antidote_stats_collector, #{file => "antidote_stats/src/antidote_stats_collector.erl", overlays => [{specs, "overlay_antidote_stats.erl"}], timeout => 10000}}.
 {exception, antidote_stats_collector, start_link, 0, [ignore], start_ret}.
-{exception, antidote_stats_collector, init, 1, [ignore], spec_imprecise}. % init([term()]), the clause is init([])
 {exception, antidote_stats_collector, handle_cast, 2, [ignore], unresolved_dep}. % prometheus_counter, prometheus_gauge, prometheus_histogram
 {exception, antidote_stats_collector, init_metrics, 0, [ignore], unresolved_dep}. % prometheus_counter, prometheus_gauge, prometheus_histogram
 
