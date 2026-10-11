@@ -30,7 +30,7 @@ start(_, _) ->
 stop(_) ->
 	ok.
 
--spec profile_output() -> ok.
+-spec profile_output() -> ok | nothing_to_analyze.
 profile_output() ->
 	eprof:stop_profiling(),
 	eprof:log("procs.profile"),

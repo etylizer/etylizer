@@ -126,7 +126,7 @@ chunk_size(Opts) ->
 
 -spec sendfile_loop(module(), socket(), file:fd(), non_neg_integer(),
 		non_neg_integer(), pos_integer())
-	-> {ok, non_neg_integer()} | {error, any()}.
+	-> {ok, non_neg_integer()} | {error, atom()}.
 sendfile_loop(_Transport, _Socket, _RawFile, Sent, Sent, _ChunkSize)
 		when Sent =/= 0 ->
 	%% All requested data has been read and sent, return number of bytes sent.

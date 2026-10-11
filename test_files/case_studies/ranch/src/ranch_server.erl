@@ -56,7 +56,7 @@
 
 %% API.
 
--spec start_link() -> {ok, pid()}.
+-spec start_link() -> {ok, pid()} | {error, term()}.
 start_link() ->
 	gen_server:start_link({local, ?MODULE}, ?MODULE, [], []).
 
@@ -143,7 +143,7 @@ get_max_connections(Ref) ->
 set_transport_options(Ref, TransOpts) ->
 	gen_server:call(?MODULE, {set_trans_opts, Ref, TransOpts}).
 
--spec get_transport_options(ranch:ref()) -> any().
+-spec get_transport_options(ranch:ref()) -> ranch:transport_opts(any()).
 get_transport_options(Ref) ->
 	ets:lookup_element(?TAB, {trans_opts, Ref}, 2).
 

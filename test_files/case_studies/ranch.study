@@ -2,14 +2,42 @@
 %% -*- erlang -*-
 %% Case study manifest, see .github/scripts/ety_case_study.
 %%
-%% src of the hex package ranch 2.0.0, the one antidote depends on (checksum as in its rebar.lock),
-%% unchanged. ranch_ssl is left out: it refers to public_key:der_encoded(), and the engine aborts on
-%% the source of public_key of an installed OTP, which includes generated headers that are not there.
+%% src of the hex package ranch 2.0.0, the one antidote depends on (checksum as in its rebar.lock).
+%% ranch_ssl is left out: it refers to public_key:der_encoded(), and the engine aborts on the source
+%% of public_key of an installed OTP, which includes generated headers that are not there.
 %% overlay_ranch.erl gives a spec to each of the 54 functions of the 16 modules that have none in the
-%% source. With them the checker finds what it could not see before: ranch:procs/2 and
-%% ranch_server_proxy:init/1 do not give what their specs say, ranch:stop_all_acceptors/0 and
-%% ranch:restart_all_acceptors/0 fail for a suspended listener, ranch_proxy_header:parse/1 fails for a
-%% header of the version 2 that is cut off.
+%% source. 21 declarations are corrected, no function is changed.
+%% Results that leave out what the function can give:
+%%   ranch:procs/2: [pid()], now [pid() | undefined | restarting]. A child of a supervisor that is not
+%%     running is undefined or restarting: the acceptors after ranch:stop_all_acceptors/0.
+%%   ranch_app:profile_output/0: ok, now ok | nothing_to_analyze, which eprof:analyze/1 gives when
+%%     nothing was profiled.
+%%   ranch_server_proxy:init/1: {ok, pid()} | {stop, term()}, now {ok, reference(), hibernate} |
+%%     {stop, term()}. The state is the monitor of ranch_server.
+%%   start_link of ranch_acceptors_sup (/3), ranch_conns_sup (/6), ranch_conns_sup_sup (/4),
+%%     ranch_embedded_sup (/5), ranch_listener_sup (/5), ranch_server (/0) and ranch_sup (/0):
+%%     {ok, pid()}, now {ok, pid()} | {error, term()}, as ranch_server_proxy:start_link/0 has it.
+%%     Starting fails when the port is taken, when a child does not start, when the name is taken.
+%% Arguments and results typed wider than what the function does with them:
+%%   ranch_listener_sup:start_link/5 and ranch_conns_sup:init/7, the transport options: any(), now
+%%     ranch:transport_opts(any()). Both read keys of the map.
+%%   ranch_server:get_transport_options/1, the result: any(), now ranch:transport_opts(any()), as
+%%     ranch:get_transport_options/1 gives it on.
+%%   ranch_acceptors_sup:start_listen_sockets/5, start_listen_socket/4 and listen_error/5, the
+%%     transport options: map(), map() and any(), now ranch:transport_opts(list()). They read keys of
+%%     the map and take its socket options apart as a list.
+%%   ranch_conns_sup:system_continue/3 and system_terminate/4, the last argument: any() and _, now
+%%     {#state{}, non_neg_integer(), non_neg_integer(), [pid()]}, what loop/4 hands to
+%%     sys:handle_system_msg/6. There is no clause for anything else.
+%%   ranch_tcp:connect/3,4, the options: any(), now list(). They are appended to.
+%%   ranch_transport:sendfile_loop/6: {error, any()}, now {error, atom()}, as sendfile/6, which gives
+%%     its result on, and as the callbacks send of a transport and file:read/2 on a raw file give.
+%% An argument typed narrower than what the callers give:
+%%   ranch:set_option_default/3, Opts: [{atom(), any()}], now [inet | inet6 | {atom(), any()} |
+%%     {raw, any(), any(), any()}], the type that filter_options/4 has for socket options.
+%%     ranch_tcp:listen/1 hands it a ranch_tcp:opts().
+%% Not corrected, see the exceptions: ranch:opts() and ranch:normalize_opts/1; the result of
+%% ranch_tcp:send/2, which the callback of ranch_transport fixes.
 
 {study, ranch}.
 
@@ -27,8 +55,6 @@
 {reason, file_mode,           inherent, "a file opened with raw and binary: file:open/2 gives a file:fd(), file:read/2 a binary()"}.
 {reason, forwarded,           inherent, "options handed on to OTP, which checks them at run time"}.
 {reason, address_family,      inherent, "a TCP socket has an address of the family inet, inet6 or local, not of an unknown one"}.
-{reason, spec_imprecise,      real,     "imprecise type spec in the source"}.
-{reason, spec_wrong,          real,     "wrong type in the source"}.
 {reason, program_wrong,       real,     "the program is wrong"}.
 {reason, opts_any,            real,     "ranch:opts() is any() | transport_opts(any()), that is any(): a map that is no transport_opts() counts as one"}.
 {reason, otp_release,         real,     "the spec fits the OTP release ranch 2.0.0 was written for, in OTP 28 the function it wraps gives more"}.
@@ -37,6 +63,7 @@
 {reason, library_spec,        fixable,  "spec of a library function too imprecise"}.
 {reason, element_type,        fixable,  "element/2 is not typed by the tuple it is applied to"}.
 {reason, binary_patterns,     fixable,  "binary patterns too imprecise: an integer segment is an integer() whatever its size"}.
+{reason, bounded_tyvar,       fixable,  "a type variable with a bound (when X :: T) is typed by its bound at a call, not by the argument"}.
 {reason, guard_narrowing,     fixable,  "a guard does not narrow the type of a variable for the clauses after it"}.
 {reason, catch_pattern,       fixable,  "a catch clause whose pattern for the reason is a tuple fails to type check"}.
 {reason, otp_no_spec,         fixable,  "call of a function of OTP that has no spec"}.
@@ -53,15 +80,13 @@
 {exception, ranch, child_spec, 5, [ignore], map_types}. % the child spec, a map, is no supervisor:child_spec()
 {exception, ranch, remove_connection, 1, [ignore], body_exhaustiveness}. % {_, ConnsSupSup, _, _} = lists:keyfind(...)
 {exception, ranch, get_connections, 2, [ignore], library_spec}. % lists:sum/1 gives number()
-{exception, ranch, get_transport_options, 1, [ignore], spec_imprecise}. % ranch_server:get_transport_options/1 gives any()
 {exception, ranch, info, 0, [ignore], map_mandatory}.
 {exception, ranch, info, 1, [ignore], map_mandatory}.
 {exception, ranch, listener_info, 2, [ignore], map_types}. % a map of eleven keys; before it [_, Transport, _, Protocol, _] = the start arguments
-%% [pid()]: the acceptors are undefined after ranch:stop_all_acceptors/0 (seen at run time), and restarting while that is tried
-{exception, ranch, procs, 2, [ignore], spec_wrong}.
 {exception, ranch, procs1, 2, [ignore], catch_pattern}. % catch exit:{noproc, _}; before it {_, SupPid, _, _} = lists:keyfind(...)
 {exception, ranch, filter_user_options, 3, [ignore], defensive}. % the clause for an option of no known form
 {exception, ranch, merge_options, 2, [ignore], library_spec}. % lists:keystore/4 wants a list of tuples, the options hold atoms
+{exception, ranch, set_option_default, 3, [ignore], library_spec}. % lists:keymember/3 wants a list of tuples, the options hold atoms
 %% {error, {already_started, App}}, no branch for another error. Reported first: this branch never matches,
 %% for the type variable in the result of application:start/1 (ok | {error, Reason} when Reason :: term()).
 {exception, ranch, require, 1, [ignore], bound_pattern}.
@@ -69,42 +94,38 @@
 {module, ranch_acceptor, #{file => "ranch/src/ranch_acceptor.erl", overlays => [{specs, "overlay_ranch.erl"}], timeout => 20000}}.
 
 {module, ranch_acceptors_sup, #{file => "ranch/src/ranch_acceptors_sup.erl", overlays => [{specs, "overlay_ranch.erl"}], timeout => 20000}}.
-{exception, ranch_acceptors_sup, start_link, 3, [ignore], spec_wrong}. % {ok, pid()}: {error, _} when the listen fails, ranch:start_listener/5 looks for it
-%% The child specs are maps. Before that: init([term()]) takes a list of three, the listen sockets come from the process dictionary.
+{exception, ranch_acceptors_sup, start_link, 3, [ignore], start_ret}. % init/1 never gives ignore
+%% The child specs are maps. Before that: init([term()]) takes a list of three, the listen sockets come from the process
+%% dictionary, the transport options have any() as socket options and start_listen_sockets/5 wants a list.
 {exception, ranch_acceptors_sup, init, 1, [ignore], map_types}.
-{exception, ranch_acceptors_sup, start_listen_sockets, 5, [ignore], spec_imprecise}. % TransOpts0 :: map(), its socket options are taken as a list
-{exception, ranch_acceptors_sup, listen_error, 5, [ignore], spec_imprecise}. % TransOpts0 :: any(), the function needs the map
+%% lists:keyfind/3 and lists:keydelete/3 want a list of tuples, lists:seq(2, N) gives a [integer()]; then TransOpts0#{socket_opts => ...}
+{exception, ranch_acceptors_sup, start_listen_sockets, 5, [ignore], library_spec}.
 {exception, ranch_acceptors_sup, format_error, 1, [ignore], library_spec}. % inet:format_error/1 wants a posix(), takes any atom
 
 {module, ranch_app, #{file => "ranch/src/ranch_app.erl", overlays => [{specs, "overlay_ranch.erl"}], timeout => 20000}}.
 {exception, ranch_app, start, 2, [ignore], body_exhaustiveness}. % ranch_server = ets:new(ranch_server, [..., named_table])
-{exception, ranch_app, profile_output, 0, [ignore], spec_wrong}. % ok: eprof:analyze/1 gives nothing_to_analyze when nothing was profiled (seen at run time)
 {exception, ranch_app, consider_profiling, 0, [ignore], body_exhaustiveness}. % {ok, _Pid} = eprof:start()
 
 {module, ranch_conns_sup, #{file => "ranch/src/ranch_conns_sup.erl", overlays => [{specs, "overlay_ranch.erl"}], timeout => 20000}}.
-{exception, ranch_conns_sup, start_link, 6, [ignore], spec_wrong}. % {ok, pid()}: {error, _} when init/7 fails (seen at run time)
-{exception, ranch_conns_sup, init, 7, [ignore], spec_imprecise}. % TransOpts :: any(), the function needs the map
+{exception, ranch_conns_sup, start_link, 6, [ignore], start_ret}. % proc_lib:start_link/3 gives a term(), init/7 sends {ok, self()}
 %% CurConns - 1 and NbChildren - 1 are integer(), the counters non_neg_integer(). Also: what put/2 and erase/1
 %% give, and [To | Sleepers2] = Sleepers after a clause for Sleepers =:= [].
 {exception, ranch_conns_sup, loop, 4, [ignore], arithmetic}.
 {exception, ranch_conns_sup, terminate, 3, [ignore], guard_narrowing}. % if Shutdown =:= infinity -> ok; true -> erlang:send_after(Shutdown, ...)
-{exception, ranch_conns_sup, system_continue, 3, [ignore], spec_imprecise}. % any(): the clause takes the tuple that loop/4 hands to sys
-{exception, ranch_conns_sup, system_terminate, 4, [ignore], spec_imprecise}. % as system_continue/3
 
 {module, ranch_conns_sup_sup, #{file => "ranch/src/ranch_conns_sup_sup.erl", timeout => 20000}}.
-{exception, ranch_conns_sup_sup, start_link, 4, [ignore], spec_wrong}. % {ok, pid()}: {error, _} when a child does not start
-{exception, ranch_conns_sup_sup, init, 1, [ignore], spec_imprecise}. % ranch_server:get_transport_options/1 gives any(); then the child specs are maps
+{exception, ranch_conns_sup_sup, start_link, 4, [ignore], start_ret}. % init/1 never gives ignore
+{exception, ranch_conns_sup_sup, init, 1, [ignore], map_types}. % the child specs are maps; and 1 + ceil(...) is an integer()
 
 {module, ranch_crc32c, #{file => "ranch/src/ranch_crc32c.erl", overlays => [{specs, "overlay_ranch.erl"}], timeout => 20000}}.
 {exception, ranch_crc32c, do_crc32c, 2, [ignore], element_type}. % element(N, Table) bxor ...
 
 {module, ranch_embedded_sup, #{file => "ranch/src/ranch_embedded_sup.erl", timeout => 20000}}.
-{exception, ranch_embedded_sup, start_link, 5, [ignore], spec_wrong}. % {ok, pid()}: {error, _} when a child does not start
+{exception, ranch_embedded_sup, start_link, 5, [ignore], start_ret}. % init/1 never gives ignore
 {exception, ranch_embedded_sup, init, 1, [ignore], map_types}. % the child specs are maps
 
 {module, ranch_listener_sup, #{file => "ranch/src/ranch_listener_sup.erl", timeout => 20000}}.
-%% TransOpts :: any(), the function needs the map. And {ok, pid()}: {error, _} when a child does not start (seen at run time).
-{exception, ranch_listener_sup, start_link, 5, [ignore], spec_imprecise}.
+{exception, ranch_listener_sup, start_link, 5, [ignore], start_ret}. % init/1 never gives ignore
 {exception, ranch_listener_sup, init, 1, [ignore], map_types}. % the child specs are maps
 
 {module, ranch_protocol, #{file => "ranch/src/ranch_protocol.erl", timeout => 20000}}.
@@ -127,7 +148,7 @@
 {exception, ranch_proxy_header, ssl_tlv, 1, [ignore], map_types}. % map patterns
 
 {module, ranch_server, #{file => "ranch/src/ranch_server.erl", overlays => [{specs, "overlay_ranch.erl"}], timeout => 20000}}.
-{exception, ranch_server, start_link, 0, [ignore], spec_wrong}. % {ok, pid()}: {error, {already_started, _}} for a second one (seen at run time)
+{exception, ranch_server, start_link, 0, [ignore], start_ret}. % init/1 never gives ignore
 {exception, ranch_server, set_new_listener_opts, 5, [ignore], call_reply}.
 {exception, ranch_server, set_connections_sup, 3, [ignore], call_reply}.
 {exception, ranch_server, get_connections_sup, 2, [ignore], body_exhaustiveness}. % {_, Pid} = lists:keyfind(...)
@@ -141,6 +162,7 @@
 {exception, ranch_server, set_max_connections, 2, [ignore], call_reply}.
 {exception, ranch_server, get_max_connections, 1, [ignore], ets_value}.
 {exception, ranch_server, set_transport_options, 2, [ignore], call_reply}.
+{exception, ranch_server, get_transport_options, 1, [ignore], ets_value}.
 {exception, ranch_server, set_protocol_options, 2, [ignore], call_reply}.
 {exception, ranch_server, get_listener_start_args, 1, [ignore], ets_value}.
 {exception, ranch_server, count_connections, 1, [ignore], library_spec}. % lists:foldl/3 with a fun that takes a tuple
@@ -150,19 +172,18 @@
 {exception, ranch_server, set_monitored_process, 3, [ignore], library_spec}. % lists:keytake/3 gives a tuple(); then true = erlang:demonitor(...)
 
 {module, ranch_server_proxy, #{file => "ranch/src/ranch_server_proxy.erl", overlays => [{specs, "overlay_ranch.erl"}], timeout => 20000}}.
-{exception, ranch_server_proxy, start_link, 0, [ignore], start_ret}.
-{exception, ranch_server_proxy, init, 1, [ignore], spec_wrong}. % {ok, pid()}: it gives {ok, Monitor, hibernate}, Monitor a reference()
+{exception, ranch_server_proxy, start_link, 0, [ignore], start_ret}. % init/1 never gives ignore
 {exception, ranch_server_proxy, wait_ranch_server, 1, [ignore], whereis}.
 
 {module, ranch_sup, #{file => "ranch/src/ranch_sup.erl", timeout => 20000}}.
-{exception, ranch_sup, start_link, 0, [ignore], spec_wrong}. % {ok, pid()}: {error, {already_started, _}} for a second one (seen at run time)
+{exception, ranch_sup, start_link, 0, [ignore], start_ret}. % init/1 never gives ignore
 {exception, ranch_sup, init, 1, [ignore], map_types}. % the child spec is a map; and the values from the application environment
 
 {module, ranch_tcp, #{file => "ranch/src/ranch_tcp.erl", timeout => 20000}}.
-%% ranch:set_option_default/3 takes a [{atom(), any()}], the socket options hold inet, inet6 and {raw, _, _, _} as well
-{exception, ranch_tcp, listen, 1, [ignore], spec_imprecise}.
-{exception, ranch_tcp, connect, 3, [ignore], spec_imprecise}. % Opts :: any(), and Opts ++ [...]
-{exception, ranch_tcp, connect, 4, [ignore], spec_imprecise}. % as connect/3
+%% ranch:filter_options/4 gives an Acc when Acc :: [any()]: a [any()] for gen_tcp:listen/2, not the type of the defaults
+{exception, ranch_tcp, listen, 1, [ignore], bounded_tyvar}.
+{exception, ranch_tcp, connect, 3, [ignore], forwarded}. % list(), gen_tcp:connect/3 wants a [gen_tcp:connect_option()]
+{exception, ranch_tcp, connect, 4, [ignore], forwarded}. % as connect/3
 {exception, ranch_tcp, recv_proxy_header, 2, [ignore], otp_no_spec}. % gen_tcp:unrecv/2
 {exception, ranch_tcp, send, 2, [ignore], otp_release}. % {error, atom()}: gen_tcp:send/2 can give {error, {timeout, RestData}}
 {exception, ranch_tcp, sendfile, 5, [ignore], catch_pattern}. % catch error:{badmatch, {error, enotconn}}; before it RawFile, an io_device()

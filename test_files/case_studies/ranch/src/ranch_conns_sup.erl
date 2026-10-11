@@ -46,7 +46,7 @@
 
 %% API.
 
--spec start_link(ranch:ref(), pos_integer(), module(), any(), module(), module()) -> {ok, pid()}.
+-spec start_link(ranch:ref(), pos_integer(), module(), any(), module(), module()) -> {ok, pid()} | {error, term()}.
 start_link(Ref, Id, Transport, TransOpts, Protocol, Logger) ->
 	proc_lib:start_link(?MODULE, init,
 		[self(), Ref, Id, Transport, TransOpts, Protocol, Logger]).
@@ -99,7 +99,7 @@ active_connections(SupPid) ->
 
 %% Supervisor internals.
 
--spec init(pid(), ranch:ref(), pos_integer(), module(), any(), module(), module()) -> no_return().
+-spec init(pid(), ranch:ref(), pos_integer(), module(), ranch:transport_opts(any()), module(), module()) -> no_return().
 init(Parent, Ref, Id, Transport, TransOpts, Protocol, Logger) ->
 	process_flag(trap_exit, true),
 	ok = ranch_server:set_connections_sup(Ref, Id, self()),
@@ -325,11 +325,11 @@ wait_children(NbChildren) ->
 			ok
 	end.
 
--spec system_continue(_, _, any()) -> no_return().
+-spec system_continue(_, _, {#state{}, non_neg_integer(), non_neg_integer(), [pid()]}) -> no_return().
 system_continue(_, _, {State, CurConns, NbChildren, Sleepers}) ->
 	loop(State, CurConns, NbChildren, Sleepers).
 
--spec system_terminate(any(), _, _, _) -> no_return().
+-spec system_terminate(any(), _, _, {#state{}, non_neg_integer(), non_neg_integer(), [pid()]}) -> no_return().
 system_terminate(Reason, _, _, {State, _, NbChildren, _}) ->
 	terminate(State, Reason, NbChildren).
 

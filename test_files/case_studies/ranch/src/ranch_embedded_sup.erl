@@ -20,7 +20,7 @@
 -export([init/1]).
 
 -spec start_link(ranch:ref(), module(), any(), module(), any())
-        -> {ok, pid()}.
+        -> {ok, pid()} | {error, term()}.
 start_link(Ref, Transport, TransOpts, Protocol, ProtoOpts) ->
 	supervisor:start_link(?MODULE, {Ref, Transport, TransOpts, Protocol, ProtoOpts}).
 

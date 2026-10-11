@@ -27,7 +27,7 @@
 start_link() ->
 	gen_server:start_link(?MODULE, [], []).
 
--spec init([]) -> {ok, pid()} | {stop, term()}.
+-spec init([]) -> {ok, reference(), hibernate} | {stop, term()}.
 init([]) ->
 	case wait_ranch_server(50) of
 		{ok, Monitor} ->

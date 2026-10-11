@@ -20,7 +20,7 @@
 -export([init/1]).
 
 -spec start_link(ranch:ref(), module(), module())
-	-> {ok, pid()}.
+	-> {ok, pid()} | {error, term()}.
 start_link(Ref, Transport, Logger) ->
 	supervisor:start_link(?MODULE, [Ref, Transport, Logger]).
 
@@ -48,7 +48,7 @@ init([Ref, Transport, Logger]) ->
 	end || AcceptorId <- lists:seq(1, NumAcceptors)],
 	{ok, {#{intensity => 1 + ceil(math:log2(NumAcceptors))}, Procs}}.
 
--spec start_listen_sockets(any(), pos_integer(), module(), map(), module())
+-spec start_listen_sockets(any(), pos_integer(), module(), ranch:transport_opts(list()), module())
 	-> [{pos_integer(), inet:socket()}].
 start_listen_sockets(Ref, NumListenSockets, Transport, TransOpts0, Logger) when NumListenSockets > 0 ->
 	BaseSocket = start_listen_socket(Ref, Transport, TransOpts0, Logger),
@@ -73,7 +73,7 @@ start_listen_sockets(Ref, NumListenSockets, Transport, TransOpts0, Logger) when 
 	ranch_server:set_addr(Ref, Addr),
 	[{1, BaseSocket}|ExtraSockets].
 
--spec start_listen_socket(any(), module(), map(), module()) -> inet:socket().
+-spec start_listen_socket(any(), module(), ranch:transport_opts(list()), module()) -> inet:socket().
 start_listen_socket(Ref, Transport, TransOpts, Logger) ->
 	case Transport:listen(TransOpts) of
 		{ok, Socket} ->
@@ -82,7 +82,7 @@ start_listen_socket(Ref, Transport, TransOpts, Logger) ->
 			listen_error(Ref, Transport, TransOpts, Reason, Logger)
 	end.
 
--spec listen_error(any(), module(), any(), atom(), module()) -> no_return().
+-spec listen_error(any(), module(), ranch:transport_opts(list()), atom(), module()) -> no_return().
 listen_error(Ref, Transport, TransOpts0, Reason, Logger) ->
 	SocketOpts0 = maps:get(socket_opts, TransOpts0, []),
 	SocketOpts1 = [{cert, '...'}|proplists:delete(cert, SocketOpts0)],

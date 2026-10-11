@@ -19,7 +19,7 @@
 -export([start_link/0]).
 -export([init/1]).
 
--spec start_link() -> {ok, pid()}.
+-spec start_link() -> {ok, pid()} | {error, term()}.
 start_link() ->
 	supervisor:start_link({local, ?MODULE}, ?MODULE, []).
 

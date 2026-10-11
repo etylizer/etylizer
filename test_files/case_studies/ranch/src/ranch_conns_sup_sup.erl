@@ -19,7 +19,7 @@
 -export([start_link/4]).
 -export([init/1]).
 
--spec start_link(ranch:ref(), module(), module(), module()) -> {ok, pid()}.
+-spec start_link(ranch:ref(), module(), module(), module()) -> {ok, pid()} | {error, term()}.
 start_link(Ref, Transport, Protocol, Logger) ->
 	ok = ranch_server:cleanup_connections_sups(Ref),
 	supervisor:start_link(?MODULE, {

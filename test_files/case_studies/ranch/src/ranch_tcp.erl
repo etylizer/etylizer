@@ -134,7 +134,7 @@ handshake_cancel(_) ->
 
 %% @todo Probably filter Opts?
 -spec connect(inet:ip_address() | inet:hostname(),
-	inet:port_number(), any())
+	inet:port_number(), list())
 	-> {ok, inet:socket()} | {error, atom()}.
 connect(Host, Port, Opts) when is_integer(Port) ->
 	gen_tcp:connect(Host, Port,
@@ -142,7 +142,7 @@ connect(Host, Port, Opts) when is_integer(Port) ->
 
 %% @todo Probably filter Opts?
 -spec connect(inet:ip_address() | inet:hostname(),
-	inet:port_number(), any(), timeout())
+	inet:port_number(), list(), timeout())
 	-> {ok, inet:socket()} | {error, atom()}.
 connect(Host, Port, Opts, Timeout) when is_integer(Port) ->
 	gen_tcp:connect(Host, Port,

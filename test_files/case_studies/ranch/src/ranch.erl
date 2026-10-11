@@ -423,7 +423,7 @@ listener_info(Ref, Pid) ->
 		protocol_options => ProtoOpts
 	}.
 
--spec procs(ref(), acceptors | connections) -> [pid()].
+-spec procs(ref(), acceptors | connections) -> [pid() | undefined | restarting].
 procs(Ref, Type) ->
 	ListenerSup = ranch_server:get_listener_sup(Ref),
 	procs1(ListenerSup, Type).
@@ -530,7 +530,7 @@ merge_options(Option, OptionList) ->
 	[Option|OptionList].
 
 -spec set_option_default(Opts, atom(), any())
-	-> Opts when Opts :: [{atom(), any()}].
+	-> Opts when Opts :: [inet | inet6 | {atom(), any()} | {raw, any(), any(), any()}].
 set_option_default(Opts, Key, Value) ->
 	case lists:keymember(Key, 1, Opts) of
 		true -> Opts;

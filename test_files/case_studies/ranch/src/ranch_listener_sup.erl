@@ -18,8 +18,8 @@
 -export([start_link/5]).
 -export([init/1]).
 
--spec start_link(ranch:ref(), module(), any(), module(), any())
-	-> {ok, pid()}.
+-spec start_link(ranch:ref(), module(), ranch:transport_opts(any()), module(), any())
+	-> {ok, pid()} | {error, term()}.
 start_link(Ref, Transport, TransOpts, Protocol, ProtoOpts) ->
 	MaxConns = maps:get(max_connections, TransOpts, 1024),
 	Logger = maps:get(logger, TransOpts, logger),
