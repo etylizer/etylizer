@@ -16,6 +16,7 @@
 -include("log.hrl").
 -include("typing.hrl").
 -include("metrics.hrl").
+-include("etylizer.hrl").
 
 % Checks all functions against their specs, only print a report.
 -spec check_all_report(
@@ -93,8 +94,7 @@ check_report(Ctx, Decl = {function, Loc, Name, Arity, _Args, Body}, PolyTy) ->
               end,
               AltTys),
 
-            UnmatchedEverywhere = intersect_unmatched(Body, UnmatchedList),
-            case sets:to_list(UnmatchedEverywhere) of
+            case unmatched_everywhere(Body, UnmatchedList) of
                 [] -> success;
                 [First | _Rest] -> report_tyerror(FunStr, redundant_branch, First, "")
             end
@@ -180,8 +180,7 @@ check(Ctx, Decl = {function, Loc, Name, Arity, _Args, Body}, PolyTy) ->
       end,
       AltTys),
 
-    UnmatchedEverywhere = intersect_unmatched(Body, UnmatchedList),
-    case sets:to_list(UnmatchedEverywhere) of
+    case unmatched_everywhere(Body, UnmatchedList) of
         [] ->
             ?LOG_INFO("Type ok for ~w/~w at ~s", Name, Arity, ast:format_loc(Loc)),
             ok;
@@ -272,51 +271,36 @@ report_tyerror(FunName, Kind, Loc, Hint) ->
         _ -> errors:ty_error(Loc, "in ~s, ~s~n~s~n~n  ~s", [FunName, tyerror_msg(Kind), SrcCtx, Hint])
     end.
 
--spec intersect_unmatched(ast:exps(), [sets:set(ast:loc())]) -> sets:set(ast:loc()).
-intersect_unmatched(Body, UnmatchedList) ->
-    SublocationMap = sublocation_map(Body),
-    UnmatchedListTransitive = lists:map(
-      fun(UnmatchedSet) ->
-          sets:fold(fun(LLoc, Acc) ->
-              Sublocs = sets:from_list(maps:get(LLoc, SublocationMap, [])),
-              sets:union(Acc, Sublocs)
-          end, UnmatchedSet, UnmatchedSet)
+% The branches that match for no alternative of an intersection type, in source order.
+% UnmatchedList has the locations of the unmatched branches of each alternative.
+% A location shared by several clauses (e.g. from a macro) does not identify a branch
+% and is ignored.
+-spec unmatched_everywhere(ast:exps(), [sets:set(ast:loc())]) -> [ast:loc()].
+unmatched_everywhere(Body, UnmatchedList) ->
+    Clauses = case_clauses(Body),
+    ClauseLocs = [Loc || {case_clause, Loc, _, _, _} <- Clauses],
+    Shared = sets:from_list(ClauseLocs -- lists:usort(ClauseLocs), [{version, 2}]),
+    % the branches inside each branch
+    Nested = maps:from_list([{Loc, [L || {case_clause, L, _, _, _} <- case_clauses(B)]}
+                             || {case_clause, Loc, _, _, B} <- Clauses]),
+    Inside = fun(Loc) -> maps:get(Loc, Nested, []) end,
+    Branches = [sets:subtract(Unmatched, Shared) || Unmatched <- UnmatchedList],
+    % the branches inside an unmatched branch are unmatched, too
+    Transitive = lists:map(
+      fun(Bs) ->
+          sets:fold(fun(Loc, Acc) ->
+              sets:union(Acc, sets:from_list(Inside(Loc), [{version, 2}]))
+          end, Bs, Bs)
       end,
-      UnmatchedList),
-    sets:intersection(UnmatchedListTransitive).
+      Branches),
+    Everywhere = sets:to_list(sets:intersection([sets:union(Branches) | Transitive])),
+    % only the outermost branches are reported
+    Inner = lists:append([Inside(Loc) || Loc <- Everywhere]),
+    lists:sort(fun ast:leq_loc/2, lists:sort(Everywhere -- Inner)).
 
-% Builds a map from each branching location to all descendant locations.
-% Uses everything with {rec, _} to match branching constructs while continuing
-% recursion into their children to find nested constructs.
-% Entries are returned outermost-first, so foldr processes bottom-up,
-% allowing collect_locs to reuse cached results for inner constructs.
--spec sublocation_map(any()) -> #{ast:loc() => [ast:loc()]}.
-sublocation_map(Term) ->
-    Entries = utils:everything(
-      fun({'case', Loc, Expr, Clauses}) -> {rec, {Loc, [Expr, Clauses]}};
-         ({'fun', Loc, _, _, Body}) -> {rec, {Loc, Body}};
-         ({case_clause, Loc, Pat, _Guards, Body}) -> {rec, {Loc, [Pat, Body]}};
+-spec case_clauses(term()) -> [ast:case_clause()].
+case_clauses(Term) ->
+    utils:everything(
+      fun(C = {case_clause, _, _, _, _}) -> {rec, ?assert_type(C, ast:case_clause())};
          (_) -> error
-      end, Term),
-    lists:foldr(fun({Loc, Children}, Cache) ->
-        maps:put(Loc, collect_locs(Children, Cache), Cache)
-    end, #{}, Entries).
-
--spec collect_locs(any(), #{ast:loc() => [ast:loc()]}) -> [ast:loc()].
-collect_locs(Term, Cache) ->
-    lists:flatten(utils:everything(
-      fun({'case', Loc, _, _}) -> cached(Loc, Cache);
-         ({'fun', Loc, _, _, _}) -> cached(Loc, Cache);
-         ({case_clause, Loc, _, _, _}) -> cached(Loc, Cache);
-         (X) ->
-             case ast:is_loc(X) of
-                 true -> {ok, X};
-                 false -> error
-             end
-      end, Term)).
-
-cached(Loc, Cache) ->
-    case Cache of
-        #{Loc := Locs} -> {ok, [Loc | Locs]};
-        _ -> {rec, Loc}
-    end.
+      end, Term).
