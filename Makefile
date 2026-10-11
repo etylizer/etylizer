@@ -1,4 +1,4 @@
-.PHONY: release build test unit-tests check all clean gradualize check_ast_trans_ty \
+.PHONY: release build test unit-tests case-study check all clean gradualize check_ast_trans_ty \
 	check_syntax_antidote check_ast_trans_antidote check_types_antidote \
 	check_syntax_riak check_ast_trans_riak check_types_riak
 
@@ -25,11 +25,13 @@ unit-tests: build
 test: unit-tests testtest
 	@echo "Checking syntax transformation for source code of type checker ..."
 	./_build/default/bin/etylizer --sanity --no-type-checking -I ./include -I ./src ./src/*.erl
-	@echo "Running case study ..."
-	test_files/case_studies/check-stdlib.sh
-	test_files/case_studies/check-jsone.sh
-	ETYLIZER_CASE_STUDY_LOGLEVEL=warn test_files/case_studies/check-ety.sh
 
+# Metrics of the case studies, one <study>_case_study_metrics.json per manifest
+case-study:
+	@echo "Running case studies ..."
+	$(REBAR) as metrics escriptize
+	for m in test_files/case_studies/*.study; do \
+	  .github/scripts/ety_case_study $$m > $$(basename $$m .study)_case_study_metrics.json || exit 1; done
 
 testtest:
 	@echo "Running unit tests for tests ..."

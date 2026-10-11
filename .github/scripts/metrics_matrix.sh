@@ -17,6 +17,11 @@
 #   run    <base_dir> <pr_dir> <suite> <out_dir>   write the 4 cell JSONs
 #   report <suite> <dir> <title>                   print markdown tables
 #
+# The suite `case-study` is different: it runs ety_case_study on every manifest
+# of a tree with that tree's engine, base and PR only (<out_dir>/{base,pr}), and
+# reports each study like a suite. The manifest is the corpus, so the two
+# diagonal cells already tell what moved.
+#
 # "Engine" = a tree's built escript + its --type-overlay + stdtypes.
 # "Corpus" = a tree's -S source + -I headers. Slow functions are not skipped;
 # they record as `timeout` at --report-timeout.
@@ -50,10 +55,31 @@ cell() {
     || echo "metrics_matrix: cell corpus=$(basename "$cdir") engine=$(basename "$edir") exited nonzero (metrics flushed)" >&2
 }
 
+# case_study <tree_dir> <out_dir>: one metrics file per manifest of the tree, never fails
+case_study() {
+  local tree="$1" out="$2" manifest json
+  if [ ! -x "$tree/_build/metrics/bin/etylizer" ]; then
+    echo "metrics_matrix: no engine at $tree/_build/metrics/bin/etylizer — skipping case studies" >&2
+    return 0
+  fi
+  mkdir -p "$out"
+  for manifest in "$tree"/test_files/case_studies/*.study; do
+    [ -f "$manifest" ] || continue
+    json="$out/$(basename "$manifest" .study).json"
+    "$SELF_DIR/ety_case_study" "$manifest" "$tree/_build/metrics/bin/etylizer" > "$json.tmp" && mv "$json.tmp" "$json" \
+      || { rm -f "$json.tmp"; echo "metrics_matrix: case study $(basename "$manifest") of $(basename "$tree") exited nonzero" >&2; }
+  done
+}
+
 cmd_run() {
   local base pr suite out
   base="$(cd "$1" && pwd)"; pr="$(cd "$2" && pwd)"; suite="$3"
   mkdir -p "$4"; out="$(cd "$4" && pwd)"
+  if [ "$suite" = case-study ]; then
+    case_study "$base" "$out/base"
+    case_study "$pr" "$out/pr"
+    return 0
+  fi
   cell "$base" "$base" "$suite" "$out/${suite}_cA_eA.json"   # base corpus, base engine
   cell "$base" "$pr"   "$suite" "$out/${suite}_cA_eB.json"   # base corpus, PR engine
   cell "$pr"   "$base" "$suite" "$out/${suite}_cB_eA.json"   # PR   corpus, base engine
@@ -62,9 +88,24 @@ cmd_run() {
 
 cmd_report() {
   local suite="$1" d="$2" t="$3"
+  local R="$SELF_DIR/ety_metrics_report"
+  if [ "$suite" = case-study ]; then
+    # One report per study: PR tree (manifest + engine) vs base tree.
+    local json study
+    for json in "$d"/pr/*.json; do
+      [ -f "$json" ] || continue
+      study="$(basename "$json" .json)"
+      if [ -f "$d/base/$study.json" ]; then
+        "$R" --title "[$study] $t" "$json" "$d/base/$study.json"
+      else
+        "$R" --title "[$study] $t" "$json"
+      fi
+      echo
+    done
+    return 0
+  fi
   local AeA="$d/${suite}_cA_eA.json" AeB="$d/${suite}_cA_eB.json"
   local BeA="$d/${suite}_cB_eA.json" BeB="$d/${suite}_cB_eB.json"
-  local R="$SELF_DIR/ety_metrics_report"
   # Each table holds the SOURCE (corpus) fixed and compares PR engine vs base
   # engine, so every delta is attributable to the engine alone (identical
   # function set). The [..] prefix rides through --title onto every heading.

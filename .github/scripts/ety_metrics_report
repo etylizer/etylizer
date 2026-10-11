@@ -43,8 +43,13 @@ report(Title, Pr, Base) ->
                                PrTimesCommon, BaseTimes, HasBase);
         error -> ok
     end,
-    case maps:find(<<"poly_vars">>, Pr) of
-        {ok, _} ->
+    case maps:find(<<"case_study_exception">>, Pr) of
+        {ok, _} -> print_case_study_section(section_title(Title, "Case Study"), Pr, Base, HasBase);
+        error -> ok
+    end,
+    %% Not for a case study: its interest is the verdicts, not the solver.
+    case maps:is_key(<<"poly_vars">>, Pr) andalso not maps:is_key(<<"case_study_exception">>, Pr) of
+        true ->
             % Per-function records can be truncated by a wall-clock kill,
             % inference cannot. Separate tables, not one blended total.
             Unstable = unstable_fns(PrTimes, BaseTimes, Pr, Base),
@@ -57,7 +62,7 @@ report(Title, Pr, Base) ->
             print_poly_exclusions(Unstable, PrDropped, BaseDropped, HasBase),
             print_inference_section(section_title(Title, "Inference Path"),
                                     PrInfer, BaseInfer, HasBase);
-        error -> ok
+        false -> ok
     end,
     %% Verdict flips, reusing the cells already loaded above (no recomputation):
     %% on this fixed corpus, list functions whose Error/Ok verdict differs
@@ -199,6 +204,89 @@ print_poly_exclusions(Unstable, PrDropped, BaseDropped, HasBase) ->
 
 section_title(undefined, Section) -> Section;
 section_title(Title, Section) -> Title ++ ": " ++ Section.
+
+%% --- Case study ---
+
+%% A case study (see ety_case_study) carries the exceptions of its manifest as
+%% case_study_exception rows [Fun, Handling, Reason, Class] and its injected
+%% assertions as case_study_assertion rows. Joined with the verdicts, every
+%% function gets a status:
+%%   ok          no exception, type checks as is
+%%   flagged     exception without ignore, type checks with its flags
+%%   ignored     exception with ignore, fails
+%%   stale       exception with ignore, type checks: the exception is not needed
+%%   dangling    exception for a function that has no verdict
+%%   unexpected  fails without ignore
+%% Rows are {Fun, Status, Handling, Class}; Class is none without an exception.
+case_study_rows(Cell) ->
+    Exceptions = #{Fun => {Handling, Class}
+                   || [Fun, Handling, _Reason, Class] <- maps:get(<<"case_study_exception">>, Cell, [])},
+    Verdicts = #{Fun => Verdict || [Fun, _Time, Verdict] <- maps:get(<<"typecheck_time">>, Cell, [])},
+    [case maps:find(Fun, Exceptions) of
+         error -> {Fun, case Verdict of <<"ok">> -> ok; _ -> unexpected end, [], none};
+         {ok, {Handling, Class}} ->
+             Status = case {lists:member(<<"ignore">>, Handling), Verdict} of
+                          {true, <<"ok">>} -> stale;
+                          {true, _} -> ignored;
+                          {false, <<"ok">>} -> flagged;
+                          {false, _} -> unexpected
+                      end,
+             {Fun, Status, Handling, Class}
+     end || Fun := Verdict <- Verdicts]
+    ++ [{Fun, dangling, Handling, Class} || Fun := {Handling, Class} <- Exceptions, not maps:is_key(Fun, Verdicts)].
+
+%% The rows of the table: {Label, fun(Rows) -> integer()}.
+case_study_metrics(Classes) ->
+    Count = fun(Pred) -> fun(Rows) -> length([R || R <- Rows, Pred(R)]) end end,
+    Is = fun(Statuses) -> Count(fun({_, S, _, _}) -> lists:member(S, Statuses) end) end,
+    Flag = fun(H) -> Count(fun({_, S, Handling, _}) -> S =:= flagged andalso lists:member(H, Handling) end) end,
+    [{"Functions", Is([ok, flagged, ignored, stale, unexpected])},
+     {"Type check as is", Is([ok])},
+     {"Type check with flags", Is([flagged])},
+     {"&nbsp;&nbsp;redundancy off", Flag(<<"no_redundancy">>)},
+     {"&nbsp;&nbsp;exhaustiveness off", Flag(<<"no_exhaustiveness">>)},
+     {"Ignored", Is([ignored])},
+     {"Stale exceptions", Is([stale, dangling])},
+     {"Unexpected failures", Is([unexpected])}]
+    ++ [{["Exceptions: ", Class], Count(fun({_, S, _, C}) -> C =:= Class andalso lists:member(S, [flagged, ignored]) end)}
+        || Class <- Classes].
+
+print_case_study_section(Title, Pr, Base, HasBase) ->
+    PrRows = case_study_rows(Pr),
+    BaseRows = case_study_rows(Base),
+    Classes = lists:usort([C || {_, _, _, C} <- PrRows ++ BaseRows, C =/= none]),
+    Assertions = fun(Cell) -> length(maps:get(<<"case_study_assertion">>, Cell, [])) end,
+    io:format("## ~s~n~n", [Title]),
+    case HasBase of
+        true ->
+            io:format("| Metric | PR | Base | Delta |~n|--------|----|------|-------|~n", []),
+            [row4_int(Label, Metric(PrRows), Metric(BaseRows)) || {Label, Metric} <- case_study_metrics(Classes)],
+            row4_int("Assertions", Assertions(Pr), Assertions(Base)),
+            io:format("~n", []),
+            print_status_changes(PrRows, BaseRows);
+        false ->
+            io:format("| Metric | Value |~n|--------|-------|~n", []),
+            [row1(Label, ival(Metric(PrRows))) || {Label, Metric} <- case_study_metrics(Classes)],
+            row1("Assertions", ival(Assertions(Pr))),
+            io:format("~n", [])
+    end.
+
+%% Functions whose status differs between base and PR, one line per kind of change.
+print_status_changes(PrRows, BaseRows) ->
+    Pr = #{Fun => S || {Fun, S, _, _} <- PrRows},
+    Base = #{Fun => S || {Fun, S, _, _} <- BaseRows},
+    Changes = [{{maps:get(Fun, Base, none), maps:get(Fun, Pr, none)}, Fun}
+               || Fun <- lists:usort(maps:keys(Pr) ++ maps:keys(Base)),
+                  maps:get(Fun, Base, none) =/= maps:get(Fun, Pr, none)],
+    case Changes of
+        [] -> ok;
+        _ ->
+            io:format("**Status changes** (base -> PR)~n~n", []),
+            [flip_line(io_lib:format("~w -> ~w", [From, To]),
+                       lists:sort([binary_to_list(Fun) || {Change, Fun} <- Changes, Change =:= {From, To}]))
+             || {From, To} <- lists:usort([Change || {Change, _} <- Changes])],
+            io:format("~n", [])
+    end.
 
 %% --- Time statistics ---
 
