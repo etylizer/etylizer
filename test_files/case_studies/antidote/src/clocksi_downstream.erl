@@ -40,10 +40,10 @@
     index_node(),
     {key(), bucket()},
     type(),
-    op_param(),
-    list()
+    op(),
+    [{key(), type(), effect()}]
 ) ->
-    {ok, effect()} | {error, atom()}.
+    {ok, effect()} | {error, reason()}.
 generate_downstream_op(Transaction, IndexNode, Key, Type, Update, WriteSet) ->
     %% TODO: Check if read can be omitted for some types as registers
     NeedState = antidote_crdt:require_state_downstream(Type, Update),

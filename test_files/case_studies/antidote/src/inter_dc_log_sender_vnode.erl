@@ -70,9 +70,9 @@
 -record(state, {
     partition :: partition_id(),
     %% log_tx_assembler:state
-    buffer,
+    buffer :: log_txn_assembler:state(),
     last_log_id :: op_number(),
-    timer :: any()
+    timer :: none | reference()
 }).
 -type state() :: #state{}.
 %%%% API --------------------------------------------------------------------+

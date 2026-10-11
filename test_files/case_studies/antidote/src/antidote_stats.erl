@@ -65,8 +65,8 @@
 ]).
 
 -record(state, {
-    timer :: any(),
-    timer_expensive :: any(),
+    timer :: reference(),
+    timer_expensive :: undefined | reference(),
     monitored_processes :: list()
 }).
 -type state() :: #state{}.

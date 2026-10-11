@@ -120,8 +120,8 @@ get_hooks(post_commit, Bucket) ->
         error -> undefined
     end.
 
--spec execute_pre_commit_hook(term(), type(), op_param()) ->
-    {term(), type(), op_param()} | {error, reason()}.
+-spec execute_pre_commit_hook(term(), type(), op()) ->
+    {term(), type(), op()} | {error, reason()}.
 execute_pre_commit_hook({Key, Bucket}, Type, Param) ->
     Hook = get_hooks(pre_commit, Bucket),
     case Hook of
@@ -139,8 +139,8 @@ execute_pre_commit_hook({Key, Bucket}, Type, Param) ->
 execute_pre_commit_hook(Key, Type, Param) ->
     {Key, Type, Param}.
 
--spec execute_post_commit_hook(term(), type(), op_param()) ->
-    {term(), type(), op_param()} | {error, reason()}.
+-spec execute_post_commit_hook(term(), type(), op()) ->
+    {term(), type(), op()} | {error, reason()}.
 execute_post_commit_hook({Key, Bucket}, Type, Param) ->
     Hook = get_hooks(post_commit, Bucket),
     case Hook of

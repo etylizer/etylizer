@@ -16,7 +16,7 @@
 -type recvr_state() :: #recvr_state{}.
 
 -type socket_address() :: {inet:ip_address(), inet:port_number()}.
--type zmq_socket() :: any().
+-type zmq_socket() :: erlzmq:erlzmq_socket().
 -type pdcid() :: {dcid(), partition_id()}.
 -type log_opid() :: non_neg_integer().
 
@@ -24,7 +24,7 @@
     dcid :: dcid(),
     partition :: partition_id(),
     %% the value is *none* if the transaction is read directly from the log
-    prev_log_opid :: op_number() | none,
+    prev_log_opid :: op_number(),
     snapshot :: snapshot_time(),
     timestamp :: clock_time(),
     %% last opid of the txn that was an update operations (i.e. not a commit/abort)
@@ -38,8 +38,8 @@
 -record(descriptor, {
     dcid :: dcid(),
     partition_num :: non_neg_integer(),
-    publishers :: [socket_address()],
-    logreaders :: [socket_address()]
+    publishers :: [[socket_address()]],
+    logreaders :: [{[partition_id()], [socket_address()]}]
 }).
 
 -type descriptor() :: #descriptor{}.
@@ -70,7 +70,7 @@
     state_name :: normal | buffering,
     pdcid :: pdcid(),
     last_observed_opid :: non_neg_integer() | init,
-    queue :: queue:queue(),
+    queue :: queue:queue(interdc_txn()),
     logging_enabled :: boolean(),
     log_reader_timeout :: integer()
 }).

@@ -90,7 +90,7 @@ stop(Pid) -> gen_statem:stop(Pid).
 %%      transaction fsm and directly in the calling thread.
 %%      It either returns the object value or the object state.
 -spec perform_singleitem_operation(
-    snapshot_time() | ignore, key(), type(), clocksi_readitem:read_property_list()
+    snapshot_time() | ignore, key(), type(), txn_properties()
 ) ->
     {ok, val() | term(), snapshot_time()} | {error, reason()}.
 perform_singleitem_operation(Clock, Key, Type, Properties) ->
@@ -110,7 +110,9 @@ perform_singleitem_operation(Clock, Key, Type, Properties) ->
 %% @doc This is a standalone function for directly contacting the update
 %%      server vnode.  This is lighter than creating a transaction
 %%      because the update/prepare/commit are all done at one time
--spec perform_singleitem_update(snapshot_time() | ignore, key(), type(), {atom(), term()}, list()) ->
+-spec perform_singleitem_update(
+    snapshot_time() | ignore, key(), type(), {atom(), term()}, txn_properties()
+) ->
     {ok, {txid(), [], snapshot_time()}} | {error, term()}.
 perform_singleitem_update(Clock, Key, Type, Params, Properties) ->
     Transaction = create_transaction_record(Clock, true, Properties),
@@ -200,7 +202,7 @@ finish_op(From, Key, Result) ->
 -record(state, {
     from :: undefined | gen_statem:from(),
     transaction :: undefined | tx(),
-    updated_partitions :: list(),
+    updated_partitions :: [{index_node(), [{key(), type(), effect()}]}],
     % list of upstream updates, used for post commit hooks
     client_ops :: list(),
     num_to_ack :: non_neg_integer(),
@@ -251,7 +253,7 @@ wait_for_start_transaction({call, Sender}, {start_tx, ClientClock, Properties}, 
     {call, gen_statem:from()},
     {update | update_objects | read_objects | read | abort | prepare, list()},
     state()
-) -> gen_statem:event_handler_result(state()).
+) -> gen_statem:event_handler_result(atom(), state()).
 
 %% update kept for backwards compatibility with tests.
 execute_op({call, Sender}, {update, Args}, State) ->
@@ -304,9 +306,9 @@ committing(
 
 %% @doc TODO
 -spec single_committing
-    (cast, {committed | clock_time()} | abort | timeout, state()) ->
-        gen_statem:event_handler_result(state());
-    (info, {any(), any()}, state()) -> gen_statem:event_handler_result(state()).
+    (cast, {committed, clock_time()} | abort | timeout, state()) ->
+        gen_statem:event_handler_result(atom(), state());
+    (info, {any(), any()}, state()) -> gen_statem:event_handler_result(atom(), state()).
 single_committing(
     cast, {committed, CommitTime}, State = #state{from = From, full_commit = FullCommit}
 ) ->
@@ -550,7 +552,7 @@ callback_mode() -> state_functions.
 %%%===================================================================
 
 %% @doc TODO
--spec init_state(boolean(), boolean(), proplists:proplist()) -> state().
+-spec init_state(boolean(), boolean(), txn_properties()) -> state().
 init_state(FullCommit, IsStatic, Properties) ->
     #state{
         from = undefined,
@@ -568,8 +570,8 @@ init_state(FullCommit, IsStatic, Properties) ->
     }.
 
 %% @doc TODO
--spec start_tx_internal(snapshot_time(), proplists:proplist(), state()) ->
-    {ok, state()} | {error, any()}.
+-spec start_tx_internal(snapshot_time() | ignore, txn_properties(), state()) ->
+    {ok, state()}.
 start_tx_internal(ClientClock, Properties, State = #state{}) ->
     TransactionRecord = create_transaction_record(ClientClock, false, Properties),
     % a new transaction was started, increment metrics
@@ -608,7 +610,7 @@ create_transaction_record(ClientClock, _IsStatic, Properties) ->
 
 %% @doc Execute the commit protocol
 -spec execute_command(atom(), term(), gen_statem:from(), state()) ->
-    gen_statem:event_handler_result(state()).
+    gen_statem:event_handler_result(atom(), state()).
 execute_command(prepare, Protocol, Sender, State0) ->
     State = State0#state{from = Sender, commit_protocol = Protocol},
     prepare(State);
@@ -983,7 +985,7 @@ async_log_propagation(Partition, TxId, Key, Type, Record) ->
 
 %% @doc this function sends a prepare message to all updated partitions and goes
 %%      to the "receive_prepared"state.
--spec prepare(state()) -> gen_statem:event_handler_result(state()).
+-spec prepare(state()) -> gen_statem:event_handler_result(atom(), state()).
 prepare(
     State = #state{
         num_to_read = NumToRead,
@@ -1023,7 +1025,7 @@ prepare(
 %% commit_read_only: special case for when we have not updated anything
 %% {reply_and_then_commit, clock_time()}: first reply that we have successfully committed and then try to commit TODO rly?
 %% {normal_commit, clock_time(): wait until all participants have acknowledged the commit and then reply to the client
--spec prepare_done(state(), Action) -> gen_statem:event_handler_result(state()) when
+-spec prepare_done(state(), Action) -> gen_statem:event_handler_result(atom(), state()) when
     Action ::
         single_committing
         | commit_read_only

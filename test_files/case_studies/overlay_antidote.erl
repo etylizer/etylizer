@@ -273,6 +273,10 @@
 -type bcounter_effect() :: {{increment | decrement, pos_integer()} | {transfer, pos_integer(), term()}, term()}.
 %% the request of a remote DC for permissions: {Key, Amount, Requester}
 -type bcounter_transfer() :: {{key(), bucket()}, pos_integer(), dcid()}.
+%% the two orddicts of the state as the record has them: per key the pending requests {Amount, Time}, and
+%% per key and requester the time of the last transfer
+-type bcounter_queue() :: orddict:orddict({key(), bucket()}, [{integer(), erlang:timestamp()}]).
+-type bcounter_transfers() :: orddict:orddict({{key(), bucket()}, dcid()}, erlang:timestamp()).
 
 -spec 'bcounter_mgr:start_link'() -> start_link_ret().
 'bcounter_mgr:start_link'() -> error(overlay).
@@ -304,8 +308,8 @@
 -spec 'bcounter_mgr:code_change'(term(), bcounter_mgr:state(), term()) -> {ok, bcounter_mgr:state()}.
 'bcounter_mgr:code_change'(_, _, _) -> error(overlay).
 
-%% the queue of the state, #state.req_queue :: orddict:orddict(): per key the requests {Amount, Time}
--spec 'bcounter_mgr:queue_request'({key(), bucket()}, integer(), orddict:orddict()) -> orddict:orddict().
+%% the queue of the state, #state.req_queue
+-spec 'bcounter_mgr:queue_request'({key(), bucket()}, integer(), bcounter_queue()) -> bcounter_queue().
 'bcounter_mgr:queue_request'(_, _, _) -> error(overlay).
 
 %% what is still missing after asking the other DCs
@@ -323,24 +327,23 @@
 -spec 'bcounter_mgr:request_response'(binary()) -> ok.
 'bcounter_mgr:request_response'(_) -> error(overlay).
 
-%% #state.last_transfers :: orddict:orddict(); the period in microseconds
--spec 'bcounter_mgr:cancel_consecutive_req'(orddict:orddict(), non_neg_integer()) -> orddict:orddict().
+%% #state.last_transfers; the period in microseconds
+-spec 'bcounter_mgr:cancel_consecutive_req'(bcounter_transfers(), non_neg_integer()) -> bcounter_transfers().
 'bcounter_mgr:cancel_consecutive_req'(_, _) -> error(overlay).
 
--spec 'bcounter_mgr:clear_pending_req'(orddict:orddict(), non_neg_integer()) -> orddict:orddict().
+-spec 'bcounter_mgr:clear_pending_req'(bcounter_queue(), non_neg_integer()) -> bcounter_queue().
 'bcounter_mgr:clear_pending_req'(_, _) -> error(overlay).
 
--spec 'bcounter_mgr:can_process'({key(), bucket()}, dcid(), orddict:orddict()) -> boolean().
+-spec 'bcounter_mgr:can_process'({key(), bucket()}, dcid(), bcounter_transfers()) -> boolean().
 'bcounter_mgr:can_process'(_, _, _) -> error(overlay).
 
 %% ---------------------------------------------------------------------------------------------
 %% clocksi_interactive_coord: a gen_statem with state functions
 %% ---------------------------------------------------------------------------------------------
 
-%% The specs of the source (execute_op/3, single_committing/3, execute_command/4, prepare/1,
-%% prepare_done/2) say gen_statem:event_handler_result(state()), which makes the record the type of the
-%% state name. The specs here say what the callback StateName/3 of gen_statem says: the name of a state
-%% is an atom, the record is the data.
+%% As the specs of the source say it (execute_op/3, single_committing/3, execute_command/4, prepare/1,
+%% prepare_done/2) and the callback StateName/3 of gen_statem: the name of a state is an atom, the record
+%% is the data.
 -type coord_result() :: gen_statem:event_handler_result(atom(), clocksi_interactive_coord:state()).
 
 -spec 'clocksi_interactive_coord:stop'(pid()) -> ok.
@@ -485,7 +488,7 @@
         type(),
         [clocksi_materializer:clocksi_payload()],
         integer(),
-        integer(),
+        non_neg_integer(),
         snapshot_time() | ignore,
         snapshot_time(),
         {integer(), clocksi_materializer:clocksi_payload()},
@@ -494,7 +497,7 @@
         snapshot_time() | ignore,
         boolean(),
         non_neg_integer()) ->
-          {ok, [clocksi_materializer:clocksi_payload()], integer(), snapshot_time() | ignore, boolean()}.
+          {ok, [clocksi_materializer:clocksi_payload()], non_neg_integer(), snapshot_time() | ignore, boolean()}.
 'clocksi_materializer:materialize_intern_perform'(_, _, _, _, _, _, _, _, _, _, _, _) -> error(overlay).
 
 %% ---------------------------------------------------------------------------------------------
@@ -503,9 +506,12 @@
 
 %% the record state of clocksi_vnode, which has no type for it:
 %% partition, prepared_tx, committed_tx, read_servers, prepared_dict
--type clocksi_vnode_state() :: {state, partition_id(), cache_id(), cache_id(), non_neg_integer(), list()}.
+-type clocksi_vnode_state() :: {state, partition_id(), cache_id(), cache_id(), non_neg_integer(), prepared_dict()}.
 
-%% the pid of the vnode of a partition. logging_vnode:start_vnode/1 has a spec in the source: (integer()) -> any()
+%% the prepared transactions by prepare time, the field prepared_dict of the state as the source has it
+-type prepared_dict() :: orddict:orddict(clock_time(), clocksi_vnode:txid()).
+
+%% the pid of the vnode of a partition. logging_vnode:start_vnode/1 has a spec in the source: (partition_id()) -> any()
 -spec 'clocksi_vnode:start_vnode'(partition_id()) -> {ok, pid()}.
 'clocksi_vnode:start_vnode'(_) -> error(overlay).
 
@@ -606,10 +612,9 @@
 'clocksi_vnode:handle_overload_info'(_, _) -> error(overlay).
 
 %% The result of logging the prepare record, or the error no_updates or write_conflict; the prepare
-%% time, 0 after an error; the prepared transactions by prepare time, list() as #state.prepared_dict,
-%% get_min_prep/1 and get_time/2 say it.
--spec 'clocksi_vnode:prepare'(clocksi_vnode:tx(), write_set(), cache_id(), cache_id(), clock_time(), list()) ->
-          {{ok, op_id()} | {error, reason()}, clock_time(), list()}.
+%% time, 0 after an error; the new #state.prepared_dict.
+-spec 'clocksi_vnode:prepare'(clocksi_vnode:tx(), write_set(), cache_id(), cache_id(), clock_time(), prepared_dict()) ->
+          {{ok, op_id()} | {error, reason()}, clock_time(), prepared_dict()}.
 'clocksi_vnode:prepare'(_, _, _, _, _, _) -> error(overlay).
 
 %% the dict collects, per key, the transactions that were prepared for it before
@@ -619,12 +624,12 @@
 -spec 'clocksi_vnode:reset_prepared'(cache_id(), write_set(), clocksi_vnode:txid(), clock_time(), dict:dict()) -> ok.
 'clocksi_vnode:reset_prepared'(_, _, _, _, _) -> error(overlay).
 
-%% the list is the new #state.prepared_dict
+%% the new #state.prepared_dict
 -spec 'clocksi_vnode:commit'(clocksi_vnode:tx(), clock_time(), write_set(), cache_id(), clocksi_vnode_state()) ->
-          {ok, committed, list()} | {error, materializer_failure | timeout | no_updates}.
+          {ok, committed, prepared_dict()} | {error, materializer_failure | timeout | no_updates}.
 'clocksi_vnode:commit'(_, _, _, _, _) -> error(overlay).
 
--spec 'clocksi_vnode:clean_and_notify'(clocksi_vnode:txid(), write_set(), clocksi_vnode_state()) -> list().
+-spec 'clocksi_vnode:clean_and_notify'(clocksi_vnode:txid(), write_set(), clocksi_vnode_state()) -> prepared_dict().
 'clocksi_vnode:clean_and_notify'(_, _, _) -> error(overlay).
 
 -spec 'clocksi_vnode:clean_prepared'(cache_id(), write_set(), clocksi_vnode:txid()) -> ok.
@@ -842,8 +847,7 @@
 
 %% The requests of perform_request/4, add_dc/2 and del_dc/1, no clause for others. The log readers
 %% of a DC are, per node, the partitions of the node and its addresses, what
-%% inter_dc_query_router:get_address_list/0 gives: the clause for add_dc takes them apart so. add_dc/2
-%% and the record descriptor say [socket_address()].
+%% inter_dc_query_router:get_address_list/0 gives: the clause for add_dc takes them apart so.
 -spec 'inter_dc_query_dealer:handle_call'(
         {any_request, inter_dc_message_type(), pdcid(), binary(), fun((binary()) -> ok)} |
         {add_dc, dcid(), [{[partition_id()], [socket_address()]}]} |
@@ -952,7 +956,7 @@
 'inter_dc_sub:start_link'() -> error(overlay).
 
 %% the requests of add_dc/2 and del_dc/1 with the types of their specs, no clause for others
--spec 'inter_dc_sub:handle_call'({add_dc, dcid(), [socket_address()]} | {del_dc, dcid()}, gen_server:from(),
+-spec 'inter_dc_sub:handle_call'({add_dc, dcid(), [[socket_address()]]} | {del_dc, dcid()}, gen_server:from(),
                                  inter_dc_sub:state()) ->
           {reply, ok | error, inter_dc_sub:state()}.
 'inter_dc_sub:handle_call'(_, _, _) -> error(overlay).
@@ -1326,8 +1330,8 @@
 -spec 'stable_time_functions:store'(term(), non_neg_integer(), vectorclock()) -> vectorclock().
 'stable_time_functions:store'(_, _, _) -> error(overlay).
 
-%% as merge/1 in the source says it: map()
--spec 'stable_time_functions:all_defined'(map()) -> boolean().
+%% the map as merge/1 in the source says it
+-spec 'stable_time_functions:all_defined'(#{term() => vectorclock() | undefined}) -> boolean().
 'stable_time_functions:all_defined'(_) -> error(overlay).
 
 %% ---------------------------------------------------------------------------------------------

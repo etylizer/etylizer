@@ -86,7 +86,7 @@ read_meta_data(Key) ->
             {ok, Value}
     end.
 
--spec read_all_meta_data() -> [tuple()].
+-spec read_all_meta_data() -> [{key(), term()}].
 read_all_meta_data() ->
     get_all_values_from_stable_meta_data_table().
 
@@ -257,7 +257,7 @@ generate_server_name(Node) ->
 %%%  a_stable_meta_data_table
 %%%===================================================================
 
--spec create_stable_meta_data_table() -> ets:tid().
+-spec create_stable_meta_data_table() -> ets:tab().
 create_stable_meta_data_table() ->
     ets:new(?TABLE_NAME, [set, named_table, protected, ?META_TABLE_STABLE_CONCURRENCY]).
 
@@ -274,15 +274,15 @@ has_stable_meta_data_table() ->
 get_value_from_stable_meta_data_table(Key) ->
     get_value_by_table(?TABLE_NAME, Key).
 
--spec get_all_values_from_stable_meta_data_table() -> [term()].
+-spec get_all_values_from_stable_meta_data_table() -> [{key(), term()}].
 get_all_values_from_stable_meta_data_table() ->
     ets:tab2list(?TABLE_NAME).
 
--spec insert_meta_data(ets:tid(), {key(), term()} | [{key(), term()}]) -> true.
+-spec insert_meta_data(ets:tab(), {key(), term()} | [{key(), term()}]) -> true.
 insert_meta_data(Table, Tuple) ->
     ets:insert(Table, Tuple).
 
--spec get_all_values_by_table(ets:tid()) -> [term()].
+-spec get_all_values_by_table(ets:tab()) -> [term()].
 get_all_values_by_table(Table) ->
     ets:tab2list(Table).
 

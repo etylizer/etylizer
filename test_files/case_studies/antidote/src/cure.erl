@@ -129,7 +129,9 @@ update_objects(Updates, TxId) ->
     end.
 
 %% For static transactions: bulk updates and bulk reads
--spec update_objects(snapshot_time() | ignore, list(), [{bound_object(), op_name(), op_param()}]) ->
+-spec update_objects(snapshot_time() | ignore, txn_properties(), [
+    {bound_object(), op_name(), op_param()}
+]) ->
     {ok, snapshot_time()} | {error, reason()}.
 update_objects(_Clock, _Properties, []) ->
     {ok, vectorclock:new()};

@@ -89,7 +89,7 @@
     prepared_tx :: cache_id(),
     committed_tx :: cache_id(),
     read_servers :: non_neg_integer(),
-    prepared_dict :: list()
+    prepared_dict :: orddict:orddict(clock_time(), txid())
 }).
 
 %%%===================================================================
@@ -651,7 +651,7 @@ reverse_and_filter_updates_per_key(Updates, Key) ->
         Updates
     ).
 
--spec get_min_prep(list()) -> {ok, non_neg_integer()}.
+-spec get_min_prep(orddict:orddict(clock_time(), txid())) -> {ok, non_neg_integer()}.
 get_min_prep(OrdDict) ->
     case OrdDict of
         [] ->
@@ -660,7 +660,7 @@ get_min_prep(OrdDict) ->
             {ok, Time}
     end.
 
--spec get_time(list(), txid()) -> {ok, non_neg_integer()} | error.
+-spec get_time(orddict:orddict(clock_time(), txid()), txid()) -> {ok, non_neg_integer()} | error.
 get_time([], _TxIdCheck) ->
     error;
 get_time([{Time, TxId} | Rest], TxIdCheck) ->

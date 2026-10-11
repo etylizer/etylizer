@@ -97,7 +97,7 @@ get_smaller_from_id(_Id, _Time, {_List, Size}) when Size == 0 ->
 get_smaller_from_id(Id, Time, {List, _Size}) ->
     get_smaller_from_id_internal(Id, Time, List).
 
--spec get_smaller_from_id_internal(term(), clock_time(), [{vectorclock, term()}, ...]) ->
+-spec get_smaller_from_id_internal(term(), clock_time(), [{vectorclock(), term()}]) ->
     undefined | {vectorclock(), term()}.
 get_smaller_from_id_internal(_Id, _Time, []) ->
     undefined;
@@ -146,7 +146,7 @@ insert_bigger_internal(Vector, Val, [{FirstClock, FirstVal} | Rest], Size) ->
     end.
 
 %% @doc Returns sublist from position Start with length Len.
--spec sublist(vector_orddict(), non_neg_integer(), non_neg_integer()) -> vector_orddict().
+-spec sublist(vector_orddict(), pos_integer(), non_neg_integer()) -> vector_orddict().
 sublist({List, _Size}, Start, Len) ->
     Res = lists:sublist(List, Start, Len),
     {Res, length(Res)}.

@@ -74,7 +74,7 @@ get_my_dc_nodes() ->
     riak_core_ring:all_members(Ring).
 
 %% Returns the IndexNode tuple used by riak_core_vnode_master:command functions.
--spec partition_to_indexnode(partition_id()) -> {partition_id(), any()}.
+-spec partition_to_indexnode(partition_id()) -> index_node().
 partition_to_indexnode(Partition) ->
     {ok, Ring} = riak_core_ring_manager:get_my_ring(),
     Node = riak_core_ring:index_owner(Ring, Partition),
@@ -144,14 +144,14 @@ call_local_vnode_sync(Partition, VMaster, Request) ->
     riak_core_vnode_master:sync_command({Partition, node()}, Request, VMaster).
 
 %% Sends the same (synchronous) command to all vnodes of a given type.
--spec bcast_vnode_sync(atom(), any()) -> any().
+-spec bcast_vnode_sync(atom(), any()) -> [{partition_id(), any()}].
 bcast_vnode_sync(VMaster, Request) ->
     %% TODO: a parallel map function would be nice here
     lists:map(fun(P) -> {P, call_vnode_sync(P, VMaster, Request)} end, get_all_partitions()).
 
 %% Broadcasts a message to all vnodes of the given type
 %% located on the physical node from which this method is called
--spec bcast_my_vnode_sync(atom(), any()) -> any().
+-spec bcast_my_vnode_sync(atom(), any()) -> [{partition_id(), any()}].
 bcast_my_vnode_sync(VMaster, Request) ->
     %% TODO: a parallel map function would be nice here
     lists:map(fun(P) -> {P, call_vnode_sync(P, VMaster, Request)} end, get_my_partitions()).

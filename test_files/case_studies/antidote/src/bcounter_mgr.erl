@@ -57,8 +57,8 @@
 -include_lib("kernel/include/logger.hrl").
 
 -record(state, {
-    req_queue :: orddict:orddict(),
-    last_transfers :: orddict:orddict(),
+    req_queue :: orddict:orddict({key(), bucket()}, [{integer(), erlang:timestamp()}]),
+    last_transfers :: orddict:orddict({{key(), bucket()}, dcid()}, erlang:timestamp()),
     transfer_timer :: reference()
 }).
 -type state() :: #state{}.

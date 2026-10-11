@@ -66,7 +66,7 @@
     % {DCID, partition} -> Socket
     sockets :: req_dict(),
     req_id :: non_neg_integer(),
-    unanswered_queries = create_queries_table()
+    unanswered_queries = create_queries_table() :: ets:tid()
 }).
 -type state() :: #state{}.
 
@@ -85,7 +85,7 @@ perform_request(RequestType, PDCID, BinaryRequest, Func) ->
     gen_server:call(?MODULE, {any_request, RequestType, PDCID, BinaryRequest, Func}).
 
 %% Adds the address of the remote DC to the list of available sockets.
--spec add_dc(dcid(), [socket_address()]) -> ok.
+-spec add_dc(dcid(), [{[partition_id()], [socket_address()]}]) -> ok.
 add_dc(DCID, LogReaders) ->
     ok = gen_server:call(?MODULE, {add_dc, DCID, LogReaders}, ?COMM_TIMEOUT).
 

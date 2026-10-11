@@ -133,7 +133,7 @@ delete_remote_meta_data_table(Name) ->
 insert_remote_meta_data(Table, NodeId, Data) ->
     ets:insert(Table, {NodeId, Data}).
 
--spec insert_remote_meta_data_new(ets:tab(), atom(), any()) -> true.
+-spec insert_remote_meta_data_new(ets:tab(), atom(), any()) -> boolean().
 insert_remote_meta_data_new(Table, NodeId, Data) ->
     ets:insert_new(Table, {NodeId, Data}).
 

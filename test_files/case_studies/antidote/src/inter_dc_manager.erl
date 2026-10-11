@@ -108,7 +108,12 @@ observe_dc(
     end.
 
 -spec connect_nodes(
-    [node()], dcid(), [socket_address()], [socket_address()], descriptor(), non_neg_integer()
+    [node()],
+    dcid(),
+    [{[partition_id()], [socket_address()]}],
+    [[socket_address()]],
+    descriptor(),
+    non_neg_integer()
 ) ->
     ok | {error, connection_error}.
 connect_nodes([], _DCID, _LogReaders, _Publishers, _Desc, _Retries) ->

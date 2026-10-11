@@ -84,10 +84,10 @@ get_first_id(Tuple) when is_tuple(Tuple) ->
 -spec materialize(
     type(),
     txid() | ignore,
-    snapshot_time() | ignore,
+    snapshot_time(),
     snapshot_get_response()
 ) ->
-    {ok, snapshot(), integer(), snapshot_time() | ignore, boolean(), non_neg_integer()}
+    {ok, snapshot(), non_neg_integer(), snapshot_time() | ignore, boolean(), non_neg_integer()}
     | {error, reason()}.
 materialize(
     Type,
@@ -167,7 +167,7 @@ apply_operations(Type, Snapshot, Count, [Op | Rest]) ->
     type(),
     [clocksi_payload()],
     integer(),
-    integer(),
+    non_neg_integer(),
     snapshot_time() | ignore,
     snapshot_time(),
     [{integer(), clocksi_payload()}] | tuple(),
@@ -176,7 +176,7 @@ apply_operations(Type, Snapshot, Count, [Op | Rest]) ->
     boolean(),
     non_neg_integer()
 ) ->
-    {ok, [clocksi_payload()], integer(), snapshot_time() | ignore, boolean()}.
+    {ok, [clocksi_payload()], non_neg_integer(), snapshot_time() | ignore, boolean()}.
 materialize_intern(
     _Type,
     OpList,
@@ -326,14 +326,14 @@ materialize_intern_perform(
 %%      false otherwise.  The third element is the snapshot time of the last operation to
 %%      be applied to the snapshot
 -spec is_op_in_snapshot(
-    txid(),
+    txid() | ignore,
     clocksi_payload(),
     dc_and_commit_time(),
     snapshot_time(),
     snapshot_time(),
     snapshot_time() | ignore,
-    snapshot_time()
-) -> {boolean(), boolean(), snapshot_time()}.
+    snapshot_time() | ignore
+) -> {boolean(), boolean(), snapshot_time() | ignore}.
 is_op_in_snapshot(
     TxId, Op, {OpDc, OpCommitTime}, OperationSnapshotTime, SnapshotTime, LastSnapshot, PrevTime
 ) ->
@@ -391,7 +391,7 @@ is_op_in_snapshot(
 
 %% @doc Apply updates in given order without any checks.
 %%    Careful: In contrast to materialize/6, it takes just operations, not clocksi_payloads!
--spec materialize_eager(type(), snapshot(), [op()]) -> snapshot().
+-spec materialize_eager(type(), snapshot(), [effect()]) -> snapshot().
 materialize_eager(Type, Snapshot, Ops) ->
     materializer:materialize_eager(Type, Snapshot, Ops).
 

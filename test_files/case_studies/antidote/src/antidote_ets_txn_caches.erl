@@ -61,11 +61,11 @@ has_prepared_txns_cache(Partition) ->
         _ -> true
     end.
 
--spec get_prepared_txns_by_key(partition_id(), key()) -> list().
+-spec get_prepared_txns_by_key(partition_id(), key()) -> [{txid(), clock_time()}].
 get_prepared_txns_by_key(Partition, Key) ->
     get_prepared_txn_by_key_and_table(get_prepared_cache_name(Partition), Key).
 
--spec get_prepared_txn_by_key_and_table(cache_id(), key()) -> list().
+-spec get_prepared_txn_by_key_and_table(cache_id(), key()) -> [{txid(), clock_time()}].
 get_prepared_txn_by_key_and_table(Table, Key) ->
     case ets:lookup(Table, Key) of
         [] ->
@@ -121,10 +121,10 @@ delete_prepared_txns_cache(Partition) ->
 %%% Internal Functions
 %%%===================================================================
 
--spec get_prepared_cache_name(partition_id()) -> cache_id().
+-spec get_prepared_cache_name(partition_id()) -> atom().
 get_prepared_cache_name(Partition) ->
     get_cache_name(Partition, prepared).
 
--spec get_cache_name(partition_id(), atom()) -> cache_id().
+-spec get_cache_name(partition_id(), atom()) -> atom().
 get_cache_name(Partition, Base) ->
     list_to_atom(atom_to_list(node()) ++ atom_to_list(Base) ++ "-" ++ integer_to_list(Partition)).

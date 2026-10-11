@@ -110,7 +110,7 @@
     key :: key(),
     bucket :: bucket(),
     type :: type(),
-    op :: op()
+    op :: effect()
 }).
 -type update_log_payload() :: #update_log_payload{}.
 
@@ -190,7 +190,7 @@
 %%---------------------------------------------------------------------
 -type actor() :: term().
 -type key() :: term().
--type type() :: atom().
+-type type() :: antidote_crdt:typ().
 -type op_name() :: atom().
 -type op_param() :: term().
 -type op() :: {op_name(), op_param()}.
@@ -253,7 +253,7 @@
 -type inter_dc_conn_err() ::
     {error,
         {partition_num_mismatch, non_neg_integer(), non_neg_integer()}
-        | {error, connection_error}}.
+        | connection_error}.
 
 -type bound_object() :: {key(), type(), bucket()}.
 

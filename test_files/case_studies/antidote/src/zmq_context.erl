@@ -42,7 +42,7 @@
 start_link() ->
     gen_server:start_link({local, ?MODULE}, ?MODULE, [], []).
 
--spec init([term()]) -> {ok, state()}.
+-spec init([]) -> {ok, state()}.
 init([]) ->
     {ok, Ctx} = erlzmq:context(),
     {ok, #state{ctx = Ctx}}.

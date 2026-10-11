@@ -37,7 +37,7 @@
 
 -export([process/1]).
 
--spec from_bin(binary()) -> snapshot_time() | ignore | txid().
+-spec from_bin(binary() | undefined) -> snapshot_time() | ignore | txid().
 from_bin(Clock) ->
     case Clock of
         undefined -> ignore;
@@ -48,7 +48,7 @@ from_bin(Clock) ->
 encode_clock(TxId) ->
     term_to_binary(TxId).
 
--spec process(antidote_pb_codec:request()) -> antidote_pb_codec:response().
+-spec process(antidote_pb_codec:request()) -> antidote_pb_codec:response_in().
 process({start_transaction, Clock, Properties}) ->
     Response = antidote:start_transaction(from_bin(Clock), Properties),
     case Response of

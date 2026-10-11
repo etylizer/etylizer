@@ -62,7 +62,9 @@
 read_data_item({Partition, Node}, Key, Type, Transaction, PropertyList) ->
     rpc:call(Node, ?MODULE, perform_read_internal, [Key, Type, Transaction, PropertyList, Partition]).
 
--spec async_read_data_item(index_node(), key(), type(), tx(), read_property_list(), term()) -> ok.
+-spec async_read_data_item(
+    index_node(), key(), type(), tx(), read_property_list(), {fsm, pid()}
+) -> ok.
 async_read_data_item({Partition, Node}, Key, Type, Transaction, PropertyList, {fsm, Sender}) ->
     spawn_link(Node, fun() ->
         {
@@ -87,7 +89,7 @@ validate_or_read_data_item({Partition, Node}, Key, Type, Token, Transaction, Pro
     ]).
 
 -spec async_validate_or_read_data_item(
-    index_node(), key(), type(), object_token(), tx(), read_property_list(), term()
+    index_node(), key(), type(), object_token(), tx(), read_property_list(), {fsm, pid()}
 ) -> ok.
 async_validate_or_read_data_item(
     {Partition, Node}, Key, Type, Token, Transaction, PropertyList, {fsm, Sender}

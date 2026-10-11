@@ -49,12 +49,12 @@
 ]).
 
 %% State
--record(state, {sockets :: dict:dict(dcid(), zmq_socket())}).
+-record(state, {sockets :: dict:dict(dcid(), [zmq_socket()])}).
 -type state() :: #state{}.
 
 %%%% API --------------------------------------------------------------------+
 
--spec add_dc(dcid(), [socket_address()]) -> ok | error.
+-spec add_dc(dcid(), [[socket_address()]]) -> ok | error.
 add_dc(DCID, Publishers) ->
     gen_server:call(?MODULE, {add_dc, DCID, Publishers}).
 
@@ -104,7 +104,8 @@ terminate(_Reason, State) ->
 
 %%%% Internal methods ---------------------------------------------------------+
 
--spec del_dc(dcid(), dict:dict(dcid(), zmq_socket())) -> {ok, dict:dict(dcid(), zmq_socket())}.
+-spec del_dc(dcid(), dict:dict(dcid(), [zmq_socket()])) ->
+    {ok, dict:dict(dcid(), [zmq_socket()])}.
 del_dc(DCID, DCIDSocketDict) ->
     case dict:find(DCID, DCIDSocketDict) of
         {ok, Sockets} ->
@@ -114,7 +115,7 @@ del_dc(DCID, DCIDSocketDict) ->
             {ok, DCIDSocketDict}
     end.
 
--spec connect_to_nodes([socket_address()], [zmq_socket()]) -> {ok, [zmq_socket()]} | conn_err().
+-spec connect_to_nodes([[socket_address()]], [zmq_socket()]) -> {ok, [zmq_socket()]} | conn_err().
 connect_to_nodes([], Acc) ->
     {ok, Acc};
 connect_to_nodes([Node | Rest], Acc) ->

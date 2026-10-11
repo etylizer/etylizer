@@ -46,7 +46,7 @@
     code_change/3
 ]).
 
--record(state, {table :: ets:tid()}).
+-record(state, {table :: ets:tab()}).
 -type state() :: #state{}.
 
 %% ===================================================================

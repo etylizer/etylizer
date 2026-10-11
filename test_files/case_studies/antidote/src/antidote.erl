@@ -158,7 +158,7 @@ read_objects(Clock, Properties, Objects) ->
     Tokens :: [object_token()],
     TxId :: txid()
 ) ->
-    {ok, {[term()], [object_token()]}} | {error, reason()}.
+    {ok, [valid | {invalid, term(), object_token()}]} | {error, reason()}.
 validate_or_read_objects(Objects, Tokens, TxId) ->
     cure:validate_or_read_objects(Objects, Tokens, TxId).
 
@@ -213,7 +213,9 @@ type_check([Upd | Rest]) ->
 get_default_txn_properties() ->
     [{update_clock, true}].
 
--spec get_txn_property(atom(), txn_properties()) -> atom().
+-spec get_txn_property
+    (update_clock, txn_properties()) -> update_clock | no_update_clock;
+    (certify, txn_properties()) -> boolean().
 get_txn_property(update_clock, Properties) ->
     case lists:keyfind(update_clock, 1, Properties) of
         false ->

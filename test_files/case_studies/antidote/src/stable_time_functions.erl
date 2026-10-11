@@ -76,7 +76,7 @@ update(Last, Time) ->
 
 %% The function merges all entries in a map of vectorclocks by taking the minimum of all entries per node per DC
 %% This assumes the meta data being sent have all DCs
--spec merge(map()) -> vectorclock:vectorclock().
+-spec merge(#{term() => vectorclock:vectorclock() | undefined}) -> vectorclock:vectorclock().
 merge(VcMap) ->
     case all_defined(VcMap) of
         true ->

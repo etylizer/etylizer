@@ -44,6 +44,7 @@
     op_buffer :: dict:dict(txid(), [log_record()])
 }).
 -type state() :: #state{}.
+-export_type([state/0]).
 %%%% API --------------------------------------------------------------------+
 
 -spec new_state() -> state().
@@ -80,7 +81,7 @@ process_all([H | T], Acc, State) ->
 
 %%%% Methods ----------------------------------------------------------------+
 
--spec find_or_default(txid(), any(), dict:dict()) -> any().
+-spec find_or_default(Key, Val, dict:dict(Key, Val)) -> Val.
 find_or_default(Key, Default, Dict) ->
     case dict:find(Key, Dict) of
         {ok, Val} -> Val;

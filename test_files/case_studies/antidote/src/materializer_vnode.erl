@@ -422,7 +422,7 @@ internal_store_ss(
     boolean(),
     state()
 ) ->
-    {ok, snapshot()} | {error, no_snapshot}.
+    {ok, snapshot()} | {error, reason()}.
 
 internal_read(Key, Type, MinSnapshotTime, TxId, _PropertyList, ShouldGc, State) ->
     %% First look for any existing snapshots in the cache that is compatible with
@@ -721,7 +721,7 @@ prune_ops({Len, OpsTuple}, Threshold) ->
 %% of the cached snapshots
 -spec check_filter(
     fun(({non_neg_integer(), clocksi_payload()}) -> boolean()),
-    non_neg_integer(),
+    pos_integer(),
     non_neg_integer(),
     non_neg_integer(),
     tuple(),
@@ -842,7 +842,7 @@ has_snapshot_cache(Partition) ->
             true
     end.
 
--spec cache_table_fold(fun(), term(), cache_id()) -> term().
+-spec cache_table_fold(fun((term(), term()) -> term()), term(), cache_id()) -> term().
 cache_table_fold(F, Acc0, OpsCache) ->
     ets:foldl(F, Acc0, OpsCache).
 
@@ -901,7 +901,7 @@ increment_op_id(OpsCache, Key) ->
 get_op_list_length(OpsCache, Key) ->
     ets:lookup_element(OpsCache, Key, 2).
 
--spec update_ops_element(cache_id(), key(), [{non_neg_integer(), term()}]) -> boolean().
+-spec update_ops_element(cache_id(), key(), [{pos_integer(), term()}]) -> boolean().
 update_ops_element(OpsCache, Key, Update) ->
     ets:update_element(OpsCache, Key, Update).
 

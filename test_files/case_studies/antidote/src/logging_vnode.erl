@@ -101,11 +101,11 @@
     %% is sent to the interdc dependency module, so it knows up to
     %% what time updates from other DCs have been received (after crash and restart)
     senders_awaiting_ack :: dict:dict(log_id(), sender()),
-    last_read_map :: dict:dict(log_id(), {log_opid(), disk_log:continuation()})
+    last_read_map :: dict:dict(log_id(), {log_opid(), disk_log:continuation() | start})
 }).
 
 %% API
--spec start_vnode(integer()) -> any().
+-spec start_vnode(partition_id()) -> any().
 start_vnode(I) ->
     riak_core_vnode_master:get_vnode_pid(I, ?MODULE).
 
@@ -733,7 +733,7 @@ read_internal(Log, Continuation, Ops) ->
     log_opid()
 ) ->
     {error, term()}
-    | {disk_log:continuation(), log_opid(), [{non_neg_integer(), log_record()}]}.
+    | {disk_log:continuation() | start, log_opid(), [{non_neg_integer(), log_record()}]}.
 read_from_to_internal(Log, Node, Continuation, LastOpId, Ops, To) ->
     ?LOG_INFO("read_from_to_internal ~n Cont = ~p~n LastOpId = ~p~n To = ~p", [
         Continuation, LastOpId, To
@@ -760,14 +760,14 @@ read_from_to_internal(Log, Node, Continuation, LastOpId, Ops, To) ->
     log_id(),
     {node(), dcid()},
     disk_log:continuation(),
-    disk_log:continuation(),
+    disk_log:continuation() | start,
     [{non_neg_integer(), log_record()}],
     log_opid(),
     [{non_neg_integer(), log_record()}],
     log_opid()
 ) ->
     {error, term()}
-    | {disk_log:continuation(), log_opid(), [{non_neg_integer(), log_record()}]}.
+    | {disk_log:continuation() | start, log_opid(), [{non_neg_integer(), log_record()}]}.
 read_from_to_internal2(Log, Node, NewContinuation, LastContinuation, NewOps1, LastLOpId, Ops, To) ->
     NewOps = filter_local_node(Node, NewOps1),
     %% Continue reading log until To-OpId is reached
@@ -1212,7 +1212,8 @@ terminate(_Reason, _State) ->
 %%      Return: true if all logs are empty. false if at least one log
 %%              contains data.
 %%
--spec no_elements([log_id()], dict:dict(log_id(), disklog())) -> boolean().
+-spec no_elements([log_id()], dict:dict(log_id(), disklog())) ->
+    boolean() | {error, no_log_for_preflist}.
 no_elements([], _Map) ->
     true;
 no_elements([LogId | Rest], Map) ->
@@ -1280,9 +1281,11 @@ open_logs(LogFile, [Next | Rest], Map, ClockTable, MaxVector) ->
 %%      Return: The actual name of the log
 %%
 -spec get_log_from_map(
-    dict:dict(log_id(), disklog() | {log_opid(), disk_log:continuation()}), partition(), log_id()
+    dict:dict(log_id(), disklog() | {log_opid(), disk_log:continuation() | start}),
+    partition(),
+    log_id()
 ) ->
-    {ok, log() | {log_opid(), disk_log:continuation()}} | {error, no_log_for_preflist}.
+    {ok, log() | {log_opid(), disk_log:continuation() | start}} | {error, no_log_for_preflist}.
 get_log_from_map(Map, _Partition, LogId) ->
     case dict:find(LogId, Map) of
         {ok, Log} ->
@@ -1389,7 +1392,7 @@ get_op_number(ClockTable, Key) ->
     end.
 
 -spec get_op_numbers(cache_id()) ->
-    [{log_id(), dcid(), op_number()} | {log_id(), bucket(), dcid(), op_number()}].
+    [{{log_id(), dcid()} | {log_id(), bucket(), dcid()}, op_number()}].
 get_op_numbers(ClockTable) ->
     ets:tab2list(ClockTable).
 

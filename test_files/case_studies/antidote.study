@@ -3,10 +3,12 @@
 %% Case study manifest, see .github/scripts/ety_case_study.
 %%
 %% apps/antidote (src, include) of https://github.com/AntidoteDB/antidote as of commit
-%% ed9cfbcaad53c9b5de15bfcef7befef44b5b4221, unchanged: the 55 modules of the Antidote server and
-%% its three headers. 414 of the 722 functions have a spec in the source. overlay_antidote.erl gives a
-%% spec to each of the other 308, and every module is checked with it, so that a call into another
-%% module of antidote is checked against the spec of the callee. No flag, no assertion.
+%% ed9cfbcaad53c9b5de15bfcef7befef44b5b4221: the 55 modules of the Antidote server and its three
+%% headers. The code is unchanged; declarations (-type, -spec, -export_type, the types of record
+%% fields) that were wrong or too imprecise are corrected, see the list below. 414 of the 722
+%% functions have a spec in the source. overlay_antidote.erl gives a spec to each of the other 308,
+%% and every module is checked with it, so that a call into another module of antidote is checked
+%% against the spec of the callee. No flag, no assertion.
 %%
 %% The dependencies are case studies of their own in this directory, and the driver passes every
 %% directory below this one that holds sources or headers to the engine. So all modules that
@@ -20,8 +22,8 @@
 %% (category deps): the call is then checked against a spec where the source of the dependency has
 %% none. That matters for riak_core, which has no spec for 16 of the 34 functions that antidote calls
 %% (riak_core_vnode_master:sync_command/3,4, command/3,4 and get_vnode_pid/2, riak_core:register/1,
-%% riak_core_status:ring_status/0, ...): 18 functions that type check without overlay_riak_core_lite.erl
-%% fail with it, 14 of them because the reply of a vnode command is a term(). For antidote_crdt it is
+%% riak_core_status:ring_status/0, ...): 16 functions that type check without overlay_riak_core_lite.erl
+%% fail with it, 15 of them because the reply of a vnode command is a term(). For antidote_crdt it is
 %% one function (antidote_crdt_counter_b:generate_downstream_check/4, no change), for
 %% antidote_pb_codec, erlzmq and ranch none: all functions that antidote calls there have a spec in
 %% the source. No antidote module calls antidote_stats or poolboy, their overlays are not listed.
@@ -29,10 +31,147 @@
 %% The driver defines no macro. So the tests under -ifdef(TEST) are not checked, and meta_data_sender
 %% takes the variant of -else for -ifdef(EUNIT): get_node_list/0 and get_node_and_partition_list/0.
 %%
-%% All 55 modules run: 424 functions type check, 298 do not. One of the 298 is a name error
+%% All 55 modules run: 470 functions type check, 252 do not. One of the 252 is a name error
 %% (zmq_utils:connection_string/1 calls inet_parse:ntoa/1, which has no spec in OTP), none is an
-%% internal error. The source of each of the 298 was read, no exception has the reason unknown.
-%% 80 of them type check without the overlays, where the 308 functions without a spec are dynamic().
+%% internal error. The source of each of the 252 was read, no exception has the reason unknown.
+%% 65 of them type check without the overlays, where the 308 functions without a spec are dynamic().
+%%
+%% Declarations corrected in the source: 82 in 28 modules and 2 headers, old -> new. Only -type,
+%% -spec, -export_type and the types of record fields; no function body, clause head, guard or macro.
+%% Where the overlay repeats a declaration of the source it follows (the state of clocksi_vnode and
+%% its prepared transactions, the two orddicts of bcounter_mgr, the request add_dc of inter_dc_sub,
+%% materialize_intern_perform/12 of clocksi_materializer, all_defined/1 of stable_time_functions).
+%%
+%% The type of a CRDT:
+%%   antidote.hrl: type() atom() -> antidote_crdt:typ(), which every function of antidote_crdt takes.
+%%     antidote_crdt has the type and exports it.
+%%
+%% Operations and effects. An update is {key(), type(), op()} with op() the pair {op_name(),
+%% op_param()}; what is logged and applied is the downstream effect():
+%%   antidote.hrl: field op of #update_log_payload{} op() -> effect(); it goes into
+%%     #clocksi_payload.op_param :: effect().
+%%   clocksi_downstream: generate_downstream_op/6 Update op_param() -> op() (antidote_crdt:downstream/3
+%%     and require_state_downstream/2 take the pair), the write set list() -> [{key(), type(),
+%%     effect()}], the error {error, atom()} -> {error, reason()} (it is {gen_downstream_read_failed,
+%%     Reason} or the reason of antidote_crdt:downstream/3).
+%%   antidote_hooks: execute_pre_commit_hook/3 and execute_post_commit_hook/3 op_param() -> op(), in
+%%     the argument and in the result.
+%%   clocksi_materializer: materialize_eager/3 [op()] -> [effect()], as the function of materializer.
+%%
+%% Lists and containers without the type of their elements:
+%%   clocksi_interactive_coord: field updated_partitions of #state{} list() -> [{index_node(), [{key(),
+%%     type(), effect()}]}], the write sets by partition; the transaction properties list() (of
+%%     perform_singleitem_update/5), proplists:proplist() (init_state/3, start_tx_internal/3) and
+%%     clocksi_readitem:read_property_list() (perform_singleitem_operation/4) -> txn_properties().
+%%   cure: update_objects/3 list() -> txn_properties().
+%%   clocksi_vnode: field prepared_dict of #state{}, get_min_prep/1 and get_time/2 list() ->
+%%     orddict:orddict(clock_time(), txid()), the prepared transactions by prepare time.
+%%   antidote_ets_txn_caches: get_prepared_txns_by_key/2 and get_prepared_txn_by_key_and_table/2
+%%     list() -> [{txid(), clock_time()}].
+%%   bcounter_mgr: fields of #state{}: req_queue orddict:orddict() -> orddict:orddict({key(),
+%%     bucket()}, [{integer(), erlang:timestamp()}]), last_transfers orddict:orddict() ->
+%%     orddict:orddict({{key(), bucket()}, dcid()}, erlang:timestamp()).
+%%   inter_dc_repl.hrl: field queue of #inter_dc_sub_buf{} queue:queue() -> queue:queue(interdc_txn()).
+%%   stable_meta_data_server: read_all_meta_data/0 [tuple()] and
+%%     get_all_values_from_stable_meta_data_table/0 [term()] -> [{key(), term()}], the pairs of
+%%     insert_meta_data/2.
+%%   dc_utilities: bcast_vnode_sync/2 and bcast_my_vnode_sync/2 any() -> [{partition_id(), any()}];
+%%     partition_to_indexnode/1 {partition_id(), any()} -> index_node().
+%%   stable_time_functions: merge/1 map() -> #{term() => vectorclock:vectorclock() | undefined}; an
+%%     entry that meta_data_sender:update/6 has just added is undefined.
+%%   log_txn_assembler: find_or_default/3 (txid(), any(), dict:dict()) -> any() becomes (Key, Val,
+%%     dict:dict(Key, Val)) -> Val; -export_type gets state/0 for inter_dc_log_sender_vnode.
+%%   meta_data_sender: update/6 the entries [atom()] and the atom() of the two funs -> a type variable
+%%     E: they are nodes for the remote meta data and partitions for the local ones.
+%%
+%% The state functions of the coordinator:
+%%   clocksi_interactive_coord: execute_op/3, single_committing/3, execute_command/4, prepare/1 and
+%%     prepare_done/2 gen_statem:event_handler_result(state()) ->
+%%     gen_statem:event_handler_result(atom(), state()): the record is the data, not the type of the
+%%     state name. single_committing/3 the event {committed | clock_time()} -> {committed,
+%%     clock_time()}. start_tx_internal/3 the clock snapshot_time() -> snapshot_time() | ignore, and
+%%     the result loses {error, any()}, which the function never gives and its caller does not take.
+%%
+%% Types that say something else than the code does:
+%%   antidote.hrl: inter_dc_conn_err() {error, {partition_num_mismatch, _, _} | {error,
+%%     connection_error}} -> {error, {partition_num_mismatch, _, _} | connection_error}.
+%%   inter_dc_repl.hrl: fields of #descriptor{}: publishers [socket_address()] -> [[socket_address()]],
+%%     logreaders [socket_address()] -> [{[partition_id()], [socket_address()]}]: per node of the DC
+%%     what inter_dc_pub:get_address_list/0 and inter_dc_query_router:get_address_list/0 give. The same
+%%     in inter_dc_manager:connect_nodes/6, inter_dc_sub:add_dc/2 and connect_to_nodes/2,
+%%     inter_dc_query_dealer:add_dc/2.
+%%   inter_dc_repl.hrl: field prev_log_opid of #interdc_txn{} op_number() | none -> op_number(), and so
+%%     inter_dc_txn:from_ops/3 and ping/3. Nothing passes none (the comment of the field says a
+%%     transaction read from the log has it; inter_dc_query_response builds an op_number() for those),
+%%     and inter_dc_sub_buf and last_log_opid/1 use the field as an op_number().
+%%   inter_dc_sub: field sockets of #state{} and del_dc/2 dict:dict(dcid(), zmq_socket()) ->
+%%     dict:dict(dcid(), [zmq_socket()]), the sockets of a DC.
+%%   antidote: validate_or_read_objects/3 {ok, {[term()], [object_token()]}} -> {ok, [valid | {invalid,
+%%     term(), object_token()}]}, the result of cure:validate_or_read_objects/3. get_txn_property/2
+%%     (atom(), txn_properties()) -> atom() becomes (update_clock, txn_properties()) -> update_clock |
+%%     no_update_clock; (certify, txn_properties()) -> boolean().
+%%   clocksi_materializer: is_op_in_snapshot/7 TxId txid() -> txid() | ignore, PrevTime and the third
+%%     element of the result snapshot_time() -> snapshot_time() | ignore; materialize/4 MinSnapshotTime
+%%     snapshot_time() | ignore -> snapshot_time() (it is a vectorclock for vectorclock:get/2).
+%%   vector_orddict: get_smaller_from_id_internal/3 [{vectorclock, term()}, ...] -> [{vectorclock(),
+%%     term()}]: the type and not the atom, and the first clause takes [].
+%%   materializer_vnode: internal_read/7 {error, no_snapshot} -> {error, reason()}.
+%%   logging_vnode: no_elements/2 boolean() -> boolean() | {error, no_log_for_preflist};
+%%     get_op_numbers/1 [{log_id(), dcid(), op_number()} | {log_id(), bucket(), dcid(), op_number()}] ->
+%%     [{{log_id(), dcid()} | {log_id(), bucket(), dcid()}, op_number()}]; the continuation
+%%     disk_log:continuation() -> disk_log:continuation() | start in read_from_to_internal/6 (result),
+%%     read_from_to_internal2/8 (LastContinuation and result), field last_read_map of #state{} and
+%%     get_log_from_map/3.
+%%   antidote_ets_meta_data: insert_remote_meta_data_new/3 true -> boolean() (ets:insert_new/2).
+%%   antidote_pb_process: process/1 the result antidote_pb_codec:response() -> antidote_pb_codec:response_in().
+%%     response() is the reply as a client decodes it; process/1 gives what antidote_pb_codec:encode_response/1
+%%     takes, the objects that were read next to their values. from_bin/1 the clock binary() -> binary() |
+%%     undefined: its case has a clause for undefined, and antidote_pb_codec:request() has a clock that can be
+%%     undefined (a request without one).
+%%   Named ets tables: stable_meta_data_server create_stable_meta_data_table/0, insert_meta_data/2 and
+%%     get_all_values_by_table/1, meta_data_manager field table of #state{} ets:tid() -> ets:tab();
+%%     antidote_ets_txn_caches get_prepared_cache_name/1 and get_cache_name/2 cache_id() -> atom(), the
+%%     name that ets:new/2 takes.
+%%
+%% Types that say too little:
+%%   inter_dc_repl.hrl: zmq_socket() any() -> erlzmq:erlzmq_socket().
+%%   clocksi_readitem: async_read_data_item/6 and async_validate_or_read_data_item/7 the sender term()
+%%     -> {fsm, pid()}.
+%%   antidote_stats: fields of #state{}: timer any() -> reference(), timer_expensive any() -> undefined
+%%     | reference().
+%%   inter_dc_log_sender_vnode: fields of #state{}: buffer (no type) -> log_txn_assembler:state(),
+%%     timer any() -> none | reference().
+%%   inter_dc_query_dealer: field unanswered_queries of #state{} (no type) -> ets:tid().
+%%   materializer_vnode: cache_table_fold/3 fun() -> fun((term(), term()) -> term()).
+%%   zmq_context: init/1 [term()] -> [].
+%%
+%% Ranges of numbers:
+%%   logging_vnode: start_vnode/1 integer() -> partition_id().
+%%   vector_orddict: sublist/3 Start non_neg_integer() -> pos_integer() (lists:sublist/3).
+%%   materializer_vnode: check_filter/7 Id and update_ops_element/3 the positions non_neg_integer() ->
+%%     pos_integer() (element/2, ets:update_element/3).
+%%   clocksi_materializer: the id of the last operation in the result of materialize/4, FirstHole and
+%%     the result of materialize_intern/11 integer() -> non_neg_integer(); it becomes
+%%     #materialized_snapshot.last_op_id :: op_num().
+%%
+%% Left as they are, although a declaration is the cause:
+%%   clocksi_interactive_coord: the fields transaction, from and commit_time of #state{} say T |
+%%     undefined (7 exceptions with record_undefined). init_state/3 builds the state with undefined in
+%%     them and start_tx_internal/3 sets the transaction in the same callback, so the declaration is
+%%     true. Without the undefined 4 more functions type check (wait_for_start_transaction/3,
+%%     committing/3, prepare_done/2, abort/1) and init_state/3 fails (measured, not applied).
+%%   antidote.hrl: the three fields of #op_number{} say T | undefined (3 exceptions), with a comment
+%%     that inter_dc_log_sender_vnode needs it: its state starts with #op_number{}. Without the
+%%     undefined logging_vnode:read_from_to_internal2/8 type checks and no function that type checks
+%%     fails: inter_dc_log_sender_vnode:init/1, which builds #op_number{}, is an exception already
+%%     (measured, not applied).
+%%   clocksi_interactive_coord:execute_command/4, (atom(), term(), _, _): the type of the argument
+%%     depends on the command. With one clause per command in the spec the function is not checked
+%%     within the 10 s and execute_op/3, which passes a command and its argument on, fails (measured,
+%%     not applied).
+%%   dc_meta_data_utilities:get_env_meta_data/2 promises atom() for the value of a setting, which can
+%%     be any term; logging_vnode:is_sync_log/0 gives it as its boolean(). It type checks if the
+%%     promise is boolean() (measured, not applied: the function is not only for flags).
 
 {study, antidote}.
 {deps, ["antidote_crdt", "antidote_pb_codec", "erlzmq", "poolboy", "ranch", "riak_core", "vectorclock"]}.
@@ -41,7 +180,7 @@
 %% run time, not provable by types), fixable (gap in the type system or checker), unknown.
 %% The reason of an exception is the one of the first error that the checker reports for the function.
 {reason, otp_no_spec,          fixable,  "calls an OTP function that has no spec, which is a name error"}.
-{reason, log_macro,            fixable,  "the ?LOG_ macros of logger.hrl end in erlang:apply(logger, macro_log, [..]), a term() for the checker and not the ok of that call: a function that gives the value of the macro as its result fails"}.
+{reason, log_macro,            fixable,  "the ?LOG_ macros of logger.hrl end in erlang:apply(logger, macro_log, [..]), a term() for the checker and not the ok of that call: a function that gives the value of the macro as its result, or branches on it, fails"}.
 {reason, free_result,          fixable,  "library spec whose type variables are bound only in when (rpc:call/4,5, application:get_env/2,3, ets:first/1, dets:sync/1, lists:foldl/3): any use of the result passes, a pattern or a branch on such a value is dead. The macro ?STATS of antidote.hrl is such a case on application:get_env/3"}.
 {reason, dict_types,           fixable,  "key and value type of a dict:dict(K, V) are lost: the branches on a result of dict:find/2 or dict:fetch/2 and the patterns of a fun for dict:filter/2, dict:fold/3 or the pairs of dict:to_list/1 are dead"}.
 {reason, map_types,            fixable,  "map types with more than one association or with mandatory associations are not supported: supervisor:sup_flags() and supervisor:child_spec() given as maps do not check"}.
@@ -60,26 +199,21 @@
 {reason, message_term,         inherent, "the message of a process callback with a catch-all clause is term(), a clause uses its payload at the type the sender gives"}.
 {reason, start_ret,            inherent, "result of starting a process, typed by the init function of the module: it gives neither ignore nor an error"}.
 {reason, ets_new,              fixable,  "ets:new/2 gives a tid() when the table is not named"}.
-{reason, correlated,           inherent, "the type of a value depends on another value (the op_type of a log operation for its payload, the size kept next to a list, the state of the fsm for a field of its data)"}.
+{reason, correlated,           inherent, "the type of a value depends on another value (the op_type of a log operation for its payload, the CRDT type for its operation, the size kept next to a list, the state of a process for a field of its data, the result of a test in another function)"}.
 {reason, deserialize,          inherent, "binary_to_term/1 gives term()"}.
-{reason, record_undefined,     real,     "a record field declared T | undefined is used as T"}.
-{reason, crdt_type,            real,     "antidote.hrl says type() :: atom() for a CRDT type, the functions of antidote_crdt take antidote_crdt:typ()"}.
+{reason, record_undefined,     real,     "a record field declared T | undefined is used as T; the field is undefined at some time, so the declaration is true"}.
 {reason, dep_spec,             real,     "imprecise type spec in the source of a dependency"}.
 {reason, spec_misuse,          real,     "a function is used against its spec, without effect at run time"}.
-{reason, spec_imprecise,       real,     "imprecise type spec in the source: of the function, of a function it calls or of a record field"}.
-{reason, spec_wrong,           real,     "wrong type in the source: of the function, of a function it calls or of a record field"}.
+{reason, spec_imprecise,       real,     "imprecise type spec in the source, of the function or of a function it calls, that a more precise one does not repair (see the header)"}.
 {reason, source_bug,           real,     "error in the program"}.
 
 {module, antidote, #{file => "antidote/src/antidote.erl",
                      overlays => [{specs, "overlay_antidote.erl"}, {deps, "overlay_antidote_crdt.erl"}], timeout => 10000}}.
 %% [Node] = log_utilities:get_preflist_from_key(..), a preflist of ?N = 1 nodes
 {exception, antidote, get_log_operations_internal, 2, [ignore], body_exhaustiveness}.
-%% promises {ok, {[term()], [object_token()]}}, cure:validate_or_read_objects/3 gives {ok, [valid | {invalid, term(),
-%% binary()}]}
-{exception, antidote, validate_or_read_objects, 3, [ignore], spec_wrong}.
-{exception, antidote, type_check_update, 1, [ignore], crdt_type}. % antidote_crdt:is_operation(Type, {Op, Param})
-%% the spec says atom() for the property, the clauses take update_clock and certify
-{exception, antidote, get_txn_property, 2, [ignore], spec_imprecise}.
+%% lists:keyfind/3 gives tuple() | false, the case has {update_clock, ShouldUpdate}; behind it the list also has pairs {certify,
+%% _}, which the key rules out
+{exception, antidote, get_txn_property, 2, [ignore], library_spec}.
 
 {module, antidote_app, #{file => "antidote/src/antidote_app.erl",
                          overlays => [{specs, "overlay_antidote.erl"},
@@ -123,15 +257,11 @@
 {exception, antidote_ets_meta_data, get_meta_data_as_map, 1, [ignore], untyped_value}.
 %% ets:tab2list/1 gives [tuple()], maps:from_list/1 wants pairs
 {exception, antidote_ets_meta_data, get_remote_meta_data_as_map, 1, [ignore], untyped_value}.
-%% promises true, ets:insert_new/2 gives boolean()
-{exception, antidote_ets_meta_data, insert_remote_meta_data_new, 3, [ignore], spec_wrong}.
 
 {module, antidote_ets_txn_caches, #{file => "antidote/src/antidote_ets_txn_caches.erl",
                                     overlays => [{specs, "overlay_antidote.erl"}], timeout => 10000}}.
 %% case on ets:lookup/2 with [] and [{Key, List}]
 {exception, antidote_ets_txn_caches, get_prepared_txn_by_key_and_table, 2, [ignore], untyped_value}.
-%% get_prepared_cache_name/1 promises cache_id(), which has ets:tid(); ets:new/2 wants the atom it gives
-{exception, antidote_ets_txn_caches, create_prepared_txns_cache, 1, [ignore], spec_imprecise}.
 
 {module, antidote_hooks, #{file => "antidote/src/antidote_hooks.erl",
                            overlays => [{specs, "overlay_antidote.erl"}], timeout => 10000}}.
@@ -148,9 +278,7 @@
                                 overlays => [{specs, "overlay_antidote.erl"},
                                              {deps, "overlay_antidote_pb_codec.erl"}],
                                 timeout => 10000}}.
-%% binary_to_term(Clock) for snapshot_time() | ignore | txid(); the spec says binary() for a clock that the case tests for
-%% undefined
-{exception, antidote_pb_process, from_bin, 1, [ignore], deserialize}.
+{exception, antidote_pb_process, from_bin, 1, [ignore], deserialize}. % binary_to_term(Clock) for snapshot_time() | ignore | txid()
 %% no clause for {validate_or_read_objects, _, _, _}, which antidote_pb_codec:request() has and the codec decodes
 {exception, antidote_pb_process, process, 1, [ignore], source_bug}.
 
@@ -161,9 +289,8 @@
                                  timeout => 10000}}.
 %% {ok, Socket} = ranch:handshake(Ref), which can give {continue, _}
 {exception, antidote_pb_protocol, init, 3, [ignore], body_exhaustiveness}.
-%% antidote_pb_process:process/1 promises antidote_pb_codec:response(), the reply as a client decodes it; it gives, and
-%% antidote_pb_codec:encode_response/1 takes, response_in(): the objects that were read next to their values
-{exception, antidote_pb_protocol, handle, 3, [ignore], spec_wrong}.
+%% io_lib:format/2 gives io_lib:chars(), a list of char(); iolist_to_binary/1 takes an iolist() of byte()
+{exception, antidote_pb_protocol, handle, 3, [ignore], library_spec}.
 
 {module, antidote_pb_sup, #{file => "antidote/src/antidote_pb_sup.erl",
                             overlays => [{specs, "overlay_antidote.erl"}, {deps, "overlay_ranch.erl"}], timeout => 10000}}.
@@ -180,8 +307,9 @@
 
 {module, antidote_stats, #{file => "antidote/src/antidote_stats.erl",
                            overlays => [{specs, "overlay_antidote.erl"}], timeout => 10000}}.
-%% the field timer is any(), erlang:cancel_timer/1 takes a reference()
-{exception, antidote_stats, handle_info, 2, [ignore], spec_imprecise}.
+%% erlang:cancel_timer(ExpensiveTimer): the field timer_expensive is undefined | reference(), undefined after the last tick,
+%% when no message periodic_expensive_update comes anymore
+{exception, antidote_stats, handle_info, 2, [ignore], correlated}.
 %% ?STATS(..): the case of the macro on application:get_env/3
 {exception, antidote_stats, update_staleness, 0, [ignore], free_result}.
 %% round/1 gives integer(); the staleness is not negative, the maximum of the fold starts at 0
@@ -204,24 +332,18 @@
 {module, bcounter_mgr, #{file => "antidote/src/bcounter_mgr.erl",
                          overlays => [{specs, "overlay_antidote.erl"}, {deps, "overlay_antidote_crdt.erl"}], timeout => 10000}}.
 {exception, bcounter_mgr, generate_downstream, 3, [ignore], call_reply}. % reply of gen_server:call/2 for a decrement
-%% case Queue of []; Queue in the fun of orddict:fold/3: the last pattern is the scrutinee, so the fun counts as taking [] only.
-%% Behind it the queue is an orddict:orddict() without types in the source (#state.req_queue) and so in the overlay: the fun
-%% takes its keys as {Key, Bucket}, its values as lists of {Amount, Time}
+%% case Queue of []; Queue in the fun of orddict:fold/3: the last pattern is the scrutinee, so the fun counts as taking [] only
+%% and does not fit the queue
 {exception, bcounter_mgr, handle_info, 2, [ignore], bound_pattern}.
 {exception, bcounter_mgr, request_remote, 2, [ignore], body_exhaustiveness}. % {ok, [Obj], _} = antidote:read_objects/3
-%% the transfers are an orddict:orddict() without types in the source (#state.last_transfers) and so in the overlay: the fun of
-%% orddict:filter/2 takes its values as erlang:timestamp() for timer:now_diff/2
-{exception, bcounter_mgr, cancel_consecutive_req, 2, [ignore], spec_imprecise}.
-%% the queue is an orddict:orddict() without types in the source (#state.req_queue) and so in the overlay: the fun of
-%% orddict:filter/2 takes its values as lists of {Amount, Time}
-{exception, bcounter_mgr, clear_pending_req, 2, [ignore], spec_imprecise}.
 
 {module, clocksi_downstream, #{file => "antidote/src/clocksi_downstream.erl",
                                overlays => [{specs, "overlay_antidote.erl"},
                                             {deps, "overlay_antidote_crdt.erl"}],
                                timeout => 10000}}.
-%% antidote_crdt:require_state_downstream(Type, Update)
-{exception, clocksi_downstream, generate_downstream_op, 6, [ignore], crdt_type}.
+%% for the type antidote_crdt_counter_b the update is an operation of the bounded counter: Update is an op(),
+%% bcounter_mgr:generate_downstream/3 takes the three operations of the counter
+{exception, clocksi_downstream, generate_downstream_op, 6, [ignore], correlated}.
 
 {module, clocksi_interactive_coord, #{file => "antidote/src/clocksi_interactive_coord.erl",
                                       overlays => [{specs, "overlay_antidote.erl"}], timeout => 10000}}.
@@ -229,45 +351,38 @@
 {exception, clocksi_interactive_coord, start_link, 0, [ignore], start_ret}.
 %% hd(Preflist) of log_utilities:get_preflist_from_key/1
 {exception, clocksi_interactive_coord, perform_singleitem_operation, 4, [ignore], nonempty_list}.
-%% the spec says list() for the properties, create_transaction_record/3 takes txn_properties()
-{exception, clocksi_interactive_coord, perform_singleitem_update, 5, [ignore], spec_imprecise}.
-%% start_tx_internal/3 says snapshot_time() for the clock, the request has snapshot_time() | ignore as cure:clocksi_istart_tx/2
-%% sends it; behind it {ok, State} = start_tx_internal(..), which promises {error, any()} as well
-{exception, clocksi_interactive_coord, wait_for_start_transaction, 3, [ignore], spec_imprecise}.
+%% case on antidote_hooks:execute_pre_commit_hook/3 with {Key, Type, Params1}, Key and Type bound by the head
+{exception, clocksi_interactive_coord, perform_singleitem_update, 5, [ignore], bound_pattern}.
+%% (State#state.transaction)#transaction.txn_id, the field transaction is undefined | tx()
+{exception, clocksi_interactive_coord, wait_for_start_transaction, 3, [ignore], record_undefined}.
 %% the clause for info hands the value of the message, any(), to the clause for cast, which takes {prepared, Time}, abort or
 %% timeout
 {exception, clocksi_interactive_coord, receive_prepared, 3, [ignore], message_term}.
-%% the field updated_partitions is list(), clocksi_vnode:commit/3 takes the write sets by partition; behind it the fields
-%% transaction and commit_time can be undefined
-{exception, clocksi_interactive_coord, committing, 3, [ignore], spec_imprecise}.
-%% the spec says {committed | clock_time()}, a tuple of one element, for the event {committed, CommitTime}; and
-%% gen_statem:event_handler_result(state()) as prepare_done/2
-{exception, clocksi_interactive_coord, single_committing, 3, [ignore], spec_wrong}.
+%% the field transaction is undefined | tx(), clocksi_vnode:commit/3 takes a tx(); the field commit_time is undefined |
+%% clock_time() as well
+{exception, clocksi_interactive_coord, committing, 3, [ignore], record_undefined}.
+%% {reply, From, {ok, CommitTime}} with the field from, undefined | gen_statem:from(); behind it the clause for info hands the
+%% value of the message, any(), to the clause for cast
+{exception, clocksi_interactive_coord, single_committing, 3, [ignore], record_undefined}.
 %% the field return_accumulator is list() | ok | {error, reason()}; while the reads come in it is the list that replace_first/3
 %% takes. Behind it replace_first/3 can give error and the field from can be undefined
 {exception, clocksi_interactive_coord, receive_read_objects_result, 3, [ignore], correlated}.
 %% the field return_accumulator is list() | ok | {error, reason()}; while the reads come in it is the list that replace_first/3
 %% takes. Behind it the field from can be undefined
 {exception, clocksi_interactive_coord, receive_validate_or_read_objects_result, 3, [ignore], correlated}.
-%% prepare/1 promises gen_statem:event_handler_result(state()), which makes the record the type of the state name; behind it the
-%% field from can be undefined, and the clause for info as in receive_prepared/3
-{exception, clocksi_interactive_coord, receive_logging_responses, 3, [ignore], spec_wrong}.
+%% {reply, State#state.from, NewAcc}, the field from is undefined | gen_statem:from(); behind it the clause for info as in
+%% receive_prepared/3
+{exception, clocksi_interactive_coord, receive_logging_responses, 3, [ignore], record_undefined}.
 %% the clause for info hands the value of the message, any(), to the clause for cast, which takes committed
 {exception, clocksi_interactive_coord, receive_committed, 3, [ignore], message_term}.
-%% the spec says proplists:proplist() for the properties, the field properties is txn_properties()
-{exception, clocksi_interactive_coord, init_state, 3, [ignore], spec_imprecise}.
-%% the spec says proplists:proplist() for the properties, create_transaction_record/3 takes txn_properties()
-{exception, clocksi_interactive_coord, start_tx_internal, 3, [ignore], spec_imprecise}.
-%% antidote:get_txn_property/2 promises atom(), the case has update_clock and no_update_clock
-{exception, clocksi_interactive_coord, create_transaction_record, 3, [ignore], spec_imprecise}.
+%% ?STATS(..): the case of the macro on application:get_env/3
+{exception, clocksi_interactive_coord, start_tx_internal, 3, [ignore], free_result}.
 %% the spec says atom() and term() for the command and its argument, the clauses take seven commands, four of them with a tuple
 {exception, clocksi_interactive_coord, execute_command, 4, [ignore], source_bug}.
 %% Transaction#transaction.txn_id, the field transaction is undefined | tx()
 {exception, clocksi_interactive_coord, reply_to_client, 1, [ignore], record_undefined}.
-%% the field updated_partitions is list(), lists:keyfind/3 takes a list of tuples
-{exception, clocksi_interactive_coord, apply_tx_updates_to_snapshot, 4, [ignore], spec_imprecise}.
-%% the field updated_partitions is list(), lists:keyfind/3 takes a list of tuples
-{exception, clocksi_interactive_coord, has_tx_updates, 2, [ignore], spec_imprecise}.
+%% lists:keyfind/3 gives tuple() | false, the case has {Partition, WS} with Partition bound
+{exception, clocksi_interactive_coord, apply_tx_updates_to_snapshot, 4, [ignore], library_spec}.
 %% [NotMyKey | replace_first(..)]: the rest is error when the key is not in the list; the callers put every key there first
 {exception, clocksi_interactive_coord, replace_first, 3, [ignore], unchecked_result}.
 %% lists:keyfind/3 gives tuple() | false, the case has {Partition, WS} with Partition bound
@@ -278,19 +393,12 @@
 {exception, clocksi_interactive_coord, perform_update, 5, [ignore], library_spec}.
 %% lists:keyreplace/4 gives [tuple()]
 {exception, clocksi_interactive_coord, append_updated_partitions, 4, [ignore], library_spec}.
-%% the field op of #update_log_payload{} is op(), a pair {op_name(), op_param()}; it holds the downstream effect(), a term().
-%% Reported where the log operation goes to logging_vnode:asyn_append/4
-{exception, clocksi_interactive_coord, async_log_propagation, 5, [ignore], spec_wrong}.
 %% Transaction = State#state.transaction with Transaction bound by the head; behind it the field is undefined | tx()
 {exception, clocksi_interactive_coord, prepare, 1, [ignore], bound_pattern}.
-%% the field updated_partitions is list(), clocksi_vnode:single_commit/2 takes the write sets by partition; behind it the spec
-%% promises gen_statem:event_handler_result(state()), which makes the record the type of the state name
-{exception, clocksi_interactive_coord, prepare_done, 2, [ignore], spec_imprecise}.
-%% prepare_done/2 promises gen_statem:event_handler_result(state()), which makes the record the type of the state name
-{exception, clocksi_interactive_coord, process_prepared, 2, [ignore], spec_wrong}.
-%% the field updated_partitions is list(), clocksi_vnode:abort/2 takes the write sets by partition; behind it the field
-%% transaction is undefined | tx()
-{exception, clocksi_interactive_coord, abort, 1, [ignore], spec_imprecise}.
+%% the field transaction is undefined | tx(), clocksi_vnode:single_commit/2 and commit/3 take a tx()
+{exception, clocksi_interactive_coord, prepare_done, 2, [ignore], record_undefined}.
+%% the field transaction is undefined | tx(), clocksi_vnode:abort/2 takes a tx()
+{exception, clocksi_interactive_coord, abort, 1, [ignore], record_undefined}.
 
 {module, clocksi_interactive_coord_sup, #{file => "antidote/src/clocksi_interactive_coord_sup.erl",
                                           overlays => [{specs, "overlay_antidote.erl"}], timeout => 10000}}.
@@ -299,36 +407,22 @@
                                  overlays => [{specs, "overlay_antidote.erl"}], timeout => 10000}}.
 %% {Length, _ListLen} = element(2, Tuple) for a tuple()
 {exception, clocksi_materializer, get_first_id, 1, [ignore], untyped_value}.
-%% the spec says snapshot_time() | ignore for MinSnapshotTime, materialize_intern/11 takes a snapshot_time()
-{exception, clocksi_materializer, materialize, 4, [ignore], spec_imprecise}.
 %% {Length, _ListLen} = element(2, TupleOps) for a tuple()
 {exception, clocksi_materializer, materialize_intern, 11, [ignore], untyped_value}.
-%% is_op_in_snapshot/7 says txid() for TxId, here it is txid() | ignore as materialize_intern/11 has it
-{exception, clocksi_materializer, materialize_intern_perform, 12, [ignore], spec_imprecise}.
-%% the spec says snapshot_time() for PrevTime, the case tests it for ignore and materialize_intern_perform/12 passes
-%% snapshot_time() | ignore
-{exception, clocksi_materializer, is_op_in_snapshot, 7, [ignore], spec_wrong}.
+%% OpId - 1 is an integer(), the first hole is the id of an operation and not negative
+{exception, clocksi_materializer, materialize_intern_perform, 12, [ignore], number_range}.
 
 {module, clocksi_readitem, #{file => "antidote/src/clocksi_readitem.erl",
                              overlays => [{specs, "overlay_antidote.erl"}], timeout => 10000}}.
-%% the spec says term() for the sender, the only clause takes {fsm, Sender}
-{exception, clocksi_readitem, async_read_data_item, 6, [ignore], spec_imprecise}.
-%% the spec says term() for the sender, the only clause takes {fsm, Sender}
-{exception, clocksi_readitem, async_validate_or_read_data_item, 7, [ignore], spec_imprecise}.
+%% the case on perform_read_internal/5 has {ok, Snapshot} only; the clause for {error, Reason} is commented out in the source
+%% (TODO: dialyzer says this can never happen)
+{exception, clocksi_readitem, async_read_data_item, 6, [ignore], body_exhaustiveness}.
 
 {module, clocksi_vnode, #{file => "antidote/src/clocksi_vnode.erl",
                           overlays => [{specs, "overlay_antidote.erl"},
                                        {deps, "overlay_riak_core_lite.erl"}],
                           timeout => 10000}}.
-%% clocksi_materializer:materialize_eager/3 says [op()] for the effects to apply; materializer:materialize_eager/3, which it
-%% calls, says [effect()]
-{exception, clocksi_vnode, read_data_item, 5, [ignore], spec_wrong}.
-%% clocksi_materializer:materialize_eager/3 says [op()] for the effects to apply; materializer:materialize_eager/3, which it
-%% calls, says [effect()]
-{exception, clocksi_vnode, validate_or_read_data_item, 6, [ignore], spec_wrong}.
-%% reply of riak_core_vnode_master:sync_command/4; behind it antidote_ets_txn_caches:get_prepared_txns_by_key/2 promises list()
-%% for the prepared transactions
-{exception, clocksi_vnode, get_active_txns_key, 2, [ignore], call_reply}.
+{exception, clocksi_vnode, get_active_txns_key, 2, [ignore], call_reply}. % reply of riak_core_vnode_master:sync_command/4
 %% the clause takes [{Node, WriteSet}]: a transaction that wrote to one partition
 {exception, clocksi_vnode, single_commit, 2, [ignore], partial}.
 %% the clause takes [{Node, WriteSet}]: a transaction that wrote to one partition
@@ -339,28 +433,12 @@
 {exception, clocksi_vnode, check_table_ready, 1, [ignore], call_reply}.
 %% the request is term(): {prepare, Transaction, WriteSet} hands its parts to prepare/6
 {exception, clocksi_vnode, handle_command, 3, [ignore], message_term}.
-%% the prepared transactions are a list() in the source (#state.prepared_dict, get_min_prep/1, get_time/2) and so in the
-%% overlay; orddict:store/3 takes an orddict
-{exception, clocksi_vnode, prepare, 6, [ignore], spec_imprecise}.
-%% antidote_ets_txn_caches:get_prepared_txn_by_key_and_table/2 promises list(), lists:keymember/3 takes a list of tuples
-{exception, clocksi_vnode, set_prepared, 5, [ignore], spec_imprecise}.
 %% case on logging_vnode:append_commit/3 with {ok, _} and {error, timeout}, it promises {error, term()}
 {exception, clocksi_vnode, commit, 5, [ignore], body_exhaustiveness}.
-%% the prepared transactions are a list() in the source (#state.prepared_dict, get_min_prep/1, get_time/2) and so in the
-%% overlay; orddict:erase/2 takes an orddict
-{exception, clocksi_vnode, clean_and_notify, 3, [ignore], spec_imprecise}.
-%% antidote_ets_txn_caches:get_prepared_txn_by_key_and_table/2 promises list(), lists:keydelete/3 takes a list of tuples
-{exception, clocksi_vnode, clean_prepared, 3, [ignore], spec_imprecise}.
-%% antidote:get_txn_property/2 promises atom(), the case has true and false
-{exception, clocksi_vnode, certification_check, 4, [ignore], spec_imprecise}.
 %% lists:foldl/3 with a fun that takes a tuple {Key, Type, Op}
 {exception, clocksi_vnode, update_materializer, 3, [ignore], free_result}.
 %% lists:foldl/3 with a fun that takes a tuple {KeyPrime, _Type, Op}
 {exception, clocksi_vnode, reverse_and_filter_updates_per_key, 2, [ignore], free_result}.
-%% the spec says list() for the prepared transactions, the case takes [{Time, _TxId} | _]
-{exception, clocksi_vnode, get_min_prep, 1, [ignore], spec_imprecise}.
-%% the spec says list() for the prepared transactions, the clause takes [{Time, TxId} | Rest]
-{exception, clocksi_vnode, get_time, 2, [ignore], spec_imprecise}.
 {exception, clocksi_vnode, get_committed_txn, 2, [ignore], untyped_value}. % case on ets:lookup/2 with [{_, CommitTime}] and []
 
 {module, cure, #{file => "antidote/src/cure.erl",
@@ -369,15 +447,11 @@
 {exception, cure, validate_or_read_objects, 3, [ignore], call_reply}. % case on the reply of gen_statem:call/3
 {exception, cure, obtain_objects, 3, [ignore], call_reply}. % case on the reply of gen_statem:call/3
 {exception, cure, update_objects, 2, [ignore], call_reply}. % case on the reply of gen_statem:call/3
-%% the spec says list() for the properties, clocksi_istart_tx/2 takes txn_properties()
-{exception, cure, update_objects, 3, [ignore], spec_imprecise}.
+%% {ok, TxId} = clocksi_istart_tx/2, which promises {error, reason()} as well
+{exception, cure, update_objects, 3, [ignore], body_exhaustiveness}.
 %% case Objects of [_O]; [_H | _T]: no clause for [], a static read of no objects ends in case_clause (obtain_objects/3 answers
 %% it with {ok, []})
 {exception, cure, obtain_objects, 4, [ignore], source_bug}.
-%% the fun of lists:map/2 calls antidote_crdt:value(Type, State) with the type() of a bound_object()
-{exception, cure, transform_reads, 3, [ignore], crdt_type}.
-%% the fun of lists:map/2 calls antidote_crdt:value(Type, State) with the type() of a bound_object()
-{exception, cure, transform_reads_from_validate_or_reads, 2, [ignore], crdt_type}.
 %% {ok, Pid} = clocksi_interactive_coord_sup:start_fsm(), the result of supervisor:start_child/2; behind it the reply of
 %% gen_statem:call/2
 {exception, cure, clocksi_istart_tx, 2, [ignore], body_exhaustiveness}.
@@ -391,8 +465,9 @@
 {exception, dc_meta_data_utilities, is_restart, 0, [ignore], untyped_value}.
 %% value of stable_meta_data_server:read_meta_data/1, a term(), as atom()
 {exception, dc_meta_data_utilities, get_env_meta_data, 2, [ignore], untyped_value}.
-%% stable_meta_data_server:read_all_meta_data/0 promises [tuple()], the fun takes pairs
-{exception, dc_meta_data_utilities, load_env_meta_data, 0, [ignore], spec_imprecise}.
+%% the key of a pair of stable_meta_data_server:read_all_meta_data/0 is a term(): Name of {env, Name} goes to
+%% application:set_env/3 as an atom()
+{exception, dc_meta_data_utilities, load_env_meta_data, 0, [ignore], untyped_value}.
 %% value of stable_meta_data_server:read_meta_data/1, a term(), as atom()
 {exception, dc_meta_data_utilities, get_meta_data_name, 0, [ignore], untyped_value}.
 %% lists:foldl/3 with a fun that takes a record #descriptor{}
@@ -415,10 +490,6 @@
 {exception, dc_utilities, get_all_partitions_nodes, 0, [ignore], body_exhaustiveness}.
 %% {ok, Ring} = riak_core_ring_manager:get_my_ring()
 {exception, dc_utilities, get_my_partitions, 0, [ignore], body_exhaustiveness}.
-%% partition_to_indexnode/1 promises {partition_id(), any()}, riak_core_vnode_master:sync_command/3 takes {partition(), node()}
-{exception, dc_utilities, call_vnode_sync, 3, [ignore], spec_imprecise}.
-%% partition_to_indexnode/1 promises {partition_id(), any()}, riak_core_vnode_master:command/3 takes {partition(), node()}
-{exception, dc_utilities, call_vnode, 3, [ignore], spec_imprecise}.
 %% vectorclock:map/2 as a foreach: the fun gives the value of ?LOG_DEBUG where the spec wants a pos_integer()
 {exception, dc_utilities, check_staleness, 0, [ignore], spec_misuse}.
 %% case on meta_data_sender:get_merged_data/2 with a clause for undefined; the result has the type of the default, a
@@ -459,32 +530,25 @@
 {exception, inter_dc_log_sender_vnode, update_last_log_id, 2, [ignore], call_reply}.
 %% the clause takes [Partition] as riak_core_vnode passes it, a list type cannot say one element
 {exception, inter_dc_log_sender_vnode, init, 1, [ignore], partial}.
-%% the field buffer has no type, log_txn_assembler:process/2 takes a log_txn_assembler:state()
-{exception, inter_dc_log_sender_vnode, handle_command, 3, [ignore], spec_imprecise}.
-%% the field timer is any(), erlang:cancel_timer/1 takes a reference()
-{exception, inter_dc_log_sender_vnode, del_timer, 1, [ignore], spec_imprecise}.
 %% {ok, Ring} = riak_core_ring_manager:get_my_ring()
 {exception, inter_dc_log_sender_vnode, set_timer, 2, [ignore], body_exhaustiveness}.
 
 {module, inter_dc_manager, #{file => "antidote/src/inter_dc_manager.erl",
                              overlays => [{specs, "overlay_antidote.erl"}], timeout => 10000}}.
-%% inter_dc_conn_err() has {error, {error, connection_error}}, connect_nodes/6 gives {error, connection_error}
-{exception, inter_dc_manager, observe_dc, 2, [ignore], spec_wrong}.
 {exception, inter_dc_manager, connect_nodes, 6, [ignore], free_result}. % case on rpc:call/5
-%% dc_utilities:bcast_vnode_sync/2 promises any(), lists:foreach/2 with fun({_, ok}) takes a list of pairs
-{exception, inter_dc_manager, start_bg_processes, 1, [ignore], spec_imprecise}.
+%% the replies of the vnodes in the pairs of dc_utilities:bcast_vnode_sync/2 are any(), the fun of lists:foreach/2 takes {_, ok}
+{exception, inter_dc_manager, start_bg_processes, 1, [ignore], call_reply}.
 %% {ok, MetaDataName} = dc_meta_data_utilities:get_meta_data_name()
 {exception, inter_dc_manager, check_node_restart, 0, [ignore], body_exhaustiveness}.
 {exception, inter_dc_manager, forget_dc, 2, [ignore], free_result}. % ok = rpc:call/4
-%% dc_utilities:bcast_vnode_sync/2 promises any(), lists:foreach/2 with fun({_, ok}) takes a list of pairs
-{exception, inter_dc_manager, drop_ping, 1, [ignore], spec_imprecise}.
+%% the replies of the vnodes in the pairs of dc_utilities:bcast_vnode_sync/2 are any(), the fun of lists:foreach/2 takes {_, ok}
+{exception, inter_dc_manager, drop_ping, 1, [ignore], call_reply}.
 
 {module, inter_dc_pub, #{file => "antidote/src/inter_dc_pub.erl",
                          overlays => [{specs, "overlay_antidote.erl"}, {deps, "overlay_erlzmq.erl"}], timeout => 10000}}.
 %% the clause for {'EXIT', _} gives the value of ?LOG_WARNING as ok; behind it the reply of gen_server:call/2
 {exception, inter_dc_pub, broadcast, 1, [ignore], log_macro}.
-%% the field socket is zmq_socket(), which inter_dc_repl.hrl declares as any(); erlzmq:send/2 takes an erlzmq:erlzmq_socket()
-{exception, inter_dc_pub, handle_call, 3, [ignore], spec_imprecise}.
+{exception, inter_dc_pub, handle_call, 3, [ignore], body_exhaustiveness}. % ok = erlzmq:send/2
 
 {module, inter_dc_query_dealer, #{file => "antidote/src/inter_dc_query_dealer.erl",
                                   overlays => [{specs, "overlay_antidote.erl"},
@@ -497,8 +561,6 @@
 %% the message is term(): {zmq, _, BinaryMsg, _} hands BinaryMsg to inter_dc_utils:check_message_version/1
 {exception, inter_dc_query_dealer, handle_info, 2, [ignore], message_term}.
 {exception, inter_dc_query_dealer, terminate, 2, [ignore], dict_types}. % the fun for the pairs of dict:to_list/1
-%% the field unanswered_queries has no type, insert_request/3 takes an ets:tid()
-{exception, inter_dc_query_dealer, req_sent, 3, [ignore], spec_imprecise}.
 %% the fun of dict:filter/2 takes the key as {DictDCID, _DictPartition}
 {exception, inter_dc_query_dealer, del_dc, 2, [ignore], dict_types}.
 {exception, inter_dc_query_dealer, connect_to_node, 1, [ignore], body_exhaustiveness}. % ok = erlzmq:setsockopt/3
@@ -535,8 +597,7 @@
 {exception, inter_dc_query_router, handle_info, 2, [ignore], message_term}.
 %% the message is term(): the request type and the response of {send_response, _, _} go into a binary
 {exception, inter_dc_query_router, handle_cast, 2, [ignore], message_term}.
-%% inter_dc_repl.hrl says zmq_socket() :: any(), erlzmq:send/3 takes an erlzmq:erlzmq_socket()
-{exception, inter_dc_query_router, finish_send_response, 4, [ignore], spec_imprecise}.
+{exception, inter_dc_query_router, finish_send_response, 4, [ignore], body_exhaustiveness}. % ok = erlzmq:send/3
 
 {module, inter_dc_sub, #{file => "antidote/src/inter_dc_sub.erl",
                          overlays => [{specs, "overlay_antidote.erl"}, {deps, "overlay_erlzmq.erl"}], timeout => 10000}}.
@@ -544,9 +605,6 @@
 {exception, inter_dc_sub, del_dc, 1, [ignore], call_reply}. % reply of gen_server:call/2
 {exception, inter_dc_sub, terminate, 2, [ignore], dict_types}. % the fun for the pairs of dict:to_list/1
 {exception, inter_dc_sub, del_dc, 2, [ignore], dict_types}. % case on dict:find/2
-%% the spec says [socket_address()] for the publishers, each element goes to connect_to_node/1, which takes a list of addresses
-%% (one list per node of the remote DC)
-{exception, inter_dc_sub, connect_to_nodes, 2, [ignore], spec_wrong}.
 {exception, inter_dc_sub, connect_to_node, 1, [ignore], body_exhaustiveness}. % ok = erlzmq:setsockopt/3
 
 {module, inter_dc_sub_buf, #{file => "antidote/src/inter_dc_sub_buf.erl",
@@ -555,11 +613,12 @@
                              timeout => 10000}}.
 %% {ok, EnableLogging} = application:get_env(antidote, enable_logging)
 {exception, inter_dc_sub_buf, new_state, 1, [ignore], body_exhaustiveness}.
-%% dc_utilities:partition_to_indexnode/1 promises {partition_id(), any()}, logging_vnode:request_op_id/3 takes an index_node()
-{exception, inter_dc_sub_buf, process, 2, [ignore], spec_imprecise}.
-%% the field queue is queue:queue(): the element of queue:peek/1 is a term(), used as an interdc_txn(). Behind it prev_log_opid
-%% can be none and #op_number.local undefined
-{exception, inter_dc_sub_buf, process_queue, 1, [ignore], spec_imprecise}.
+%% the catch clause gives the value of ?LOG_DEBUG, so {ok, OpId} of the case on the result has a term() as OpId, which goes into
+%% the field last_observed_opid
+{exception, inter_dc_sub_buf, process, 2, [ignore], log_macro}.
+%% cmp(TxnLast, Last) with TxnLast = #op_number.local, which is undefined | non_neg_integer(); the field last_observed_opid can
+%% be init as well
+{exception, inter_dc_sub_buf, process_queue, 1, [ignore], record_undefined}.
 
 {module, inter_dc_sub_vnode, #{file => "antidote/src/inter_dc_sub_vnode.erl",
                                overlays => [{specs, "overlay_antidote.erl"},
@@ -580,9 +639,8 @@
                          overlays => [{specs, "overlay_antidote.erl"}], timeout => 10000}}.
 %% lists:last(Ops), the log records of a transaction end with its commit
 {exception, inter_dc_txn, from_ops, 3, [ignore], nonempty_list}.
-%% for a ping the result is the field prev_log_opid, op_number() | none; the spec promises op_number() (no caller in src passes
-%% none)
-{exception, inter_dc_txn, last_log_opid, 1, [ignore], spec_imprecise}.
+%% lists:last(Ops), the log records of a transaction that is not a ping
+{exception, inter_dc_txn, last_log_opid, 1, [ignore], nonempty_list}.
 {exception, inter_dc_txn, from_bin, 1, [ignore], deserialize}. % binary_to_term(Msg) as interdc_txn()
 {exception, inter_dc_txn, pad, 2, [ignore], bit_size}. % <<0:(N * 8), Binary/binary>>
 {exception, inter_dc_txn, pad_or_trim, 2, [ignore], bit_size}. % <<0:(N * 8), Binary/binary>>
@@ -593,8 +651,6 @@
                            timeout => 10000}}.
 {exception, inter_dc_utils, get_address, 0, [ignore], body_exhaustiveness}. % [_, Hostname] = string:tokens/2 of the node name
 {exception, inter_dc_utils, get_address_list, 1, [ignore], body_exhaustiveness}. % {ok, List} = inet:getif()
-%% zmq_socket() is any() in inter_dc_repl.hrl, zmq_utils:close_socket/1 takes the socket of erlzmq
-{exception, inter_dc_utils, close_socket, 1, [ignore], spec_imprecise}.
 %% {ok, Ring} = riak_core_ring_manager:get_my_ring()
 {exception, inter_dc_utils, get_my_partitions, 0, [ignore], body_exhaustiveness}.
 %% ?MESSAGE_VERSION = Version, the check of the version
@@ -604,7 +660,6 @@
 
 {module, log_txn_assembler, #{file => "antidote/src/log_txn_assembler.erl",
                               overlays => [{specs, "overlay_antidote.erl"}], timeout => 10000}}.
-{exception, log_txn_assembler, process, 2, [ignore], spec_imprecise}. % find_or_default/3 promises any(), ++ takes a list
 {exception, log_txn_assembler, find_or_default, 3, [ignore], dict_types}. % case on dict:find/2
 
 {module, log_utilities, #{file => "antidote/src/log_utilities.erl",
@@ -624,8 +679,6 @@
                           overlays => [{specs, "overlay_antidote.erl"},
                                        {deps, "overlay_riak_core_lite.erl"}],
                           timeout => 10000}}.
-%% the spec says integer() for the partition, riak_core_vnode_master:get_vnode_pid/2 takes a partition(), which is not negative
-{exception, logging_vnode, start_vnode, 1, [ignore], spec_imprecise}.
 {exception, logging_vnode, read_from_to, 4, [ignore], call_reply}. % reply of riak_core_vnode_master:sync_command/3
 {exception, logging_vnode, read, 2, [ignore], call_reply}. % reply of riak_core_vnode_master:sync_command/3
 {exception, logging_vnode, append, 3, [ignore], call_reply}. % reply of riak_core_vnode_master:sync_command/4
@@ -648,8 +701,8 @@
 {exception, logging_vnode, handle_command, 3, [ignore], message_term}.
 %% the terms of disk_log:chunk/2 are [term()], used as [{non_neg_integer(), clocksi_payload()}]
 {exception, logging_vnode, read_internal, 3, [ignore], untyped_value}.
-%% read_from_to_internal2/8 says disk_log:continuation() for the last continuation, which can be start
-{exception, logging_vnode, read_from_to_internal, 6, [ignore], spec_imprecise}.
+%% the terms of disk_log:chunk/2 are [term()], read_from_to_internal2/8 takes [{non_neg_integer(), log_record()}]
+{exception, logging_vnode, read_from_to_internal, 6, [ignore], untyped_value}.
 %% NewLastLOpId + 1 with #op_number.local, which is undefined | non_neg_integer()
 {exception, logging_vnode, read_from_to_internal2, 8, [ignore], record_undefined}.
 {exception, logging_vnode, get_last_op_from_log, 4, [ignore], body_exhaustiveness}. % ok = disk_log:sync(Log)
@@ -668,12 +721,14 @@
 %% the request is term(): the fold fun out of #riak_core_fold_req_v2{} is applied
 {exception, logging_vnode, handle_handoff_command, 3, [ignore], message_term}.
 {exception, logging_vnode, handle_handoff_data, 2, [ignore], deserialize}. % {LogId, LogRecord} = binary_to_term(Data)
+%% case on no_elements/2 with true and false: it gives {error, no_log_for_preflist} for a log id that is not in the map, here
+%% the ids are the keys of the map
+{exception, logging_vnode, is_empty, 1, [ignore], body_exhaustiveness}.
 %% filename:join/2 gives file:filename_all(), which has binary(); LogPath ++ ".LOG" takes a list
 {exception, logging_vnode, delete, 1, [ignore], library_spec}.
 %% case on dets:sync/1, the reason of its error is a type variable
 {exception, logging_vnode, handle_info, 2, [ignore], free_result}.
-%% promises boolean(), gives {error, no_log_for_preflist} for a log that is not in the map (is_empty/1 has no clause for it)
-{exception, logging_vnode, no_elements, 2, [ignore], spec_wrong}.
+{exception, logging_vnode, no_elements, 2, [ignore], dict_types}. % case on dict:find/2
 %% filename:join/2 gives file:filename_all(), which has binary(); LogPath ++ ".LOG" takes a list
 {exception, logging_vnode, open_logs, 5, [ignore], library_spec}.
 {exception, logging_vnode, get_log_from_map, 3, [ignore], dict_types}. % case on dict:find/2
@@ -681,15 +736,12 @@
 %% ?STATS(..): the case of the macro on application:get_env/3
 {exception, logging_vnode, insert_log_record, 4, [ignore], free_result}.
 {exception, logging_vnode, get_op_number, 2, [ignore], untyped_value}. % case on ets:lookup/2 with [] and [{Key, Val}]
-%% ets:tab2list/1 gives [tuple()]; the spec also flattens the entries {Key, OpNumber} into triples and quadruples
+%% ets:tab2list/1 gives [tuple()], the entries of the table are pairs {Key, OpNumber}
 {exception, logging_vnode, get_op_numbers, 1, [ignore], untyped_value}.
 {exception, logging_vnode, data_dir, 0, [ignore], free_result}. % case on application:get_env/2
 
 {module, materializer, #{file => "antidote/src/materializer.erl",
                          overlays => [{specs, "overlay_antidote.erl"}, {deps, "overlay_antidote_crdt.erl"}], timeout => 10000}}.
-{exception, materializer, create_snapshot, 1, [ignore], crdt_type}. % antidote_crdt:new(Type)
-{exception, materializer, update_snapshot, 3, [ignore], crdt_type}. % antidote_crdt:update(Type, Op, Snapshot)
-{exception, materializer, check_operation, 1, [ignore], crdt_type}. % antidote_crdt:is_operation(Type, Update)
 
 {module, materializer_vnode, #{file => "antidote/src/materializer_vnode.erl",
                                overlays => [{specs, "overlay_antidote.erl"},
@@ -710,28 +762,22 @@
 {exception, materializer_vnode, load_ops, 2, [ignore], dict_types}.
 %% vector_orddict:first/1 gives {vectorclock(), term()}, matched with #materialized_snapshot{}
 {exception, materializer_vnode, internal_store_ss, 5, [ignore], untyped_value}.
-%% promises {error, no_snapshot}, materialize_snapshot/7 gives {error, term()}: the reason of clocksi_materializer:materialize/4
-{exception, materializer_vnode, internal_read, 7, [ignore], spec_wrong}.
 %% vector_orddict:get_smaller/2 gives {undefined | {vectorclock(), term()}, boolean()}, update_snapshot_from_cache/3 takes a
 %% materialized_snapshot(); the clause {undefined, _} does not narrow it either
 {exception, materializer_vnode, get_from_snapshot_cache, 5, [ignore], untyped_value}.
 %% logging_vnode:get_up_to_time/5 gives snapshot_get_response() | {error, reason()}, the spec promises the response
 {exception, materializer_vnode, get_from_snapshot_log, 3, [ignore], unchecked_result}.
-%% clocksi_materializer:materialize/4 promises integer() for the last op id, the field last_op_id of #materialized_snapshot{} is
-%% not negative
-{exception, materializer_vnode, materialize_snapshot, 7, [ignore], spec_imprecise}.
 %% {Key, Length, OpId, ListLen, OpsDict} = case .. end with Key bound by the head
 {exception, materializer_vnode, snapshot_insert_gc, 4, [ignore], bound_pattern}.
 %% ?FIRST_OP + Len is an integer(), element/2 takes a pos_integer()
 {exception, materializer_vnode, prune_ops, 2, [ignore], number_range}.
-%% the spec says non_neg_integer() for Id, element/2 takes a pos_integer()
-{exception, materializer_vnode, check_filter, 7, [ignore], spec_imprecise}.
+%% element/2 of a tuple() gives term(), the filter fun takes {non_neg_integer(), clocksi_payload()}
+{exception, materializer_vnode, check_filter, 7, [ignore], untyped_value}.
 %% {Length, ListLen} = element(2, Tuple) for a tuple()
 {exception, materializer_vnode, deconstruct_opscache_entry, 1, [ignore], untyped_value}.
-%% true = update_ops_element/3, which promises boolean()
-{exception, materializer_vnode, op_insert_gc, 3, [ignore], body_exhaustiveness}.
-%% the spec says fun() for the fold function, ets:foldl/3 takes a fun of two arguments
-{exception, materializer_vnode, cache_table_fold, 3, [ignore], spec_imprecise}.
+%% NewLength + ?FIRST_OP is an integer(), update_ops_element/3 takes positions that are pos_integer(); behind it true =
+%% update_ops_element/3, which promises boolean()
+{exception, materializer_vnode, op_insert_gc, 3, [ignore], number_range}.
 {exception, materializer_vnode, cache_is_empty, 1, [ignore], free_result}. % case on ets:first/1
 %% case on ets:lookup/2 with [] and [{Key, SnapshotDictA}]
 {exception, materializer_vnode, get_snapshot_dict, 2, [ignore], untyped_value}.
@@ -739,8 +785,6 @@
 %% ets:update_counter/3 gives integer(), the spec promises non_neg_integer()
 {exception, materializer_vnode, increment_op_id, 2, [ignore], number_range}.
 {exception, materializer_vnode, get_op_list_length, 2, [ignore], untyped_value}. % ets:lookup_element/3 gives term()
-%% the spec says non_neg_integer() for the positions, ets:update_element/3 takes pos_integer()
-{exception, materializer_vnode, update_ops_element, 3, [ignore], spec_imprecise}.
 
 {module, meta_data_manager, #{file => "antidote/src/meta_data_manager.erl",
                               overlays => [{specs, "overlay_antidote.erl"}], timeout => 10000}}.
@@ -764,8 +808,6 @@
 {exception, meta_data_sender, send_meta_data, 3, [ignore], body_exhaustiveness}.
 %% the fun of lists:foldl/3: its case on maps:find/2 has a dead branch
 {exception, meta_data_sender, update, 6, [ignore], free_result}.
-%% update/6 says [atom()] for the entries, here they are the partitions; fun put_meta/3 takes a partition_id()
-{exception, meta_data_sender, get_merged_meta_data, 2, [ignore], spec_wrong}.
 %% {ok, Ring} = riak_core_ring_manager:get_my_ring()
 {exception, meta_data_sender, get_node_list, 0, [ignore], body_exhaustiveness}.
 %% {ok, Ring} = riak_core_ring_manager:get_my_ring()
@@ -776,8 +818,6 @@
 
 {module, stable_meta_data_server, #{file => "antidote/src/stable_meta_data_server.erl",
                                     overlays => [{specs, "overlay_antidote.erl"}], timeout => 10000}}.
-%% promises [tuple()], get_all_values_from_stable_meta_data_table/0 promises [term()]
-{exception, stable_meta_data_server, read_all_meta_data, 0, [ignore], spec_imprecise}.
 {exception, stable_meta_data_server, sync_meta_data, 0, [ignore], call_reply}. % ok = gen_server:call/2
 {exception, stable_meta_data_server, broadcast_meta_data_list, 1, [ignore], call_reply}. % ok = gen_server:call/2
 {exception, stable_meta_data_server, broadcast_meta_data_internal, 3, [ignore], call_reply}. % ok = gen_server:call/2
@@ -786,28 +826,22 @@
 {exception, stable_meta_data_server, init, 1, [ignore], body_exhaustiveness}.
 %% the request is term(): case IsEnv of true; false for {update_meta_data, KeyValueList, IsEnv}
 {exception, stable_meta_data_server, handle_call, 3, [ignore], message_term}.
-%% promises ets:tid(), ets:new/2 with named_table gives the name
-{exception, stable_meta_data_server, create_stable_meta_data_table, 0, [ignore], spec_wrong}.
+%% ets:tab2list/1 gives [tuple()], the entries of the table are pairs {key(), term()}
+{exception, stable_meta_data_server, get_all_values_from_stable_meta_data_table, 0, [ignore], untyped_value}.
 %% case on ets:lookup/2 with [] and [{Key, Value}]
 {exception, stable_meta_data_server, get_value_by_table, 2, [ignore], untyped_value}.
 
 {module, stable_time_functions, #{file => "antidote/src/stable_time_functions.erl",
                                   overlays => [{specs, "overlay_antidote.erl"}], timeout => 10000}}.
 {exception, stable_time_functions, update, 2, [ignore], defensive}. % case Last of undefined, Last is an integer()
-%% the spec says map(), vectorclock:min/1 takes its values as [vectorclock()]
-{exception, stable_time_functions, merge, 1, [ignore], spec_imprecise}.
+%% all_defined/1 has ruled out undefined for the values of the map, their type still has it: vectorclock:min/1 takes
+%% [vectorclock()]
+{exception, stable_time_functions, merge, 1, [ignore], correlated}.
 
 {module, vector_orddict, #{file => "antidote/src/vector_orddict.erl",
                            overlays => [{specs, "overlay_antidote.erl"}], timeout => 10000}}.
-%% get_smaller_from_id_internal/3 says [{vectorclock, term()}, ...]: the atom vectorclock for the type, and a non-empty list
-%% although its first clause takes []
-{exception, vector_orddict, get_smaller_from_id, 3, [ignore], spec_wrong}.
-%% the spec says the atom vectorclock for the clock, vectorclock:get/2 takes a vectorclock()
-{exception, vector_orddict, get_smaller_from_id_internal, 3, [ignore], spec_wrong}.
 %% the clauses take [] with size 0 and a non-empty list: the size is 0 exactly for the empty list
 {exception, vector_orddict, insert_bigger_internal, 4, [ignore], correlated}.
-%% the spec says non_neg_integer() for Start, lists:sublist/3 takes a pos_integer()
-{exception, vector_orddict, sublist, 3, [ignore], spec_imprecise}.
 %% no clause for the empty vector_orddict(); the one caller checks the size before
 {exception, vector_orddict, first, 1, [ignore], partial}.
 %% lists:last/1 on the list of a vector_orddict(), which can be empty; no caller in antidote
@@ -818,7 +852,7 @@
 
 {module, zmq_context, #{file => "antidote/src/zmq_context.erl",
                         overlays => [{specs, "overlay_antidote.erl"}, {deps, "overlay_erlzmq.erl"}], timeout => 10000}}.
-{exception, zmq_context, init, 1, [ignore], spec_imprecise}. % the spec says [term()], the clause takes []
+{exception, zmq_context, init, 1, [ignore], body_exhaustiveness}. % {ok, Ctx} = erlzmq:context()
 {exception, zmq_context, get, 0, [ignore], call_reply}. % reply of gen_server:call/2
 
 {module, zmq_utils, #{file => "antidote/src/zmq_utils.erl",

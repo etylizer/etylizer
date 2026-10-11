@@ -201,7 +201,7 @@ remote_table_ready(Name) ->
 
 %% @private
 -spec update(
-    atom(), map(), [atom()], fun((atom(), atom(), T) -> any()), fun((atom(), atom()) -> any()), T
+    atom(), map(), [E], fun((atom(), E, T) -> any()), fun((atom(), E) -> any()), T
 ) -> map().
 update(Name, MetaData, Entries, AddFun, RemoveFun, Initial) ->
     {NewMetaData, NodeErase} = lists:foldl(
