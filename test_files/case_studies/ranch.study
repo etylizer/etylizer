@@ -1,0 +1,134 @@
+#!/usr/bin/env -S sh -c 'exec "$(dirname "$0")/../../.github/scripts/ety_case_study" "$0" "$@"'
+%% -*- erlang -*-
+%% Case study manifest, see .github/scripts/ety_case_study.
+%%
+%% src of the hex package ranch 2.0.0, the one antidote depends on (checksum as in its rebar.lock),
+%% unchanged. ranch_ssl is left out: it refers to public_key:der_encoded(), and the engine aborts on
+%% the source of public_key of an installed OTP, which includes generated headers that are not there.
+
+{study, ranch}.
+
+%% {reason, Id, Class, Text}. Class: real (the program or its spec is wrong), inherent (correct at
+%% run time, not provable by types), fixable (gap in the type system or checker), unknown.
+{reason, body_exhaustiveness,  inherent, "exhaustiveness of a match or a case inside the body"}.
+{reason, partial,              inherent, "partial function, the callers rule out the missing case"}.
+{reason, start_ret,            inherent, "result of starting a process, typed by the init function of the module"}.
+{reason, call_reply,           inherent, "reply of a gen_server call, typed by the handle_call clause that answers it"}.
+{reason, ets_value,            inherent, "term() from an ets table, used at the type of its content"}.
+{reason, whereis,              inherent, "whereis/1 can give a port, the name is that of a process"}.
+{reason, opts_any,             real,     "ranch:opts() is any() or a map, the function needs the map"}.
+{reason, library_spec,         fixable,  "spec of a library function too imprecise"}.
+{reason, map_mandatory,        fixable,  "map types with mandatory associations are not supported"}.
+{reason, bound_pattern,        fixable,  "a pattern with an already bound variable is not handled"}.
+{reason, otp_no_spec,          fixable,  "call of a function of OTP that has no spec"}.
+{reason, otp_spec_mismatch,    unknown,  "the spec in the source does not fit that of the OTP function it wraps, not analysed which is right"}.
+{reason, unknown,              unknown,  "not analysed"}.
+
+{module, ranch, #{file => "ranch/src/ranch.erl", timeout => 20000}}.
+{exception, ranch, start_listener, 5, [ignore], unknown}.
+{exception, ranch, normalize_opts, 1, [ignore], unknown}.
+{exception, ranch, stop_listener, 1, [ignore], body_exhaustiveness}.
+{exception, ranch, do_acceptors, 2, [ignore], body_exhaustiveness}.
+{exception, ranch, child_spec, 5, [ignore], unknown}.
+{exception, ranch, remove_connection, 1, [ignore], body_exhaustiveness}.
+{exception, ranch, get_connections, 2, [ignore], library_spec}. % lists:sum/1 gives number()
+{exception, ranch, get_transport_options, 1, [ignore], unknown}.
+{exception, ranch, info, 0, [ignore], map_mandatory}.
+{exception, ranch, info, 1, [ignore], map_mandatory}.
+{exception, ranch, listener_info, 2, [ignore], body_exhaustiveness}.
+{exception, ranch, procs1, 2, [ignore], body_exhaustiveness}.
+{exception, ranch, require, 1, [ignore], bound_pattern}. % {error, {already_started, App}} with App bound is reported as never matching
+
+{module, ranch_acceptor, #{file => "ranch/src/ranch_acceptor.erl", timeout => 20000}}.
+
+{module, ranch_acceptors_sup, #{file => "ranch/src/ranch_acceptors_sup.erl", timeout => 20000}}.
+{exception, ranch_acceptors_sup, start_link, 3, [ignore], start_ret}.
+{exception, ranch_acceptors_sup, init, 1, [ignore], partial}.
+{exception, ranch_acceptors_sup, start_listen_sockets, 5, [ignore], unknown}.
+{exception, ranch_acceptors_sup, listen_error, 5, [ignore], opts_any}.
+
+{module, ranch_app, #{file => "ranch/src/ranch_app.erl", timeout => 20000}}.
+{exception, ranch_app, start, 2, [ignore], ets_value}.
+{exception, ranch_app, profile_output, 0, [ignore], unknown}.
+{exception, ranch_app, consider_profiling, 0, [ignore], body_exhaustiveness}.
+
+{module, ranch_conns_sup, #{file => "ranch/src/ranch_conns_sup.erl", timeout => 20000}}.
+{exception, ranch_conns_sup, start_link, 6, [ignore], start_ret}.
+{exception, ranch_conns_sup, init, 7, [ignore], opts_any}.
+{exception, ranch_conns_sup, loop, 4, [ignore], body_exhaustiveness}.
+{exception, ranch_conns_sup, terminate, 3, [ignore], unknown}.
+{exception, ranch_conns_sup, system_continue, 3, [ignore], partial}.
+{exception, ranch_conns_sup, system_terminate, 4, [ignore], partial}.
+
+{module, ranch_conns_sup_sup, #{file => "ranch/src/ranch_conns_sup_sup.erl", timeout => 20000}}.
+{exception, ranch_conns_sup_sup, start_link, 4, [ignore], start_ret}.
+{exception, ranch_conns_sup_sup, init, 1, [ignore], opts_any}.
+
+{module, ranch_crc32c, #{file => "ranch/src/ranch_crc32c.erl", timeout => 20000}}.
+
+{module, ranch_embedded_sup, #{file => "ranch/src/ranch_embedded_sup.erl", timeout => 20000}}.
+{exception, ranch_embedded_sup, start_link, 5, [ignore], start_ret}.
+{exception, ranch_embedded_sup, init, 1, [ignore], unknown}.
+
+{module, ranch_listener_sup, #{file => "ranch/src/ranch_listener_sup.erl", timeout => 20000}}.
+{exception, ranch_listener_sup, start_link, 5, [ignore], opts_any}.
+{exception, ranch_listener_sup, init, 1, [ignore], unknown}.
+
+{module, ranch_protocol, #{file => "ranch/src/ranch_protocol.erl", timeout => 20000}}.
+
+{module, ranch_proxy_header, #{file => "ranch/src/ranch_proxy_header.erl", timeout => 20000}}.
+{exception, ranch_proxy_header, parse_v1, 1, [ignore], body_exhaustiveness}.
+{exception, ranch_proxy_header, parse_ip, 2, [ignore], body_exhaustiveness}.
+{exception, ranch_proxy_header, parse_v2, 5, [ignore], unknown}.
+{exception, ranch_proxy_header, parse_client, 1, [ignore], body_exhaustiveness}.
+{exception, ranch_proxy_header, header, 2, [ignore], partial}.
+{exception, ranch_proxy_header, ssl_tlv, 1, [ignore], body_exhaustiveness}.
+
+{module, ranch_server, #{file => "ranch/src/ranch_server.erl", timeout => 20000}}.
+{exception, ranch_server, start_link, 0, [ignore], start_ret}.
+{exception, ranch_server, set_new_listener_opts, 5, [ignore], call_reply}.
+{exception, ranch_server, set_connections_sup, 3, [ignore], call_reply}.
+{exception, ranch_server, get_connections_sup, 2, [ignore], body_exhaustiveness}.
+{exception, ranch_server, get_connections_sups, 1, [ignore], ets_value}.
+{exception, ranch_server, get_connections_sups, 0, [ignore], ets_value}.
+{exception, ranch_server, set_listener_sup, 2, [ignore], call_reply}.
+{exception, ranch_server, get_listener_sup, 1, [ignore], ets_value}.
+{exception, ranch_server, get_listener_sups, 0, [ignore], ets_value}.
+{exception, ranch_server, set_addr, 2, [ignore], call_reply}.
+{exception, ranch_server, get_addr, 1, [ignore], ets_value}.
+{exception, ranch_server, set_max_connections, 2, [ignore], call_reply}.
+{exception, ranch_server, get_max_connections, 1, [ignore], ets_value}.
+{exception, ranch_server, set_transport_options, 2, [ignore], call_reply}.
+{exception, ranch_server, set_protocol_options, 2, [ignore], call_reply}.
+{exception, ranch_server, get_listener_start_args, 1, [ignore], ets_value}.
+{exception, ranch_server, count_connections, 1, [ignore], library_spec}. % lists:foldl/3 with a fun that takes a tuple
+{exception, ranch_server, init, 1, [ignore], ets_value}.
+{exception, ranch_server, handle_info, 2, [ignore], body_exhaustiveness}.
+{exception, ranch_server, set_monitored_process, 3, [ignore], body_exhaustiveness}.
+
+{module, ranch_server_proxy, #{file => "ranch/src/ranch_server_proxy.erl", timeout => 20000}}.
+{exception, ranch_server_proxy, start_link, 0, [ignore], start_ret}.
+{exception, ranch_server_proxy, wait_ranch_server, 1, [ignore], whereis}.
+
+{module, ranch_sup, #{file => "ranch/src/ranch_sup.erl", timeout => 20000}}.
+{exception, ranch_sup, start_link, 0, [ignore], start_ret}.
+{exception, ranch_sup, init, 1, [ignore], unknown}.
+
+{module, ranch_tcp, #{file => "ranch/src/ranch_tcp.erl", timeout => 20000}}.
+{exception, ranch_tcp, listen, 1, [ignore], otp_spec_mismatch}.
+{exception, ranch_tcp, connect, 3, [ignore], otp_spec_mismatch}.
+{exception, ranch_tcp, connect, 4, [ignore], otp_spec_mismatch}.
+{exception, ranch_tcp, recv_proxy_header, 2, [ignore], otp_no_spec}. % gen_tcp:unrecv/2
+{exception, ranch_tcp, send, 2, [ignore], otp_spec_mismatch}.
+{exception, ranch_tcp, sendfile, 5, [ignore], otp_spec_mismatch}.
+{exception, ranch_tcp, setopts, 2, [ignore], otp_spec_mismatch}.
+{exception, ranch_tcp, getopts, 2, [ignore], otp_spec_mismatch}.
+{exception, ranch_tcp, getstat, 2, [ignore], otp_spec_mismatch}.
+{exception, ranch_tcp, peername, 1, [ignore], otp_spec_mismatch}.
+{exception, ranch_tcp, sockname, 1, [ignore], otp_spec_mismatch}.
+{exception, ranch_tcp, cleanup, 1, [ignore], otp_spec_mismatch}.
+
+{module, ranch_transport, #{file => "ranch/src/ranch_transport.erl", timeout => 20000}}.
+{exception, ranch_transport, sendfile, 6, [ignore], body_exhaustiveness}.
+{exception, ranch_transport, chunk_size, 1, [ignore], body_exhaustiveness}.
+{exception, ranch_transport, sendfile_loop, 6, [ignore], unknown}.
