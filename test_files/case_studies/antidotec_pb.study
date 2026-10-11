@@ -19,17 +19,36 @@
 %% functions type check, 20 do not, 10 of them for the source: 8 for a declaration, 2 for an error
 %% in the program.
 %%
-%% Declarations (step III): no flag, no assertion, no library overlay. 43 functions type check, 19
-%% do not and are ignored; none of them for a declaration any more. The corrections make
-%% antidotec_reg:value/1 type check. 7 functions get past the declaration and fail with another
-%% first error, see their exceptions: start_transaction/3, commit_transaction/2, update_objects/3
-%% and read_values/3 of antidotec_pb at the reply of a call, connect/1 and send_caller/2 of
-%% antidotec_pb_socket as partial functions, and antidotec_pb:read_objects/3 at an error in the
-%% program that the type of read_values/3 now shows. No function fails that type checked before.
-%% By class: 3 for an error in the program, which no declaration corrects (read_objects/3, and
-%% handle_call/3 and handle_info/2 of antidotec_pb_socket), 16 for what types do not show (11 the
-%% reply of a gen_server call, 3 a partial function, 2 what gen_server:start_link/3 and start/3
-%% give).
+%% Declarations (step III): 43 functions type check, 19 do not, none of them for a declaration any
+%% more. The corrections make antidotec_reg:value/1 type check. 7 functions get past the
+%% declaration and fail with another first error: start_transaction/3, commit_transaction/2,
+%% update_objects/3 and read_values/3 of antidotec_pb at the reply of a call, connect/1 and
+%% send_caller/2 of antidotec_pb_socket as partial functions, and antidotec_pb:read_objects/3 at an
+%% error in the program that the type of read_values/3 now shows. No function fails that type
+%% checked before. By class: 3 for an error in the program, which no declaration corrects
+%% (read_objects/3, and handle_call/3 and handle_info/2 of antidotec_pb_socket), 16 for what types
+%% do not show (11 the reply of a gen_server call, 3 a partial function, 2 what
+%% gen_server:start_link/3 and start/3 give).
+%%
+%% Flags and assertions (step IV), no library overlay; the source is that of step III. 55 functions
+%% type check as they are, 3 with a flag (without the exhaustiveness check of their clauses), 4 are
+%% ignored; 21 assertions (18 assert_type, 3 assert_pattern) in 14 functions of 3 modules. Each
+%% flag and each assertion is needed: without it exactly its function fails.
+%%   Flags: init/1, connect/1 and send_caller/2 of antidotec_pb_socket are partial: a list of
+%%     three, a state that is not connected, a request that was not answered.
+%%   An assertion is an unchecked cast. 12 type the reply of a gen_server call, a term(): ok for
+%%     stop, the commit time for get_commit_time, and in 10 places the binary() that the socket
+%%     process replies to a request and that the caller decodes. That reply can also be {error,
+%%     disconnected}, when the connection closes while the request is pending (disconnect/1), or
+%%     the reason of a socket error: the callers take out {error, timeout} only and are let crash
+%%     in antidote_pb_codec:decode_response/1 for these. 4 are for a match or a case on a decoded
+%%     response that takes one or two kinds of responses, where the program lets it crash for
+%%     another (an error_response to a request of antidotec_pb_management). 4 are for what
+%%     gen_server:start_link/3 and start/3 hand to init/1 and give back, 1 for the checker: From
+%%     after the guard From /= undefined.
+%%   Ignored: 3 for an error in the program (read_objects/3, handle_call/3, handle_info/2, see
+%%     their exceptions); antidotec_pb_socket:store_commit_time/2, where the assertion for the reply
+%%     of the call would sit on the only expression of the function, whose hash crashes the engine.
 %%
 %% Declarations corrected in the source: 11 in 3 modules, old -> new. Only -spec, -type and the types
 %% of record fields; no function body, clause head, guard, macro or comment. Line numbers change in
@@ -92,10 +111,13 @@
 
 %% {reason, Id, Class, Text}. Class: real (the program or its spec is wrong), inherent (correct at
 %% run time, not provable by types), fixable (gap in the type system or checker), unknown.
+{reason, body_exhaustiveness, inherent, "exhaustiveness of a match or a case inside the body: the program lets it crash for the other values"}.
 {reason, partial,             inherent, "partial function, the callers rule out the missing case"}.
 {reason, call_reply,          inherent, "reply of a gen_server call, a term(): typed by what the server process replies to the request"}.
 {reason, start_args,          fixable,  "what gen_server:start_link/3 hands to init/1 and gives back, typed by init/1 of this module"}.
 {reason, program_wrong,       real,     "the program is wrong"}.
+{reason, neq_guard,           fixable,  "a guard X /= undefined does not narrow the type of X"}.
+{reason, assertion_crash,     fixable,  "needs an assertion that crashes the engine: assertions:hash/1 fails for a hash below 16#110000"}.
 
 {module, antidotec_counter, #{file => "antidotec_pb/src/antidotec_counter.erl", overlays => [{specs, "overlay_antidotec_pb.erl"}],
                               timeout => 10000}}.
@@ -105,42 +127,64 @@
 
 {module, antidotec_pb, #{file => "antidotec_pb/src/antidotec_pb.erl", overlays => [{specs, "overlay_antidotec_pb.erl"}],
                          timeout => 10000}}.
-%% antidote_pb_codec:decode_response(Result) at 61, 82, 101, 126 and 141, 188 and 207: Result is the reply of
-%% antidotec_pb_socket:call_infinity/2, a term()
-{exception, antidotec_pb, start_transaction, 3, [ignore], call_reply}.
-{exception, antidotec_pb, abort_transaction, 2, [ignore], call_reply}.
-{exception, antidotec_pb, commit_transaction, 2, [ignore], call_reply}.
-{exception, antidotec_pb, update_objects, 3, [ignore], call_reply}.
+%% antidote_pb_codec:decode_response(Result): Result is the reply of antidotec_pb_socket:call_infinity/2 to a
+%% request, the data of the response; {error, timeout} is taken out before. For {error, disconnected} and the reason
+%% of a socket error, which the socket process can reply too, the caller is let crash in decode_response/1.
+%% start_transaction/3, abort_transaction/2, commit_transaction/2, update_objects/3 (two clauses), read_values/3 (two)
+{assertion, antidotec_pb, {61, 60, "45ef21"}, assert_type, "binary()", call_reply}.
+{assertion, antidotec_pb, {82, 52, "45ef21"}, assert_type, "binary()", call_reply}.
+{assertion, antidotec_pb, {101, 52, "45ef21"}, assert_type, "binary()", call_reply}.
+{assertion, antidotec_pb, {126, 52, "45ef21"}, assert_type, "binary()", call_reply}.
+{assertion, antidotec_pb, {141, 52, "45ef21"}, assert_type, "binary()", call_reply}.
 %% 165, reported at 168: fun({Type, Val}) -> Mod = antidotec_datatype:module_for_type(Type), .. over the values that
 %% were read. module_for_type/1 has a clause for set, counter and reg: read_objects/3 fails with function_clause for
 %% a multi-value register, a map or a flag
 {exception, antidotec_pb, read_objects, 3, [ignore], program_wrong}.
-{exception, antidotec_pb, read_values, 3, [ignore], call_reply}.
+{assertion, antidotec_pb, {188, 52, "45ef21"}, assert_type, "binary()", call_reply}.
+%% read_values/3 for a static transaction: case antidote_pb_codec:decode_response(Result) of
+%% {static_read_objects_response, ..} -> ..; {error_response, Reason} -> .. end, without a clause for the rest
+{assertion, antidotec_pb, {207, 18, "6e711e"}, assert_type,
+ "{static_read_objects_response, {[antidote_pb_codec:read_result()], binary()}} | {error_response, {antidote_pb_codec:error_code(), binary()}}",
+ body_exhaustiveness}.
+{assertion, antidotec_pb, {207, 52, "45ef21"}, assert_type, "binary()", call_reply}.
 
 {module, antidotec_pb_management, #{file => "antidotec_pb/src/antidotec_pb_management.erl",
                                     overlays => [{specs, "overlay_antidotec_pb.erl"}], timeout => 10000}}.
-%% antidote_pb_codec:decode_response(Result) at 40, 54 and 68: Result is the reply of call_infinity/2, a term()
-{exception, antidotec_pb_management, create_dc, 2, [ignore], call_reply}.
-{exception, antidotec_pb_management, get_connection_descriptor, 1, [ignore], call_reply}.
-{exception, antidotec_pb_management, connect_to_dcs, 2, [ignore], call_reply}.
+%% {Tag, Response} = antidote_pb_codec:decode_response(Result): the match first, it holds the reply. An error_response,
+%% which the server sends when it fails, is let crash here. In connect_to_dcs/2 the assertion is on the decoded
+%% response itself (68:51): the match (68:13) has the hash 0a8ffe, which crashes the engine
+{assertion, antidotec_pb_management, {40, 13, "5e2500"}, assert_pattern, "{create_dc_response, _}", body_exhaustiveness}.
+{assertion, antidotec_pb_management, {40, 80, "45ef21"}, assert_type, "binary()", call_reply}.
+{assertion, antidotec_pb_management, {53, 13, "34aa1c"}, assert_pattern, "{get_connection_descriptor_response, _}", body_exhaustiveness}.
+{assertion, antidotec_pb_management, {54, 17, "45ef21"}, assert_type, "binary()", call_reply}.
+{assertion, antidotec_pb_management, {68, 51, "6e711e"}, assert_pattern, "{connect_to_dcs_response, _}", body_exhaustiveness}.
+{assertion, antidotec_pb_management, {68, 85, "45ef21"}, assert_type, "binary()", call_reply}.
 
 {module, antidotec_pb_socket, #{file => "antidotec_pb/src/antidotec_pb_socket.erl", overlays => [{specs, "overlay_antidotec_pb.erl"}],
                                 timeout => 10000}}.
-{exception, antidotec_pb_socket, init, 1, [ignore], partial}. % 81: [term()], the clause takes a list of three
-%% 99, 108: gen_server:start_link/3 and start/3 can give ignore; init/1 never does
-{exception, antidotec_pb_socket, start_link, 3, [ignore], start_args}.
-{exception, antidotec_pb_socket, start, 3, [ignore], start_args}.
-{exception, antidotec_pb_socket, stop, 1, [ignore], call_reply}. % 112: call_infinity(Pid, stop), the reply is ok
-{exception, antidotec_pb_socket, store_commit_time, 2, [ignore], call_reply}. % 120: gen_server:call/3, the reply is ok
-{exception, antidotec_pb_socket, get_last_commit_time, 1, [ignore], call_reply}. % 123: gen_server:call/3, the reply is {ok, _}
-%% 140: after a failed gen_tcp:send/2 the new state is the result of gen_tcp:close/1, the atom ok.
-%% Reported first: 135, gen_tcp:send(State#state.sock, Msg), the field sock is gen_tcp:socket() | undefined
+{exception, antidotec_pb_socket, init, 1, [no_exhaustiveness], start_args}. % [term()], the clause takes a list of three
+{assertion, antidotec_pb_socket, {82, 30, "d8bcbe"}, assert_type, "address()", start_args}.
+{assertion, antidotec_pb_socket, {82, 46, "7a690e"}, assert_type, "portnum()", start_args}.
+%% start_link/3, start/3: init/1 never gives ignore
+{assertion, antidotec_pb_socket, {99, 5, "34e338"}, assert_type, "{ok, pid()} | {error, term()}", start_args}.
+{assertion, antidotec_pb_socket, {108, 5, "d81fad"}, assert_type, "{ok, pid()} | {error, term()}", start_args}.
+{assertion, antidotec_pb_socket, {112, 5, "d2ba6c"}, assert_type, "ok", call_reply}. % stop/1
+%% gen_server:call(Pid, {store_commit_time, TimeStamp}, infinity) at 120:5, the reply is ok: the call is the whole
+%% body and the only expression there, its hash is 0a51a1
+{exception, antidotec_pb_socket, store_commit_time, 2, [ignore], assertion_crash}.
+{assertion, antidotec_pb_socket, {123, 5, "ec456f"}, assert_type, "{ok, binary() | ignore | undefined}", call_reply}. % get_last_commit_time/1
+%% 140: after a failed gen_tcp:send/2 the new state is the result of gen_tcp:close/1, the atom ok. The checker
+%% stops before that: 135, gen_tcp:send(State#state.sock, Msg), the field sock is gen_tcp:socket() | undefined, and
+%% a record field access takes no assertion.
 {exception, antidotec_pb_socket, handle_call, 3, [ignore], program_wrong}.
 %% 160: {req_timeout, Ref} reads Active#request.tref, and active is undefined once the reply has come: a timer
-%% that fired before it was cancelled crashes the process. Reported first: 157, ok = inet:setopts(Sock, ..)
+%% that fired before it was cancelled crashes the process. Reported first: 157, ok = inet:setopts(Sock, ..); with
+%% that match and the one at 166 asserted the checker reports 160.
 {exception, antidotec_pb_socket, handle_info, 2, [ignore], program_wrong}.
-{exception, antidotec_pb_socket, connect, 1, [ignore], partial}. % 181: only a state with sock =:= undefined
-{exception, antidotec_pb_socket, send_caller, 2, [ignore], partial}. % 239: only a request with From /= undefined
+{exception, antidotec_pb_socket, connect, 1, [no_exhaustiveness], partial}. % only a state with sock =:= undefined, as init/1 has it
+%% send_caller/2: only a request with From /= undefined, one that was not answered; gen_server:reply(From, Msg)
+{exception, antidotec_pb_socket, send_caller, 2, [no_exhaustiveness], partial}.
+{assertion, antidotec_pb_socket, {240, 22, "47e66f"}, assert_type, "gen_server:from()", neq_guard}.
 
 {module, antidotec_reg, #{file => "antidotec_pb/src/antidotec_reg.erl", overlays => [{specs, "overlay_antidotec_pb.erl"}],
                           timeout => 10000}}.
