@@ -1,0 +1,25 @@
+#!/usr/bin/env -S sh -c 'exec "$(dirname "$0")/../../.github/scripts/ety_case_study" "$0" "$@"'
+%% -*- erlang -*-
+%% Case study manifest, see .github/scripts/ety_case_study.
+%%
+%% src and include of https://github.com/zeromq/erlzmq2 as of commit
+%% 573d583930c4b1134e504bec83926d188112b401, the one antidote depends on, unchanged.
+
+{study, erlzmq}.
+
+%% {reason, Id, Class, Text}. Class: real (the program or its spec is wrong), inherent (correct at
+%% run time, not provable by types), fixable (gap in the type system or checker), unknown.
+{reason, partial,      inherent, "partial function, the callers rule out the missing case"}.
+{reason, no_timeout,   fixable,  "with the timeout infinity the result for a timeout cannot come"}.
+{reason, spec_wrong,   real,     "wrong type in the source"}.
+{reason, library_spec, fixable,  "spec of a library function too imprecise"}.
+
+{module, erlzmq, #{file => "erlzmq/src/erlzmq.erl", timeout => 10000}}.
+{exception, erlzmq, socket, 2, [ignore], partial}. % no clause for [] and for longer lists of options
+{exception, erlzmq, socket, 3, [ignore], partial}. % {active_pid, Pid} only for a pid of this node
+{exception, erlzmq, term, 1, [ignore], no_timeout}. % term(Context, infinity) can give {error, {timeout, reference()}} by its spec
+%% erlzmq_send_recv_flag() has recvmore and {timeout, timeout()}, the function has no clause for them
+{exception, erlzmq, sendrecv_flags, 1, [ignore], spec_wrong}.
+
+{module, erlzmq_nif, #{file => "erlzmq/src/erlzmq_nif.erl", timeout => 10000}}.
+{exception, erlzmq_nif, init, 0, [ignore], library_spec}. % filename:join/1 gives a file:filename_all(), erlang:load_nif/2 takes a string()
