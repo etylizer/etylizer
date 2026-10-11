@@ -15,24 +15,33 @@
 %% run time, not provable by types), fixable (gap in the type system or checker), unknown.
 {reason, blocking,   inherent, "a blocking checkout gives a worker, never full"}.
 {reason, call_reply, inherent, "reply of a gen_server call, typed by the handle_call clause that answers it"}.
-{reason, ets_value,  inherent, "term() from an ets table, used at the type of its content"}.
+{reason, assertion_crash, fixable, "needs an assertion that crashes the engine: assertions:hash/1 fails for a hash below 16#110000"}.
+{reason, bound_pattern, fixable, "a pattern with an already bound variable is not handled"}.
 {reason, ets_new,    fixable,  "ets:new/2 gives a tid() when the table is not named"}.
 {reason, start_ret,  fixable,  "result of starting or stopping a process: the caller matches the good case and lets it crash otherwise"}.
+{reason, unchecked_option, real, "an option is stored without the check that its record field type needs: with a negative size the pool counts as full, nothing crashes (run)"}.
 {reason, sup_set,    inherent, "#state.supervisor is undefined | pid(), it is a pid once init/3 has seen worker_module"}.
 
 {module, poolboy, #{file => "poolboy/src/poolboy.erl", overlays => [{specs, "overlay_poolboy.erl"}], timeout => 20000}}.
-{exception, poolboy, checkout, 1, [ignore], blocking}. % checkout(Pool, true)
-{exception, poolboy, checkout, 3, [ignore], call_reply}.
-{exception, poolboy, transaction, 3, [ignore], blocking}. % Fun(Worker), Worker from checkout(Pool, true, Timeout)
-{exception, poolboy, stop, 1, [ignore], call_reply}.
-{exception, poolboy, status, 1, [ignore], call_reply}.
-{exception, poolboy, init, 1, [ignore], ets_new}. % #state{monitors = Monitors}, the field is an ets:tid()
-{exception, poolboy, init, 3, [ignore], start_ret}. % {ok, Sup} = poolboy_sup:start_link(Mod, WorkerArgs)
-{exception, poolboy, handle_cast, 2, [ignore], ets_value}. % case ets:lookup(Monitors, Pid) of [{Pid, _, MRef}] -> ...; [] -> ... end
-{exception, poolboy, handle_info, 2, [ignore], ets_value}. % case ets:match(...) of [[Pid]] -> ...; [] -> ... end
-{exception, poolboy, terminate, 2, [ignore], sup_set}. % exit(State#state.supervisor, shutdown)
-{exception, poolboy, new_worker, 1, [ignore], start_ret}. % {ok, Pid} = supervisor:start_child(Sup, [])
-{exception, poolboy, handle_checkin, 2, [ignore], start_ret}. % ok = dismiss_worker(Sup, Pid)
+%% checkout/1: checkout(Pool, true); transaction/3: poolboy:checkout(Pool, true, Timeout)
+{assertion, poolboy, {52, 5, "c2a5d7"}, assert_type, "pid()", blocking}.
+{assertion, poolboy, {82, 14, "8b0675"}, assert_type, "pid()", blocking}.
+%% checkout/3 needs the reply of gen_server:call as pid() | full: the call (63:9) and the try around it (62:5) both crash the engine
+{exception, poolboy, checkout, 3, [ignore], assertion_crash}.
+{assertion, poolboy, {127, 5, "198ff3"}, assert_type, "ok", call_reply}. % stop/1
+{assertion, poolboy, {131, 5, "e0220e"}, assert_type, "{atom(), integer(), integer(), integer()}", call_reply}. % status/1
+{assertion, poolboy, {137, 69, "5caaba"}, assert_type, "ets:tid()", ets_new}. % init/1: #state{monitors = Monitors}
+%% init/3: {size, Size} when is_integer(Size), {max_overflow, MaxOverflow} when is_integer(MaxOverflow) into non_neg_integer() fields
+{assertion, poolboy, {143, 47, "9a3346"}, assert_type, "non_neg_integer()", unchecked_option}.
+{assertion, poolboy, {145, 55, "74d2a3"}, assert_type, "non_neg_integer()", unchecked_option}.
+{assertion, poolboy, {140, 5, "e8c08f"}, assert_pattern, "{ok, _}", start_ret}. % init/3: {ok, Sup} = poolboy_sup:start_link(Mod, WorkerArgs)
+%% case ets:lookup(Monitors, Pid) of [{Pid, _, MRef}] -> ...; [] -> ... end: Pid is bound already. Before that the
+%% results of ets:lookup/2 and ets:match/2 need their types: [] or one element, a set of {Worker, CRef, MRef}.
+{exception, poolboy, handle_cast, 2, [ignore], bound_pattern}.
+{exception, poolboy, handle_info, 2, [ignore], bound_pattern}.
+{exception, poolboy, terminate, 2, [ignore], sup_set}. % exit(State#state.supervisor, shutdown), a record field access takes no assertion
+{assertion, poolboy, {283, 17, "4716e8"}, assert_type, "{ok, pid()}", start_ret}. % new_worker/1: {ok, Pid} = supervisor:start_child(Sup, [])
+{assertion, poolboy, {318, 13, "9dc6bc"}, assert_pattern, "ok", start_ret}. % handle_checkin/2: ok = dismiss_worker(Sup, Pid)
 
 {module, poolboy_sup, #{file => "poolboy/src/poolboy_sup.erl", overlays => [{specs, "overlay_poolboy.erl"}], timeout => 20000}}.
 
