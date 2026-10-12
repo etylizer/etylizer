@@ -52,12 +52,18 @@
 %% Type assertion
 -define(assert_type(Expr, Type), ':::'(Expr, ??Type)).
 
-%% Exhaustiveness cover to let it crash.
+%% Exhaustiveness cover to let it crash, or to evaluate OnMismatch instead.
 %% Uses a fun-call wrapper to avoid leaking the internal variable into the
 %% surrounding scope. The X__V name follows OTP's assert.hrl convention.
 -define(assert_pattern(Pattern, Expr),
     begin
     ((fun (X__V) ->
         case X__V of Pattern -> X__V; _ -> error(exhaustiveness_violated) end
+      end)(Expr))
+    end).
+-define(assert_pattern(Pattern, Expr, OnMismatch),
+    begin
+    ((fun (X__V) ->
+        case X__V of Pattern -> X__V; _ -> OnMismatch end
       end)(Expr))
     end).

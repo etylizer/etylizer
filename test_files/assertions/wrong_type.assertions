@@ -1,0 +1,2 @@
+{assertion, asserted, {11, 5, "680d17"}, assert_pattern, "[_ | _]", test}.
+{assertion, asserted, {15, 11, "ed0a1f"}, assert_type, "atom()", test}.
