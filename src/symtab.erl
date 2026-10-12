@@ -23,7 +23,7 @@
     extend_symtab_with_fun_env/2,
     empty/0,
     extend_symtab_with_module_list/4,
-    dump_symtab/2, overlay_symtab/1,
+    dump_symtab/2, overlay_symtab/2,
     get_types/1,
     get_variances/1
 ]).
@@ -173,8 +173,9 @@ build_std_symtab(SearchPath, OverlaySymtab, Gradual) ->
     ?LOG_DEBUG("Done building symtab for standard library"),
     ExtTab2.
 
--spec overlay_symtab([ast:form()]) -> t().
-overlay_symtab(OverlayForms) ->
+% Adds the specs and types of an overlay file to those of the overlays before it.
+-spec overlay_symtab([ast:form()], t()) -> t().
+overlay_symtab(OverlayForms, Tab0) ->
     ?LOG_DEBUG("Building symtab for overlay file ..."),
     ModuleName = lists:foldl(fun(Form, Acc) ->
         case Form of
@@ -185,7 +186,7 @@ overlay_symtab(OverlayForms) ->
     lists:foldl(fun(Form, Tab) ->
         overlay_process_form(Form, Tab, ModuleName)
     end,
-    empty(),
+    Tab0,
     OverlayForms).
 
 -spec overlay_process_form(ast:form(), t(), atom() | undefined) -> t().
@@ -249,6 +250,35 @@ extend_symtab_internal(Filename, Forms, RefType, Tab, OverlaySymtab) ->
         end,
         Tab#tab { modules = maps:put(ModuleName, Filename, Tab#tab.modules), variances = undefined },
         Forms),
+    Unspecced = [{Name, Arity} || {function, _, Name, Arity, _, _} <- Forms,
+                                  find_fun(create_ref_tuple(RefType, Name, Arity), SpeccedTab) =:= error],
+    % a function without spec takes its spec from the overlay
+    OverlaidTab = lists:foldl(
+        fun({Name, Arity}, AccTab) ->
+                case find_fun({qref, ModuleName, Name, Arity}, OverlaySymtab) of
+                    {ok, OverlayT} ->
+                        maybe_add_qref(RefType, ModuleName, Name, Arity, OverlayT, Forms, AccTab);
+                    error -> AccTab
+                end
+        end,
+        SpeccedTab,
+        Unspecced),
+    % in the checked module no overlay spec may miss its target
+    case RefType of
+        ref ->
+            lists:foreach(
+                fun({qref, M, Name, Arity}) when M =:= ModuleName ->
+                        case lists:member({Name, Arity}, Unspecced) of
+                            true -> ok;
+                            false ->
+                                errors:some_error("Overlay spec for ~w:~w/~w, which is not a function without spec",
+                                                  [M, Name, Arity])
+                        end;
+                   (_) -> ok
+                end,
+                maps:keys(OverlaySymtab#tab.funs));
+        {qref, _} -> ok
+    end,
     % give every defined-but-unspecced function a dynamic() scheme here, 
     % once, so all downstream lookups resolve it 
     % covers local refs and (for exported functions, via maybe_add_qref) cross-module qrefs. 
@@ -265,9 +295,9 @@ extend_symtab_internal(Filename, Forms, RefType, Tab, OverlaySymtab) ->
                         end;
                    (_, AccTab) -> AccTab
                 end,
-                SpeccedTab,
+                OverlaidTab,
                 Forms);
-        _ -> SpeccedTab
+        _ -> OverlaidTab
     end.
 
 % A function scheme that is dynamic() in all arguments and the result.

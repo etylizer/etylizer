@@ -69,7 +69,7 @@ store(Key, {Value, Files}) ->
 
 -spec stamp(#opts{}) -> non_neg_integer().
 stamp(Opts) ->
-    Overlay = case Opts#opts.type_overlay of [] -> none; F -> utils:hash_file(F) end,
+    Overlay = lists:map(fun utils:hash_file/1, Opts#opts.type_overlay),
     erlang:phash2({[M:module_info(md5) || M <- ?CODE_MODULES],
                    erlang:system_info(otp_release), erlang:system_info(version),
                    Opts#opts.includes, Opts#opts.defines, Opts#opts.gradual_typing_mode, Overlay}).
