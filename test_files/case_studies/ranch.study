@@ -38,163 +38,240 @@
 %%     ranch_tcp:listen/1 hands it a ranch_tcp:opts().
 %% Not corrected, see the exceptions: ranch:opts() and ranch:normalize_opts/1; the result of
 %% ranch_tcp:send/2, which the callback of ranch_transport fixes.
+%%
+%% Library specs, flags and assertions (step IV). Of the 188 functions 153 type check without an
+%% exception, 1 with a flag (ranch:filter_user_options/3, without the redundancy check of its
+%% clauses), 34 are ignored. 59 assertions (44 assert_type, 15 assert_pattern) in 45 functions of 14
+%% modules. Each assertion and the flag is needed: without it exactly its function fails.
+%%   overlay_ranch_lib.erl has specs for functions of OTP whose spec says too little: the key
+%%     functions of lists that overlay.erl does not have (keymember/3, keystore/4, keydelete/3,
+%%     keytake/3; they pass over an element that is no tuple, and socket options hold atoms),
+%%     lists:sum/1, inet:format_error/1, and application:get_env/1 and start/1, where OTP gives a
+%%     result as a type variable that is bound only in when and so fits every type. It is on ranch,
+%%     ranch_acceptors_sup, ranch_app and ranch_server. The shared overlay.erl (lists:keyfind/3,
+%%     lists:foldl/3) is on ranch, ranch_acceptors_sup, ranch_server, ranch_tcp and ranch_transport.
+%%     With them 6 functions type check as they are, 7 more with assertions. No function that type
+%%     checked without them fails with them. Two entries clear nothing and only take a function
+%%     that stays ignored to the obstacle its reason names: application:start/1 for ranch:require/1,
+%%     overlay.erl for ranch_acceptors_sup:start_listen_sockets/5.
+%%   An assertion is an unchecked cast (assert_type, assert_pattern) of a value whose type the
+%%     checker cannot know (class inherent), or does not see for a gap of its own (class fixable).
+%%     A function that also meets something that cannot be had has no assertion and stays ignored
+%%     with the reason of what blocks it in the end: a map type with several or with mandatory
+%%     associations (a map is not asserted to be of its type either), a catch clause with a tuple
+%%     pattern, a pattern with a bound variable, a function of OTP without a spec, the timeout, an
+%%     assertion at a position that crashes the engine, an error of the program.
 
 {study, ranch}.
 
 %% {reason, Id, Class, Text}. Class: real (the program or its spec is wrong), inherent (correct at
 %% run time, not provable by types), fixable (gap in the type system or checker), benign (dead for the spec, kept on purpose), unknown.
-{reason, body_exhaustiveness, inherent, "exhaustiveness of a match or a case inside the body"}.
-{reason, bound_pattern,       inherent, "a pattern with a bound variable takes that value only, the program knows that no other comes"}.
+{reason, body_exhaustiveness, inherent, "exhaustiveness of a match or a case inside the body: the program lets it crash for the other values"}.
+{reason, bound_pattern,       fixable,  "a pattern with a bound variable takes that value only, the program knows that no other comes; no assertion closes such a case"}.
 {reason, defensive,           benign,   "defensive clause, dead for the spec"}.
 {reason, arithmetic,          fixable,  "arithmetic on type level"}.
-{reason, start_ret,           inherent, "result of starting a process, typed by the init function of the module"}.
+{reason, start_ret,           fixable,  "result of starting a process, typed by the init function of the module: it never gives ignore"}.
+{reason, sup_strategy,        inherent, "supervisor:terminate_child/2 gives {error, simple_one_for_one} only for a supervisor of that strategy"}.
 {reason, call_reply,          inherent, "reply of a gen_server call, typed by the handle_call clause that answers it"}.
 {reason, call_request,        inherent, "request of a gen_server call, typed by the function that sends it"}.
 {reason, ets_value,           inherent, "term() from an ets table, used at the type of its content"}.
+{reason, process_dict,        inherent, "term() from the process dictionary, used at the type of what the process puts there"}.
+{reason, proplist,            inherent, "term() from a property list, used at the type of the property"}.
 {reason, whereis,             inherent, "whereis/1 can give a port, the name is that of a process"}.
-{reason, file_mode,           inherent, "a file opened with raw and binary: file:open/2 gives a file:fd(), file:read/2 a binary()"}.
+{reason, file_mode,           inherent, "a file opened with raw and binary: file:open/2 gives a file:fd(), file:read/2 a binary() and no error of an encoding"}.
 {reason, forwarded,           inherent, "options handed on to OTP, which checks them at run time"}.
 {reason, address_family,      inherent, "a TCP socket has an address of the family inet, inet6 or local, not of an unknown one"}.
 {reason, program_wrong,       real,     "the program is wrong"}.
 {reason, opts_any,            real,     "ranch:opts() is any() | transport_opts(any()), that is any(): a map that is no transport_opts() counts as one"}.
-{reason, otp_release,         real,     "the spec fits the OTP release ranch 2.0.0 was written for, in OTP 28 the function it wraps gives more"}.
+{reason, otp_release,         real,     "the spec fits the OTP release ranch 2.0.0 was written for, in OTP 29 the function it wraps gives more"}.
 {reason, map_types,           fixable,  "map types with more than one association are not supported: a map expression, update or pattern is typed with one"}.
 {reason, map_mandatory,       fixable,  "map types with mandatory associations are not supported"}.
-{reason, library_spec,        fixable,  "spec of a library function too imprecise"}.
 {reason, element_type,        fixable,  "element/2 is not typed by the tuple it is applied to"}.
+{reason, option_result,       fixable,  "the result of a BIF for a literal option list is one case of its type: ets:new/2 with named_table, erlang:demonitor/2 with [flush], file:open/2 with raw"}.
 {reason, binary_patterns,     fixable,  "binary patterns too imprecise: an integer segment is an integer() whatever its size"}.
-{reason, bounded_tyvar,       fixable,  "a type variable with a bound (when X :: T) is typed by its bound at a call, not by the argument"}.
-{reason, guard_narrowing,     fixable,  "a guard does not narrow the type of a variable for the clauses after it"}.
+{reason, guard_narrowing,     fixable,  "a clause does not narrow the type of a variable for the clauses after it, neither by its guard nor by its pattern for a record field"}.
 {reason, catch_pattern,       fixable,  "a catch clause whose pattern for the reason is a tuple fails to type check"}.
 {reason, otp_no_spec,         fixable,  "call of a function of OTP that has no spec"}.
 {reason, timeout,             fixable,  "the checker does not finish in the time given"}.
+{reason, assertion_crash,     fixable,  "needs an assertion that crashes the engine: assertions:hash/1 fails when the hash is a code point"}.
+{reason, spec_imprecise, real, "imprecise type spec in the source"}.
 
-{module, ranch, #{file => "ranch/src/ranch.erl", overlays => [{specs, "overlay_ranch.erl"}], timeout => 20000}}.
+%% Library specs that overlays correct
+{correction, lists, foldl, 3, spec_imprecise}.
+{correction, lists, keytake, 3, spec_imprecise}. % Tuple unrelated to the list
+{correction, lists, sum, 1, spec_imprecise}.
+
+{module, ranch, #{file => "ranch/src/ranch.erl",
+                  overlays => [{library, "overlay.erl"}, {library, "overlay_ranch_lib.erl"}, {specs, "overlay_ranch.erl"}], timeout => 20000}}.
 {exception, ranch, start_listener, 5, [ignore], map_types}. % the child spec, a map, is no supervisor:child_spec()
 {exception, ranch, normalize_opts, 1, [ignore], opts_any}.
-{exception, ranch, stop_listener, 1, [ignore], body_exhaustiveness}. % [_, Transport, _, _, _] = the start arguments, a [any()]
+%% stop_listener/1: [_, Transport, _, _, _] = the start arguments, a [any()]; ranch_sup is one_for_one
+{assertion, ranch, {159, 2, "99e54d"}, assert_pattern, "[_, _, _, _, _]", body_exhaustiveness}.
+{assertion, ranch, {161, 7, "66e18e"}, assert_type, "ok | {error, not_found}", sup_strategy}.
 %% ok = do_acceptors(Pid, ...): for a suspended listener do_acceptors/2 gives {error, undefined}, a badmatch (seen at run time)
 {exception, ranch, stop_all_acceptors, 0, [ignore], program_wrong}.
 {exception, ranch, restart_all_acceptors, 0, [ignore], program_wrong}.
-{exception, ranch, do_acceptors, 2, [ignore], body_exhaustiveness}. % lists:keyfind/3 does not give false: the child is there
+%% do_acceptors/2, remove_connection/1: lists:keyfind/3 does not give false, the child is there
+{assertion, ranch, {215, 7, "9447da"}, assert_pattern, "{_, _, _, _}", body_exhaustiveness}.
 {exception, ranch, child_spec, 5, [ignore], map_types}. % the child spec, a map, is no supervisor:child_spec()
-{exception, ranch, remove_connection, 1, [ignore], body_exhaustiveness}. % {_, ConnsSupSup, _, _} = lists:keyfind(...)
-{exception, ranch, get_connections, 2, [ignore], library_spec}. % lists:sum/1 gives number()
+{assertion, ranch, {308, 2, "a423c2"}, assert_pattern, "{_, _, _, _}", body_exhaustiveness}.
+%% get_connections/2: proplists:get_value(active, supervisor:count_children(ConnsSup)), answered by ranch_conns_sup:loop/4
+{assertion, ranch, {345, 15, "86d167"}, assert_type, "non_neg_integer()", proplist}.
 {exception, ranch, info, 0, [ignore], map_mandatory}.
 {exception, ranch, info, 1, [ignore], map_mandatory}.
 {exception, ranch, listener_info, 2, [ignore], map_types}. % a map of eleven keys; before it [_, Transport, _, Protocol, _] = the start arguments
-{exception, ranch, procs1, 2, [ignore], catch_pattern}. % catch exit:{noproc, _}; before it {_, SupPid, _, _} = lists:keyfind(...)
-{exception, ranch, filter_user_options, 3, [ignore], defensive}. % the clause for an option of no known form
-{exception, ranch, merge_options, 2, [ignore], library_spec}. % lists:keystore/4 wants a list of tuples, the options hold atoms
-{exception, ranch, set_option_default, 3, [ignore], library_spec}. % lists:keymember/3 wants a list of tuples, the options hold atoms
-%% {error, {already_started, App}}, no branch for another error. Reported first: this branch never matches,
-%% for the type variable in the result of application:start/1 (ok | {error, Reason} when Reason :: term()).
+{exception, ranch, procs1, 2, [ignore], catch_pattern}. % catch exit:{noproc, _}; before it {_, SupPid, _, _} = lists:keyfind(...), twice
+{exception, ranch, filter_user_options, 3, [no_redundancy], defensive}. % the clause for an option of no known form
+%% case application:start(App) of ok -> ok; {error, {already_started, App}} -> ok end: no branch for another error, and
+%% none for another application. With the result asserted to be ok | {error, {already_started, atom()}} the case still
+%% counts as not exhaustive.
 {exception, ranch, require, 1, [ignore], bound_pattern}.
 
 {module, ranch_acceptor, #{file => "ranch/src/ranch_acceptor.erl", overlays => [{specs, "overlay_ranch.erl"}], timeout => 20000}}.
 
-{module, ranch_acceptors_sup, #{file => "ranch/src/ranch_acceptors_sup.erl", overlays => [{specs, "overlay_ranch.erl"}], timeout => 20000}}.
-{exception, ranch_acceptors_sup, start_link, 3, [ignore], start_ret}. % init/1 never gives ignore
-%% The child specs are maps. Before that: init([term()]) takes a list of three, the listen sockets come from the process
-%% dictionary, the transport options have any() as socket options and start_listen_sockets/5 wants a list.
+{module, ranch_acceptors_sup, #{file => "ranch/src/ranch_acceptors_sup.erl",
+                                overlays => [{library, "overlay.erl"}, {library, "overlay_ranch_lib.erl"}, {specs, "overlay_ranch.erl"}],
+                                timeout => 20000}}.
+{assertion, ranch_acceptors_sup, {25, 2, "a04edb"}, assert_type, "{ok, pid()} | {error, term()}", start_ret}. % start_link/3
+%% The child specs and the flags of the supervisor are maps. Before that: init([term()]) takes a list of three, the listen
+%% sockets come from the process dictionary, the transport options have any() as socket options and
+%% start_listen_sockets/5 wants a list.
 {exception, ranch_acceptors_sup, init, 1, [ignore], map_types}.
-%% lists:keyfind/3 and lists:keydelete/3 want a list of tuples, lists:seq(2, N) gives a [integer()]; then TransOpts0#{socket_opts => ...}
-{exception, ranch_acceptors_sup, start_listen_sockets, 5, [ignore], library_spec}.
-{exception, ranch_acceptors_sup, format_error, 1, [ignore], library_spec}. % inet:format_error/1 wants a posix(), takes any atom
+%% TransOpts1 = TransOpts0#{socket_opts => SocketOpts1} is no ranch:transport_opts(list()) for start_listen_socket/4.
+%% Behind it lists:seq(2, N), a [integer()] for the [pos_integer()] of the result.
+{exception, ranch_acceptors_sup, start_listen_sockets, 5, [ignore], map_types}.
 
-{module, ranch_app, #{file => "ranch/src/ranch_app.erl", overlays => [{specs, "overlay_ranch.erl"}], timeout => 20000}}.
-{exception, ranch_app, start, 2, [ignore], body_exhaustiveness}. % ranch_server = ets:new(ranch_server, [..., named_table])
-{exception, ranch_app, consider_profiling, 0, [ignore], body_exhaustiveness}. % {ok, _Pid} = eprof:start()
+{module, ranch_app, #{file => "ranch/src/ranch_app.erl", overlays => [{library, "overlay_ranch_lib.erl"}, {specs, "overlay_ranch.erl"}],
+                      timeout => 20000}}.
+{assertion, ranch_app, {25, 2, "977f33"}, assert_pattern, "ranch_server", option_result}. % start/2: ranch_server = ets:new(ranch_server, [..., named_table])
+{assertion, ranch_app, {44, 4, "e09100"}, assert_pattern, "{ok, _}", body_exhaustiveness}. % consider_profiling/0: {ok, _Pid} = eprof:start()
 
 {module, ranch_conns_sup, #{file => "ranch/src/ranch_conns_sup.erl", overlays => [{specs, "overlay_ranch.erl"}], timeout => 20000}}.
-{exception, ranch_conns_sup, start_link, 6, [ignore], start_ret}. % proc_lib:start_link/3 gives a term(), init/7 sends {ok, self()}
-%% CurConns - 1 and NbChildren - 1 are integer(), the counters non_neg_integer(). Also: what put/2 and erase/1
-%% give, and [To | Sleepers2] = Sleepers after a clause for Sleepers =:= [].
-{exception, ranch_conns_sup, loop, 4, [ignore], arithmetic}.
-{exception, ranch_conns_sup, terminate, 3, [ignore], guard_narrowing}. % if Shutdown =:= infinity -> ok; true -> erlang:send_after(Shutdown, ...)
+{assertion, ranch_conns_sup, {51, 2, "afb5a5"}, assert_type, "{ok, pid()} | {error, term()}", start_ret}. % start_link/6: proc_lib:start_link/3 gives a term(), init/7 sends {ok, self()}
+%% loop/4: put(Pid, removed) gives what handshake/8 and loop/4 put under a pid; [To | Sleepers2] = Sleepers comes after
+%% a clause with the guard Sleepers =:= []. Not reported: the result of erase(Pid), in OTP a type variable bound only in
+%% when, and CurConns - 1 and NbChildren - 1, which count as non_neg_integer().
+{assertion, ranch_conns_sup, {149, 9, "4806f2"}, assert_type, "active | removed | undefined", process_dict}.
+{assertion, ranch_conns_sup, {153, 6, "9f8269"}, assert_pattern, "[_ | _]", guard_narrowing}.
+{assertion, ranch_conns_sup, {199, 6, "9f8269"}, assert_pattern, "[_ | _]", guard_narrowing}.
+%% terminate/3: erlang:send_after(Shutdown, ...) after a clause for #state{shutdown=brutal_kill} and in the branch true of
+%% if Shutdown =:= infinity -> ok; true -> ... end
+{assertion, ranch_conns_sup, {285, 22, "a30ba9"}, assert_type, "non_neg_integer()", guard_narrowing}.
 
 {module, ranch_conns_sup_sup, #{file => "ranch/src/ranch_conns_sup_sup.erl", timeout => 20000}}.
-{exception, ranch_conns_sup_sup, start_link, 4, [ignore], start_ret}. % init/1 never gives ignore
-{exception, ranch_conns_sup_sup, init, 1, [ignore], map_types}. % the child specs are maps; and 1 + ceil(...) is an integer()
+{assertion, ranch_conns_sup_sup, {25, 2, "20a65f"}, assert_type, "{ok, pid()} | {error, term()}", start_ret}. % start_link/4
+{exception, ranch_conns_sup_sup, init, 1, [ignore], map_types}. % the child specs and the flags are maps; and 1 + ceil(...) is an integer()
 
 {module, ranch_crc32c, #{file => "ranch/src/ranch_crc32c.erl", overlays => [{specs, "overlay_ranch.erl"}], timeout => 20000}}.
-{exception, ranch_crc32c, do_crc32c, 2, [ignore], element_type}. % element(N, Table) bxor ...
+%% do_crc32c/2: element(1 + ((OldCrc bxor C) band 16#ff), Table) bxor ..., the index is no pos_integer() and the element a term()
+{assertion, ranch_crc32c, {97, 32, "e5069e"}, assert_type, "non_neg_integer()", element_type}.
+{assertion, ranch_crc32c, {97, 42, "ab2e86"}, assert_type, "1..256", arithmetic}.
 
 {module, ranch_embedded_sup, #{file => "ranch/src/ranch_embedded_sup.erl", timeout => 20000}}.
-{exception, ranch_embedded_sup, start_link, 5, [ignore], start_ret}. % init/1 never gives ignore
-{exception, ranch_embedded_sup, init, 1, [ignore], map_types}. % the child specs are maps
+{assertion, ranch_embedded_sup, {25, 2, "a77965"}, assert_type, "{ok, pid()} | {error, term()}", start_ret}. % start_link/5
+{exception, ranch_embedded_sup, init, 1, [ignore], map_types}. % the child specs and the flags are maps
 
 {module, ranch_listener_sup, #{file => "ranch/src/ranch_listener_sup.erl", timeout => 20000}}.
-{exception, ranch_listener_sup, start_link, 5, [ignore], start_ret}. % init/1 never gives ignore
-{exception, ranch_listener_sup, init, 1, [ignore], map_types}. % the child specs are maps
+{assertion, ranch_listener_sup, {28, 2, "51376b"}, assert_type, "{ok, pid()} | {error, term()}", start_ret}. % start_link/5
+{exception, ranch_listener_sup, init, 1, [ignore], map_types}. % the child specs and the flags are maps
 
 {module, ranch_protocol, #{file => "ranch/src/ranch_protocol.erl", timeout => 20000}}.
 
 {module, ranch_proxy_header, #{file => "ranch/src/ranch_proxy_header.erl", overlays => [{specs, "overlay_ranch.erl"}], timeout => 20000}}.
-{exception, ranch_proxy_header, parse_v1, 1, [ignore], map_types}. % builds a proxy_info()
+{exception, ranch_proxy_header, parse_v1, 1, [ignore], map_types}. % builds a proxy_info(); behind it case binary:split(...) of [_, Rest]; [_]
 %% Builds a proxy_info(). Before that: Rest3 can be the separator, see parse_port/2 in the overlay; <<"\n", Rest/bits>> = Rest4.
 {exception, ranch_proxy_header, parse_v1, 2, [ignore], map_types}.
-{exception, ranch_proxy_header, parse_ip, 2, [ignore], timeout}. % nine clauses with a binary pattern, not done after four minutes
+%% Nine clauses with a binary pattern. The time grows with their number, in a copy with fewer of them: 0.2 s for two,
+%% 2.5 s for three, more than 60 s for four, with and without the checks of the clauses.
+{exception, ranch_proxy_header, parse_ip, 2, [ignore], timeout}.
 %% No clause for a header of the version 2 with less than four bytes: parse/1 fails with function_clause
 %% (seen at run time), its spec promises {error, atom()}. Also: the result is a map of two keys.
 {exception, ranch_proxy_header, parse_v2, 1, [ignore], program_wrong}.
-{exception, ranch_proxy_header, parse_v2, 5, [ignore], timeout}. % fails after 34 s: binary patterns, maps
-{exception, ranch_proxy_header, parse_tlv, 4, [ignore], map_types}. % Info#{alpn => ALPN}
-{exception, ranch_proxy_header, parse_client, 1, [ignore], binary_patterns}. % case ClientCertSess of 0 -> ...; 1 -> ... end, a segment of one bit
-{exception, ranch_proxy_header, parse_ssl_tlv, 3, [ignore], map_types}. % Info#{Type => TLVValue}
+%% With more time it fails after 25 s without naming a place, also with its four maps asserted to be a proxy_info():
+%% binary patterns, maps.
+{exception, ranch_proxy_header, parse_v2, 5, [ignore], timeout}.
+{exception, ranch_proxy_header, parse_tlv, 4, [ignore], map_types}. % Info#{alpn => ALPN}; reported first: Rest of Rest/bits, a bitstring() for a binary()
+%% parse_client/1: case ClientCertSess of 0 -> ...; 1 -> ... end, a segment of one bit; so ClientCertConn and ClientSSL
+{assertion, ranch_proxy_header, {552, 17, "dad1c1"}, assert_type, "0 | 1", binary_patterns}.
+{assertion, ranch_proxy_header, {556, 17, "15b9a3"}, assert_type, "0 | 1", binary_patterns}.
+{assertion, ranch_proxy_header, {560, 7, "a0cc50"}, assert_type, "0 | 1", binary_patterns}.
+{exception, ranch_proxy_header, parse_ssl_tlv, 3, [ignore], map_types}. % Info#{Type => TLVValue}; reported first: TLVType, a segment of a byte, is no byte()
 {exception, ranch_proxy_header, header, 2, [ignore], map_types}. % map patterns; and no clause for many a proxy_info()
 {exception, ranch_proxy_header, addresses, 1, [ignore], map_types}. % map patterns
 {exception, ranch_proxy_header, binary_tlv, 3, [ignore], map_types}. % #{Key := Bin}
 {exception, ranch_proxy_header, ssl_tlv, 1, [ignore], map_types}. % map patterns
 
-{module, ranch_server, #{file => "ranch/src/ranch_server.erl", overlays => [{specs, "overlay_ranch.erl"}], timeout => 20000}}.
-{exception, ranch_server, start_link, 0, [ignore], start_ret}. % init/1 never gives ignore
-{exception, ranch_server, set_new_listener_opts, 5, [ignore], call_reply}.
-{exception, ranch_server, set_connections_sup, 3, [ignore], call_reply}.
-{exception, ranch_server, get_connections_sup, 2, [ignore], body_exhaustiveness}. % {_, Pid} = lists:keyfind(...)
-{exception, ranch_server, get_connections_sups, 1, [ignore], ets_value}.
-{exception, ranch_server, get_connections_sups, 0, [ignore], ets_value}.
-{exception, ranch_server, set_listener_sup, 2, [ignore], call_reply}.
-{exception, ranch_server, get_listener_sup, 1, [ignore], ets_value}.
-{exception, ranch_server, get_listener_sups, 0, [ignore], ets_value}.
-{exception, ranch_server, set_addr, 2, [ignore], call_reply}.
-{exception, ranch_server, get_addr, 1, [ignore], ets_value}.
-{exception, ranch_server, set_max_connections, 2, [ignore], call_reply}.
-{exception, ranch_server, get_max_connections, 1, [ignore], ets_value}.
-{exception, ranch_server, set_transport_options, 2, [ignore], call_reply}.
-{exception, ranch_server, get_transport_options, 1, [ignore], ets_value}.
-{exception, ranch_server, set_protocol_options, 2, [ignore], call_reply}.
-{exception, ranch_server, get_listener_start_args, 1, [ignore], ets_value}.
-{exception, ranch_server, count_connections, 1, [ignore], library_spec}. % lists:foldl/3 with a fun that takes a tuple
-{exception, ranch_server, init, 1, [ignore], ets_value}.
-{exception, ranch_server, handle_call, 3, [ignore], call_request}. % Id and Pid of {set_connections_sup, Ref, Id, Pid} are term()
-{exception, ranch_server, handle_info, 2, [ignore], body_exhaustiveness}. % {_, TypeRef} = lists:keyfind(...)
-{exception, ranch_server, set_monitored_process, 3, [ignore], library_spec}. % lists:keytake/3 gives a tuple(); then true = erlang:demonitor(...)
+{module, ranch_server, #{file => "ranch/src/ranch_server.erl",
+                         overlays => [{library, "overlay.erl"}, {library, "overlay_ranch_lib.erl"}, {specs, "overlay_ranch.erl"}], timeout => 20000}}.
+%% start_link/0, set_protocol_options/2 and ranch_server_proxy:start_link/0 need the result of their one call asserted:
+%% {ok, pid()} | {error, term()} at 61:2, ok at 152:2, {ok, pid()} | {error, term()} at 28:2. No other expression can carry it.
+{exception, ranch_server, start_link, 0, [ignore], assertion_crash}.
+%% the replies of gen_server:call/2
+{assertion, ranch_server, {65, 2, "40ba44"}, assert_type, "ok", call_reply}. % set_new_listener_opts/5
+{assertion, ranch_server, {93, 2, "a5516d"}, assert_type, "ok", call_reply}. % set_connections_sup/3
+{assertion, ranch_server, {114, 2, "adc12f"}, assert_type, "ok", call_reply}. % set_listener_sup/2
+{assertion, ranch_server, {127, 2, "45e97c"}, assert_type, "ok", call_reply}. % set_addr/2
+{assertion, ranch_server, {136, 2, "d18e57"}, assert_type, "ok", call_reply}. % set_max_connections/2
+{assertion, ranch_server, {144, 2, "c45428"}, assert_type, "ok", call_reply}. % set_transport_options/2
+{exception, ranch_server, set_protocol_options, 2, [ignore], assertion_crash}.
+{assertion, ranch_server, {99, 2, "7fea9b"}, assert_pattern, "{_, _}", body_exhaustiveness}. % get_connections_sup/2: {_, Pid} = lists:keyfind(...)
+%% The table: ets:match/2 gives a list of lists with one element for each variable of the pattern, ets:lookup_element/3
+%% the value at a key. get_connections_sups/1,0, get_listener_sup/1, get_listener_sups/0, get_addr/1,
+%% get_max_connections/1, get_transport_options/1, get_listener_start_args/1, and twice init/1.
+{assertion, ranch_server, {105, 16, "5879a7"}, assert_type, "[etylizer:cons(pos_integer(), etylizer:cons(pid(), []))]", ets_value}.
+{assertion, ranch_server, {110, 21, "3c70a8"}, assert_type, "[etylizer:cons(ranch:ref(), etylizer:cons(pos_integer(), etylizer:cons(pid(), [])))]", ets_value}.
+{assertion, ranch_server, {118, 2, "e57272"}, assert_type, "pid()", ets_value}.
+{assertion, ranch_server, {122, 31, "94abdc"}, assert_type, "[etylizer:cons(ranch:ref(), etylizer:cons(pid(), []))]", ets_value}.
+{assertion, ranch_server, {132, 2, "3f9f63"}, assert_type, "{inet:ip_address(), inet:port_number()} | {local, binary()} | {undefined, undefined}", ets_value}.
+{assertion, ranch_server, {140, 2, "31b4db"}, assert_type, "ranch:max_conns()", ets_value}.
+{assertion, ranch_server, {148, 2, "ea3a18"}, assert_type, "ranch:transport_opts(any())", ets_value}.
+{assertion, ranch_server, {160, 2, "9d1858"}, assert_type, "[any()]", ets_value}.
+{assertion, ranch_server, {176, 21, "3c70a8"}, assert_type, "[etylizer:cons(ranch:ref(), etylizer:cons(pos_integer(), etylizer:cons(pid(), [])))]", ets_value}.
+{assertion, ranch_server, {178, 17, "94abdc"}, assert_type, "[etylizer:cons(ranch:ref(), etylizer:cons(pid(), []))]", ets_value}.
+%% handle_call/3: Id and Pid of {set_connections_sup, Ref, Id, Pid}, Pid of {set_listener_sup, Ref, Pid}. The id is one of
+%% lists:seq(1, NumConnsSups) of ranch_conns_sup_sup:init/1; set_connections_sup/3 says non_neg_integer().
+{assertion, ranch_server, {189, 49, "9b7137"}, assert_type, "pos_integer()", call_request}.
+{assertion, ranch_server, {189, 54, "9591bb"}, assert_type, "pid()", call_request}.
+{assertion, ranch_server, {192, 53, "9591bb"}, assert_type, "pid()", call_request}.
+{assertion, ranch_server, {218, 2, "860ba4"}, assert_pattern, "{_, _}", body_exhaustiveness}. % handle_info/2: {_, TypeRef} = lists:keyfind(...)
+{assertion, ranch_server, {253, 4, "e79ab3"}, assert_pattern, "true", option_result}. % set_monitored_process/3: true = erlang:demonitor(OldMonitorRef, [flush])
 
 {module, ranch_server_proxy, #{file => "ranch/src/ranch_server_proxy.erl", overlays => [{specs, "overlay_ranch.erl"}], timeout => 20000}}.
-{exception, ranch_server_proxy, start_link, 0, [ignore], start_ret}. % init/1 never gives ignore
-{exception, ranch_server_proxy, wait_ranch_server, 1, [ignore], whereis}.
+{exception, ranch_server_proxy, start_link, 0, [ignore], assertion_crash}. % see ranch_server:start_link/0
+{assertion, ranch_server_proxy, {58, 7, "408ccb"}, assert_type, "pid() | undefined", whereis}. % wait_ranch_server/1
 
 {module, ranch_sup, #{file => "ranch/src/ranch_sup.erl", timeout => 20000}}.
-{exception, ranch_sup, start_link, 0, [ignore], start_ret}. % init/1 never gives ignore
-{exception, ranch_sup, init, 1, [ignore], map_types}. % the child spec is a map; and the values from the application environment
+{assertion, ranch_sup, {24, 2, "f22f0d"}, assert_type, "{ok, pid()} | {error, term()}", start_ret}. % start_link/0
+{exception, ranch_sup, init, 1, [ignore], map_types}. % the child spec and the flags are maps; and the values from the application environment
 
-{module, ranch_tcp, #{file => "ranch/src/ranch_tcp.erl", timeout => 20000}}.
-%% ranch:filter_options/4 gives an Acc when Acc :: [any()]: a [any()] for gen_tcp:listen/2, not the type of the defaults
-{exception, ranch_tcp, listen, 1, [ignore], bounded_tyvar}.
-{exception, ranch_tcp, connect, 3, [ignore], forwarded}. % list(), gen_tcp:connect/3 wants a [gen_tcp:connect_option()]
-{exception, ranch_tcp, connect, 4, [ignore], forwarded}. % as connect/3
+{module, ranch_tcp, #{file => "ranch/src/ranch_tcp.erl", overlays => [{library, "overlay.erl"}], timeout => 20000}}.
+%% gen_tcp:listen/2 wants a [gen_tcp:listen_option()]. ranch:filter_options/4 gives the defaults with the options of the
+%% user put in, an Acc when Acc :: [any()]. The assertion (forwarded) belongs on that call, at 101:20, which crashes.
+{exception, ranch_tcp, listen, 1, [ignore], assertion_crash}.
+%% connect/3,4, setopts/2, getopts/2, getstat/2: list() and [atom()], OTP wants lists of its options
+{assertion, ranch_tcp, {141, 3, "acadbc"}, assert_type, "[gen_tcp:connect_option()]", forwarded}.
+{assertion, ranch_tcp, {149, 3, "acadbc"}, assert_type, "[gen_tcp:connect_option()]", forwarded}.
 {exception, ranch_tcp, recv_proxy_header, 2, [ignore], otp_no_spec}. % gen_tcp:unrecv/2
-{exception, ranch_tcp, send, 2, [ignore], otp_release}. % {error, atom()}: gen_tcp:send/2 can give {error, {timeout, RestData}}
-{exception, ranch_tcp, sendfile, 5, [ignore], catch_pattern}. % catch error:{badmatch, {error, enotconn}}; before it RawFile, an io_device()
-{exception, ranch_tcp, setopts, 2, [ignore], forwarded}. % list(), inet:setopts/2 wants a [inet:socket_setopt()]
-{exception, ranch_tcp, getopts, 2, [ignore], forwarded}. % [atom()], inet:getopts/2 wants a [inet:socket_getopt()]
-{exception, ranch_tcp, getstat, 2, [ignore], forwarded}. % [atom()], inet:getstat/2 wants a [inet:stat_option()]
-{exception, ranch_tcp, peername, 1, [ignore], address_family}. % inet:peername/1 can give {unspec, <<>>} and {undefined, any()}
-{exception, ranch_tcp, sockname, 1, [ignore], address_family}. % as peername/1
-{exception, ranch_tcp, cleanup, 1, [ignore], library_spec}. % lists:keyfind/3 wants a list of tuples, the options hold atoms
+%% {error, atom()}: gen_tcp:send/2 can give {error, {timeout, RestData}}, for a socket of the backend socket, which an
+%% inet:socket() can be
+{exception, ranch_tcp, send, 2, [ignore], otp_release}.
+%% catch error:{badmatch, {error, enotconn}}; before it RawFile, an io_device() for a file:fd(), and ok = file:close(RawFile)
+{exception, ranch_tcp, sendfile, 5, [ignore], catch_pattern}.
+{assertion, ranch_tcp, {231, 23, "acadbc"}, assert_type, "[inet:socket_setopt()]", forwarded}.
+{assertion, ranch_tcp, {235, 23, "acadbc"}, assert_type, "[inet:socket_getopt()]", forwarded}.
+{assertion, ranch_tcp, {243, 23, "c33e24"}, assert_type, "[inet:stat_option()]", forwarded}.
+%% peername/1, sockname/1: inet:peername/1 and inet:sockname/1 can give {unspec, <<>>} and {undefined, any()}
+{assertion, ranch_tcp, {253, 2, "c73d1b"}, assert_type, "{ok, {inet:ip_address(), inet:port_number()} | {local, binary()}} | {error, inet:posix()}", address_family}.
+{assertion, ranch_tcp, {258, 2, "5159ad"}, assert_type, "{ok, {inet:ip_address(), inet:port_number()} | {local, binary()}} | {error, inet:posix()}", address_family}.
 
-{module, ranch_transport, #{file => "ranch/src/ranch_transport.erl", timeout => 20000}}.
-{exception, ranch_transport, sendfile, 6, [ignore], body_exhaustiveness}. % {ok, _} = file:position(...), ok = file:close(RawFile)
-{exception, ranch_transport, chunk_size, 1, [ignore], library_spec}. % lists:keyfind/3 gives a tuple()
-{exception, ranch_transport, sendfile_loop, 6, [ignore], file_mode}. % iolist_size(IoData), IoData a string() | binary()
+{module, ranch_transport, #{file => "ranch/src/ranch_transport.erl", overlays => [{library, "overlay.erl"}], timeout => 20000}}.
+%% sendfile/6: {ok, _} = file:position(...) four times, one of them as the subject of a case; ok = file:close(RawFile);
+%% RawFile of file:open(Filename, [read, raw, binary]), an io_device() for the file:fd() of sendfile_loop/6
+{assertion, ranch_transport, {88, 6, "400da9"}, assert_pattern, "{ok, _}", body_exhaustiveness}.
+{assertion, ranch_transport, {91, 38, "75aa8a"}, assert_type, "file:fd()", option_result}.
+{assertion, ranch_transport, {93, 5, "2896c8"}, assert_pattern, "ok", body_exhaustiveness}.
+{assertion, ranch_transport, {100, 18, "debb2b"}, assert_pattern, "{ok, _}", body_exhaustiveness}.
+{assertion, ranch_transport, {104, 4, "400da9"}, assert_pattern, "{ok, _}", body_exhaustiveness}.
+{assertion, ranch_transport, {109, 4, "13386b"}, assert_pattern, "{ok, _}", body_exhaustiveness}.
+%% sendfile_loop/6: file:read/2 gives {ok, string() | binary()}, no iodata() for iolist_size/1, and {error, {no_translation, unicode, latin1}}
+{assertion, ranch_transport, {136, 7, "964470"}, assert_type, "{ok, binary()} | eof | {error, file:posix() | badarg | terminated}", file_mode}.
