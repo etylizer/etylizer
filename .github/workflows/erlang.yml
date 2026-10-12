@@ -237,9 +237,9 @@ jobs:
         otp: ['28', '29']
         study:
           - name: stdlib
-            cmd: test_files/etylizer-mini/check-stdlib.sh
+            cmd: test_files/case_studies/check-stdlib.sh
           - name: jsone
-            cmd: test_files/etylizer-mini/check-jsone.sh
+            cmd: test_files/case_studies/check-jsone.sh
     steps:
     - uses: actions/checkout@v4
     - run: make build
