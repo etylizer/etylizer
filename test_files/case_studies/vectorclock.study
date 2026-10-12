@@ -1,0 +1,27 @@
+#!/usr/bin/env -S sh -c 'exec "$(dirname "$0")/../../.github/scripts/ety_case_study" "$0" "$@"'
+%% -*- erlang -*-
+%% Case study manifest, see .github/scripts/ety_case_study.
+%%
+%% apps/vectorclock (src) of https://github.com/AntidoteDB/antidote as of commit
+%% ed9cfbcaad53c9b5de15bfcef7befef44b5b4221, unchanged: one module, 24 functions. Every function
+%% has a spec in the source, so there is no spec to add.
+%%
+%% As it is, 17 functions type check and 7 do not.
+
+{study, vectorclock}.
+
+%% {reason, Id, Class, Text}. Class: real (the program or its spec is wrong), inherent (correct at
+%% run time, not provable by types), fixable (gap in the type system or checker), unknown.
+{reason, spec_wrong,   real,     "wrong type in the source"}.
+{reason, thrown,       inherent, "type of a caught value, known from the throws of the function"}.
+{reason, library_spec, fixable,  "spec of a library function too imprecise"}.
+{reason, nonempty,     fixable,  "a comprehension over a non-empty list is not typed as non-empty"}.
+
+{module, vectorclock, #{file => "vectorclock/src/vectorclock.erl", timeout => 10000}}.
+{exception, vectorclock, set, 3, [ignore], library_spec}. % maps:remove/2 gives map() in OTP
+{exception, vectorclock, set_all, 2, [ignore], spec_wrong}. % takes pos_integer(), has a clause for 0
+{exception, vectorclock, from_list, 1, [ignore], library_spec}. % maps:from_list/1 gives map() in OTP
+{exception, vectorclock, min_clock, 2, [ignore], nonempty}. % lists:min/1 of a comprehension over Nodes, which is not []
+{exception, vectorclock, min2, 2, [ignore], library_spec}. % min/2 gives a term() that fits every type: the branch for 0 counts as dead
+{exception, vectorclock, for_all_keys, 3, [ignore], spec_wrong}. % F takes pos_integer(), get/2 gives it 0 for a missing node
+{exception, vectorclock, lt, 2, [ignore], thrown}. % catch R -> R: the throws are true and false
