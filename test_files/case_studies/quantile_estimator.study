@@ -1,0 +1,34 @@
+#!/usr/bin/env -S sh -c 'exec "$(dirname "$0")/../../.github/scripts/ety_case_study" "$0" "$@"'
+%% -*- erlang -*-
+%% Case study manifest, see .github/scripts/ety_case_study.
+%%
+%% src and include of the hex package quantile_estimator 0.2.1, the one prometheus depends on, itself
+%% a dependency of antidote_stats (checksum as in the lock file of antidote_stats at antidote commit
+%% ed9cfbcaad53c9b5de15bfcef7befef44b5b4221), unchanged. The package has no licence file, its metadata
+%% says N/A: LICENSE is the MIT licence of the repository of the author,
+%% https://github.com/odo/quantile_estimator.
+
+{study, quantile_estimator}.
+
+%% {reason, Id, Class, Text}. Class: real (the program or its spec is wrong), inherent (correct at
+%% run time, not provable by types), fixable (gap in the type system or checker), unknown.
+{reason, body_exhaustiveness, inherent, "exhaustiveness of a match inside the body"}.
+{reason, list_shape,          inherent, "the shape of a list that a list type cannot say: one or two elements"}.
+{reason, spec_imprecise,      real,     "imprecise type spec in the source"}.
+{reason, guard_float,         fixable,  "a guard that compares a float() with an integer makes the next clause dead"}.
+
+{module, quantile, #{file => "quantile_estimator/src/quantile.erl", timeout => 10000}}.
+%% quantile(1.0, Samples) -> lists:last(Samples): samples() has [], lists:last/1 takes [T, ...]
+{exception, quantile, quantile, 2, [ignore], spec_imprecise}.
+{exception, quantile, ranks, 2, [ignore], guard_float}. % the clause when Quantile > 1 after the one when Quantile < 0
+{exception, quantile, ceil, 1, [ignore], guard_float}. % case X - T of Neg when Neg < 0 -> ..; Pos when Pos > 0 -> ..
+%% case ranks(Size, Quantile) of [V] -> ..; [V1, V2] -> .. end: ranks/2 gives one rank or two, its spec can only say
+%% [integer()]
+{exception, quantile, rank_average, 2, [ignore], list_shape}.
+
+{module, quantile_estimator, #{file => "quantile_estimator/src/quantile_estimator.erl", timeout => 10000}}.
+%% lists:min/1 of a comprehension over the targets: the spec takes [] too, lists:min/1 takes [T, ...]
+{exception, quantile_estimator, f_targeted, 1, [ignore], spec_imprecise}.
+%% the field inserts_since_compression of #quantile_estimator{} is a number(), the spec gives non_neg_integer()
+{exception, quantile_estimator, inserts_since_compression, 1, [ignore], spec_imprecise}.
+{exception, quantile_estimator, merge, 2, [ignore], body_exhaustiveness}. % C = Rankiplusone > Ranki, C = true
