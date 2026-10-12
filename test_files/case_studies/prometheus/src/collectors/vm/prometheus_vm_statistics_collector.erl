@@ -138,7 +138,7 @@ deregister_cleanup(_) -> ok.
 
 -spec collect_mf(_Registry, Callback) -> ok when
     _Registry :: prometheus_registry:registry(),
-    Callback :: prometheus_collector:callback().
+    Callback :: prometheus_collector:collect_mf_callback().
 %% @private
 collect_mf(_Registry, Callback) ->
   Metrics = metrics(),

@@ -100,7 +100,7 @@ deregister_cleanup(_) -> ok.
 %% @private
 -spec collect_mf(_Registry, Callback) -> ok when
     _Registry :: prometheus_registry:registry(),
-    Callback :: prometheus_collector:callback().
+    Callback :: prometheus_collector:collect_mf_callback().
 collect_mf(_Registry, Callback) ->
   case is_started(mnesia) of
     true ->

@@ -18,11 +18,10 @@
 
 %% prometheus_metric:name() and prometheus_metric:help()
 -type name() :: atom() | binary() | nonempty_string() | iolist().
--type help() :: binary() | nonempty_string().
+-type help() :: binary() | string().
 
-%% prometheus_metric:duration_unit(). The unit hours, which prometheus_time knows and documents, is
-%% not in the type of the source
--type duration_unit() :: microseconds | milliseconds | seconds | minutes | days.
+%% prometheus_metric:duration_unit()
+-type duration_unit() :: microseconds | milliseconds | seconds | minutes | hours | days.
 
 %% prometheus_metric_spec:spec(), a proplists:proplist(): the keys name, help, labels, registry,
 %% constant_labels, duration_unit and, by metric, buckets, targets, compress_limit
@@ -84,9 +83,12 @@
 %% of the estimator for them, and the number of inserts after which the estimator is compressed
 -type qs_config() :: #{quantiles := [float()], invariant := invariant(), compress_limit := integer()}.
 
+%% The type of a metric family, as prometheus_model_helpers:create_mf/4,5 take it
+-type mf_type() :: gauge | counter | summary | histogram | untyped | boolean.
+
 %% A metric of the collectors: {Name, Type, Help, Metrics} for prometheus_model_helpers:create_mf/4,
 %% and the metrics that application:get_env(prometheus, COLLECTOR_metrics) enables
--type collector_metric() :: {Name :: atom(), Type :: atom(), help(),
+-type collector_metric() :: {Name :: atom(), Type :: mf_type(), help(),
                              Metrics :: prometheus_model_helpers:metrics()}.
 -type enabled_metrics() :: all | [atom()].
 
@@ -1287,14 +1289,14 @@
 'prometheus_model_helpers:histogram_buckets'(_) -> error(overlay).
 
 %% type and metrics as create_mf/4 takes them
--spec 'prometheus_model_helpers:metrics_from_tuples'(Type :: atom(), [prometheus_model:'Metric'()]
+-spec 'prometheus_model_helpers:metrics_from_tuples'(Type :: mf_type(), [prometheus_model:'Metric'()]
                                                      | prometheus_model:'Metric'()
                                                      | prometheus_model_helpers:metrics()) ->
           [prometheus_model:'Metric'()].
 'prometheus_model_helpers:metrics_from_tuples'(_, _) -> error(overlay).
 
-%% the type is gauge, counter, boolean, summary, histogram or untyped
--spec 'prometheus_model_helpers:metric_from_tuple'(Type :: atom(), prometheus_model:'Metric'()
+%% the kind of the metric goes with the type: a gauge() for gauge, a pbool() for boolean, ..
+-spec 'prometheus_model_helpers:metric_from_tuple'(Type :: mf_type(), prometheus_model:'Metric'()
                                                    | prometheus_model_helpers:tmetric()) ->
           prometheus_model:'Metric'().
 'prometheus_model_helpers:metric_from_tuple'(_, _) -> error(overlay).
@@ -1393,7 +1395,7 @@
 %% ---------------------------------------------------------------------------------------------
 
 %% as collector_metric(), with a fun that gives the metrics: collect_mf/2 calls it under a catch
--type mnesia_metric() :: {Name :: atom(), Type :: atom(), help(),
+-type mnesia_metric() :: {Name :: atom(), Type :: mf_type(), help(),
                           DataFun :: fun(() -> prometheus_model_helpers:metrics())}.
 
 -spec 'prometheus_mnesia_collector:deregister_cleanup'(registry()) -> ok.
@@ -1616,11 +1618,11 @@
 'prometheus_vm_system_info_collector:deregister_cleanup'(_) -> error(overlay).
 
 %% here a metric has no data: collect_metrics/1 gets them by name
--spec 'prometheus_vm_system_info_collector:add_metric_family'({Name :: atom(), Type :: atom(), help()},
+-spec 'prometheus_vm_system_info_collector:add_metric_family'({Name :: atom(), Type :: mf_type(), help()},
                                                               prometheus_collector:collect_mf_callback()) -> term().
 'prometheus_vm_system_info_collector:add_metric_family'(_, _) -> error(overlay).
 
--spec 'prometheus_vm_system_info_collector:metrics'() -> [{Name :: atom(), Type :: atom(), help()}].
+-spec 'prometheus_vm_system_info_collector:metrics'() -> [{Name :: atom(), Type :: mf_type(), help()}].
 'prometheus_vm_system_info_collector:metrics'() -> error(overlay).
 
 %% The metrics of the allocators, or the item of erlang:system_info/1 with the name of the metric:
@@ -1666,7 +1668,7 @@
 %% ---------------------------------------------------------------------------------------------
 
 %% the file of a table: its name with the extension, in the directory
--spec 'prometheus_mnesia:table_path'(Dir :: file:name_all(), Table :: file:name_all(), Ext :: string()) ->
+-spec 'prometheus_mnesia:table_path'(Dir :: file:name_all(), Table :: file:name(), Ext :: string()) ->
           file:filename_all().
 'prometheus_mnesia:table_path'(_, _, _) -> error(overlay).
 

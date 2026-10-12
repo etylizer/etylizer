@@ -55,9 +55,8 @@
 %% If `Name' is an iolist performs safe search (to avoid interning
 %% atoms) and returns atom or false. This operation is O(n).
 %% @end
--spec exists(Name) -> Result when
-    Name :: atom() | iolist(),
-    Result :: boolean() | atom().
+-spec exists(Name :: atom()) -> boolean();
+            (Name :: iolist()) -> atom().
 exists(Name) when is_atom(Name) ->
   case ets:lookup(?PROMETHEUS_REGISTRY_TABLE, Name) of
     [] -> false;

@@ -229,7 +229,7 @@ escape_string(Fun, Str) ->
 %%
 -spec join(Sep, List1) -> List2 when
       Sep :: T,
-      List1 :: [T],
+      List1 :: [T, ...],
       List2 :: [T],
     T :: term().
 

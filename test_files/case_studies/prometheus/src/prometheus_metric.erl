@@ -28,12 +28,13 @@
 
 -type name() :: atom() | binary() | nonempty_string() | iolist().
 
--type help() :: binary() | nonempty_string().
+-type help() :: binary() | string().
 
 -type duration_unit() :: microseconds |
                          milliseconds |
                          seconds |
                          minutes |
+                         hours |
                          days.
 
 -type call_enabled() :: boolean().
@@ -181,7 +182,7 @@ metrics(Table, Registry) ->
 %% Private Parts
 %%===================================================================
 
--spec maybe_set_default(Module, Registry, Name, Labels) -> ok when
+-spec maybe_set_default(Module, Registry, Name, Labels) -> any() when
     Module    :: atom(),
     Registry :: prometheus_registry:registry(),
     Name     :: name(),

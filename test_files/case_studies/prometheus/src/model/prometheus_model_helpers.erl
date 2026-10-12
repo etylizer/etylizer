@@ -39,7 +39,8 @@
          ensure_binary_or_string/1]).
 -endif.
 
--export_type([prometheus_boolean/0]).
+-export_type([prometheus_boolean/0,
+              label_value/0]).
 
 -include("prometheus_model.hrl").
 
@@ -57,7 +58,9 @@
 -type counter() :: value() | {value()} | {labels(), value()}.
 -type untyped() :: value() | {value()} | {labels(), value()}.
 -type summary() :: {non_neg_integer(), value()} |
-                   {labels(), non_neg_integer(), value()}.
+                   {labels(), non_neg_integer(), value()} |
+                   {non_neg_integer(), value(), [{number(), value()}]} |
+                   {labels(), non_neg_integer(), value(), [{number(), value()}]}.
 -type buckets() :: nonempty_list({prometheus_buckets:bucket_bound(),
                                   non_neg_integer()}).
 -type histogram() :: {buckets(), non_neg_integer(), value()} |
@@ -76,8 +79,8 @@
 %% If `Name' is a list, looks for atoms and converts them to binaries.
 %% Why iolists do not support atoms?
 %% @end
--spec metric_name(Name) -> iolist() when
-    Name :: atom() | binary() | list(char() | iolist() | binary() | atom()).
+-spec metric_name(Name) -> iodata() when
+    Name :: atom() | binary() | list(byte() | iolist() | binary() | atom()).
 metric_name(Name) ->
   case Name of
     _ when is_atom(Name) ->
@@ -101,7 +104,7 @@ metric_name(Name) ->
 -spec create_mf(Name, Help, Type, Metrics) -> MetricFamily when
     Name          :: prometheus_metric:name(),
     Help          :: prometheus_metric:help(),
-    Type          :: atom(),
+    Type          :: gauge | counter | summary | histogram | untyped | boolean,
     Metrics       :: [prometheus_model:'Metric'()] |
                      prometheus_model:'Metric'() | metrics(),
     MetricFamily  :: prometheus_model:'MetricFamily'().
@@ -120,7 +123,7 @@ create_mf(Name, Help, Type, Metrics0) ->
 -spec create_mf(Name, Help, Type, Collector, CollectorData) -> MetricFamily when
     Name          :: prometheus_metric:name(),
     Help          :: prometheus_metric:help(),
-    Type          :: atom(),
+    Type          :: gauge | counter | summary | histogram | untyped | boolean,
     Collector     :: prometheus_collector:collector(),
     CollectorData :: prometheus_collector:data(),
     MetricFamily  :: prometheus_model:'MetricFamily'().
@@ -277,7 +280,7 @@ summary_metric(Labels, Count, Sum) ->
     Labels :: labels(),
     Count  :: non_neg_integer(),
     Sum    :: value(),
-    Quantiles :: list().
+    Quantiles :: [{number(), value()}].
 summary_metric(Labels, Count, Sum, Quantiles) ->
   #'Metric'{label   = label_pairs(Labels),
             summary = #'Summary'{sample_count = Count,
@@ -371,7 +374,7 @@ metric_from_tuple(histogram, Metric) ->
 metric_from_tuple(untyped, Metric) ->
   untyped_metric(Metric).
 
--spec ensure_list(Val :: term()) -> list().
+-spec ensure_list(Val :: [T] | T) -> [T].
 ensure_list(Val) when is_list(Val) ->  Val;
 ensure_list(Val)                   -> [Val].
 
@@ -382,7 +385,7 @@ not_undefined(undefined) -> false;
 not_undefined(_)         -> true.
 
 %% @private
--spec ensure_binary_or_string(Val :: term())     -> binary() | string().
+-spec ensure_binary_or_string(Val :: term())     -> binary() | iolist().
 ensure_binary_or_string(Val) when is_atom(Val)   -> atom_to_binary(Val, utf8);
 ensure_binary_or_string(Val) when is_list(Val)   -> Val; %% FIXME: validate utf8
 ensure_binary_or_string(Val) when is_binary(Val) -> Val;
@@ -390,7 +393,7 @@ ensure_binary_or_string(Val) ->
   io_lib:format("~p", [Val]).
 
 %% @private
--spec ensure_mf_type(atom()) -> atom().
+-spec ensure_mf_type(atom()) -> prometheus_model:'MetricType'().
 ensure_mf_type(gauge)     -> 'GAUGE';
 ensure_mf_type(counter)   -> 'COUNTER';
 ensure_mf_type(summary)   -> 'SUMMARY';

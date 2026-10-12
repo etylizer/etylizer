@@ -19,7 +19,7 @@
 
 %% @equiv table_disk_size(mnesia:system_info(directory), Table)
 -spec table_disk_size( Table) -> Size when
-    Table :: file:name_all(),
+    Table :: file:name(),
     Size :: non_neg_integer().
 table_disk_size(Table) ->
   table_disk_size(mnesia:system_info(directory), Table).
@@ -41,7 +41,7 @@ table_disk_size(Table) ->
 %% @end
 -spec table_disk_size(Dir, Table) -> Size when
     Dir :: file:name_all(),
-    Table :: file:name_all(),
+    Table :: file:name(),
     Size :: non_neg_integer().
 table_disk_size(Dir, Table) ->
   lists:sum(lists:map(fun(Ext) ->
