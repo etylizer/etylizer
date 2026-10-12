@@ -47,13 +47,16 @@ check_all_report(Ctx, FileName, Env, Decls) ->
                     ?METRIC(typecheck_time, {list_to_atom(utils:sformat("~s:~w/~w", [F(FileName), Name, Arity])), Time, error}),
                     io:format(user,"Error: ~s:~w/~w (~p ms)~n  ~s~n", [F(FileName), Name, Arity, Time, Msg]);
                 throw:{etylizer, unsupported, Msg} ->
+                    ?METRIC(typecheck_error, {?METRIC_FUN(), unsupported, loc_line(element(2, Decl))}),
                     io:format(user,"Unsupported: ~s:~w/~w~n  ~s~n", [F(FileName), Name, Arity, Msg]);
                 throw:{etylizer, Type, _Msg} ->
                     Time = ?TIME(T0),
+                    ?METRIC(typecheck_error, {?METRIC_FUN(), Type, loc_line(element(2, Decl))}),
                     ?METRIC(typecheck_time, {list_to_atom(utils:sformat("~s:~w/~w", [F(FileName), Name, Arity])), Time, error}),
                     io:format(user,"Error: (~p) ~s:~w/~w (~p ms)~n", [Type, F(FileName), Name, Arity, Time]);
                 _:T ->
                     Time = ?TIME(T0),
+                    ?METRIC(typecheck_error, {?METRIC_FUN(), crash, loc_line(element(2, Decl))}),
                     ?METRIC(typecheck_time, {list_to_atom(utils:sformat("~s:~w/~w", [F(FileName), Name, Arity])), Time, error}),
                     io:format(user,"Other: (~p) ~s:~w/~w (~p ms)~n", [{T}, F(FileName), Name, Arity, Time])
             end
@@ -135,8 +138,10 @@ ensure_type_supported(Loc, T) ->
                 {map, []} -> error;
                 {map, [{map_field_opt, _, _}]} -> error;
                 {map, [{map_field_req, _, _}]} ->
+                    ?METRIC(typecheck_error, {?METRIC_FUN(), unsupported, loc_line(Loc)}),
                     errors:ty_error(Loc, "map types with mandatory associations are not supported");
                 {map, _} ->
+                    ?METRIC(typecheck_error, {?METRIC_FUN(), unsupported, loc_line(Loc)}),
                     errors:ty_error(Loc, "map types with more than one association are not supported");
                 _ -> error
             end
@@ -247,6 +252,7 @@ check_alt(Ctx, Decl = {function, Loc, Name, Arity, _, _}, FunTy, BranchMode, Fix
         {error, Err} ->
             case Err of
                 none ->
+                    ?METRIC(typecheck_error, {?METRIC_FUN(), unlocated, loc_line(Loc)}),
                     errors:ty_error(Loc, "function ~w/~w failed to type check against type~n~s~n~s",
                             [Name, Arity, pretty:render_ty(FunTy),
                                 typing_common:format_src_loc(Loc)]);
@@ -265,11 +271,19 @@ tyerror_msg(Kind) ->
 
 -spec report_tyerror(string(), constr_error_locs:constr_error_kind(), ast:loc(), string()) -> no_return().
 report_tyerror(FunName, Kind, Loc, Hint) ->
+    ?METRIC(typecheck_error, {?METRIC_FUN(), Kind, loc_line(Loc)}),
     SrcCtx = typing_common:format_src_loc(Loc),
     case Hint of
         "" -> errors:ty_error(Loc, "in ~s, ~s~n~s", [FunName, tyerror_msg(Kind), SrcCtx]);
         _ -> errors:ty_error(Loc, "in ~s, ~s~n~s~n~n  ~s", [FunName, tyerror_msg(Kind), SrcCtx, Hint])
     end.
+
+-ifdef(ety_metrics).
+-spec loc_line(ast:loc()) -> integer().
+loc_line({loc, _, Line, _}) -> Line;
+loc_line({generated, _, From}) -> loc_line(From);
+loc_line({internal, _}) -> 0.
+-endif.
 
 % The branches that match for no alternative of an intersection type, in source order.
 % UnmatchedList has the locations of the unmatched branches of each alternative.
