@@ -4,9 +4,23 @@
 %%
 %% src and include of the hex package quantile_estimator 0.2.1, the one prometheus depends on, itself
 %% a dependency of antidote_stats (checksum as in the lock file of antidote_stats at antidote commit
-%% ed9cfbcaad53c9b5de15bfcef7befef44b5b4221), unchanged. The package has no licence file, its metadata
-%% says N/A: LICENSE is the MIT licence of the repository of the author,
-%% https://github.com/odo/quantile_estimator.
+%% ed9cfbcaad53c9b5de15bfcef7befef44b5b4221). The package has no licence file, its metadata says N/A:
+%% LICENSE is the MIT licence of the repository of the author, https://github.com/odo/quantile_estimator.
+%% Four declarations are corrected, no function is changed:
+%%   quantile_estimator.hrl, #quantile_estimator{}, the field inserts_since_compression: number(), now
+%%     non_neg_integer(), which the spec of inserts_since_compression/1 gives for it. It is 0 in new/1
+%%     and after compress/1, and one more with every insert/2.
+%%   quantile_estimator.hrl, #quantile_estimator{}, the field invariant: function(), now
+%%     fun((number(), number()) -> number()). That is the invariant() of quantile_estimator.erl, which
+%%     new/1 takes for the field and which insert/5, compress/4 and quantile/6 call; spelled out, as
+%%     other modules include the header.
+%%   quantile.erl, samples(): [sample()], now [sample(), ...]. quantile/2 has no result for []:
+%%     lists:last/1 fails for the quantile 1.0, ranks/2 throws size_smaller_one for the others.
+%%   quantile_estimator:f_targeted/1, the targets: [{number(), number()}], now
+%%     [{number(), number()}, ...]. The fun it gives takes lists:min/1 of one value per target. The
+%%     function does not type check with it either, see its exception.
+%% Not corrected: the result of quantile:ranks/2, a list of one rank or of two, which no list type
+%% says; quantile_estimator:compress/4, where the program is wrong, see its exception.
 %% overlay_quantile_estimator.erl gives a spec to each of the 7 functions that have none in the source.
 
 {study, quantile_estimator}.
@@ -15,31 +29,25 @@
 %% run time, not provable by types), fixable (gap in the type system or checker), unknown.
 {reason, body_exhaustiveness, inherent, "exhaustiveness of a match inside the body"}.
 {reason, list_shape,          inherent, "the shape of a list that a list type cannot say: one or two elements"}.
-{reason, spec_imprecise,      real,     "imprecise type spec in the source"}.
 {reason, source_bug,          real,     "error in the program"}.
 {reason, guard_float,         fixable,  "a guard that compares a float() with an integer makes the next clause dead"}.
+{reason, nonempty,            fixable,  "a comprehension over a non-empty list is not typed as non-empty"}.
 
 {module, quantile, #{file => "quantile_estimator/src/quantile.erl", overlays => [{specs, "overlay_quantile_estimator.erl"}],
                      timeout => 10000}}.
-%% quantile(1.0, Samples) -> lists:last(Samples): samples() has [], lists:last/1 takes [T, ...]
-{exception, quantile, quantile, 2, [ignore], spec_imprecise}.
+%% quantile/2: case ranks(length(Samples), Quantile) of [Index] -> ..; [Index1, Index2] -> .. end, and rank_average/2:
+%% case ranks(Size, Quantile) of [V] -> ..; [V1, V2] -> .. end. ranks/2 gives one rank or two, its spec can only say
+%% [integer()]
+{exception, quantile, quantile, 2, [ignore], list_shape}.
 {exception, quantile, ranks, 2, [ignore], guard_float}. % the clause when Quantile > 1 after the one when Quantile < 0
 {exception, quantile, ceil, 1, [ignore], guard_float}. % case X - T of Neg when Neg < 0 -> ..; Pos when Pos > 0 -> ..
-%% case ranks(Size, Quantile) of [V] -> ..; [V1, V2] -> .. end: ranks/2 gives one rank or two, its spec can only say
-%% [integer()]
 {exception, quantile, rank_average, 2, [ignore], list_shape}.
 
 {module, quantile_estimator, #{file => "quantile_estimator/src/quantile_estimator.erl",
                                overlays => [{specs, "overlay_quantile_estimator.erl"}], timeout => 10000}}.
-%% lists:min/1 of a comprehension over the targets: the spec takes [] too, lists:min/1 takes [T, ...]
-{exception, quantile_estimator, f_targeted, 1, [ignore], spec_imprecise}.
-%% the field inserts_since_compression of #quantile_estimator{} is a number(), the spec gives non_neg_integer()
-{exception, quantile_estimator, inserts_since_compression, 1, [ignore], spec_imprecise}.
-%% insert/2, compress/1, quantile/2: the field invariant of #quantile_estimator{} is a function(); insert/5,
-%% compress/4 and quantile/6 call it with two numbers for a number, the invariant() that new/1 takes
-{exception, quantile_estimator, insert, 2, [ignore], spec_imprecise}.
-{exception, quantile_estimator, compress, 1, [ignore], spec_imprecise}.
-{exception, quantile_estimator, quantile, 2, [ignore], spec_imprecise}.
+%% lists:min/1, which takes [T, ...], of a comprehension over the funs of the targets, themselves a comprehension
+%% over the targets
+{exception, quantile_estimator, f_targeted, 1, [ignore], nonempty}.
 %% compress(_, _, [], Last) -> [Last] with Last undefined: for no groups at all, which is how compress/1 calls it
 %% for an estimator without samples, the result is [undefined]
 {exception, quantile_estimator, compress, 4, [ignore], source_bug}.

@@ -8,7 +8,7 @@
 -endif.
 
 -type sample() :: number().
--type samples() :: [sample()].
+-type samples() :: [sample(), ...].
 
 -export([quantile/2]).
 -export([rank_average/2]).

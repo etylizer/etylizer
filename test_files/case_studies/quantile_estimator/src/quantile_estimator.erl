@@ -34,7 +34,7 @@ f_biased(Epsilon) ->
 		2 * Epsilon * Rank
 	end.
 
--spec f_targeted([{number(), number()}]) -> invariant().
+-spec f_targeted([{number(), number()}, ...]) -> invariant().
 f_targeted(Targets) ->
 	TargetFuns = [f_targeted(Phi, Epsilon)||{Phi, Epsilon} <- Targets],
 	fun(Rank, N) ->
