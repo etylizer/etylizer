@@ -26,7 +26,7 @@
                load_start = [] :: [string()],
                load_end = [] :: [string()],
                files = [] :: [string()],
-               type_overlay = [] :: string(),
+               type_overlay = [] :: [string()],
                verbose = false :: boolean(),
                metrics_file = undefined :: undefined | string(),
                no_exhaustiveness = [] :: [string()],
