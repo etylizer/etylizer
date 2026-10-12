@@ -9,6 +9,7 @@
 %% overlay_antidote_stats.erl gives a spec to each of the 10 functions that have none in the source.
 
 {study, antidote_stats}.
+{deps, ["prometheus", "quantile_estimator"]}.
 
 %% {reason, Id, Class, Text}. Class: real (the program or its spec is wrong), inherent (correct at
 %% run time, not provable by types), fixable (gap in the type system or checker), unknown.
@@ -20,8 +21,6 @@
 
 {module, antidote_stats_collector, #{file => "antidote_stats/src/antidote_stats_collector.erl", overlays => [{specs, "overlay_antidote_stats.erl"}], timeout => 10000}}.
 {assertion, antidote_stats_collector, {45, 5, "23f817"}, assert_type, "{ok, pid()} | {error, term()}", start_ret}. % start_link/0
-{exception, antidote_stats_collector, handle_cast, 2, [ignore], unresolved_dep}. % prometheus_counter, prometheus_gauge, prometheus_histogram
-{exception, antidote_stats_collector, init_metrics, 0, [ignore], unresolved_dep}. % prometheus_counter, prometheus_gauge, prometheus_histogram
 
 {module, antidote_stats_sup, #{file => "antidote_stats/src/antidote_stats_sup.erl", overlays => [{specs, "overlay_antidote_stats.erl"}], timeout => 10000}}.
 {assertion, antidote_stats_sup, {17, 5, "4de7d3"}, assert_type, "{ok, pid()} | {error, term()}", start_ret}. % start_link/0
