@@ -22,33 +22,53 @@
 %% Not corrected: the result of quantile:ranks/2, a list of one rank or of two, which no list type
 %% says; quantile_estimator:compress/4, where the program is wrong, see its exception.
 %% overlay_quantile_estimator.erl gives a spec to each of the 7 functions that have none in the source.
+%%
+%% Flags and assertions (step IV), no library overlay. Of the 20 functions 14 type check without an
+%% exception, 2 with a flag (quantile:quantile/2 and quantile:ranks/2, without the redundancy check
+%% of their clauses), 4 are ignored. 5 assertions (4 assert_type, 1 annotate_type) in 2 functions of
+%% quantile. Each assertion and each flag is needed: without it exactly its function fails.
 
 {study, quantile_estimator}.
 
 %% {reason, Id, Class, Text}. Class: real (the program or its spec is wrong), inherent (correct at
 %% run time, not provable by types), fixable (gap in the type system or checker), unknown.
-{reason, body_exhaustiveness, inherent, "exhaustiveness of a match inside the body"}.
-{reason, list_shape,          inherent, "the shape of a list that a list type cannot say: one or two elements"}.
-{reason, source_bug,          real,     "error in the program"}.
-{reason, guard_float,         fixable,  "a guard that compares a float() with an integer makes the next clause dead"}.
-{reason, nonempty,            fixable,  "a comprehension over a non-empty list is not typed as non-empty"}.
+{reason, list_shape,      fixable,  "the shape of a list that a list type cannot say: one or two elements"}.
+{reason, number_range,    inherent, "range of a number (positive) that the types do not show"}.
+{reason, source_bug,      real,     "error in the program"}.
+{reason, guard_float,     fixable,  "a guard that compares a float() with an integer makes the next clause dead"}.
+{reason, float_pattern,   fixable,  "a float as a pattern counts as matching every float(): the clause after it is reported as dead"}.
+{reason, bound_pattern,   fixable,  "a pattern with an already bound variable is not handled: the match counts as not exhaustive, no assertion closes it"}.
+{reason, in_fun,          fixable,  "needs an assertion inside a fun, which the assertions do not reach (assertions:visit/4 skips the clauses of a fun)"}.
+{reason, assertion_crash, fixable,  "needs an assertion that crashes the engine: assertions:hash/1 fails when the hash is a code point"}.
 
 {module, quantile, #{file => "quantile_estimator/src/quantile.erl", overlays => [{specs, "overlay_quantile_estimator.erl"}],
                      timeout => 10000}}.
-%% quantile/2: case ranks(length(Samples), Quantile) of [Index] -> ..; [Index1, Index2] -> .. end, and rank_average/2:
-%% case ranks(Size, Quantile) of [V] -> ..; [V1, V2] -> .. end. ranks/2 gives one rank or two, its spec can only say
-%% [integer()]
-{exception, quantile, quantile, 2, [ignore], list_shape}.
-{exception, quantile, ranks, 2, [ignore], guard_float}. % the clause when Quantile > 1 after the one when Quantile < 0
-{exception, quantile, ceil, 1, [ignore], guard_float}. % case X - T of Neg when Neg < 0 -> ..; Pos when Pos > 0 -> ..
-{exception, quantile, rank_average, 2, [ignore], list_shape}.
+%% quantile/2: the clause quantile(1.0, Samples) after quantile(0.0, [First | _]), now that Samples is not []
+{exception, quantile, quantile, 2, [no_redundancy], float_pattern}.
+%% quantile/2: case ranks(length(Samples), Quantile) of [Index] -> ..; [Index1, Index2] -> .. end. ranks/2 gives one
+%% rank or two, its spec can only say [integer()]
+{assertion, quantile, {24, 7, "7ae158"}, assert_type, "etylizer:cons(integer(), []) | etylizer:cons(integer(), etylizer:cons(integer(), []))", list_shape}.
+%% quantile/2: lists:nth/2 takes a pos_integer(), ranks/2 gives integer(). The quantile is above 0 in this clause,
+%% so a rank is 1 at least
+{assertion, quantile, {26, 14, "678afd"}, assert_type, "pos_integer()", source_bug}. % quantile(-0.0, S): -0.0 does not match the clause for 0.0, function_clause (run, OTP 29)
+{assertion, quantile, {28, 15, "acbe6c"}, assert_type, "pos_integer()", number_range}.
+{assertion, quantile, {28, 44, "c5b926"}, assert_type, "pos_integer()", number_range}.
+{exception, quantile, ranks, 2, [no_redundancy], guard_float}. % the clause when Quantile > 1 after the one when Quantile < 0
+%% ceil/1: case X - T of Neg when Neg < 0 -> ..; Pos when Pos > 0 -> ..; _ -> .. end. X - T is a float(); annotated
+%% with number() the second clause is no longer dead for the checker
+{assertion, quantile, {60, 13, "7740fb"}, annotate_type, "number()", guard_float}.
+%% rank_average/2: case ranks(Size, Quantile) of [V] -> ..; [V1, V2] -> .. end needs the assertion that quantile/2
+%% has, of the reason list_shape. Only the call at 69:7 can carry it, and its hash is 045b37
+{exception, quantile, rank_average, 2, [ignore], assertion_crash}.
 
 {module, quantile_estimator, #{file => "quantile_estimator/src/quantile_estimator.erl",
                                overlays => [{specs, "overlay_quantile_estimator.erl"}], timeout => 10000}}.
-%% lists:min/1, which takes [T, ...], of a comprehension over the funs of the targets, themselves a comprehension
-%% over the targets
-{exception, quantile_estimator, f_targeted, 1, [ignore], nonempty}.
+%% f_targeted/1: lists:min/1, which takes [T, ...], of a comprehension over the funs of the targets, and a
+%% comprehension over a non-empty list is not typed as non-empty. It is in the fun that is the result
+{exception, quantile_estimator, f_targeted, 1, [ignore], in_fun}.
 %% compress(_, _, [], Last) -> [Last] with Last undefined: for no groups at all, which is how compress/1 calls it
 %% for an estimator without samples, the result is [undefined]
 {exception, quantile_estimator, compress, 4, [ignore], source_bug}.
-{exception, quantile_estimator, merge, 2, [ignore], body_exhaustiveness}. % C = Rankiplusone > Ranki, C = true
+%% merge/2: C = Rankiplusone > Ranki, C = true lets it crash when the ranks are not in order. Also with the
+%% comparison asserted to be true the match counts as not exhaustive
+{exception, quantile_estimator, merge, 2, [ignore], bound_pattern}.
