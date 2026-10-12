@@ -1,0 +1,1 @@
+{assertion, asserted, {12, 5, "680d17"}, assert_pattern, "[_ | _]", test}.
