@@ -68,7 +68,7 @@ set(Key, 0, VectorClock) ->
 set(Key, Value, VectorClock) when Value > 0 ->
     VectorClock#{Key => Value}.
 
--spec set_all(pos_integer(), vectorclock()) -> vectorclock().
+-spec set_all(non_neg_integer(), vectorclock()) -> vectorclock().
 set_all(0, _VectorClock) ->
     new();
 set_all(Value, VectorClock) when Value > 0 ->
@@ -138,7 +138,7 @@ min2(V1, V2) ->
 -spec size(vectorclock()) -> non_neg_integer().
 size(V) -> maps:size(V).
 
--spec for_all_keys(fun((pos_integer(), pos_integer()) -> boolean()), vectorclock(), vectorclock()) ->
+-spec for_all_keys(fun((non_neg_integer(), non_neg_integer()) -> boolean()), vectorclock(), vectorclock()) ->
     boolean().
 for_all_keys(F, V1, V2) ->
     AllDCs = maps:keys(maps:merge(V1, V2)),
