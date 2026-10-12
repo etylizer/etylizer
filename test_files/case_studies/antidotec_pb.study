@@ -1,0 +1,52 @@
+#!/usr/bin/env -S sh -c 'exec "$(dirname "$0")/../../.github/scripts/ety_case_study" "$0" "$@"'
+%% -*- erlang -*-
+%% Case study manifest, see .github/scripts/ety_case_study.
+%%
+%% apps/antidotec_pb (src) of https://github.com/AntidoteDB/antidote as of commit
+%% ed9cfbcaad53c9b5de15bfcef7befef44b5b4221, unchanged: the protocol buffer client of Antidote, 7
+%% modules with 62 functions, 38 of them with a spec in the source. It uses the codec of the study
+%% antidote_pb_codec (encode_request/1, decode_response/1 and the types of the messages), which is
+%% checked here in the state of that study. A function without a spec is checked against dynamic().
+%%
+%% Type check raw (step I): no overlay, no flag, no assertion. 52 functions type check, 10 do not
+%% and are ignored: 5 for a type in the source that is wrong or too imprecise, 5 for what types do
+%% not show (4 a match in the body, 1 a partial function).
+
+{study, antidotec_pb}.
+{deps, ["antidote_pb_codec"]}.
+
+%% {reason, Id, Class, Text}. Class: real (the program or its spec is wrong), inherent (correct at
+%% run time, not provable by types), fixable (gap in the type system or checker), unknown.
+{reason, body_exhaustiveness, inherent, "exhaustiveness of a match inside the body"}.
+{reason, partial,             inherent, "partial function, the callers rule out the missing case"}.
+{reason, spec_imprecise,      real,     "imprecise type spec in the source"}.
+{reason, spec_wrong,          real,     "wrong type in the source"}.
+
+{module, antidotec_counter, #{file => "antidotec_pb/src/antidotec_counter.erl", timeout => 10000}}.
+
+{module, antidotec_datatype, #{file => "antidotec_pb/src/antidotec_datatype.erl", timeout => 10000}}.
+
+{module, antidotec_pb, #{file => "antidotec_pb/src/antidotec_pb.erl", timeout => 10000}}.
+%% 54: {start_transaction, EncTimestamp, TxnProperties} with TxnProperties :: term(), request() wants a list()
+{exception, antidotec_pb, start_transaction, 3, [ignore], spec_imprecise}.
+%% 116: {update_objects, Updates, TxId} with Updates :: [{term(), term(), term()}], request() wants [update()]
+{exception, antidotec_pb, update_objects, 3, [ignore], spec_imprecise}.
+%% 160: lists:map(fun({Type, Val}) -> .. end, Values): read_values/3 gives [term()], the fun takes pairs
+{exception, antidotec_pb, read_objects, 3, [ignore], spec_imprecise}.
+%% 170: {read_objects, Objects, TxId} with Objects :: [term()], request() wants [bound_object()]
+{exception, antidotec_pb, read_values, 3, [ignore], spec_imprecise}.
+
+{module, antidotec_pb_management, #{file => "antidotec_pb/src/antidotec_pb_management.erl", timeout => 10000}}.
+%% {Tag, Response} = antidote_pb_codec:decode_response(Result) at 40, 53 and 68: the match takes one kind of response
+{exception, antidotec_pb_management, create_dc, 2, [ignore], body_exhaustiveness}.
+{exception, antidotec_pb_management, get_connection_descriptor, 1, [ignore], body_exhaustiveness}.
+{exception, antidotec_pb_management, connect_to_dcs, 2, [ignore], body_exhaustiveness}.
+
+{module, antidotec_pb_socket, #{file => "antidotec_pb/src/antidotec_pb_socket.erl", timeout => 10000}}.
+{exception, antidotec_pb_socket, init, 1, [ignore], partial}. % 81: [term()], the clause takes a list of three
+{exception, antidotec_pb_socket, handle_info, 2, [ignore], body_exhaustiveness}. % 157: ok = inet:setopts(Sock, [{active, once}])
+
+{module, antidotec_reg, #{file => "antidotec_pb/src/antidotec_reg.erl", timeout => 10000}}.
+{exception, antidotec_reg, value, 1, [ignore], spec_wrong}. % 57: [term()], the value of a register is any term
+
+{module, antidotec_set, #{file => "antidotec_pb/src/antidotec_set.erl", timeout => 10000}}.
