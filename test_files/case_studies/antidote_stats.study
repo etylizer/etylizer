@@ -3,24 +3,48 @@
 %% Case study manifest, see .github/scripts/ety_case_study.
 %%
 %% apps/antidote_stats (src) of https://github.com/AntidoteDB/antidote as of commit
-%% ed9cfbcaad53c9b5de15bfcef7befef44b5b4221. Its dependencies (prometheus, elli) are not here.
+%% ed9cfbcaad53c9b5de15bfcef7befef44b5b4221.
 %% One declaration is corrected, no function is changed:
 %%   antidote_stats_collector:init/1 takes [], not [term()]: that is its only clause and what start_link/0 passes.
 %% overlay_antidote_stats.erl gives a spec to each of the 10 functions that have none in the source.
+%%
+%% Its dependency prometheus is a case study of its own in this directory (prometheus.study), and the
+%% driver passes every directory below this one that holds sources to the engine, so the calls of
+%% antidote_stats_collector into prometheus_counter, prometheus_gauge and prometheus_histogram are
+%% found. These modules have no spec in the source; the collector is checked with the spec overlay of
+%% the prometheus study (category deps), which gives the documented types to the metric API (a value
+%% is a number(), for a gauge number() | undefined). Without that overlay the calls are unchecked and
+%% handle_cast/2 type checks without assertion. elli, the other dependency, is not here: no function
+%% of it is called, antidote_stats_sup only names it in a child specification.
 
 {study, antidote_stats}.
 {deps, ["prometheus", "quantile_estimator"]}.
 
 %% {reason, Id, Class, Text}. Class: real (the program or its spec is wrong), inherent (correct at
 %% run time, not provable by types), fixable (gap in the type system or checker), unknown.
-{reason, start_ret,      inherent, "result of starting a process, typed by the init function of the module: it never gives ignore"}.
-{reason, map_types,      fixable,  "map types with more than one association are not supported"}.
-{reason, unresolved_dep, fixable,  "a module of another app is not on the search path of the driver"}.
+{reason, start_ret,    fixable,  "result of starting a process, typed by the init function of the module: it never gives ignore"}.
+{reason, message_term, inherent, "the message of a process callback with a catch-all clause is term(), a clause uses its payload at the type the sender gives"}.
+{reason, map_types,    fixable,  "map types with more than one association are not supported"}.
 
 {module, antidote_stats_app, #{file => "antidote_stats/src/antidote_stats_app.erl", overlays => [{specs, "overlay_antidote_stats.erl"}], timeout => 10000}}.
 
-{module, antidote_stats_collector, #{file => "antidote_stats/src/antidote_stats_collector.erl", overlays => [{specs, "overlay_antidote_stats.erl"}], timeout => 10000}}.
+{module, antidote_stats_collector, #{file => "antidote_stats/src/antidote_stats_collector.erl",
+                                     overlays => [{specs, "overlay_antidote_stats.erl"}, {deps, "overlay_prometheus.erl"}], timeout => 10000}}.
 {assertion, antidote_stats_collector, {45, 5, "23f817"}, assert_type, "{ok, pid()} | {error, term()}", start_ret}. % start_link/0
+%% handle_cast/2: the value of a stat update goes to prometheus_gauge:set/2,3, prometheus_counter:inc/2,3
+%% or prometheus_histogram:observe/2. The senders are the uses of the macro ?STATS in antidote: a
+%% time in milliseconds, a length, a size in bytes, a count of reductions, a share of the ring.
+{assertion, antidote_stats_collector, {63, 56, "251fee"}, assert_type, "number()", message_term}.  % {process_scrape_time, TimeMs}
+{assertion, antidote_stats_collector, {95, 58, "8ef7f9"}, assert_type, "number()", message_term}.  % {update_staleness, Val}
+{assertion, antidote_stats_collector, {99, 71, "9a3346"}, assert_type, "number()", message_term}.  % {log_append, LogId, Size}
+{assertion, antidote_stats_collector, {111, 54, "f3ed56"}, assert_type, "number()", message_term}. % {dc_ops_received, Count}
+{assertion, antidote_stats_collector, {114, 59, "a66041"}, assert_type, "number()", message_term}. % {dc_ops_received_size, Bytes}
+{assertion, antidote_stats_collector, {117, 45, "d22fac"}, assert_type, "number()", message_term}. % {dc_count, Number}
+{assertion, antidote_stats_collector, {120, 63, "d7cc82"}, assert_type, "number()", message_term}. % {process_reductions, Name, Reductions}
+{assertion, antidote_stats_collector, {123, 73, "ac3570"}, assert_type, "number()", message_term}. % {process_message_queue_length, Name, Length}
+{assertion, antidote_stats_collector, {159, 57, "30c10d"}, assert_type, "number()", message_term}. % {ring_claimed, Node, Percent}
+{assertion, antidote_stats_collector, {163, 57, "30c10d"}, assert_type, "number()", message_term}. % {ring_pending, Node, Percent}
+{assertion, antidote_stats_collector, {167, 69, "2caa2e"}, assert_type, "number()", message_term}. % {ring_member_availability, Node, Value}
 
 {module, antidote_stats_sup, #{file => "antidote_stats/src/antidote_stats_sup.erl", overlays => [{specs, "overlay_antidote_stats.erl"}], timeout => 10000}}.
 {assertion, antidote_stats_sup, {17, 5, "4de7d3"}, assert_type, "{ok, pid()} | {error, term()}", start_ret}. % start_link/0
