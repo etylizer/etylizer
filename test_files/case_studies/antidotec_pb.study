@@ -3,28 +3,89 @@
 %% Case study manifest, see .github/scripts/ety_case_study.
 %%
 %% apps/antidotec_pb (src) of https://github.com/AntidoteDB/antidote as of commit
-%% ed9cfbcaad53c9b5de15bfcef7befef44b5b4221, unchanged: the protocol buffer client of Antidote, 7
-%% modules with 62 functions, 38 of them with a spec in the source. It uses the codec of the study
-%% antidote_pb_codec (encode_request/1, decode_response/1 and the types of the messages), which is
-%% checked here in the state of that study.
+%% ed9cfbcaad53c9b5de15bfcef7befef44b5b4221: the protocol buffer client of Antidote, 7 modules with
+%% 62 functions, 38 of them with a spec in the source. The code is as upstream; 11 declarations
+%% (-spec, -type, the types of record fields) that were wrong or too imprecise are corrected, see
+%% the list below. It uses the codec of the study antidote_pb_codec (encode_request/1,
+%% decode_response/1 and the types of the messages), which is checked here in the state of that
+%% study, with its own corrected declarations.
 %%
 %% Type check raw (step I): no overlay, a function without a spec is checked against dynamic(). 52
 %% functions type check, 10 do not.
 %%
 %% Missing specs (step II): overlay_antidotec_pb.erl gives a spec to each of the 24 functions that
 %% have none in the source; every module is checked with it. The two functions of the codec that
-%% the client calls have a spec in the source of the codec, so its overlay is not listed. No flag,
-%% no assertion, no library overlay. 42 functions type check, 20 do not and are ignored: the 10 of
-%% step I and 10 that fail newly, 8 of antidotec_pb_socket, which were dynamic(), and
-%% abort_transaction/2 and commit_transaction/2 of antidotec_pb, which call one of them. Of the 10
-%% of step I, 7 keep their first error; the 3 of antidotec_pb_management now fail first at the
-%% reply of a call. antidotec_pb_socket:handle_info/2 is one of the 7 and gets the reason of the
-%% error behind the first one, which its spec shows: the program is wrong.
-%% By class: 10 for the source (7 a type that is too imprecise, 1 a wrong spec, 2 an error in the
-%% program), 10 for what types do not show (7 the reply of a gen_server call, 2 what
-%% gen_server:start_link/3 and start/3 give, 1 a partial function).
-%% A function with more than one error has the reason of the source if there is one; the comment
-%% then names what the checker reports first.
+%% the client calls have a spec in the source of the codec, so its overlay is not listed. 42
+%% functions type check, 20 do not, 10 of them for the source: 8 for a declaration, 2 for an error
+%% in the program.
+%%
+%% Declarations (step III): no flag, no assertion, no library overlay. 43 functions type check, 19
+%% do not and are ignored; none of them for a declaration any more. The corrections make
+%% antidotec_reg:value/1 type check. 7 functions get past the declaration and fail with another
+%% first error, see their exceptions: start_transaction/3, commit_transaction/2, update_objects/3
+%% and read_values/3 of antidotec_pb at the reply of a call, connect/1 and send_caller/2 of
+%% antidotec_pb_socket as partial functions, and antidotec_pb:read_objects/3 at an error in the
+%% program that the type of read_values/3 now shows. No function fails that type checked before.
+%% By class: 3 for an error in the program, which no declaration corrects (read_objects/3, and
+%% handle_call/3 and handle_info/2 of antidotec_pb_socket), 16 for what types do not show (11 the
+%% reply of a gen_server call, 3 a partial function, 2 what gen_server:start_link/3 and start/3
+%% give).
+%%
+%% Declarations corrected in the source: 11 in 3 modules, old -> new. Only -spec, -type and the types
+%% of record fields; no function body, clause head, guard, macro or comment. Line numbers change in
+%% antidotec_pb.erl only: +2 from commit_transaction/2 on, +4 from update_objects/3, +8 from
+%% read_objects/3, +12 from read_values/3.
+%%
+%% The transaction and what goes to the codec (antidotec_pb):
+%%   start_transaction/3: TxnProperties :: term() -> list(), the Properties :: list() of
+%%     antidote_pb_codec:request(), where they go. The result {static, {binary(), term()}} ->
+%%     {static, {binary(), list()}}: a static transaction is the timestamp and these properties.
+%%   start_transaction/2: the result {ok, {interactive, term()} | {static, {term(), term()}}} ->
+%%     {ok, {interactive, binary()} | {static, {binary(), list()}}}, that of start_transaction/3,
+%%     which it calls: what the other functions take as the transaction.
+%%   update_objects/3, read_objects/3, read_values/3: the transaction {interactive | static, TxId ::
+%%     binary()} -> {interactive, TxId :: binary()} | {static, {Clock :: binary(), Properties ::
+%%     list()}}. The clauses for static take the pair apart ({Clock, Properties} = TxId), which
+%%     no binary() matches.
+%%   commit_transaction/2: the transaction {static, binary()} -> {static, {binary(), list()}}, as
+%%     above. The result {ok, binary()} -> {ok, binary() | ignore | undefined}: for a static
+%%     transaction it is the commit time that the socket process holds, see last_commit_time below.
+%%   update_objects/3: Updates :: [{term(), term(), term()}] -> [antidote_pb_codec:update()].
+%%   read_objects/3, read_values/3: Objects :: [term()] -> [antidote_pb_codec:bound_object()].
+%%   read_values/3: the result {ok, [term()]} -> {ok, [antidote_pb_codec:read_result()]}, the tagged
+%%     values of the response; read_objects/3 takes them apart as pairs.
+%%
+%% The socket process (antidotec_pb_socket):
+%%   portnum(): non_neg_integer() -> inet:port_number(), what gen_tcp:connect/4 takes.
+%%   #request{}, the field from: no type -> gen_server:from() | undefined. It is the From of
+%%     handle_call/3 and goes to gen_server:reply/2; send_caller/2 sets it to undefined.
+%%   #state{}, the field sock: port() | undefined -> gen_tcp:socket() | undefined, what
+%%     gen_tcp:connect/4 gives (inet:socket() is a port() or a socket of another backend).
+%%   #state{}, the field last_commit_time: term() -> binary() | ignore | undefined. It holds the
+%%     commit time of a static transaction, a binary() of a response; get_commit_time sets it to
+%%     ignore, and it is undefined until the first is stored (init/1 does not set it).
+%%
+%% antidotec_reg:
+%%   value/1: the result [term()] -> term(). The value of a register is any term: the field has no
+%%     type, new/1 and assign/2 take any value, a register that was read holds a binary(). The
+%%     callback of antidotec_datatype says term().
+%%
+%% In the overlay 4 specs and its 3 helper types follow: is_static/1 (TxnProperties :: list()),
+%% store_commit_time/2 (TimeStamp :: binary()), get_last_commit_time/1 and the reply of
+%% handle_call/3 ({ok, binary() | ignore | undefined}); the tuple type of #request{} (From ::
+%% gen_server:from() | undefined), the calls of handle_call/3 ({store_commit_time, binary()}) and the
+%% messages of handle_info/2 (the socket as gen_tcp:socket()).
+%%
+%% Left as they are:
+%%   antidotec_pb:read_objects/3 with Objects :: [bound_object()]: it has a container only for a
+%%     counter, a set and a register (antidotec_datatype:module_for_type/1) and fails for an object
+%%     of another type. A declaration could say so by listing the CRDT types that are read as one of
+%%     the three; the function then needs one assertion (measured, not applied).
+%%   antidotec_pb_socket:init/1, ([term()]): a list of the address, the port and the options, which
+%%     a list type cannot say.
+%%   antidotec_datatype: datatype() :: term(), update() :: [term()] and the callbacks.
+%%   The results {error, term()} of antidotec_pb: an error_code(), a whole error response or any
+%%     other response.
 
 {study, antidotec_pb}.
 {deps, ["antidote_pb_codec"]}.
@@ -32,10 +93,8 @@
 %% {reason, Id, Class, Text}. Class: real (the program or its spec is wrong), inherent (correct at
 %% run time, not provable by types), fixable (gap in the type system or checker), unknown.
 {reason, partial,             inherent, "partial function, the callers rule out the missing case"}.
-{reason, call_reply,          inherent, "reply of a gen_server call, typed by the handle_call clause that answers it"}.
+{reason, call_reply,          inherent, "reply of a gen_server call, a term(): typed by what the server process replies to the request"}.
 {reason, start_args,          fixable,  "what gen_server:start_link/3 hands to init/1 and gives back, typed by init/1 of this module"}.
-{reason, spec_imprecise,      real,     "imprecise type spec in the source"}.
-{reason, spec_wrong,          real,     "wrong type in the source"}.
 {reason, program_wrong,       real,     "the program is wrong"}.
 
 {module, antidotec_counter, #{file => "antidotec_pb/src/antidotec_counter.erl", overlays => [{specs, "overlay_antidotec_pb.erl"}],
@@ -46,19 +105,17 @@
 
 {module, antidotec_pb, #{file => "antidotec_pb/src/antidotec_pb.erl", overlays => [{specs, "overlay_antidotec_pb.erl"}],
                          timeout => 10000}}.
-%% 54: {start_transaction, EncTimestamp, TxnProperties} with TxnProperties :: term(), request() wants a list()
-{exception, antidotec_pb, start_transaction, 3, [ignore], spec_imprecise}.
-%% 82: antidote_pb_codec:decode_response(Result), Result is the reply of antidotec_pb_socket:call_infinity/2, a term()
+%% antidote_pb_codec:decode_response(Result) at 61, 82, 101, 126 and 141, 188 and 207: Result is the reply of
+%% antidotec_pb_socket:call_infinity/2, a term()
+{exception, antidotec_pb, start_transaction, 3, [ignore], call_reply}.
 {exception, antidotec_pb, abort_transaction, 2, [ignore], call_reply}.
-%% 108-110: {static, TxId} gives {ok, CommitTime} from get_last_commit_time/1, a term(): #state.last_commit_time of the
-%% socket is a term(). Reported first: 99, decode_response(Result) with the reply of a call
-{exception, antidotec_pb, commit_transaction, 2, [ignore], spec_imprecise}.
-%% 116: {update_objects, Updates, TxId} with Updates :: [{term(), term(), term()}], request() wants [update()]
-{exception, antidotec_pb, update_objects, 3, [ignore], spec_imprecise}.
-%% 160: lists:map(fun({Type, Val}) -> .. end, Values): read_values/3 gives [term()], the fun takes pairs
-{exception, antidotec_pb, read_objects, 3, [ignore], spec_imprecise}.
-%% 170: {read_objects, Objects, TxId} with Objects :: [term()], request() wants [bound_object()]
-{exception, antidotec_pb, read_values, 3, [ignore], spec_imprecise}.
+{exception, antidotec_pb, commit_transaction, 2, [ignore], call_reply}.
+{exception, antidotec_pb, update_objects, 3, [ignore], call_reply}.
+%% 165, reported at 168: fun({Type, Val}) -> Mod = antidotec_datatype:module_for_type(Type), .. over the values that
+%% were read. module_for_type/1 has a clause for set, counter and reg: read_objects/3 fails with function_clause for
+%% a multi-value register, a map or a flag
+{exception, antidotec_pb, read_objects, 3, [ignore], program_wrong}.
+{exception, antidotec_pb, read_values, 3, [ignore], call_reply}.
 
 {module, antidotec_pb_management, #{file => "antidotec_pb/src/antidotec_pb_management.erl",
                                     overlays => [{specs, "overlay_antidotec_pb.erl"}], timeout => 10000}}.
@@ -77,21 +134,16 @@
 {exception, antidotec_pb_socket, store_commit_time, 2, [ignore], call_reply}. % 120: gen_server:call/3, the reply is ok
 {exception, antidotec_pb_socket, get_last_commit_time, 1, [ignore], call_reply}. % 123: gen_server:call/3, the reply is {ok, _}
 %% 140: after a failed gen_tcp:send/2 the new state is the result of gen_tcp:close/1, the atom ok.
-%% Reported first: 135, gen_tcp:send(State#state.sock, Msg), the field sock is port() | undefined
+%% Reported first: 135, gen_tcp:send(State#state.sock, Msg), the field sock is gen_tcp:socket() | undefined
 {exception, antidotec_pb_socket, handle_call, 3, [ignore], program_wrong}.
 %% 160: {req_timeout, Ref} reads Active#request.tref, and active is undefined once the reply has come: a timer
 %% that fired before it was cancelled crashes the process. Reported first: 157, ok = inet:setopts(Sock, ..)
 {exception, antidotec_pb_socket, handle_info, 2, [ignore], program_wrong}.
-%% 184: portnum() :: non_neg_integer(), gen_tcp:connect/4 wants inet:port_number(). Reported first: 181, the
-%% clause takes only a state with sock =:= undefined
-{exception, antidotec_pb_socket, connect, 1, [ignore], spec_imprecise}.
-%% 240: the field from of #request{} has no type, gen_server:reply/2 wants a from(). Reported first: 239, the
-%% clause takes only a request with From /= undefined
-{exception, antidotec_pb_socket, send_caller, 2, [ignore], spec_imprecise}.
+{exception, antidotec_pb_socket, connect, 1, [ignore], partial}. % 181: only a state with sock =:= undefined
+{exception, antidotec_pb_socket, send_caller, 2, [ignore], partial}. % 239: only a request with From /= undefined
 
 {module, antidotec_reg, #{file => "antidotec_pb/src/antidotec_reg.erl", overlays => [{specs, "overlay_antidotec_pb.erl"}],
                           timeout => 10000}}.
-{exception, antidotec_reg, value, 1, [ignore], spec_wrong}. % 57: [term()], the value of a register is any term
 
 {module, antidotec_set, #{file => "antidotec_pb/src/antidotec_set.erl", overlays => [{specs, "overlay_antidotec_pb.erl"}],
                           timeout => 10000}}.

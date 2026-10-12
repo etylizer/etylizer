@@ -53,7 +53,7 @@ new() ->
 new(Value) ->
     #antidote_reg{value = Value}.
 
--spec value(antidote_reg()) -> [term()].
+-spec value(antidote_reg()) -> term().
 value(#antidote_reg{value = Value}) -> Value.
 
 dirty_value(#antidote_reg{value = Value}) -> Value.

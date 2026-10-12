@@ -3,11 +3,11 @@
 -compile([export_all, nowarn_export_all]).
 
 %% #request{} of antidotec_pb_socket, which has no type for it
--type request() :: {request, Ref :: reference(), From :: term(), Timeout :: timeout(), Tref :: reference() | undefined}.
+-type request() :: {request, Ref :: reference(), From :: gen_server:from() | undefined, Timeout :: timeout(), Tref :: reference() | undefined}.
 %% what antidotec_pb_socket:handle_call/3 answers
--type call() :: {req, Msg :: iodata(), timeout()} | {store_commit_time, TimeStamp :: term()} | get_commit_time | stop.
+-type call() :: {req, Msg :: iodata(), timeout()} | {store_commit_time, TimeStamp :: binary()} | get_commit_time | stop.
 %% what antidotec_pb_socket:handle_info/2 expects
--type info() :: {tcp, port(), binary()} | {req_timeout, reference()} | {tcp_closed, port()}.
+-type info() :: {tcp, gen_tcp:socket(), binary()} | {req_timeout, reference()} | {tcp_closed, gen_tcp:socket()}.
 
 %% --- antidotec_counter ---
 
@@ -16,7 +16,7 @@
 
 %% --- antidotec_pb ---
 
--spec 'antidotec_pb:is_static'(TxnProperties :: term()) -> boolean().
+-spec 'antidotec_pb:is_static'(TxnProperties :: list()) -> boolean().
 'antidotec_pb:is_static'(_) -> error(overlay).
 
 %% --- antidotec_pb_socket ---
@@ -38,14 +38,14 @@
 -spec 'antidotec_pb_socket:call_infinity'(pid(), Msg :: term()) -> term().
 'antidotec_pb_socket:call_infinity'(_, _) -> error(overlay).
 
--spec 'antidotec_pb_socket:store_commit_time'(pid(), TimeStamp :: term()) -> ok.
+-spec 'antidotec_pb_socket:store_commit_time'(pid(), TimeStamp :: binary()) -> ok.
 'antidotec_pb_socket:store_commit_time'(_, _) -> error(overlay).
 
--spec 'antidotec_pb_socket:get_last_commit_time'(pid()) -> {ok, TimeStamp :: term()}.
+-spec 'antidotec_pb_socket:get_last_commit_time'(pid()) -> {ok, TimeStamp :: binary() | ignore | undefined}.
 'antidotec_pb_socket:get_last_commit_time'(_) -> error(overlay).
 
 -spec 'antidotec_pb_socket:handle_call'(call(), gen_server:from(), antidotec_pb_socket:state()) ->
-          {noreply, antidotec_pb_socket:state()} | {reply, ok | {ok, term()}, antidotec_pb_socket:state()}
+          {noreply, antidotec_pb_socket:state()} | {reply, ok | {ok, binary() | ignore | undefined}, antidotec_pb_socket:state()}
         | {stop, normal, ok, antidotec_pb_socket:state()}.
 'antidotec_pb_socket:handle_call'(_, _, _) -> error(overlay).
 

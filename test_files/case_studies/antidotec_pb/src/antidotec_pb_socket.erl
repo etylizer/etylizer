@@ -29,11 +29,11 @@
 %% The TCP/IP host name or address of the Riak node
 -type address() :: string() | atom() | inet:ip_address().
 %% The TCP port number of the Riak node's Protocol Buffers interface
--type portnum() :: non_neg_integer().
+-type portnum() :: inet:port_number().
 
 -record(request, {
     ref :: reference(),
-    from,
+    from :: gen_server:from() | undefined,
     timeout :: timeout(),
     tref :: reference() | undefined
 }).
@@ -44,7 +44,7 @@
     % port to connect to
     port :: portnum(),
     % gen_tcp socket
-    sock :: port() | undefined,
+    sock :: gen_tcp:socket() | undefined,
     % active request
     active :: #request{} | undefined,
     % timeout of TCP connection
@@ -52,7 +52,7 @@
     % if true, enabled TCP keepalive for the socket
     keepalive = false :: boolean(),
     % temporarily store for static transactions
-    last_commit_time :: term()
+    last_commit_time :: binary() | ignore | undefined
 }).
 -type state() :: #state{}.
 
