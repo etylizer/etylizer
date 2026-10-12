@@ -13,6 +13,8 @@
 %% Increment a per-process counter, see metrics:count/2.
 -define(METRIC_COUNT(Via, Kind), metrics:count(Via, Kind)).
 -define(METRIC_SUBPROBLEM(Via, Kind), metrics:count(Via, Kind)).
+%% Record a type error of the current function with its kind and line.
+-define(METRIC_TYPE_ERROR(Kind, Loc), metrics:record_type_error(Kind, Loc)).
 -else.
 -define(METRIC(Category, Expr), ok).
 -define(METRIC_SET_FUN(Label), ok).
@@ -22,6 +24,7 @@
 -define(METRIC_DO(_Expr), ok).
 -define(METRIC_COUNT(_Via, _Kind), ok).
 -define(METRIC_SUBPROBLEM(_Via, _Kind), ok).
+-define(METRIC_TYPE_ERROR(_Kind, _Loc), ok).
 -endif.
 
 -endif.
