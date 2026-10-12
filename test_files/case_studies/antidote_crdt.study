@@ -4,26 +4,37 @@
 %%
 %% apps/antidote_crdt (src, include) of https://github.com/AntidoteDB/antidote as of commit
 %% ed9cfbcaad53c9b5de15bfcef7befef44b5b4221, unchanged: 15 modules with 168 functions, 99 of them
-%% with a spec in the source. A function without a spec is checked against dynamic().
+%% with a spec in the source.
 %%
-%% Type check raw (step I): no overlay, no flag, no assertion. 146 functions type check, 22 do not
-%% and are ignored: 9 for a type in the source that is wrong or too imprecise, 11 for what types
-%% do not show (a match or an if in the body, a partial function, binary_to_term/1), 2 for the spec
-%% of a library function.
+%% Type check raw (step I): no overlay, a function without a spec is checked against dynamic(). 146
+%% functions type check, 22 do not.
+%%
+%% Missing specs (step II): overlay_antidote_crdt.erl gives a spec to each of the 69 functions that
+%% have none in the source, from the types of the module of the function and the callbacks of the
+%% behaviour antidote_crdt. No flag, no assertion, no library overlay. 129 functions type check, 39
+%% do not and are ignored: the 22 of step I, each with the first error it had there, and 17 that
+%% were dynamic(): 10 from_binary/1 (7 that take only the tagged binary, 3 for binary_to_term/1),
+%% a defensive clause, the fun of a lists:foldl/3, and 5 for a type in the source (the two
+%% is_operation/1 of the maps, which call antidote_crdt:is_type/1, and three functions of
+%% antidote_crdt_map_rr). No function that had a spec before fails newly.
+%% By class: 14 for a type in the source that is wrong or too imprecise, 22 for what types do not
+%% show, 3 for the spec of a library function.
 
 {study, antidote_crdt}.
 
 %% {reason, Id, Class, Text}. Class: real (the program or its spec is wrong), inherent (correct at
-%% run time, not provable by types), fixable (gap in the type system or checker), unknown.
+%% run time, not provable by types), fixable (gap in the type system or checker), benign (dead for the spec, kept on purpose), unknown.
 {reason, body_exhaustiveness, inherent, "exhaustiveness of a match or an if inside the body"}.
 {reason, partial,             inherent, "partial function, the callers rule out the missing case"}.
+{reason, defensive,           benign,   "defensive clause, dead for the spec"}.
 {reason, deserialize,         inherent, "binary_to_term/1 gives term(), the spec promises the type of the state"}.
 {reason, spec_imprecise,      real,     "imprecise type spec in the source"}.
 {reason, spec_wrong,          real,     "wrong type in the source"}.
 {reason, library_spec,        fixable,  "spec of a library function too imprecise"}.
-{reason, free_result,         fixable,  "library spec whose result is a type variable bound only in when (application:get_env/3): a branch on such a value is dead"}.
+{reason, free_result,         fixable,  "library spec whose type variables are bound only in when (application:get_env/3, lists:foldl/3): a branch on such a result is dead, and so is the clause of a fun for lists:foldl/3 that takes its argument apart"}.
 
-{module, antidote_crdt, #{file => "antidote_crdt/src/antidote_crdt.erl", timeout => 10000}}.
+{module, antidote_crdt, #{file => "antidote_crdt/src/antidote_crdt.erl",
+                          overlays => [{specs, "overlay_antidote_crdt.erl"}], timeout => 10000}}.
 %% typ() lacks the antidote_crdt_secure_* types that is_type/1 (113-119) and alias/1 (124-130) have clauses for
 {exception, antidote_crdt, is_type, 1, [ignore], spec_wrong}.
 {exception, antidote_crdt, alias, 1, [ignore], spec_wrong}.
@@ -38,48 +49,84 @@
 %% the second branch (190) is reported as dead
 {exception, antidote_crdt, to_binary, 1, [ignore], free_result}.
 
-{module, antidote_crdt_counter_b, #{file => "antidote_crdt/src/antidote_crdt_counter_b.erl", timeout => 10000}}.
+{module, antidote_crdt_counter_b, #{file => "antidote_crdt/src/antidote_crdt_counter_b.erl",
+                                    overlays => [{specs, "overlay_antidote_crdt.erl"}], timeout => 10000}}.
 {exception, antidote_crdt_counter_b, generate_downstream_check, 4, [ignore], body_exhaustiveness}. % 174: if A >= V; A < V
 {exception, antidote_crdt_counter_b, from_binary, 1, [ignore], deserialize}. % 214: {ok, binary_to_term(B)}
 
-{module, antidote_crdt_counter_fat, #{file => "antidote_crdt/src/antidote_crdt_counter_fat.erl", timeout => 10000}}.
+{module, antidote_crdt_counter_fat, #{file => "antidote_crdt/src/antidote_crdt_counter_fat.erl",
+                                      overlays => [{specs, "overlay_antidote_crdt.erl"}], timeout => 10000}}.
 {exception, antidote_crdt_counter_fat, value, 1, [ignore], library_spec}. % 79: lists:sum/1 gives number(), the spec integer()
 {exception, antidote_crdt_counter_fat, from_binary, 1, [ignore], partial}. % 132: only the tagged binary
 
-{module, antidote_crdt_counter_pn, #{file => "antidote_crdt/src/antidote_crdt_counter_pn.erl", timeout => 10000}}.
+{module, antidote_crdt_counter_pn, #{file => "antidote_crdt/src/antidote_crdt_counter_pn.erl",
+                                     overlays => [{specs, "overlay_antidote_crdt.erl"}], timeout => 10000}}.
+{exception, antidote_crdt_counter_pn, new, 1, [ignore], defensive}. % 67: new(_) after new(Value) when is_integer(Value)
 %% op() lacks increment | decrement, the clauses at 80 and 82
 {exception, antidote_crdt_counter_pn, downstream, 2, [ignore], spec_wrong}.
+{exception, antidote_crdt_counter_pn, from_binary, 1, [ignore], deserialize}. % 113: {ok, binary_to_term(Bin)}
 
-{module, antidote_crdt_flag_dw, #{file => "antidote_crdt/src/antidote_crdt_flag_dw.erl", timeout => 10000}}.
+{module, antidote_crdt_flag_dw, #{file => "antidote_crdt/src/antidote_crdt_flag_dw.erl",
+                                  overlays => [{specs, "overlay_antidote_crdt.erl"}], timeout => 10000}}.
+{exception, antidote_crdt_flag_dw, from_binary, 1, [ignore], partial}. % 100: only the tagged binary
 
-{module, antidote_crdt_flag_ew, #{file => "antidote_crdt/src/antidote_crdt_flag_ew.erl", timeout => 10000}}.
+{module, antidote_crdt_flag_ew, #{file => "antidote_crdt/src/antidote_crdt_flag_ew.erl",
+                                  overlays => [{specs, "overlay_antidote_crdt.erl"}], timeout => 10000}}.
+{exception, antidote_crdt_flag_ew, from_binary, 1, [ignore], partial}. % 94: only the tagged binary
 
-{module, antidote_crdt_flag_helper, #{file => "antidote_crdt/src/antidote_crdt_flag_helper.erl", timeout => 10000}}.
+{module, antidote_crdt_flag_helper, #{file => "antidote_crdt/src/antidote_crdt_flag_helper.erl",
+                                      overlays => [{specs, "overlay_antidote_crdt.erl"}], timeout => 10000}}.
+{exception, antidote_crdt_flag_helper, from_binary, 1, [ignore], partial}. % 67: only the tagged binary
 
 %% The type of a key says Type :: atom(), the functions of antidote_crdt want a typ(), which it does not export:
 %% antidote_crdt:new(Type) at 89, antidote_crdt:update(Type, Op, V) at 112.
-{module, antidote_crdt_map_go, #{file => "antidote_crdt/src/antidote_crdt_map_go.erl", timeout => 10000}}.
+{module, antidote_crdt_map_go, #{file => "antidote_crdt/src/antidote_crdt_map_go.erl",
+                                 overlays => [{specs, "overlay_antidote_crdt.erl"}], timeout => 10000}}.
 {exception, antidote_crdt_map_go, downstream, 2, [ignore], spec_imprecise}.
 {exception, antidote_crdt_map_go, update, 2, [ignore], spec_imprecise}.
+{exception, antidote_crdt_map_go, from_binary, 1, [ignore], partial}. % 142: only the tagged binary
+%% 149: antidote_crdt:is_type(Type) for the Type of any term; is_type/1 tests any term, its spec takes typ()
+{exception, antidote_crdt_map_go, is_operation, 1, [ignore], spec_wrong}.
 
 %% Type :: atom() in typedKey(), as in antidote_crdt_map_go: antidote_crdt:value(Type, ..) at 111,
-%% antidote_crdt:new(Type) at 141 and 151.
-{module, antidote_crdt_map_rr, #{file => "antidote_crdt/src/antidote_crdt_map_rr.erl", timeout => 10000}}.
+%% antidote_crdt:new(Type) at 141 and 151, antidote_crdt:update(Type, Op, State) at 183, antidote_crdt:alias(Type) at 205.
+{module, antidote_crdt_map_rr, #{file => "antidote_crdt/src/antidote_crdt_map_rr.erl",
+                                 overlays => [{specs, "overlay_antidote_crdt.erl"}], timeout => 10000}}.
 {exception, antidote_crdt_map_rr, get, 2, [ignore], spec_imprecise}.
 {exception, antidote_crdt_map_rr, generate_downstream_update, 2, [ignore], spec_imprecise}.
 {exception, antidote_crdt_map_rr, generate_downstream_remove, 2, [ignore], spec_imprecise}.
+%% 169: no clause for {Key, none}. effect() gives its updates as nested_downstream(), as its removes;
+%% generate_downstream_update/2 never gives none for one
+{exception, antidote_crdt_map_rr, update_entry, 2, [ignore], spec_imprecise}.
+{exception, antidote_crdt_map_rr, remove_entry, 2, [ignore], spec_imprecise}.
+{exception, antidote_crdt_map_rr, is_bottom, 2, [ignore], spec_imprecise}.
+{exception, antidote_crdt_map_rr, from_binary, 1, [ignore], partial}. % 218: only the tagged binary
+%% 224: antidote_crdt:is_type(Type) for the Type of any term; is_type/1 tests any term, its spec takes typ()
+{exception, antidote_crdt_map_rr, is_operation, 1, [ignore], spec_wrong}.
 
-{module, antidote_crdt_register_lww, #{file => "antidote_crdt/src/antidote_crdt_register_lww.erl", timeout => 10000}}.
+{module, antidote_crdt_register_lww, #{file => "antidote_crdt/src/antidote_crdt_register_lww.erl",
+                                       overlays => [{specs, "overlay_antidote_crdt.erl"}], timeout => 10000}}.
+{exception, antidote_crdt_register_lww, from_binary, 1, [ignore], deserialize}. % 92: {ok, erlang:binary_to_term(Bin)}
 
-{module, antidote_crdt_register_mv, #{file => "antidote_crdt/src/antidote_crdt_register_mv.erl", timeout => 10000}}.
+{module, antidote_crdt_register_mv, #{file => "antidote_crdt/src/antidote_crdt_register_mv.erl",
+                                      overlays => [{specs, "overlay_antidote_crdt.erl"}], timeout => 10000}}.
 {exception, antidote_crdt_register_mv, downstream, 2, [ignore], spec_wrong}. % the op type lacks {reset, {}}, the clause at 87
 {exception, antidote_crdt_register_mv, from_binary, 1, [ignore], partial}. % 124: only the tagged binary
 
-{module, antidote_crdt_secure_counter_pn, #{file => "antidote_crdt/src/antidote_crdt_secure_counter_pn.erl", timeout => 10000}}.
+{module, antidote_crdt_secure_counter_pn, #{file => "antidote_crdt/src/antidote_crdt_secure_counter_pn.erl",
+                                            overlays => [{specs, "overlay_antidote_crdt.erl"}], timeout => 10000}}.
 {exception, antidote_crdt_secure_counter_pn, from_binary, 1, [ignore], deserialize}. % 116: {ok, binary_to_term(Bin)}
 
-{module, antidote_crdt_set_aw, #{file => "antidote_crdt/src/antidote_crdt_set_aw.erl", timeout => 10000}}.
+{module, antidote_crdt_set_aw, #{file => "antidote_crdt/src/antidote_crdt_set_aw.erl",
+                                 overlays => [{specs, "overlay_antidote_crdt.erl"}], timeout => 10000}}.
+{exception, antidote_crdt_set_aw, from_binary, 1, [ignore], partial}. % 153: only the tagged binary
+%% 198: lists:foldl(fun({Elem, ToAdd, ToRemove}, Set_aw) -> .. end, [], Ops): the clause of the fun never matches
+{exception, antidote_crdt_set_aw, apply_downstreams, 2, [ignore], free_result}.
 
-{module, antidote_crdt_set_go, #{file => "antidote_crdt/src/antidote_crdt_set_go.erl", timeout => 10000}}.
+{module, antidote_crdt_set_go, #{file => "antidote_crdt/src/antidote_crdt_set_go.erl",
+                                 overlays => [{specs, "overlay_antidote_crdt.erl"}], timeout => 10000}}.
+{exception, antidote_crdt_set_go, from_binary, 1, [ignore], deserialize}. % 88: {ok, erlang:binary_to_term(Bin)}
 
-{module, antidote_crdt_set_rw, #{file => "antidote_crdt/src/antidote_crdt_set_rw.erl", timeout => 10000}}.
+{module, antidote_crdt_set_rw, #{file => "antidote_crdt/src/antidote_crdt_set_rw.erl",
+                                 overlays => [{specs, "overlay_antidote_crdt.erl"}], timeout => 10000}}.
+{exception, antidote_crdt_set_rw, from_binary, 1, [ignore], partial}. % 221: only the tagged binary
