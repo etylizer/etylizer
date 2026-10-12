@@ -54,21 +54,24 @@
 -include_lib("eunit/include/eunit.hrl").
 -endif.
 
--type antidote_crdt_map_go() :: dict:dict({Key :: term(), Type :: atom()}, NestedState :: term()).
+-type antidote_crdt_map_go() :: dict:dict(
+    {Key :: term(), Type :: antidote_crdt:typ()}, NestedState :: term()
+).
 -type antidote_crdt_map_go_op() ::
     {update, nested_op()}
     | {update, [nested_op()]}.
--type nested_op() :: {{Key :: term(), Type :: atom()}, Op :: term()}.
+-type nested_op() :: {{Key :: term(), Type :: antidote_crdt:typ()}, Op :: antidote_crdt:update()}.
 -type antidote_crdt_map_go_effect() ::
     {update, nested_downstream()}
-    | {update, [nested_downstream()]}.
--type nested_downstream() :: {{Key :: term(), Type :: atom()}, Op :: term()}.
+    | {update, [antidote_crdt_map_go_effect()]}.
+-type nested_downstream() :: {{Key :: term(), Type :: antidote_crdt:typ()}, Op :: term()}.
 
 -spec new() -> antidote_crdt_map_go().
 new() ->
     dict:new().
 
--spec value(antidote_crdt_map_go()) -> [{{Key :: term(), Type :: atom()}, Value :: term()}].
+-spec value(antidote_crdt_map_go()) ->
+    [{{Key :: term(), Type :: antidote_crdt:typ()}, Value :: term()}].
 value(Map) ->
     lists:sort([
         {{Key, Type}, antidote_crdt:value(Type, Value)}

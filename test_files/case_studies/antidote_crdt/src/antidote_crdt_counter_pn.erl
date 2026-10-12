@@ -52,7 +52,9 @@
 
 -type state() :: integer().
 -type op() ::
-    {increment, integer()}
+    increment
+    | decrement
+    | {increment, integer()}
     | {decrement, integer()}.
 -type effect() :: integer().
 

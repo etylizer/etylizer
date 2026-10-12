@@ -3,22 +3,97 @@
 %% Case study manifest, see .github/scripts/ety_case_study.
 %%
 %% apps/antidote_crdt (src, include) of https://github.com/AntidoteDB/antidote as of commit
-%% ed9cfbcaad53c9b5de15bfcef7befef44b5b4221, unchanged: 15 modules with 168 functions, 99 of them
-%% with a spec in the source.
+%% ed9cfbcaad53c9b5de15bfcef7befef44b5b4221: 15 modules with 168 functions, 99 of them with a spec
+%% in the source. The code is as upstream; 17 declarations (-type, -spec, -callback, -export_type)
+%% that were wrong or too imprecise are corrected, see the list below.
 %%
 %% Type check raw (step I): no overlay, a function without a spec is checked against dynamic(). 146
 %% functions type check, 22 do not.
 %%
 %% Missing specs (step II): overlay_antidote_crdt.erl gives a spec to each of the 69 functions that
 %% have none in the source, from the types of the module of the function and the callbacks of the
-%% behaviour antidote_crdt. No flag, no assertion, no library overlay. 129 functions type check, 39
-%% do not and are ignored: the 22 of step I, each with the first error it had there, and 17 that
-%% were dynamic(): 10 from_binary/1 (7 that take only the tagged binary, 3 for binary_to_term/1),
-%% a defensive clause, the fun of a lists:foldl/3, and 5 for a type in the source (the two
-%% is_operation/1 of the maps, which call antidote_crdt:is_type/1, and three functions of
-%% antidote_crdt_map_rr). No function that had a spec before fails newly.
-%% By class: 14 for a type in the source that is wrong or too imprecise, 22 for what types do not
-%% show, 3 for the spec of a library function.
+%% behaviour antidote_crdt. 129 functions type check, 39 do not, 14 of them for a declaration of the
+%% source.
+%%
+%% Declarations (step III): no flag, no assertion, no library overlay. 136 functions type check, 32
+%% do not and are ignored; none of them for a declaration any more (no reason of the class real).
+%% The corrections make 7 functions type check: is_type/1 and alias/1 of antidote_crdt, downstream/2
+%% of antidote_crdt_counter_pn and of antidote_crdt_register_mv, antidote_crdt_map_go:update/2,
+%% antidote_crdt_map_rr:get/2 and is_bottom/2. 7 get past the declaration and fail with another
+%% first error, see their exceptions: downstream/2 and is_operation/1 of antidote_crdt_map_go, and
+%% generate_downstream_update/2, generate_downstream_remove/2, update_entry/2, remove_entry/2 and
+%% is_operation/1 of antidote_crdt_map_rr. No function fails that type checked before. By class: 27
+%% for what types do not show (10 a match or an if in the body, 9 a from_binary/1 that takes only
+%% the tagged binary, 5 binary_to_term/1, 2 a type tested with is_type/1, 1 a defensive clause), 5
+%% for the checker and the specs of OTP.
+%%
+%% Declarations corrected in the source: 17 in 5 modules, old -> new. Only -type, -spec, -callback
+%% and -export_type; no function body, clause head, guard, macro or comment, and nothing in
+%% antidote_crdt.hrl. Line numbers change in antidote_crdt.erl (+9 after typ()),
+%% antidote_crdt_counter_pn.erl (+2 after op()) and antidote_crdt_map_go.erl (+3 after the types).
+%% In the overlay two specs of antidote_crdt_map_rr follow: is_bottom/2 (Type :: atom() ->
+%% antidote_crdt:typ()) and update_entry/2 (nested_downstream() -> {typedKey(), {ok, Effect ::
+%% term()}}).
+%%
+%% The type of a CRDT:
+%%   antidote_crdt: typ() gets antidote_crdt_secure_set_go, _set_aw, _set_rw, _register_lww,
+%%     _register_mv, _map_go and _map_rr. is_type/1 gives true for the seven and alias/1 maps them
+%%     to the module that implements them; for typ() these clauses were dead.
+%%   antidote_crdt: -export_type([typ/0]) is new. The two maps name the type now, and so does
+%%     antidote.hrl of the application antidote. The checker and the compiler accept a remote type
+%%     that is not exported: no verdict changes.
+%%   antidote_crdt:is_type/1: (typ()) -> boolean() becomes (term()) -> boolean(). It is the test
+%%     whether a term is a type, with a clause is_type(_) -> false; is_operation/1 of the two maps
+%%     call it with the type that an operation names, any term.
+%%   antidote_crdt_map_go: Type :: atom() -> Type :: antidote_crdt:typ() in antidote_crdt_map_go(),
+%%     nested_op(), nested_downstream() and in the result of value/1; antidote_crdt_map_rr: the same
+%%     in typedKey(). The type of a key goes to new/1, value/2, downstream/3, update/3 and alias/1
+%%     of antidote_crdt, which take a typ().
+%%
+%% Operations:
+%%   antidote_crdt_counter_pn: op() gets increment | decrement, the first two clauses of
+%%     downstream/2, which is_operation/1 accepts and the documentation of downstream/2 names.
+%%   antidote_crdt_register_mv: antidote_crdt_register_mv_op() gets {reset, {}}, the second clause
+%%     of downstream/2, which is_operation/1 accepts.
+%%   antidote_crdt:is_operation/2 and the callback is_operation/1: the operation update() -> term().
+%%     It is the test whether a term is an operation of the type: each implementation ends in a
+%%     clause that gives false (the five that have a spec say term()), and is_operation/1 of the two
+%%     maps hand it the nested operation of any term. The test of materializer:check_operations/1 in
+%%     the application antidote gives it increment and {{add, elem}, a}, neither an update().
+%%   antidote_crdt_map_go, antidote_crdt_map_rr: nested_op(), Op :: term() -> Op ::
+%%     antidote_crdt:update(). The nested operation goes to antidote_crdt:downstream/3, which takes
+%%     an update().
+%%   antidote_crdt_map_rr:generate_downstream_update/2: the argument {typedKey(), Op :: term()} ->
+%%     nested_op(), for the same call.
+%%
+%% Effects and states:
+%%   antidote_crdt_map_go: antidote_crdt_map_go_effect(), {update, [nested_downstream()]} ->
+%%     {update, [antidote_crdt_map_go_effect()]}. downstream/2 makes the effect of a list of updates
+%%     from the effects of the single ones, each an {update, _}, and update/2 hands each element to
+%%     update/2 again (apply_ops/2).
+%%   antidote_crdt_map_rr: effect(), Adds :: [nested_downstream()] -> [{typedKey(), {ok, Effect ::
+%%     term()}}], and the result of generate_downstream_update/2, nested_downstream() ->
+%%     {typedKey(), {ok, Effect :: term()}}. Only the effect of a remove can be none
+%%     (generate_downstream_remove/2); update_entry/2, which takes the updates, has no clause for
+%%     it.
+%%   antidote_crdt_map_rr: state(), dict:dict(typedKey(), {NestedState :: term()}) ->
+%%     dict:dict(typedKey(), NestedState :: term()). The dict holds the state of a key as it is, not
+%%     in a tuple (update_entry/2, remove_obsolete/3). The checker loses the value type of a dict:
+%%     no verdict changes.
+%%
+%% Left as they are:
+%%   antidote_crdt.hrl, update() :: {atom(), term()}, the operation that the functions of
+%%     antidote_crdt take. antidote_crdt_counter_pn also takes increment and decrement,
+%%     antidote_crdt_register_lww also {assign, Value, Time}; they are in the op types of these
+%%     modules. The pair is what the application antidote sends (op() of antidote.hrl).
+%%   antidote_crdt:is_type/1 could say (typ()) -> true; (term()) -> boolean(): then the six matches
+%%     true = is_type(T) of antidote_crdt type check. The checker does not finish is_type/1 with
+%%     that spec, not in 300 s (measured, not applied).
+%%   antidote_crdt_counter_pn:new/1, (integer()) -> state(): the clause new(_) is defensive.
+%%   antidote_crdt_register_lww:downstream/2, result {ok, term()}: it is {ok,
+%%     antidote_crdt_register_lww()}, the effect that update/2 takes. Nothing depends on it.
+%%   from_binary/1 of antidote_crdt_counter_fat and antidote_crdt_register_mv: | {error, term()} in
+%%     the result, as the callback has it; they never give it.
 
 {study, antidote_crdt}.
 
@@ -28,17 +103,14 @@
 {reason, partial,             inherent, "partial function, the callers rule out the missing case"}.
 {reason, defensive,           benign,   "defensive clause, dead for the spec"}.
 {reason, deserialize,         inherent, "binary_to_term/1 gives term(), the spec promises the type of the state"}.
-{reason, spec_imprecise,      real,     "imprecise type spec in the source"}.
-{reason, spec_wrong,          real,     "wrong type in the source"}.
+{reason, validated,           fixable,  "a term that the program has tested with antidote_crdt:is_type/1, used as a typ()"}.
 {reason, library_spec,        fixable,  "spec of a library function too imprecise"}.
 {reason, free_result,         fixable,  "library spec whose type variables are bound only in when (application:get_env/3, lists:foldl/3): a branch on such a result is dead, and so is the clause of a fun for lists:foldl/3 that takes its argument apart"}.
+{reason, dict_types,          fixable,  "key and value type of a dict:dict(K, V) are lost: a branch on a result of dict:find/2 is dead"}.
 
 {module, antidote_crdt, #{file => "antidote_crdt/src/antidote_crdt.erl",
                           overlays => [{specs, "overlay_antidote_crdt.erl"}], timeout => 10000}}.
-%% typ() lacks the antidote_crdt_secure_* types that is_type/1 (113-119) and alias/1 (124-130) have clauses for
-{exception, antidote_crdt, is_type, 1, [ignore], spec_wrong}.
-{exception, antidote_crdt, alias, 1, [ignore], spec_wrong}.
-%% true = is_type(T) at 137, 144, 155, 167, 175 and 182
+%% true = is_type(T) at 146, 153, 164, 176, 184 and 191
 {exception, antidote_crdt, new, 1, [ignore], body_exhaustiveness}.
 {exception, antidote_crdt, value, 2, [ignore], body_exhaustiveness}.
 {exception, antidote_crdt, downstream, 3, [ignore], body_exhaustiveness}.
@@ -46,7 +118,7 @@
 {exception, antidote_crdt, require_state_downstream, 2, [ignore], body_exhaustiveness}.
 {exception, antidote_crdt, is_operation, 2, [ignore], body_exhaustiveness}.
 %% case application:get_env(antidote_crdt, binary_compression, 1) of true -> ..; N when N >= 0, N =< 9 -> ..; _ -> .. end:
-%% the second branch (190) is reported as dead
+%% the second branch (199) is reported as dead
 {exception, antidote_crdt, to_binary, 1, [ignore], free_result}.
 
 {module, antidote_crdt_counter_b, #{file => "antidote_crdt/src/antidote_crdt_counter_b.erl",
@@ -61,10 +133,8 @@
 
 {module, antidote_crdt_counter_pn, #{file => "antidote_crdt/src/antidote_crdt_counter_pn.erl",
                                      overlays => [{specs, "overlay_antidote_crdt.erl"}], timeout => 10000}}.
-{exception, antidote_crdt_counter_pn, new, 1, [ignore], defensive}. % 67: new(_) after new(Value) when is_integer(Value)
-%% op() lacks increment | decrement, the clauses at 80 and 82
-{exception, antidote_crdt_counter_pn, downstream, 2, [ignore], spec_wrong}.
-{exception, antidote_crdt_counter_pn, from_binary, 1, [ignore], deserialize}. % 113: {ok, binary_to_term(Bin)}
+{exception, antidote_crdt_counter_pn, new, 1, [ignore], defensive}. % 69: new(_) after new(Value) when is_integer(Value)
+{exception, antidote_crdt_counter_pn, from_binary, 1, [ignore], deserialize}. % 115: {ok, binary_to_term(Bin)}
 
 {module, antidote_crdt_flag_dw, #{file => "antidote_crdt/src/antidote_crdt_flag_dw.erl",
                                   overlays => [{specs, "overlay_antidote_crdt.erl"}], timeout => 10000}}.
@@ -78,31 +148,26 @@
                                       overlays => [{specs, "overlay_antidote_crdt.erl"}], timeout => 10000}}.
 {exception, antidote_crdt_flag_helper, from_binary, 1, [ignore], partial}. % 67: only the tagged binary
 
-%% The type of a key says Type :: atom(), the functions of antidote_crdt want a typ(), which it does not export:
-%% antidote_crdt:new(Type) at 89, antidote_crdt:update(Type, Op, V) at 112.
 {module, antidote_crdt_map_go, #{file => "antidote_crdt/src/antidote_crdt_map_go.erl",
                                  overlays => [{specs, "overlay_antidote_crdt.erl"}], timeout => 10000}}.
-{exception, antidote_crdt_map_go, downstream, 2, [ignore], spec_imprecise}.
-{exception, antidote_crdt_map_go, update, 2, [ignore], spec_imprecise}.
-{exception, antidote_crdt_map_go, from_binary, 1, [ignore], partial}. % 142: only the tagged binary
-%% 149: antidote_crdt:is_type(Type) for the Type of any term; is_type/1 tests any term, its spec takes typ()
-{exception, antidote_crdt_map_go, is_operation, 1, [ignore], spec_wrong}.
+%% 94: {ok, DownstreamOp} = antidote_crdt:downstream(Type, Op, CurrentValue), which can give {error, Reason}
+{exception, antidote_crdt_map_go, downstream, 2, [ignore], body_exhaustiveness}.
+{exception, antidote_crdt_map_go, from_binary, 1, [ignore], partial}. % 145: only the tagged binary
+%% 152: antidote_crdt:is_type(Type) andalso antidote_crdt:is_operation(Type, Op), the Type of any term
+{exception, antidote_crdt_map_go, is_operation, 1, [ignore], validated}.
 
-%% Type :: atom() in typedKey(), as in antidote_crdt_map_go: antidote_crdt:value(Type, ..) at 111,
-%% antidote_crdt:new(Type) at 141 and 151, antidote_crdt:update(Type, Op, State) at 183, antidote_crdt:alias(Type) at 205.
 {module, antidote_crdt_map_rr, #{file => "antidote_crdt/src/antidote_crdt_map_rr.erl",
                                  overlays => [{specs, "overlay_antidote_crdt.erl"}], timeout => 10000}}.
-{exception, antidote_crdt_map_rr, get, 2, [ignore], spec_imprecise}.
-{exception, antidote_crdt_map_rr, generate_downstream_update, 2, [ignore], spec_imprecise}.
-{exception, antidote_crdt_map_rr, generate_downstream_remove, 2, [ignore], spec_imprecise}.
-%% 169: no clause for {Key, none}. effect() gives its updates as nested_downstream(), as its removes;
-%% generate_downstream_update/2 never gives none for one
-{exception, antidote_crdt_map_rr, update_entry, 2, [ignore], spec_imprecise}.
-{exception, antidote_crdt_map_rr, remove_entry, 2, [ignore], spec_imprecise}.
-{exception, antidote_crdt_map_rr, is_bottom, 2, [ignore], spec_imprecise}.
+%% 143: {ok, DownstreamEffect} = antidote_crdt:downstream(Type, Op, CurrentState), 156: {ok, _} =
+%% antidote_crdt:downstream(Type, {reset, {}}, CurrentState); it can give {error, Reason}
+{exception, antidote_crdt_map_rr, generate_downstream_update, 2, [ignore], body_exhaustiveness}.
+{exception, antidote_crdt_map_rr, generate_downstream_remove, 2, [ignore], body_exhaustiveness}.
+%% case dict:find({Key, Type}, Map) of {ok, State} -> ..; error -> .. end: the first branch (171, 182) is reported as dead
+{exception, antidote_crdt_map_rr, update_entry, 2, [ignore], dict_types}.
+{exception, antidote_crdt_map_rr, remove_entry, 2, [ignore], dict_types}.
 {exception, antidote_crdt_map_rr, from_binary, 1, [ignore], partial}. % 218: only the tagged binary
-%% 224: antidote_crdt:is_type(Type) for the Type of any term; is_type/1 tests any term, its spec takes typ()
-{exception, antidote_crdt_map_rr, is_operation, 1, [ignore], spec_wrong}.
+%% 224: antidote_crdt:is_type(Type) andalso antidote_crdt:is_operation(Type, Op), the Type of any term
+{exception, antidote_crdt_map_rr, is_operation, 1, [ignore], validated}.
 
 {module, antidote_crdt_register_lww, #{file => "antidote_crdt/src/antidote_crdt_register_lww.erl",
                                        overlays => [{specs, "overlay_antidote_crdt.erl"}], timeout => 10000}}.
@@ -110,7 +175,6 @@
 
 {module, antidote_crdt_register_mv, #{file => "antidote_crdt/src/antidote_crdt_register_mv.erl",
                                       overlays => [{specs, "overlay_antidote_crdt.erl"}], timeout => 10000}}.
-{exception, antidote_crdt_register_mv, downstream, 2, [ignore], spec_wrong}. % the op type lacks {reset, {}}, the clause at 87
 {exception, antidote_crdt_register_mv, from_binary, 1, [ignore], partial}. % 124: only the tagged binary
 
 {module, antidote_crdt_secure_counter_pn, #{file => "antidote_crdt/src/antidote_crdt_secure_counter_pn.erl",

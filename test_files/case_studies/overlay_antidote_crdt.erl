@@ -98,7 +98,9 @@
 
 %% --- antidote_crdt_map_rr ---
 
--spec 'antidote_crdt_map_rr:update_entry'(antidote_crdt_map_rr:nested_downstream(), antidote_crdt_map_rr:state()) ->
+%% one of the updates of an effect(), which has no none: generate_downstream_update/2 never gives it
+-spec 'antidote_crdt_map_rr:update_entry'({antidote_crdt_map_rr:typedKey(), {ok, Effect :: term()}},
+                                          antidote_crdt_map_rr:state()) ->
           antidote_crdt_map_rr:state().
 'antidote_crdt_map_rr:update_entry'(_, _) -> error(overlay).
 
@@ -110,8 +112,8 @@
           antidote_crdt_map_rr:state().
 'antidote_crdt_map_rr:remove_obsolete'(_, _, _) -> error(overlay).
 
-%% the type of a key is an atom() throughout this module, see typedKey()
--spec 'antidote_crdt_map_rr:is_bottom'(Type :: atom(), NestedState :: term()) -> boolean().
+%% the type of a key, see typedKey(), and the state of that key
+-spec 'antidote_crdt_map_rr:is_bottom'(Type :: antidote_crdt:typ(), NestedState :: term()) -> boolean().
 'antidote_crdt_map_rr:is_bottom'(_, _) -> error(overlay).
 
 -spec 'antidote_crdt_map_rr:equal'(antidote_crdt_map_rr:state(), antidote_crdt_map_rr:state()) -> boolean().

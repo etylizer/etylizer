@@ -66,7 +66,16 @@
     | antidote_crdt_register_lww
     | antidote_crdt_register_mv
     | antidote_crdt_map_go
-    | antidote_crdt_map_rr.
+    | antidote_crdt_map_rr
+    | antidote_crdt_secure_set_go
+    | antidote_crdt_secure_set_aw
+    | antidote_crdt_secure_set_rw
+    | antidote_crdt_secure_register_lww
+    | antidote_crdt_secure_register_mv
+    | antidote_crdt_secure_map_go
+    | antidote_crdt_secure_map_rr.
+
+-export_type([typ/0]).
 
 -type internal_crdt() :: term().
 -type internal_effect() :: term().
@@ -89,14 +98,14 @@
 -callback update(internal_effect(), internal_crdt()) -> {ok, internal_crdt()}.
 -callback require_state_downstream(update()) -> boolean().
 %% Type check
--callback is_operation(update()) -> boolean().
+-callback is_operation(term()) -> boolean().
 
 -callback equal(internal_crdt(), internal_crdt()) -> boolean().
 -callback to_binary(internal_crdt()) -> binary().
 -callback from_binary(binary()) -> {ok, internal_crdt()} | {error, reason()}.
 
 % Check if the given type is supported by Antidote
--spec is_type(typ()) -> boolean().
+-spec is_type(term()) -> boolean().
 is_type(antidote_crdt_counter_pn) -> true;
 is_type(antidote_crdt_counter_b) -> true;
 is_type(antidote_crdt_counter_fat) -> true;
@@ -176,7 +185,7 @@ require_state_downstream(Type, Update) ->
     T:require_state_downstream(Update).
 
 % Checks whether the given update operation is valid for the given type
--spec is_operation(typ(), update()) -> boolean().
+-spec is_operation(typ(), term()) -> boolean().
 is_operation(Type, Update) ->
     T = antidote_crdt:alias(Type),
     true = is_type(T),

@@ -65,7 +65,7 @@
     {Value :: term(), uniqueToken(), Overridden :: [uniqueToken()]}
     | {reset, Overridden :: [uniqueToken()]}.
 
--type antidote_crdt_register_mv_op() :: {assign, term()}.
+-type antidote_crdt_register_mv_op() :: {assign, term()} | {reset, {}}.
 
 %% @doc Create a new, empty `antidote_crdt_register_mv()'
 -spec new() -> antidote_crdt_register_mv().

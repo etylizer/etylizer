@@ -76,8 +76,8 @@
 -include_lib("eunit/include/eunit.hrl").
 -endif.
 
--type typedKey() :: {Key :: term(), Type :: atom()}.
--type state() :: dict:dict(typedKey(), {NestedState :: term()}).
+-type typedKey() :: {Key :: term(), Type :: antidote_crdt:typ()}.
+-type state() :: dict:dict(typedKey(), NestedState :: term()).
 -type op() ::
     {update, nested_op()}
     | {update, [nested_op()]}
@@ -85,9 +85,9 @@
     | {remove, [typedKey()]}
     | {batch, {Updates :: [nested_op()], Removes :: [typedKey()]}}
     | {reset, {}}.
--type nested_op() :: {typedKey(), Op :: term()}.
+-type nested_op() :: {typedKey(), Op :: antidote_crdt:update()}.
 -type effect() ::
-    {Adds :: [nested_downstream()], Removed :: [nested_downstream()]}.
+    {Adds :: [{typedKey(), {ok, Effect :: term()}}], Removed :: [nested_downstream()]}.
 -type nested_downstream() :: {typedKey(), none | {ok, Effect :: term()}}.
 -type value() :: orddict:orddict(typedKey(), term()).
 
@@ -133,7 +133,7 @@ downstream({reset, {}}, CurrentMap) ->
     AllKeys = [Key || {Key, _Val} <- value(CurrentMap)],
     downstream({remove, AllKeys}, CurrentMap).
 
--spec generate_downstream_update({typedKey(), Op :: term()}, state()) -> nested_downstream().
+-spec generate_downstream_update(nested_op(), state()) -> {typedKey(), {ok, Effect :: term()}}.
 generate_downstream_update({{Key, Type}, Op}, CurrentMap) ->
     CurrentState =
         case dict:is_key({Key, Type}, CurrentMap) of
