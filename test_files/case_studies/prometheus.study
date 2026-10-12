@@ -17,21 +17,65 @@
 %% with it, so that a call into another module of prometheus is checked against the spec of the
 %% callee. The specs follow the types of the modules and of the headers, the callbacks of the
 %% behaviours and the edoc comments of the package: the functions of the metric modules take the
-%% documented arguments (a name, a list of label values, a number), not term(). No flag, no
-%% assertion, no library overlay.
+%% documented arguments (a name, a list of label values, a number), not term().
 %%
-%% All 29 modules run: 333 functions type check, 138 do not. With the declarations as the package
+%% With the specs alone 333 functions type check and 138 do not. With the declarations as the package
 %% has them it is 316 and 155 (and 422 and 49 without the overlay, where a function without a spec
 %% is dynamic()). The corrections make 17 functions type check: collect_mf/2 of the six collectors;
 %% duration_unit_from_string/1, from_native/2 and to_native/2 of prometheus_time; create_mf/4,
 %% label_pair/1, metrics_from_tuples/2, summary_metric/1 and summary_metric/4 of
 %% prometheus_model_helpers; prometheus_mnesia:table_path/3, prometheus_registry:exists/1 and
 %% prometheus_text_format:join/2. Four functions of prometheus_model_helpers get a correct spec and
-%% fail with another first error, so with another reason: metric_name/1, metric_from_tuple/2,
-%% ensure_list/1 and ensure_binary_or_string/1. No function fails that type checked before.
-%% Of the 138, 4 are name errors, 3 are specs that the checker rejects for a map type and 1 is a
-%% timeout; there is no internal error any more. The source of each of the 138 was read, no
-%% exception has the reason unknown.
+%% fail with another first error: metric_name/1, metric_from_tuple/2, ensure_list/1 and
+%% ensure_binary_or_string/1. No function fails that type checked before.
+%%
+%% Library specs, flags and assertions (step IV). 431 functions type check as they are, 16 with a flag
+%% (13 without the redundancy check of their clauses, 3 without the exhaustiveness check), 24 are
+%% ignored; 169 assertions (160 assert_type, 7 assert_pattern, 2 annotate_type) in 25 modules. Each
+%% flag and each assertion is needed: without it exactly its function fails. The source of each of
+%% the 24 was read, no exception has the reason unknown.
+%%   overlay_prometheus_lib.erl has 16 specs for functions of OTP and is on the 20 modules that call
+%%     one of them. They say more than OTP does for element/2 (typed by the tuple for a pair and for
+%%     the row of a metric family), integer_to_list/1, lists:map/2 (a list that is not empty stays
+%%     so), keyfind/3, seq/2, sum/1 and flatten/1 and for proplists:delete/2. Where OTP gives a result
+%%     as a type variable that is bound only in when, and that so fits every type, they say term():
+%%     application:get_env/2,3 and get_key/2 and ets:select/2; lists:foldl/3 and foldr/3 bind the
+%%     accumulator. erlang:system_info/1 and erlang:statistics/1 have the items that prometheus asks
+%%     for, 7 clauses each where OTP has 81 and 19: with the 81
+%%     prometheus_vm_system_info_collector:allocators/0 ran into the timeout (and was accepted with
+%%     more time, wrongly), and a match on a result of erlang:statistics/1, which OTP gives with type
+%%     variables, counted as dead.
+%%     mnesia_tm:get_info/1, ram_file:open/2 and ram_file:get_size/1 have no spec in OTP, and for
+%%     such a function the checker takes none from an overlay: three name errors stay.
+%%   The overlay alone makes 9 functions type check: schedulers_seq/0 of the counter, the histogram
+%%     and the two summaries, prometheus_histogram:buckets_seq/1, mf_labels/1, mf_constant_labels/1
+%%     and mf_duration_unit/1 of prometheus_metric and prometheus_mnesia:table_disk_size/2. With
+%%     term() for the application environment 8 functions that type checked before need an
+%%     assertion (reason app_env): prometheus_collector:collect_mf/3, prometheus_sup:default_metrics/0
+%%     and enabled_metrics/0 of the six collectors.
+%%   Flags: 13 functions have clauses that are dead for their spec, a clause that raises an error for
+%%     a value outside the documented types (defensive). 3 lack a clause:
+%%     prometheus_text_format:emit_metric/3 for a metric without a value,
+%%     prometheus_histogram:create_histogram_metric/6 for a list of less than two, and
+%%     prometheus_quantile_summary:quantile/1, whose pattern is on a map of a type that is not
+%%     supported.
+%%   An assertion is an unchecked cast (assert_type, assert_pattern) of a value whose type the checker
+%%     cannot know: what an ets table holds, the data of a metric family, a property of a spec, a
+%%     value of the application environment, an item of mnesia or of the allocators, a field of a
+%%     generated record, a value that the program has validated. 22 of them are for gaps of the
+%%     checker (narrowing, map types, the range of a sum, a segment of a binary, a record guard): they
+%%     say what is true and the checker does not see. The 2 annotate_type are checked: they give the
+%%     subject of a case a wider type, so that a defensive branch is not dead. A function that also
+%%     has an error in the program gets no assertion and stays ignored.
+%%   Ignored: 7 for an error in the program (reasons source_bug and missing_fields): the two of
+%%     prometheus_model_helpers and prometheus_quantile_summary:quantile_merge/2 as before, and four
+%%     that an inherent first error had hidden: prometheus_boolean:save_toggle/3,
+%%     prometheus_histogram:observe/4 and pobserve/6 and
+%%     prometheus_quantile_summary:invariant_and_quantiles_from_spec/1. 3 of prometheus_gauge for
+%%     the two values of a row (union_elimination). 14 for the checker: 3 specs
+%%     with a map type that it rejects, 3 calls of OTP functions without a spec, fun hd/1, 2 for a
+%%     bounded type variable, 1 for a pattern with a bound variable, 2 that need an assertion inside
+%%     a fun and 2 that need one where the assertion crashes the engine.
 %%
 %% Declarations corrected in the source: 22 in 11 modules, old -> new. Only -spec, -type and
 %% -export_type (the package declares no record outside the generated header); no function body,
@@ -115,207 +159,367 @@
 {deps, ["quantile_estimator"]}.
 
 %% {reason, Id, Class, Text}. Class: real (the program or its spec is wrong), inherent (correct at
-%% run time, not provable by types), fixable (gap in the type system or checker), unknown.
-%% The reason of an exception is the one of the first error that the checker reports for the function.
-{reason, ets_value,            inherent, "what an ets table holds is not in its type: ets:lookup/2 gives [tuple()], for a set it is [] or one row of the shape the module inserts; ets:select_replace/2 for one key gives 0 or 1; ets:lookup_element/3 gives term(); ets:match/2 gives the bindings of a row as a list of terms"}.
-{reason, proplist,             inherent, "term() from a property list, used at the type of the property"}.
-{reason, info_item,            inherent, "mnesia:system_info/1 and mnesia:table_info/2 give term(): the type depends on the item asked for"}.
-{reason, unchecked_result,     inherent, "a result that can be false or undefined, used as the success value: lists:keyfind/3 for a key that the program knows is there, erlang:process_info/2, erlang:statistics(microstate_accounting), prometheus_metric:check_mf_exists/3"}.
-{reason, nonempty_list,        inherent, "a list that the program knows is not empty: lists:last/1 of it, or a result typed [T, ...]"}.
+%% run time, not provable by types), fixable (gap in the type system or checker), benign (dead for the spec, kept on purpose), unknown.
+%% The reason of an exception with ignore is the one of what blocks the function in the end: the first error that no
+%% library spec, flag or assertion takes away without hiding a real error. Its comment names what is in front of it and
+%% behind it. The reason of an assertion is the one of the value that it casts, the reason of a flag the one of the
+%% clauses.
+{reason, ets_value,            inherent, "what an ets table holds is not in its type: ets:lookup/2 gives [tuple()], for a set it is [] or one row of the shape the module inserts; ets:select_replace/2 for one key gives 0 or 1; ets:select/2 and ets:lookup_element/3 give terms; ets:match/2 gives the bindings of a row as a list of terms (prometheus_metric:metrics/2, load_all_values/2,3 of the metric modules); element/2 of a row whose size depends on the metric gives a term()"}.
+{reason, mf_data,              inherent, "prometheus_metric:mf_data/1 gives the data of a metric, a term() (prometheus_collector:data()): each metric module knows what it has stored there, the buckets or the configuration"}.
+{reason, proplist,             inherent, "term() from a property list (proplists:get_value/2,3 on the spec of a metric, on erlang:memory/0), used at the type of the property"}.
+{reason, app_env,              inherent, "term() from the application environment (application:get_env/2,3, application:get_key/2), used at the type that the configuration of prometheus has"}.
+{reason, info_item,            inherent, "mnesia:system_info/1 and mnesia:table_info/2 give term(): the type depends on the item asked for. Where the call is in a fun, the fun is cast as a whole (nothing in a fun can carry an assertion), which leaves its body unchecked against the type"}.
+{reason, info_arg,             fixable,  "erlang:system_info/1, erlang:port_info/2 or erlang:process_info/2 called with an atom() that the program knows is an item: one of those that the metrics of the collector name"}.
+{reason, alloc_info,           inherent, "the allocator information of erlang:system_info({allocator, A}) is a nested property list of terms"}.
+{reason, model_field,          inherent, "a field of a record of prometheus_model.hrl, which gpb generates, read at the type that prometheus_model_helpers writes: the field is optional (T | undefined), a number can also be infinity, '-infinity' or nan, the type of a metric family an integer()"}.
+{reason, validated,            inherent, "a term that the program validates at run time (a regular expression, io_lib:printable_unicode_list/1, lists:any/2), used at the validated type"}.
+{reason, unchecked_result,     inherent, "a result that can be false or undefined, used as the success value: lists:keyfind/3 for a key that the program knows is there, erlang:process_info/2, erlang:port_info/2, erlang:statistics(microstate_accounting), prometheus_metric:check_mf_exists/3"}.
 {reason, body_exhaustiveness,  inherent, "exhaustiveness of a match or a case inside the body: the program lets it crash for the other values"}.
 {reason, partial,              inherent, "partial function, the callers rule out the missing case"}.
-{reason, defensive,            inherent, "defensive clause, dead for the spec"}.
-{reason, improper_list,        inherent, "a guard is_list/1 holds for an improper list too, the program takes the list to be a proper one"}.
-{reason, start_ret,            fixable,  "result of starting the supervisor: supervisor:start_link/3 can give ignore, init/1 of the module does not"}.
-{reason, validated,            inherent, "a term that the program validates at run time (a regular expression, io_lib:printable_unicode_list/1, lists:any/2), used at the validated type"}.
-{reason, mf_data,              inherent, "prometheus_metric:mf_data/1 gives the data of a metric, a term() (prometheus_collector:data()): each metric module knows what it has stored there, the buckets or the configuration"}.
+{reason, defensive,            benign,   "defensive clause, dead for the spec. As an annotation, which is checked: the subject of a case that has such a branch, at a wider type, so that the checker takes the branch as reachable"}.
+{reason, nonempty_list,        inherent, "a list that the program knows is not empty: a result typed [T, ...] for a positive count, the counters of the buckets of a histogram, the rows of a series that a query has found (so that a fold over them does not give its initial value)"}.
 {reason, list_shape,           inherent, "the shape of a list that a list type cannot say: a list of two, a list that starts with two sums, a row as a list of elements of different types"}.
-{reason, model_field,          inherent, "a field of a record of prometheus_model.hrl, which gpb generates, read at the type that prometheus_model_helpers writes: the field is optional (T | undefined), a number can also be infinity, '-infinity' or nan, the type of a metric family an integer()"}.
+{reason, improper_list,        inherent, "a guard is_list/1 holds for an improper list too, the program takes the list to be a proper one"}.
+{reason, correlated,           inherent, "the type of a value depends on another value, which the types of two variables cannot say: the metric of prometheus_model_helpers:metric_from_tuple/2 is of the kind that its first argument names"}.
+{reason, union_elimination,    fixable,  "variables bound from a union of tuples lose their correlation (etylizer#28)"}.
+{reason, number_range,         fixable,  "range of a number that the types do not show: erlang:convert_time_unit/3 of one second is positive"}.
+{reason, text_bytes,           fixable,  "text that is typed string() or io_lib:chars(), whose characters need not be bytes, used as iodata(): here it is ASCII, the name of a metric type or a number as io_lib:format/2 and float_to_list/1 print it"}.
+{reason, start_ret,            fixable,  "result of starting the supervisor: supervisor:start_link/3 can give ignore, init/1 of the module does not"}.
 {reason, catch_value,          fixable,  "the value of catch Expr is a term()"}.
-{reason, info_arg,             inherent, "erlang:system_info/1 called with an atom() that the program knows is an item; for an unknown item it raises badarg, which the function catches"}.
-{reason, alloc_info,           inherent, "the allocator information of erlang:system_info({allocator, A}) is a nested property list of terms"}.
 {reason, missing_fields,       real,     "a record is built without fields whose types have no undefined"}.
 {reason, source_bug,           real,     "error in the program"}.
-{reason, otp_no_spec,          fixable,  "calls an OTP function that has no spec, which is a name error"}.
+{reason, otp_no_spec,          fixable,  "calls an OTP function that has no spec, which is a name error; a spec in a library overlay is not taken for such a function"}.
 {reason, bif_fun,              fixable,  "fun hd/1: a fun that names an auto-imported BIF without its module is a name error"}.
-{reason, element_type,         fixable,  "element/2 is not typed by the tuple it is applied to"}.
-{reason, library_spec,         fixable,  "spec of a library function too imprecise"}.
-{reason, checker_timeout,      fixable,  "the check of the function runs into the timeout"}.
-{reason, free_result,          fixable,  "library spec whose type variables are bound only in when (application:get_env/2, ets:select/2, lists:foldl/3): any use of the result passes, a branch on such a value is dead, and so is a clause of the fun for lists:foldl/3 that takes its argument apart"}.
-{reason, map_types,            fixable,  "map types with more than one association or with mandatory associations are not supported: a spec that has one is rejected; behind a type alias a pattern on a map of that type does not check"}.
+{reason, map_types,            fixable,  "map types with more than one association or with mandatory associations are not supported: a spec that has one is rejected; behind a type alias a pattern on a map of that type does not count as matching it, and a map expression is not of the type. As an assertion or a flag: the pattern of a match or of a clause on such a map, for a key that the type has; a map expression cast to the type; the value under a key that is a variable"}.
 {reason, narrowing,            fixable,  "a type test does not narrow: X =:= all on the left of orelse for the right, a filter X =/= undefined in a comprehension, a case on is_atom(X) for its branches"}.
+{reason, nonempty_seq,         fixable,  "a list mapped from lists:seq(0, N - 1) with N > 0, or built by a recursion that counts down from N > 0, is not empty"}.
+{reason, type_predicate,       fixable,  "narrowing by a predicate: case io_lib:printable_unicode_list(X) of true gives a string() X"}.
 {reason, record_guard,         fixable,  "a guard is_record(X, r) narrows X to tuple() and counts as true for every tuple, not only for #r{}"}.
 {reason, arith_range,          fixable,  "the sum of integers with a range has none: pos_integer() + 1 and 5 + non_neg_integer() are not a pos_integer()"}.
 {reason, bit_segment,          fixable,  "an integer segment of a binary pattern is integer(), its size gives no range: <<X:8>> is not a byte()"}.
 {reason, bounded_tyvar,        fixable,  "a type variable with a bound in when (Value :: T) counts as T itself: a fun argument over the variable must take all of T"}.
+{reason, bound_pattern,        fixable,  "a pattern with an already bound variable is not handled: the case counts as not exhaustive, no assertion closes it"}.
+{reason, in_fun,               fixable,  "needs an assertion inside a fun, which the assertions do not reach (assertions:visit/4 skips the clauses of a fun)"}.
+{reason, assertion_crash,      fixable,  "needs an assertion that crashes the engine: assertions:hash/1 fails when the hash of an expression at the position is a code point"}.
+{reason, spec_imprecise, real, "imprecise type spec in the source"}.
+{reason, spec_wrong, real, "wrong type in the source"}.
+
+%% Library specs that overlays correct
+{correction, erlang, system_info, 1, spec_wrong}. % {allocator, A} -> [_], documented false | undefined
+{correction, erlang, integer_to_list, 1, spec_imprecise}.
+{correction, lists, foldl, 3, spec_imprecise}.
+{correction, lists, foldr, 3, spec_imprecise}.
+{correction, lists, map, 2, spec_imprecise}.
+{correction, lists, seq, 2, spec_imprecise}.
+{correction, lists, sum, 1, spec_imprecise}.
 
 {module, prometheus, #{file => "prometheus/src/prometheus.erl",
                        overlays => [{specs, "overlay_prometheus.erl"}], timeout => 10000}}.
-{exception, prometheus, start, 2, [ignore], start_ret}. % prometheus_sup:start_link() as the result: it can be ignore
+%% start/2: prometheus_sup:start_link(), supervisor:start_link/3, gives ignore only if init/1 does, and
+%% prometheus_sup:init/1 gives {ok, ..}
+{assertion, prometheus, {19, 34, "4f8d28"}, assert_type, "{ok, pid()} | {error, term()}", start_ret}.
 
 {module, prometheus_buckets, #{file => "prometheus/src/prometheus_buckets.erl",
-                               overlays => [{specs, "overlay_prometheus.erl"}], timeout => 10000}}.
-%% lists:last(Buckets), Buckets is lists:map/2 of RawBuckets, which is not [] here
-{exception, prometheus_buckets, new, 1, [ignore], nonempty_list}.
-%% a comprehension over lists:seq(0, Count - 1) as buckets(), which is [T, ...]
-{exception, prometheus_buckets, exponential, 3, [ignore], nonempty_list}.
-%% linear(Start, Step, Count, []) as buckets(): linear/4 gives [] for the count 0, which the first clause rules out
-{exception, prometheus_buckets, linear, 3, [ignore], nonempty_list}.
+                               overlays => [{specs, "overlay_prometheus.erl"},
+                                            {library, "overlay_prometheus_lib.erl"}], timeout => 10000}}.
+%% the clause for undefined and the last clause, for what is not a list: dead for the four forms of buckets that the
+%% spec has. (In front of them, in step III: lists:last(Buckets) of the lists:map/2 of a list that is not empty, which
+%% the library spec now says)
+{exception, prometheus_buckets, new, 1, [no_redundancy], defensive}.
+%% the first clause, for a Count below 1: dead for pos_integer()
+{exception, prometheus_buckets, exponential, 3, [no_redundancy], defensive}.
+%% exponential/3: a comprehension over lists:seq(0, Count - 1), which is not empty for the pos_integer() Count
+{assertion, prometheus_buckets, {100, 3, "3761ed"}, assert_type, "[number(), ...]", nonempty_seq}.
+%% the first clause, for a Count below 1: dead for pos_integer()
+{exception, prometheus_buckets, linear, 3, [no_redundancy], defensive}.
+%% linear/3: linear/4 gives [] only for the count 0, and Count is a pos_integer()
+{assertion, prometheus_buckets, {118, 3, "ea94cf"}, assert_type, "[number(), ...]", nonempty_seq}.
 
 {module, prometheus_collector, #{file => "prometheus/src/prometheus_collector.erl",
-                                 overlays => [{specs, "overlay_prometheus.erl"}], timeout => 10000}}.
-%% case application:get_env(prometheus, collectors) of undefined -> ..; {ok, Collectors} -> .. end: the second branch
-%% counts as dead, now that catch_default_collectors/1 has a spec
-{exception, prometheus_collector, enabled_collectors, 0, [ignore], free_result}.
+                                 overlays => [{specs, "overlay_prometheus.erl"},
+                                              {library, "overlay_prometheus_lib.erl"}], timeout => 10000}}.
+%% enabled_collectors/0: {ok, Collectors} = application:get_env(prometheus, collectors), the configured collectors,
+%% where default stands for the collectors of the package
+{assertion, prometheus_collector, {136, 52, "3922b2"}, assert_type, "[collector() | default]", app_env}.
+%% collect_mf/3: {ok, Labels0} = application:get_env(prometheus, global_labels), the labels for every metric. Type
+%% checked without it as long as the result of application:get_env/2 fitted every type
+{assertion, prometheus_collector, {149, 53, "546280"}, assert_type, "prometheus_model_helpers:labels()", app_env}.
 
 {module, prometheus_format, #{file => "prometheus/src/prometheus_format.erl",
                               overlays => [{specs, "overlay_prometheus.erl"}], timeout => 10000}}.
 
 {module, prometheus_instrumenter, #{file => "prometheus/src/prometheus_instrumenter.erl",
-                                    overlays => [{specs, "overlay_prometheus.erl"}], timeout => 10000}}.
-%% case application:get_env(prometheus, instrumenters) of undefined -> ..; {ok, Instrumenters} -> .. end: the second
-%% branch counts as dead, now that all_known_instrumenters/0 has a spec
-{exception, prometheus_instrumenter, enabled_instrumenters, 0, [ignore], free_result}.
+                                    overlays => [{specs, "overlay_prometheus.erl"},
+                                                 {library, "overlay_prometheus_lib.erl"}], timeout => 10000}}.
+%% enabled_instrumenters/0: {ok, Instrumenters} = application:get_env(prometheus, instrumenters)
+{assertion, prometheus_instrumenter, {29, 28, "e25831"}, assert_type, "[instrumenter()]", app_env}.
 
 {module, prometheus_metric, #{file => "prometheus/src/prometheus_metric.erl",
-                              overlays => [{specs, "overlay_prometheus.erl"}], timeout => 10000}}.
-%% case ets:lookup(Table, {Registry, mf, Name}) of [] -> ..; [{_, {Labels, _}, _, _, _} = MF] -> .. end
-{exception, prometheus_metric, check_mf_exists, 4, [ignore], ets_value}.
-%% case ets:lookup(Table, {Registry, mf, Name}) of [] -> ..; [MF] -> .. end
-{exception, prometheus_metric, check_mf_exists, 3, [ignore], ets_value}.
-{exception, prometheus_metric, mf_labels, 1, [ignore], element_type}. % {Labels, _} = element(2, MF)
-{exception, prometheus_metric, mf_constant_labels, 1, [ignore], element_type}. % element(3, MF) as labels()
-{exception, prometheus_metric, mf_duration_unit, 1, [ignore], element_type}. % element(4, MF) as duration_unit() | undefined
+                              overlays => [{specs, "overlay_prometheus.erl"},
+                                           {library, "overlay_prometheus_lib.erl"}], timeout => 10000}}.
+%% check_mf_exists/4: case ets:lookup(Table, {Registry, mf, Name}) of [] -> ..; [{_, {Labels, _}, _, _, _} = MF] -> ..
+%% end. The table is a set: no row, or the one that insert_mf/3 has written
+{assertion, prometheus_metric, {141, 8, "7d17e5"}, assert_type, "[] | etylizer:cons(overlay_prometheus:mf(), [])", ets_value}.
+%% check_mf_exists/3: case ets:lookup(Table, {Registry, mf, Name}) of [] -> ..; [MF] -> .. end
+{assertion, prometheus_metric, {156, 8, "7d17e5"}, assert_type, "[] | etylizer:cons(overlay_prometheus:mf(), [])", ets_value}.
 
 {module, prometheus_metric_spec, #{file => "prometheus/src/prometheus_metric_spec.erl",
-                                   overlays => [{specs, "overlay_prometheus.erl"}], timeout => 10000}}.
-{exception, prometheus_metric_spec, registry, 1, [ignore], proplist}. % get_value(registry, Spec, default) as registry()
-%% validate_metric_name(RawName, RawName) for a list: it is a name() and a string() if validate_metric_name/2 accepts it
-{exception, prometheus_metric_spec, validate_metric_name, 1, [ignore], validated}.
-%% lists:map(fun validate_metric_label_name/1, RawLabels) behind the guard is_list(RawLabels)
-{exception, prometheus_metric_spec, validate_metric_label_names, 1, [ignore], improper_list}.
-%% validate_metric_label_name_content(RawName) for a list: a string(), as io_lib:printable_unicode_list/1 has said true
-{exception, prometheus_metric_spec, validate_metric_label_name, 1, [ignore], validated}.
-%% true -> RawHelp: a list as help(), a string as io_lib:printable_unicode_list/1 has said true
-{exception, prometheus_metric_spec, validate_metric_help, 1, [ignore], validated}.
-%% Value, a name() that is a list, as string(): name() has iolist() too, but the name of the spec has passed
+                                   overlays => [{specs, "overlay_prometheus.erl"},
+                                                {library, "overlay_prometheus_lib.erl"}], timeout => 10000}}.
+%% registry/1: the key registry of the spec, the name of a registry
+{assertion, prometheus_metric_spec, {35, 3, "7a6d5b"}, assert_type, "prometheus_registry:registry()", proplist}.
+%% validate_metric_name/1: validate_metric_name(RawName, RawName) for a list, as the name and as its text:
+%% validate_metric_name/2 raises an error unless it is a string (io_lib:printable_unicode_list/1, re:run/2)
+{assertion, prometheus_metric_spec, {136, 24, "469ad2"}, assert_type, "string()", validated}.
+{assertion, prometheus_metric_spec, {136, 33, "469ad2"}, assert_type, "string()", validated}.
+%% lists:map(fun validate_metric_label_name/1, RawLabels) behind the guard is_list(RawLabels), which holds for an
+%% improper list too: wants an assertion [term()] (improper_list) on RawLabels at 159:47, the only expression that can
+%% carry it, and its hash is 0d225c. With the variable renamed in a scratch copy the assertion gets the function through
+{exception, prometheus_metric_spec, validate_metric_label_names, 1, [ignore], assertion_crash}.
+%% validate_metric_label_name/1: RawName, a list for which io_lib:printable_unicode_list/1 has said true
+{assertion, prometheus_metric_spec, {171, 42, "469ad2"}, assert_type, "string()", type_predicate}.
+%% validate_metric_help/1: RawHelp, a list for which io_lib:printable_unicode_list/1 has said true
+{assertion, prometheus_metric_spec, {197, 14, "aa7094"}, assert_type, "string()", type_predicate}.
+%% to_string/1: Value, a name() that is a list. name() has iolist() too, but the name of a spec has passed
 %% validate_metric_name/2, which accepts a list only if it is a string
-{exception, prometheus_metric_spec, to_string, 1, [ignore], validated}.
+{assertion, prometheus_metric_spec, {209, 3, "2caa2e"}, assert_type, "string()", validated}.
 
 {module, prometheus_misc, #{file => "prometheus/src/prometheus_misc.erl",
-                            overlays => [{specs, "overlay_prometheus.erl"}], timeout => 10000}}.
-%% lists:foldl(fun ({_App, Module}, Acc) -> .. end, [], Targets): the clause of the fun counts as dead
-{exception, prometheus_misc, all_module_attributes, 1, [ignore], free_result}.
-%% case catch Module:module_info(attributes) of ..; V -> V end: V as [{atom(), [term()]}]
-{exception, prometheus_misc, module_attributes, 1, [ignore], catch_value}.
+                            overlays => [{specs, "overlay_prometheus.erl"},
+                                         {library, "overlay_prometheus_lib.erl"}], timeout => 10000}}.
+%% all_module_attributes/1: the key modules of an application is the list of its modules
+{assertion, prometheus_misc, {36, 29, "e1023a"}, assert_type, "undefined | {ok, [module()]}", app_env}.
+%% module_attributes/1: case catch Module:module_info(attributes) of ..; V -> V end. What is not an 'EXIT' tuple is the
+%% list of the attributes
+{assertion, prometheus_misc, {54, 7, "e91551"}, assert_type, "[{atom(), [term()]}]", catch_value}.
 
 {module, prometheus_registry, #{file => "prometheus/src/prometheus_registry.erl",
                                 overlays => [{specs, "overlay_prometheus.erl"}], timeout => 10000}}.
-%% Callback(Registry, Collector) for {_, Collector} <- ets:lookup(?TABLE, Registry)
-{exception, prometheus_registry, collect, 2, [ignore], ets_value}.
-%% [Collector || {_, Collector} <- ets:lookup(?TABLE, Registry)] as [collector()]
-{exception, prometheus_registry, collectors, 1, [ignore], ets_value}.
+%% collect/2: {_, Collector} <- ets:lookup(?TABLE, Registry). The table is a bag of {Registry, Collector}, as
+%% register_collector/2 inserts them
+{assertion, prometheus_registry, {86, 23, "3876a5"}, assert_type, "[{registry(), prometheus_collector:collector()}]", ets_value}.
+%% collectors/1: {_, Collector} <- ets:lookup(?TABLE, Registry), as in collect/2
+{assertion, prometheus_registry, {95, 35, "3876a5"}, assert_type, "[{registry(), prometheus_collector:collector()}]", ets_value}.
 
 {module, prometheus_sup, #{file => "prometheus/src/prometheus_sup.erl",
-                           overlays => [{specs, "overlay_prometheus.erl"}], timeout => 10000}}.
+                           overlays => [{specs, "overlay_prometheus.erl"},
+                                        {library, "overlay_prometheus_lib.erl"}], timeout => 10000}}.
+%% default_metrics/0: application:get_env(prometheus, default_metrics, []), a list of {Type, Spec} and {Registry, Type,
+%% Spec}. Type checked without it as long as the result of application:get_env/3 fitted every type
+{assertion, prometheus_sup, {78, 3, "dd9629"}, assert_type, "[overlay_prometheus:metric_decl()]", app_env}.
 
 {module, prometheus_time, #{file => "prometheus/src/prometheus_time.erl",
                             overlays => [{specs, "overlay_prometheus.erl"}], timeout => 10000}}.
-%% true -> SDU: any term as duration_unit(), as lists:any/2 has found it among the units
-{exception, prometheus_time, validate_duration_unit, 1, [ignore], validated}.
+%% validate_duration_unit/1: SDU, the term of the key duration_unit of a spec, which lists:any/2 has found among the
+%% units of ?DURATION_UNITS
+{assertion, prometheus_time, {128, 7, "e5bd7e"}, assert_type, "prometheus_metric:duration_unit()", validated}.
 
 {module, prometheus_mnesia_collector, #{file => "prometheus/src/collectors/mnesia/prometheus_mnesia_collector.erl",
-                                        overlays => [{specs, "overlay_prometheus.erl"}], timeout => 10000}}.
-%% fun() -> mnesia:system_info(transaction_failures) end (and three more) as a fun that gives metrics
-{exception, prometheus_mnesia_collector, metrics, 1, [ignore], info_item}.
-%% case [V || {A, _, V} <- application:which_applications(), A == App] of [] -> ..; [_] -> .. end
-{exception, prometheus_mnesia_collector, is_started, 1, [ignore], body_exhaustiveness}.
-%% Metrics =:= all orelse lists:member(Name, Metrics): on the right Metrics is still all | [atom()]
-{exception, prometheus_mnesia_collector, metric_enabled, 2, [ignore], narrowing}.
-%% lists:foldl(Calculator, 0, mnesia:system_info(tables))
-{exception, prometheus_mnesia_collector, get_memory_usage, 0, [ignore], info_item}.
-%% mnesia:table_info(Tab, memory) * WordSize
-{exception, prometheus_mnesia_collector, get_tablewise_memory_usage, 0, [ignore], info_item}.
-%% lists:foldl(Calculator, [], mnesia:system_info(tables))
-{exception, prometheus_mnesia_collector, get_tablewise_size, 0, [ignore], info_item}.
+                                        overlays => [{specs, "overlay_prometheus.erl"},
+                                                     {library, "overlay_prometheus_lib.erl"}], timeout => 10000}}.
+%% metrics/1: fun() -> mnesia:system_info(transaction_failures) end and the three funs below it are DataFuns, which give
+%% metrics: mnesia:system_info/1 gives term(), for these four items it is a counter. Nothing in a fun can carry an
+%% assertion, the fun can; here it is the tuple around it, as the hash 0b2334 of the fun crashes the engine
+{assertion, prometheus_mnesia_collector, {140, 4, "fd9711"}, assert_type, "{failed_transactions, counter, string(), fun(() -> non_neg_integer())}", info_item}.
+{assertion, prometheus_mnesia_collector, {145, 5, "973e59"}, assert_type, "fun(() -> non_neg_integer())", info_item}.
+{assertion, prometheus_mnesia_collector, {148, 5, "b19487"}, assert_type, "fun(() -> non_neg_integer())", info_item}.
+{assertion, prometheus_mnesia_collector, {151, 5, "d1892c"}, assert_type, "fun(() -> non_neg_integer())", info_item}.
+%% is_started/1: case [V || {A, _, V} <- application:which_applications(), A == App] of [] -> false; [_] -> true end. An
+%% application is in the list once at most
+{assertion, prometheus_mnesia_collector, {185, 8, "8008c6"}, assert_type, "[] | etylizer:cons(string(), [])", body_exhaustiveness}.
+%% enabled_metrics/0: application:get_env(prometheus, mnesia_collector_metrics, all), the names of the enabled metrics
+%% or all. Type checked without it as long as the result of application:get_env/3 fitted every type
+{assertion, prometheus_mnesia_collector, {191, 3, "cbdf2a"}, assert_type, "all | [atom()]", app_env}.
+%% metric_enabled/2: Metrics =:= all orelse lists:member(Name, Metrics): on the right of orelse Metrics is not all, so
+%% it is the list
+{assertion, prometheus_mnesia_collector, {194, 45, "ca81d3"}, assert_type, "[atom()]", narrowing}.
+%% get_memory_usage/0: Calculator = fun(Tab, Sum) -> mnesia:table_info(Tab, memory) + Sum end: the memory of a table is
+%% a number of words
+{assertion, prometheus_mnesia_collector, {198, 16, "a45812"}, assert_type, "fun((atom(), non_neg_integer()) -> non_neg_integer())", info_item}.
+%% get_memory_usage/0: mnesia:system_info(tables), the names of the tables
+{assertion, prometheus_mnesia_collector, {201, 30, "d9a41d"}, assert_type, "[atom()]", info_item}.
+%% mnesia:table_info(Tab, memory) * WordSize in the fun for lists:foldl/3: the term() of the info item wants an
+%% assertion (info_item). A cast of the whole fun does not help here, the product with WordSize is checked all the same.
+%% In front of it: mnesia:system_info(tables), which an assertion gets through
+{exception, prometheus_mnesia_collector, get_tablewise_memory_usage, 0, [ignore], in_fun}.
+%% get_tablewise_size/0: the fun gives mnesia:table_info(Tab, size), a term(), for each table: the number of its records
+{assertion, prometheus_mnesia_collector, {216, 3, "a9dd8d"}, assert_type, "[{[{table, atom()}], non_neg_integer()}]", info_item}.
+%% get_tablewise_size/0: mnesia:system_info(tables), the names of the tables
+{assertion, prometheus_mnesia_collector, {216, 31, "d9a41d"}, assert_type, "[atom()]", info_item}.
 
 {module, prometheus_vm_dist_collector, #{file => "prometheus/src/collectors/vm/prometheus_vm_dist_collector.erl",
-                                         overlays => [{specs, "overlay_prometheus.erl"}], timeout => 10000}}.
-%% Metrics =:= all orelse lists:member(Name, Metrics): on the right Metrics is still all | [atom()]
-{exception, prometheus_vm_dist_collector, metric_enabled, 2, [ignore], narrowing}.
-%% case proplists:get_value(address, Info, #net_address{}) of #net_address{..} -> .. end
-{exception, prometheus_vm_dist_collector, dist_info, 2, [ignore], proplist}.
-%% proplists:get_value(name, I) behind the filter I =/= undefined: I is what erlang:port_info/1 gives, a list or
-%% undefined. Step I had the next error, [DistPort] = [P || ..]
-{exception, prometheus_vm_dist_collector, dist_info, 5, [ignore], narrowing}.
+                                         overlays => [{specs, "overlay_prometheus.erl"},
+                                                      {library, "overlay_prometheus_lib.erl"}], timeout => 10000}}.
+%% enabled_metrics/0: application:get_env(prometheus, vm_dist_collector_metrics, all), the names of the enabled metrics
+%% or all. Type checked without it as long as the result of application:get_env/3 fitted every type
+{assertion, prometheus_vm_dist_collector, {381, 3, "dcdb49"}, assert_type, "all | [atom()]", app_env}.
+%% metric_enabled/2: Metrics =:= all orelse lists:member(Name, Metrics): on the right of orelse Metrics is not all, so
+%% it is the list
+{assertion, prometheus_vm_dist_collector, {384, 45, "ca81d3"}, assert_type, "[atom()]", narrowing}.
+%% case proplists:get_value(address, Info, #net_address{}) of #net_address{..} -> .. end wants an assertion
+%% #net_address{} (proplist) on the call at 396:10, whose hash is 0a4bd6. Behind it, seen with the variable renamed in a
+%% scratch copy: the map #{dist_pid => DistPid, node_state => NodeState} as a dist_node(), which checks neither with its
+%% two values asserted (map_types), and DistPid and NodeState, terms of the property list, as arguments of dist_info/5
+{exception, prometheus_vm_dist_collector, dist_info, 2, [ignore], assertion_crash}.
+%% dist_info/5: [DistPort] = [P || {P, I} <- AllPorts, ..]: the one port of the socket to the node. If there is none the
+%% function fails, and metrics/0 gives [] for a failure
+{assertion, prometheus_vm_dist_collector, {407, 5, "41a5d6"}, assert_pattern, "[_]", body_exhaustiveness}.
+%% dist_info/5: proplists:get_value(name, I) behind the filter I =/= undefined: I is what erlang:port_info/1 gives, a
+%% list or undefined
+{assertion, prometheus_vm_dist_collector, {411, 35, "7adc31"}, assert_type, "[tuple()]", narrowing}.
+%% dist_info/5: {ok, InetStats} = inet:getstat(DistPort), which can give {error, Posix}
+{assertion, prometheus_vm_dist_collector, {414, 5, "330991"}, assert_pattern, "{ok, _}", body_exhaustiveness}.
+%% dist_info/5: case erlang:port_info(DistPort, connected) of {_, DistPid} -> ..; {_, ConnectedPid} -> .. end: undefined
+%% if the port is closed
+{assertion, prometheus_vm_dist_collector, {415, 16, "acbeba"}, assert_type, "{connected, pid()}", unchecked_result}.
+%% dist_info/5: Map#{inet_stats => InetStats, dist_port => DistPort, dist_pid => DistPid, node_state => NodeState} as a
+%% dist_node(), a map type with several associations: a map expression of such a type does not check
+{assertion, prometheus_vm_dist_collector, {419, 15, "7bef8f"}, assert_type, "overlay_prometheus:dist_node()", map_types}.
 %% the spec has a map type with two associations
 {exception, prometheus_vm_dist_collector, dist_tls_info, 1, [ignore], map_types}.
 %% the spec has a map type with two associations
 {exception, prometheus_vm_dist_collector, dist_tls_sender_info, 2, [ignore], map_types}.
-{exception, prometheus_vm_dist_collector, metric, 3, [ignore], unchecked_result}. % element(2, lists:keyfind(Key, 1, Stats))
-%% element(2, process_info(Pid, Key)): erlang:process_info/2 gives undefined for a process that has ended. Reported at
-%% the generator of the comprehension
-{exception, prometheus_vm_dist_collector, metric_proc, 3, [ignore], unchecked_result}.
-%% proc_status(element(2, process_info(DistPid, status)))
-{exception, prometheus_vm_dist_collector, metric_proc_status, 2, [ignore], element_type}.
-%% erlang:dist_get_stat(ConnId), ConnId = ets:lookup_element(sys_dist, Node, 3)
-{exception, prometheus_vm_dist_collector, node_queue_size, 1, [ignore], ets_value}.
+%% metric/3: element(2, lists:keyfind(Key, 1, Stats)): the statistics of inet:getstat/1 have the key, one of the ten
+%% options that metrics1/0 asks for
+{assertion, prometheus_vm_dist_collector, {454, 37, "489f54"}, assert_type, "{atom(), integer()}", unchecked_result}.
+%% metric/3: element(2, erlang:port_info(DistPort, Key)), which is undefined if the port is closed; the four items that
+%% metrics1/0 asks for are integers
+{assertion, prometheus_vm_dist_collector, {458, 37, "30baf3"}, assert_type, "{atom(), integer()}", unchecked_result}.
+%% metric/3: Key, an atom(), as an item of erlang:port_info/2: one of those that metrics1/0 asks for
+{assertion, prometheus_vm_dist_collector, {458, 64, "7e98e6"}, assert_type, "input | output | memory | queue_size", info_arg}.
+%% metric_proc/3: element(2, process_info(Pid, Key)), which is undefined for a process that has ended; the eight items
+%% that metrics1/0 asks for are integers
+{assertion, prometheus_vm_dist_collector, {467, 59, "38c5f2"}, assert_type, "{atom(), integer()}", unchecked_result}.
+%% metric_proc/3: Pid of the pattern #{PidKey := Pid} on a dist_node(), for the three keys of dist_pid_key(), whose
+%% values are pids
+{assertion, prometheus_vm_dist_collector, {467, 72, "9591bb"}, assert_type, "pid()", map_types}.
+%% metric_proc/3: Key, an atom(), as an item of erlang:process_info/2: one of those that metrics1/0 asks for
+{assertion, prometheus_vm_dist_collector, {467, 77, "7e98e6"}, assert_type, "memory | heap_size | min_heap_size | min_bin_vheap_size | stack_size | total_heap_size | message_queue_len | reductions", info_arg}.
+%% metric_proc_status/2: proc_status(element(2, process_info(DistPid, status))): undefined for a process that has ended;
+%% else the status, for which the spec of erlang:process_info/2 has the union of all its results
+{assertion, prometheus_vm_dist_collector, {482, 36, "1b5ff1"}, assert_type, "{status, exiting | suspended | runnable | garbage_collecting | running | waiting}", unchecked_result}.
+%% metric_proc_status/2: DistPid of the pattern #{PidKey := DistPid} on a dist_node(), as in metric_proc/3
+{assertion, prometheus_vm_dist_collector, {482, 49, "880046"}, assert_type, "pid()", map_types}.
+%% node_queue_size/1: ConnId = ets:lookup_element(sys_dist, Node, 3), the handle of the connection in the table of the
+%% kernel, for erlang:dist_get_stat/1
+{assertion, prometheus_vm_dist_collector, {507, 14, "59e78b"}, assert_type, "erlang:dist_handle()", ets_value}.
+%% node_queue_size/1: case QueueSize of false -> 0; true -> -1; _ -> QueueSize end. The spec of erlang:dist_get_stat/1
+%% has non_neg_integer() (a boolean() in older releases): the first two branches are dead. With the subject annotated,
+%% which is checked, the checker takes them as reachable
+{assertion, prometheus_vm_dist_collector, {509, 10, "27b792"}, annotate_type, "boolean() | non_neg_integer()", defensive}.
 
 {module, prometheus_vm_memory_collector, #{file => "prometheus/src/collectors/vm/prometheus_vm_memory_collector.erl",
-                                           overlays => [{specs, "overlay_prometheus.erl"}], timeout => 10000}}.
-%% get_value(atom, Data) - get_value(atom_used, Data), get_value/2 of proplists
-{exception, prometheus_vm_memory_collector, metrics, 0, [ignore], proplist}.
-%% get_value(system, Data) - get_value(atom, Data) - ..
-{exception, prometheus_vm_memory_collector, memory_other, 1, [ignore], proplist}.
-%% Metrics =:= all orelse lists:member(Name, Metrics): on the right Metrics is still all | [atom()]
-{exception, prometheus_vm_memory_collector, metric_enabled, 2, [ignore], narrowing}.
+                                           overlays => [{specs, "overlay_prometheus.erl"},
+                                                        {library, "overlay_prometheus_lib.erl"}], timeout => 10000}}.
+%% metrics/0: get_value(atom, Data) - get_value(atom_used, Data) and the same for processes: proplists:get_value/2 on
+%% Data = erlang:memory(), a list of {Type, Size} that has the keys asked for; each call gives a size, a number of
+%% bytes. (The eight other calls of the function need no assertion: their values go into lists of metrics, and a list of
+%% any terms is a prometheus_model_helpers:metrics(), as prometheus_boolean() has list())
+{assertion, prometheus_vm_memory_collector, {129, 7, "22cfc0"}, assert_type, "non_neg_integer()", proplist}.
+{assertion, prometheus_vm_memory_collector, {129, 31, "9ddc65"}, assert_type, "non_neg_integer()", proplist}.
+{assertion, prometheus_vm_memory_collector, {151, 7, "6b5a4b"}, assert_type, "non_neg_integer()", proplist}.
+{assertion, prometheus_vm_memory_collector, {151, 36, "8f0088"}, assert_type, "non_neg_integer()", proplist}.
+%% memory_other/1: get_value(Key, Data) on what erlang:memory/0 gives, as in metrics/0: five sizes
+{assertion, prometheus_vm_memory_collector, {167, 3, "f9cb84"}, assert_type, "non_neg_integer()", proplist}.
+{assertion, prometheus_vm_memory_collector, {168, 7, "22cfc0"}, assert_type, "non_neg_integer()", proplist}.
+{assertion, prometheus_vm_memory_collector, {169, 7, "3dda01"}, assert_type, "non_neg_integer()", proplist}.
+{assertion, prometheus_vm_memory_collector, {170, 7, "f96ce6"}, assert_type, "non_neg_integer()", proplist}.
+{assertion, prometheus_vm_memory_collector, {171, 7, "6e1ab1"}, assert_type, "non_neg_integer()", proplist}.
+%% enabled_metrics/0: application:get_env(prometheus, vm_memory_collector_metrics, all), the names of the enabled
+%% metrics or all. Type checked without it as long as the result of application:get_env/3 fitted every type
+{assertion, prometheus_vm_memory_collector, {174, 3, "f328fd"}, assert_type, "all | [atom()]", app_env}.
+%% metric_enabled/2: Metrics =:= all orelse lists:member(Name, Metrics): on the right of orelse Metrics is not all, so
+%% it is the list
+{assertion, prometheus_vm_memory_collector, {177, 45, "ca81d3"}, assert_type, "[atom()]", narrowing}.
 
 {module, prometheus_vm_msacc_collector, #{file => "prometheus/src/collectors/vm/prometheus_vm_msacc_collector.erl",
-                                          overlays => [{specs, "overlay_prometheus.erl"}], timeout => 10000}}.
-%% metric(aux, Data, ..): erlang:statistics(microstate_accounting) gives undefined if the accounting is not available
-{exception, prometheus_vm_msacc_collector, metrics, 0, [ignore], unchecked_result}.
+                                          overlays => [{specs, "overlay_prometheus.erl"},
+                                                       {library, "overlay_prometheus_lib.erl"}], timeout => 10000}}.
+%% metrics/0: Data = erlang:statistics(microstate_accounting), which is undefined if the accounting is not available;
+%% else a list with a map for each thread, the type that metric/3 takes
+{assertion, prometheus_vm_msacc_collector, {206, 10, "e45f87"}, assert_type, "[#{type := atom(), id := non_neg_integer(), counters := #{atom() => non_neg_integer()}}]", unchecked_result}.
+%% metrics/0: SecondAsPerfCounter = erlang:convert_time_unit(1, second, perf_counter), an integer() by its spec; metric/3
+%% divides by it
+{assertion, prometheus_vm_msacc_collector, {207, 25, "dbb893"}, assert_type, "pos_integer()", number_range}.
 %% the spec has a map type with three mandatory associations, a thread of erlang:statistics(microstate_accounting)
 {exception, prometheus_vm_msacc_collector, metric, 3, [ignore], map_types}.
-%% Metrics =:= all orelse lists:member(Name, Metrics): on the right Metrics is still all | [atom()]
-{exception, prometheus_vm_msacc_collector, metric_enabled, 2, [ignore], narrowing}.
+%% enabled_metrics/0: application:get_env(prometheus, vm_msacc_collector_metrics, all), the names of the enabled metrics
+%% or all. Type checked without it as long as the result of application:get_env/3 fitted every type
+{assertion, prometheus_vm_msacc_collector, {273, 3, "4d91ec"}, assert_type, "all | [atom()]", app_env}.
+%% metric_enabled/2: Metrics =:= all orelse lists:member(Name, Metrics): on the right of orelse Metrics is not all, so
+%% it is the list
+{assertion, prometheus_vm_msacc_collector, {276, 45, "ca81d3"}, assert_type, "[atom()]", narrowing}.
 
 {module, prometheus_vm_statistics_collector, #{file => "prometheus/src/collectors/vm/prometheus_vm_statistics_collector.erl",
-                                               overlays => [{specs, "overlay_prometheus.erl"}], timeout => 10000}}.
-%% [DirtyCPURunQueueLength, DirtyIORunQueueLength] = dirty_stat(): a list of two
-{exception, prometheus_vm_statistics_collector, metrics, 0, [ignore], list_shape}.
-%% Metrics =:= all orelse lists:member(Name, Metrics): on the right Metrics is still all | [atom()]
-{exception, prometheus_vm_statistics_collector, metric_enabled, 2, [ignore], narrowing}.
+                                               overlays => [{specs, "overlay_prometheus.erl"},
+                                                            {library, "overlay_prometheus_lib.erl"}], timeout => 10000}}.
+%% metrics/0: [DirtyCPURunQueueLength, DirtyIORunQueueLength] = dirty_stat(), which gives a list of two
+{assertion, prometheus_vm_statistics_collector, {160, 53, "4e2a61"}, assert_type, "etylizer:cons(non_neg_integer() | undefined, etylizer:cons(non_neg_integer() | undefined, []))", list_shape}.
+%% enabled_metrics/0: application:get_env(prometheus, vm_statistics_collector_metrics, all), the names of the enabled
+%% metrics or all. Type checked without it as long as the result of application:get_env/3 fitted every type
+{assertion, prometheus_vm_statistics_collector, {227, 3, "84989e"}, assert_type, "all | [atom()]", app_env}.
+%% metric_enabled/2: Metrics =:= all orelse lists:member(Name, Metrics): on the right of orelse Metrics is not all, so
+%% it is the list
+{assertion, prometheus_vm_statistics_collector, {230, 45, "ca81d3"}, assert_type, "[atom()]", narrowing}.
 
 {module, prometheus_vm_system_info_collector, #{file => "prometheus/src/collectors/vm/prometheus_vm_system_info_collector.erl",
-                                                overlays => [{specs, "overlay_prometheus.erl"}], timeout => 10000}}.
-%% erlang:system_info(Name), Name an atom(): the name of a metric of metrics/0
-{exception, prometheus_vm_system_info_collector, collect_metrics, 1, [ignore], info_arg}.
-%% Metrics =:= all orelse lists:member(Name, Metrics): on the right Metrics is still all | [atom()]
-{exception, prometheus_vm_system_info_collector, metric_enabled, 2, [ignore], narrowing}.
-%% allocator_metric(Alloc, Instance, Kind, Key, KindInfo) for {Kind, KindInfo} <- Info: KindInfo is a term()
-{exception, prometheus_vm_system_info_collector, collect_allocator_metrics, 0, [ignore], alloc_info}.
-%% element(2, lists:keyfind(Key, 1, Values)) as non_neg_integer(). Step I had the argument, which can be false, as its
-%% first error
-{exception, prometheus_vm_system_info_collector, allocator_metric, 5, [ignore], element_type}.
-%% a comprehension with four qualifiers and two calls of erlang:system_info/1, whose spec has many clauses. With more
-%% time it type checks, in 20 s
-{exception, prometheus_vm_system_info_collector, allocators, 0, [ignore], checker_timeout}.
-%% sum_alloc_block_list(count, L, 0) behind the guard is_list(L). Step I had the next error, element(2, Tuple) for the
-%% result of lists:keyfind/3
-{exception, prometheus_vm_system_info_collector, allocator_blocks_metric, 5, [ignore], improper_list}.
-%% lists:keyfind(Type, 1, L) for an element {_, L} of the list of blocks: L is a term()
-{exception, prometheus_vm_system_info_collector, sum_alloc_block_list, 3, [ignore], alloc_info}.
+                                                overlays => [{specs, "overlay_prometheus.erl"},
+                                                             {library, "overlay_prometheus_lib.erl"}], timeout => 10000}}.
+%% collect_metrics/1: erlang:system_info(Name) for the name of a metric of metrics/0, an atom(): the 19 names that the
+%% first two clauses leave, each of them an item of erlang:system_info/1 (for an item that an older release does not
+%% know the call fails, which the function catches)
+{assertion, prometheus_vm_system_info_collector, {299, 29, "d10743"}, assert_type, "dirty_cpu_schedulers | dirty_cpu_schedulers_online | dirty_io_schedulers | ets_limit | logical_processors | logical_processors_available | logical_processors_online | port_count | port_limit | process_count | process_limit | schedulers | schedulers_online | smp_support | threads | thread_pool_size | time_correction | atom_count | atom_limit", info_arg}.
+%% enabled_metrics/0: application:get_env(prometheus, vm_system_info_collector_metrics, all), the names of the enabled
+%% metrics or all. Type checked without it as long as the result of application:get_env/3 fitted every type
+{assertion, prometheus_vm_system_info_collector, {308, 3, "fefb00"}, assert_type, "all | [atom()]", app_env}.
+%% metric_enabled/2: Metrics =:= all orelse lists:member(Name, Metrics): on the right of orelse Metrics is not all, so
+%% it is the list
+{assertion, prometheus_vm_system_info_collector, {311, 45, "ca81d3"}, assert_type, "[atom()]", narrowing}.
+%% collect_allocator_metrics/0: {Kind, KindInfo} <- Info for the kinds mbcs, mbcs_pool and sbcs of an allocator
+%% instance: the information of a kind of carriers is a list of tuples, {blocks, ..}, {carriers, ..} and so on
+{assertion, prometheus_vm_system_info_collector, {317, 62, "daa9df"}, assert_type, "[tuple()]", alloc_info}.
+{assertion, prometheus_vm_system_info_collector, {320, 69, "daa9df"}, assert_type, "[tuple()]", alloc_info}.
+%% allocator_metric/5: element(2, lists:keyfind(Key, 1, Values)), the current value of {carriers, Current,
+%% MaxSinceLastCall, MaxEver} or of carriers_size in the information of one kind of carriers
+{assertion, prometheus_vm_system_info_collector, {329, 9, "6428a9"}, assert_type, "non_neg_integer()", alloc_info}.
+%% allocator_metric/5: lists:keyfind(Key, 1, Values) for the keys carriers and carriers_size, which the information of a
+%% kind of carriers has
+{assertion, prometheus_vm_system_info_collector, {329, 20, "c6617f"}, assert_type, "tuple()", unchecked_result}.
+%% allocators/0: {_, N, Props} <- Allocs behind the filter Allocs =/= false: what erlang:system_info({allocator, A})
+%% gives for an allocator that is enabled, {instance, N, Info} for each of its instances
+{assertion, prometheus_vm_system_info_collector, {340, 26, "d5abde"}, assert_type, "[{instance, non_neg_integer(), [{atom(), term()}]}]", alloc_info}.
+%% allocator_blocks_metric/5: lists:keyfind(blocks, 1, KindInfo): the information of a kind of carriers has the key
+%% blocks, as {blocks, [{AllocatorType, [{count, N}, {size, N}]}]} or, in older releases, as {blocks, Current,
+%% MaxSinceLastCall, MaxEver}
+{assertion, prometheus_vm_system_info_collector, {343, 16, "801c31"}, assert_type, "tuple()", unchecked_result}.
+%% allocator_blocks_metric/5: sum_alloc_block_list(count, L, 0) behind the guard is_list(L), which holds for an improper
+%% list too
+{assertion, prometheus_vm_system_info_collector, {345, 43, "22443f"}, assert_type, "[term()]", improper_list}.
+%% allocator_blocks_metric/5: element(2, Tuple), the current number of blocks in the older form
+{assertion, prometheus_vm_system_info_collector, {347, 15, "c12e29"}, assert_type, "non_neg_integer()", alloc_info}.
+%% allocator_blocks_metric/5: element(2, lists:keyfind(blocks, 1, KindInfo)) where there is no key blocks_size: the list
+%% of the newer form
+{assertion, prometheus_vm_system_info_collector, {353, 47, "903cff"}, assert_type, "[term()]", alloc_info}.
+%% allocator_blocks_metric/5: lists:keyfind(blocks, 1, KindInfo), as in the first clause
+{assertion, prometheus_vm_system_info_collector, {353, 58, "801c31"}, assert_type, "tuple()", unchecked_result}.
+%% allocator_blocks_metric/5: element(2, Tuple), the current size of {blocks_size, Current, MaxSinceLastCall, MaxEver}
+{assertion, prometheus_vm_system_info_collector, {355, 20, "c12e29"}, assert_type, "non_neg_integer()", alloc_info}.
+%% sum_alloc_block_list/3: an element {AllocatorType, L} of the list of blocks: L is its property list, [{count, N},
+%% {size, N}]
+{assertion, prometheus_vm_system_info_collector, {360, 41, "22443f"}, assert_type, "[tuple()]", alloc_info}.
+%% sum_alloc_block_list/3: element(2, Tuple) for the {count, N} or {size, N} of an allocator type
+{assertion, prometheus_vm_system_info_collector, {362, 24, "c12e29"}, assert_type, "non_neg_integer()", alloc_info}.
 
 {module, prometheus_http, #{file => "prometheus/src/contrib/prometheus_http.erl",
                             overlays => [{specs, "overlay_prometheus.erl"}], timeout => 10000}}.
 %% the last clause, for what is not a positive integer: status_code() is pos_integer()
-{exception, prometheus_http, status_class, 1, [ignore], defensive}.
+{exception, prometheus_http, status_class, 1, [no_redundancy], defensive}.
 
 {module, prometheus_mnesia, #{file => "prometheus/src/contrib/prometheus_mnesia.erl",
-                              overlays => [{specs, "overlay_prometheus.erl"}], timeout => 10000}}.
-{exception, prometheus_mnesia, table_disk_size, 1, [ignore], info_item}. % table_disk_size(mnesia:system_info(directory), Table)
-%% lists:sum/1 gives number(), the sizes are non_neg_integer()
-{exception, prometheus_mnesia, table_disk_size, 2, [ignore], library_spec}.
+                              overlays => [{specs, "overlay_prometheus.erl"},
+                                           {library, "overlay_prometheus_lib.erl"}], timeout => 10000}}.
+%% table_disk_size/1: mnesia:system_info(directory), the name of the directory of the database
+{assertion, prometheus_mnesia, {25, 19, "1e76be"}, assert_type, "string()", info_item}.
 {exception, prometheus_mnesia, tm_info, 0, [ignore], otp_no_spec}. % mnesia_tm:get_info/1
 
 {module, prometheus_test_instrumenter, #{file => "prometheus/src/contrib/prometheus_test_instrumenter.erl",
@@ -326,193 +530,320 @@
 {exception, prometheus_protobuf_format, format, 1, [ignore], otp_no_spec}. % ram_file:open/2, ram_file:get_size/1
 
 {module, prometheus_text_format, #{file => "prometheus/src/formats/prometheus_text_format.erl",
-                                   overlays => [{specs, "overlay_prometheus.erl"}], timeout => 10000}}.
+                                   overlays => [{specs, "overlay_prometheus.erl"},
+                                                {library, "overlay_prometheus_lib.erl"}], timeout => 10000}}.
 {exception, prometheus_text_format, format, 1, [ignore], otp_no_spec}. % ram_file:open/2, ram_file:get_size/1
-%% string_type(Type): the field type of 'MetricFamily' can be an integer() and undefined
-{exception, prometheus_text_format, emit_mf_prologue, 2, [ignore], model_field}.
-%% emit_metric(Fd, Name, Metric): the field name of 'MetricFamily' is iodata() | undefined
-{exception, prometheus_text_format, emit_mf_metrics, 2, [ignore], model_field}.
-%% no clause for a 'Metric' whose fields counter, gauge, untyped, summary and histogram are all undefined
-{exception, prometheus_text_format, emit_metric, 3, [ignore], partial}.
-%% bound_to_label_value(BBound): the field upper_bound of 'Bucket' can be '-infinity', nan and undefined
-{exception, prometheus_text_format, emit_histogram_bucket, 4, [ignore], model_field}.
-%% [Name, "=\"", ..] in the fun as iolist(): the field name of 'LabelPair' is iodata() | undefined
-{exception, prometheus_text_format, labels_stringify, 1, [ignore], model_field}.
-%% integer_to_list(Value) in the iodata() for file:write/2: the spec says string(), whose characters need not be bytes
-{exception, prometheus_text_format, emit_series, 4, [ignore], library_spec}.
-%% Fun(X) for <<X:8>> <= Str: the fun takes a byte()
-{exception, prometheus_text_format, escape_string, 2, [ignore], bit_segment}.
+%% emit_mf_prologue/2: the fields name, type and help of a #'MetricFamily'{}, as prometheus_model_helpers:create_mf/4
+%% writes them: the name and the help are text, the type one of the five atoms; the generated record also allows
+%% undefined, and an integer() for the type
+{assertion, prometheus_text_format, {91, 23, "d10743"}, assert_type, "iodata()", model_field}.
+%% emit_mf_prologue/2: string_type(Type), "counter" and the like, a string() by its spec, in the iodata() for
+%% file:write/2
+{assertion, prometheus_text_format, {91, 34, "23cc12"}, assert_type, "[byte()]", text_bytes}.
+{assertion, prometheus_text_format, {91, 46, "57a03f"}, assert_type, "prometheus_model:'MetricType'()", model_field}.
+{assertion, prometheus_text_format, {92, 12, "d10743"}, assert_type, "iodata()", model_field}.
+{assertion, prometheus_text_format, {92, 42, "aba8b9"}, assert_type, "iodata()", model_field}.
+%% emit_mf_metrics/2: the fields name and metric of a #'MetricFamily'{}, the name and the list of the metrics; the
+%% generated record also allows undefined
+{assertion, prometheus_text_format, {97, 20, "d10743"}, assert_type, "iodata()", model_field}.
+{assertion, prometheus_text_format, {97, 47, "ca81d3"}, assert_type, "[prometheus_model:'Metric'()]", model_field}.
+%% no clause for a #'Metric'{} whose fields counter, gauge, untyped, summary and histogram are all undefined
+{exception, prometheus_text_format, emit_metric, 3, [no_exhaustiveness], partial}.
+%% emit_metric/3: the field label of a #'Metric'{}, the list of its labels, in each of the five clauses; the generated
+%% record also allows undefined
+{assertion, prometheus_text_format, {101, 56, "57316c"}, assert_type, "[prometheus_model:'LabelPair'()]", model_field}.
+{assertion, prometheus_text_format, {104, 56, "57316c"}, assert_type, "[prometheus_model:'LabelPair'()]", model_field}.
+{assertion, prometheus_text_format, {107, 56, "57316c"}, assert_type, "[prometheus_model:'LabelPair'()]", model_field}.
+{assertion, prometheus_text_format, {112, 35, "57316c"}, assert_type, "[prometheus_model:'LabelPair'()]", model_field}.
+%% emit_metric/3: io_lib:format("~p", [QN]), a quantile as text, for the field value of a #'LabelPair'{}, an iodata()
+{assertion, prometheus_text_format, {120, 77, "16c2c2"}, assert_type, "iolist()", text_bytes}.
+%% emit_metric/3: the field quantile of a #'Summary'{}, the list of its quantiles; the generated record also allows
+%% undefined
+{assertion, prometheus_text_format, {122, 50, "3553e9"}, assert_type, "[prometheus_model:'Quantile'()]", model_field}.
+{assertion, prometheus_text_format, {128, 35, "57316c"}, assert_type, "[prometheus_model:'LabelPair'()]", model_field}.
+%% emit_metric/3: the field bucket of a #'Histogram'{}, the list of its buckets; the generated record also allows
+%% undefined
+{assertion, prometheus_text_format, {130, 71, "fe3991"}, assert_type, "[prometheus_model:'Bucket'()]", model_field}.
+%% emit_histogram_bucket/4: bound_to_label_value(BBound), the bound as integer_to_list/1 or float_to_list/1 print it, or
+%% "+Inf": a string() by its spec, for the field value of a #'LabelPair'{}, an iodata()
+{assertion, prometheus_text_format, {136, 13, "a2de26"}, assert_type, "[byte()]", text_bytes}.
+%% emit_histogram_bucket/4: the field upper_bound of a #'Bucket'{}, a prometheus_buckets:bucket_bound() as
+%% prometheus_model_helpers:histogram_metric/4 writes it; the generated record also allows '-infinity', nan and
+%% undefined
+{assertion, prometheus_text_format, {136, 34, "40e311"}, assert_type, "number() | infinity", model_field}.
+%% [Name, "=\"", escape_label_value(Value), "\""] in the fun as iolist(): the field name of a #'LabelPair'{} is iodata()
+%% | undefined, and text as prometheus_model_helpers:label_pair/1 writes it (model_field). A cast of the whole fun does
+%% not help: its clause, which has the record as pattern, then counts as dead (seen in a scratch copy; here the hash
+%% 06dca5 of the fun crashes the engine as well), and so it does with a cast of the variable Fun where it is used
+{exception, prometheus_text_format, labels_stringify, 1, [ignore], in_fun}.
+%% emit_series/4: io_lib:format("~p", [Value]), a float as text, in the iodata() for file:write/2
+{assertion, prometheus_text_format, {167, 39, "f23566"}, assert_type, "iolist()", text_bytes}.
+%% escape_string/2: Fun(X) for <<X:8>> <= Str: the fun takes a byte(), the segment of 8 bits is an integer()
+{assertion, prometheus_text_format, {207, 13, "ed0a1f"}, assert_type, "byte()", bit_segment}.
 
 {module, prometheus_boolean, #{file => "prometheus/src/metrics/prometheus_boolean.erl",
                                overlays => [{specs, "overlay_prometheus.erl"}], timeout => 10000}}.
-%% case ets:lookup(?TABLE, {Registry, Name, LabelValues}) of [{_Key, 0}] -> ..; [{_Key, 1}] -> ..; .. end
-{exception, prometheus_boolean, value, 3, [ignore], ets_value}.
-%% [LabelValues, Value] <- load_all_values(Registry, Name), LabelValues for lists:zip/2: the bindings of ets:match/2 are
-%% terms
-{exception, prometheus_boolean, values, 2, [ignore], ets_value}.
-%% create_boolean(Name, Help, {CLabels, Labels, Registry}) for [Name, {Labels, Help}, CLabels, _, _] <-
-%% prometheus_metric:metrics(?TABLE, Registry): the bindings of ets:match/2 are terms
-{exception, prometheus_boolean, collect_mf, 2, [ignore], ets_value}.
-%% lists:zip(Labels, LabelValues) for [LabelValues, Value] <- load_all_values(Registry, Name): the bindings of
-%% ets:match/2 are terms
-{exception, prometheus_boolean, collect_metrics, 2, [ignore], ets_value}.
-%% case ets:lookup(?TABLE, {Registry, Name, LabelValues}) of [{_Key, undefined}] -> ..; [] -> .. end
-{exception, prometheus_boolean, save_toggle, 3, [ignore], ets_value}.
+%% value/3: case ets:lookup(?TABLE, {Registry, Name, LabelValues}) of [{_Key, 0}] -> ..; [{_Key, 1}] -> ..; [{_Key,
+%% undefined}] -> ..; [] -> .. end. The table is a set: no row, or the one of the series, {Key, 0 | 1 | undefined}
+{assertion, prometheus_boolean, {249, 8, "657040"}, assert_type, "[] | etylizer:cons({{overlay_prometheus:registry(), overlay_prometheus:name(), overlay_prometheus:label_values()}, 0 | 1 | undefined}, [])", ets_value}.
+%% values/2: [LabelValues, Value] <- load_all_values(Registry, Name), ets:match/2 on the rows {{Registry, Name,
+%% LabelValues}, Value}. The call cannot carry the assertion (its hash 050cd9 crashes the engine), the variable can
+{assertion, prometheus_boolean, {266, 27, "e2fb6b"}, assert_type, "overlay_prometheus:label_values()", ets_value}.
+%% collect_mf/2: [Name, {Labels, Help}, CLabels, _, _] <- prometheus_metric:metrics(?TABLE, Registry). ets:match/2 gives
+%% the bindings of a row as a list; the row of a metric family is the one that prometheus_metric:insert_mf/3 writes
+{assertion, prometheus_boolean, {283, 46, "77c471"}, assert_type, "[etylizer:cons(overlay_prometheus:name(), etylizer:cons({[overlay_prometheus:label_name()], overlay_prometheus:help()}, etylizer:cons(overlay_prometheus:labels(), etylizer:cons(overlay_prometheus:duration_unit() | undefined, etylizer:cons(term(), [])))))]", ets_value}.
+%% collect_metrics/2: [LabelValues, Value] <- load_all_values(Registry, Name), as in values/2: the label values and the
+%% value of a row
+{assertion, prometheus_boolean, {290, 35, "e2fb6b"}, assert_type, "overlay_prometheus:label_values()", ets_value}.
+{assertion, prometheus_boolean, {290, 49, "2caa2e"}, assert_type, "0 | 1 | undefined", ets_value}.
+%% insert_metric(Registry, Name, LabelValues, 0, fun toggle/3): insert_metric/5 calls the fun with four arguments if
+%% another process has inserted the series meanwhile, toggle/3 takes three. In front of it: case ets:lookup(?TABLE, ..)
+%% of [{_Key, undefined}] -> ..; [] -> .. end, which an assertion (ets_value) gets through
+{exception, prometheus_boolean, save_toggle, 3, [ignore], source_bug}.
 
 {module, prometheus_counter, #{file => "prometheus/src/metrics/prometheus_counter.erl",
-                               overlays => [{specs, "overlay_prometheus.erl"}], timeout => 10000}}.
-{exception, prometheus_counter, inc, 4, [ignore], ets_value}. % case ets:select_replace(?TABLE, ..) of 0 -> ..; 1 -> .. end
-%% case ets:select(?TABLE, ..) of [] -> undefined; List -> lists:sum(List) end: the second branch counts as dead
-{exception, prometheus_counter, value, 3, [ignore], free_result}.
-%% create_counter(Name, Help, {CLabels, Labels, Registry}) for [Name, {Labels, Help}, CLabels, _, _] <-
-%% prometheus_metric:metrics(?TABLE, Registry): the bindings of ets:match/2 are terms
-{exception, prometheus_counter, collect_mf, 2, [ignore], ets_value}.
-%% lists:seq(0, ?WIDTH-1) as [non_neg_integer()]: lists:seq/2 gives [integer()]
-{exception, prometheus_counter, schedulers_seq, 0, [ignore], library_spec}.
-%% lists:foldl(fun([Labels, I, F], ResAcc) -> .. end, #{}, MFValues): the clause of the fun counts as dead
-{exception, prometheus_counter, reduce_label_values, 1, [ignore], free_result}.
+                               overlays => [{specs, "overlay_prometheus.erl"},
+                                            {library, "overlay_prometheus_lib.erl"}], timeout => 10000}}.
+%% inc/4: case ets:select_replace(?TABLE, ..) of 0 -> ..; 1 -> ok end. The match specification names the key, the table
+%% is a set: no row replaced, or one
+{assertion, prometheus_counter, {194, 8, "873e6c"}, assert_type, "0 | 1", ets_value}.
+%% value/3: ets:select/2 of '$1' + '$2' for the rows of the series, the sums of the two counters of a row
+{assertion, prometheus_counter, {278, 8, "57773a"}, assert_type, "[number()]", ets_value}.
+%% collect_mf/2: [Name, {Labels, Help}, CLabels, _, _] <- prometheus_metric:metrics(?TABLE, Registry). ets:match/2 gives
+%% the bindings of a row as a list; the row of a metric family is the one that prometheus_metric:insert_mf/3 writes
+{assertion, prometheus_counter, {309, 46, "43275b"}, assert_type, "[etylizer:cons(overlay_prometheus:name(), etylizer:cons({[overlay_prometheus:label_name()], overlay_prometheus:help()}, etylizer:cons(overlay_prometheus:labels(), etylizer:cons(overlay_prometheus:duration_unit() | undefined, etylizer:cons(term(), [])))))]", ets_value}.
+%% reduce_label_values/1: MFValues is what load_all_values/2 gives, ets:match/2 on the rows {Key, ISum, FSum} of the
+%% series: [LabelValues, ISum, FSum], the pattern of the fun for lists:foldl/3
+{assertion, prometheus_counter, {356, 15, "a70f6a"}, assert_type, "[etylizer:cons(overlay_prometheus:label_values(), etylizer:cons(integer(), etylizer:cons(number(), [])))]", ets_value}.
 
 {module, prometheus_gauge, #{file => "prometheus/src/metrics/prometheus_gauge.erl",
                              overlays => [{specs, "overlay_prometheus.erl"}], timeout => 10000}}.
-%% case Value of ..; _ -> erlang:error({invalid_value, ..}) end: dead for number() | undefined
-{exception, prometheus_gauge, set, 4, [ignore], defensive}.
-{exception, prometheus_gauge, inc, 4, [ignore], ets_value}. % case ets:select_replace(?TABLE, ..) of 0 -> ..; 1 -> .. end
-{exception, prometheus_gauge, dec, 2, [ignore], defensive}. % the last clause, for a value that is neither a list nor a number
-{exception, prometheus_gauge, dec, 3, [ignore], defensive}. % the last clause, for a value that is not a number
-{exception, prometheus_gauge, dec, 4, [ignore], defensive}. % the last clause, for a value that is not a number
-{exception, prometheus_gauge, track_inprogress, 4, [ignore], defensive}. % the last clause, for what is not a fun
-{exception, prometheus_gauge, set_duration, 4, [ignore], defensive}. % the last clause, for what is not a fun
-%% case ets:lookup(?TABLE, {Registry, Name, LabelValues}) of [{_Key, IValue, FValue}] -> ..; [] -> .. end
-{exception, prometheus_gauge, value, 3, [ignore], ets_value}.
-%% [LabelValues, IValue, FValue] <- load_all_values(Registry, Name), for lists:zip/2 and sum/2: the bindings of
-%% ets:match/2 are terms
-{exception, prometheus_gauge, values, 2, [ignore], ets_value}.
-%% create_gauge(Name, Help, {CLabels, Labels, Registry, DU}) for [Name, {Labels, Help}, CLabels, DU, _] <-
-%% prometheus_metric:metrics(?TABLE, Registry): the bindings of ets:match/2 are terms
-{exception, prometheus_gauge, collect_mf, 2, [ignore], ets_value}.
-%% [LabelValues, IValue, FValue] <- load_all_values(Registry, Name), for lists:zip/2 and sum/2: the bindings of
-%% ets:match/2 are terms
-{exception, prometheus_gauge, collect_metrics, 2, [ignore], ets_value}.
+%% set/4: case Value of _ when is_number(Value) -> ..; undefined -> ..; _ -> erlang:error(..) end. The last branch is dead
+%% for number() | undefined; with the subject annotated as a term(), which is checked, the checker takes it as reachable
+{assertion, prometheus_gauge, {182, 10, "2caa2e"}, annotate_type, "term()", defensive}.
+%% insert_metric(Registry, Name, LabelValues, Value, fun inc/4), as in maybe_insert_metric_for_inc/4. In front of it:
+%% case ets:select_replace(?TABLE, ..) of 0 -> ..; 1 -> ok end, which an assertion 0 | 1 (ets_value) gets through.
+%% Behind it: the last clause, dead for a number()
+{exception, prometheus_gauge, inc, 4, [ignore], bounded_tyvar}.
+%% the last clause, for a value that is neither a list nor a number
+{exception, prometheus_gauge, dec, 2, [no_redundancy], defensive}.
+{exception, prometheus_gauge, dec, 3, [no_redundancy], defensive}. % the last clause, for a value that is not a number
+{exception, prometheus_gauge, dec, 4, [no_redundancy], defensive}. % the last clause, for a value that is not a number
+{exception, prometheus_gauge, track_inprogress, 4, [no_redundancy], defensive}. % the last clause, for what is not a fun
+{exception, prometheus_gauge, set_duration, 4, [no_redundancy], defensive}. % the last clause, for what is not a fun
+%% sum(IValue, FValue) for [{_Key, IValue, FValue}] = ets:lookup(?TABLE, ..). A row is {Key, integer(), number()}, or
+%% {Key, integer() | undefined, undefined} after set/4 with undefined. With the lookup asserted to be [] or one such row
+%% (ets_value) the two variables are integer() | undefined and number() | undefined, and sum/2 has no clause for
+%% undefined and a number
+{exception, prometheus_gauge, value, 3, [ignore], union_elimination}.
+%% sum(IValue, FValue) for [LabelValues, IValue, FValue] <- load_all_values(Registry, Name), as in value/3. Also: the
+%% call load_all_values(Registry, Name) cannot carry an assertion, its hash 050cd9 crashes the engine
+{exception, prometheus_gauge, values, 2, [ignore], union_elimination}.
+%% collect_mf/2: [Name, {Labels, Help}, CLabels, DU, _] <- prometheus_metric:metrics(?TABLE, Registry). ets:match/2
+%% gives the bindings of a row as a list; the row of a metric family is the one that prometheus_metric:insert_mf/3
+%% writes
+{assertion, prometheus_gauge, {445, 47, "642edc"}, assert_type, "[etylizer:cons(overlay_prometheus:name(), etylizer:cons({[overlay_prometheus:label_name()], overlay_prometheus:help()}, etylizer:cons(overlay_prometheus:labels(), etylizer:cons(overlay_prometheus:duration_unit() | undefined, etylizer:cons(term(), [])))))]", ets_value}.
+%% sum(IValue, FValue) for [LabelValues, IValue, FValue] <- load_all_values(Registry, Name), as in value/3 and values/2
+{exception, prometheus_gauge, collect_metrics, 2, [ignore], union_elimination}.
 %% insert_metric(Registry, Name, LabelValues, Value, fun inc/4): the spec of insert_metric/5 has Value :: number() |
 %% undefined for the value and for the argument of the fun, inc/4 takes a number()
 {exception, prometheus_gauge, maybe_insert_metric_for_inc, 4, [ignore], bounded_tyvar}.
 
 {module, prometheus_histogram, #{file => "prometheus/src/metrics/prometheus_histogram.erl",
-                                 overlays => [{specs, "overlay_prometheus.erl"}], timeout => 10000}}.
-%% prometheus_metric:mf_data(MF): check_mf_exists/3 gives false for an unknown metric. The try around it makes {false,
-%% false} of the failure
-{exception, prometheus_histogram, deregister, 2, [ignore], unchecked_result}.
-%% case ets:lookup(?TABLE, Key) of [Metric] -> ..; [] -> .. end
-{exception, prometheus_histogram, observe, 4, [ignore], ets_value}.
-%% case fobserve_impl(Key, Buckets, BucketPos, Value) of 0 -> ..; 1 -> ok end: the result of ets:select_replace/2
-{exception, prometheus_histogram, pobserve, 6, [ignore], ets_value}.
-{exception, prometheus_histogram, observe_duration, 4, [ignore], defensive}. % the last clause, for what is not a fun
-%% generate_update_spec(Buckets), Buckets = prometheus_metric:mf_data(MF)
-{exception, prometheus_histogram, reset, 3, [ignore], mf_data}.
-%% reduce_buckets_counters(Values), Values = lists:flatten(RawValues): lists:flatten/1 gives [term()] for the lists of
-%% rows
-{exception, prometheus_histogram, value, 3, [ignore], library_spec}.
-{exception, prometheus_histogram, buckets, 3, [ignore], mf_data}. % prometheus_metric:mf_data(MF) as buckets()
-%% delete_metrics(Registry, Buckets) for [_, _, _, _, Buckets] <- prometheus_metric:metrics(?TABLE, Registry): the
-%% bindings of ets:match/2 are terms
-{exception, prometheus_histogram, deregister_cleanup, 1, [ignore], ets_value}.
-%% create_histogram(Name, Help, {CLabels, Labels, Registry, DU, Buckets}) for [Name, {Labels, Help}, CLabels, DU,
-%% Buckets] <- prometheus_metric:metrics(?TABLE, Registry): the bindings of ets:match/2 are terms
-{exception, prometheus_histogram, collect_mf, 2, [ignore], ets_value}.
-%% prometheus_buckets:new(RBuckets), RBuckets = prometheus_metric_spec:get_value(buckets, Spec, default)
-{exception, prometheus_histogram, validate_histogram_spec, 1, [ignore], proplist}.
-%% length(MFBuckets), MFBuckets = prometheus_metric:mf_data(MF)
-{exception, prometheus_histogram, insert_placeholders, 3, [ignore], mf_data}.
-%% gen_query_placeholder(?BUCKETS_START + BucketPos): 5 + non_neg_integer() as pos_integer()
-{exception, prometheus_histogram, generate_select_replace, 4, [ignore], arith_range}.
-%% lists:seq(?BUCKETS_START, ?BUCKETS_START + length(Buckets) - 1) as [pos_integer()]: lists:seq/2 gives [integer()]
-{exception, prometheus_histogram, buckets_seq, 1, [ignore], library_spec}.
-{exception, prometheus_histogram, metric_buckets, 1, [ignore], element_type}. % element(?BOUNDS_POS, Metric) as buckets()
-%% sub_tuple_to_list(Metric, ?BUCKETS_START, ?BUCKETS_START + length(metric_buckets(Metric))): 5 + non_neg_integer() as
-%% pos_integer()
-{exception, prometheus_histogram, reduce_buckets_counters, 1, [ignore], arith_range}.
+                                 overlays => [{specs, "overlay_prometheus.erl"},
+                                              {library, "overlay_prometheus_lib.erl"}], timeout => 10000}}.
+%% deregister/2: Buckets = prometheus_metric:mf_data(MF). The data of a histogram are its buckets, which
+%% validate_histogram_spec/1 has put under the key data of the spec
+{assertion, prometheus_histogram, {164, 15, "65dcbe"}, assert_type, "prometheus_buckets:buckets()", mf_data}.
+%% deregister/2: MF = prometheus_metric:check_mf_exists(?TABLE, Registry, Name), which is false for an unknown metric:
+%% mf_data/1 fails for it and the try around makes {false, false} of that
+{assertion, prometheus_histogram, {164, 41, "5df1ff"}, assert_type, "overlay_prometheus:mf()", unchecked_result}.
+%% for a float and a series that exists the result is the one of fobserve_impl/3, the 0 or 1 of ets:select_replace/2,
+%% and not ok as in the other clauses. In front of it: case ets:lookup(?TABLE, Key) of [Metric] -> ..; [] -> .. end,
+%% twice, which an assertion (ets_value) gets through
+{exception, prometheus_histogram, observe, 4, [ignore], source_bug}.
+%% for a float and a series that is new the result is the one of the fun given to insert_metric/5, fobserve_impl/4 with
+%% the 0 or 1 of ets:select_replace/2, and not ok. In front of it: case fobserve_impl(Key, Buckets, BucketPos, Value) of
+%% 0 -> ..; 1 -> ok end, which wants an assertion 0 | 1 (ets_value) on the call, whose hash 028dfe crashes the engine
+%% (seen with the clause 1 changed to _ in a scratch copy)
+{exception, prometheus_histogram, pobserve, 6, [ignore], source_bug}.
+%% the last clause, for what is not a fun
+{exception, prometheus_histogram, observe_duration, 4, [no_redundancy], defensive}.
+%% reset/3: Buckets = prometheus_metric:mf_data(MF), the buckets of the histogram
+{assertion, prometheus_histogram, {320, 13, "65dcbe"}, assert_type, "prometheus_buckets:buckets()", mf_data}.
+%% value/3: the counters of the buckets, one for each bound of the histogram, and a histogram has the bound infinity at
+%% least
+{assertion, prometheus_histogram, {359, 16, "2a146c"}, assert_type, "[number(), ...]", nonempty_list}.
+%% buckets/3: prometheus_metric:mf_data(MF), the buckets of the histogram
+{assertion, prometheus_histogram, {381, 3, "65dcbe"}, assert_type, "prometheus_buckets:buckets()", mf_data}.
+%% deregister_cleanup/1: [_, _, _, _, Buckets] <- prometheus_metric:metrics(?TABLE, Registry). ets:match/2 gives the
+%% bindings of a row as a list; the row of a metric family is the one that prometheus_metric:insert_mf/3 writes, its
+%% data the buckets of the histogram
+{assertion, prometheus_histogram, {390, 32, "83a7c7"}, assert_type, "[etylizer:cons(overlay_prometheus:name(), etylizer:cons({[overlay_prometheus:label_name()], overlay_prometheus:help()}, etylizer:cons(overlay_prometheus:labels(), etylizer:cons(overlay_prometheus:duration_unit() | undefined, etylizer:cons(prometheus_buckets:buckets(), [])))))]", ets_value}.
+%% collect_mf/2: [Name, {Labels, Help}, CLabels, DU, Buckets] <- prometheus_metric:metrics(?TABLE, Registry), as in
+%% deregister_cleanup/1
+{assertion, prometheus_histogram, {398, 10, "83a7c7"}, assert_type, "[etylizer:cons(overlay_prometheus:name(), etylizer:cons({[overlay_prometheus:label_name()], overlay_prometheus:help()}, etylizer:cons(overlay_prometheus:labels(), etylizer:cons(overlay_prometheus:duration_unit() | undefined, etylizer:cons(prometheus_buckets:buckets(), [])))))]", ets_value}.
+%% validate_histogram_spec/1: RBuckets = prometheus_metric_spec:get_value(buckets, Spec, default), what the key buckets
+%% of the spec can be; prometheus_buckets:new/1 raises an error for other values
+{assertion, prometheus_histogram, {418, 36, "55092f"}, assert_type, "overlay_prometheus:buckets_spec()", proplist}.
+%% insert_placeholders/3: MFBuckets = prometheus_metric:mf_data(MF), the buckets of the histogram
+{assertion, prometheus_histogram, {444, 15, "65dcbe"}, assert_type, "prometheus_buckets:buckets()", mf_data}.
+%% generate_select_replace/4: ?BUCKETS_START + BucketPos, 5 + non_neg_integer(), as the pos_integer() that
+%% gen_query_placeholder/1 takes
+{assertion, prometheus_histogram, {463, 52, "a3592c"}, assert_type, "pos_integer()", arith_range}.
+%% metric_buckets/1: element(?BOUNDS_POS, Metric). The row of a series is {Key, Bounds, ISum, FSum, Counter1, ..}, as
+%% insert_placeholders/3 writes it: the bounds of the buckets in native units, the two sums and a counter for each
+%% bucket
+{assertion, prometheus_histogram, {491, 3, "46cd45"}, assert_type, "prometheus_buckets:buckets()", ets_value}.
+%% reduce_buckets_counters/1: ?BUCKETS_START + length(..), 5 + non_neg_integer(), as the pos_integer() that
+%% sub_tuple_to_list/3 takes
+{assertion, prometheus_histogram, {496, 39, "e7a755"}, assert_type, "pos_integer()", arith_range}.
+%% reduce_buckets_counters/1: for each row the elements from ?BUCKETS_START on, the counters of its buckets;
+%% sub_tuple_to_list/3 gives the elements of a tuple as terms
+{assertion, prometheus_histogram, {498, 45, "acf905"}, assert_type, "[[non_neg_integer()]]", ets_value}.
 {exception, prometheus_histogram, transpose, 1, [ignore], bif_fun}. % lists:map(fun hd/1, M), lists:map(fun tl/1, M)
-%% element(?ISUM_POS, Metric) + element(?FSUM_POS, Metric)
-{exception, prometheus_histogram, reduce_sum, 1, [ignore], element_type}.
+%% reduce_sum/1: element(?ISUM_POS, Metric) + element(?FSUM_POS, Metric), the two sums of a row: the sum of the integers
+%% observed and the sum of the floats
+{assertion, prometheus_histogram, {505, 14, "f79149"}, assert_type, "integer()", ets_value}.
+{assertion, prometheus_histogram, {505, 43, "6d2538"}, assert_type, "number()", ets_value}.
 %% the last argument is [ISum, FSum | Buckets]: no clause for a list of less than two
-{exception, prometheus_histogram, create_histogram_metric, 6, [ignore], list_shape}.
-%% sub_tuple_to_list(Tuple, Pos + 1, Size): pos_integer() + 1 as pos_integer()
-{exception, prometheus_histogram, sub_tuple_to_list, 3, [ignore], arith_range}.
-%% lists:seq(0, ?WIDTH-1) as [non_neg_integer()]: lists:seq/2 gives [integer()]
-{exception, prometheus_histogram, schedulers_seq, 0, [ignore], library_spec}.
-%% lists:foldl(fun([Labels | V], ResAcc) when .. -> ..; ([Labels | V], ResAcc) -> .. end, #{}, MFValues): the first
-%% clause of the fun counts as dead
-{exception, prometheus_histogram, reduce_label_values, 1, [ignore], free_result}.
-%% load_all_values(Registry, Name, Bounds), Bounds = prometheus_metric:mf_data(MF)
-{exception, prometheus_histogram, mf_values, 3, [ignore], mf_data}.
+{exception, prometheus_histogram, create_histogram_metric, 6, [no_exhaustiveness], list_shape}.
+%% create_histogram_metric/6: the list is [ISum, FSum | Buckets], two sums, which are numbers, and the counters of the
+%% buckets, which are not negative integers; so are the cumulative counters that augment_counters/1 makes of them,
+%% [number(), ...] by its spec
+{assertion, prometheus_histogram, {513, 15, "e889f1"}, assert_type, "[non_neg_integer(), ...]", list_shape}.
+%% create_histogram_metric/6: Buckets, one counter for each bound of the histogram, and a histogram has the bound
+%% infinity at least
+{assertion, prometheus_histogram, {513, 32, "fe3991"}, assert_type, "[number(), ...]", nonempty_list}.
+%% sub_tuple_to_list/3: Pos + 1, pos_integer() + 1, as the pos_integer() of the function itself
+{assertion, prometheus_histogram, {542, 55, "86fcca"}, assert_type, "pos_integer()", arith_range}.
+%% reduce_label_values/1: MFValues is what load_all_values/3 gives, ets:match/2 on the rows of the series: [LabelValues,
+%% ISum, FSum, Counter1, ..], the pattern [Labels | V] of the fun for lists:foldl/3
+{assertion, prometheus_histogram, {560, 15, "a70f6a"}, assert_type, "[etylizer:cons(overlay_prometheus:label_values(), [number()])]", ets_value}.
+%% mf_values/3: Bounds = prometheus_metric:mf_data(MF), the buckets of the histogram
+{assertion, prometheus_histogram, {565, 12, "65dcbe"}, assert_type, "prometheus_buckets:buckets()", mf_data}.
+%% mf_values/3: the values of the map of reduce_label_values/1 are [ISum, FSum | BCounters], the pattern of the fun for
+%% maps:fold/3: a list that starts with the two sums
+{assertion, prometheus_histogram, {577, 14, "96b51c"}, assert_type, "#{overlay_prometheus:label_values() => etylizer:cons(number(), etylizer:cons(number(), [number()]))}", ets_value}.
 
 {module, prometheus_quantile_summary, #{file => "prometheus/src/metrics/prometheus_quantile_summary.erl",
-                                        overlays => [{specs, "overlay_prometheus.erl"}], timeout => 10000}}.
-%% #{compress_limit := CompressLimit} = Configuration, a qs_config()
-{exception, prometheus_quantile_summary, set_default, 2, [ignore], map_types}.
-%% case ets:lookup(?TABLE, Key) of [] -> ..; [{Key, Count, S, Q, CompressLimit}] -> .. end
-{exception, prometheus_quantile_summary, observe, 4, [ignore], ets_value}.
-{exception, prometheus_quantile_summary, observe_duration, 4, [ignore], defensive}. % the last clause, for what is not a fun
-%% quantile(Configuration), Configuration = prometheus_metric:mf_data(MF)
-{exception, prometheus_quantile_summary, reset, 3, [ignore], mf_data}.
-{exception, prometheus_quantile_summary, value, 3, [ignore], mf_data}. % #{quantiles := QNs} = prometheus_metric:mf_data(MF)
-%% #{quantiles := QNs} = Configuration = prometheus_metric:mf_data(MF)
-{exception, prometheus_quantile_summary, values, 2, [ignore], mf_data}.
-%% create_summary(Name, Help, {CLabels, Labels, Registry, DU, Data}) for [Name, {Labels, Help}, CLabels, DU, Data] <-
-%% prometheus_metric:metrics(?TABLE, Registry): the bindings of ets:match/2 are terms
-{exception, prometheus_quantile_summary, collect_mf, 2, [ignore], ets_value}.
-%% #{quantiles := QNs} = Configuration, a qs_config()
-{exception, prometheus_quantile_summary, collect_metrics, 2, [ignore], map_types}.
-%% #{compress_limit := CompressLimit} = Configuration, Configuration = prometheus_metric:mf_data(MF)
-{exception, prometheus_quantile_summary, insert_metric, 5, [ignore], mf_data}.
-%% prometheus_metric:mf_data(MF) as qs_config()
-{exception, prometheus_quantile_summary, get_configuration, 2, [ignore], mf_data}.
-%% lists:seq(0, ?WIDTH-1) as [non_neg_integer()]: lists:seq/2 gives [integer()]
-{exception, prometheus_quantile_summary, schedulers_seq, 0, [ignore], library_spec}.
-%% lists:sum([C || [C, _, _] <- Values]): a row is the list [Count, Sum, Estimator], its elements number() | estimator()
-{exception, prometheus_quantile_summary, reduce_values, 1, [ignore], list_shape}.
-%% {QNs, _} = lists:unzip(Targets), Targets = prometheus_metric_spec:get_value(targets, Spec, ..), which is any()
-{exception, prometheus_quantile_summary, invariant_and_quantiles_from_spec, 1, [ignore], proplist}.
-%% prometheus_metric_spec:get_value(compress_limit, Spec, default_compress_limit()) as integer()
-{exception, prometheus_quantile_summary, compress_limit_from_spec, 1, [ignore], proplist}.
-%% lists:foreach(.., Targets) behind the guard is_list(Targets)
-{exception, prometheus_quantile_summary, validate_targets, 1, [ignore], improper_list}.
-%% the clause quantile(#{invariant := Invariant}) for a qs_config()
-{exception, prometheus_quantile_summary, quantile, 1, [ignore], map_types}.
-%% lists:foldl(fun (Q, init) -> Q; (Q1, Q2) -> .. end, init, QList): the first clause of the fun counts as dead
-{exception, prometheus_quantile_summary, fold_quantiles, 1, [ignore], free_result}.
+                                        overlays => [{specs, "overlay_prometheus.erl"},
+                                                     {library, "overlay_prometheus_lib.erl"}], timeout => 10000}}.
+%% set_default/2: #{compress_limit := CompressLimit} = Configuration, a qs_config(), which has the key
+{assertion, prometheus_quantile_summary, {152, 3, "474f7c"}, assert_pattern, "#{compress_limit := _}", map_types}.
+%% case ets:lookup(?TABLE, Key) of [] -> ..; [{Key, Count, S, Q, CompressLimit}] -> .. end with Key bound: also with the
+%% lookup asserted to be [] or one row {Key, Count, Sum, Estimator, CompressLimit} (ets_value) the case counts as not
+%% exhaustive
+{exception, prometheus_quantile_summary, observe, 4, [ignore], bound_pattern}.
+%% the last clause, for what is not a fun
+{exception, prometheus_quantile_summary, observe_duration, 4, [no_redundancy], defensive}.
+%% reset/3: Configuration = prometheus_metric:mf_data(MF). The data of a quantile summary is its configuration, the map
+%% that validate_summary_spec/1 has put under the key data of the spec
+{assertion, prometheus_quantile_summary, {258, 19, "65dcbe"}, assert_type, "overlay_prometheus:qs_config()", mf_data}.
+%% value/3: #{quantiles := QNs} = prometheus_metric:mf_data(MF): the pattern on the configuration, a qs_config(), which
+%% has the key
+{assertion, prometheus_quantile_summary, {291, 3, "8a9811"}, assert_pattern, "#{quantiles := _}", map_types}.
+%% value/3: prometheus_metric:mf_data(MF), the configuration of the quantile summary
+{assertion, prometheus_quantile_summary, {291, 25, "65dcbe"}, assert_type, "overlay_prometheus:qs_config()", mf_data}.
+%% value/3: ets:select/2 of '$$' for the rows {Key, Count, Sum, Estimator, CompressLimit} of the series: [Count, Sum,
+%% Estimator] for each
+{assertion, prometheus_quantile_summary, {293, 8, "5888d9"}, assert_type, "[etylizer:cons(non_neg_integer(), etylizer:cons(number(), etylizer:cons(overlay_prometheus:estimator(), [])))]", ets_value}.
+%% values/2: #{quantiles := QNs} = Configuration = prometheus_metric:mf_data(MF): the pattern on the configuration, a
+%% qs_config(), which has the key
+{assertion, prometheus_quantile_summary, {307, 7, "4a75f5"}, assert_pattern, "#{quantiles := _}", map_types}.
+%% values/2: prometheus_metric:mf_data(MF), the configuration of the quantile summary
+{assertion, prometheus_quantile_summary, {307, 45, "65dcbe"}, assert_type, "overlay_prometheus:qs_config()", mf_data}.
+%% values/2: MFValues = load_all_values(Registry, Name), ets:match/2 on the rows {Key, Count, Sum, Estimator,
+%% CompressLimit} of the series: [LabelValues, Count, Sum, Estimator], the pattern of the fun for lists:foldl/3. The
+%% call cannot carry the assertion (its hash 050cd9 crashes the engine), the variable can
+{assertion, prometheus_quantile_summary, {316, 7, "a70f6a"}, assert_type, "[etylizer:cons(overlay_prometheus:label_values(), etylizer:cons(non_neg_integer(), etylizer:cons(number(), etylizer:cons(overlay_prometheus:estimator(), []))))]", ets_value}.
+%% collect_mf/2: [Name, {Labels, Help}, CLabels, DU, Data] <- prometheus_metric:metrics(?TABLE, Registry). ets:match/2
+%% gives the bindings of a row as a list; the row of a metric family is the one that prometheus_metric:insert_mf/3
+%% writes, its data the configuration of the quantile summary
+{assertion, prometheus_quantile_summary, {341, 50, "9b8b2d"}, assert_type, "[etylizer:cons(overlay_prometheus:name(), etylizer:cons({[overlay_prometheus:label_name()], overlay_prometheus:help()}, etylizer:cons(overlay_prometheus:labels(), etylizer:cons(overlay_prometheus:duration_unit() | undefined, etylizer:cons(overlay_prometheus:qs_config(), [])))))]", ets_value}.
+%% collect_metrics/2: #{quantiles := QNs} = Configuration, a qs_config(), which has the key
+{assertion, prometheus_quantile_summary, {347, 3, "36cffd"}, assert_pattern, "#{quantiles := _}", map_types}.
+%% collect_metrics/2: MFValues = load_all_values(Registry, Name), as in values/2
+{assertion, prometheus_quantile_summary, {355, 7, "a70f6a"}, assert_type, "[etylizer:cons(overlay_prometheus:label_values(), etylizer:cons(non_neg_integer(), etylizer:cons(number(), etylizer:cons(overlay_prometheus:estimator(), []))))]", ets_value}.
+%% insert_metric/5: Configuration = prometheus_metric:mf_data(MF), the configuration of the quantile summary
+{assertion, prometheus_quantile_summary, {398, 19, "65dcbe"}, assert_type, "overlay_prometheus:qs_config()", mf_data}.
+%% insert_metric/5: #{compress_limit := CompressLimit} = Configuration, a qs_config(), which has the key
+{assertion, prometheus_quantile_summary, {399, 3, "474f7c"}, assert_pattern, "#{compress_limit := _}", map_types}.
+%% get_configuration/2: prometheus_metric:mf_data(MF), the configuration of the quantile summary
+{assertion, prometheus_quantile_summary, {414, 3, "65dcbe"}, assert_type, "overlay_prometheus:qs_config()", mf_data}.
+%% get_configuration/2: MF = prometheus_metric:check_mf_exists(?TABLE, Registry, Name), which is false for an unknown
+%% metric; set_default/2 asks for the configuration of the metric that prometheus_metric:insert_mf/3 has just inserted
+{assertion, prometheus_quantile_summary, {414, 29, "5df1ff"}, assert_type, "overlay_prometheus:mf()", unchecked_result}.
+%% reduce_values/1: Values are the rows of the schedulers for one series, each as [Count, Sum, Estimator]: a list of
+%% elements of different types, [number() | estimator()] by the spec; the three comprehensions take a row apart
+{assertion, prometheus_quantile_summary, {425, 33, "a7ed06"}, assert_type, "[etylizer:cons(non_neg_integer(), etylizer:cons(number(), etylizer:cons(overlay_prometheus:estimator(), [])))]", ets_value}.
+{assertion, prometheus_quantile_summary, {426, 33, "a7ed06"}, assert_type, "[etylizer:cons(non_neg_integer(), etylizer:cons(number(), etylizer:cons(overlay_prometheus:estimator(), [])))]", ets_value}.
+%% reduce_values/1: the estimators of the rows, for fold_quantiles/1, which takes a list that is not empty: value/3
+%% calls reduce_values/1 only for rows that ets:select/2 has found
+{assertion, prometheus_quantile_summary, {427, 19, "9f6866"}, assert_type, "[overlay_prometheus:estimator(), ...]", nonempty_list}.
+%% quantile_estimator:f_targeted(Targets) takes a list that is not empty: the fun it gives fails for no targets
+%% (lists:min([])). validate_targets/1 accepts [], so a summary with {targets, []} is declared and fails at an
+%% observation. In front of it: lists:unzip(Targets) for the term() of the key targets, which validate_targets/1 has
+%% checked to be pairs of floats (an assertion, validated, gets through)
+{exception, prometheus_quantile_summary, invariant_and_quantiles_from_spec, 1, [ignore], source_bug}.
+%% compress_limit_from_spec/1: the key compress_limit of the spec, the number of inserts after which the estimator is
+%% compressed
+{assertion, prometheus_quantile_summary, {442, 3, "dbe8ea"}, assert_type, "integer()", proplist}.
+%% validate_targets/1: lists:foreach(.., Targets) behind the guard is_list(Targets)
+{assertion, prometheus_quantile_summary, {456, 5, "5789a7"}, assert_type, "[term()]", improper_list}.
+%% the clause quantile(#{invariant := Invariant}) for a qs_config(), which has the key
+{exception, prometheus_quantile_summary, quantile, 1, [no_exhaustiveness], map_types}.
+%% fold_quantiles/1: lists:foldl(fun (Q, init) -> Q; (Q1, Q2) -> quantile_merge(Q1, Q2) end, init, QList). The result is
+%% init only for the empty list, and QList is not empty
+{assertion, prometheus_quantile_summary, {483, 3, "7d0355"}, assert_type, "overlay_prometheus:estimator()", nonempty_list}.
 %% #quantile_estimator{samples_count = .., data = .., invariant = ..}: data_count and inserts_since_compression are left
 %% undefined, their types are number() and non_neg_integer(). The source has -dialyzer({nowarn_function,
 %% quantile_merge/2}) for it
 {exception, prometheus_quantile_summary, quantile_merge, 2, [ignore], missing_fields}.
 
 {module, prometheus_summary, #{file => "prometheus/src/metrics/prometheus_summary.erl",
-                               overlays => [{specs, "overlay_prometheus.erl"}], timeout => 10000}}.
-{exception, prometheus_summary, observe, 4, [ignore], ets_value}. % case ets:select_replace(?TABLE, ..) of 0 -> ..; 1 -> .. end
-{exception, prometheus_summary, observe_duration, 4, [ignore], defensive}. % the last clause, for what is not a fun
-%% case ets:select(?TABLE, ..) of [] -> undefined; Values -> .. end: the second branch counts as dead
-{exception, prometheus_summary, value, 3, [ignore], free_result}.
-%% lists:foldl(fun([L, C, IS, FS], ResAcc) -> .. end, #{}, MFValues): the clause of the fun counts as dead
-{exception, prometheus_summary, values, 2, [ignore], free_result}.
-%% create_summary(Name, Help, {CLabels, Labels, Registry, DU}) for [Name, {Labels, Help}, CLabels, DU, _] <-
-%% prometheus_metric:metrics(?TABLE, Registry): the bindings of ets:match/2 are terms
-{exception, prometheus_summary, collect_mf, 2, [ignore], ets_value}.
-%% lists:foldl(fun([L, C, IS, FS], ResAcc) -> .. end, #{}, MFValues): the clause of the fun counts as dead
-{exception, prometheus_summary, collect_metrics, 2, [ignore], free_result}.
-%% lists:seq(0, ?WIDTH-1) as [non_neg_integer()]: lists:seq/2 gives [integer()]
-{exception, prometheus_summary, schedulers_seq, 0, [ignore], library_spec}.
+                               overlays => [{specs, "overlay_prometheus.erl"},
+                                            {library, "overlay_prometheus_lib.erl"}], timeout => 10000}}.
+%% the last clause, for a value that is not a number
+{exception, prometheus_summary, observe, 4, [no_redundancy], defensive}.
+%% observe/4: case ets:select_replace(?TABLE, ..) of 0 -> ..; 1 -> ok end. The match specification names the key, the
+%% table is a set: no row replaced, or one
+{assertion, prometheus_summary, {167, 5, "d29284"}, assert_type, "0 | 1", ets_value}.
+%% the last clause, for what is not a fun
+{exception, prometheus_summary, observe_duration, 4, [no_redundancy], defensive}.
+%% value/3: ets:select/2 of '$$' for the rows {Key, Count, ISum, FSum} of the series: [Count, ISum, FSum] for each
+{assertion, prometheus_summary, {282, 8, "9e2449"}, assert_type, "[etylizer:cons(non_neg_integer(), etylizer:cons(integer(), etylizer:cons(number(), [])))]", ets_value}.
+%% values/2: MFValues = load_all_values(Registry, Name), ets:match/2 on the rows {Key, Count, ISum, FSum} of the series:
+%% [LabelValues, Count, ISum, FSum], the pattern of the fun for lists:foldl/3. The call cannot carry the assertion (its
+%% hash 050cd9 crashes the engine), the variable can
+{assertion, prometheus_summary, {303, 7, "a70f6a"}, assert_type, "[etylizer:cons(overlay_prometheus:label_values(), etylizer:cons(non_neg_integer(), etylizer:cons(integer(), etylizer:cons(number(), []))))]", ets_value}.
+%% collect_mf/2: [Name, {Labels, Help}, CLabels, DU, _] <- prometheus_metric:metrics(?TABLE, Registry). ets:match/2
+%% gives the bindings of a row as a list; the row of a metric family is the one that prometheus_metric:insert_mf/3
+%% writes
+{assertion, prometheus_summary, {327, 47, "205ede"}, assert_type, "[etylizer:cons(overlay_prometheus:name(), etylizer:cons({[overlay_prometheus:label_name()], overlay_prometheus:help()}, etylizer:cons(overlay_prometheus:labels(), etylizer:cons(overlay_prometheus:duration_unit() | undefined, etylizer:cons(term(), [])))))]", ets_value}.
+%% collect_metrics/2: MFValues = load_all_values(Registry, Name), as in values/2
+{assertion, prometheus_summary, {340, 7, "a70f6a"}, assert_type, "[etylizer:cons(overlay_prometheus:label_values(), etylizer:cons(non_neg_integer(), etylizer:cons(integer(), etylizer:cons(number(), []))))]", ets_value}.
 
 {module, prometheus_model_helpers, #{file => "prometheus/src/model/prometheus_model_helpers.erl",
-                                     overlays => [{specs, "overlay_prometheus.erl"}], timeout => 10000}}.
-%% case is_atom(P) of true -> atom_to_binary(P, utf8); _ -> P end in the comprehension: P keeps its type in both
-%% branches. Reported at the generator
-{exception, prometheus_model_helpers, metric_name, 1, [ignore], narrowing}.
-%% metric_from_tuple(_, Metric) when is_record(Metric, 'Metric') -> Metric: Metric is a tuple there, a tmetric() too.
-%% Behind it: gauge_metric(Metric) and the like, where the kind of the metric goes with the type of the first argument
-{exception, prometheus_model_helpers, metric_from_tuple, 2, [ignore], record_guard}.
-%% ensure_list(Val) when is_list(Val) -> Val, as a [T]: a T that is itself a list comes back as it is. For create_mf/4
-%% T has such values: a pbool() can be a list (prometheus_boolean()), which is then taken for a list of metrics
+                                     overlays => [{specs, "overlay_prometheus.erl"},
+                                                  {library, "overlay_prometheus_lib.erl"}], timeout => 10000}}.
+%% metric_name/1: case is_atom(P) of true -> atom_to_binary(P, utf8); _ -> P end for an element P of the name: P is an
+%% atom in the first branch and none in the second
+{assertion, prometheus_model_helpers, {91, 33, "790b52"}, assert_type, "atom()", narrowing}.
+{assertion, prometheus_model_helpers, {92, 15, "790b52"}, assert_type, "byte() | iolist() | binary()", narrowing}.
+%% metric_from_tuple/2: Metric behind the guard is_record(Metric, 'Metric'), which narrows it to tuple() only
+{assertion, prometheus_model_helpers, {363, 3, "7965d7"}, assert_type, "prometheus_model:'Metric'()", record_guard}.
+%% metric_from_tuple/2: the six clauses for a metric that is no record: Metric is a tmetric() of the kind that the first
+%% argument names, the type of the metric family for which prometheus_model_helpers:create_mf/4 has been given it
+{assertion, prometheus_model_helpers, {365, 16, "7965d7"}, assert_type, "gauge()", correlated}.
+{assertion, prometheus_model_helpers, {367, 18, "7965d7"}, assert_type, "counter()", correlated}.
+{assertion, prometheus_model_helpers, {369, 18, "7965d7"}, assert_type, "pbool()", correlated}.
+{assertion, prometheus_model_helpers, {371, 18, "7965d7"}, assert_type, "summary()", correlated}.
+{assertion, prometheus_model_helpers, {373, 20, "7965d7"}, assert_type, "histogram()", correlated}.
+{assertion, prometheus_model_helpers, {375, 18, "7965d7"}, assert_type, "untyped()", correlated}.
+%% ensure_list(Val) when is_list(Val) -> Val, as a [T]: a T that is itself a list comes back as it is. For create_mf/4 T
+%% has such values: a pbool() can be a list (prometheus_boolean()), which is then taken for a list of metrics
 {exception, prometheus_model_helpers, ensure_list, 1, [ignore], source_bug}.
-%% the clause when is_list(Val) gives back any list as text (binary() | iolist()), the source says FIXME: validate
-%% utf8. A label value or a help that is a list but no iodata() fails later, in iolist_to_binary/1 of the text format
+%% the clause when is_list(Val) gives back any list as text (binary() | iolist()), the source says FIXME: validate utf8.
+%% A label value or a help that is a list but no iodata() fails later, in iolist_to_binary/1 of the text format
 {exception, prometheus_model_helpers, ensure_binary_or_string, 1, [ignore], source_bug}.
