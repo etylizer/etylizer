@@ -28,52 +28,68 @@
 -export([decode_request/1, decode_response/1, encode_request/1, encode_response/1]).
 
 % these are all top-level messages which can be sent on the wire
--export_type([request/0, response/0, update/0, read_result/0, error_code/0]).
+-export_type([
+    request/0, response/0, response_in/0, update/0, read_result/0, error_code/0, bound_object/0
+]).
 
--type bound_object() :: {Key :: binary(), Type :: atom(), Bucket :: binary()}.
+-type crdt_type() ::
+    antidote_crdt_counter_pn
+    | antidote_crdt_counter_fat
+    | antidote_crdt_counter_b
+    | antidote_crdt_set_aw
+    | antidote_crdt_set_rw
+    | antidote_crdt_register_lww
+    | antidote_crdt_register_mv
+    | antidote_crdt_map_go
+    | antidote_crdt_map_rr
+    | antidote_crdt_flag_ew
+    | antidote_crdt_flag_dw.
+-type bound_object() :: {Key :: binary(), Type :: crdt_type(), Bucket :: binary()}.
 -type update() :: {Object :: bound_object(), Op :: atom(), Param :: any()}.
--type error_code() :: unknown | timeout | no_permissions | aborted | {error_code, integer()}.
+-type error_code() ::
+    unknown | timeout | no_permissions | aborted | {error_code, non_neg_integer()}.
 -type read_result() ::
     {counter, integer()}
     | {set, [binary()]}
     | {reg, binary()}
     | {mvreg, [binary()]}
-    | {map, [{{Key :: binary(), Type :: atom()}, Value :: read_result()}]}
+    | {map, [{{Key :: binary(), Type :: crdt_type()}, Value :: read_value()}]}
     | {flag, boolean()}.
+-type read_value() ::
+    integer()
+    | [binary()]
+    | binary()
+    | [{{Key :: binary(), Type :: crdt_type()}, Value :: read_value()}]
+    | boolean().
 
--type read_result_in() ::
-    {antidote_crdt_counter_fat, integer()}
-    | {antidote_crdt_counter_pn, integer()}
-    | {antidote_crdt_set_aw, [binary()]}
-    | {antidote_crdt_set_rw, [binary()]}
-    | {antidote_crdt_register_lww, binary()}
-    | {antidote_crdt_register_mv, [binary()]}
-    | {antidote_crdt_map_go, [{{Key :: binary(), Type :: atom()}, Value :: read_result_in()}]}
-    | {antidote_crdt_map_rr, [{{Key :: binary(), Type :: atom()}, Value :: read_result_in()}]}
-    | {antidote_crdt_flag_dw, boolean()}
-    | {antidote_crdt_flag_ew, boolean()}.
+-type read_result_in() :: {Object :: bound_object(), Value :: read_value()}.
 
 -type request() ::
-    {start_transaction, Clock :: binary(), Properties :: list()}
+    {start_transaction, Clock :: binary() | undefined, Properties :: list()}
     | {abort_transaction, TxId :: binary()}
     | {commit_transaction, TxId :: binary()}
     | {update_objects, Updates :: [update()], TxId :: binary()}
-    | {static_update_objects, Clock :: binary(), Properties :: list(), Updates :: [update()]}
-    | {static_read_objects, Clock :: binary(), Properties :: list(), Objects :: [bound_object()]}
+    | {static_update_objects, Clock :: binary() | undefined, Properties :: list(),
+        Updates :: [update()]}
+    | {static_read_objects, Clock :: binary() | undefined, Properties :: list(),
+        Objects :: [bound_object()]}
     | {read_objects, Objects :: [bound_object()], TxId :: binary()}
-    | {validate_or_read_objects, Objects :: [bound_object], Tokens :: [binary()], TxId :: binary()}
+    | {validate_or_read_objects, Objects :: [bound_object()], Tokens :: [binary()],
+        TxId :: binary()}
     | {create_dc, NodeNames :: [node()]}
     | get_connection_descriptor
     | {connect_to_dcs, Descriptors :: [binary()]}.
 
--type response() ::
+-type response() :: response(read_result()).
+-type response_in() :: response(read_result_in()).
+-type response(Result) ::
     {error_response, {ErrorCode :: error_code(), Message :: binary()}}
     | {start_transaction_response, {ok, TxId :: binary()} | {error, Reason :: error_code()}}
     | {commit_transaction_response, {ok, CommitTime :: binary()} | {error, Reason :: error_code()}}
-    | {static_read_objects_response, {ok, Results :: [read_result()], CommitTime :: binary()}}
-    | {read_objects_response, {ok, Resp :: [read_result()]} | {error, Reason :: error_code()}}
+    | {static_read_objects_response, {Results :: [Result], CommitTime :: binary()}}
+    | {read_objects_response, {ok, Resp :: [Result]} | {error, Reason :: error_code()}}
     | {validate_or_read_objects_response,
-        {ok, Resp :: {Values :: [read_result()], Tokens :: [binary()]}}
+        {ok, Resp :: {Values :: [Result], Tokens :: [binary()]}}
         | {error, Reason :: error_code()}}
     | {operation_response, ok | {error, Reason :: error_code()}}
     | {create_dc_response, ok | {error, Reason :: error_code()}}
@@ -126,7 +142,7 @@ decode_response(Data) ->
 encode_request(Data) ->
     encode(Data).
 
--spec encode_response(response()) -> iolist().
+-spec encode_response(response_in()) -> iolist().
 encode_response(Data) ->
     TransformReadResponse =
         case Data of
@@ -153,7 +169,7 @@ encode_response(Data) ->
         end,
     encode(TransformReadResponse).
 
--type message() :: term().
+-type message() :: request() | response().
 
 message_type_to_code('ApbErrorResp') -> 0;
 message_type_to_code('ApbRegUpdate') -> 107;
@@ -223,7 +239,7 @@ message_code_to_type(136) -> 'ApbValidateOrReadObjectsResp'.
 encode(Msg) ->
     encode_msg(encode_message(Msg)).
 
--spec decode(integer(), binary()) -> any().
+-spec decode(integer(), binary()) -> message().
 decode(Code, Msg) ->
     decode_message(decode_msg(Code, Msg)).
 

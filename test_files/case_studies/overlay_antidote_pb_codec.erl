@@ -1,18 +1,22 @@
 %% Specs for the functions of antidote_pb_codec that have none in the source.
-%% Encoding takes the types of the module (request(), response(), update(), ...). Decoding gives what
-%% the generated records declare: iodata() for a binary, the source types that path as term() itself.
+%% Encoding takes the types of the module (request(), response(), update(), ...). Decoding gives them
+%% back where a message() is made of the result (a bound object, an update, a read result); the
+%% operation of an update, a Param :: any() of update(), is given as the generated records declare it:
+%% iodata() for a binary.
 -module(overlay_antidote_pb_codec).
 -compile([export_all, nowarn_export_all]).
 
 %% An operation on a CRDT and its parameter, as in update().
 -type op() :: {atom(), any()}.
-%% A key of a map and its CRDT type.
+%% A key of a map and its CRDT type, as an update names it: encode_type/1 takes any atom and fails
+%% for one that is no CRDT type.
 -type map_key() :: {binary(), atom()}.
--type dec_map_key() :: {iodata(), atom()}.
-%% What a read gives, tagged by encode_crdt_type/1. The value of a map entry is not tagged.
--type read_value() ::
-        {reg, binary()} | {mvreg, [binary()]} | {counter, integer()} | {set, [binary()]}
-      | {map, [{map_key(), term()}]} | {flag, boolean()}.
+%% A key of a map as decode_map_key/1 gives it, and as a read result has it.
+-type dec_map_key() :: {binary(), antidote_pb_codec:crdt_type()}.
+%% An entry of a map that was read: the value is not tagged.
+-type map_entry() :: {dec_map_key(), antidote_pb_codec:read_value()}.
+%% The tag that encode_crdt_type/1 gives a read result.
+-type tag() :: reg | mvreg | counter | set | map | flag.
 -type dec_update() :: {atom(), term()} | [].
 
 %% --- message names and codes ---
@@ -36,7 +40,7 @@
 
 %% --- transactions ---
 
--spec 'antidote_pb_codec:encode_start_transaction'(Clock :: binary(), Properties :: list()) -> antidote_pb:'ApbStartTransaction'().
+-spec 'antidote_pb_codec:encode_start_transaction'(Clock :: binary() | undefined, Properties :: list()) -> antidote_pb:'ApbStartTransaction'().
 'antidote_pb_codec:encode_start_transaction'(_, _) -> error(overlay).
 
 -spec 'antidote_pb_codec:encode_commit_transaction'(TxId :: binary()) -> antidote_pb:'ApbCommitTransaction'().
@@ -57,20 +61,19 @@
 -spec 'antidote_pb_codec:encode_bound_object'(antidote_pb_codec:bound_object()) -> antidote_pb:'ApbBoundObject'().
 'antidote_pb_codec:encode_bound_object'(_) -> error(overlay).
 
--spec 'antidote_pb_codec:encode_bound_object'(Key :: binary(), Type :: atom(), Bucket :: binary()) -> antidote_pb:'ApbBoundObject'().
+-spec 'antidote_pb_codec:encode_bound_object'(Key :: binary(), Type :: antidote_pb_codec:crdt_type(), Bucket :: binary()) -> antidote_pb:'ApbBoundObject'().
 'antidote_pb_codec:encode_bound_object'(_, _, _) -> error(overlay).
 
--spec 'antidote_pb_codec:decode_bound_object'(antidote_pb:'ApbBoundObject'()) -> {Key :: iodata(), Type :: atom(), Bucket :: iodata()}.
+-spec 'antidote_pb_codec:decode_bound_object'(antidote_pb:'ApbBoundObject'()) -> antidote_pb_codec:bound_object().
 'antidote_pb_codec:decode_bound_object'(_) -> error(overlay).
 
 %% --- updates ---
 
--spec 'antidote_pb_codec:encode_static_update_objects'(Clock :: binary(), Properties :: list(), [antidote_pb_codec:update()]) ->
+-spec 'antidote_pb_codec:encode_static_update_objects'(Clock :: binary() | undefined, Properties :: list(), [antidote_pb_codec:update()]) ->
           antidote_pb:'ApbStaticUpdateObjects'().
 'antidote_pb_codec:encode_static_update_objects'(_, _, _) -> error(overlay).
 
--spec 'antidote_pb_codec:decode_update_op'(antidote_pb:'ApbUpdateOp'()) ->
-          {{Key :: iodata(), Type :: atom(), Bucket :: iodata()}, Op :: atom(), Param :: term()}.
+-spec 'antidote_pb_codec:decode_update_op'(antidote_pb:'ApbUpdateOp'()) -> antidote_pb_codec:update().
 'antidote_pb_codec:decode_update_op'(_) -> error(overlay).
 
 -spec 'antidote_pb_codec:encode_update_op'(antidote_pb_codec:update()) -> antidote_pb:'ApbUpdateOp'().
@@ -97,20 +100,20 @@
 
 %% --- reading objects ---
 
--spec 'antidote_pb_codec:encode_static_read_objects_response'({[read_value()], CommitTime :: binary()}) ->
+-spec 'antidote_pb_codec:encode_static_read_objects_response'({[antidote_pb_codec:read_result()], CommitTime :: binary()}) ->
           antidote_pb:'ApbStaticReadObjectsResp'().
 'antidote_pb_codec:encode_static_read_objects_response'(_) -> error(overlay).
 
--spec 'antidote_pb_codec:encode_read_objects_response'({ok, [read_value()]} | {error, antidote_pb_codec:error_code()}) ->
+-spec 'antidote_pb_codec:encode_read_objects_response'({ok, [antidote_pb_codec:read_result()]} | {error, antidote_pb_codec:error_code()}) ->
           antidote_pb:'ApbReadObjectsResp'().
 'antidote_pb_codec:encode_read_objects_response'(_) -> error(overlay).
 
 -spec 'antidote_pb_codec:encode_validate_or_read_objects_response'(
-        {ok, {[read_value()], Tokens :: [binary()]}} | {error, antidote_pb_codec:error_code()}) ->
+        {ok, {[antidote_pb_codec:read_result()], Tokens :: [binary()]}} | {error, antidote_pb_codec:error_code()}) ->
           antidote_pb:'ApbValidateOrReadObjectsResp'().
 'antidote_pb_codec:encode_validate_or_read_objects_response'(_) -> error(overlay).
 
--spec 'antidote_pb_codec:encode_static_read_objects'(Clock :: binary(), Properties :: list(), [antidote_pb_codec:bound_object()]) ->
+-spec 'antidote_pb_codec:encode_static_read_objects'(Clock :: binary() | undefined, Properties :: list(), [antidote_pb_codec:bound_object()]) ->
           antidote_pb:'ApbStaticReadObjects'().
 'antidote_pb_codec:encode_static_read_objects'(_, _, _) -> error(overlay).
 
@@ -126,10 +129,10 @@
 -spec 'antidote_pb_codec:encode_type'(atom()) -> antidote_pb:'CRDT_type'().
 'antidote_pb_codec:encode_type'(_) -> error(overlay).
 
--spec 'antidote_pb_codec:decode_type'(antidote_pb:'CRDT_type'() | integer()) -> atom().
+-spec 'antidote_pb_codec:decode_type'(antidote_pb:'CRDT_type'() | integer()) -> antidote_pb_codec:crdt_type().
 'antidote_pb_codec:decode_type'(_) -> error(overlay).
 
--spec 'antidote_pb_codec:encode_crdt_type'(atom()) -> reg | mvreg | counter | set | map | flag.
+-spec 'antidote_pb_codec:encode_crdt_type'(antidote_pb_codec:crdt_type()) -> tag().
 'antidote_pb_codec:encode_crdt_type'(_) -> error(overlay).
 
 %% --- CRDT operations ---
@@ -142,13 +145,11 @@
 'antidote_pb_codec:decode_update_operation'(_) -> error(overlay).
 
 %% the type of the value depends on the tag
--spec 'antidote_pb_codec:encode_read_object_resp'(reg | mvreg | counter | set | map | flag, Value :: term()) ->
+-spec 'antidote_pb_codec:encode_read_object_resp'(tag(), Value :: antidote_pb_codec:read_value()) ->
           antidote_pb:'ApbReadObjectResp'().
 'antidote_pb_codec:encode_read_object_resp'(_, _) -> error(overlay).
 
--spec 'antidote_pb_codec:decode_read_object_resp'(antidote_pb:'ApbReadObjectResp'()) ->
-          {counter, integer()} | {set, [iodata()] | undefined} | {reg, iodata()} | {mvreg, [iodata()] | undefined}
-        | {map, [{dec_map_key(), term()}]} | {flag, boolean() | 0 | 1}.
+-spec 'antidote_pb_codec:decode_read_object_resp'(antidote_pb:'ApbReadObjectResp'()) -> antidote_pb_codec:read_result().
 'antidote_pb_codec:decode_read_object_resp'(_) -> error(overlay).
 
 %% --- set updates ---
@@ -211,16 +212,16 @@
 
 %% --- map responses ---
 
--spec 'antidote_pb_codec:encode_map_get_resp'([{map_key(), term()}]) -> antidote_pb:'ApbGetMapResp'().
+-spec 'antidote_pb_codec:encode_map_get_resp'([map_entry()]) -> antidote_pb:'ApbGetMapResp'().
 'antidote_pb_codec:encode_map_get_resp'(_) -> error(overlay).
 
--spec 'antidote_pb_codec:decode_map_get_resp'(antidote_pb:'ApbGetMapResp'()) -> [{dec_map_key(), term()}].
+-spec 'antidote_pb_codec:decode_map_get_resp'(antidote_pb:'ApbGetMapResp'()) -> [map_entry()].
 'antidote_pb_codec:decode_map_get_resp'(_) -> error(overlay).
 
--spec 'antidote_pb_codec:encode_map_entry'({map_key(), term()}) -> antidote_pb:'ApbMapEntry'().
+-spec 'antidote_pb_codec:encode_map_entry'(map_entry()) -> antidote_pb:'ApbMapEntry'().
 'antidote_pb_codec:encode_map_entry'(_) -> error(overlay).
 
--spec 'antidote_pb_codec:decode_map_entry'(antidote_pb:'ApbMapEntry'()) -> {dec_map_key(), term()}.
+-spec 'antidote_pb_codec:decode_map_entry'(antidote_pb:'ApbMapEntry'()) -> map_entry().
 'antidote_pb_codec:decode_map_entry'(_) -> error(overlay).
 
 %% --- cluster management ---
