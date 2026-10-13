@@ -63,8 +63,6 @@ dictionary, otherwise function [`find/2`](`find/2`).
 `m:dict`, `m:gb_trees`
 """.
 
--etylizer({functions_exhaustive, off, [fetch/2, update/3]}).
-
 -spec take_1(Key, orddict(Key, Value), [{Key, Value}]) -> error | {Value, orddict(Key, Value)}.
 -spec reverse_pairs([{Key, Value}], [{Key, Value}]) -> [{Key, Value}].
 
