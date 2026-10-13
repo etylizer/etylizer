@@ -334,8 +334,10 @@
 -type qual_list_gen() ::  {generate, anno(), pat(), exp()}.
 -type qual_bitstring_gen() ::  {b_generate, anno(), pat(), exp()}.
 -type qual_bitstring_strict_gen() ::  {b_generate_strict, anno(), pat(), exp()}.
--type qual_map_gen() ::  {m_generate, anno(), KeyPat::pat(), ValPath::pat(), exp()}.
--type qual_map_strict_gen() ::  {m_generate_strict, anno(), KeyPat::pat(), ValPath::pat(), exp()}.
+% K := V <- M: the parser keeps the two patterns in one node
+-type qual_map_gen() ::  {m_generate, anno(), {map_field_exact, anno(), KeyPat::pat(), ValPat::pat()}, exp()}.
+-type qual_map_strict_gen() ::
+    {m_generate_strict, anno(), {map_field_exact, anno(), KeyPat::pat(), ValPat::pat()}, exp()}.
 -type generators() :: qual_zip_gen() | qual_list_strict_gen() | qual_list_gen() 
     | qual_bitstring_gen() | qual_bitstring_strict_gen() | qual_map_gen() | qual_map_strict_gen().
 -type qualifier() :: exp() | generators().
@@ -355,9 +357,8 @@
 -type catch_clause() :: {clause, anno(), Header::list1(catch_clause_header()), Guards::[guard()],
                          Body::exps()}.
 -type exc_type_pat() :: rep_atom() | pat_var().
--type catch_clause_header() :: {tuple, anno(),
-                                [X::exc_type_pat() | P::pat() | S::pat_var()]}.
-                                 % The order is always X, P, S.
+% the class, the value and the stacktrace
+-type catch_clause_header() :: {tuple, anno(), list3(exc_type_pat(), pat(), pat_var())}.
                                  % - X is the exception type (a variable or one of the atoms
                                  %   'throw', 'exit' or 'error'.
                                  % - P is a pattern
@@ -422,7 +423,16 @@
 % at compile time.
 -type ty_binop() :: {op, anno(), binop(), ty(), ty()}.
 -type ty_unop() :: {op, anno(), unop(), ty()}.
--type ty_predef() :: {type, anno(), atom(), [ty()]}.
+% A builtin type or alias by name, with its arguments. The names of the forms that have a type
+% of their own are not among them, apart from binary(), list() and #{}-less record() without
+% arguments: otherwise the arguments of every form would be a list of any types.
+-type ty_predef() ::
+    {type, anno(),
+     etylizer:without(atom(), binary | nil | list | 'fun' | bounded_fun | range | map | record | tuple
+                              | union | product | constraint | map_field_assoc | map_field_exact
+                              | field_type),
+     [ty()]}
+  | {type, anno(), binary | list | record, []}.
 -type ty_record() :: {type, anno(), record, list1star(Name::rep_atom(), ty_field())}.
 -type ty_field() :: {type, anno(), field_type, list2(Name::rep_atom(), ty())}.
 -type ty_remote() :: {remote_type, anno(), list3(Module::rep_atom(), Name::rep_atom(), Args::[ty()])}.

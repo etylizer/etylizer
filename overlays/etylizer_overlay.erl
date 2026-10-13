@@ -13,6 +13,12 @@
 'lists:foldl'(_, _, _) -> error(badarg).
 -spec 'lists:foldr'(fun((T, Acc) -> Acc), Acc, [T]) -> Acc.
 'lists:foldr'(_, _, _) -> error(badarg).
+% evaluates any term, a term that is no expression is an error at run time
+-spec 'erl_eval:expr'(term(), map()) -> {value, term(), term()}.
+'erl_eval:expr'(_, _) -> error(overlay).
+
+-spec 'lists:mapfoldl'(fun((A, Acc) -> {B, Acc}), Acc, [A]) -> {[B], Acc}.
+'lists:mapfoldl'(_, _, _) -> error(badarg).
 -spec 'lists:map'
   (fun((A) -> B), nonempty_list(A)) -> nonempty_list(B);
   (fun((A) -> B), list(A)) -> list(B).

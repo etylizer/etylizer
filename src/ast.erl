@@ -159,6 +159,7 @@
 -export([
     format_loc/1, to_loc/2, generated/2, generated_by/1, is_generated_by/2, source_loc/1, is_loc/1,
     min_loc/2, leq_loc/2, is_predef_name/1, is_predef_alias_name/1,
+    predef_name/1, predef_alias_name/1,
     local_varname_from_any_ref/1, get_fun_name/1, loc_exp/1
 ]).
 
@@ -496,20 +497,24 @@ loc_exp({_, L, _, _, _, _}) -> L.
 -type predef_name() :: any | none | pid | port | reference | float | integer | atom | dynamic.
 -type ty_predef() :: {predef, predef_name()}.
 
--spec is_predef_name(atom()) -> boolean().
-is_predef_name(N) ->
+% The name with its type, if it is one of the predefined types.
+-spec predef_name(atom()) -> {ok, predef_name()} | error.
+predef_name(N) ->
     case N of
-        any -> true;
-        none -> true;
-        pid -> true;
-        port -> true;
-        reference -> true;
-        float -> true;
-        integer -> true;
-        atom -> true;
-        dynamic -> true;
-        _ -> false
+        any -> {ok, any};
+        none -> {ok, none};
+        pid -> {ok, pid};
+        port -> {ok, port};
+        reference -> {ok, reference};
+        float -> {ok, float};
+        integer -> {ok, integer};
+        atom -> {ok, atom};
+        dynamic -> {ok, dynamic};
+        _ -> error
     end.
+
+-spec is_predef_name(atom()) -> boolean().
+is_predef_name(N) -> predef_name(N) =/= error.
 
 % Predefined type aliases. They can be expanded away, but the expansion may contain other
 % predefined type aliases (see iolist for example).
@@ -523,42 +528,46 @@ is_predef_name(N) ->
       | timeout | no_return | non_neg_integer | pos_integer | neg_integer.
 -type ty_predef_alias() :: {predef_alias, predef_alias_name()}.
 
--spec is_predef_alias_name(atom()) -> boolean().
-is_predef_alias_name(N) ->
+% The name with its type, if it is one of the predefined aliases.
+-spec predef_alias_name(atom()) -> {ok, predef_alias_name()} | error.
+predef_alias_name(N) ->
     case N of
-        term -> true;
-        binary -> true;
-        nonempty_binary -> true;
-        bitstring -> true;
-        nonempty_bitstring -> true;
-        boolean -> true;
-        byte -> true;
-        char -> true;
-        nil -> true;
-        number -> true;
-        list -> true;
-        nonempty_list -> true;
-        maybe_improper_list -> true;
-        nonempty_improper_list -> true;
-        nonempty_maybe_improper_list -> true;
-        string -> true;
-        nonempty_string -> true;
-        iodata -> true;
-        iolist -> true;
-        map -> true;
-        function -> true;
-        module -> true;
-        mfa -> true;
-        arity -> true;
-        identifier -> true;
-        node -> true;
-        timeout -> true;
-        no_return -> true;
-        non_neg_integer -> true;
-        pos_integer -> true;
-        neg_integer -> true;
-        _ -> false
+        term -> {ok, term};
+        binary -> {ok, binary};
+        nonempty_binary -> {ok, nonempty_binary};
+        bitstring -> {ok, bitstring};
+        nonempty_bitstring -> {ok, nonempty_bitstring};
+        boolean -> {ok, boolean};
+        byte -> {ok, byte};
+        char -> {ok, char};
+        nil -> {ok, nil};
+        number -> {ok, number};
+        list -> {ok, list};
+        nonempty_list -> {ok, nonempty_list};
+        maybe_improper_list -> {ok, maybe_improper_list};
+        nonempty_improper_list -> {ok, nonempty_improper_list};
+        nonempty_maybe_improper_list -> {ok, nonempty_maybe_improper_list};
+        string -> {ok, string};
+        nonempty_string -> {ok, nonempty_string};
+        iodata -> {ok, iodata};
+        iolist -> {ok, iolist};
+        map -> {ok, map};
+        function -> {ok, function};
+        module -> {ok, module};
+        mfa -> {ok, mfa};
+        arity -> {ok, arity};
+        identifier -> {ok, identifier};
+        node -> {ok, node};
+        timeout -> {ok, timeout};
+        no_return -> {ok, no_return};
+        non_neg_integer -> {ok, non_neg_integer};
+        pos_integer -> {ok, pos_integer};
+        neg_integer -> {ok, neg_integer};
+        _ -> error
     end.
+
+-spec is_predef_alias_name(atom()) -> boolean().
+is_predef_alias_name(N) -> predef_alias_name(N) =/= error.
 
 % A reference to a user defined type. At point of construction, it's still unclear
 % whether the usage is valid, so we include the location for better error reporting

@@ -342,7 +342,7 @@ replace_mu_var_list([], _Name) -> [];
 replace_mu_var_list([H | T], Name) ->
     [replace_mu_var(H, Name) | replace_mu_var_list(T, Name)].
 
--spec eval_const_ty(erl_parse:abstract_expr(), ast:loc()) -> {singleton, integer()}.
+-spec eval_const_ty(ast_erl:ty_binop() | ast_erl:ty_unop(), ast:loc()) -> {singleton, integer()}.
 eval_const_ty(Ty, Loc) ->
     try
         case erl_eval:expr(Ty, maps:new()) of
@@ -382,10 +382,10 @@ trans_ty(Ctx, Env, Ty) ->
                 {{singleton, I1}, {singleton, I2}} when is_integer(I1) andalso is_integer(I2) ->
                     {range, I1, I2};
                 _ ->
-                    errors:ty_error("~s: Invalid range type: ~w", [ast:format_loc(Loc), Ty])
+                    errors:ty_error(Loc, "Invalid range type: ~w", [Ty])
             end;
         {type, _, map, any} -> {map_any};
-        {type, _, map, Assocs} ->
+        {type, _, map, Assocs} when is_list(Assocs) ->
             {map, lists:map(fun(A) -> trans_ty_map_assoc(Ctx, Env, A) end, Assocs)};
         {op, Anno, _, _, _} ->
             eval_const_ty(Ty, to_loc(Ctx, Anno));
@@ -457,17 +457,15 @@ trans_ty(Ctx, Env, Ty) ->
                     {union, [{empty_list}, {nonempty_improper_list, T1, T2}]};
                 {nonempty_maybe_improper_list, [T1, T2]} -> {nonempty_improper_list, T1, T2};
                 {nonempty_improper_list, [T1, T2]} -> {nonempty_improper_list, T1, T2};
-                {record, [{singleton, RecordName}]} when is_atom(RecordName) ->
-                    {record, RecordName, []};
                 _ ->
-                    case {ast:is_predef_name(Name), NewArgTys} of
-                        {true, []} -> {predef, Name};
-                        {true, _} ->
+                    case {ast:predef_name(Name), NewArgTys} of
+                        {{ok, Predef}, []} -> {predef, Predef};
+                        {{ok, _}, _} ->
                             errors:ty_error(Loc, "Invalid application of builtin type: ~w", Ty);
-                        {false, _} ->
-                            case {ast:is_predef_alias_name(Name), NewArgTys} of
-                                {true, []} -> {predef_alias, Name};
-                                {true, _} ->
+                        {error, _} ->
+                            case {ast:predef_alias_name(Name), NewArgTys} of
+                                {{ok, Alias}, []} -> {predef_alias, Alias};
+                                {{ok, _}, _} ->
                                     errors:ty_error(Loc, "Invalid application of builtin alias: ~w ", Ty);
                                 _ ->
                                     case {Name, NewArgTys} of
@@ -478,8 +476,7 @@ trans_ty(Ctx, Env, Ty) ->
                                     end
                             end
                     end
-            end;
-        X -> errors:uncovered_case(?FILE, ?LINE, X)
+            end
     end.
 
 -spec trans_tys(ctx(), tyenv(), [ast_erl:ty()]) -> [ast:ty()].
@@ -905,10 +902,6 @@ resolve_name(Loc, Ctx, Env, Name, Ar) ->
             end
     end.
 
--spec trans_pats(ctx(), varenv_local:t(), [ast_erl:pat()], bind_mode()) ->
-          {[ast:pat()], varenv_local:t()}.
-trans_pats(Ctx, Env, Pats, BindMode) -> trans_pats(Ctx, Env, Env, Pats, BindMode).
-
 -spec trans_pats(ctx(), varenv_local:t(), varenv_local:t(), [ast_erl:pat()], bind_mode()) ->
           {[ast:pat()], varenv_local:t()}.
 trans_pats(Ctx, Outer, Env, Pats, BindMode) ->
@@ -945,10 +938,12 @@ trans_pat(Ctx, Outer, Env, Pat, BindMode) ->
                   {Env, Outer}, Elems),
             {{bin, to_loc(Ctx, Anno), NewElems}, NewEnv};
         {match, Anno, P1, P2} ->
-            {[Q1, Q2], NewEnv} = trans_pats(Ctx, Outer, Env, [P1, P2], BindMode),
+            {Q1, Env1} = trans_pat(Ctx, Outer, Env, P1, BindMode),
+            {Q2, NewEnv} = trans_pat(Ctx, Outer, Env1, P2, BindMode),
             {{match, to_loc(Ctx, Anno), Q1, Q2}, NewEnv};
         {cons, Anno, P1, P2} ->
-            {[Q1, Q2], NewEnv} = trans_pats(Ctx, Outer, Env, [P1, P2], BindMode),
+            {Q1, Env1} = trans_pat(Ctx, Outer, Env, P1, BindMode),
+            {Q2, NewEnv} = trans_pat(Ctx, Outer, Env1, P2, BindMode),
             {{cons, to_loc(Ctx, Anno), Q1, Q2}, NewEnv};
         {nil, Anno} -> {{nil, to_loc(Ctx, Anno)}, Env};
         {map, Anno, Assocs} ->
@@ -1009,8 +1004,7 @@ trans_pat(Ctx, Outer, Env, Pat, BindMode) ->
                                        ast:format_loc(Loc)),
                             {{var, Loc, {local_bind, Name}}, NewEnv}
                     end
-            end;
-        X -> errors:uncovered_case(?FILE, ?LINE, X)
+            end
     end.
 
 % The size is evaluated in SizeEnv, which then gets the variable of the segment.
@@ -1064,31 +1058,43 @@ trans_case_clause(Ctx, Env, C) ->
 trans_catch_clauses(Ctx, Env, Cs) -> lists:map(fun(C) -> trans_catch_clause(Ctx, Env, C) end, Cs).
 
 -spec trans_catch_clause(ctx(), varenv_local:t(), ast_erl:catch_clause()) -> ast:catch_clause().
-trans_catch_clause(Ctx, Env, C) ->
-    case C of
-        {clause, Anno, [{tuple, _, L}], Guards, Body} ->
-            {[X, P, S], NewEnv} = trans_pats(Ctx, Env, L, bind_fresh),
-            case S of
-                {var, StackLoc, {local_ref, {StackName, _}}} ->
-                    errors:name_error(StackLoc,
-                                      "stacktrace variable ~w must not be previously bound",
-                                      StackName);
-                _ -> ok
-            end,
-            NewGuards = trans_guards(Ctx, NewEnv, Guards),
-            NewBody = trans_exp_seq_noenv(Ctx, NewEnv, Body),
-            {catch_clause, to_loc(Ctx, Anno), X, P, S, NewGuards, NewBody};
-        Z -> errors:uncovered_case(?FILE, ?LINE, Z)
-    end.
+trans_catch_clause(Ctx, Env, {clause, Anno, [{tuple, _, [ClassPat, ValuePat, StackPat]}], Guards, Body}) ->
+    {X, Env1} = trans_pat(Ctx, Env, ClassPat, bind_fresh),
+    {P, Env2} = trans_pat(Ctx, Env1, ValuePat, bind_fresh),
+    {S, NewEnv} = trans_pat(Ctx, Env2, StackPat, bind_fresh),
+    case S of
+        {var, StackLoc, {local_ref, {StackName, _}}} ->
+            errors:name_error(StackLoc,
+                              "stacktrace variable ~w must not be previously bound",
+                              StackName);
+        _ -> ok
+    end,
+    NewGuards = trans_guards(Ctx, NewEnv, Guards),
+    NewBody = trans_exp_seq_noenv(Ctx, NewEnv, Body),
+    {catch_clause, to_loc(Ctx, Anno), exc_type_pat(X), P, stacktrace_pat(S), NewGuards, NewBody}.
+
+% The class of a catch clause is an atom, a variable or _, and its stacktrace a variable or _.
+% trans_pat/4 gives a pattern of any kind.
+-spec exc_type_pat(ast:pat()) -> ast:exc_type_pat().
+exc_type_pat(P = {'atom', _, _}) -> P;
+exc_type_pat(P = {var, _, _}) -> P;
+exc_type_pat(P = {wildcard, _}) -> P;
+exc_type_pat(P) -> errors:bug("Invalid class of a catch clause: ~w", P).
+
+-spec stacktrace_pat(ast:pat()) -> ast:stacktrace_pat().
+stacktrace_pat(P = {var, _, _}) -> P;
+stacktrace_pat(P = {wildcard, _}) -> P;
+stacktrace_pat(P) -> errors:bug("Invalid stacktrace of a catch clause: ~w", P).
 
 % Translates function clauses into argument variables and a body (see ast:fun_decl()).
--spec trans_fun_clauses(ctx(), varenv_local:t(), [ast_erl:fun_clause()])
+-spec trans_fun_clauses(ctx(), varenv_local:t(), [ast_erl:fun_clause(), ...])
                        -> {[ast:local_varname()], ast:exps()}.
 trans_fun_clauses(Ctx, Env, Cs = [C = {clause, Anno, Ps, _, _} | _]) ->
     case is_var_only_clause(Cs) of
         true ->
-            {_, Qs, [], Body} = trans_fun_clause(Ctx, Env, C),
-            {lists:map(fun({var, _, {local_bind, V}}) -> V end, Qs), Body};
+            % one clause without a guard, its patterns are distinct variables
+            {_, Qs, [], Body} = ?assert_pattern({_, _, [], _}, trans_fun_clause(Ctx, Env, C)),
+            {[V || {var, _, {local_bind, V}} <- Qs], Body};
         false ->
             {Args, ArgEnv} =
                 lists:mapfoldl(fun(_, E) -> varenv_local:insert_fresh(E) end, Env, Ps),
@@ -1113,25 +1119,21 @@ is_var_only_clause(_) -> false.
 
 -spec trans_fun_clause(ctx(), varenv_local:t(), ast_erl:fun_clause())
                       -> {ast:loc(), [ast:pat()], [ast:guard()], ast:exps()}.
-trans_fun_clause(Ctx, Env, C) ->
-    case C of
-        {clause, Anno, Ps, Guards, Body} ->
-            % shadow variables from outer context, 
-            % but don't bind multiple variables inside this pattern
-            % mode shadow and using Env does not work for X = ..., fun(X, X) -> ...
-            % as it would create X1= ..., fun(X2, X3) -> ...
-            % whereas it should be X1= ..., fun(X2, X2) -> ...
-            % -> use a new local context with bind_fresh, 
-            % but remember numbering of Variables in Env
-            % merge afterwards, where QEnv0 takes precedence
-            % map keys and sizes still refer to Env
-            {Qs, QEnv0} = trans_pats(Ctx, Env, varenv_local:empty(Env), Ps, bind_fresh),
-            QEnv = varenv_local:merge(Env, QEnv0),
-            NewGuards = trans_guards(Ctx, QEnv, Guards),
-            NewBody = trans_exp_seq_noenv(Ctx, QEnv, Body),
-            {to_loc(Ctx, Anno), Qs, NewGuards, NewBody};
-        X -> errors:uncovered_case(?FILE, ?LINE, X)
-    end.
+trans_fun_clause(Ctx, Env, {clause, Anno, Ps, Guards, Body}) ->
+    % shadow variables from outer context,
+    % but don't bind multiple variables inside this pattern
+    % mode shadow and using Env does not work for X = ..., fun(X, X) -> ...
+    % as it would create X1= ..., fun(X2, X3) -> ...
+    % whereas it should be X1= ..., fun(X2, X2) -> ...
+    % -> use a new local context with bind_fresh,
+    % but remember numbering of Variables in Env
+    % merge afterwards, where QEnv0 takes precedence
+    % map keys and sizes still refer to Env
+    {Qs, QEnv0} = trans_pats(Ctx, Env, varenv_local:empty(Env), Ps, bind_fresh),
+    QEnv = varenv_local:merge(Env, QEnv0),
+    NewGuards = trans_guards(Ctx, QEnv, Guards),
+    NewBody = trans_exp_seq_noenv(Ctx, QEnv, Body),
+    {to_loc(Ctx, Anno), Qs, NewGuards, NewBody}.
 
 % The outer variables referenced by the guards of an if, in order of first occurrence.
 -spec if_guard_vars(ctx(), varenv_local:t(), [ast_erl:if_clause()]) -> [ast:local_varname()].
@@ -1153,22 +1155,18 @@ trans_if_clauses(Ctx, Env, Vars, Cs) ->
 % The Yi shadow the Xi in the clause; afterwards the names refer to the Xi again.
 -spec trans_if_clause(ctx(), varenv_local:t(), [ast:local_varname()], ast_erl:if_clause())
                      -> {ast:case_clause(), varenv_local:t()}.
-trans_if_clause(Ctx, Env, Vars, C) ->
-    case C of
-        {clause, Anno, [], Guards, Body} ->
-            Loc = to_loc(Ctx, Anno),
-            G = ast:generated('if', Loc),
-            {Ys, ClauseEnv} = lists:mapfoldl(fun({N, _}, E) -> varenv_local:insert(N, E) end, Env, Vars),
-            Pat = case Ys of
-                      [] -> {wildcard, G};
-                      _ -> {tuple, G, [{var, G, {local_bind, Y}} || Y <- Ys]}
-                  end,
-            NewGuards = trans_guards(Ctx, ClauseEnv, Guards),
-            {NewBody, BodyEnv} = trans_exp_seq(Ctx, ClauseEnv, Body),
-            NewEnv = lists:foldl(fun varenv_local:insert_var/2, BodyEnv, Vars),
-            {{case_clause, Loc, Pat, NewGuards, NewBody}, NewEnv};
-        X -> errors:uncovered_case(?FILE, ?LINE, X)
-    end.
+trans_if_clause(Ctx, Env, Vars, {clause, Anno, [], Guards, Body}) ->
+    Loc = to_loc(Ctx, Anno),
+    G = ast:generated('if', Loc),
+    {Ys, ClauseEnv} = lists:mapfoldl(fun({N, _}, E) -> varenv_local:insert(N, E) end, Env, Vars),
+    Pat = case Ys of
+              [] -> {wildcard, G};
+              _ -> {tuple, G, [{var, G, {local_bind, Y}} || Y <- Ys]}
+          end,
+    NewGuards = trans_guards(Ctx, ClauseEnv, Guards),
+    {NewBody, BodyEnv} = trans_exp_seq(Ctx, ClauseEnv, Body),
+    NewEnv = lists:foldl(fun varenv_local:insert_var/2, BodyEnv, Vars),
+    {{case_clause, Loc, Pat, NewGuards, NewBody}, NewEnv}.
 
 -spec trans_qualifiers(ctx(), varenv_local:t(), [ast_erl:qualifier(), ...])
     -> {[ast:qualifier(), ...], varenv_local:t()}.
@@ -1177,8 +1175,20 @@ trans_qualifiers(Ctx, Env, Qs) ->
 
 -spec trans_qualifier(ctx(), varenv_local:t(), ast_erl:qualifier())
     -> {ast:qualifier(), varenv_local:t()}.
-trans_qualifier(Ctx, Env, Q) ->
-    case Q of
+trans_qualifier(Ctx, Env, Q = {generate, _, _, _}) -> trans_generator(Ctx, Env, Q);
+trans_qualifier(Ctx, Env, Q = {generate_strict, _, _, _}) -> trans_generator(Ctx, Env, Q);
+trans_qualifier(Ctx, Env, Q = {b_generate, _, _, _}) -> trans_generator(Ctx, Env, Q);
+trans_qualifier(Ctx, Env, Q = {b_generate_strict, _, _, _}) -> trans_generator(Ctx, Env, Q);
+trans_qualifier(Ctx, Env, Q = {m_generate, _, _, _}) -> trans_generator(Ctx, Env, Q);
+trans_qualifier(Ctx, Env, Q = {m_generate_strict, _, _, _}) -> trans_generator(Ctx, Env, Q);
+trans_qualifier(Ctx, Env, Q = {zip, _, _}) -> trans_generator(Ctx, Env, Q);
+trans_qualifier(Ctx, Env, Exp) -> trans_exp(Ctx, Env, Exp). % filter
+
+% A zip generator takes generators only, no filters.
+-spec trans_generator(ctx(), varenv_local:t(), ast_erl:generators())
+    -> {ast:generators(), varenv_local:t()}.
+trans_generator(Ctx, Env, G) ->
+    case G of
          % generator patterns for lists and bitstrings Pat <- / <:- / <= / <:= Exp
         {K, Anno, Pat, Exp} when
               (K == generate orelse K == generate_strict orelse K == b_generate orelse K == b_generate_strict) ->
@@ -1192,11 +1202,9 @@ trans_qualifier(Ctx, Env, Q) ->
             {NewV, NewEnv2} = trans_pat(Ctx, Env, NewEnv1, ValPat, shadow),
             {{K, to_loc(Ctx, Anno), NewK, NewV, NewExp}, NewEnv2};
         % zip generator
-        {zip, Anno, Qs} ->
-            {NewQ, NewEnv} = trans_qualifiers(Ctx, Env, Qs),
-            {{zip, to_loc(Ctx, Anno), NewQ}, NewEnv};
-        Exp -> % filter
-            trans_exp(Ctx, Env, Exp)
+        {zip, Anno, Gs} ->
+            {NewGs, NewEnv} = thread_through_env(Env, Gs, fun(E, G1) -> trans_generator(Ctx, E, G1) end),
+            {{zip, to_loc(Ctx, Anno), NewGs}, NewEnv}
     end.
 
 -spec trans_map_assocs
@@ -1224,15 +1232,11 @@ trans_map_assoc(Ctx, Env, {map_field_exact, Anno, ExpKey, ExpVal}) ->
      | {record_field_other, ast:loc(), ast:exp()}]) ->
     [{record_field, ast:loc(), atom(), ast:exp()}].
 expand_record_field_other({_, DefFields}, Fields) ->
-    % Split into explicit fields and the optional wildcard
-    {Explicit, Other} = lists:partition(
-        fun({record_field, _, _, _}) -> true;
-           ({record_field_other, _, _}) -> false
-        end,
-        Fields),
-    case Other of
+    % Split into explicit fields and the optional wildcard, a record expression has at most one
+    Explicit = [F || F = {record_field, _, _, _} <- Fields],
+    case [O || O = {record_field_other, _, _} <- Fields] of
         [] -> Explicit;
-        [{record_field_other, Loc, Exp}] ->
+        [{record_field_other, Loc, Exp} | _] ->
             GivenNames = sets:from_list(
                 [N || {record_field, _, N, _} <- Explicit],
                 [{version, 2}]),
@@ -1341,7 +1345,7 @@ lookup_record(Ctx, Loc, Name) ->
 -spec record_field_pos(ast:loc(), ety_records:record_ty(), atom()) -> pos_integer().
 record_field_pos(Loc, {RecName, DefFields}, FieldName) ->
     case utils:assocs_find_index(FieldName, DefFields) of
-        {ok, _, I} -> I + 2;
+        {ok, _, I} -> ?assert_type(I + 2, pos_integer());
         error -> errors:name_error(Loc, "field ~w not defined in record ~w", [FieldName, RecName])
     end.
 
@@ -1366,8 +1370,7 @@ trans_record_field(Ctx, TyEnv, Field) ->
             {record_field, to_loc(Ctx, Anno), Name, untyped, no_default};
         {record_field, Anno, {'atom', _, Name}, DefaultExp} ->
             {record_field, to_loc(Ctx, Anno), Name, untyped,
-             trans_exp_noenv(Ctx, varenv_local:empty(), DefaultExp)};
-        X -> errors:uncovered_case(?FILE, ?LINE, X)
+             trans_exp_noenv(Ctx, varenv_local:empty(), DefaultExp)}
     end.
 
 -spec arity(ast:loc(), [any()]) -> arity().
@@ -1387,7 +1390,9 @@ parse_type(Ctx, Src) ->
     % at some point, we could extend this like Haskell's ScopeTypeVariables, if there is any need
     case erl_parse:parse_form(Tokens) of
         {ok, {attribute, _, type, Def = {t, _Type, []}}} ->
-            {_, {ty_scheme, [], TyNew}} = trans_tydef(Ctx, Def),
+            % the parser has its own types for a form, ast_erl describes the same terms
+            {_, {ty_scheme, [], TyNew}} =
+                ?assert_pattern({_, {ty_scheme, [], _}}, trans_tydef(Ctx, ?assert_type(Def, ast_erl:tydef()))),
             {ok, TyNew};
         _ -> error
     end.
@@ -1409,7 +1414,8 @@ collect_record_variants(Ctx, RecName) ->
     Tab = Ctx#ctx.record_variants,
     Results = [{VName, Ov} || {_, VName, Ov} <- ets:lookup(Tab, RecName)],
     ets:delete(Tab, RecName),
-    Results.
+    % as store_record_variant/3 has put them into the table
+    ?assert_type(Results, [{atom(), [ety_records:record_field()]}]).
 
 -ifdef(TEST).
 

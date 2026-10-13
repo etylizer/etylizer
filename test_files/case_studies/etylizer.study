@@ -43,7 +43,6 @@
 {exception, assertions, tail, 4, [], dynamic}.
 {exception, assertions, visit, 4, [], dynamic}.
 {exception, assertions, wrapper, 2, [], cast}.
-{exception, assertions, visit, 4, [ignore], unreviewed}.
 
 {module, ast, #{file => "etylizer/src/ast.erl", overlays => [{library, "../../overlays/etylizer_overlay.erl"}], timeout => 10000}}.
 
@@ -59,22 +58,11 @@
 
 %% trans_exp/3 takes 8 s
 {module, ast_transform, #{file => "etylizer/src/ast_transform.erl", overlays => [{library, "../../overlays/etylizer_overlay.erl"}], timeout => 30000}}.
-{exception, ast_transform, collect_record_variants, 2, [ignore], unreviewed}.
-{exception, ast_transform, expand_record_field_other, 2, [ignore], unreviewed}.
-{exception, ast_transform, parse_type, 2, [ignore], unreviewed}.
-{exception, ast_transform, record_field_pos, 3, [ignore], unreviewed}.
+{exception, ast_transform, parse_type, 2, [], cast_library}.
 {exception, ast_transform, replace_mu_var, 2, [ignore], unreviewed}.
 {exception, ast_transform, replace_mu_var_list, 2, [ignore], unreviewed}.
-{exception, ast_transform, trans_catch_clause, 3, [ignore], unreviewed}.
 {exception, ast_transform, trans_form, 3, [ignore], unreviewed}.
-{exception, ast_transform, trans_fun_clause, 3, [ignore], unreviewed}.
-{exception, ast_transform, trans_fun_clauses, 3, [ignore], unreviewed}.
 {exception, ast_transform, trans_guards, 3, [ignore], unreviewed}.
-{exception, ast_transform, trans_pat, 5, [ignore], unreviewed}.
-{exception, ast_transform, trans_qualifier, 3, [ignore], unreviewed}.
-{exception, ast_transform, trans_record_field, 3, [ignore], unreviewed}.
-{exception, ast_transform, trans_ty, 3, [ignore], unreviewed}.
-{exception, ast_transform, trans_if_clause, 4, [ignore], unreviewed}.
 
 {module, ast_traverse, #{file => "etylizer/src/ast_traverse.erl", overlays => [{library, "../../overlays/etylizer_overlay.erl"}], timeout => 10000}}.
 

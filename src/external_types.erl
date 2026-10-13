@@ -46,9 +46,11 @@
 %% Erlang AST (ast_erl.erl)
 %% ---------------------------------------------------------------------------
 
-% What a traversal of a type of the Erlang AST visits: types and the constraints of
-% function types.
--type erl_ty_node() :: ast_erl:ty() | ast_erl:ty_constraint().
+% What a traversal of a type of the Erlang AST visits: types, and the parts of a type that
+% are no types themselves: the constraints and the argument list of a function type, the
+% associations of a map type and the fields of a record type.
+-type erl_ty_node() :: ast_erl:ty() | ast_erl:ty_constraint() | ast_erl:ty_map_assoc() | ast_erl:ty_field()
+                     | {type, ast_erl:anno(), product, [ast_erl:ty()]}.
 
 % An argument of a type constructor: a type, a list of types or constraints, or the
 % marker for arbitrary function arguments.

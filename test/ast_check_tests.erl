@@ -128,6 +128,19 @@ check_attribute_test() ->
     check_against(form, {attribute, A, my_attribute, not_a_list}),
     check_against(form, {attribute, A, compile, [export_all]}).
 
+% the generators of a comprehension, K := V <- M has its two patterns in one node
+check_generator_test() ->
+    A = erl_anno:new({1,1}),
+    X = {var, A, 'X'}, Y = {var, A, 'Y'}, M = {var, A, 'M'},
+    check_against(qualifier, {generate, A, X, M}),
+    check_against(qualifier, {m_generate, A, {map_field_exact, A, X, Y}, M}),
+    check_against(qualifier, {m_generate_strict, A, {map_field_exact, A, X, Y}, M}),
+    check_not_against(qualifier, {m_generate, A, X, Y, M}),
+    check_against(qualifier, {zip, A, [{generate, A, X, M}, {b_generate, A, Y, M}]}),
+    % a class, a value and a stacktrace
+    check_against(catch_clause, {clause, A, [{tuple, A, [{atom, A, throw}, X, Y]}], [], [X]}),
+    check_not_against(catch_clause, {clause, A, [{tuple, A, [{atom, A, throw}, X]}], [], [X]}).
+
 check_antidote1_test() ->
     Exp0 =
         {'fun',

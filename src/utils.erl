@@ -306,7 +306,7 @@ assocs_find(K, L) ->
         {_Key, X} -> {ok, X}
     end.
 
--spec assocs_find_index(K, [{K, V}]) -> {ok, V, integer()} | error.
+-spec assocs_find_index(K, [{K, V}]) -> {ok, V, non_neg_integer()} | error.
 assocs_find_index(_, []) -> error;
 assocs_find_index(K, [{K2, V} | _]) when K =:= K2 -> {ok, V, 0};
 assocs_find_index(K, [_ | Rest]) ->
