@@ -574,14 +574,15 @@ render_exps(Exps, Indent) ->
 -spec varname(ast:local_varname()) -> string().
 varname({Name, _Tok}) -> atom_to_list(Name).
 
--spec render_exp(ast:exp(), non_neg_integer()) -> string().
+% Prints an expression or a pattern.
+-spec render_exp(ast:exp() | ast:pat(), non_neg_integer()) -> string().
 render_exp(Exp, Indent) ->
     case Exp of
         {atom, _, A} -> atom_to_list(A);
         {integer, _, I} -> integer_to_list(I);
-        {char, _, C} -> io_lib:write_char(C);
+        {char, _, C} -> lists:flatten(io_lib:write_char(C));
         {float, _, F} -> float_to_list(F);
-        {string, _, S} -> io_lib:format("~p", [S]);
+        {string, _, S} -> utils:sformat1("~p", S);
         {var, _, {local_ref, V}} -> varname(V);
         {var, _, {local_bind, V}} -> varname(V);
         {var, _, {ref, N, _A}} -> atom_to_list(N);
@@ -688,7 +689,7 @@ render_exp(Exp, Indent) ->
         {assert, _, E, _Ty} ->
             render_exp(E, Indent);
         _ ->
-            io_lib:format("~w", [Exp])
+            utils:sformat1("~w", Exp)
     end.
 
 -spec render_case(ast:exp(), [ast:case_clause()], non_neg_integer()) -> string().
@@ -726,7 +727,7 @@ render_guards(Guards, Indent) ->
     " when " ++ string:join(
         [string:join([render_exp(G, Indent) || G <- Guard], ", ") || Guard <- Guards], "; ").
 
--spec render_bin_element(ast:exp_bitstring_elem(), non_neg_integer()) -> string().
+-spec render_bin_element(ast:exp_bitstring_elem() | ast:pat_bitstring_elem(), non_neg_integer()) -> string().
 render_bin_element({bin_element, _, Val, Size, TypeSpecifiers}, Indent) ->
     ValStr = render_exp(Val, Indent),
     SizeStr = case Size of
@@ -739,11 +740,11 @@ render_bin_element({bin_element, _, Val, Size, TypeSpecifiers}, Indent) ->
     end,
     ValStr ++ SizeStr ++ TsStr.
 
--spec render_type_specifier(atom() | {atom(), integer()}) -> string().
+-spec render_type_specifier(ast:bitstring_tyspec()) -> string().
 render_type_specifier({unit, N}) -> "unit:" ++ integer_to_list(N);
 render_type_specifier(T) when is_atom(T) -> atom_to_list(T).
 
--spec render_map_assoc(ast:map_assoc() | ast:map_assoc_opt() | ast:map_assoc_req(), non_neg_integer()) -> string().
+-spec render_map_assoc(ast:map_assoc() | ast:pat_map_assoc(), non_neg_integer()) -> string().
 render_map_assoc({map_field_opt, _, K, V}, Indent) ->
     render_exp(K, Indent) ++ " => " ++ render_exp(V, Indent);
 render_map_assoc({map_field_req, _, K, V}, Indent) ->
@@ -756,6 +757,8 @@ render_qualifier({generate_strict, _, Pat, E}, Indent) ->
     render_exp(Pat, Indent) ++ " <:- " ++ render_exp(E, Indent);
 render_qualifier({b_generate, _, Pat, E}, Indent) ->
     render_exp(Pat, Indent) ++ " <= " ++ render_exp(E, Indent);
+render_qualifier({b_generate_strict, _, Pat, E}, Indent) ->
+    render_exp(Pat, Indent) ++ " <:= " ++ render_exp(E, Indent);
 render_qualifier({m_generate, _, KeyPat, ValPat, E}, Indent) ->
     render_exp(KeyPat, Indent) ++ " := " ++ render_exp(ValPat, Indent) ++ " <- " ++ render_exp(E, Indent);
 render_qualifier({m_generate_strict, _, KeyPat, ValPat, E}, Indent) ->
