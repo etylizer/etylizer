@@ -63,6 +63,10 @@
 % and named type recursion at the same time
 -type local_cache() :: #{ast:ty_mu_var() | {Ref :: ety_ref(), Args :: ety_args()} => temporary_ref()}.
 -type queue() :: queue:queue({temporary_ref(), ast_ty()}).
+% the state while the references of a parsed type are defined (see define_or_replace/3):
+% the reference of the parsed type, the node every reference ends up as,
+% the types of the references not replaced yet, and the reference of every type defined locally
+-type define_state() :: {temporary_ref(), #{temporary_ref() => type()}, #{temporary_ref() => ty_rec()}, #{ty_rec() => temporary_ref()}}.
 
 % global state
 -spec init() -> _.
@@ -120,7 +124,7 @@ parse_new(RawTy) ->
   FinalResult =
   case ets:lookup(?CACHE, LocalRef) of
     [{LocalRef, Node}] ->
-      Node;
+      ?assert_type(Node, type()); % ETS boundary: the cache only holds nodes
     _ ->
       parse_convert(LocalRef, Ty)
   end,
@@ -179,72 +183,9 @@ parse_convert(LocalRef, Ty) ->
   Define = [maps:get(T, Components) || T <- Sort],
 
 
-  DefineAndReplace = fun({{ReplacedRef1, RefMapping, ResultMapping, LocalDefinitions}, Def, Rest}) ->
-    {NewReplacedRef, NewRef, NewRes, NewLocalDefinitions, NewRest} = lists:foldl(fun(DefineOrReplace, Acc = {ReplacedRef0, Refmapping, ResultMapping0, LocalDefinitions0, Rest0}) ->
-      case ?NODE:is_defined(DefineOrReplace) of
-        true -> % from previous parsing runs
-          Acc;
-        false ->
-          ToDefineTy = maps:get(DefineOrReplace, ResultMapping0),
-          case is_consed(ToDefineTy, LocalDefinitions0) of
-            {true, N} ->
-              ToDefine = DefineOrReplace,
-
-              NodeContainedIn = maps:get(ToDefine, RevGraph, []),
-
-              NewRefmapping = #{K => case V of ToDefine -> N; _ -> V end || K := V <- Refmapping},
-
-              % remove ToDefine from result mapping, its already consed
-              SmallerResultMapping = maps:remove(ToDefine, ResultMapping0),
-
-              FinalResultMapping = lists:foldl(fun(E, Acc0) ->
-                case maps:find(E, Acc0) of
-                  error ->
-                    % E was already consed/removed in a prior step within this SCC
-                    Acc0;
-                  {ok, Val} ->
-                    dnf_ty_variable:assert_valid(Val),
-
-                    % just a syntactical replacement is not valid here
-                    % e.g. replacing {node, 80} by {node, 1}
-                    % might need to trigger a reorder of the BDD
-                    % also, remove duplicate nodes after local unification
-                    Fin = utils:replace(Val, #{ToDefine => N}),
-                    FinalReordered = dnf_ty_variable:reorder(Fin),
-                    dnf_ty_variable:assert_valid(FinalReordered),
-                    Acc0#{E => FinalReordered}
-                end
-              end, SmallerResultMapping, NodeContainedIn),
-
-              NewReplacedRef = case ReplacedRef0 of ToDefine -> N; _ -> ReplacedRef0 end,
-
-              {NewReplacedRef, NewRefmapping, FinalResultMapping, LocalDefinitions0, Rest0};
-            false ->
-              % so this can happen with recursive types:
-              % the ty_rec is already consed,
-              % but the reference has been used already in a previous definition.
-              % Ideally, we don't want to define this reference.
-              % But we need to, since this reference is used in another definition already (in this local parse)
-              % We don't want to touch anything that has been defined already (globally),
-              % so we need to prevent this case from happening in the first place.
-              % The problem is that local unification is not smart enough to merge these two type references in one pass:
-              %
-              % {node,167} => ... {ty_function, [{node,71}], {node,231}} ...
-              % {node,135} => ... {ty_function, [{node,71}], {node,231}} ...
-              %
-              % i.e. two distinct nodes pointing at the same record
-              %
-              % {node,3} => ... {ty_function,[{node,6}],{node,1}} ...
-              % {node,4} => ... {ty_function,[{node,6}],{node,1}} ...
-              %
-              % Therefore, we don't define the types globally, but locally first
-              % and remove the duplicates once a consed match is detected
-              {ReplacedRef0, Refmapping, ResultMapping0, LocalDefinitions0#{ToDefineTy => DefineOrReplace}, Rest0}
-          end
-      end
-    end, {ReplacedRef1, RefMapping, ResultMapping, LocalDefinitions, Rest}, Def),
-
-  {{NewReplacedRef, NewRef, NewRes, NewLocalDefinitions}, NewRest}
+  % 4.2 define the references of every component, or replace them if already consed
+  DefineAndReplace = fun({State, Def, Rest}) ->
+    {lists:foldl(fun(DefineOrReplace, Acc) -> define_or_replace(DefineOrReplace, RevGraph, Acc) end, State, Def), Rest}
   end,
 
   % Modifying the context is not needed
@@ -266,7 +207,7 @@ parse_convert(LocalRef, Ty) ->
   % elp:ignore W0034
   [case ets:insert_new(?CACHE, {LLocalRef, Node}) of
      true -> ok;
-     false -> [{LLocalRef, Node}] = ets:lookup(?CACHE, LLocalRef), ok
+     false -> ?assert_pattern([{LLocalRef, Node}], ets:lookup(?CACHE, LLocalRef)), ok
    end
    || LLocalRef := Node <- FinalReplaceRefs],
 
@@ -275,9 +216,76 @@ parse_convert(LocalRef, Ty) ->
 
   FinalReplacedRef.
 
+% Defines a reference of the parsed type, or replaces it if its type is consed already.
+% RevGraph gives the references whose types contain a reference.
+-spec define_or_replace(temporary_ref(), #{temporary_ref() => [temporary_ref()]}, define_state()) -> define_state().
+define_or_replace(DefineOrReplace, RevGraph, Acc = {ReplacedRef0, Refmapping, ResultMapping0, LocalDefinitions0}) ->
+  case ?NODE:is_defined(DefineOrReplace) of
+    true -> % from previous parsing runs
+      Acc;
+    false ->
+      ToDefineTy = maps:get(DefineOrReplace, ResultMapping0),
+      case is_consed(ToDefineTy, LocalDefinitions0) of
+        {true, N} ->
+          ToDefine = DefineOrReplace,
+
+          NodeContainedIn = maps:get(ToDefine, RevGraph, []),
+
+          NewRefmapping = #{K => case V of ToDefine -> N; _ -> V end || K := V <- Refmapping},
+
+          % remove ToDefine from result mapping, its already consed
+          SmallerResultMapping = maps:remove(ToDefine, ResultMapping0),
+
+          FinalResultMapping = lists:foldl(fun(E, Acc0) ->
+            case maps:find(E, Acc0) of
+              error ->
+                % E was already consed/removed in a prior step within this SCC
+                Acc0;
+              {ok, Val} ->
+                dnf_ty_variable:assert_valid(Val),
+
+                % just a syntactical replacement is not valid here
+                % e.g. replacing {node, 80} by {node, 1}
+                % might need to trigger a reorder of the BDD
+                % also, remove duplicate nodes after local unification
+                Fin = utils:replace(Val, #{ToDefine => N}),
+                FinalReordered = dnf_ty_variable:reorder(Fin),
+                dnf_ty_variable:assert_valid(FinalReordered),
+                Acc0#{E => FinalReordered}
+            end
+          end, SmallerResultMapping, NodeContainedIn),
+
+          NewReplacedRef = case ReplacedRef0 of ToDefine -> N; _ -> ReplacedRef0 end,
+
+          {NewReplacedRef, NewRefmapping, FinalResultMapping, LocalDefinitions0};
+        false ->
+          % so this can happen with recursive types:
+          % the ty_rec is already consed,
+          % but the reference has been used already in a previous definition.
+          % Ideally, we don't want to define this reference.
+          % But we need to, since this reference is used in another definition already (in this local parse)
+          % We don't want to touch anything that has been defined already (globally),
+          % so we need to prevent this case from happening in the first place.
+          % The problem is that local unification is not smart enough to merge these two type references in one pass:
+          %
+          % {node,167} => ... {ty_function, [{node,71}], {node,231}} ...
+          % {node,135} => ... {ty_function, [{node,71}], {node,231}} ...
+          %
+          % i.e. two distinct nodes pointing at the same record
+          %
+          % {node,3} => ... {ty_function,[{node,6}],{node,1}} ...
+          % {node,4} => ... {ty_function,[{node,6}],{node,1}} ...
+          %
+          % Therefore, we don't define the types globally, but locally first
+          % and remove the duplicates once a consed match is detected
+          {ReplacedRef0, Refmapping, ResultMapping0, LocalDefinitions0#{ToDefineTy => DefineOrReplace}}
+      end
+  end.
+
 -spec parse_named_mapping() -> ok.
 parse_named_mapping() ->
-  InQueue = ets:tab2list(?UNPARSE_NAMED_QUEUE),
+  % ETS boundary: the queue only holds {NamedType, []} entries
+  InQueue = ?assert_type(ets:tab2list(?UNPARSE_NAMED_QUEUE), [{ast_ty(), []}]),
   lists:foreach(fun({N, _}) -> parse_named_mapping_entry(N) end, InQueue).
 
 -spec parse_named_mapping_entry(ast_ty()) -> ok.
@@ -299,7 +307,7 @@ parse_named_mapping_entry(N) ->
     _ -> ok
   end.
 
--spec is_not_defined(_, _) -> _.
+-spec is_not_defined(type(), ty_rec()) -> boolean().
 is_not_defined(Node, Rec) ->
   case ets:lookup(ty_node_system, Node) of
     [] -> true;
@@ -326,10 +334,10 @@ is_consed(ToDefineTy, LocalDefs) ->
       end
   end.
 
--spec collect_refs(type(), #{type() => type_descriptor()}) -> _.
+-spec collect_refs(type(), #{type() => type_descriptor()}) -> [type()].
 collect_refs(Ref, Results) ->
   utils:everything(fun
-    (E = {node, _}) -> {ok, E};
+    ({node, Id}) when is_integer(Id) -> {ok, {node, Id}};
     (_) -> error
   end, maps:get(Ref, Results)).
 
@@ -350,7 +358,7 @@ convert(Queue, Res, LocalCache) ->
     _ -> % convert next layer
       {{value, {LocalRef, Ty}}, Q} = ?assert_pattern({{value, {_, _}}, _}, queue:out(Queue)),
       % sanity: don't convert something that is already in the global system
-      [] = ets:lookup(?CACHE, LocalRef),
+      [] = ?assert_pattern([], ets:lookup(?CACHE, LocalRef)),
       {ErlangRecOrLocalRef, NewQ, {R1, R2}, NewCache} = do_convert({Ty, Res}, Q, LocalCache),
       convert(NewQ, {R1#{LocalRef => ErlangRecOrLocalRef}, group(R2, ErlangRecOrLocalRef, LocalRef)}, NewCache)
   end.
@@ -391,7 +399,9 @@ new_local_ref(RawTerm) ->
     _ -> Reff
   end.
 
--spec extend_symtab(ast:ty_ref(), ety_ty_scheme()) -> _.
+% the symtab is keyed by {Module, Name, Arity}; the tag of the reference or of the
+% symtab key is dropped
+-spec extend_symtab(ast:ty_ref() | symtab:ty_key(), ety_ty_scheme()) -> _.
 extend_symtab({_, Namespace, Type, ArgsCount}, RawTyScheme) ->
   Ref = {Namespace, Type, ArgsCount},
   % replace all locs 
@@ -410,7 +420,7 @@ lookup_ty({ty_ref, A, B, C}) ->
   [{_, Scheme}] = ?assert_pattern([{_, _}], ets:lookup(?SYMTAB, Ref)),
   ?assert_type(Scheme, ety_ty_scheme()).
 
--spec group(#{A => list(X)}, A, X) -> #{A := list(X)}.
+-spec group(#{A => list(X)}, A, X) -> #{A => list(X)}.
 group(M, Key, Value) ->
   maps:update_with(Key, fun(Group) -> [Value | Group] end, [Value], M).
 
@@ -444,9 +454,11 @@ do_convert({X = {named, _, Ref, Args}, R = {IdTy, _}}, Q, Cache) ->
           % create a new reference (ref args pair), memoize, and add continue converting
           {InternalTy, NewQ, {R0, R1}, C0} = do_convert({NewTy, R}, Q, Cache#{{Ref, Args} => NewRef}),
           {InternalTy, NewQ, {R0#{NewRef => InternalTy}, group(R1, InternalTy, NewRef)}, C0};
-        [{NewRef, CachedNode}] ->
+        Cached ->
           % reuse type representation of the global cache
-          InternalTy = ?NODE:load(CachedNode),
+          [{_, CachedNode}] = ?assert_pattern([{_, _}], Cached),
+          % ETS boundary: the cache only holds nodes
+          InternalTy = ?NODE:load(?assert_type(CachedNode, type())),
           {InternalTy, Q, R, Cache}
       end
   end;
@@ -460,7 +472,7 @@ do_convert({AstTy = {mu, RecVar = {mu_var, Name}, Ty}, R}, Q, Cache) ->
   % only binders with the same body are allowed to share the name
   case maps:is_key(RecVar, Cache) of
     false -> ok;
-    true -> NewRef = maps:get(RecVar, Cache)
+    true -> ?assert_pattern(true, maps:get(RecVar, Cache) =:= NewRef)
   end,
   case ets:lookup(?CACHE, NewRef) of
     [] ->
@@ -479,63 +491,13 @@ do_convert({AstTy = {mu, RecVar = {mu_var, Name}, Ty}, R}, Q, Cache) ->
 do_convert({AstTy = {mu_var, Name}, R = {IdTy, _}}, Q, Cache) ->
   ?assert_pattern(true, is_atom(Name)),
 
-  #{AstTy := Ref} = Cache,
+  Ref = maps:get(AstTy, Cache),
   % We are allowed to load the memoized ref
   % because the second occurrence of the mu variable
   % is below a type constructor,
   % i.e. the memoized reference is fully defined
-  #{Ref := Ty} = IdTy,
+  Ty = maps:get(Ref, IdTy),
   {Ty, Q, R, Cache};
-
-% built-ins
-do_convert({{predef, dynamic}, R}, Q, Cache) -> {?TY:singleton(ty_variable:new_as_frame()), Q, R, Cache};
-do_convert({{predef, any}, R}, Q, Cache) -> {?TY:any(), Q, R, Cache};
-do_convert({{predef, none}, R}, Q, Cache) -> {?TY:empty(), Q, R, Cache};
-do_convert({{predef, atom}, R}, Q, Cache) -> {?TY:atom(dnf_ty_atom:any()), Q, R, Cache};
-do_convert({{predef, integer}, R}, Q, Cache) -> {?TY:interval(dnf_ty_interval:any()), Q, R, Cache};
-do_convert({{predef_alias, Alias}, R}, Q, Cache) -> do_convert({stdtypes:expand_predef_alias(Alias), R}, Q, Cache);
-
-% predefined
-do_convert({{fun_simple}, R}, Q, Cache) -> {?TY:functions(ty_functions:any()), Q, R, Cache};
-do_convert({{tuple_any}, R}, Q, Cache) -> {?TY:tuples(ty_tuples:any()), Q, R, Cache};
-do_convert({{empty_list}, R}, Q, Cache) -> {?TY:predefined(dnf_ty_predefined:predefined('[]')), Q, R, Cache};
-do_convert({{predef, T}, R}, Q, Cache) when T == pid; T == port; T == reference; T == float ->
-  {?TY:predefined(dnf_ty_predefined:predefined(T)), Q, R, Cache};
-do_convert({{map_any}, R}, Q, Cache) ->
-  {?TY:map(dnf_ty_map:any()), Q, R, Cache};
-
-% bitstrings: rewrite to 1-bit cons cells + empty_bitstring predefined
-% bitstring() = mu X. empty_bitstring | <<0..1 | X>>
-do_convert({{bitstring}, R}, Q, Cache) ->
-  do_convert({{bitstring, 0, 1}, R}, Q, Cache);
-do_convert({{bitstring, 0, 0}, R}, Q, Cache) ->
-  do_convert({{empty_bitstring}, R}, Q, Cache);
-do_convert({{bitstring, M, 0}, R}, Q, Cache) when M > 0 ->
-  % Exactly M bits: M cons cells ending in empty_bitstring
-  Term = bits_cons(M, {empty_bitstring}),
-  do_convert({Term, R}, Q, Cache);
-do_convert({{bitstring, M, N}, R}, Q, Cache) when N > 0 ->
-  % M + K*N bits: M head bits + recursive tail of N-bit groups
-  RVar = {mu_var, list_to_atom(integer_to_list(erlang:unique_integer()))},
-  Tail = {mu, RVar, {union, [{empty_bitstring}, bits_cons(N, RVar)]}},
-  Term = bits_cons(M, Tail),
-  do_convert({Term, R}, Q, Cache);
-% empty bitstring <<>>
-do_convert({{empty_bitstring}, R}, Q, Cache) ->
-  {?TY:predefined(dnf_ty_predefined:predefined(empty_bitstring)), Q, R, Cache};
-
-% atoms
-do_convert({{singleton, Atom}, R}, Q, Cache) when is_atom(Atom) ->
-  TAtom = dnf_ty_atom:finite([Atom]),
-  {?TY:atom(TAtom), Q, R, Cache};
-
-% intervals
-do_convert({{singleton, I}, R}, Q, Cache) when is_integer(I) ->
-  Int = dnf_ty_interval:interval(I, I),
-  {?TY:interval(Int), Q, R, Cache};
-do_convert({{range, From, To}, R}, Q, Cache) ->
-  Int = dnf_ty_interval:interval(From, To),
-  {?TY:interval(Int), Q, R, Cache};
 
 % boolean operators
 do_convert({{union, []}, R}, Q, Cache) -> {?TY:empty(), Q, R, Cache};
@@ -556,43 +518,109 @@ do_convert({{negation, Ty}, R}, Q, Cache) ->
   {NewR, Q0, RR0, C0} = do_convert({Ty, R}, Q, Cache),
   {?TY:negate(NewR), Q0, RR0, C0};
 
-% variables
-do_convert({{var, A}, R}, Q, Cache) ->
-  % if this is a special $ety_integer()_name() variable, convert to that representation
-  case string:prefix(atom_to_list(A), "$ety_") of
-    nomatch ->
-      {?TY:singleton(ty_variable:new_with_name(A)), Q, R, Cache};
-    IdName ->
-      % TODO test case for this branch
-      % assumption: erlang types generates variables only in this pattern: $ety_integer()_name()
-      [Id, Name] = string:split(IdName, "_"),
-      {?TY:singleton(ty_variable:with_name_and_id(list_to_integer(Id), list_to_atom(Name))), Q, R, Cache}
-  end;
+% all other types
+% (the conversion is split into three functions with the same arguments and result:
+% the time to type check a function grows quickly with the number of its clauses)
+do_convert(T, Q, Cache) ->
+  convert_rewrite(T, Q, Cache).
 
 % === term rewrites
-do_convert({{nonempty_list, Ty}, R}, Q, Cache) ->
+-spec convert_rewrite({ast_ty(), database()}, queue(), local_cache()) -> {ty_rec(), queue(), database(), local_cache()}.
+convert_rewrite({{predef_alias, Alias}, R}, Q, Cache) -> do_convert({stdtypes:expand_predef_alias(Alias), R}, Q, Cache);
+
+% bitstrings: rewrite to 1-bit cons cells + empty_bitstring predefined
+% bitstring() = mu X. empty_bitstring | <<0..1 | X>>
+convert_rewrite({{bitstring}, R}, Q, Cache) ->
+  do_convert({{bitstring, 0, 1}, R}, Q, Cache);
+convert_rewrite({{bitstring, 0, 0}, R}, Q, Cache) ->
+  do_convert({{empty_bitstring}, R}, Q, Cache);
+convert_rewrite({{bitstring, M, 0}, R}, Q, Cache) when M > 0 ->
+  % Exactly M bits: M cons cells ending in empty_bitstring
+  Term = bits_cons(M, {empty_bitstring}),
+  do_convert({Term, R}, Q, Cache);
+convert_rewrite({{bitstring, M, N}, R}, Q, Cache) when N > 0 ->
+  % M + K*N bits: M head bits + recursive tail of N-bit groups
+  RVar = {mu_var, list_to_atom(integer_to_list(erlang:unique_integer()))},
+  Tail = {mu, RVar, {union, [{empty_bitstring}, bits_cons(N, RVar)]}},
+  Term = bits_cons(M, Tail),
+  do_convert({Term, R}, Q, Cache);
+
+convert_rewrite({{nonempty_list, Ty}, R}, Q, Cache) ->
   do_convert({{cons, Ty, {list, Ty}} , R}, Q, Cache);
-do_convert({{nonempty_improper_list, Ty, Term}, R}, Q, Cache) ->
+convert_rewrite({{nonempty_improper_list, Ty, Term}, R}, Q, Cache) ->
   do_convert({{cons, Ty, {improper_list, Ty, Term}} , R}, Q, Cache);
-do_convert({{list, Ty}, R}, Q, Cache) ->
+convert_rewrite({{list, Ty}, R}, Q, Cache) ->
   do_convert({{improper_list, Ty, {empty_list}}, R}, Q, Cache);
 
 % rewrite maps into {Tuple, Function} tuples
-do_convert({M = {map, _}, R}, Q, Cache) ->
+convert_rewrite({M = {map, _}, R}, Q, Cache) ->
   MapTuple = rewrite_map_to_representation(M),
   {Recc, Q0, R0, C0} = do_convert({MapTuple, R}, Q, Cache),
-  {?TY:tuple_to_map(Recc), Q0, R0, C0};
+  % the encoding of a map has to be a leaf during parsing
+  {?TY:tuple_to_map(?assert_pattern({leaf, _}, Recc)), Q0, R0, C0};
+
+% lists
+convert_rewrite({{improper_list, A, B}, R}, Q, Cache) ->
+  RVar = {mu_var, list_to_atom(integer_to_list(erlang:unique_integer()))},
+  NewTerm = {mu, RVar, {union, [B, {cons, A, RVar}]}},
+  do_convert({NewTerm, R}, Q, Cache);
+convert_rewrite(T, Q, Cache) ->
+  convert_layer(T, Q, Cache).
+
+% === types that are converted without a recursive call
+-spec convert_layer({ast_ty(), database()}, queue(), local_cache()) -> {ty_rec(), queue(), database(), local_cache()}.
+% built-ins
+convert_layer({{predef, dynamic}, R}, Q, Cache) -> {?TY:singleton(ty_variable:new_as_frame()), Q, R, Cache};
+convert_layer({{predef, any}, R}, Q, Cache) -> {?TY:any(), Q, R, Cache};
+convert_layer({{predef, none}, R}, Q, Cache) -> {?TY:empty(), Q, R, Cache};
+convert_layer({{predef, atom}, R}, Q, Cache) -> {?TY:atom(dnf_ty_atom:any()), Q, R, Cache};
+convert_layer({{predef, integer}, R}, Q, Cache) -> {?TY:interval(dnf_ty_interval:any()), Q, R, Cache};
+
+% predefined
+convert_layer({{fun_simple}, R}, Q, Cache) -> {?TY:functions(ty_functions:any()), Q, R, Cache};
+convert_layer({{tuple_any}, R}, Q, Cache) -> {?TY:tuples(ty_tuples:any()), Q, R, Cache};
+convert_layer({{empty_list}, R}, Q, Cache) -> {?TY:predefined(dnf_ty_predefined:predefined('[]')), Q, R, Cache};
+convert_layer({{predef, T}, R}, Q, Cache) when T == pid; T == port; T == reference; T == float ->
+  {?TY:predefined(dnf_ty_predefined:predefined(T)), Q, R, Cache};
+convert_layer({{map_any}, R}, Q, Cache) ->
+  {?TY:map(dnf_ty_map:any()), Q, R, Cache};
+
+% empty bitstring <<>>
+convert_layer({{empty_bitstring}, R}, Q, Cache) ->
+  {?TY:predefined(dnf_ty_predefined:predefined(empty_bitstring)), Q, R, Cache};
+
+% atoms
+convert_layer({{singleton, Atom}, R}, Q, Cache) when is_atom(Atom) ->
+  TAtom = dnf_ty_atom:finite([Atom]),
+  {?TY:atom(TAtom), Q, R, Cache};
+
+% intervals
+convert_layer({{singleton, I}, R}, Q, Cache) when is_integer(I) ->
+  Int = dnf_ty_interval:interval(I, I),
+  {?TY:interval(Int), Q, R, Cache};
+convert_layer({{range, From, To}, R}, Q, Cache) ->
+  Int = dnf_ty_interval:interval(From, To),
+  {?TY:interval(Int), Q, R, Cache};
+
+% variables
+convert_layer({{var, A}, R}, Q, Cache) ->
+  % if this is a special $ety_integer()_name() variable, convert to that representation
+  case atom_to_list(A) of
+    "$ety_" ++ IdName ->
+      % TODO test case for this branch
+      % assumption: erlang types generates variables only in this pattern: $ety_integer()_name()
+      [Id, Name] = ?assert_pattern([_, _], string:split(IdName, "_")),
+      {?TY:singleton(ty_variable:with_name_and_id(list_to_integer(Id), list_to_atom(Name))), Q, R, Cache};
+    _ ->
+      {?TY:singleton(ty_variable:new_with_name(A)), Q, R, Cache}
+  end;
 
 % === nested data structures
 % === these can potentially create temporary references and can extend the queue
 
 % functions
-do_convert({{fun_full, Domains, CoDomain}, R}, Q, Cache) ->
-  {ParsedDomains, Q0} = lists:foldl(
-    fun(Element, {Components, OldQ}) ->
-      {IdOrNode, QQ} = queue_if_new(Element, OldQ),
-      {Components ++ [IdOrNode], QQ}
-   end, {[], Q}, Domains),
+convert_layer({{fun_full, Domains, CoDomain}, R}, Q, Cache) ->
+  {ParsedDomains, Q0} = queue_all_if_new(Domains, Q),
 
   {ParsedCoDomain, Q1} = queue_if_new(CoDomain, Q0),
 
@@ -600,33 +628,25 @@ do_convert({{fun_full, Domains, CoDomain}, R}, Q, Cache) ->
   {?TY:functions(T), Q1, R, Cache};
 
 % tuples
-do_convert({{tuple, Comps}, R}, Q, Cache) ->
-  {ParsedComponents, Q0} = lists:foldl(
-    fun(Element, {Components, OldQ}) ->
-      {IdOrNode, QQ} = queue_if_new(Element, OldQ),
-      {Components ++ [IdOrNode], QQ}
-    end, {[], Q}, Comps),
+convert_layer({{tuple, Comps}, R}, Q, Cache) ->
+  {ParsedComponents, Q0} = queue_all_if_new(Comps, Q),
 
   T = ty_tuples:singleton(length(Comps), dnf_ty_tuple:singleton(ty_tuple:tuple(ParsedComponents))),
   {?TY:tuples(T), Q0, R, Cache};
 
 % lists
-do_convert({{improper_list, A, B}, R}, Q, Cache) ->
-  RVar = {mu_var, list_to_atom(integer_to_list(erlang:unique_integer()))},
-  NewTerm = {mu, RVar, {union, [B, {cons, A, RVar}]}},
-  do_convert({NewTerm, R}, Q, Cache);
-do_convert({{cons, A, B}, R}, Q, Cache) ->
+convert_layer({{cons, A, B}, R}, Q, Cache) ->
   {T1, Q0} = queue_if_new(A, Q),
   {T2, Q1} = queue_if_new(B, Q0),
 
   {?TY:list(dnf_ty_list:singleton(ty_list:list([T1, T2]))), Q1, R, Cache};
 
-do_convert({{bitstring_cons, A, B}, R}, Q, Cache) ->
+convert_layer({{bitstring_cons, A, B}, R}, Q, Cache) ->
   {T1, Q0} = queue_if_new(A, Q),
   {T2, Q1} = queue_if_new(B, Q0),
   {?TY:bitstring(dnf_ty_bitstring:singleton(ty_bitstring:bitstring_cons([T1, T2]))), Q1, R, Cache};
 
-do_convert(T, _Q, _) ->
+convert_layer(T, _Q, _) ->
   % io:format(user,"~p~n", [T]),
   erlang:error({"Transformation from ast:ty() to ty_rec:ty() not implemented or malformed type", T}).
 
@@ -637,6 +657,15 @@ do_convert(T, _Q, _) ->
 bits_cons(0, Tail) -> Tail;
 bits_cons(N, Tail) when N > 0 ->
   {bitstring_cons, {range, 0, 1}, bits_cons(N - 1, Tail)}.
+
+% the references of the given types, in order; the types not yet known are queued
+-spec queue_all_if_new([ast_ty()], queue()) -> {[type() | temporary_ref()], queue()}.
+queue_all_if_new(Elements, Queue) ->
+  lists:foldl(
+    fun(Element, {Components, OldQ}) ->
+      {IdOrNode, QQ} = queue_if_new(Element, OldQ),
+      {Components ++ [IdOrNode], QQ}
+    end, {[], Queue}, Elements).
 
 -spec queue_if_new(ast_ty(), queue()) -> {type() | temporary_ref(), queue()}.
 queue_if_new(Element, Queue) ->
@@ -774,7 +803,9 @@ convert_back({mu, _, Body} = MuTy, Env, Counter) ->
   {ConvertedBody, NewCounter} = convert_back(Body, NewEnv, Counter + 1),
   {{mu, {mu_var, Name}, ConvertedBody}, NewCounter};
 convert_back({mu_var, Index}, Env, Counter) ->
-  Name = lists:nth(?assert_type(list_to_integer(atom_to_list(Index)) + 1, pos_integer()), ?assert_type(Env, [ast:ty_varname(), ...])),
+  % arithmetic: the name of the variable is its DeBruijn index, which is not negative
+  Position = ?assert_type(list_to_integer(atom_to_list(Index)) + 1, pos_integer()),
+  Name = lists:nth(Position, ?assert_pattern([_ | _], Env)),
   {{mu_var, Name}, Counter};
 convert_back({var, Name}, _Env, Counter) ->
   {{var, Name}, Counter};
@@ -788,44 +819,49 @@ convert_back({intersection, Args}, Env, Counter) ->
   {ConvertedArgs, NewCounter} = convert_back_list(Args, Env, Counter),
   {{intersection, ConvertedArgs}, NewCounter};
 %% Handle all other type constructors similarly
-convert_back(Type, Env, Counter) when is_tuple(Type) ->
-  case element(1, Type) of
-    Constructor when Constructor =:= list;
-                     Constructor =:= nonempty_list ->
-      [Constructor, Arg] = tuple_to_list(Type),
-      {ConvertedArg, NewCounter} = convert_back(Arg, Env, Counter),
-      {list_to_tuple([Constructor, ConvertedArg]), NewCounter};
-    Constructor when Constructor =:= cons;
-                     Constructor =:= bitstring_cons;
-                     Constructor =:= improper_list;
-                     Constructor =:= nonempty_improper_list ->
-      [Constructor, Arg, Arg2] = tuple_to_list(Type),
-      {ConvertedArg, NewCounter} = convert_back(Arg, Env, Counter),
-      {ConvertedArg2, NewCounter2} = convert_back(Arg2, Env, NewCounter),
-      {list_to_tuple([Constructor, ConvertedArg, ConvertedArg2]), NewCounter2};
-    Constructor when Constructor =:= fun_any_arg;
-                     Constructor =:= negation ->
-      [Constructor, Arg] = tuple_to_list(Type),
-      {ConvertedArg, NewCounter} = convert_back(Arg, Env, Counter),
-      {list_to_tuple([Constructor, ConvertedArg]), NewCounter};
-    fun_full ->
-      [fun_full, Args, Ret] = tuple_to_list(Type),
-      {ConvertedArgs, Counter1} = convert_back_list(Args, Env, Counter),
-      {ConvertedRet, NewCounter} = convert_back(Ret, Env, Counter1),
-      {{fun_full, ConvertedArgs, ConvertedRet}, NewCounter};
-    map ->
-      [map, Assocs] = tuple_to_list(Type),
-      {ConvertedAssocs, NewCounter} = convert_back_assocs(Assocs, Env, Counter),
-      {{map, ConvertedAssocs}, NewCounter};
-    named ->
-      [named, Loc, Ref, Args] = tuple_to_list(Type),
-      {ConvertedArgs, NewCounter} = convert_back_list(Args, Env, Counter),
-      {{named, Loc, Ref, ConvertedArgs}, NewCounter};
-    _ ->
-      {Type, Counter} % For atomic types
-  end;
+convert_back({list, Arg}, Env, Counter) ->
+  {ConvertedArg, NewCounter} = convert_back(Arg, Env, Counter),
+  {{list, ConvertedArg}, NewCounter};
+convert_back({nonempty_list, Arg}, Env, Counter) ->
+  {ConvertedArg, NewCounter} = convert_back(Arg, Env, Counter),
+  {{nonempty_list, ConvertedArg}, NewCounter};
+convert_back({cons, Arg, Arg2}, Env, Counter) ->
+  {ConvertedArg, ConvertedArg2, NewCounter} = convert_back_pair(Arg, Arg2, Env, Counter),
+  {{cons, ConvertedArg, ConvertedArg2}, NewCounter};
+convert_back({bitstring_cons, Arg, Arg2}, Env, Counter) ->
+  {ConvertedArg, ConvertedArg2, NewCounter} = convert_back_pair(Arg, Arg2, Env, Counter),
+  {{bitstring_cons, ConvertedArg, ConvertedArg2}, NewCounter};
+convert_back({improper_list, Arg, Arg2}, Env, Counter) ->
+  {ConvertedArg, ConvertedArg2, NewCounter} = convert_back_pair(Arg, Arg2, Env, Counter),
+  {{improper_list, ConvertedArg, ConvertedArg2}, NewCounter};
+convert_back({nonempty_improper_list, Arg, Arg2}, Env, Counter) ->
+  {ConvertedArg, ConvertedArg2, NewCounter} = convert_back_pair(Arg, Arg2, Env, Counter),
+  {{nonempty_improper_list, ConvertedArg, ConvertedArg2}, NewCounter};
+convert_back({fun_any_arg, Arg}, Env, Counter) ->
+  {ConvertedArg, NewCounter} = convert_back(Arg, Env, Counter),
+  {{fun_any_arg, ConvertedArg}, NewCounter};
+convert_back({negation, Arg}, Env, Counter) ->
+  {ConvertedArg, NewCounter} = convert_back(Arg, Env, Counter),
+  {{negation, ConvertedArg}, NewCounter};
+convert_back({fun_full, Args, Ret}, Env, Counter) ->
+  {ConvertedArgs, Counter1} = convert_back_list(Args, Env, Counter),
+  {ConvertedRet, NewCounter} = convert_back(Ret, Env, Counter1),
+  {{fun_full, ConvertedArgs, ConvertedRet}, NewCounter};
+convert_back({map, Assocs}, Env, Counter) ->
+  {ConvertedAssocs, NewCounter} = convert_back_assocs(Assocs, Env, Counter),
+  {{map, ConvertedAssocs}, NewCounter};
+convert_back({named, Loc, Ref, Args}, Env, Counter) ->
+  {ConvertedArgs, NewCounter} = convert_back_list(Args, Env, Counter),
+  {{named, Loc, Ref, ConvertedArgs}, NewCounter};
 convert_back(Type, _Env, Counter) ->
-  {Type, Counter}. % For non-tuple types
+  {Type, Counter}. % For atomic types
+
+% the two components of a binary type constructor, converted from left to right
+-spec convert_back_pair(ast_ty(), ast_ty(), var_env(), non_neg_integer()) -> {ast_ty(), ast_ty(), non_neg_integer()}.
+convert_back_pair(Arg, Arg2, Env, Counter) ->
+  {ConvertedArg, NewCounter} = convert_back(Arg, Env, Counter),
+  {ConvertedArg2, NewCounter2} = convert_back(Arg2, Env, NewCounter),
+  {ConvertedArg, ConvertedArg2, NewCounter2}.
 
 -spec convert_back_list([ast_ty()], var_env(), non_neg_integer()) -> {[ast_ty()], non_neg_integer()}.
 convert_back_list([], _Env, Counter) -> {[], Counter};
@@ -858,7 +894,7 @@ replace_locs(Ty) ->
 -spec internal_loc(ast:loc()) -> ast:loc().
 internal_loc(_) -> {internal, ty_parser}.
 
--spec rewrite_map_to_representation(ast_ty()) -> ast_ty().
+-spec rewrite_map_to_representation(ast:ty_map()) -> ast_ty().
 rewrite_map_to_representation({map, AssocList}) ->
   % a map type is never empty
   % contrary to tuples, we can construct an empty map value: #{}

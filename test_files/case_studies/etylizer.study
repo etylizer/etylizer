@@ -156,15 +156,6 @@
 {exception, ty_node, group_components, 1, [], cast}.
 
 {module, ty_parser, #{file => "etylizer/src/erlang_types/ty_parser.erl", overlays => [{library, "../../overlays/etylizer_overlay.erl"}], timeout => 10000}}.
-{exception, ty_parser, convert, 3, [ignore], unreviewed}.
-{exception, ty_parser, convert_back, 3, [ignore], unreviewed}.
-{exception, ty_parser, do_convert, 3, [ignore], unreviewed}.
-{exception, ty_parser, group, 3, [ignore], unreviewed}.
-{exception, ty_parser, parse_convert, 2, [ignore], unreviewed}.
-{exception, ty_parser, parse_named_mapping, 0, [ignore], unreviewed}.
-{exception, ty_parser, parse_new, 1, [ignore], unreviewed}.
-{exception, ty_parser, rewrite_map_to_representation, 1, [ignore], unreviewed}.
-{exception, ty_parser, set_symtab, 1, [ignore], unreviewed}.
 
 {module, ty_rec, #{file => "etylizer/src/erlang_types/ty_rec.erl", overlays => [{library, "../../overlays/etylizer_overlay.erl"}], timeout => 10000}}.
 {exception, ty_rec, tuple_to_map, 1, [no_exhaustiveness], flag}.
