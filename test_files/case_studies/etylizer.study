@@ -160,7 +160,7 @@
 {exception, dnf_minimizer, lowest_set_bit, 1, [], no_spec}.
 {exception, dnf_minimizer, lowest_set_bit, 2, [], no_spec}.
 {exception, dnf_minimizer, make_config, 2, [], no_spec}.
-{exception, dnf_minimizer, raise_loop, 6, [ignore], unreviewed}.
+{exception, dnf_minimizer, raise_loop, 6, [], no_spec}.
 {exception, dnf_minimizer, shannon, 3, [], no_spec}.
 {exception, dnf_minimizer, split_variable, 3, [ignore], unreviewed}.
 {exception, dnf_minimizer, test_bit, 2, [], no_spec}.

@@ -28,7 +28,6 @@
 {reason, format_chars,        fixable,  "integer_to_list/1 gives string(), the characters of an integer are bytes; a list of them is not empty"}.
 {reason, untyped_value,       inherent, "term() from a proplist, used at the type the program expects"}.
 {reason, defensive,           benign,   "defensive clause, dead for the spec"}.
-{reason, bnot_op,             fixable,  "the operator bnot is unknown to the checker (name error)"}.
 
 %% Library specs that overlays correct, in overlay_otp_etylizer_lib.erl
 {correction, lists, reverse, 1, spec_imprecise}. % ([T]) -> [T] loses non-emptiness
@@ -203,6 +202,5 @@
       {encode_opts, 2}, {error_with_info, 2}, {new, 2}
   ]}}.
 {exception, atomics, encode_opts, 2, [no_redundancy], defensive}. % throw(badopt) for an option that is no {signed, boolean()}
-{exception, atomics, encode_opts, 2, [ignore], bnot_op}. % Acc band (bnot 1)
 {assertion, atomics, {102, 24, "129e85"}, assert_type, "non_neg_integer()", arith_range}. % encode_opts/2: Acc band (bnot 1) for Acc >= 0
 

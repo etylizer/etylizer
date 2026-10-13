@@ -360,6 +360,7 @@ builtin_ops() ->
         {'bxor', 2, IntOpTy},
         {'bsl', 2, IntOpTy},
         {'bsr', 2, IntOpTy},
+        {'bnot', 1, tyscm(tfun([tint()], tint()))},
         {'not', 1, tyscm(tfun([tbool()], tbool()))},
         {'and', 2, BoolOpTy},
         {'or', 2, BoolOpTy},
