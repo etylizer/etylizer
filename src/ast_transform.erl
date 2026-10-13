@@ -493,31 +493,28 @@ trans_ty_map_assoc(Ctx, Env, Assoc) ->
             {map_field_req, trans_ty(Ctx, Env, KeyTy), trans_ty(Ctx, Env, ValTy)}
     end.
 
--spec thread_through_env(varenv_local:t(), [T], fun((varenv_local:t(), T) -> {U, varenv_local:t()}))
-    -> {[U], varenv_local:t()}.
+% A non-empty list stays non-empty.
+-spec thread_through_env
+    (varenv_local:t(), [T, ...], fun((varenv_local:t(), T) -> {U, varenv_local:t()})) -> {[U, ...], varenv_local:t()};
+    (varenv_local:t(), [T], fun((varenv_local:t(), T) -> {U, varenv_local:t()})) -> {[U], varenv_local:t()}.
 thread_through_env(InitEnv, [], _Fun) -> {[], InitEnv};
-thread_through_env(InitEnv, L, Fun) ->
-    {Rev, ResultEnv} =
-        lists:foldl(
-            fun(X, {L, Env}) ->
-                {NewX, NewEnv} = Fun(Env, X),
-                {[NewX | L], NewEnv}
-            end, {[], InitEnv}, L),
-    {lists:reverse(Rev), ResultEnv}.
+thread_through_env(InitEnv, [X | Xs], Fun) ->
+    {NewX, Env} = Fun(InitEnv, X),
+    {NewXs, ResultEnv} = thread_through_env(Env, Xs, Fun),
+    {[NewX | NewXs], ResultEnv}.
 
 -spec trans_guards(ctx(), varenv_local:t(), [ast_erl:guard()]) -> [ast:guard()].
 trans_guards(Ctx, Env, Guards) ->
     {NewGuards, _} = thread_through_env(Env, Guards, fun(Env, G) -> trans_exps(Ctx, Env, G) end),
     NewGuards.
 
--spec trans_exps(ctx(), varenv_local:t(), [ast_erl:exp()]) -> {[ast:exp()], varenv_local:t()}.
-%               (ctx(), varenv_local:t(), ast:guard()) -> {ast:guard(), varenv_local:t()}.
+-spec trans_exps
+    (ctx(), varenv_local:t(), [ast_erl:exp(), ...]) -> {[ast:exp(), ...], varenv_local:t()};
+    (ctx(), varenv_local:t(), [ast_erl:exp()]) -> {[ast:exp()], varenv_local:t()}.
 trans_exps(Ctx, Env, Es) ->
     thread_through_env(Env, Es, fun(Env, E) -> trans_exp(Ctx, Env, E) end).
 
--spec trans_exp_seq_noenv(ctx(), varenv_local:t(), [ast_erl:exp()]) -> [ast:exp()].
-% dialyzer does not support overloaded type specs with overlapping domains.
-%                      (ctx(), varenv_local:t(), [ast_erl:guard()]) -> [ast:guard()].
+-spec trans_exp_seq_noenv(ctx(), varenv_local:t(), ast_erl:exps()) -> ast:exps().
 trans_exp_seq_noenv(Ctx, Env, Es) ->
     {NewEs, _} = trans_exp_seq(Ctx, Env, Es),
     NewEs.
@@ -527,16 +524,14 @@ trans_exp_seq_noenv(Ctx, Env, Es) ->
 % `Pat = Exp, Rest` becomes `case Exp of Pat -> Rest end`.
 % A trailing match, or a match in operand/subexpression position,
 % is left to trans_exp, which compiles it to a standalone single-clause case.
--spec trans_exp_seq(ctx(), varenv_local:t(), [ast_erl:exp()]) -> {[ast:exp()], varenv_local:t()}.
-%                  (ctx(), varenv_local:t(), ast:guard()) -> {ast:guard(), varenv_local:t()}.
+-spec trans_exp_seq(ctx(), varenv_local:t(), ast_erl:exps()) -> {ast:exps(), varenv_local:t()}.
 trans_exp_seq(Ctx, Env, Es) ->
     trans_exp_seq(Ctx, Env, Es, fun(E, LastEnv) -> trans_exp(Ctx, LastEnv, E) end).
 
 % Like trans_exp_seq/3, but the last expression of the sequence is transformed by Last.
--spec trans_exp_seq(ctx(), varenv_local:t(), [ast_erl:exp()],
+-spec trans_exp_seq(ctx(), varenv_local:t(), ast_erl:exps(),
                     fun((ast_erl:exp(), varenv_local:t()) -> {ast:exp(), varenv_local:t()}))
-                   -> {[ast:exp()], varenv_local:t()}.
-trans_exp_seq(_Ctx, Env, [], _Last) -> {[], Env};
+                   -> {ast:exps(), varenv_local:t()}.
 trans_exp_seq(_Ctx, Env, [E], Last) ->
     {NewE, NewEnv} = Last(E, Env),
     {[NewE], NewEnv};
@@ -601,7 +596,8 @@ trans_exp(Ctx, Env, Exp) ->
             % Keep old Env, it's a catch
             {{'catch', to_loc(Ctx, Anno), trans_exp_noenv(Ctx, Env, E)}, Env};
         {cons, Anno, E1, E2} ->
-            {[NewE1, NewE2], NewEnv} = trans_exps(Ctx, Env, [E1, E2]),
+            {NewE1, Env1} = trans_exp(Ctx, Env, E1),
+            {NewE2, NewEnv} = trans_exp(Ctx, Env1, E2),
             ?LOG_TRACE("cons, NewEnv=~w", NewEnv),
             {{cons, to_loc(Ctx, Anno), NewE1, NewE2}, NewEnv};
         {'fun', Anno, {function, Name, Arity}} ->
@@ -610,7 +606,9 @@ trans_exp(Ctx, Env, Exp) ->
         {'fun', Anno, {function, {'atom', _, Mod}, {'atom', _, Name}, {'integer', _, Arity}}} ->
             {{fun_ref, to_loc(Ctx, Anno), {qref, Mod, Name, Arity}}, Env};
         {'fun', Anno, {function, ModE, NameE, ArityE}} ->
-            {[NewModE, NewNameE, NewArityE], NewEnv} = trans_exps(Ctx, Env, [ModE, NameE, ArityE]),
+            {NewModE, Env1} = trans_exp(Ctx, Env, ModE),
+            {NewNameE, Env2} = trans_exp(Ctx, Env1, NameE),
+            {NewArityE, NewEnv} = trans_exp(Ctx, Env2, ArityE),
             {{fun_ref_dyn, to_loc(Ctx, Anno), {qref_dyn, NewModE, NewNameE, NewArityE}}, NewEnv};
         {'fun', Anno, {clauses, FunClauses}} ->
             Loc = to_loc(Ctx, Anno),
@@ -656,7 +654,8 @@ trans_exp(Ctx, Env, Exp) ->
                  NewArgs},
              NewEnv};
         {call, Anno, {remote, _, ModExp, FunExp}, Args} ->
-            {[NewModExp, NewFunExp], Env1} = trans_exps(Ctx, Env, [ModExp, FunExp]),
+            {NewModExp, Env0} = trans_exp(Ctx, Env, ModExp),
+            {NewFunExp, Env1} = trans_exp(Ctx, Env0, FunExp),
             {NewArgs, NewEnv} = trans_exps(Ctx, Env1, Args),
             {{call_remote, to_loc(Ctx, Anno), NewModExp, NewFunExp, NewArgs}, NewEnv};
         {call, Anno, FunExp, Args} ->
@@ -705,7 +704,8 @@ trans_exp(Ctx, Env, Exp) ->
             trans_generated_case(Ctx, Env, G, E, [match_clause(Ctx, Loc, G, Pat), fresh_clause(Ctx, G)]);
         {nil, Anno} -> {{nil, to_loc(Ctx, Anno)}, Env};
         {op, Anno, Op, L, R} ->
-            {[NewL, NewR], NewEnv} = trans_exps(Ctx, Env, [L, R]),
+            {NewL, Env1} = trans_exp(Ctx, Env, L),
+            {NewR, NewEnv} = trans_exp(Ctx, Env1, R),
             {{op, to_loc(Ctx, Anno), Op, NewL, NewR}, NewEnv};
         {op, Anno, Op, E} ->
             {NewE, NewEnv} = trans_exp(Ctx, Env, E),
@@ -783,7 +783,11 @@ trans_exp(Ctx, Env, Exp) ->
 
             % catch clauses use original Env since try body vars are unsafe
             NewCatchClauses = trans_catch_clauses(Ctx, Env, CatchClauses),
-            NewAfterBody = trans_exp_seq_noenv(Ctx, Env, AfterBody),
+            % the only sequence that may be empty: a try without an after section
+            NewAfterBody = case AfterBody of
+                [] -> [];
+                [_ | _] -> trans_exp_seq_noenv(Ctx, Env, AfterBody)
+            end,
             % cases field is always empty after transformation
             {{'try', to_loc(Ctx, Anno), TransformedBody, [], NewCatchClauses, NewAfterBody},
              Env};
@@ -795,15 +799,14 @@ trans_exp(Ctx, Env, Exp) ->
                     ?LOG_NOTE("Undefined local variable ~w at ~s", Name, ast:format_loc(Loc)),
                     errors:name_error(Loc, "Undefined local variable ~w", Name)
             end,
-            {{var, Loc, Ref}, Env};
-        X -> errors:uncovered_case(?FILE, ?LINE, Ctx#ctx.path, X)
+            {{var, Loc, Ref}, Env}
     end.
 
 % result is either the value ?= does not match or the last value
 % else clauses are one fun
 % (fun(F) -> Exps end)(fun(X) -> case X of Clauses end end)
 -spec trans_maybe(ctx(), varenv_local:t(), ast_erl:anno(), ast_erl:exps(),
-                  none | {'else', ast_erl:anno(), [ast_erl:maybe_else_clause()]})
+                  none | {'else', ast_erl:anno(), [ast_erl:maybe_else_clause(), ...]})
                  -> {ast:exp(), varenv_local:t()}.
 trans_maybe(Ctx, Env, Anno, Exps, none) ->
     {NewExps, NewEnv} = trans_exp_seq(Ctx#ctx{maybe_else = none}, Env, Exps),
@@ -825,7 +828,7 @@ generated_fun(G, V, Body) ->
 % A case generated by a rewrite, at location G. Its clauses are clauses of the source,
 % or generated clauses, which are built in the environment after the scrutinee.
 -spec trans_generated_case(ctx(), varenv_local:t(), ast:loc(), ast_erl:exp(),
-                           [ast_erl:case_clause() | generated_clause()]) -> {ast:exp(), varenv_local:t()}.
+                           [ast_erl:case_clause() | generated_clause(), ...]) -> {ast:exp(), varenv_local:t()}.
 trans_generated_case(Ctx, Env, G, Scrut, Clauses) ->
     {NewScrut, Env1} = trans_exp(Ctx, Env, Scrut),
     Results = lists:map(fun(C) when is_function(C) -> C(Env1);
@@ -1030,8 +1033,11 @@ trans_pat_bin_elem(Ctx, SizeEnv, Env, Elem, BindMode) ->
             {{bin_element, to_loc(Ctx, Anno), NewValPat, NewSize, Tyspecs}, {NewEnv, NewSizeEnv}}
     end.
 
--spec trans_case_clauses(ctx(), varenv_local:t(), [ast_erl:case_clause()])
-                        -> {[ast:case_clause()], varenv_local:t(), varenv_local:t()}.
+-spec trans_case_clauses
+    (ctx(), varenv_local:t(), [ast_erl:case_clause(), ...])
+        -> {[ast:case_clause(), ...], varenv_local:t(), varenv_local:t()};
+    (ctx(), varenv_local:t(), [ast_erl:case_clause()])
+        -> {[ast:case_clause()], varenv_local:t(), varenv_local:t()}.
 trans_case_clauses(_Ctx, Env, []) -> {[], Env, Env};
 trans_case_clauses(Ctx, Env, Cs) ->
     Results = lists:map(fun(C) -> trans_case_clause(Ctx, Env, C) end, Cs),
@@ -1136,9 +1142,8 @@ if_guard_vars(Ctx, Env, Cs) ->
 
 % `if G1 -> B1; ... end` becomes `case {X1, ..., Xn} of {Y1, ..., Yn} when G1[Y/X] -> B1[Y/X]; ...`
 % for the outer variables Xi of the guards, so that the guards narrow the scrutinee.
--spec trans_if_clauses(ctx(), varenv_local:t(), [ast:local_varname()], [ast_erl:if_clause()])
-                      -> {[ast:case_clause()], varenv_local:t()}.
-trans_if_clauses(_Ctx, Env, _Vars, []) -> {[], Env};
+-spec trans_if_clauses(ctx(), varenv_local:t(), [ast:local_varname()], [ast_erl:if_clause(), ...])
+                      -> {[ast:case_clause(), ...], varenv_local:t()}.
 trans_if_clauses(Ctx, Env, Vars, Cs) ->
     {NewClauses, NewEnvs} =
         lists:unzip(lists:map(fun(C) -> trans_if_clause(Ctx, Env, Vars, C) end, Cs)),
@@ -1164,8 +1169,8 @@ trans_if_clause(Ctx, Env, Vars, C) ->
         X -> errors:uncovered_case(?FILE, ?LINE, X)
     end.
 
--spec trans_qualifiers(ctx(), varenv_local:t(), [ast_erl:qualifier()])
-    -> {[ast:qualifier()], varenv_local:t()}.
+-spec trans_qualifiers(ctx(), varenv_local:t(), [ast_erl:qualifier(), ...])
+    -> {[ast:qualifier(), ...], varenv_local:t()}.
 trans_qualifiers(Ctx, Env, Qs) ->
     thread_through_env(Env, Qs, fun(Env, Q) -> trans_qualifier(Ctx, Env, Q) end).
 
@@ -1193,26 +1198,23 @@ trans_qualifier(Ctx, Env, Q) ->
             trans_exp(Ctx, Env, Exp)
     end.
 
--spec trans_map_assocs(ctx(), varenv_local:t(), [ast_erl:map_assoc()])
-                      -> {[ast:map_assoc()], varenv_local:t()}.
+-spec trans_map_assocs
+    (ctx(), varenv_local:t(), [ast_erl:map_assoc_opt()]) -> {[ast:map_assoc_opt()], varenv_local:t()};
+    (ctx(), varenv_local:t(), [ast_erl:map_assoc()]) -> {[ast:map_assoc()], varenv_local:t()}.
 trans_map_assocs(Ctx, Env, As) ->
     thread_through_env(Env, As, fun(Env, A) -> trans_map_assoc(Ctx, Env, A) end).
 
--spec trans_map_assoc(ctx(), varenv_local:t(), ast_erl:map_assoc())
-                     -> {ast:map_assoc(), varenv_local:t()}.
-trans_map_assoc(Ctx, Env, Assoc) ->
-    case Assoc of
-        {K, Anno, ExpKey, ExpVal} when (K == map_field_assoc orelse K == map_field_exact) ->
-            {NewExpKey, Env1} = trans_exp(Ctx, Env, ExpKey),
-            {NewExpVal, Env2} = trans_exp(Ctx, Env1, ExpVal),
-            NewK =
-                case K of
-                    map_field_assoc -> map_field_opt;
-                    map_field_exact -> map_field_req
-                end,
-            {{NewK, to_loc(Ctx, Anno), NewExpKey, NewExpVal}, Env2};
-        X -> errors:uncovered_case(?FILE, ?LINE, X)
-    end.
+-spec trans_map_assoc
+    (ctx(), varenv_local:t(), ast_erl:map_assoc_opt()) -> {ast:map_assoc_opt(), varenv_local:t()};
+    (ctx(), varenv_local:t(), ast_erl:map_assoc_req()) -> {ast:map_assoc_req(), varenv_local:t()}.
+trans_map_assoc(Ctx, Env, {map_field_assoc, Anno, ExpKey, ExpVal}) ->
+    {NewExpKey, Env1} = trans_exp(Ctx, Env, ExpKey),
+    {NewExpVal, Env2} = trans_exp(Ctx, Env1, ExpVal),
+    {{map_field_opt, to_loc(Ctx, Anno), NewExpKey, NewExpVal}, Env2};
+trans_map_assoc(Ctx, Env, {map_field_exact, Anno, ExpKey, ExpVal}) ->
+    {NewExpKey, Env1} = trans_exp(Ctx, Env, ExpKey),
+    {NewExpVal, Env2} = trans_exp(Ctx, Env1, ExpVal),
+    {{map_field_req, to_loc(Ctx, Anno), NewExpKey, NewExpVal}, Env2}.
 
 % Expands record_field_other (the _ = Expr syntax) into individual record_field entries
 % for each field not explicitly given. The record_field_other entry is removed.

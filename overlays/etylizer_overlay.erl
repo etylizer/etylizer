@@ -35,6 +35,16 @@
   (list(T)) -> list(T).
 'lists:usort'(_) -> error(overlay).
 
+-spec 'lists:unzip'
+  (nonempty_list({A, B})) -> {nonempty_list(A), nonempty_list(B)};
+  (list({A, B})) -> {list(A), list(B)}.
+'lists:unzip'(_) -> error(overlay).
+
+-spec 'lists:unzip3'
+  (nonempty_list({A, B, C})) -> {nonempty_list(A), nonempty_list(B), nonempty_list(C)};
+  (list({A, B, C})) -> {list(A), list(B), list(C)}.
+'lists:unzip3'(_) -> error(overlay).
+
 -spec 'lists:keysort'(1, [{K, V}]) -> [{K, V}].
 'lists:keysort'(1, _) -> error(overlay).
 

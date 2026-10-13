@@ -57,7 +57,8 @@
 
 {module, ast_lib, #{file => "etylizer/src/ast_lib.erl", overlays => [{library, "../../overlays/etylizer_overlay.erl"}], timeout => 10000}}.
 
-{module, ast_transform, #{file => "etylizer/src/ast_transform.erl", overlays => [{library, "../../overlays/etylizer_overlay.erl"}], timeout => 10000}}.
+%% trans_exp/3 takes 8 s
+{module, ast_transform, #{file => "etylizer/src/ast_transform.erl", overlays => [{library, "../../overlays/etylizer_overlay.erl"}], timeout => 30000}}.
 {exception, ast_transform, build_funenv, 2, [ignore], unreviewed}.
 {exception, ast_transform, collect_record_variants, 2, [ignore], unreviewed}.
 {exception, ast_transform, expand_record_field_other, 2, [ignore], unreviewed}.
@@ -66,17 +67,11 @@
 {exception, ast_transform, record_field_pos, 3, [ignore], unreviewed}.
 {exception, ast_transform, replace_mu_var, 2, [ignore], unreviewed}.
 {exception, ast_transform, replace_mu_var_list, 2, [ignore], unreviewed}.
-{exception, ast_transform, trans_case_clause, 3, [ignore], unreviewed}.
 {exception, ast_transform, trans_catch_clause, 3, [ignore], unreviewed}.
-{exception, ast_transform, trans_exp, 3, [ignore], unreviewed}.
-{exception, ast_transform, trans_exp_seq, 4, [ignore], unreviewed}.
 {exception, ast_transform, trans_form, 3, [ignore], unreviewed}.
 {exception, ast_transform, trans_fun_clause, 3, [ignore], unreviewed}.
 {exception, ast_transform, trans_fun_clauses, 3, [ignore], unreviewed}.
-{exception, ast_transform, trans_generated_case, 5, [ignore], unreviewed}.
 {exception, ast_transform, trans_guards, 3, [ignore], unreviewed}.
-{exception, ast_transform, trans_map_assoc, 3, [ignore], unreviewed}.
-{exception, ast_transform, trans_maybe, 5, [ignore], unreviewed}.
 {exception, ast_transform, trans_pat, 5, [ignore], unreviewed}.
 {exception, ast_transform, trans_qualifier, 3, [ignore], unreviewed}.
 {exception, ast_transform, trans_record_field, 3, [ignore], unreviewed}.
