@@ -64,25 +64,25 @@
 -endif.
 -endif.
 
--type encode_result() :: {ok, binary()} | {error, {Reason :: term(), [jsone_types:stack_item()]}}.
--type next() :: {array_values, [jsone_types:json_value()]} |
-                {object_value, jsone_types:json_value(), jsone_types:json_object_members()} |
-                {object_members, jsone_types:json_object_members()} |
+-type encode_result() :: {ok, binary()} | {error, {Reason :: term(), [jsone:stack_item()]}}.
+-type next() :: {array_values, [jsone:json_value()]} |
+                {object_value, jsone:json_value(), jsone:json_object_members()} |
+                {object_members, jsone:json_object_members()} |
                 {char, binary()}.
 
 -record(encode_opt_v2, {
           native_utf8 = false :: boolean(),
           native_forward_slash = false :: boolean(),
           canonical_form = false :: boolean(),
-          float_format = [{scientific, 20}] :: [jsone_types:float_format_option()],
-          datetime_format = {iso8601, 0} :: {jsone_types:datetime_format(), jsone_types:utc_offset_seconds()},
+          float_format = [{scientific, 20}] :: [jsone:float_format_option()],
+          datetime_format = {iso8601, 0} :: {jsone:datetime_format(), jsone:utc_offset_seconds()},
           object_key_type = string :: string | scalar | value,
           space = 0 :: non_neg_integer(),
           indent = 0 :: non_neg_integer(),
           undefined_as_null = false :: boolean(),
           skip_undefined = false :: boolean(),
-          map_unknown_value = fun jsone_types:term_to_json_string/1 :: undefined |
-                                                                 fun((term()) -> {ok, jsone_types:json_value()} | error)
+          map_unknown_value = fun jsone:term_to_json_string/1 :: undefined |
+                                                                 fun((term()) -> {ok, jsone:json_value()} | error)
          }).
 -define(OPT, #encode_opt_v2).
 -type opt() :: #encode_opt_v2{}.
@@ -91,12 +91,12 @@
 %%--------------------------------------------------------------------------------
 %% Exported Functions
 %%--------------------------------------------------------------------------------
--spec encode(jsone_types:json_value()) -> encode_result().
+-spec encode(jsone:json_value()) -> encode_result().
 encode(Value) ->
     encode(Value, []).
 
 
--spec encode(jsone_types:json_value() | term(), [jsone_types:encode_option()]) -> encode_result().
+-spec encode(jsone:json_value() | term(), [jsone:encode_option()]) -> encode_result().
 encode(Value, Options) ->
     Opt = parse_options(Options),
     value(Value, [], <<"">>, Opt).
@@ -131,7 +131,7 @@ next(Level = [Next | Nexts], Buf, Opt) ->
     end.
 
 
--spec value(jsone_types:json_value(), [next()], binary(), opt()) -> encode_result().
+-spec value(jsone:json_value(), [next()], binary(), opt()) -> encode_result().
 value(null, Nexts, Buf, Opt) ->
     next(Nexts, <<Buf/binary, "null">>, Opt);
 value(undefined, Nexts, Buf, Opt = ?OPT{undefined_as_null = true}) ->
@@ -194,17 +194,14 @@ value(Value, Nexts, Buf, Opt) ->
             end
     end.
 
-% -spec atom_to_binary(atom(), Encoding) -> binary() when
-%       Encoding :: latin1 | unicode | utf8.
 
--spec string(jsone_types:json_string(), [next()], binary(), opt()) -> encode_result().
+-spec string(jsone:json_string(), [next()], binary(), opt()) -> encode_result().
 string(<<Str/binary>>, Nexts, Buf, Opt) ->
     Len = unescaped_string_length(Str, Opt),
     <<Unescaped:Len/binary, Rest/binary>> = Str,
     escape_string(Rest, Nexts, <<Buf/binary, $", Unescaped/binary>>, Opt);
 string(Str, Nexts, Buf, Opt) ->
-    T = atom_to_binary(Str, utf8),
-    string(T, Nexts, Buf, Opt).
+    string(atom_to_binary(Str, utf8), Nexts, Buf, Opt).
 
 
 -spec datetime(calendar:datetime(), [next()], binary(), opt()) -> encode_result().
@@ -240,32 +237,29 @@ format_year(Y) ->
     [lists:duplicate(4 - byte_size(B), $0) | B].
 
 
--spec my_integer_to_list(non_neg_integer()) -> [byte()].
-my_integer_to_list(X) -> integer_to_list(X).
-
 -spec format2digit(non_neg_integer()) -> iolist().
 format2digit(0) ->
-    [$0|[$0 | []]]; % strings are not iolists...
+    "00";
 format2digit(1) ->
-    [$0|[$1 | []]];
+    "01";
 format2digit(2) ->
-    [$0|[$2 | []]];
+    "02";
 format2digit(3) ->
-    [$0|[$3 | []]];
+    "03";
 format2digit(4) ->
-    [$0|[$4 | []]];
+    "04";
 format2digit(5) ->
-    [$0|[$5 | []]];
+    "05";
 format2digit(6) ->
-    [$0|[$6 | []]];
+    "06";
 format2digit(7) ->
-    [$0|[$7 | []]];
+    "07";
 format2digit(8) ->
-    [$0|[$8 | []]];
+    "08";
 format2digit(9) ->
-    [$0|[$9 | []]];
+    "09";
 format2digit(X) ->
-    my_integer_to_list(X).
+    integer_to_list(X).
 
 
 -spec format_seconds(non_neg_integer() | float()) -> iolist().
@@ -296,7 +290,7 @@ format_tz_(S) ->
     [format2digit(H), $:, format2digit(M)].
 
 
--spec object_key(jsone_types:json_value(), [next()], binary(), opt()) -> encode_result().
+-spec object_key(jsone:json_value(), [next()], binary(), opt()) -> encode_result().
 object_key(Key, Nexts, Buf, Opt) when ?IS_STR(Key) ->
     string(Key, Nexts, Buf, Opt);
 object_key(Key, Nexts, Buf, Opt = ?OPT{object_key_type = scalar}) when is_number(Key) ->
@@ -465,28 +459,28 @@ hex(X) ->
              16#6663, 16#6664, 16#6665, 16#6666}).
 
 
--spec array(jsone_types:json_array(), [next()], binary(), opt()) -> encode_result().
+-spec array(jsone:json_array(), [next()], binary(), opt()) -> encode_result().
 array([], Nexts, Buf, Opt) ->
     next(Nexts, <<Buf/binary, $[, $]>>, Opt);
 array(List, Nexts, Buf, Opt) ->
     array_values(List, Nexts, pp_newline(<<Buf/binary, $[>>, Nexts, 1, Opt), Opt).
 
 
--spec array_values(jsone_types:json_array(), [next()], binary(), opt()) -> encode_result().
+-spec array_values(jsone:json_array(), [next()], binary(), opt()) -> encode_result().
 array_values([], Nexts, Buf, Opt) ->
     next(Nexts, <<(pp_newline(Buf, Nexts, Opt))/binary, $]>>, Opt);
 array_values([X | Xs], Nexts, Buf, Opt) ->
     value(X, [{array_values, Xs} | Nexts], Buf, Opt).
 
 
--spec object(jsone_types:json_object_members(), [next()], binary(), opt()) -> encode_result().
+-spec object(jsone:json_object_members(), [next()], binary(), opt()) -> encode_result().
 object(Members, Nexts, Buf, ?OPT{skip_undefined = true} = Opt) ->
     object1(lists:filter(fun({_, V}) -> V =/= undefined end, Members), Nexts, Buf, Opt);
 object(Members, Nexts, Buf, Opt) ->
     object1(Members, Nexts, Buf, Opt).
 
 
--spec object1(jsone_types:json_object_members(), [next()], binary(), opt()) -> encode_result().
+-spec object1(jsone:json_object_members(), [next()], binary(), opt()) -> encode_result().
 object1([], Nexts, Buf, Opt) ->
     next(Nexts, <<Buf/binary, ${, $}>>, Opt);
 object1(Members, Nexts, Buf, ?OPT{canonical_form = true} = Opt) ->
@@ -495,7 +489,7 @@ object1(Members, Nexts, Buf, Opt) ->
     object_members(Members, Nexts, pp_newline(<<Buf/binary, ${>>, Nexts, 1, Opt), Opt).
 
 
--spec object_members(jsone_types:json_object_members(), [next()], binary(), opt()) -> encode_result().
+-spec object_members(jsone:json_object_members(), [next()], binary(), opt()) -> encode_result().
 object_members([], Nexts, Buf, Opt) ->
     next(Nexts, <<(pp_newline(Buf, Nexts, Opt))/binary, $}>>, Opt);
 object_members([{Key, Value} | Xs], Nexts, Buf, Opt) ->
@@ -504,7 +498,7 @@ object_members(Arg, Nexts, Buf, Opt) ->
     ?ERROR(object_members, [Arg, Nexts, Buf, Opt]).
 
 
--spec object_value(jsone_types:json_value(), jsone_types:json_object_members(), [next()], binary(), opt()) -> encode_result().
+-spec object_value(jsone:json_value(), jsone:json_object_members(), [next()], binary(), opt()) -> encode_result().
 object_value(Value, Members, Nexts, Buf, Opt) ->
     value(Value, [{object_members, Members} | Nexts], Buf, Opt).
 
@@ -556,12 +550,12 @@ padding(Buf, N) ->
     padding(<<Buf/binary, "         ">>, N - 9).
 
 
--spec parse_options([jsone_types:encode_option()]) -> opt().
+-spec parse_options([jsone:encode_option()]) -> opt().
 parse_options(Options) ->
     parse_option(Options, ?OPT{}).
 
 
--spec parse_option([jsone_types:encode_option()], opt()) -> opt().
+-spec parse_option([jsone:encode_option()], opt()) -> opt().
 parse_option([], Opt) ->
     Opt;
 parse_option([native_utf8 | T], Opt) ->
@@ -603,7 +597,7 @@ parse_option(List, Opt) ->
     error(badarg, [List, Opt]).
 
 
--spec local_offset() -> jsone_types:utc_offset_seconds().
+-spec local_offset() -> jsone:utc_offset_seconds().
 local_offset() ->
     UTC = {{1970, 1, 2}, {0, 0, 0}},
     Local = calendar:universal_time_to_local_time({{1970, 1, 2}, {0, 0, 0}}),
@@ -617,7 +611,7 @@ local_offset() ->
 -endif.
 
 
--spec local_offset_dst() -> jsone_types:utc_offset_seconds().
+-spec local_offset_dst() -> jsone:utc_offset_seconds().
 local_offset_dst() ->
     LocalDateTime = ?TIME_MODULE:localtime(),
     calendar:datetime_to_gregorian_seconds(LocalDateTime) -

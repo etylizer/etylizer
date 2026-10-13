@@ -8,11 +8,10 @@
 %% run time, not provable by types), fixable (gap in the type system or checker), unknown.
 {reason, spec_imprecise,      real,     "imprecise type spec in the source"}.
 {reason, tuple_any,           fixable,  "needs a type for tuples of any size, {T, ...}"}.
-{reason, body_exhaustiveness, inherent, "exhaustiveness of a case inside the body"}.
-{reason, map_generator,       fixable,  "map generator in a comprehension (crashed the checker)"}.
+{reason, body_exhaustiveness, inherent, "exhaustiveness of a case or match inside the body"}.
+{reason, defensive,           inherent, "defensive clause, dead for the spec"}.
 {reason, unknown,             unknown,  "not analysed"}.
 {reason, unreviewed,          unknown,  "flag taken over from an -etylizer attribute, no reason recorded"}.
-{reason, masked_on_main,      unknown,  "failed unnoticed while check-stdlib.sh dropped exit codes"}.
 
 {module, proplists2, #{file => "stdlib/proplists2.erl", overlays => [{library, "overlay.erl"}], timeout => 10000}}.
 {exception, proplists2, expand, 2, [ignore], tuple_any}.
@@ -20,8 +19,6 @@
 {exception, proplists2, to_map, 2, [ignore], tuple_any}.
 {exception, proplists2, lookup, 2, [ignore], tuple_any}.
 {exception, proplists2, lookup_all, 2, [ignore], tuple_any}.
-{exception, proplists2, is_defined, 3, [ignore], tuple_any}.
-{exception, proplists2, get_all_value, 2, [ignore], tuple_any}.
 {exception, proplists2, append_values, 2, [ignore], tuple_any}.
 {exception, proplists2, get_bool, 2, [ignore], tuple_any}.
 {exception, proplists2, get_keys, 2, [ignore], tuple_any}.
@@ -35,7 +32,6 @@
 {exception, proplists2, get_all_values, 2, [ignore], tuple_any}.
 {exception, proplists2, split, 3, [ignore], tuple_any}.
 {exception, proplists2, to_map, 1, [ignore], tuple_any}.
-{exception, proplists2, flatten, 1, [ignore], masked_on_main}.
 
 {module, ordsets2, #{file => "stdlib/ordsets2.erl", timeout => 10000}}.
 {exception, ordsets2, is_set, 1, [ignore], unknown}.
@@ -50,12 +46,12 @@
 {exception, orddict2, update, 3, [no_exhaustiveness], unreviewed}.
 
 {module, queue2, #{file => "stdlib/queue2.erl", overlays => [{library, "overlay_queue.erl"}], timeout => 150000}}.
-{exception, queue2, get, 2, [ignore], spec_imprecise}.
-{exception, queue2, get, 1, [ignore, no_redundancy], spec_imprecise}. % get/2
-{exception, queue2, head, 1, [ignore, no_redundancy], spec_imprecise}. % get/2
+{exception, queue2, get, 2, [no_exhaustiveness], spec_imprecise}. % accepts ([], [])
+{exception, queue2, get, 1, [ignore, no_redundancy], spec_imprecise}. % get/2 returns term()
+{exception, queue2, head, 1, [ignore, no_redundancy], spec_imprecise}. % get/2 returns term()
 {exception, queue2, split_f1_to_r2, 5, [no_exhaustiveness], unreviewed}.
 {exception, queue2, split_r1_to_f2, 5, [no_exhaustiveness], unreviewed}.
-{exception, queue2, split, 2, [ignore, no_redundancy, no_exhaustiveness], masked_on_main}.
+{exception, queue2, split, 2, [ignore, no_redundancy, no_exhaustiveness], body_exhaustiveness}. % the length test before [X|F1] = F
 {exception, queue2, is_empty, 1, [no_redundancy], unreviewed}.
 {exception, queue2, len, 1, [no_redundancy], unreviewed}.
 {exception, queue2, to_list, 1, [no_redundancy], unreviewed}.
@@ -79,15 +75,13 @@
 {exception, queue2, delete_r, 2, [no_redundancy], unreviewed}.
 {exception, queue2, delete_with, 2, [no_redundancy], unreviewed}.
 {exception, queue2, delete_with_r, 2, [no_redundancy], unreviewed}.
-{exception, queue2, reverse, 1, [ignore], masked_on_main}.
-{exception, queue2, join, 2, [ignore], masked_on_main}.
+{exception, queue2, reverse, 1, [no_redundancy], defensive}.
+{exception, queue2, join, 2, [no_redundancy], defensive}.
 
 {module, sets2, #{file => "stdlib/sets2.erl", overlays => [{library, "overlay.erl"}], timeout => 190000}}.
 {exception, sets2, rehash, 4, [ignore, no_exhaustiveness], unknown}.
 {exception, sets2, new, 1, [ignore, no_exhaustiveness], body_exhaustiveness}.
 {exception, sets2, from_list, 2, [ignore, no_exhaustiveness], body_exhaustiveness}.
-{exception, sets2, filter, 2, [ignore], map_generator}.
-{exception, sets2, map, 2, [ignore], map_generator}.
 {exception, sets2, is_element, 2, [ignore], unknown}. % transitive
 {exception, sets2, add_element, 2, [ignore], unknown}. % transitive
 {exception, sets2, del_element, 2, [ignore], unknown}. % transitive

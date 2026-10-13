@@ -34,7 +34,7 @@
 %%--------------------------------------------------------------------------------
 %% Exported API
 %%--------------------------------------------------------------------------------
--compile([export_all,nowarn_export_all]).
+-export([decode/1, decode/2]).
 
 %%--------------------------------------------------------------------------------
 %% Macros & Records & Types
@@ -49,19 +49,19 @@
 -define(LIST_TO_MAP(X), maps:from_list(X)).
 -endif.
 
--type next() :: {array_next, [jsone_types:json_value()]} |
-                {object_value, jsone_types:json_object_members()} |
-                {object_next, jsone_types:json_string(), jsone_types:json_object_members()}.
+-type next() :: {array_next, [jsone:json_value()]} |
+                {object_value, jsone:json_object_members()} |
+                {object_next, jsone:json_string(), jsone:json_object_members()}.
 
 -type whitespace_next() :: value |
                            array |
                            object |
-                           {array_next, [jsone_types:json_value()]} |
-                           {object_key, jsone_types:json_object_members()} |
-                           {object_value, jsone_types:json_string(), jsone_types:json_object_members()} |
-                           {object_next, jsone_types:json_object_members()}.
+                           {array_next, [jsone:json_value()]} |
+                           {object_key, jsone:json_object_members()} |
+                           {object_value, jsone:json_string(), jsone:json_object_members()} |
+                           {object_next, jsone:json_object_members()}.
 
--type decode_result() :: {ok, jsone_types:json_value(), Rest :: binary()} | {error, {Reason :: term(), [jsone_types:stack_item()]}}.
+-type decode_result() :: {ok, jsone:json_value(), Rest :: binary()} | {error, {Reason :: term(), [jsone:stack_item()]}}.
 
 -record(decode_opt_v2, {
           object_format = ?DEFAULT_OBJECT_FORMAT :: tuple | proplist | map,
@@ -83,7 +83,7 @@ decode(Json) ->
     decode(Json, []).
 
 
--spec decode(binary(), [jsone_types:decode_option()]) -> decode_result().
+-spec decode(binary(), [jsone:decode_option()]) -> decode_result().
 decode(<<Json/binary>>, Options) ->
     Opt = parse_options(Options),
     whitespace(Json, value, [], <<"">>, Opt).
@@ -92,7 +92,7 @@ decode(<<Json/binary>>, Options) ->
 %%--------------------------------------------------------------------------------
 %% Internal Functions
 %%--------------------------------------------------------------------------------
--spec next(binary(), jsone_types:json_value(), [next()], binary(), opt()) -> decode_result().
+-spec next(binary(), jsone:json_value(), [next()], binary(), opt()) -> decode_result().
 next(<<Bin/binary>>, Value, [], _Buf, _Opt) ->
     {ok, Value, Bin};
 next(<<Bin/binary>>, Value, [Next | Nexts], Buf, Opt) ->
@@ -160,7 +160,7 @@ array(<<Bin/binary>>, Nexts, Buf, Opt) ->
     value(Bin, [{array_next, []} | Nexts], Buf, Opt).
 
 
--spec array_next(binary(), [jsone_types:json_value()], [next()], binary(), opt()) -> decode_result().
+-spec array_next(binary(), [jsone:json_value()], [next()], binary(), opt()) -> decode_result().
 array_next(<<$], Bin/binary>>, Values, Nexts, Buf, Opt) ->
     next(Bin, lists:reverse(Values), Nexts, Buf, Opt);
 array_next(<<$,, Bin/binary>>, Values, Nexts, Buf, Opt) ->
@@ -176,14 +176,14 @@ object(<<Bin/binary>>, Nexts, Buf, Opt) ->
     object_key(Bin, [], Nexts, Buf, Opt).
 
 
--spec object_key(binary(), jsone_types:json_object_members(), [next()], binary(), opt()) -> decode_result().
+-spec object_key(binary(), jsone:json_object_members(), [next()], binary(), opt()) -> decode_result().
 object_key(<<$", Bin/binary>>, Members, Nexts, Buf, Opt) ->
     string(Bin, byte_size(Buf), [{object_value, Members} | Nexts], Buf, Opt);
 object_key(<<Bin/binary>>, Members, Nexts, Buf, Opt) ->
     ?ERROR(object_key, [Bin, Members, Nexts, Buf, Opt]).
 
 
--spec object_value(binary(), jsone_types:json_string(), jsone_types:json_object_members(), [next()], binary(), opt()) ->
+-spec object_value(binary(), jsone:json_string(), jsone:json_object_members(), [next()], binary(), opt()) ->
           decode_result().
 object_value(<<$:, Bin/binary>>, Key, Members, Nexts, Buf, Opt) ->
     whitespace(Bin, value, [{object_next, object_key(Key, Opt), Members} | Nexts], Buf, Opt);
@@ -191,10 +191,9 @@ object_value(Bin, Key, Members, Nexts, Buf, Opt) ->
     ?ERROR(object_value, [Bin, Key, Members, Nexts, Buf, Opt]).
 
 
-% -compile({inline, [object_key/2]}).
+-compile({inline, [object_key/2]}).
 
 
--spec object_key(jsone_types:json_string(), opt()) -> binary() | atom().
 object_key(Key, ?OPT{keys = binary}) ->
     Key;
 object_key(Key, ?OPT{keys = atom}) ->
@@ -210,7 +209,7 @@ object_key(Key, ?OPT{keys = attempt_atom}) ->
     end.
 
 
--spec object_next(binary(), jsone_types:json_object_members(), [next()], binary(), opt()) -> decode_result().
+-spec object_next(binary(), jsone:json_object_members(), [next()], binary(), opt()) -> decode_result().
 object_next(<<$}, Bin/binary>>, Members, Nexts, Buf, Opt) ->
     next(Bin, make_object(Members, Opt), Nexts, Buf, Opt);
 object_next(<<$,, Bin/binary>>, Members, Nexts, Buf, Opt) ->
@@ -397,7 +396,7 @@ number_exponation_part(Bin, N, DecimalOffset, ExpSign, Exp, IsFirst, Nexts, Buf,
     ?ERROR(number_exponation_part, [Bin, N, DecimalOffset, ExpSign, Exp, IsFirst, Nexts, Buf, Opt]).
 
 
--spec make_object(jsone_types:json_object_members(), opt()) -> jsone_types:json_object().
+-spec make_object(jsone:json_object_members(), opt()) -> jsone:json_object().
 make_object(Members, ?OPT{object_format = tuple}) ->
     {lists:reverse(Members)};
 make_object(Members, ?OPT{object_format = map, duplicate_map_keys = last}) ->
@@ -410,12 +409,12 @@ make_object(Members, _) ->
     lists:reverse(Members).
 
 
--spec parse_options([jsone_types:decode_option()]) -> opt().
+-spec parse_options([jsone:decode_option()]) -> opt().
 parse_options(Options) ->
     parse_option(Options, ?OPT{}).
 
 
--spec parse_option([jsone_types:decode_option()], opt()) -> opt().
+-spec parse_option([jsone:decode_option()], opt()) -> opt().
 parse_option([], Opt) ->
     Opt;
 parse_option([{object_format, F} | T], Opt) when F =:= tuple; F =:= proplist; F =:= map ->
