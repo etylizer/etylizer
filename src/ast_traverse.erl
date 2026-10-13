@@ -12,12 +12,13 @@
 % - map_locs_forms/2 and friends rebuild the AST. Rebuilding has to preserve the sort of
 %   every node (a pattern must stay a pattern), so these functions follow the structure
 %   of the AST explicitly. Only locations can be changed.
-% - ty_everywhere/2 replaces types inside of types.
+% - ty_everywhere/2 replaces types inside of types, ty_everything/2 collects from them.
 
 -export([
     everything/2,
     subterms/1,
     ty_everywhere/2,
+    ty_everything/2,
     ty_descend/2,
     map_locs_forms/2,
     map_locs_ty/2,
@@ -92,6 +93,32 @@ ty_descend(F, {intersection, Args}) -> {intersection, lists:map(F, Args)};
 ty_descend(F, {negation, A}) -> {negation, F(A)};
 ty_descend(F, {mu, V, A}) -> {mu, V, F(A)};
 ty_descend(_, T) -> T.
+
+% Collects from a type and all types below it. The function given is applied to the type
+% and its subtypes: {ok, X} yields X and does not descend, {rec, X} yields X and descends,
+% error just descends.
+-spec ty_everything(fun((ast:ty()) -> {ok, R} | {rec, R} | error), ast:ty()) -> [R].
+ty_everything(F, Ty) ->
+    utils:everything(fun ty_children/1, F, [Ty]).
+
+% The direct subtypes of a type.
+-spec ty_children(ast:ty()) -> [ast:ty()].
+ty_children({list, A}) -> [A];
+ty_children({cons, A, B}) -> [A, B];
+ty_children({bitstring_cons, A, B}) -> [A, B];
+ty_children({nonempty_list, A}) -> [A];
+ty_children({improper_list, A, B}) -> [A, B];
+ty_children({nonempty_improper_list, A, B}) -> [A, B];
+ty_children({fun_any_arg, R}) -> [R];
+ty_children({fun_full, Args, R}) -> Args ++ [R];
+ty_children({map, Assocs}) -> lists:append([[K, V] || {_, K, V} <- Assocs]);
+ty_children({named, _, _, Args}) -> Args;
+ty_children({tuple, Args}) -> Args;
+ty_children({union, Args}) -> Args;
+ty_children({intersection, Args}) -> Args;
+ty_children({negation, A}) -> [A];
+ty_children({mu, _, A}) -> [A];
+ty_children(_) -> [].
 
 % Applies the given function to every location in the given type.
 -spec map_locs_ty(loc_fun(), ast:ty()) -> ast:ty().

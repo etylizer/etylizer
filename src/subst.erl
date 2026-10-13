@@ -44,7 +44,7 @@
 base_subst({tally_subst, S, _}) -> S;
 base_subst(S) -> S.
 
--spec clean(ast:ty(), sets:set(ast:ty_varname()), term()) -> ast:ty().
+-spec clean(ast:ty(), sets:set(ast:ty_varname()), symtab:t()) -> ast:ty().
 clean(T, Fixed, SymTab) ->
     % clean
     Cleaned = clean_type(T, Fixed, SymTab),
@@ -98,10 +98,10 @@ clean_vars(CList, Fixed, VCache) ->
         Uppers = maps:get({V, upper}, Bounds, []),
         Lowers = maps:get({V, lower}, Bounds, []),
         case maps:get(V, Nested, []) of
-            [0] -> ast_lib:mk_union(lists:usort(Lowers));
-            [1] -> ast_lib:mk_intersection(lists:usort(Uppers));
-            [] when length(Uppers) =< length(Lowers) -> ast_lib:mk_intersection(lists:usort(Uppers));
-            [] -> ast_lib:mk_union(lists:usort(Lowers));
+            [0] -> {ok, ast_lib:mk_union(lists:usort(Lowers))};
+            [1] -> {ok, ast_lib:mk_intersection(lists:usort(Uppers))};
+            [] when length(Uppers) =< length(Lowers) -> {ok, ast_lib:mk_intersection(lists:usort(Uppers))};
+            [] -> {ok, ast_lib:mk_union(lists:usort(Lowers))};
             _ -> keep
         end
     end,
@@ -115,7 +115,7 @@ clean_vars(CList, Fixed, VCache) ->
                 true -> Acc;
                 false -> {S#{V => B}, Named ++ Taken}
             end
-        end, {#{}, []}, [{V, B, vars(B)} || V <- Vars, B <- [Body(V)], B =/= keep]),
+        end, {#{}, []}, [{V, B, vars(B)} || V <- Vars, {ok, B} <- [Body(V)]]),
     case map_size(Subst) of
         0 -> CList;
         _ -> clean_vars(drop_trivial([{apply_base(Subst, S), apply_base(Subst, T)} || {S, T} <- CList]),
@@ -149,7 +149,8 @@ trivial(S, T) ->
         orelse members(intersection, T) -- members(intersection, S) =:= [].
 
 -spec members(union | intersection, ast:ty()) -> [ast:ty()].
-members(K, {K, Tys}) -> Tys;
+members(union, {union, Tys}) -> Tys;
+members(intersection, {intersection, Tys}) -> Tys;
 members(_, Ty) -> [Ty].
 
 -type clean_mode() :: {clean, symtab:t()} | no_clean.
@@ -194,9 +195,6 @@ apply_base(S, T) ->
             {map, lists:map(fun({Kind, U, V}) -> {Kind, apply_base(S, U), apply_base(S, V)} end, Assocs)};
         {predef, _} -> T;
         {predef_alias, _} -> T;
-        {record, Name, Fields} ->
-            {record, Name,
-             lists:map(fun({FieldName, U}) -> {FieldName, apply_base(S, U)} end, Fields)};
         {named, Loc, Ref, Args} ->
             {named, Loc, Ref, apply_list(S, Args)};
         {tuple_any} -> T;
@@ -217,7 +215,7 @@ apply_list(S, L) -> lists:map(fun(T) -> apply_base(S, T) end, L).
 
 -spec extend(t(), ast:ty_varname(), ast:ty()) -> t().
 extend({tally_subst, BaseSubst, Fixed}, Alpha, T) ->
-    {tally_subst, extend(BaseSubst, Alpha, T), Fixed};
+    {tally_subst, maps:put(Alpha, T, BaseSubst), Fixed};
 extend(BaseSubst, Alpha, T) ->
     maps:put(Alpha, T, BaseSubst).
 
@@ -230,6 +228,8 @@ empty() -> #{}.
 -spec mk_tally_subst(sets:set(ast:ty_varname()), base_subst()) -> tally_subst().
 mk_tally_subst(Fixed, Base) -> {tally_subst, Base, Fixed}.
 
+% A variable that occurs at one polarity only is replaced by none() or any().
+-spec clean_type(ast:ty(), sets:set(ast:ty_varname()), symtab:t()) -> ast:ty().
 clean_type(Ty, Fix, SymTab) ->
     UnfoldedTy = ast_utils:unfold_ty(SymTab, Ty),
     VCache = compute_variance_cache(SymTab),
@@ -288,7 +288,7 @@ compute_variance_cache(SymTab) ->
         Cache -> Cache
     end.
 
--spec variance_fixpoint(variance_cache(), map()) -> variance_cache().
+-spec variance_fixpoint(variance_cache(), #{symtab_ty_key() => ast:ty_scheme()}) -> variance_cache().
 variance_fixpoint(OldCache, Types) ->
     NewCache = maps:map(
         fun(_Key, {ty_scheme, Vars, Body}) ->
@@ -303,15 +303,15 @@ variance_fixpoint(OldCache, Types) ->
 %% Returns the variance of V in Ty, given outer polarity Pol and accumulator
 %% Acc (variance already collected for V). Nested {named, _, R, As} references
 %% look up R's vector in Cache and walk each As[i] under the composed polarity.
--spec variance_walk(ast:ty() | {ty_hole}, ast:ty_varname(), co | contra,
+-spec variance_walk(ast:ty(), ast:ty_varname(), co | contra,
                     variance(), variance_cache()) -> variance().
 variance_walk(Body, V, Pol, Acc, Cache) ->
-    Contributions = utils:everything(
+    Contributions = ast_traverse:ty_everything(
         fun(T) -> variance_node(T, V, Pol, Cache) end,
         Body),
     lists:foldl(fun(P, X) -> merge_pol(X, P) end, Acc, Contributions).
 
--spec variance_node(any(), ast:ty_varname(), co | contra, variance_cache()) ->
+-spec variance_node(ast:ty(), ast:ty_varname(), co | contra, variance_cache()) ->
     {ok, variance()} | error.
 variance_node({var, V}, V, Pol, _Cache) ->
     {ok, Pol};
@@ -369,7 +369,12 @@ merge_pol(X, unused) -> X;
 merge_pol(X, X) -> X;
 merge_pol(_, _) -> inv.
 
--spec collect_vars(ast:ty() | {ty_hole}, 0 | 1, #{ast:ty_varname() => [0 | 1]},
+% The other of the two positions.
+-spec flip_pos(0 | 1) -> 0 | 1.
+flip_pos(0) -> 1;
+flip_pos(1) -> 0.
+
+-spec collect_vars(ast:ty(), 0 | 1, #{ast:ty_varname() => [0 | 1]},
                    sets:set(ast:ty_varname()), variance_cache()) ->
     #{ast:ty_varname() => [0 | 1]}.
 collect_vars(M = {map, _}, CPos, Pos, Fix, VCache) ->
@@ -377,11 +382,11 @@ collect_vars(M = {map, _}, CPos, Pos, Fix, VCache) ->
 collect_vars({K, Components}, CPos, Pos, Fix, VCache) when K == union; K == intersection; K == tuple ->
     lists:foldl(fun(Ty, P) -> collect_vars(Ty, CPos, P, Fix, VCache) end, Pos, Components);
 collect_vars({fun_full, Components, Target}, CPos, Pos, Fix, VCache) ->
-    P1 = lists:foldl(fun(Ty, P) -> collect_vars(Ty, 1 - CPos, P, Fix, VCache) end, Pos, Components),
+    P1 = lists:foldl(fun(Ty, P) -> collect_vars(Ty, flip_pos(CPos), P, Fix, VCache) end, Pos, Components),
     collect_vars(Target, CPos, P1, Fix, VCache);
 collect_vars({fun_any_arg, Target}, CPos, Pos, Fix, VCache) ->
     collect_vars(Target, CPos, Pos, Fix, VCache);
-collect_vars({negation, Ty}, CPos, Pos, Fix, VCache) -> collect_vars(Ty, 1 - CPos, Pos, Fix, VCache);
+collect_vars({negation, Ty}, CPos, Pos, Fix, VCache) -> collect_vars(Ty, flip_pos(CPos), Pos, Fix, VCache);
 collect_vars({predef, _}, _CPos, Pos, _, _) -> Pos;
 collect_vars({predef_alias, _}, _CPos, Pos, _, _) -> Pos;
 collect_vars({singleton, _}, _CPos, Pos, _, _) -> Pos;
@@ -395,7 +400,6 @@ collect_vars({map_any}, _CPos, Pos, _, _) -> Pos;
 collect_vars({tuple_any}, _CPos, Pos, _, _) -> Pos;
 collect_vars({fun_simple}, _CPos, Pos, _, _) -> Pos;
 collect_vars({mu_var, _Name}, _CPos, Pos, _, _) -> Pos;
-collect_vars({ty_hole}, _CPos, Pos, _, _) -> Pos;
 collect_vars({nonempty_improper_list, A, B}, CPos, Pos, Fix, VCache) ->
     collect_vars(B, CPos, collect_vars(A, CPos, Pos, Fix, VCache), Fix, VCache);
 collect_vars({nonempty_list, A}, CPos, Pos, Fix, VCache) ->
@@ -403,7 +407,7 @@ collect_vars({nonempty_list, A}, CPos, Pos, Fix, VCache) ->
 collect_vars({list, A}, CPos, Pos, Fix, VCache) ->
     collect_vars(A, CPos, Pos, Fix, VCache);
 collect_vars({mu, _MuVar, A}, CPos, Pos, Fix, VCache) -> % the recursion may flip the polarity
-    collect_vars(A, 1 - CPos, collect_vars(A, CPos, Pos, Fix, VCache), Fix, VCache);
+    collect_vars(A, flip_pos(CPos), collect_vars(A, CPos, Pos, Fix, VCache), Fix, VCache);
 collect_vars({cons, A, B}, CPos, Pos, Fix, VCache) ->
     collect_vars(B, CPos, collect_vars(A, CPos, Pos, Fix, VCache), Fix, VCache);
 collect_vars({bitstring_cons, A, B}, CPos, Pos, Fix, VCache) ->
@@ -428,19 +432,12 @@ collect_vars({named, _Loc, Ref, Args}, CPos, Pos, Fix, VCache) ->
     Variances = lookup_variances(Ref, VCache),
     lists:foldl(
         fun({co,     A}, P) -> collect_vars(A, CPos,     P,  Fix, VCache);
-           ({contra, A}, P) -> collect_vars(A, 1 - CPos, P,  Fix, VCache);
+           ({contra, A}, P) -> collect_vars(A, flip_pos(CPos), P,  Fix, VCache);
            ({inv,    A}, P) ->
                P1 = collect_vars(A, CPos,     P,  Fix, VCache),
-               collect_vars(A, 1 - CPos, P1, Fix, VCache);
+               collect_vars(A, flip_pos(CPos), P1, Fix, VCache);
            ({unused, _A}, P) -> P
-        end, Pos, lists:zip(Variances, Args));
-collect_vars({record, _Name, Fields}, CPos, Pos, Fix, VCache) ->
-    lists:foldl(
-        fun({_FieldName, T}, P) -> collect_vars(T, CPos, P, Fix, VCache) end,
-        Pos, Fields);
-collect_vars(Ty, _, _, _, _) ->
-    logger:error("Unhandled collect vars branch: ~p", [Ty]),
-    errors:bug("Unhandled collect vars branch: ~p", [Ty]).
+        end, Pos, lists:zip(Variances, Args)).
 
 -ifdef(TEST).
 -include_lib("eunit/include/eunit.hrl").

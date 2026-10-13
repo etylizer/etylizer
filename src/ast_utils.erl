@@ -64,14 +64,15 @@ referenced_recursive_variables(Forms) ->
     ?assert_type(lists:uniq(Modules), [ast:ty_mu_var()]).
 
 % unfold a type by resolving all named type references via the symtab
-% recursive back-references are replaced with {ty_hole}
--spec unfold_ty(symtab:t(), ast:ty()) -> ast:ty() | {ty_hole}.
+% a recursive back-reference is replaced with the recursion variable '$back_reference':
+% it is where the unfolding stops, so the result is a type again
+-spec unfold_ty(symtab:t(), ast:ty()) -> ast:ty().
 unfold_ty(Tab, Ty) -> unfold_ty(Tab, Ty, #{}).
 
--spec unfold_ty(symtab:t(), ast:ty(), map()) -> ast:ty() | {ty_hole}.
+-spec unfold_ty(symtab:t(), ast:ty(), #{{ast:ty_ref(), [ast:ty()]} => []}) -> ast:ty().
 unfold_ty(Tab, {named, Loc, Ref, Args}, Memo) ->
     case Memo of
-        #{{Ref, Args} := _} -> {ty_hole};
+        #{{Ref, Args} := _} -> {mu_var, '$back_reference'};
         _ ->
             unfold_ty(Tab, unfold_named(Tab, Ref, Args, Loc), Memo#{{Ref, Args} => []})
     end;

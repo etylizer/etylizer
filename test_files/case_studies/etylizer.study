@@ -67,7 +67,6 @@
 {module, ast_traverse, #{file => "etylizer/src/ast_traverse.erl", overlays => [{library, "../../overlays/etylizer_overlay.erl"}], timeout => 10000}}.
 
 {module, ast_utils, #{file => "etylizer/src/ast_utils.erl", overlays => [{library, "../../overlays/etylizer_overlay.erl"}], timeout => 10000}}.
-{exception, ast_utils, unfold_ty, 3, [ignore], unreviewed}.
 
 {module, attr, #{file => "etylizer/src/attr.erl", overlays => [{library, "../../overlays/etylizer_overlay.erl"}], timeout => 10000}}.
 {exception, attr, parse_ety_attr, 2, [], dynamic}.
@@ -223,14 +222,7 @@
 {module, stdtypes, #{file => "etylizer/src/stdtypes.erl", overlays => [{library, "../../overlays/etylizer_overlay.erl"}], timeout => 10000}}.
 
 {module, subst, #{file => "etylizer/src/subst.erl", overlays => [{library, "../../overlays/etylizer_overlay.erl"}], timeout => 10000}}.
-{exception, subst, apply_base, 2, [ignore], unreviewed}.
-{exception, subst, clean_type, 3, [], no_spec}.
-{exception, subst, clean_vars, 3, [ignore], unreviewed}.
 {exception, subst, collect_vars, 5, [ignore], unreviewed}.
-{exception, subst, extend, 3, [ignore], unreviewed}.
-{exception, subst, members, 2, [ignore], unreviewed}.
-{exception, subst, variance_fixpoint, 2, [ignore], unreviewed}.
-{exception, subst, variance_node, 4, [ignore], unreviewed}.
 
 {module, subty, #{file => "etylizer/src/subty.erl", overlays => [{library, "../../overlays/etylizer_overlay.erl"}], timeout => 10000}}.
 {exception, subty, is_any, 2, [], no_spec}.
