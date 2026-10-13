@@ -396,6 +396,18 @@ case_constrs(Ctx, L, ScrutE, Clauses, T) ->
         {ccase, mk_locs("case", L), CsScrut, Exhaust, BodyList}
     ]).
 
+% A qualifier that is no generator is a filter. The generators have their cases in
+% process_qualifiers/5; the one that gets here is a strict binary generator whose pattern is
+% no binary.
+-spec filter_exp(ast:qualifier()) -> ast:exp().
+filter_exp({K, L, _, _}) when K == generate; K == generate_strict; K == b_generate; K == b_generate_strict ->
+    errors:ty_error(L, "The pattern of a strict binary generator has to be a binary");
+filter_exp({K, L, _, _, _}) when K == m_generate; K == m_generate_strict ->
+    errors:bug("~s: map generator taken for a filter", [ast:format_loc(L)]);
+filter_exp({zip, L, _}) ->
+    errors:bug("~s: zip generator taken for a filter", [ast:format_loc(L)]);
+filter_exp(Exp) -> Exp.
+
 -spec process_qualifiers(ctx(), ast:loc(), [ast:qualifier()], constr:constr_env(), constr:constrs()) ->
           {constr:constr_env(), constr:constrs()}.
 process_qualifiers(_Ctx, _Loc, [], Env, Cs) -> {Env, Cs};
@@ -504,7 +516,8 @@ process_qualifiers(Ctx, Loc, [Q | Qs], Env, Cs) ->
         % be careful here,
         % the catch-all will handle cases that are not supposed to be filters
         % this can happen when a new feature is introduced (e.g. zip, strict_generate)
-        Filter ->
+        Other ->
+            Filter = filter_exp(Other),
             % apply current environment to filter expression
             FilterExpCs = exps_constrs(Ctx, Loc, [Filter], stdtypes:tbool()),
             FilterCs = sets:from_list([{cdef, mk_locs("filter", Loc), Env, FilterExpCs}]),
@@ -916,7 +929,8 @@ pat_guard_lower_upper(Tab, P, Gs, E) ->
     {Lower, Upper}.
 
 % The variables bound by a pattern
--spec bound_vars_pat(ast:pat()) -> sets:set(ast:local_varname()).
+% Also for an element of a binary pattern and for the size of one, which may be default.
+-spec bound_vars_pat(ast:pat() | ast:pat_bitstring_elem() | default) -> sets:set(ast:local_varname()).
 bound_vars_pat(P) ->
     case P of
         {'atom', _L, _A} -> sets:new([{version, 2}]);
@@ -1333,7 +1347,6 @@ pat_env(Ctx, OuterL, T, P) ->
             ConsTy = segments_ty(#{}, Init, upper, Tail),
             C = {csubty, mk_locs("t // <<...>>", OuterL), T, ConsTy},
             {sets:add_element(C, sets:union(ElemCs, RestCs)), intersect_envs(ElemEnv, RestEnv)};
-        default -> Empty;
         {match, _L, P1, P2} ->
             {Cs1, Env1} = pat_env(Ctx, OuterL, T, P1),
             {Cs2, Env2} = pat_env(Ctx, OuterL, T, P2),
@@ -1445,10 +1458,7 @@ pat_of_exp(E) ->
     Wc = {wildcard, ast:generated(exp_pattern, ast:loc_exp(E))},
     case E of
         {block, _L, Es} ->
-            case lists:reverse(Es) of
-                [] -> Wc;
-                [Last | _] -> pat_of_exp(Last)
-            end;
+            pat_of_exp(lists:last(Es));
         {cons, L, Head, Tail} ->
             {cons, ast:generated(exp_pattern, L), pat_of_exp(Head), pat_of_exp(Tail)};
         {tuple, L, Args} ->
@@ -1498,7 +1508,7 @@ negate_env(Env) -> maps:map(fun (_Key, T) -> ast_lib:mk_negation(T) end, Env).
 % The environments of a guard test, one per alternative of an 'or'; 'and' intersects them.
 % Mode upper: the values for which the test can be true. Mode lower: values for which it is
 % true, if the status is safe.
--spec guard_test_disj_envs(symtab:t(), ast:guard_test(), upper | lower) -> [{constr:constr_env(), safe | unsafe}].
+-spec guard_test_disj_envs(symtab:t(), ast:exp(), upper | lower) -> [{constr:constr_env(), safe | unsafe}].
 guard_test_disj_envs(Tab, G, Mode) ->
     case G of
         % An exception in a guard makes the guard fail. The right side of an orelse is only
@@ -1530,7 +1540,7 @@ guard_test_disj_envs(Tab, G, Mode) ->
     end.
 
 % Tests within a guard are conjunctive (,) so we take the Cartesian product.
--spec guard_disj_envs(symtab:t(), ast:guard(), upper | lower) -> [{constr:constr_env(), safe | unsafe}].
+-spec guard_disj_envs(symtab:t(), tests(), upper | lower) -> [{constr:constr_env(), safe | unsafe}].
 guard_disj_envs(Tab, Tests, Mode) ->
     lists:foldl(
         fun(Test, AccEnvs) ->
@@ -1544,12 +1554,12 @@ guard_disj_envs(Tab, Tests, Mode) ->
         Tests).
 
 % Guard sequences are disjunctive (;) so we concatenate.
--spec guard_seq_disj_envs(symtab:t(), [ast:guard()], upper | lower) -> [{constr:constr_env(), safe | unsafe}].
+-spec guard_seq_disj_envs(symtab:t(), [tests()], upper | lower) -> [{constr:constr_env(), safe | unsafe}].
 guard_seq_disj_envs(_, [], _Mode) -> [{#{}, safe}];
 guard_seq_disj_envs(Tab, Guards, Mode) -> lists:flatmap(fun(G) -> guard_disj_envs(Tab, G, Mode) end, Guards).
 
 % Flips a comparison operator: N op X becomes X flip(op) N.
--spec flip_comparison_op(atom()) -> atom().
+-spec flip_comparison_op('>' | '<' | '>=' | '=<') -> '>' | '<' | '>=' | '=<'.
 flip_comparison_op('>') -> '<';
 flip_comparison_op('<') -> '>';
 flip_comparison_op('>=') -> '=<';
@@ -1579,7 +1589,7 @@ comparison_refine_env(Mode, Op, {X, Wrap}, ConstExp) ->
         _ -> {#{}, unsafe}
     end.
 
--spec total_test(ast:guard_test()) -> boolean().
+-spec total_test(ast:exp()) -> boolean().
 total_test(G) ->
     case G of
         {'atom', _, B} -> is_boolean(B);
@@ -1598,7 +1608,7 @@ total_test(G) ->
         _ -> false
     end.
 
--spec total_operand(ast:guard_test()) -> boolean().
+-spec total_operand(ast:exp()) -> boolean().
 total_operand(E) ->
     case E of
         {var, _, _} -> true;
@@ -1611,11 +1621,15 @@ total_operand(E) ->
     end.
 
 % env(g)
--spec guard_seq_env(symtab:t(), [ast:guard()]) -> {constr:constr_env(), safe | unsafe}.
+% A guard, or the filter of a comprehension, which is refined in the same way: the tests are
+% expressions, and what is no test of a guard refines nothing.
+-type tests() :: [ast:exp(), ...].
+
+-spec guard_seq_env(symtab:t(), [tests()]) -> {constr:constr_env(), safe | unsafe}.
 guard_seq_env(Tab, Guards) ->
     combine_guard_result(Guards, fun(G) -> guard_env(Tab, G) end, fun union_envs/2).
 
--spec guard_env(symtab:t(), ast:guard()) -> {constr:constr_env(), safe | unsafe}.
+-spec guard_env(symtab:t(), tests()) -> {constr:constr_env(), safe | unsafe}.
 guard_env(Tab, Guards) ->
     combine_guard_result(
       Guards,
@@ -1626,17 +1640,17 @@ guard_env(Tab, Guards) ->
 % are in their domains, a record field is only read from its record. Of an andalso that
 % holds both operands were evaluated, of an expression that was only evaluated the left
 % operand of andalso and orelse.
--spec call_domain_env(symtab:t(), ast:guard_test()) -> constr:constr_env().
+-spec call_domain_env(symtab:t(), ast:exp()) -> constr:constr_env().
 call_domain_env(Tab, {op, _, 'andalso', Left, Right}) ->
     intersect_envs(call_domain_env(Tab, Left), call_domain_env(Tab, Right));
 call_domain_env(Tab, G) -> eval_domain_env(Tab, G).
 
--spec eval_domain_env(symtab:t(), ast:guard_test()) -> constr:constr_env().
+-spec eval_domain_env(symtab:t(), ast:exp()) -> constr:constr_env().
 eval_domain_env(Tab, G) ->
-    Envs = utils:everything(
+    Envs = ast_traverse:everything(
              fun({op, _, Op, Left, _}) when Op =:= 'andalso'; Op =:= 'orelse' -> {ok, eval_domain_env(Tab, Left)};
                 ({op, _, Op, Left, Right}) -> {rec, args_domain_env(Tab, domains(Op, 2), [Left, Right])};
-                ({op, _, Op, Arg}) -> {rec, args_domain_env(Tab, domains(Op, 1), [Arg])};
+                ({op, _, Op, Arg}) when is_tuple(Arg) -> {rec, args_domain_env(Tab, domains(Op, 1), [Arg])};
                 (Call = {call, _, {var, _, Ref}, Args}) ->
                     Doms = case Ref of
                                {ref, F, A} -> domains(F, A);
@@ -1649,15 +1663,15 @@ eval_domain_env(Tab, G) ->
                               _ -> args_domain_env(Tab, Doms, Args)
                           end};
                 (_) -> error
-             end, G),
+             end, [G]),
     lists:foldl(fun intersect_envs/2, #{}, Envs).
 
--spec args_domain_env(symtab:t(), [ast:ty() | any], [ast:guard_test()]) -> constr:constr_env().
+-spec args_domain_env(symtab:t(), [ast:ty() | any], [ast:exp()]) -> constr:constr_env().
 args_domain_env(Tab, Doms, Args) ->
     lists:foldl(fun intersect_envs/2, #{},
                 [arg_domain_env(Tab, Arg, Dom) || {Dom, Arg} <- lists:zip(Doms, Args, trim)]).
 
--spec arg_domain_env(symtab:t(), ast:guard_test(), ast:ty() | any) -> constr:constr_env().
+-spec arg_domain_env(symtab:t(), ast:exp(), ast:ty() | any) -> constr:constr_env().
 arg_domain_env(_, _, any) -> #{};
 arg_domain_env(Tab, Arg, Ty) ->
     case guard_target(Tab, Arg) of
@@ -1668,7 +1682,7 @@ arg_domain_env(Tab, Arg, Ty) ->
 % A guard operand whose type narrows a variable: the variable, or a record field read from
 % a target. Wrap turns the type of the operand into one of the variable.
 -type guard_target() :: {ast:local_varname(), fun((ast:ty()) -> ast:ty())}.
--spec guard_target(symtab:t(), ast:exp() | ast:guard_test()) -> t:opt(guard_target()).
+-spec guard_target(symtab:t(), ast:exp()) -> t:opt(guard_target()).
 guard_target(_, {var, _, {local_ref, X}}) -> {ok, {X, fun(T) -> T end}};
 guard_target(Tab, {call, L, {var, _, Ref = {ref, _, 1}}, [Arg]}) ->
     case ast:is_generated_by(record_field, L) andalso symtab:find_fun(Ref, Tab) of
@@ -1724,12 +1738,12 @@ combine_guard_result(Guards, RecFun, CombineFun) ->
 % Constructs an environment and a status from a guard test. The status 'safe' expresses
 % that the the type checker could fully analyze the guard, that is the guard test
 % does not use anything like the "oracle" from the IFL 2022 paper.
--spec guard_test_env(symtab:t(), ast:guard_test()) -> {constr:constr_env(), safe | unsafe}.
+-spec guard_test_env(symtab:t(), ast:exp()) -> {constr:constr_env(), safe | unsafe}.
 guard_test_env(Tab, G) -> guard_test_env(Tab, G, upper).
 
 % Mode upper: the environment holds for every value that passes the test. Mode lower: with
 % status safe, every value of the environment passes the test.
--spec guard_test_env(symtab:t(), ast:guard_test(), upper | lower) -> {constr:constr_env(), safe | unsafe}.
+-spec guard_test_env(symtab:t(), ast:exp(), upper | lower) -> {constr:constr_env(), safe | unsafe}.
 guard_test_env(Tab, G, Mode) ->
     Default = {#{}, unsafe},
     case G of
@@ -1796,7 +1810,7 @@ negate_guard_env({Env, Status}, Mode) ->
 % Best-effort recursive refine variable types from an equality guard Left == Right or Left =:= Right.
 % Variables and record fields in Left are refined to a possibly constant type of the corresponding part of Right, and vice versa.
 % For == with numeric constants, we return unsafe because == has loose numeric comparison (1 == 1.0 is true).
--spec refine_eq_env(symtab:t(), atom(), ast:exp(), ast:exp()) -> {constr:constr_env(), safe | unsafe}.
+-spec refine_eq_env(symtab:t(), '=:=' | '==', ast:exp(), ast:exp()) -> {constr:constr_env(), safe | unsafe}.
 refine_eq_env(Tab, Op, Left, Right) ->
     case {guard_target(Tab, Left), guard_target(Tab, Right), Left, Right} of
         {{ok, X}, _, _, _} -> eq_target_env(Op, X, Right);
@@ -1818,7 +1832,7 @@ refine_eq_env(Tab, Op, Left, Right) ->
             end
     end.
 
--spec eq_target_env(atom(), guard_target(), ast:exp()) -> {constr:constr_env(), safe | unsafe}.
+-spec eq_target_env('=:=' | '==', guard_target(), ast:exp()) -> {constr:constr_env(), safe | unsafe}.
 eq_target_env(Op, {X, Wrap}, ConstExp) ->
     case ty_of_const_exp(ConstExp) of
         {ok, Ty} ->
@@ -1832,7 +1846,7 @@ eq_target_env(Op, {X, Wrap}, ConstExp) ->
 % For =:= (strict equality), refinement is always safe.
 % For == (loose equality), refinement is unsafe when the constant holds a number,
 % because == treats integers and floats as equal (e.g. {1, a} == {1.0, a}).
--spec eq_status(atom(), ast:ty()) -> safe | unsafe.
+-spec eq_status('=:=' | '==', ast:ty()) -> safe | unsafe.
 eq_status('=:=', _) -> safe;
 eq_status('==', Ty) ->
     case has_number(Ty) of
@@ -1860,18 +1874,20 @@ ty_of_const_exp(E) ->
         {nil, _} -> {ok, {empty_list}};
         {tuple, _, Elems} ->
             TysOpt = lists:map(fun ty_of_const_exp/1, Elems),
-            case lists:all(fun(R) -> R =/= error end, TysOpt) of
-                true -> {ok, {tuple, lists:map(fun({ok, T}) -> T end, TysOpt)}};
+            Tys = [T || {ok, T} <- TysOpt],
+            case length(Tys) =:= length(TysOpt) of
+                true -> {ok, {tuple, Tys}};
                 false -> error
             end;
         _ -> error
     end.
 
+-spec merge_status(safe | unsafe, safe | unsafe) -> safe | unsafe.
 merge_status(safe, safe) -> safe;
 merge_status(_, _) -> unsafe.
 
 % {var,{loc,"test_files/tycheck_simple.erl",202,16},{qref,erlang,is_integer,1}} for {'Y',0} and args []: {#{},unsafe}
--spec var_test_env(ast:guard_test(), ast:local_varname(), [ast:guard_test()]) ->
+-spec var_test_env(ast:exp(), ast:local_varname(), [ast:exp()]) ->
           {constr:constr_env(), safe | unsafe}.
 var_test_env(FunExp, X, RestArgs) ->
     Default = {#{}, unsafe},

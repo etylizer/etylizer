@@ -91,15 +91,6 @@
 {module, constr_gen, #{file => "etylizer/src/constr_gen.erl", overlays => [{library, "../../overlays/etylizer_overlay.erl"}], timeout => 10000}}.
 {exception, constr_gen, analyze_bin_tyspec, 1, [], cast}.
 {exception, constr_gen, bits_segment_ty, 5, [], cast}.
-{exception, constr_gen, bound_vars_pat, 1, [ignore], unreviewed}.
-{exception, constr_gen, determine_segment_type, 1, [ignore], unreviewed}.
-{exception, constr_gen, eq_status, 2, [ignore], unreviewed}.
-{exception, constr_gen, flip_comparison_op, 1, [ignore], unreviewed}.
-{exception, constr_gen, merge_status, 2, [], no_spec}.
-{exception, constr_gen, pat_env, 4, [ignore], unreviewed}.
-{exception, constr_gen, pat_of_exp, 1, [ignore], unreviewed}.
-{exception, constr_gen, process_qualifiers, 5, [ignore], unreviewed}.
-{exception, constr_gen, ty_of_const_exp, 1, [ignore], unreviewed}.
 
 {module, constr_lin, #{file => "etylizer/src/constr_lin.erl", overlays => [{library, "../../overlays/etylizer_overlay.erl"}], timeout => 10000}}.
 
