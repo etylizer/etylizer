@@ -4,9 +4,7 @@ D=$( cd -- "$( dirname -- "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )
 
 if [ "$1" == "--build" ]; then
     shift
-    pushd $D
-    make build || exit 1
-    popd
+    out=$(make -C "$D" build 2>&1) || { echo "$out"; exit 1; }
 fi
 
-$D/_build/default/bin/etylizer "$@"
+"$D/_build/default/bin/etylizer" "$@"
