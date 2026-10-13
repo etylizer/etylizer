@@ -146,6 +146,13 @@ try_28_fail() -> try ok catch throw:{my_error, N} -> N end.
 -spec try_29() -> ok | 1 | 2.
 try_29() -> try ok catch throw:{a, _} -> 1; throw:[_ | _] -> 2 end.
 
+% the stacktrace has its type
+-spec try_31() -> ok | erlang:stacktrace().
+try_31() -> try ok catch error:_:Stack -> Stack end.
+
+-spec try_32_fail() -> ok | atom().
+try_32_fail() -> try ok catch error:_:Stack -> Stack end.
+
 % with an of section
 -spec try_30(integer()) -> integer() | false.
 try_30(X) -> try X of 1 -> 1; _ -> false catch throw:{my_error, _, _} -> false end.

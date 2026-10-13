@@ -844,9 +844,8 @@ catch_clause_pat_env(Ctx, L, ExcType, Pat, Stack) ->
 
     % Stacktrace can be a variable or wildcard
     StackEnv = case Stack of
-        {var, _StackLoc, {local_bind, StackName}} ->
-            % Stacktrace is bound to a variable - type is any() (list of stack frames)
-            StackTy = {predef, any},
+        {var, StackLoc, {local_bind, StackName}} ->
+            StackTy = {named, StackLoc, {ty_qref, erlang, stacktrace, 0}, []},
             #{{local_ref, StackName} => StackTy};
         _ ->
             % Wildcard - no binding

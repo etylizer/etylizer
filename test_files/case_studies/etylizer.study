@@ -263,7 +263,6 @@
 {exception, etylizer_main, fix_load_path, 1, [ignore], unreviewed}.
 {exception, etylizer_main, parse_args, 1, [ignore], unreviewed}.
 {exception, etylizer_main, parse_define, 1, [ignore], unreviewed}.
-{exception, etylizer_main, main, 1, [ignore], unreviewed}.
 
 {module, external_types, #{file => "etylizer/src/external_types.erl", overlays => [{library, "../../overlays/etylizer_overlay.erl"}], timeout => 10000}}.
 
