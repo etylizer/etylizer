@@ -10,6 +10,15 @@ hash_sha1_test() ->
 % the generic traversals are also tested with improper lists
 -dialyzer({no_improper_lists, [everywhere_test/0, everything_test/0]}).
 
+sformat_test() ->
+    ?assertEqual("a 1", utils:sformat("~w ~w", [a, 1])),
+    ?assertEqual("a", utils:sformat("~w", a)),
+    ?assertEqual("abc", utils:sformat("~s", "abc")),
+    ?assertEqual("", utils:sformat("~s", [])),
+    ?assertEqual("x", utils:sformat("x", [])),
+    % an improper list is a single argument, it crashed with badarg before
+    ?assertEqual("[a|b]", utils:sformat("~w", [a | b])).
+
 everywhere_test() ->
     Inc = fun(X) when is_integer(X) -> {ok, X + 1}; (_) -> error end,
     ?assertEqual({a, [2, 3], #{b => 4, 5 => [6]}}, utils:everywhere(Inc, {a, [1, 2], #{b => 3, 4 => [5]}})),

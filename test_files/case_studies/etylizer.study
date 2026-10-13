@@ -372,7 +372,6 @@
 {exception, utils, fold_with_context, 3, [ignore], unreviewed}.
 {exception, utils, format_tally_config, 3, [], no_spec}.
 {exception, utils, replace_term, 2, [], dynamic}.
-{exception, utils, sformat, 2, [ignore], unreviewed}.
 
 {module, varenv, #{file => "etylizer/src/varenv.erl", overlays => [{library, "../../overlays/etylizer_overlay.erl"}], timeout => 10000}}.
 

@@ -57,18 +57,28 @@ sformat_raw(Msg, L) ->
 sformat(Msg, []) ->
     % we dont know whether we have no argument or a single argument "".
     try sformat_raw(Msg, [])
-    catch badarg:_:_ -> sformat_raw(Msg, [""])
+    catch error:badarg -> sformat_raw(Msg, [""])
     end;
 sformat(Msg, X) ->
     L = case io_lib:char_list(X) of
             true -> [X]; % we have a single string argument
             false ->
-                if
-                    is_list(X) -> X; % we have a list of arguments
-                    true -> [X]      % we have a single argument
+                case proper_list(X) of
+                    {ok, Args} -> Args; % we have a list of arguments
+                    error -> [X]        % we have a single argument
                 end
         end,
     sformat_raw(Msg, L).
+
+% is_list/1 also holds for an improper list, which is no list of arguments.
+-spec proper_list(term()) -> {ok, list()} | error.
+proper_list([]) -> {ok, []};
+proper_list([X | Xs]) ->
+    case proper_list(Xs) of
+        {ok, L} -> {ok, [X | L]};
+        error -> error
+    end;
+proper_list(_) -> error.
 
 -spec sformat1(string(), term()) -> string().
 sformat1(Msg, X1) -> sformat_raw(Msg, [X1]).
