@@ -9,10 +9,12 @@
 % beam_lib reads the forms with the backend named in the debug_info chunk
 -spec parse_beam_file(file:filename()) -> {ok, [ast_erl:form()]} | error.
 parse_beam_file(Path) ->
-    case beam_lib:chunks(Path, [abstract_code]) of
-        {ok, {_, [{abstract_code, {raw_abstract_v1, Forms}}]}} ->
+    case beam_lib:chunks(Path, [debug_info, abstract_code]) of
+        {ok, {_, [{debug_info, {debug_info_v1, elixir_erl, _}}, {abstract_code, {raw_abstract_v1, Forms}}]}} ->
+            {ok, lists:filter(fun({function, _, '__info__', 1, _}) -> false; (_) -> true end, Forms)};
+        {ok, {_, [_, {abstract_code, {raw_abstract_v1, Forms}}]}} ->
             {ok, Forms};
-        {ok, {_, [{abstract_code, no_abstract_code}]}} ->
+        {ok, {_, [_, {abstract_code, no_abstract_code}]}} ->
             ?LOG_ERROR("No debug_info in BEAM file ~s. Compile with debug_info enabled.", Path),
             error;
         {error, beam_lib, {missing_backend, _, Backend}} ->

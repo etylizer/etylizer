@@ -12,9 +12,7 @@ elixir_test_() ->
         fun(Dir) ->
             Sources = [list_to_binary(F) || F <- filelib:wildcard("test_files/elixir/*.ex")],
             {ok, _, _} = 'Elixir.Kernel.ParallelCompiler':compile_to_path(Sources, list_to_binary(Dir)),
-            % inferring the generated __info__/1 takes longer than the time limit
             parse_cache:with_cache(#opts{}, fun() ->
-                tycheck_simple_tests:check_decls_in_files(filelib:wildcard(Dir ++ "/*.beam"), all,
-                                                          sets:from_list(["__info__"]))
+                tycheck_simple_tests:check_decls_in_files(filelib:wildcard(Dir ++ "/*.beam"), all, sets:new())
             end)
         end).
