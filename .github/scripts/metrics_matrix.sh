@@ -30,9 +30,9 @@ set -euo pipefail
 SELF_DIR="$(cd "$(dirname "$0")" && pwd)"      # where ety_metrics_report lives
 REPORT_TIMEOUT="${REPORT_TIMEOUT:-4000}"
 
-suite_sdir() { case "$1" in
-  etylizer)     echo "src" ;;
-  typecheck)    echo "test_files/tycheck_simple" ;;
+suite_srcs() { case "$1" in
+  etylizer)     echo "-S src -S src/erlang_types" ;;
+  typecheck)    echo "-S test_files/tycheck_simple" ;;
   *) echo "metrics_matrix: unknown suite '$1'" >&2; exit 2 ;;
 esac; }
 
@@ -41,14 +41,14 @@ INCLUDES="-I include -I src -I src/erlang_types -I src/erlang_types/dnf"
 # cell <corpus_dir> <engine_dir> <suite> <out_json>
 cell() {
   local cdir="$1" edir="$2" suite="$3" out="$4"
-  local sdir; sdir="$(suite_sdir "$suite")"
+  local srcs; srcs="$(suite_srcs "$suite")"
   if [ ! -x "$edir/_build/metrics/bin/etylizer" ]; then
     echo "metrics_matrix: no engine at $edir/_build/metrics/bin/etylizer — skipping cell" >&2
     return 0
   fi
   # shellcheck disable=SC2086
   ( cd "$cdir" && "$edir/_build/metrics/bin/etylizer" \
-      -P . -S "$sdir" $INCLUDES \
+      -P . $srcs $INCLUDES \
       --type-overlay "$edir/overlays/etylizer_overlay.erl" \
       -f --report-mode report --report-timeout "$REPORT_TIMEOUT" \
       --metrics-file "$out" --no-deps ) \
