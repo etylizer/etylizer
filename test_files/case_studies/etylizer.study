@@ -80,11 +80,6 @@
 {exception, ast_transform, trans_if_clause, 4, [ignore], unreviewed}.
 
 {module, ast_traverse, #{file => "etylizer/src/ast_traverse.erl", overlays => [{library, "../../overlays/etylizer_overlay.erl"}], timeout => 10000}}.
-{exception, ast_traverse, m_case_clause, 2, [ignore], unreviewed}.
-{exception, ast_traverse, m_catch_clause, 2, [ignore], unreviewed}.
-{exception, ast_traverse, m_exp, 2, [ignore], unreviewed}.
-{exception, ast_traverse, m_form, 2, [ignore], unreviewed}.
-{exception, ast_traverse, m_guards, 2, [ignore], unreviewed}.
 
 {module, ast_utils, #{file => "etylizer/src/ast_utils.erl", overlays => [{library, "../../overlays/etylizer_overlay.erl"}], timeout => 10000}}.
 {exception, ast_utils, unfold_ty, 3, [ignore], unreviewed}.

@@ -145,7 +145,9 @@ m_record_decl_field(FL, {record_field, L, Name, Ty, Default}) ->
     NewDefault = case Default of no_default -> no_default; _ -> m_exp(FL, Default) end,
     {record_field, FL(L), Name, NewTy, NewDefault}.
 
--spec m_case_clauses(loc_fun(), [ast:case_clause()]) -> [ast:case_clause()].
+-spec m_case_clauses
+    (loc_fun(), [ast:case_clause(), ...]) -> [ast:case_clause(), ...];
+    (loc_fun(), [ast:case_clause()]) -> [ast:case_clause()].
 m_case_clauses(FL, Clauses) -> lists:map(fun(C) -> m_case_clause(FL, C) end, Clauses).
 
 -spec m_case_clause(loc_fun(), ast:case_clause()) -> ast:case_clause().
@@ -166,7 +168,10 @@ m_exc_type_pat(FL, {atom, L, A}) -> {atom, FL(L), A}.
 m_stacktrace_pat(FL, {wildcard, L}) -> {wildcard, FL(L)};
 m_stacktrace_pat(FL, {var, L, Ref}) -> {var, FL(L), Ref}.
 
--spec m_exps(loc_fun(), [ast:exp()]) -> [ast:exp()].
+% A non-empty list stays non-empty, here and in the other functions for lists.
+-spec m_exps
+    (loc_fun(), [ast:exp(), ...]) -> [ast:exp(), ...];
+    (loc_fun(), [ast:exp()]) -> [ast:exp()].
 m_exps(FL, Es) -> lists:map(fun(E) -> m_exp(FL, E) end, Es).
 
 -spec m_exp(loc_fun(), ast:exp()) -> ast:exp().
@@ -222,7 +227,7 @@ m_map_assoc(FL, {map_field_req, L, K, V}) -> {map_field_req, FL(L), m_exp(FL, K)
 -spec m_map_assoc_opt(loc_fun(), ast:map_assoc_opt()) -> ast:map_assoc_opt().
 m_map_assoc_opt(FL, {map_field_opt, L, K, V}) -> {map_field_opt, FL(L), m_exp(FL, K), m_exp(FL, V)}.
 
--spec m_qualifiers(loc_fun(), [ast:qualifier()]) -> [ast:qualifier()].
+-spec m_qualifiers(loc_fun(), [ast:qualifier(), ...]) -> [ast:qualifier(), ...].
 m_qualifiers(FL, Qs) -> lists:map(fun(Q) -> m_qualifier(FL, Q) end, Qs).
 
 -spec m_qualifier(loc_fun(), ast:qualifier()) -> ast:qualifier().
@@ -275,7 +280,9 @@ m_pat_bin_elem(FL, {bin_element, L, V, Size, Spec}) ->
 -spec m_guards(loc_fun(), [ast:guard()]) -> [ast:guard()].
 m_guards(FL, Guards) -> lists:map(fun(G) -> m_guard_tests(FL, G) end, Guards).
 
--spec m_guard_tests(loc_fun(), [ast:guard_test()]) -> [ast:guard_test()].
+-spec m_guard_tests
+    (loc_fun(), [ast:guard_test(), ...]) -> [ast:guard_test(), ...];
+    (loc_fun(), [ast:guard_test()]) -> [ast:guard_test()].
 m_guard_tests(FL, Ts) -> lists:map(fun(T) -> m_guard_test(FL, T) end, Ts).
 
 -spec m_guard_test(loc_fun(), ast:guard_test()) -> ast:guard_test().
