@@ -6,35 +6,19 @@
 %% of this tree, so the study checks the code as it is, with the overlay that typecheck_etylizer
 %% uses. A function is type safe when it type checks, its spec does not use dynamic(), and each
 %% of its ?assert_type is a cast from term() where the type is lost (an ETS table, a file of
-%% terms) or covers arithmetic. Every other function has a line below.
+%% terms) or covers arithmetic.
 %%
-%% Type check as is (step I): 90 modules with 1988 functions, 82 of them the two functions that
-%% etylizer.hrl puts into each of 41 modules. 1774 type check, 214 do not: 152 with a type error,
-%% 42 for a case that is not exhaustive, 14 for a redundant branch, 4 for a name that is not
-%% found, 1 for an unsupported construct and 1 that does not finish in 10 s. They are ignored.
-%%
-%% Type safe (step II): 69 of the 1774 are not type safe, their line has no ignore. 30 have no
-%% spec and are checked against dynamic(). 5 use dynamic() in the spec or in an ?assert_type. 28
-%% have an ?assert_type that is not of the two kinds: 14 on the result of a library function, 14
-%% on a value that has a type. 6 type check without the exhaustiveness check, switched off by an
-%% -etylizer attribute in the source. 1705 functions are type safe.
-%%   The source has 106 ?assert_type. 56 are of the two kinds: 40 take a term() from an ETS table,
-%%   a persistent term, file:consult/1, element/2 or utils:everything/2 and everywhere/2, and 16
-%%   cover arithmetic. The other 50 are in 34 functions: the 28 above, 3 of the 5 with dynamic()
-%%   and 3 that do not type check.
-%%   ?assert_pattern is checked at run time and ?annotate_type by the type checker: not counted.
+%% Every function type checks: no line has ignore. The functions with a line below are the ones
+%% that are not type safe.
+%%   ?assert_pattern is checked at run time and ?annotate_type by the type checker: they are no
+%%   casts in this sense.
 
 {study, etylizer}.
 
 %% {reason, Id, Class, Text}. Class: real (the program or its spec is wrong), inherent (correct at
 %% run time, not provable by types), fixable (gap in the type system or checker), unknown.
-{reason, unreviewed,   unknown, "does not type check, not analysed"}.
-{reason, timeout,      fixable, "the checker does not finish in 10 s"}.
-{reason, no_spec,      real,    "no spec, the function is checked against dynamic()"}.
-{reason, dynamic,      fixable, "?assert_type with dynamic() for a type variable of the spec, which an assertion cannot name"}.
-{reason, cast,         unknown, "?assert_type on a value that has a type, not analysed"}.
-{reason, cast_library, fixable, "?assert_type on the result of a library function, whose spec in OTP is wider than its use"}.
-{reason, flag,         unknown, "exhaustiveness check switched off by an -etylizer attribute in the source, not analysed"}.
+{reason, dynamic, fixable,  "?assert_type with dynamic() for a type variable of the spec, which an assertion cannot name"}.
+{reason, flag,    inherent, "the clauses cover the values that occur, by an invariant of the data, and not the type: exhaustiveness check switched off by an -etylizer attribute in the source"}.
 
 {module, assertions, #{file => "etylizer/src/assertions.erl", overlays => [{library, "../../overlays/etylizer_overlay.erl"}], timeout => 10000}}.
 
@@ -57,7 +41,6 @@
 {module, attr, #{file => "etylizer/src/attr.erl", overlays => [{library, "../../overlays/etylizer_overlay.erl"}], timeout => 10000}}.
 
 {module, cm_check, #{file => "etylizer/src/cm_check.erl", overlays => [{library, "../../overlays/etylizer_overlay.erl"}], timeout => 10000}}.
-{exception, cm_check, do_type_check, 7, [], cast}.
 
 {module, cm_depgraph, #{file => "etylizer/src/cm_depgraph.erl", overlays => [{library, "../../overlays/etylizer_overlay.erl"}], timeout => 10000}}.
 
@@ -96,9 +79,6 @@
 {module, dnf_ty_interval, #{file => "etylizer/src/erlang_types/dnf_ty_interval.erl", overlays => [{library, "../../overlays/etylizer_overlay.erl"}], timeout => 10000}}.
 {exception, dnf_ty_interval, compare, 2, [no_exhaustiveness], flag}.
 {exception, dnf_ty_interval, negate_start_with, 2, [no_exhaustiveness], flag}.
-{exception, dnf_ty_interval, add_left, 2, [ignore], unreviewed}.
-{exception, dnf_ty_interval, add_range, 3, [ignore], unreviewed}.
-{exception, dnf_ty_interval, add_right, 2, [ignore], unreviewed}.
 
 {module, dnf_ty_list, #{file => "etylizer/src/erlang_types/dnf_ty_list.erl", overlays => [{library, "../../overlays/etylizer_overlay.erl"}], timeout => 10000}}.
 
@@ -117,15 +97,12 @@
 {module, global_state, #{file => "etylizer/src/erlang_types/global_state.erl", overlays => [{library, "../../overlays/etylizer_overlay.erl"}], timeout => 10000}}.
 
 {module, tarjan, #{file => "etylizer/src/erlang_types/tarjan.erl", overlays => [{library, "../../overlays/etylizer_overlay.erl"}], timeout => 10000}}.
-{exception, tarjan, check_adj, 4, [ignore], unreviewed}.
 
 {module, ty, #{file => "etylizer/src/erlang_types/ty.erl", overlays => [{library, "../../overlays/etylizer_overlay.erl"}], timeout => 10000}}.
 
 {module, ty_bitstring, #{file => "etylizer/src/erlang_types/ty_bitstring.erl", overlays => [{library, "../../overlays/etylizer_overlay.erl"}], timeout => 10000}}.
 
 {module, ty_bool, #{file => "etylizer/src/erlang_types/ty_bool.erl", overlays => [{library, "../../overlays/etylizer_overlay.erl"}], timeout => 10000}}.
-{exception, ty_bool, intersect, 2, [ignore], unreviewed}.
-{exception, ty_bool, union, 2, [ignore], unreviewed}.
 
 {module, ty_function, #{file => "etylizer/src/erlang_types/ty_function.erl", overlays => [{library, "../../overlays/etylizer_overlay.erl"}], timeout => 10000}}.
 
@@ -158,7 +135,6 @@
 {module, ety_records, #{file => "etylizer/src/ety_records.erl", overlays => [{library, "../../overlays/etylizer_overlay.erl"}], timeout => 10000}}.
 
 {module, etylizer_main, #{file => "etylizer/src/etylizer_main.erl", overlays => [{library, "../../overlays/etylizer_overlay.erl"}], timeout => 10000}}.
-{exception, etylizer_main, doWork, 1, [ignore], unreviewed}.
 
 {module, external_types, #{file => "etylizer/src/external_types.erl", overlays => [{library, "../../overlays/etylizer_overlay.erl"}], timeout => 10000}}.
 
@@ -179,7 +155,6 @@
 {module, stdtypes, #{file => "etylizer/src/stdtypes.erl", overlays => [{library, "../../overlays/etylizer_overlay.erl"}], timeout => 10000}}.
 
 {module, subst, #{file => "etylizer/src/subst.erl", overlays => [{library, "../../overlays/etylizer_overlay.erl"}], timeout => 10000}}.
-{exception, subst, collect_vars, 5, [ignore], unreviewed}.
 
 {module, subty, #{file => "etylizer/src/subty.erl", overlays => [{library, "../../overlays/etylizer_overlay.erl"}], timeout => 10000}}.
 
@@ -209,6 +184,4 @@
 {module, varenv, #{file => "etylizer/src/varenv.erl", overlays => [{library, "../../overlays/etylizer_overlay.erl"}], timeout => 10000}}.
 
 {module, varenv_local, #{file => "etylizer/src/varenv_local.erl", overlays => [{library, "../../overlays/etylizer_overlay.erl"}], timeout => 10000}}.
-{exception, varenv_local, merge, 2, [ignore], unreviewed}.
-{exception, varenv_local, merge_envs, 1, [ignore], unreviewed}.
 

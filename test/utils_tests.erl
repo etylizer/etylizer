@@ -8,7 +8,7 @@ hash_sha1_test() ->
     ?assertEqual("648A6A6FFFFDAA0BADB23B8BAF90B6168DD16B3A", Hash).
 
 % the generic traversals are also tested with improper lists
--dialyzer({no_improper_lists, [everywhere_test/0, everything_test/0]}).
+-dialyzer({no_improper_lists, [sformat_test/0, everywhere_test/0, everything_test/0]}).
 
 sformat_test() ->
     ?assertEqual("a 1", utils:sformat("~w ~w", [a, 1])),

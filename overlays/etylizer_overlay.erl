@@ -13,6 +13,11 @@
 'lists:foldl'(_, _, _) -> error(badarg).
 -spec 'lists:foldr'(fun((T, Acc) -> Acc), Acc, [T]) -> Acc.
 'lists:foldr'(_, _, _) -> error(badarg).
+% OTP: Maximum :: term(), Minimum :: term(); the result is one of the arguments
+-spec 'erlang:max'(A, B) -> A | B.
+'erlang:max'(_, _) -> error(overlay).
+-spec 'erlang:min'(A, B) -> A | B.
+'erlang:min'(_, _) -> error(overlay).
 % The process dictionary holds any terms. The specs of OTP name the value with a type variable
 % that nothing bounds from below, which the checker takes to be none().
 -spec 'erlang:get'(term()) -> term().

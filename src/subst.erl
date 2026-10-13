@@ -420,11 +420,11 @@ collect_vars({var, Name}, CPos, Pos, Fix, _VCache) ->
         _ ->
             % a variable has at most the two positions 0 and 1, so the list
             % stays short enough to update by pattern match
-            case Pos of
-                #{Name := [CPos]} -> Pos;
-                #{Name := [_, _]} -> Pos;
-                #{Name := [_Other]} -> Pos#{Name := [0, 1]};
-                _ -> Pos#{Name => [CPos]}
+            case maps:get(Name, Pos, []) of
+                [] -> Pos#{Name => [CPos]};
+                [Known] when Known =:= CPos -> Pos;
+                [_Other] -> Pos#{Name := [0, 1]};
+                _ -> Pos
             end
     end;
 collect_vars({named, _Loc, Ref, Args}, CPos, Pos, Fix, VCache) ->

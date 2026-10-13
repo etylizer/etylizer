@@ -3,6 +3,11 @@
 -include("log.hrl").
 -include_lib("eunit/include/eunit.hrl").
 
+% The terms of the tests have annotations made with erl_anno:new/1 and annotations written
+% as a tuple. dialyzer joins them into one type for the argument of check_against/2 and then
+% reports the opaque ones.
+-dialyzer(no_opaque).
+
 mk_full_spec() ->
     {Spec, _} = ast_check:parse_spec("src/ast_erl.erl"),
     Spec.

@@ -18,7 +18,8 @@
 
 -record(config, {num_vars        :: non_neg_integer(),
                  num_leaves      :: non_neg_integer(),
-                 dimension_masks :: [bits()],
+                 % one mask per variable and one for the leaves
+                 dimension_masks :: [bits(), ...],
                  full_mask       :: bits(),
                  even_mask       :: bits(),
                  output_mask     :: bits()}).
@@ -177,8 +178,7 @@ active_variables(Config, Cofactor, Cubes) ->
 shannon(Config, Cofactor, Cubes) ->
     FullMask = Config#config.full_mask,
     SplitVar = split_variable(Config, Cofactor, Cubes),
-    % one mask per variable and one for the leaves: the list is never empty
-    Masks = ?assert_pattern([_ | _], Config#config.dimension_masks),
+    Masks = Config#config.dimension_masks,
     SplitMask = lists:nth(?assert_type(SplitVar + 1, pos_integer()), Masks),
     ActiveBits = [Bit || Bit <- bit_positions(SplitMask), not test_bit(Cofactor, Bit)],
     {LowBits, HighBits} = lists:split(length(ActiveBits) div 2, ActiveBits),
