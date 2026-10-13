@@ -59,7 +59,6 @@
 
 %% trans_exp/3 takes 8 s
 {module, ast_transform, #{file => "etylizer/src/ast_transform.erl", overlays => [{library, "../../overlays/etylizer_overlay.erl"}], timeout => 30000}}.
-{exception, ast_transform, build_funenv, 2, [ignore], unreviewed}.
 {exception, ast_transform, collect_record_variants, 2, [ignore], unreviewed}.
 {exception, ast_transform, expand_record_field_other, 2, [ignore], unreviewed}.
 {exception, ast_transform, parse_type, 2, [ignore], unreviewed}.
@@ -75,7 +74,6 @@
 {exception, ast_transform, trans_qualifier, 3, [ignore], unreviewed}.
 {exception, ast_transform, trans_record_field, 3, [ignore], unreviewed}.
 {exception, ast_transform, trans_ty, 3, [ignore], unreviewed}.
-{exception, ast_transform, update_current_file, 2, [ignore], unreviewed}.
 {exception, ast_transform, trans_if_clause, 4, [ignore], unreviewed}.
 
 {module, ast_traverse, #{file => "etylizer/src/ast_traverse.erl", overlays => [{library, "../../overlays/etylizer_overlay.erl"}], timeout => 10000}}.
@@ -248,7 +246,6 @@
 
 {module, parse_cache, #{file => "etylizer/src/parse_cache.erl", overlays => [{library, "../../overlays/etylizer_overlay.erl"}], timeout => 10000}}.
 {exception, parse_cache, parse, 2, [ignore], unreviewed}.
-{exception, parse_cache, really_parse_file, 3, [ignore], unreviewed}.
 
 {module, paths, #{file => "etylizer/src/paths.erl", overlays => [{library, "../../overlays/etylizer_overlay.erl"}], timeout => 10000}}.
 
@@ -261,7 +258,6 @@
 
 {module, stdtypes, #{file => "etylizer/src/stdtypes.erl", overlays => [{library, "../../overlays/etylizer_overlay.erl"}], timeout => 10000}}.
 {exception, stdtypes, builtin_funs, 0, [], cast_library}.
-{exception, stdtypes, mk_builtin_funs, 1, [ignore], unreviewed}.
 
 {module, subst, #{file => "etylizer/src/subst.erl", overlays => [{library, "../../overlays/etylizer_overlay.erl"}], timeout => 10000}}.
 {exception, subst, apply_base, 2, [ignore], unreviewed}.

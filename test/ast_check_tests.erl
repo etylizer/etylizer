@@ -118,6 +118,16 @@ check_record_create_test() ->
     check_against(exp, {record, A, r, [{record_field, A, {var, A, '_'}, One}]}),
     check_not_against(exp, {record, A, r, [{record_field, A, {var, A, 'X'}, One}]}).
 
+% an attribute with a form of its own is not also an attribute of any other kind
+check_attribute_test() ->
+    A = erl_anno:new({1,1}),
+    check_against(form, {attribute, A, export, [{f, 1}]}),
+    check_not_against(form, {attribute, A, export, not_a_list}),
+    check_against(form, {attribute, A, import, {m, [{f, 1}]}}),
+    check_not_against(form, {attribute, A, import, m}),
+    check_against(form, {attribute, A, my_attribute, not_a_list}),
+    check_against(form, {attribute, A, compile, [export_all]}).
+
 check_antidote1_test() ->
     Exp0 =
         {'fun',

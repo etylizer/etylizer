@@ -236,6 +236,10 @@ check_ty(Spec, CurModule, Ty, Form, Depth) ->
                         raise_unless(is_list(Form) andalso Form =/= [], Ty, Form, Depth),
                         check_ty(Spec, CurModule, HdTy, hd(Form), Depth + 1),
                         check_ty(Spec, CurModule, TlTy, tl(Form), Depth + 1);
+                    {etylizer, without, [Ty1, Ty2]} ->
+                        check_ty(Spec, CurModule, Ty1, Form, Depth + 1),
+                        raise_unless(check_ty_with_result(Spec, CurModule, Ty2, Form, Depth + 1) =/= ok,
+                                     Ty, Form, Depth);
                     {sets, set, [Ty2]} ->
                         raise_unless(sets:is_set(Form), Ty, Form, Depth),
                         lists:foreach(fun (X) -> check_ty(Spec, CurModule, Ty2, X, Depth + 1) end,

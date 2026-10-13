@@ -191,7 +191,13 @@
 -type file_form() :: {attribute, anno(), file, {File::string(), Line::integer()}}.
 -type mod_form() :: {attribute, anno(), module, Mod::atom()}.
 -type behavior_form() :: {attribute, anno(), behavior | behaviour, Mod::atom()}.
--type other_attr_form() :: {attribute, anno(), atom(), term()}.
+% An attribute with another name than those that have a form of their own. Without the
+% exclusion the payload of every attribute would be a term().
+-type other_attr_form() ::
+    {attribute, anno(),
+     etylizer:without(atom(), export | export_type | import | file | module | behavior | behaviour
+                              | spec | callback | record | type | opaque | nominal),
+     term()}.
 -type fun_decl() :: {function, anno(), Name::atom(), Arity::integer(), [fun_clause(), ...]}.
 -type fun_spec_q() :: {attribute, anno(), spec, {{Mod::atom(), Name::atom(), Arity::integer()},
                                                  [ty_full_fun(), ...]}}.
@@ -201,7 +207,7 @@
 -type record_decl() :: {attribute, anno(), record, {Name::atom(),[record_field()]}}.
 -type type_decl() :: {attribute, anno(), type|opaque|nominal, tydef()}.
 -type tydef() :: {Name::atom(), Rhs::ty(), [ty_var()]}.
--type wild_attr() :: {attribute, anno(), atom(), term()}.
+-type wild_attr() :: other_attr_form().
 -type eof() :: {eof, anno()}.
 -type warnings_errors() :: {error, any()} | {warning, any()}.
 
