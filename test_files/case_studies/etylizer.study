@@ -171,7 +171,6 @@
 {module, ty_node, #{file => "etylizer/src/erlang_types/ty_node.erl", overlays => [{library, "../../overlays/etylizer_overlay.erl"}], timeout => 10000}}.
 {exception, ty_node, consing_pass, 4, [], cast}.
 {exception, ty_node, group_components, 1, [], cast}.
-{exception, ty_node, normalize, 3, [ignore], unreviewed}.
 
 {module, ty_parser, #{file => "etylizer/src/erlang_types/ty_parser.erl", overlays => [{library, "../../overlays/etylizer_overlay.erl"}], timeout => 10000}}.
 {exception, ty_parser, convert, 3, [ignore], unreviewed}.
