@@ -244,23 +244,16 @@
 {module, t, #{file => "etylizer/src/t.erl", overlays => [{library, "../../overlays/etylizer_overlay.erl"}], timeout => 10000}}.
 
 {module, tally, #{file => "etylizer/src/tally.erl", overlays => [{library, "../../overlays/etylizer_overlay.erl"}], timeout => 10000}}.
-{exception, tally, do_satisfiable, 2, [ignore], unreviewed}.
-{exception, tally, tally, 3, [ignore], unreviewed}.
-{exception, tally, uf_find, 2, [ignore], unreviewed}.
 
 {module, tmp, #{file => "etylizer/src/tmp.erl", overlays => [{library, "../../overlays/etylizer_overlay.erl"}], timeout => 10000}}.
 
 {module, typing, #{file => "etylizer/src/typing.erl", overlays => [{library, "../../overlays/etylizer_overlay.erl"}], timeout => 10000}}.
-{exception, typing, check_forms, 7, [ignore], unreviewed}.
 
 {module, typing_check, #{file => "etylizer/src/typing_check.erl", overlays => [{library, "../../overlays/etylizer_overlay.erl"}], timeout => 10000}}.
 
 {module, typing_common, #{file => "etylizer/src/typing_common.erl", overlays => [{library, "../../overlays/etylizer_overlay.erl"}], timeout => 10000}}.
 
 {module, typing_infer, #{file => "etylizer/src/typing_infer.erl", overlays => [{library, "../../overlays/etylizer_overlay.erl"}], timeout => 10000}}.
-{exception, typing_infer, build_result_envs, 4, [ignore], unreviewed}.
-{exception, typing_infer, infer, 2, [ignore], unreviewed}.
-{exception, typing_infer, simplify_and_log, 4, [ignore], unreviewed}.
 
 {module, tyutils, #{file => "etylizer/src/tyutils.erl", overlays => [{library, "../../overlays/etylizer_overlay.erl"}], timeout => 10000}}.
 

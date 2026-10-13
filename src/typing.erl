@@ -225,9 +225,9 @@ own_spec(Name, Arity, Forms, Tab) ->
         [] -> symtab:find_fun({ref, Name, Arity}, Tab)
     end.
 
--spec dynamic_ty_scheme(non_neg_integer()) -> ast:ty_scheme().
+-spec dynamic_ty_scheme(arity()) -> ast:ty_scheme().
 dynamic_ty_scheme(Arity) ->
-    DynamicArgs = lists:duplicate(Arity, {predef, dynamic}),
+    DynamicArgs = [{predef, dynamic} || _ <- lists:seq(1, Arity)],
     {ty_scheme, [], {fun_full, DynamicArgs, {predef, dynamic}}}.
 
 -spec check_exported_funs_specified(ast:forms()) -> ok | no_return().
