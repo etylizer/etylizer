@@ -303,8 +303,6 @@
 {module, paths, #{file => "etylizer/src/paths.erl", overlays => [{library, "../../overlays/etylizer_overlay.erl"}], timeout => 10000}}.
 
 {module, pretty, #{file => "etylizer/src/pretty.erl", overlays => [{library, "../../overlays/etylizer_overlay.erl"}], timeout => 10000}}.
-{exception, pretty, constr, 1, [], cast}.
-{exception, pretty, constr_single, 1, [], cast}.
 {exception, pretty, render_catch_clause, 2, [ignore], unreviewed}.
 {exception, pretty, render_clause, 2, [ignore], unreviewed}.
 {exception, pretty, render_exp, 2, [ignore], unreviewed}.

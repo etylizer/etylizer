@@ -110,8 +110,8 @@ render_tys(T) -> render(tys(T)).
 -spec render_tyscheme(ast:ty_scheme()) -> string().
 render_tyscheme(T) -> render(tyscheme(T)).
 
--spec render_constr(all_constrs()) -> string().
-render_constr(C) -> render(constr(C)).
+-spec render_constr(sets:set(any_constr())) -> string().
+render_constr(Cs) -> render(constrs(Cs)).
 
 -spec render_substs([subst:t()]) -> string().
 render_substs(S) -> render(substs(S)).
@@ -336,13 +336,13 @@ constr_body({ccase_branch, Locs, Payload}) ->
 constr_body_guard(Payload) ->
     {GuardEnv, GuardCs} = constr:case_branch_guard(Payload),
     [kv("guardEnv", constr_env(GuardEnv)),
-     kv("guardCs", constr(GuardCs))].
+     kv("guardCs", constrs(GuardCs))].
 
 -spec constr_body_body(constr:case_branch_payload()) -> [doc()].
 constr_body_body(Payload) ->
     {BodyEnv, BodyCs} = constr:case_branch_body(Payload),
     [kv("bodyEnv", constr_env(BodyEnv)),
-     kv("bodyCs", constr(BodyCs))] ++ constr_body_cond_result(Payload).
+     kv("bodyCs", constrs(BodyCs))] ++ constr_body_cond_result(Payload).
 
 -spec constr_body_cond_result(constr:case_branch_payload()) -> [doc()].
 constr_body_cond_result(Payload) ->
@@ -351,10 +351,10 @@ constr_body_cond_result(Payload) ->
     PrettyBodyCond =
         case BodyCondCs of
             none -> text("none");
-            X -> constr(X)
+            X -> constrs(X)
         end,
     [kv("bodyCond", PrettyBodyCond),
-     kv("resultCs", constr(ResultCs))].
+     kv("resultCs", constrs(ResultCs))].
 
 -spec sconstr_bodies([constr:simp_constr_case_branch()]) -> doc().
 sconstr_bodies(L) ->
@@ -362,52 +362,36 @@ sconstr_bodies(L) ->
 
 -spec sconstr_body(constr:simp_constr_case_branch()) -> doc().
 sconstr_body({sccase_branch, {GuardsLoc, Guards}, Cond, {BodyLoc, Body}, {ResultLoc, Result}}) ->
-    GuardPart = [kv("guardLoc", loc(GuardsLoc)), kv("guard", constr(Guards))],
+    GuardPart = [kv("guardLoc", loc(GuardsLoc)), kv("guard", constrs(Guards))],
     CondPart = sconstr_body_cond(Cond),
     BodyPart = sconstr_body_rest(BodyLoc, Body, ResultLoc, Result),
     brackets(comma_sep(GuardPart ++ CondPart ++ BodyPart)).
 
 -spec sconstr_body_cond(none | {ast:loc(), constr:simp_constrs()}) -> [doc()].
 sconstr_body_cond(none) -> [text("none")];
-sconstr_body_cond({L2, X}) -> [kv("condLoc", loc(L2)), kv("cond", constr(X))].
+sconstr_body_cond({L2, X}) -> [kv("condLoc", loc(L2)), kv("cond", constrs(X))].
 
 -spec sconstr_body_rest(ast:loc(), constr:simp_constrs(), ast:loc(), constr:simp_constrs()) -> [doc()].
 sconstr_body_rest(BodyLoc, Body, ResultLoc, Result) ->
     [kv("bodyLoc", loc(BodyLoc)),
-     kv("body", constr(Body)),
+     kv("body", constrs(Body)),
      kv("resultLoc", loc(ResultLoc)),
-     kv("result", constr(Result))].
+     kv("result", constrs(Result))].
 
 -spec kv(string(), doc()) -> doc().
 kv(K, V) -> beside(text(K), text(":"), V).
 
--type all_constrs() :: constr:simp_constr() | constr:constr()
-                     | sets:set(all_constrs()) | list(all_constrs()).
+-type any_constr() :: constr:simp_constr() | constr:constr().
 
--spec constr(all_constrs()) -> doc().
-constr(X) when is_list(X) ->
-    constr_list(X);
-constr(X) ->
-    case sets:is_set(X) of
-        true ->
-            constr_set(?assert_type(X, sets:set(all_constrs())));
-        false ->
-            constr_single(?assert_type(X, constr:simp_constr() | constr:constr()))
-    end.
+-spec constrs(sets:set(any_constr())) -> doc().
+constrs(Cs) ->
+    braces(comma_sep(lists:map(fun constr/1, sets:to_list(Cs)))).
 
--spec constr_list(list(all_constrs())) -> doc().
-constr_list(X) ->
-    brackets(comma_sep(lists:map(fun constr/1, X))).
-
--spec constr_set(sets:set(all_constrs())) -> doc().
-constr_set(X) ->
-    braces(comma_sep(lists:map(fun constr/1, sets:to_list(X)))).
-
--spec constr_single(constr:simp_constr() | constr:constr()) -> doc().
-constr_single({scsubty, _, _, _} = X) -> constr_simp(?assert_type(X, constr:simp_constr()));
-constr_single({sccase, _, _, _} = X) -> constr_simp(?assert_type(X, constr:simp_constr()));
-constr_single({scmater, _, _, _} = X) -> constr_simp(?assert_type(X, constr:simp_constr()));
-constr_single(X) -> constr_unsimplified(?assert_type(X, constr:constr())).
+-spec constr(any_constr()) -> doc().
+constr({scsubty, _, _, _} = X) -> constr_simp(X);
+constr({sccase, _, _, _} = X) -> constr_simp(X);
+constr({scmater, _, _, _} = X) -> constr_simp(X);
+constr(X) -> constr_unsimplified(X).
 
 -spec constr_unsimplified(constr:constr()) -> doc().
 constr_unsimplified({csubty, _, _, _} = X) -> constr_leaf(X);
@@ -446,14 +430,14 @@ constr_cdef({cdef, Locs, Env, Cs}) ->
     brackets(comma_sep([text("cdef"),
                         locs(Locs),
                         constr_env(Env),
-                        constr(Cs)])).
+                        constrs(Cs)])).
 
 -spec constr_ccase(constr:constr_case()) -> doc().
 constr_ccase({ccase, Locs, CsScrut, CsExhaust, Bodies}) ->
     brackets(comma_sep([text("ccase"),
                         locs(Locs),
-                        kv("scrutiny", constr(CsScrut)),
-                        kv("exhaust", constr(CsExhaust)),
+                        kv("scrutiny", constrs(CsScrut)),
+                        kv("exhaust", constrs(CsExhaust)),
                         constr_bodies(Bodies)])).
 
 -spec constr_simp(constr:simp_constr()) -> doc().
@@ -473,9 +457,9 @@ constr_simp({scmater, Loc, T, Alpha}) ->
 constr_sccase({sccase, {LocScrut, CsScrut}, {LocExhaust, CsExhaust}, Bodies}) ->
     brackets(comma_sep([text("sccase"),
                         kv("scrutinyLoc", loc(LocScrut)),
-                        kv("scrutiny", constr(CsScrut)),
+                        kv("scrutiny", constrs(CsScrut)),
                         kv("exhaustLoc", loc(LocExhaust)),
-                        kv("exhaust", constr(CsExhaust)),
+                        kv("exhaust", constrs(CsExhaust)),
                         sconstr_bodies(Bodies)])).
 
 -spec locs(constr:locs()) -> doc().
@@ -562,7 +546,7 @@ constr_block({Kind, Loc, What, Ds}) ->
     brackets(comma_sep([atom(Kind),
                         loc(Loc),
                         text(What),
-                        constr(Ds)])).
+                        constrs(Ds)])).
 
 -spec pretty_list(fun((T) -> doc()), list(T)) -> doc().
 pretty_list(Fun, L) ->
