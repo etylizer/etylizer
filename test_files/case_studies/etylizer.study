@@ -139,39 +139,12 @@
 {module, constraint_set, #{file => "etylizer/src/erlang_types/constraint_set.erl", overlays => [{library, "../../overlays/etylizer_overlay.erl"}], timeout => 10000}}.
 
 {module, dnf_minimizer, #{file => "etylizer/src/erlang_types/dnf_minimizer.erl", overlays => [{library, "../../overlays/etylizer_overlay.erl"}], timeout => 10000}}.
-{exception, dnf_minimizer, active_variables, 3, [], no_spec}.
-{exception, dnf_minimizer, bit_count, 1, [], no_spec}.
-{exception, dnf_minimizer, bit_count, 2, [], no_spec}.
-{exception, dnf_minimizer, bit_positions, 1, [], no_spec}.
-{exception, dnf_minimizer, blocked, 5, [], no_spec}.
-{exception, dnf_minimizer, complement, 3, [], no_spec}.
-{exception, dnf_minimizer, complement_cube, 2, [], no_spec}.
-{exception, dnf_minimizer, covered, 3, [], no_spec}.
-{exception, dnf_minimizer, decode, 2, [], no_spec}.
-{exception, dnf_minimizer, distance, 3, [], no_spec}.
-{exception, dnf_minimizer, encode, 2, [], no_spec}.
-{exception, dnf_minimizer, expand, 3, [], no_spec}.
-{exception, dnf_minimizer, expand_cube, 3, [], no_spec}.
-{exception, dnf_minimizer, expand_loop, 4, [], no_spec}.
-{exception, dnf_minimizer, implies, 2, [], no_spec}.
-{exception, dnf_minimizer, irredundant, 3, [], no_spec}.
-{exception, dnf_minimizer, irredundant_loop, 4, [], no_spec}.
-{exception, dnf_minimizer, is_tautology, 3, [], no_spec}.
-{exception, dnf_minimizer, lowest_set_bit, 1, [], no_spec}.
-{exception, dnf_minimizer, lowest_set_bit, 2, [], no_spec}.
-{exception, dnf_minimizer, make_config, 2, [], no_spec}.
-{exception, dnf_minimizer, raise_loop, 6, [], no_spec}.
-{exception, dnf_minimizer, shannon, 3, [], no_spec}.
-{exception, dnf_minimizer, split_variable, 3, [ignore], unreviewed}.
-{exception, dnf_minimizer, test_bit, 2, [], no_spec}.
 
 {module, dnf_ty_atom, #{file => "etylizer/src/erlang_types/dnf_ty_atom.erl", overlays => [{library, "../../overlays/etylizer_overlay.erl"}], timeout => 10000}}.
 
 {module, dnf_ty_bitstring, #{file => "etylizer/src/erlang_types/dnf_ty_bitstring.erl", overlays => [{library, "../../overlays/etylizer_overlay.erl"}], timeout => 10000}}.
-{exception, dnf_ty_bitstring, minimize_node_dnf, 1, [ignore], unreviewed}.
 
 {module, dnf_ty_function, #{file => "etylizer/src/erlang_types/dnf_ty_function.erl", overlays => [{library, "../../overlays/etylizer_overlay.erl"}], timeout => 10000}}.
-{exception, dnf_ty_function, minimize_node_dnf, 1, [ignore], unreviewed}.
 
 {module, dnf_ty_interval, #{file => "etylizer/src/erlang_types/dnf_ty_interval.erl", overlays => [{library, "../../overlays/etylizer_overlay.erl"}], timeout => 10000}}.
 {exception, dnf_ty_interval, compare, 2, [no_exhaustiveness], flag}.
@@ -181,18 +154,14 @@
 {exception, dnf_ty_interval, add_right, 2, [ignore], unreviewed}.
 
 {module, dnf_ty_list, #{file => "etylizer/src/erlang_types/dnf_ty_list.erl", overlays => [{library, "../../overlays/etylizer_overlay.erl"}], timeout => 10000}}.
-{exception, dnf_ty_list, minimize_node_dnf, 1, [ignore], unreviewed}.
 
 {module, dnf_ty_map, #{file => "etylizer/src/erlang_types/dnf_ty_map.erl", overlays => [{library, "../../overlays/etylizer_overlay.erl"}], timeout => 10000}}.
-{exception, dnf_ty_map, minimize_node_dnf, 1, [ignore], unreviewed}.
 
 {module, dnf_ty_predefined, #{file => "etylizer/src/erlang_types/dnf_ty_predefined.erl", overlays => [{library, "../../overlays/etylizer_overlay.erl"}], timeout => 10000}}.
 
 {module, dnf_ty_tuple, #{file => "etylizer/src/erlang_types/dnf_ty_tuple.erl", overlays => [{library, "../../overlays/etylizer_overlay.erl"}], timeout => 10000}}.
-{exception, dnf_ty_tuple, minimize_node_dnf, 1, [ignore], unreviewed}.
 
 {module, dnf_ty_variable, #{file => "etylizer/src/erlang_types/dnf_ty_variable.erl", overlays => [{library, "../../overlays/etylizer_overlay.erl"}], timeout => 10000}}.
-{exception, dnf_ty_variable, minimize_node_dnf, 1, [ignore], unreviewed}.
 
 {module, etally, #{file => "etylizer/src/erlang_types/etally.erl", overlays => [{library, "../../overlays/etylizer_overlay.erl"}], timeout => 10000}}.
 {exception, etally, is_tally_satisfiable, 2, [], cast_library}.

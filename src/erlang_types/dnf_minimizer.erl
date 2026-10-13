@@ -11,22 +11,31 @@
 -module(dnf_minimizer).
 -export([minimize/3]).
 
+-include("etylizer.hrl").
+
+% A cube or a mask as a positional bignum. Bit operations give integer().
+-type bits() :: integer().
+
 -record(config, {num_vars        :: non_neg_integer(),
                  num_leaves      :: non_neg_integer(),
-                 dimension_masks :: [non_neg_integer()],
-                 full_mask       :: non_neg_integer(),
-                 even_mask       :: non_neg_integer(),
-                 output_mask     :: non_neg_integer()}).
+                 dimension_masks :: [bits()],
+                 full_mask       :: bits(),
+                 even_mask       :: bits(),
+                 output_mask     :: bits()}).
 
--spec minimize(non_neg_integer(), non_neg_integer(),
-               [{[non_neg_integer()], [non_neg_integer()], [non_neg_integer()]}]) ->
-          [{[non_neg_integer()], [non_neg_integer()], [non_neg_integer()]}].
+-type config() :: #config{}.
+
+% The positive variables, the negative variables and the leaves of a cube, by index.
+-type cube() :: {[non_neg_integer()], [non_neg_integer()], [non_neg_integer()]}.
+
+-spec minimize(non_neg_integer(), non_neg_integer(), [cube()]) -> [cube()].
 minimize(NumVars, NumLeaves, OnSet) ->
     Config = make_config(NumVars, NumLeaves),
     EncodedOnSet = [encode(Config, Cube) || Cube <- OnSet],
     OffSet = complement(Config, 0, EncodedOnSet),
     [decode(Config, Cube) || Cube <- irredundant(Config, [], expand(Config, OffSet, EncodedOnSet))].
 
+-spec complement(config(), bits(), [bits()]) -> [bits()].
 complement(Config, _Cofactor, []) -> [Config#config.full_mask];       % empty cover -> universe
 complement(Config, Cofactor, [Cube]) -> complement_cube(Config, Cofactor bor Cube); % single cube -> De Morgan
 complement(Config, Cofactor, Cubes) ->
@@ -46,11 +55,13 @@ complement(Config, Cofactor, Cubes) ->
     end.
 
 % De Morgan complement of a single cube: one cube per variable it does not fill
+-spec complement_cube(config(), bits()) -> [bits()].
 complement_cube(Config, Cube) ->
     FullMask = Config#config.full_mask,
     [FullMask bxor (Mask band Cube) || Mask <- Config#config.dimension_masks, (Mask band Cube) =/= Mask].
 
 % {Positives, Negatives, Leaves} <-> positional bignum
+-spec encode(config(), cube()) -> bits().
 encode(Config, {Positives, Negatives, Leaves}) ->
     NumVars = Config#config.num_vars,
     Fixed = Positives ++ Negatives,
@@ -65,6 +76,7 @@ encode(Config, {Positives, Negatives, Leaves}) ->
         bor lists:foldl(fun(Var, Acc) -> Acc bor (1 bsl (2 * Var)) end, 0, Negatives)
         bor lists:foldl(fun(Leaf, Acc) -> Acc bor (1 bsl (2 * NumVars + Leaf)) end, 0, Leaves).
 
+-spec decode(config(), bits()) -> cube().
 decode(Config, Cube) ->
     NumVars = Config#config.num_vars,
     NumLeaves = Config#config.num_leaves,
@@ -73,10 +85,12 @@ decode(Config, Cube) ->
      [Leaf || Leaf <- lists:seq(0, NumLeaves - 1), test_bit(Cube, 2 * NumVars + Leaf)]}.
 
 % smallest cubes first, skip ones absorbed by a produced prime
+-spec expand(config(), [bits()], [bits()]) -> [bits()].
 expand(Config, OffSet, Cubes) ->
     SmallestFirst = [Cube || {_, Cube} <- lists:sort([{bit_count(Cube), Cube} || Cube <- Cubes])],
     expand_loop(Config, OffSet, SmallestFirst, []).
 
+-spec expand_loop(config(), [bits()], [bits()], [bits()]) -> [bits()].
 expand_loop(_Config, _OffSet, [], Primes) -> Primes;
 expand_loop(Config, OffSet, [Cube | Rest], Primes) ->
     case lists:any(fun(Prime) -> implies(Cube, Prime) end, Primes) of
@@ -84,11 +98,13 @@ expand_loop(Config, OffSet, [Cube | Rest], Primes) ->
         false -> expand_loop(Config, OffSet, Rest, [expand_cube(Config, OffSet, Cube) | Primes])
     end.
 
+-spec expand_cube(config(), [bits()], bits()) -> bits().
 expand_cube(Config, OffSet, Cube) ->
     FullMask = Config#config.full_mask,
     raise_loop(OffSet, Cube, FullMask bxor Cube, FullMask,
                Config#config.even_mask, Config#config.output_mask).
 
+-spec raise_loop([bits()], bits(), bits(), bits(), bits(), bits()) -> bits().
 raise_loop(OffSet, Raised, FreeBits, FullMask, EvenMask, OutputMask) ->
     Feasible = FreeBits band (FullMask bxor blocked(OffSet, Raised, EvenMask, OutputMask, 0)),
     case Feasible of
@@ -98,6 +114,7 @@ raise_loop(OffSet, Raised, FreeBits, FullMask, EvenMask, OutputMask) ->
                         FullMask, EvenMask, OutputMask)
     end.
 
+-spec blocked([bits()], bits(), bits(), bits(), bits()) -> bits().
 blocked([], _Raised, _EvenMask, _OutputMask, Blocked) -> Blocked;
 blocked([OffCube | Rest], Raised, EvenMask, OutputMask, Blocked) ->
     Overlap = Raised band OffCube,
@@ -115,8 +132,10 @@ blocked([OffCube | Rest], Raised, EvenMask, OutputMask, Blocked) ->
     end.
 
 % keep only cubes not covered by the rest (tautology of the cofactor)
+-spec irredundant(config(), [bits()], [bits()]) -> [bits()].
 irredundant(Config, DontCares, Cubes) -> irredundant_loop(Config, DontCares, [], Cubes).
 
+-spec irredundant_loop(config(), [bits()], [bits()], [bits()]) -> [bits()].
 irredundant_loop(_Config, _DontCares, Kept, []) -> Kept;
 irredundant_loop(Config, DontCares, Kept, [Cube | Rest]) ->
     case covered(Config, Cube, Kept ++ Rest ++ DontCares) of
@@ -124,10 +143,12 @@ irredundant_loop(Config, DontCares, Kept, [Cube | Rest]) ->
         false -> irredundant_loop(Config, DontCares, Kept ++ [Cube], Rest)
     end.
 
+-spec covered(config(), bits(), [bits()]) -> boolean().
 covered(Config, Cube, Others) ->
     is_tautology(Config, Config#config.full_mask bxor Cube,
                  [Other || Other <- Others, distance(Config, Other, Cube) =:= 0]).
 
+-spec is_tautology(config(), bits(), [bits()]) -> boolean().
 is_tautology(Config, Cofactor, Cubes) ->
     FullMask = Config#config.full_mask,
     maybe
@@ -144,15 +165,21 @@ is_tautology(Config, Cofactor, Cubes) ->
         is_tautology(Config, CofactorLow, LeftCubes) andalso is_tautology(Config, CofactorHigh, RightCubes)
     end.
 
+-spec active_variables(config(), bits(), [bits()]) -> non_neg_integer().
 active_variables(Config, Cofactor, Cubes) ->
     length([1 || Mask <- Config#config.dimension_masks,
                  lists:any(fun(Cube) -> ((Cube bor Cofactor) band Mask) =/= Mask end, Cubes)]).
 
 % Shannon split (chooses the most-binate splittable variable)
+% {SplitVar, SplitMask, LowMask, HighMask, CofactorLow, CofactorHigh, LeftCubes, RightCubes}
+-spec shannon(config(), bits(), [bits()]) ->
+    {non_neg_integer(), bits(), bits(), bits(), bits(), bits(), [bits()], [bits()]}.
 shannon(Config, Cofactor, Cubes) ->
     FullMask = Config#config.full_mask,
     SplitVar = split_variable(Config, Cofactor, Cubes),
-    SplitMask = lists:nth(SplitVar + 1, Config#config.dimension_masks),
+    % one mask per variable and one for the leaves: the list is never empty
+    Masks = ?assert_pattern([_ | _], Config#config.dimension_masks),
+    SplitMask = lists:nth(?assert_type(SplitVar + 1, pos_integer()), Masks),
     ActiveBits = [Bit || Bit <- bit_positions(SplitMask), not test_bit(Cofactor, Bit)],
     {LowBits, HighBits} = lists:split(length(ActiveBits) div 2, ActiveBits),
     BitsToMask = fun(Bits) -> lists:foldl(fun(Bit, Acc) -> Acc bor (1 bsl Bit) end, 0, Bits) end,
@@ -163,43 +190,62 @@ shannon(Config, Cofactor, Cubes) ->
      [Cube || Cube <- Cubes, (Cube band LowMask band SplitMask) =/= 0],
      [Cube || Cube <- Cubes, (Cube band HighMask band SplitMask) =/= 0]}.
 
+-spec split_variable(config(), bits(), [bits()]) -> non_neg_integer().
 split_variable(Config, Cofactor, Cubes) ->
     FullMask = Config#config.full_mask,
     Masks = Config#config.dimension_masks,
-    {_, SplitVar} = lists:max(
+    % the callers split only when a variable is left to split on
+    Splittable = ?assert_pattern([_ | _],
         [{length([1 || Cube <- Cubes, ((Cube bor Cofactor) band Mask) =/= Mask]), VarIndex}
          || {VarIndex, Mask} <- lists:zip(lists:seq(0, length(Masks) - 1), Masks),
             bit_count(Mask band FullMask) - bit_count(Mask band Cofactor) > 1]),
+    {_, SplitVar} = lists:max(Splittable),
     SplitVar.
 
 % config + bit utilities
+-spec make_config(non_neg_integer(), non_neg_integer()) -> config().
 make_config(NumVars, NumLeaves) ->
+    Vars = lists:seq(0, NumVars - 1),
+    OutputMask = low_bits(NumLeaves) bsl (2 * NumVars),
     #config{num_vars = NumVars,
             num_leaves = NumLeaves,
-            dimension_masks = [3 bsl (2 * Var) || Var <- lists:seq(0, NumVars - 1)]
-                              ++ [((1 bsl NumLeaves) - 1) bsl (2 * NumVars)],
-            full_mask = (1 bsl (2 * NumVars + NumLeaves)) - 1,
-            even_mask = lists:foldl(fun(Var, Acc) -> Acc bor (1 bsl (2 * Var)) end, 0, lists:seq(0, NumVars - 1)),
-            output_mask = ((1 bsl NumLeaves) - 1) bsl (2 * NumVars)}.
+            dimension_masks = [3 bsl (2 * Var) || Var <- Vars] ++ [OutputMask],
+            full_mask = low_bits(2 * NumVars + NumLeaves),
+            even_mask = lists:foldl(fun(Var, Acc) -> Acc bor (1 bsl (2 * Var)) end, 0, Vars),
+            output_mask = OutputMask}.
 
+% the lowest N bits
+-spec low_bits(integer()) -> bits().
+low_bits(N) -> (1 bsl N) - 1.
+
+-spec distance(config(), bits(), bits()) -> non_neg_integer().
 distance(Config, CubeA, CubeB) ->
     EvenMask = Config#config.even_mask,
     Overlap = CubeA band CubeB,
     OutputDistance = case Overlap band Config#config.output_mask of 0 -> 1; _ -> 0 end,
     bit_count(EvenMask bxor ((Overlap bor (Overlap bsr 1)) band EvenMask)) + OutputDistance.
 
+-spec implies(bits(), bits()) -> boolean().
 implies(Cube, Prime) -> (Cube band Prime) =:= Cube.
 
+-spec test_bit(bits(), integer()) -> boolean().
 test_bit(Value, Index) -> (Value band (1 bsl Index)) =/= 0.
 
+-spec bit_count(bits()) -> non_neg_integer().
 bit_count(Value) -> bit_count(Value, 0).
+
+-spec bit_count(bits(), non_neg_integer()) -> non_neg_integer().
 bit_count(0, Count) -> Count;
 bit_count(Value, Count) -> bit_count(Value band (Value - 1), Count + 1).
 
+-spec lowest_set_bit(bits()) -> non_neg_integer().
 lowest_set_bit(Value) -> lowest_set_bit(Value, 0).
+
+-spec lowest_set_bit(bits(), non_neg_integer()) -> non_neg_integer().
 lowest_set_bit(Value, Index) ->
     case Value band (1 bsl Index) of 0 -> lowest_set_bit(Value, Index + 1); _ -> Index end.
 
+-spec bit_positions(bits()) -> [non_neg_integer()].
 bit_positions(0) -> [];
 bit_positions(Value) -> [lowest_set_bit(Value) | bit_positions(Value band (Value - 1))].
 

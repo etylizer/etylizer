@@ -35,6 +35,17 @@
   (list(T)) -> list(T).
 'lists:usort'(_) -> error(overlay).
 
+% the elements are not smaller than the first one
+-spec 'lists:seq'
+  (pos_integer(), integer()) -> [pos_integer()];
+  (non_neg_integer(), integer()) -> [non_neg_integer()];
+  (integer(), integer()) -> [integer()].
+'lists:seq'(_, _) -> error(overlay).
+
+% counts from 1
+-spec 'lists:enumerate'([T]) -> [{pos_integer(), T}].
+'lists:enumerate'(_) -> error(overlay).
+
 -spec 'lists:unzip'
   (nonempty_list({A, B})) -> {nonempty_list(A), nonempty_list(B)};
   (list({A, B})) -> {list(A), list(B)}.
