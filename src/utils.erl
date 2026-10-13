@@ -440,6 +440,7 @@ fold_with_context(Fun, Acc, [H|T]) ->
 
 % transforms a tally:tally constraints to a config file which can be loaded in the tally_tests.erl tests
 % TODO free variables #74
+-spec format_tally_config([constr:simp_constr_subty()], sets:set(ast:ty_varname()), symtab:t()) -> io_lib:chars().
 format_tally_config(Constraints, FixedVars, Symtab) ->
     "[" ++ lists:join(",", [io_lib:format("{~p, ~p}", [S, T]) || {_, _, S, T} <- Constraints]) ++ "]." 
     ++ "\n" 

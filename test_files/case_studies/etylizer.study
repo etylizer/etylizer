@@ -190,10 +190,8 @@
 {module, gradual_utils, #{file => "etylizer/src/gradual_utils.erl", overlays => [{library, "../../overlays/etylizer_overlay.erl"}], timeout => 10000}}.
 
 {module, log, #{file => "etylizer/src/log.erl", overlays => [{library, "../../overlays/etylizer_overlay.erl"}], timeout => 10000}}.
-{exception, log, init, 1, [], no_spec}.
 
 {module, metrics, #{file => "etylizer/src/metrics.erl", overlays => [{library, "../../overlays/etylizer_overlay.erl"}], timeout => 10000}}.
-{exception, metrics, components, 1, [], no_spec}.
 
 {module, parse, #{file => "etylizer/src/parse.erl", overlays => [{library, "../../overlays/etylizer_overlay.erl"}], timeout => 10000}}.
 
@@ -209,8 +207,6 @@
 {exception, subst, collect_vars, 5, [ignore], unreviewed}.
 
 {module, subty, #{file => "etylizer/src/subty.erl", overlays => [{library, "../../overlays/etylizer_overlay.erl"}], timeout => 10000}}.
-{exception, subty, is_any, 2, [], no_spec}.
-{exception, subty, is_equivalent, 3, [], no_spec}.
 
 {module, symtab, #{file => "etylizer/src/symtab.erl", overlays => [{library, "../../overlays/etylizer_overlay.erl"}], timeout => 10000}}.
 
@@ -234,7 +230,6 @@
 
 {module, utils, #{file => "etylizer/src/utils.erl", overlays => [{library, "../../overlays/etylizer_overlay.erl"}], timeout => 10000}}.
 {exception, utils, compare, 3, [no_exhaustiveness], flag}.
-{exception, utils, format_tally_config, 3, [], no_spec}.
 {exception, utils, replace_term, 2, [], dynamic}.
 
 {module, varenv, #{file => "etylizer/src/varenv.erl", overlays => [{library, "../../overlays/etylizer_overlay.erl"}], timeout => 10000}}.

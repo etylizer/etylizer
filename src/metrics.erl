@@ -146,6 +146,7 @@ free_vars(Constraint, Fixed) ->
 
 % The number of groups tally:split/2 makes of constraints with these variables:
 % constraints sharing a variable are in one group, a ground one is its own.
+-spec components([[ast:ty_varname()]]) -> non_neg_integer().
 components(VarSets) ->
     {Groups, Ground} = lists:foldl(
         fun([], {Gs, N}) -> {Gs, N + 1};
