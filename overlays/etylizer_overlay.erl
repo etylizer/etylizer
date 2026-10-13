@@ -13,6 +13,18 @@
 'lists:foldl'(_, _, _) -> error(badarg).
 -spec 'lists:foldr'(fun((T, Acc) -> Acc), Acc, [T]) -> Acc.
 'lists:foldr'(_, _, _) -> error(badarg).
+% The process dictionary holds any terms. The specs of OTP name the value with a type variable
+% that nothing bounds from below, which the checker takes to be none().
+-spec 'erlang:get'(term()) -> term().
+'erlang:get'(_) -> error(overlay).
+
+-spec 'erlang:get'() -> [{term(), term()}].
+'erlang:get'() -> error(overlay).
+
+% encodes any term, a term that has no JSON form is an error at run time
+-spec 'json:encode'(term()) -> iodata().
+'json:encode'(_) -> error(overlay).
+
 -spec 'maps:intersect_with'(fun((Key, Value, Value) -> Value), #{Key => Value}, #{Key => Value}) -> #{Key => Value}.
 'maps:intersect_with'(_, _, _) -> error(overlay).
 
@@ -86,7 +98,7 @@
     (nonempty_list(_)) -> pos_integer().
 'erlang:length'(_List) -> error(overlay).
 
--spec 'erlang:tl'(nonempty_list(A)) -> A.
+-spec 'erlang:tl'(nonempty_list(A)) -> [A].
 'erlang:tl'(_List) -> error(overlay).
 
 -spec 'erlang:hd'(nonempty_list(A)) -> A.
@@ -105,11 +117,14 @@
 'string:split'(_, _, _) -> error(badarg).
 -spec 'string:slice'(string(), non_neg_integer(), non_neg_integer()) -> string().
 'string:slice'(_, _, _) -> error(badarg).
+% the pieces of the string, with the replacement between them
+-spec 'string:replace'(string(), string(), string(), all | leading | trailing) -> [string()].
+'string:replace'(_, _, _, _) -> error(badarg).
 -spec 'string:trim'(string(), leading | trailing | both) -> string().
 'string:trim'(_, _) -> error(badarg).
 -spec 'os:cmd'(string()) -> string().
 'os:cmd'(_) -> error(badarg).
--spec 'file:write_file'(string(), string()) -> _.
+-spec 'file:write_file'(string(), string() | iodata()) -> _.
 'file:write_file'(_, _) -> error(badarg).
 
 -spec 'io:get_line'(pid(), string()) -> string() | eof.

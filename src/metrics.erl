@@ -15,6 +15,8 @@
     record_type_error/2
 ]).
 
+-include("etylizer.hrl").
+
 -define(TABLE, ety_metrics_table).
 
 -spec init() -> ok.
@@ -27,7 +29,8 @@ init() ->
 current_fun() ->
     case erlang:get(ety_cur_fun) of
         undefined -> '__no_fun__';
-        Label -> Label
+        % the process dictionary has no types, set_fun/1 has put a label there
+        Label -> ?assert_type(Label, atom())
     end.
 
 % Shaped like a function label so it cannot collide with a real one.
@@ -87,7 +90,8 @@ count(Via, Kind) ->
             Key = ?COUNT_KEY(Stage, Via, Kind),
             case erlang:get(Key) of
                 undefined -> erlang:put(Key, 1);
-                N -> erlang:put(Key, N + 1)
+                % the process dictionary has no types, a counter is under this key
+                N -> erlang:put(Key, ?assert_type(N, pos_integer()) + 1)
             end,
             ok
     end.
@@ -154,7 +158,8 @@ components(VarSets) ->
 
 -spec dump(file:filename()) -> ok.
 dump(Path) ->
-    Entries = ets:tab2list(?TABLE),
+    % as record/2 has put them into the table
+    Entries = ?assert_type(ets:tab2list(?TABLE), [{atom(), tuple()}]),
     Grouped = lists:foldl(
         fun({Category, DataPoint}, Acc) ->
             maps:update_with(Category, fun(Old) -> [DataPoint | Old] end, [DataPoint], Acc)
@@ -170,7 +175,7 @@ dump(Path) ->
         Grouped
     ),
     JsonBin = json:encode(JsonMap),
-    ok = file:write_file(Path, JsonBin).
+    ?assert_pattern(ok, file:write_file(Path, JsonBin)).
 
 -spec cleanup() -> ok.
 cleanup() ->

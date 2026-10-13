@@ -221,10 +221,6 @@
 
 {module, metrics, #{file => "etylizer/src/metrics.erl", overlays => [{library, "../../overlays/etylizer_overlay.erl"}], timeout => 10000}}.
 {exception, metrics, components, 1, [], no_spec}.
-{exception, metrics, count, 2, [ignore], unreviewed}.
-{exception, metrics, current_fun, 0, [ignore], unreviewed}.
-{exception, metrics, dump, 1, [ignore], unreviewed}.
-{exception, metrics, record_partition_vars, 2, [ignore], unreviewed}.
 
 {module, parse, #{file => "etylizer/src/parse.erl", overlays => [{library, "../../overlays/etylizer_overlay.erl"}], timeout => 10000}}.
 
@@ -266,7 +262,6 @@
 {module, symtab_cache, #{file => "etylizer/src/symtab_cache.erl", overlays => [{library, "../../overlays/etylizer_overlay.erl"}], timeout => 10000}}.
 {exception, symtab_cache, cached, 2, [ignore], unreviewed}.
 {exception, symtab_cache, load, 1, [ignore], unreviewed}.
-{exception, symtab_cache, save, 1, [ignore], unreviewed}.
 
 {module, t, #{file => "etylizer/src/t.erl", overlays => [{library, "../../overlays/etylizer_overlay.erl"}], timeout => 10000}}.
 
