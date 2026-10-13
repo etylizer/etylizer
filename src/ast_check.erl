@@ -225,6 +225,10 @@ check_ty(Spec, CurModule, Ty, Form, Depth) ->
         {type, _, atom, []} -> raise_unless(is_atom(Form), Ty, Form, Depth);
         {type, _, boolean, []} -> raise_unless(is_boolean(Form), Ty, Form, Depth);
         {type, _, string, []} -> raise_unless(utils:is_string(Form), Ty, Form, Depth);
+        {type, _, binary, []} -> raise_unless(is_binary(Form), Ty, Form, Depth);
+        {type, _, bitstring, []} -> raise_unless(is_bitstring(Form), Ty, Form, Depth);
+        {type, _, byte, []} ->
+            raise_unless(is_integer(Form) andalso Form >= 0 andalso Form =< 255, Ty, Form, Depth);
         {type, _, record, _} ->
             utils:error("Checking of types with records not implemented: ~p", Ty);
         {remote_type, _, [{atom, _, RemoteMod}, {atom, _, Name}, Args]} ->
