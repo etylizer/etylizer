@@ -85,9 +85,6 @@
 {exception, cm_index, save_index, 2, [], cast_library}.
 
 {module, cm_module_interface, #{file => "etylizer/src/cm_module_interface.erl", overlays => [{library, "../../overlays/etylizer_overlay.erl"}], timeout => 10000}}.
-{exception, cm_module_interface, filter_named_references, 1, [ignore], unreviewed}.
-{exception, cm_module_interface, handle_function_signature, 2, [ignore], unreviewed}.
-{exception, cm_module_interface, traverse_named_references, 3, [ignore], unreviewed}.
 
 {module, constr, #{file => "etylizer/src/constr.erl", overlays => [{library, "../../overlays/etylizer_overlay.erl"}], timeout => 10000}}.
 

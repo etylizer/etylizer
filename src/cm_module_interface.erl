@@ -128,7 +128,7 @@ handle_function_signature({{fun_full, Params, ReturnType}, NotExportedTypes}, Ac
     NamedReferences = filter_named_references(Params ++ [ReturnType]),
     handle_named_references(NamedReferences, NotExportedTypes, AccTypes);
 
-handle_function_signature({{fun_any_arg, _, ReturnType}, NotExportedTypes}, AccTypes) ->
+handle_function_signature({{fun_any_arg, ReturnType}, NotExportedTypes}, AccTypes) ->
     NamedReferences = filter_named_references([ReturnType]),
     handle_named_references(NamedReferences, NotExportedTypes, AccTypes);
 
@@ -141,13 +141,8 @@ handle_named_references(NamedReferences, NotExportedTypes, AccTypes) ->
 
 -spec filter_named_references([ast:ty()]) -> [ast:ty_named()].
 filter_named_references(Types) ->
-    [Ty || Ty <- Types, is_named_reference(Ty)].
-
--spec is_named_reference(ast:ty_named()) -> boolean().
-is_named_reference({named, _, {ty_ref, _, _, _}, _}) ->
-    true;
-is_named_reference(_) ->
-    false.
+    % the references to types of this module
+    [Ty || Ty = {named, _, {ty_ref, _, _, _}, _} <- Types].
 
 %% Recursively traverses and collects tuples {Name, Arity} of type references from a list of named type references.
 %% The function stops traversing when it has gone through all the type references and returns a set of
@@ -168,9 +163,9 @@ traverse_named_references([CurrentReference | RemainingReferences], TypeDeclarat
     ParameterReferences = find_named_references(ParameterTypes),
     % Filter out existing Names from the NextReferences list to prevent infinite loops
     % when we encounter cyclic type definitions.
-    FilteredNextReferences = lists:filter(fun({named, _, {ty_ref, _ModName, Name, Arity}, _}) ->
-                                                  not sets:is_element({Name, Arity}, Types)
-                                          end, NextReferences ++ ParameterReferences),
+    FilteredNextReferences = [Ref || Ref = {named, _, {ty_ref, _ModName, Name, Arity}, _}
+                                         <- NextReferences ++ ParameterReferences,
+                                     not sets:is_element({Name, Arity}, Types)],
     traverse_named_references(RemainingReferences ++ FilteredNextReferences, TypeDeclarations, sets:add_element(CurrentType, Types)).
 
 -spec find_type_declaration(ast:ty_with_arity(), [ast:type_decl()]) -> {value, ast:type_decl()} | false.
