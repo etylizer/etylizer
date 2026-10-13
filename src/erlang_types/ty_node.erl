@@ -448,7 +448,7 @@ build_internal_graph(Bodies, KeySet) ->
 
 -spec group_components(#{type() => type()}) -> #{type() => [type()]}.
 group_components(SCCs) ->
-  Acc0 = ?assert_type(#{}, #{type() => [type()]}),
+  Acc0 = ?annotate_type(#{}, #{type() => [type()]}),
   lists:foldl(
     fun({N, Root}, Acc) ->
       maps:update_with(Root, fun(Ns) -> [N | Ns] end, [N], Acc)
@@ -460,7 +460,7 @@ group_components(SCCs) ->
                    #{type() => type_descriptor()}) ->
     {type(), #{type() => type_descriptor()}}.
 consing_pass(DefineOrder, RevGraph, StartRef, Bodies) ->
-  LocalDefs0 = ?assert_type(#{}, #{type_descriptor() => type()}),
+  LocalDefs0 = ?annotate_type(#{}, #{type_descriptor() => type()}),
   {S, B, _} = lists:foldl(
     fun(SCC, Acc) -> process_scc(SCC, RevGraph, Acc) end,
     {StartRef, Bodies, LocalDefs0},

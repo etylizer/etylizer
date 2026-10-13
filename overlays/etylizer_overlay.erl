@@ -58,7 +58,8 @@
 'erl_parse:parse_exprs'(_) -> error(overlay).
 -spec 'erl_parse:parse_form'([erl_scan:token()]) -> {ok, ast_erl:form()} | {error, erl_parse:error_info()}.
 'erl_parse:parse_form'(_) -> error(overlay).
--spec 'erl_parse:map_anno'(fun((ast_erl:anno()) -> ast_erl:anno()), ast_erl:exp()) -> ast_erl:exp().
+-spec 'erl_parse:map_anno'(fun((ast_erl:anno()) -> ast_erl:anno()), ast_erl:exp()) -> ast_erl:exp();
+                          (fun((ast_erl:anno()) -> ast_erl:anno()), ast_erl:pat()) -> ast_erl:pat().
 'erl_parse:map_anno'(_, _) -> error(overlay).
 -spec 'erl_pp:expr'(ast_erl:exp()) -> io_lib:chars().
 'erl_pp:expr'(_) -> error(overlay).

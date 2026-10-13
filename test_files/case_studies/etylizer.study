@@ -37,7 +37,6 @@
 {reason, flag,         unknown, "exhaustiveness check switched off by an -etylizer attribute in the source, not analysed"}.
 
 {module, assertions, #{file => "etylizer/src/assertions.erl", overlays => [{library, "../../overlays/etylizer_overlay.erl"}], timeout => 10000}}.
-{exception, assertions, wrapper, 2, [], cast}.
 
 {module, ast, #{file => "etylizer/src/ast.erl", overlays => [{library, "../../overlays/etylizer_overlay.erl"}], timeout => 10000}}.
 
@@ -75,8 +74,6 @@
 {module, constr_error_locs, #{file => "etylizer/src/constr_error_locs.erl", overlays => [{library, "../../overlays/etylizer_overlay.erl"}], timeout => 10000}}.
 
 {module, constr_gen, #{file => "etylizer/src/constr_gen.erl", overlays => [{library, "../../overlays/etylizer_overlay.erl"}], timeout => 10000}}.
-{exception, constr_gen, analyze_bin_tyspec, 1, [], cast}.
-{exception, constr_gen, bits_segment_ty, 5, [], cast}.
 
 {module, constr_lin, #{file => "etylizer/src/constr_lin.erl", overlays => [{library, "../../overlays/etylizer_overlay.erl"}], timeout => 10000}}.
 
@@ -141,8 +138,6 @@
 {exception, ty_map, unparse, 2, [no_exhaustiveness], flag}.
 
 {module, ty_node, #{file => "etylizer/src/erlang_types/ty_node.erl", overlays => [{library, "../../overlays/etylizer_overlay.erl"}], timeout => 10000}}.
-{exception, ty_node, consing_pass, 4, [], cast}.
-{exception, ty_node, group_components, 1, [], cast}.
 
 {module, ty_parser, #{file => "etylizer/src/erlang_types/ty_parser.erl", overlays => [{library, "../../overlays/etylizer_overlay.erl"}], timeout => 10000}}.
 

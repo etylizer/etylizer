@@ -48,13 +48,15 @@ hash(E) -> utils:sformat1("~6.16.0b", erlang:phash2(E, 16#1000000)).
 pos({Line, Col}) -> {Line, Col};
 pos({Line, Col, _}) -> {Line, Col}.
 
--spec parse(string()) -> ast_erl:exp().
-parse(Text) ->
-    {ok, Tokens, _} = ?assert_pattern({ok, _, _}, erl_scan:string(Text ++ "."),
+% The text of a pattern, parsed where the grammar has a pattern.
+-spec parse_pat(string()) -> ast_erl:pat().
+parse_pat(Text) ->
+    {ok, Tokens, _} = ?assert_pattern({ok, _, _}, erl_scan:string("case x of " ++ Text ++ " -> x end."),
                                       errors:some_error("Cannot parse ~s", [Text])),
-    {ok, [E]} = ?assert_pattern({ok, [_]}, erl_parse:parse_exprs(Tokens),
-                                errors:some_error("Cannot parse ~s", [Text])),
-    E.
+    {ok, [{'case', _, _, [{clause, _, [P], [], _}]}]} =
+        ?assert_pattern({ok, [{'case', _, _, [{clause, _, [_], [], _}]}]}, erl_parse:parse_exprs(Tokens),
+                        errors:some_error("Cannot parse ~s", [Text])),
+    P.
 
 -spec strip(ast_erl:exp()) -> ast_erl:exp().
 strip(E) ->
@@ -66,7 +68,8 @@ strip(E) ->
                                   end, set_anno(A, E)),
                  ast_erl:exp()).
 
--spec set_anno(ast_erl:anno(), ast_erl:exp()) -> ast_erl:exp().
+-spec set_anno(ast_erl:anno(), ast_erl:exp()) -> ast_erl:exp();
+              (ast_erl:anno(), ast_erl:pat()) -> ast_erl:pat().
 set_anno(A, E) ->
     erl_parse:map_anno(fun(_) -> A end, E).
 
@@ -82,11 +85,11 @@ wrapper(assert_type, Text) ->
 wrapper(annotate_type, Text) ->
     fun(E) -> A = anno(E), {call, A, {atom, A, '::'}, [E, {string, A, Text}]} end;
 wrapper(assert_pattern, Text) ->
-    Pat0 = parse(Text),
+    Pat0 = parse_pat(Text),
     % the expansion of ?assert_pattern
     Wrap =
         fun(E, A) ->
-                Pat = ?assert_type(set_anno(A, Pat0), ast_erl:pat()),
+                Pat = set_anno(A, Pat0),
                 V = {var, A, 'X__V'},
                 Crash = {call, A, {atom, A, error}, [{atom, A, exhaustiveness_violated}]},
                 Case = {'case', A, V, [{clause, A, [Pat], [], [V]}, {clause, A, [{var, A, '_'}], [], [Crash]}]},
