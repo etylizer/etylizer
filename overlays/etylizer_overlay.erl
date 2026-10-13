@@ -13,6 +13,13 @@
 'lists:foldl'(_, _, _) -> error(badarg).
 -spec 'lists:foldr'(fun((T, Acc) -> Acc), Acc, [T]) -> Acc.
 'lists:foldr'(_, _, _) -> error(badarg).
+-spec 'maps:intersect_with'(fun((Key, Value, Value) -> Value), #{Key => Value}, #{Key => Value}) -> #{Key => Value}.
+'maps:intersect_with'(_, _, _) -> error(overlay).
+
+% with a stacktrace it never returns
+-spec 'erlang:raise'(error | exit | throw, term(), erlang:stacktrace()) -> no_return().
+'erlang:raise'(_, _, _) -> error(overlay).
+
 % evaluates any term, a term that is no expression is an error at run time
 -spec 'erl_eval:expr'(term(), map()) -> {value, term(), term()}.
 'erl_eval:expr'(_, _) -> error(overlay).

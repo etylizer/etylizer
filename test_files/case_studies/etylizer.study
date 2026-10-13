@@ -70,7 +70,6 @@
 {exception, ast_utils, unfold_ty, 3, [ignore], unreviewed}.
 
 {module, attr, #{file => "etylizer/src/attr.erl", overlays => [{library, "../../overlays/etylizer_overlay.erl"}], timeout => 10000}}.
-{exception, attr, ety_attrs_from_lines, 3, [ignore], unreviewed}.
 {exception, attr, parse_ety_attr, 2, [], dynamic}.
 
 {module, cm_check, #{file => "etylizer/src/cm_check.erl", overlays => [{library, "../../overlays/etylizer_overlay.erl"}], timeout => 10000}}.
@@ -112,7 +111,6 @@
 {module, constr_lin, #{file => "etylizer/src/constr_lin.erl", overlays => [{library, "../../overlays/etylizer_overlay.erl"}], timeout => 10000}}.
 
 {module, constr_simp, #{file => "etylizer/src/constr_simp.erl", overlays => [{library, "../../overlays/etylizer_overlay.erl"}], timeout => 10000}}.
-{exception, constr_simp, loc, 2, [ignore], unreviewed}.
 
 {module, constr_solve, #{file => "etylizer/src/constr_solve.erl", overlays => [{library, "../../overlays/etylizer_overlay.erl"}], timeout => 10000}}.
 {exception, constr_solve, check_simp_constrs, 4, [ignore], unreviewed}.
@@ -162,7 +160,6 @@
 {module, ty, #{file => "etylizer/src/erlang_types/ty.erl", overlays => [{library, "../../overlays/etylizer_overlay.erl"}], timeout => 10000}}.
 
 {module, ty_bitstring, #{file => "etylizer/src/erlang_types/ty_bitstring.erl", overlays => [{library, "../../overlays/etylizer_overlay.erl"}], timeout => 10000}}.
-{exception, ty_bitstring, unparse, 2, [ignore], unreviewed}.
 
 {module, ty_bool, #{file => "etylizer/src/erlang_types/ty_bool.erl", overlays => [{library, "../../overlays/etylizer_overlay.erl"}], timeout => 10000}}.
 {exception, ty_bool, intersect, 2, [ignore], unreviewed}.
@@ -207,7 +204,6 @@
 
 {module, ety_graph, #{file => "etylizer/src/ety_graph.erl", overlays => [{library, "../../overlays/etylizer_overlay.erl"}], timeout => 10000}}.
 {exception, ety_graph, get_extern, 2, [], dynamic}.
-{exception, ety_graph, to_list, 2, [ignore], unreviewed}.
 
 {module, ety_records, #{file => "etylizer/src/ety_records.erl", overlays => [{library, "../../overlays/etylizer_overlay.erl"}], timeout => 10000}}.
 
@@ -297,13 +293,12 @@
 
 {module, utils, #{file => "etylizer/src/utils.erl", overlays => [{library, "../../overlays/etylizer_overlay.erl"}], timeout => 10000}}.
 {exception, utils, compare, 3, [no_exhaustiveness], flag}.
-{exception, utils, fold_with_context, 3, [ignore], unreviewed}.
 {exception, utils, format_tally_config, 3, [], no_spec}.
 {exception, utils, replace_term, 2, [], dynamic}.
 
 {module, varenv, #{file => "etylizer/src/varenv.erl", overlays => [{library, "../../overlays/etylizer_overlay.erl"}], timeout => 10000}}.
 
 {module, varenv_local, #{file => "etylizer/src/varenv_local.erl", overlays => [{library, "../../overlays/etylizer_overlay.erl"}], timeout => 10000}}.
-{exception, varenv_local, merge_envs, 1, [ignore], unreviewed}.
 {exception, varenv_local, merge, 2, [ignore], unreviewed}.
+{exception, varenv_local, merge_envs, 1, [ignore], unreviewed}.
 

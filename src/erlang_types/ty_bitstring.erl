@@ -33,7 +33,9 @@ equal(P1, P2) -> ty_tuple:equal(P1, P2).
 substitute(P, NodeMap) -> ty_tuple:substitute(P, NodeMap).
 
 -spec unparse(type(), T) -> {ast_ty(), T} when T :: unparse_cache().
-unparse({ty_tuple, 2, [Head, Tail]}, ST0) ->
+unparse(Cell, ST0) ->
+  % a cell of a bitstring is a pair
+  {ty_tuple, 2, [Head, Tail]} = ?assert_pattern({ty_tuple, 2, [_, _]}, Cell),
   {H, ST1} = ty_node:unparse(Head, ST0),
   {T, ST2} = ty_node:unparse(Tail, ST1),
   {{bitstring_cons, H, T}, ST2}.

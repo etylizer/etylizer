@@ -429,14 +429,9 @@ update_ets_from_map(EtsTable, LocalMap) ->
 %     {Result, NewT} = Fun({H, T}),
 %     map_with_context(Fun, NewT, [Result|Acc]).
 
--spec fold_with_context(Fun, Acc, List) -> Acc when
-    Fun :: fun(({Acc, H, T}) -> {NewAcc, NewT}),
-    Acc :: term(),
-    List :: [H],
-    H :: term(),
-    T :: [H],
-    NewAcc :: term(),
-    NewT :: [H].
+% Fun gets the accumulator, the head and the tail of the list, and returns the new accumulator
+% and the list to go on with.
+-spec fold_with_context(fun(({Acc, H, [H]}) -> {Acc, [H]}), Acc, [H]) -> Acc.
 fold_with_context(_Fun, Acc, []) ->
     Acc;
 fold_with_context(Fun, Acc, [H|T]) ->
