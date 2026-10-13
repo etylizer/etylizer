@@ -120,6 +120,8 @@
 % the pieces of the string, with the replacement between them
 -spec 'string:replace'(string(), string(), string(), all | leading | trailing) -> [string()].
 'string:replace'(_, _, _, _) -> error(badarg).
+-spec 'string:trim'(string()) -> string().
+'string:trim'(_) -> error(badarg).
 -spec 'string:trim'(string(), leading | trailing | both) -> string().
 'string:trim'(_, _) -> error(badarg).
 -spec 'os:cmd'(string()) -> string().

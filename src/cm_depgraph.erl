@@ -144,10 +144,11 @@ traverse_module_list(Path, [CurrentModule | RemainingModules], SearchPath, DepGr
 
 -spec type_refs(file:filename()) -> [ast:mod_name()].
 type_refs(Path) ->
-    symtab_cache:cached({type_refs, Path}, fun() ->
+    % the cache holds terms: under this key what the fun below computes
+    ?assert_type(symtab_cache:cached({type_refs, Path}, fun() ->
         Forms = parse_intern(Path),
         {ast_utils:referenced_modules_via_types(Forms), [Path | parse_cache:headers(Path)]}
-    end).
+    end), [ast:mod_name()]).
 
 -spec find_source_for_module(atom(), paths:search_path()) -> false | file:filename().
 find_source_for_module(Module, SearchPath) ->

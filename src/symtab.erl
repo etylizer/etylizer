@@ -147,7 +147,8 @@ std_symtab(SearchPath, OverlaySymtab, Gradual) ->
     case persistent_term:get(std_symtab_cache, undefined) of
         {CacheKey, CachedTab} ->
             ?LOG_DEBUG("Using cached standard symtab"),
-            CachedTab;
+            % a persistent term has no type: the table that was put there under this key
+            ?assert_type(CachedTab, t());
         _ ->
             Tab = build_std_symtab(SearchPath, OverlaySymtab, Gradual),
             persistent_term:put(std_symtab_cache, {CacheKey, Tab}),
@@ -229,8 +230,12 @@ is_exported(Forms, Name, Arity) ->
                 {attribute, _, export, Exports} ->
                     lists:member({Name, Arity}, Exports);
                 {attribute, _, compile, export_all} -> true;
-                {attribute, _, compile, Opts} when is_list(Opts) ->
-                    lists:member(export_all, Opts);
+                {attribute, _, compile, Opts} ->
+                    % the options of a compile attribute are any term
+                    case utils:proper_list(Opts) of
+                        {ok, L} -> lists:member(export_all, L);
+                        error -> false
+                    end;
                 _ -> false
             end
         end, Forms).
@@ -304,7 +309,7 @@ extend_symtab_internal(Filename, Forms, RefType, Tab, OverlaySymtab) ->
 % A function scheme that is dynamic() in all arguments and the result.
 -spec dynamic_fun_scheme(arity()) -> ast:ty_scheme().
 dynamic_fun_scheme(Arity) ->
-    {ty_scheme, [], {fun_full, lists:duplicate(Arity, {predef, dynamic}), {predef, dynamic}}}.
+    {ty_scheme, [], {fun_full, [{predef, dynamic} || _ <- lists:seq(1, Arity)], {predef, dynamic}}}.
 
 -spec extend_process_form(ast:form(), t(), ref(), atom(), ast:forms(), t()) -> t().
 extend_process_form({attribute, _, spec, Name, Arity, T, _}, AccTab, RefType, ModuleName, Forms, OverlaySymtab) ->
@@ -336,7 +341,7 @@ extend_add_type(Name, TyScm, TyVars, ModuleName, AccTab) ->
     Arity = length(TyVars),
     AccTab#tab { types = maps:put({ty_key, ModuleName, Name, Arity}, TyScm, AccTab#tab.types) }.
 
--spec extend_add_record(atom(), list(), ref(), atom(), t()) -> t().
+-spec extend_add_record(atom(), [ast:record_field()], ref(), atom(), t()) -> t().
 extend_add_record(RecordName, Fields, RefType, ModuleName, AccTab) ->
     RecordTy = ety_records:record_ty_from_decl(RecordName, Fields),
     RecTypeName = ety_records:record_type_name(RecordName),
@@ -409,11 +414,12 @@ traverse_module_list(_, Symtab, [], _) ->
     {t(), [ast:mod_name()]}.
 % Gradual mode and overlay are the same for a whole run and part of the cache stamp.
 module_contribution(Entry = {_, Filename, _}, Module, Gradual, OverlaySymtab) ->
-    symtab_cache:cached({module, Filename, parse_kind(Entry)}, fun() ->
+    % the cache holds terms: under this key what the fun below computes
+    ?assert_type(symtab_cache:cached({module, Filename, parse_kind(Entry)}, fun() ->
         Forms = retrieve_forms_for_source(Entry),
         Contribution = extend_symtab(Filename, Forms, Module, (empty())#tab{gradual = Gradual}, OverlaySymtab),
         {{Contribution, ast_utils:referenced_modules_via_types(Forms)}, [Filename | parse_cache:headers(Filename)]}
-    end).
+    end), {t(), [ast:mod_name()]}).
 
 -spec merge_contribution(t(), t()) -> t().
 merge_contribution(Tab, Contribution) ->

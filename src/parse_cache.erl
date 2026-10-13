@@ -65,7 +65,8 @@ parse(Kind, Path) ->
     Hash = hash_file(PathNorm),
     case ets:lookup(?TABLE, PathNorm) of
         [{_, {StoredHash, StoredKind, Forms, _}}] when Hash =:= StoredHash ->
-            check_kind(Kind, StoredKind, PathNorm),
+            % as parse_and_cache/3 has put it into the table
+            check_kind(Kind, ?assert_type(StoredKind, file_kind()), PathNorm),
             ?LOG_TRACE("Retrieving parse result for ~p from cache", PathNorm),
             ?assert_type(Forms, [ast:form()]);
         [] ->

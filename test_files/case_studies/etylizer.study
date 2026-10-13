@@ -113,10 +113,6 @@
 {module, constr_simp, #{file => "etylizer/src/constr_simp.erl", overlays => [{library, "../../overlays/etylizer_overlay.erl"}], timeout => 10000}}.
 
 {module, constr_solve, #{file => "etylizer/src/constr_solve.erl", overlays => [{library, "../../overlays/etylizer_overlay.erl"}], timeout => 10000}}.
-{exception, constr_solve, check_simp_constrs, 4, [ignore], unreviewed}.
-{exception, constr_solve, has_dynamic_constr, 2, [ignore], unreviewed}.
-{exception, constr_solve, search_failing_prefix, 3, [ignore], unreviewed}.
-{exception, constr_solve, search_failing_prefix, 5, [ignore], unreviewed}.
 
 {module, decompose, #{file => "etylizer/src/decompose.erl", overlays => [{library, "../../overlays/etylizer_overlay.erl"}], timeout => 10000}}.
 
@@ -225,7 +221,6 @@
 {module, parse, #{file => "etylizer/src/parse.erl", overlays => [{library, "../../overlays/etylizer_overlay.erl"}], timeout => 10000}}.
 
 {module, parse_cache, #{file => "etylizer/src/parse_cache.erl", overlays => [{library, "../../overlays/etylizer_overlay.erl"}], timeout => 10000}}.
-{exception, parse_cache, parse, 2, [ignore], unreviewed}.
 
 {module, paths, #{file => "etylizer/src/paths.erl", overlays => [{library, "../../overlays/etylizer_overlay.erl"}], timeout => 10000}}.
 
@@ -237,7 +232,6 @@
 {exception, pretty, render_type_specifier, 1, [ignore], unreviewed}.
 
 {module, stdtypes, #{file => "etylizer/src/stdtypes.erl", overlays => [{library, "../../overlays/etylizer_overlay.erl"}], timeout => 10000}}.
-{exception, stdtypes, builtin_funs, 0, [], cast_library}.
 
 {module, subst, #{file => "etylizer/src/subst.erl", overlays => [{library, "../../overlays/etylizer_overlay.erl"}], timeout => 10000}}.
 {exception, subst, apply_base, 2, [ignore], unreviewed}.
@@ -254,14 +248,8 @@
 {exception, subty, is_equivalent, 3, [], no_spec}.
 
 {module, symtab, #{file => "etylizer/src/symtab.erl", overlays => [{library, "../../overlays/etylizer_overlay.erl"}], timeout => 10000}}.
-{exception, symtab, dynamic_fun_scheme, 1, [ignore], unreviewed}.
-{exception, symtab, extend_add_record, 5, [ignore], unreviewed}.
-{exception, symtab, is_exported, 3, [ignore], unreviewed}.
-{exception, symtab, std_symtab, 3, [ignore], unreviewed}.
 
 {module, symtab_cache, #{file => "etylizer/src/symtab_cache.erl", overlays => [{library, "../../overlays/etylizer_overlay.erl"}], timeout => 10000}}.
-{exception, symtab_cache, cached, 2, [ignore], unreviewed}.
-{exception, symtab_cache, load, 1, [ignore], unreviewed}.
 
 {module, t, #{file => "etylizer/src/t.erl", overlays => [{library, "../../overlays/etylizer_overlay.erl"}], timeout => 10000}}.
 

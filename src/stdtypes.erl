@@ -422,12 +422,14 @@ builtin_funs() ->
         _ -> ok
     end,
     Dir = utils:assert_no_error(code:lib_dir(erts)),
-    Path = ?assert_type(filename:join([Dir, "src", "erlang.erl"]), string()),
+    Path = filename:join([Dir, "src", "erlang.erl"]),
     Hash = utils:assert_no_error( utils:hash_file(Path)),
     case ets:lookup(?TABLE, Key) of
         [{_, {StoredHash, Result}}] when Hash =:= StoredHash -> ?assert_type(Result, fun_types());
         [] ->
-            X = symtab_cache:cached(builtin_funs, fun() -> {mk_builtin_funs(Path), [Path]} end),
+            % the cache holds terms: under this key what the fun computes
+            X = ?assert_type(symtab_cache:cached(builtin_funs, fun() -> {mk_builtin_funs(Path), [Path]} end),
+                             fun_types()),
             true = ets:insert(?TABLE, {Key, {Hash, X}}),
             X;
         Y -> ?ABORT("Unexpected entry in stdtypes_table: ~p", Y)

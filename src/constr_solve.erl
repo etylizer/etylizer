@@ -18,6 +18,8 @@
 -export([search_failing_prefix/3]).
 -endif.
 
+-include("etylizer.hrl").
+
 -type error_kind() :: constr_error_locs:constr_error_kind().
 -type error() :: {error_kind(), ast:loc(), string()}.
 
@@ -63,8 +65,7 @@ check_simp_constrs_return_unmatched(Tab, FixedTyvars, Ds, What) ->
 has_dynamic_constr(Tab, Constrs) ->
     Tys = lists:flatmap(
         fun ({scsubty, _, T1, T2}) -> [T1, T2];
-            ({scmater, _, T1, _}) -> [T1];
-            (_) -> []
+            ({scmater, _, T1, _}) -> [T1]
         end,
         sets:to_list(Constrs)),
     search_dynamic(Tab, Tys, #{}).
@@ -138,8 +139,8 @@ dyn_reaches(Tab, Dyn, Constrs) ->
 constr_vars({scsubty, _, T1, T2}) -> sets:union(tyutils:free_in_ty(T1), tyutils:free_in_ty(T2));
 constr_vars({scmater, _, T, Alpha}) -> sets:add_element(Alpha, tyutils:free_in_ty(T)).
 
--spec check_redundant_branch(symtab:t(), sets:set(ast:ty_varname()), constr:subty_constrs(),
-    {ast:loc(), constr:subty_constrs()}, ok | {error, error()}) -> ok | {error, error()}.
+-spec check_redundant_branch(symtab:t(), sets:set(ast:ty_varname()), constr:collected_constrs(),
+    {ast:loc(), constr:collected_constrs()}, ok | {error, error()}) -> ok | {error, error()}.
 check_redundant_branch(_Tab, _FixedTyvars, _SubtyConstrs, _LocAndConstrs, Acc = {error, _}) -> Acc;
 check_redundant_branch(Tab, FixedTyvars, SubtyConstrs, {Loc, UnmatchedConstrs}, ok) ->
     All = sets:union(UnmatchedConstrs, SubtyConstrs),
@@ -229,7 +230,8 @@ search_failing_prefix(L, F, Pred) ->
     N = length(L),
     ?LOG_DEBUG("Search for a minimal unsatisfiable prefix in ~w blocks", N),
     I = search_failing_prefix(L, F, Pred, 1, N),
-    lists:nth(I, L).
+    % the search starts at 1 and only goes up; by the precondition the list is not empty
+    lists:nth(?assert_type(I, pos_integer()), ?assert_pattern([_ | _], L)).
 
 % Helper function for search_failing_prefix.
 % We some sort of binary search here to minimize the calls of Pred. (In reality, Pred is tally,
@@ -237,8 +239,8 @@ search_failing_prefix(L, F, Pred) ->
 % Left and Right are the (inclusive) boundaries of the search, starting at 1.
 % Invariants: Left <= Right and Pred(F(X1) union ... union F(X_Right)) yields false
 -spec search_failing_prefix(
-    list(T), fun((T) -> sets:set(U)), fun((sets:set(U)) -> boolean()), integer(), integer())
-    -> integer().
+    list(T), fun((T) -> sets:set(U)), fun((sets:set(U)) -> boolean()), non_neg_integer(), non_neg_integer())
+    -> non_neg_integer().
 search_failing_prefix(L, F, Pred, Left, Right) ->
     Mid = (Left + Right) div 2,
     Prefix = lists:sublist(L, Mid), % take all elements until Mid (inclusive)

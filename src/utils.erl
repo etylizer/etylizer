@@ -11,7 +11,7 @@
     everywhere/2, everywhere/3, everything/2, everything/3,
     error/2,
     is_string/1, is_char/1,
-    sformat/2, sformat/3, sformat/4,  sformat/6, sformat/5, sformat/7, sformat1/2,
+    sformat/2, sformat/3, sformat/4,  sformat/6, sformat/5, sformat/7, sformat1/2, proper_list/1,
     if_true/2,
     file_get_lines/1, set_add_many/2, assert_no_error/1,
     replicate/2,
