@@ -296,7 +296,8 @@ main(Args) ->
     log:init(Opts#opts.log_level, Opts#opts.log_file),
     ?LOG_DEBUG("Parsed commandline options as ~200p", Opts),
     try doWork(Opts)
-    catch throw:{etylizer, K, Msg}:S ->
+    catch throw:{etylizer, K0, Msg0}:S ->
+            {K, Msg} = errors:caught(K0, Msg0),
             Raw = erl_error:format_exception(throw, K, S),
             IsExpected =
                 case K of

@@ -5,13 +5,26 @@
     name_error/3, 
     name_error_no_loc/2,
     uncovered_case/3, uncovered_case/4, bug/2, bug/1,
-    ty_error/2, ty_error/3, ty_error/1, not_implemented/1, parse_error/1, some_error/2
+    ty_error/2, ty_error/3, ty_error/1, not_implemented/1, parse_error/1, some_error/2,
+    caught/2
 ]).
 
--spec generic_error(atom(), string()) -> no_return().
+-export_type([kind/0]).
+
+-include("etylizer.hrl").
+
+% The functions of this module throw {etylizer, kind(), string()}.
+-type kind() :: error | unsupported | name_error | bug | ty_error | not_implemented | parse_error.
+
+% The kind and the message of a caught {etylizer, Kind, Msg}. An exception carries no type: a
+% catch clause sees the parts of its value as term().
+-spec caught(term(), term()) -> {kind(), string()}.
+caught(Kind, Msg) -> {?assert_type(Kind, kind()), ?assert_type(Msg, string())}.
+
+-spec generic_error(kind(), string()) -> no_return().
 generic_error(Kind, Msg) -> throw({etylizer, Kind, Msg}).
 
--spec generic_error(atom(), ast:loc(), string(), string(), any()) -> no_return().
+-spec generic_error(kind(), ast:loc(), string(), string(), any()) -> no_return().
 generic_error(Kind, Loc, Prefix, Msg, Args) ->
     generic_error(Kind,
                   utils:sformat("~s: ~s: ~s",
