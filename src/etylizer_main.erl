@@ -16,6 +16,7 @@
 -include("log.hrl").
 -include("parse.hrl").
 -include("etylizer_main.hrl").
+-include("etylizer.hrl").
 
 -spec parse_define(string()) -> {atom(), string()}.
 parse_define(S) ->
@@ -199,7 +200,7 @@ fix_load_path(Opts) ->
         {[], []} -> true;
         {Start, End} ->
             Path = Start ++ [D || D <- code:get_path(), D =/= "."] ++ End,
-            true = code:set_path(Path),
+            ?assert_pattern(true, code:set_path(Path)),
             true
     end.
 

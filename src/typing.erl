@@ -11,6 +11,7 @@
 -include("log.hrl").
 -include("typing.hrl").
 -include("metrics.hrl").
+-include("etylizer.hrl").
 
 -spec new_ctx(symtab:t(), symtab:t(), t:opt(ast_check:ty_map())) -> ctx().
 new_ctx(Tab, Overlay, Sanity) ->

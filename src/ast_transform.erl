@@ -15,6 +15,7 @@
 -compile([nowarn_shadow_vars]).
 
 -include("log.hrl").
+-include("etylizer.hrl").
 
 -record(ctx,
         { path :: file:filename(),
@@ -324,7 +325,7 @@ resolve_ety_ty(L, Name, _) ->
 
 -spec mu_name(ast:loc()) -> atom().
 mu_name(Loc) ->
-    {loc, File, Line, Col} = ast:source_loc(Loc),
+    {loc, File, Line, Col} = ?assert_pattern({loc, _, _, _}, ast:source_loc(Loc)),
     list_to_atom(lists:flatten(
         io_lib:format("$mu_~s_~p_~p_~p", [filename:basename(File), Line, Col, erlang:phash2(File)]))).
 
@@ -1381,7 +1382,7 @@ arity(Loc, L) ->
 -spec parse_type(ctx(), string()) -> error | {ok, ast:ty()}.
 parse_type(Ctx, Src) ->
     AttrSrc = "-type t() :: " ++ Src ++ ".",
-    {ok, Tokens, _EndLocation} = erl_scan:string(AttrSrc),
+    {ok, Tokens, _EndLocation} = ?assert_pattern({ok, _, _}, erl_scan:string(AttrSrc)),
     % the variables in the outer function -type definition are not in scope in the annotation
     % at some point, we could extend this like Haskell's ScopeTypeVariables, if there is any need
     case erl_parse:parse_form(Tokens) of

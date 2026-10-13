@@ -200,7 +200,7 @@ overlay_process_form(_, Tab, _ModuleName) -> Tab.
 -spec overlay_add_spec(atom(), arity(), ast:ty_scheme(), t()) -> t().
 overlay_add_spec(Name, Arity, T, Tab) ->
     ?LOG_DEBUG("Overlay added for ~w/~p", Name, Arity),
-    [Module, FunName] = string:split(atom_to_list(Name), ":"),
+    [Module, FunName] = ?assert_pattern([_, _], string:split(atom_to_list(Name), ":")),
     Tab#tab { funs = maps:put(create_ref_tuple({qref, list_to_atom(Module)}, list_to_atom(FunName), Arity), T, Tab#tab.funs) }.
 
 -spec overlay_add_type(atom(), atom(), arity(), ast:ty_scheme(), t()) -> t().

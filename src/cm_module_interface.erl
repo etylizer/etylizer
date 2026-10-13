@@ -6,6 +6,7 @@
 -include_lib("log.hrl").
 
 -export([extract_interface_declaration/1]).
+-include("etylizer.hrl").
 
 %% Extracts interface declarations from the given abstract syntax tree (AST) forms.
 %% The function takes a list of forms representing the AST of an Erlang module as input
@@ -157,7 +158,8 @@ traverse_named_references([], _, Types) ->
     Types;
 
 traverse_named_references([CurrentReference | RemainingReferences], TypeDeclarations, Types) ->
-    {named, _, {ty_ref, _, CurrentName, TypeArity}, ParameterTypes} = CurrentReference,
+    {named, _, {ty_ref, _, CurrentName, TypeArity}, ParameterTypes} =
+        ?assert_pattern({named, _, {ty_ref, _, _, _}, _}, CurrentReference),
     CurrentType = {CurrentName, TypeArity},
     NextReferences = case find_type_declaration(CurrentType, TypeDeclarations) of
                          {value, TyDecl} -> find_named_references(TyDecl);

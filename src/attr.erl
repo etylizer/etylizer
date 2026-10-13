@@ -42,7 +42,7 @@ ety_attrs_from_lines(Path, Lineno, Lines) ->
 
 -spec parse_ety_attr(ast:loc(), string()) -> no_attr | {ok, ety_attr()}.
 parse_ety_attr(Loc, S) ->
-    {loc, _, N, _} = Loc,
+    {loc, _, N, _} = ?assert_pattern({loc, _, _, _}, Loc),
     case S of
        "%-etylizer" ++ Rest ->
            case string:trim(Rest) of

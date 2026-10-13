@@ -348,7 +348,7 @@ convert(Queue, Res, LocalCache) ->
     true -> 
       {Res, LocalCache}; 
     _ -> % convert next layer
-      {{value, {LocalRef, Ty}}, Q} = queue:out(Queue),
+      {{value, {LocalRef, Ty}}, Q} = ?assert_pattern({{value, {_, _}}, _}, queue:out(Queue)),
       % sanity: don't convert something that is already in the global system
       [] = ets:lookup(?CACHE, LocalRef),
       {ErlangRecOrLocalRef, NewQ, {R1, R2}, NewCache} = do_convert({Ty, Res}, Q, LocalCache),
@@ -425,7 +425,7 @@ do_convert({X = {named, _, Ref, Args}, R = {IdTy, _}}, Q, Cache) ->
 
   case Cache of
     #{{Ref, Args} := NewRef} ->
-      #{NewRef := Ty} = IdTy,
+      Ty = maps:get(NewRef, IdTy),
       {Ty, Q, R, Cache};
     _ ->
       % find ty in global table
@@ -666,7 +666,7 @@ unify(Ref, {IdToTy, TyToIds}) ->
         % that missed reference will not be cached, even though the converting work has been done before already
         % therefore, add all unified reference to a separate cache
         % and check whenever we create a local reference that unify cache
-        lists:foreach(fun(E) -> true = ets:insert_new(?UNIFY, {E, H}) end, T),
+        lists:foreach(fun(E) -> ?assert_pattern(true, ets:insert_new(?UNIFY, {E, H})) end, T),
         {H, T} 
       end
     || K := (V = [H | T]) <- TyToIds, length(V) > 1}), 

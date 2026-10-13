@@ -31,6 +31,8 @@
 ]).
 -endif.
 
+-include("etylizer.hrl").
+
 
 -type base_subst() :: #{ ast:ty_varname() => ast:ty() }.
 
@@ -50,7 +52,7 @@ clean(T, Fixed, SymTab) ->
     Parsed = ty_parser:parse(Cleaned),
     Res = ty_parser:unparse(Parsed),
     % FIXME remove sanity at some point
-    true = ty_node:leq(Parsed, ty_parser:parse(T)),
+    ?assert_pattern(true, ty_node:leq(Parsed, ty_parser:parse(T))),
     Res.
 
 -spec clean_cons([{ast:ty(), ast:ty()}], sets:set(ast:ty_varname()), symtab:t()) -> [{ast:ty(), ast:ty()}].
