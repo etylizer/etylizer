@@ -21,6 +21,22 @@
 -spec 'erlang:get'() -> [{term(), term()}].
 'erlang:get'() -> error(overlay).
 
+% argparse checks the command and the options at run time, and gives the values of the
+% arguments as terms
+-spec 'argparse:parse'([string()], map(), map()) -> {ok, #{atom() => term()}, [atom()], map()} | {error, term()}.
+'argparse:parse'(_, _, _) -> error(overlay).
+-spec 'argparse:help'(map(), map()) -> unicode:chardata().
+'argparse:help'(_, _) -> error(overlay).
+-spec 'argparse:format_error'(term()) -> unicode:chardata().
+'argparse:format_error'(_) -> error(overlay).
+
+-spec 'application:load'(atom()) -> ok | {error, term()}.
+'application:load'(_) -> error(overlay).
+
+% the value of a key of an application is any term
+-spec 'application:get_key'(atom(), atom()) -> undefined | {ok, term()}.
+'application:get_key'(_, _) -> error(overlay).
+
 % encodes any term, a term that has no JSON form is an error at run time
 -spec 'json:encode'(term()) -> iodata().
 'json:encode'(_) -> error(overlay).
