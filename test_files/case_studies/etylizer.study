@@ -46,11 +46,8 @@
 
 {module, ast, #{file => "etylizer/src/ast.erl", overlays => [{library, "../../overlays/etylizer_overlay.erl"}], timeout => 10000}}.
 
-{module, ast_check, #{file => "etylizer/src/ast_check.erl", overlays => [{library, "../../overlays/etylizer_overlay.erl"}], timeout => 10000}}.
-{exception, ast_check, check_ty, 5, [ignore], unreviewed}.
-{exception, ast_check, check_ty_with_result, 5, [ignore], unreviewed}.
-{exception, ast_check, otp_dep_specs, 0, [ignore], unreviewed}.
-{exception, ast_check, prepare_spec, 2, [ignore], unreviewed}.
+%% check_ty/5 takes 6 s
+{module, ast_check, #{file => "etylizer/src/ast_check.erl", overlays => [{library, "../../overlays/etylizer_overlay.erl"}], timeout => 30000}}.
 
 {module, ast_erl, #{file => "etylizer/src/ast_erl.erl", overlays => [{library, "../../overlays/etylizer_overlay.erl"}], timeout => 10000}}.
 
