@@ -93,6 +93,31 @@ check_guard_test() ->
     check_against(guard, [Test, Test]),
     check_not_against(guard, []).
 
+% fun M:F/A takes a variable in each of the three places
+check_fun_ref_test() ->
+    A = erl_anno:new({1,1}),
+    Mod = {atom, A, m}, Name = {atom, A, f}, Arity = {integer, A, 1}, Var = {var, A, 'X'},
+    check_against(exp, {'fun', A, {function, Mod, Name, Arity}}),
+    check_against(exp, {'fun', A, {function, Var, Name, Arity}}),
+    check_against(exp, {'fun', A, {function, Mod, Var, Var}}),
+    check_not_against(exp, {'fun', A, {function, Mod, Name, {atom, A, one}}}).
+
+% a map is created with =>, only an update has :=
+check_map_create_test() ->
+    A = erl_anno:new({1,1}),
+    One = {integer, A, 1},
+    check_against(exp, {map, A, [{map_field_assoc, A, One, One}]}),
+    check_not_against(exp, {map, A, [{map_field_exact, A, One, One}]}),
+    check_against(exp, {map, A, {var, A, 'M'}, [{map_field_exact, A, One, One}]}).
+
+% #r{_ = 1}: the field of a record creation is a name or the variable _
+check_record_create_test() ->
+    A = erl_anno:new({1,1}),
+    One = {integer, A, 1},
+    check_against(exp, {record, A, r, [{record_field, A, {atom, A, f}, One}]}),
+    check_against(exp, {record, A, r, [{record_field, A, {var, A, '_'}, One}]}),
+    check_not_against(exp, {record, A, r, [{record_field, A, {var, A, 'X'}, One}]}).
+
 check_antidote1_test() ->
     Exp0 =
         {'fun',

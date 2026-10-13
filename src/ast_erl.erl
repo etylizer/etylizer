@@ -267,8 +267,8 @@
 
 % fun Name/Arity or fun Mod:Name/Arity
 -type exp_fun_ref() :: {'fun', anno(), {function, Name::atom(), Arity::integer()}}.
--type exp_fun_qref() :: {'fun', anno(), {function, Mod::rep_atom(), Name::rep_atom(),
-                                         Arity::rep_integer()}}.
+-type exp_fun_qref() :: {'fun', anno(), {function, Mod::rep_atom() | exp_var(), Name::rep_atom() | exp_var(),
+                                         Arity::rep_integer() | exp_var()}}.
 -type exp_fun() :: {'fun', anno(), {clauses, [fun_clause(), ...]}}.
 -type exp_named_fun() :: {named_fun, anno(), Name::atom(), [fun_clause(), ...]}.
 -type gen_funcall(T) :: {call, anno(), Fun::T, Args::[T]}.
@@ -277,7 +277,8 @@
 -type exp_funcall_q() :: gen_funcall_q(exp()).
 -type exp_if() :: {'if', anno(), [if_clause(), ...]}.
 -type exp_list_compr() :: {lc, anno(), exp(), [qualifier(), ...]}.
--type gen_map_create() :: {map, anno(), [map_assoc()]}.
+% only an update has := associations
+-type gen_map_create() :: {map, anno(), [map_assoc_opt()]}.
 -type exp_map_create() :: gen_map_create().
 -type gen_map_update(T) :: {map, anno(), T, [map_assoc()]}.
 -type exp_map_update() :: gen_map_update(exp()).
@@ -292,8 +293,9 @@
 -type exp_unop() :: gen_unop(exp()).
 -type exp_recv() :: {'receive', anno(), [case_clause(), ...]}.
 -type exp_recv_after() :: {'receive', anno(), [case_clause()], exp(), exps()}.
+% #r{_ = E} gives the fields that are not listed: its field is the variable _
 -type gen_record_create(T) :: {record, anno(), Name::atom(),
-                               [{record_field, anno(), Field::rep_atom(), T}]}.
+                               [{record_field, anno(), Field::rep_atom() | {var, anno(), '_'}, T}]}.
 -type exp_record_create() :: gen_record_create(exp()).
 -type gen_record_access(T) :: {record_field, anno(), T, Name::atom(), Field::rep_atom()}.
 -type exp_record_access() :: gen_record_access(exp()).
