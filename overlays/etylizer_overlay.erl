@@ -48,6 +48,10 @@
 -spec 'erlang:raise'(error | exit | throw, term(), erlang:stacktrace()) -> no_return().
 'erlang:raise'(_, _, _) -> error(overlay).
 
+% in OTP the term is a variable of the spec with the bound term()
+-spec 'erl_parse:parse_term'([erl_scan:token()]) -> {ok, term()} | {error, erl_parse:error_info()}.
+'erl_parse:parse_term'(_) -> error(overlay).
+
 % evaluates any term, a term that is no expression is an error at run time
 -spec 'erl_eval:expr'(term(), map()) -> {value, term(), term()}.
 'erl_eval:expr'(_, _) -> error(overlay).

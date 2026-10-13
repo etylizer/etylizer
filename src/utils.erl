@@ -382,12 +382,14 @@ compare(Cmp, [T1 | Ts1], [T2 | Ts2]) ->
 %     false -> false
 %   end.
 
--spec replace(A, #{term() => term()}) -> A.
+% Replaces every {node, _} in Term that is a key of Mapping by its value. The result has
+% the type of Term when the values are nodes too, which the type of a term traversal
+% cannot say (rank-2 types needed): the caller asserts it.
+-spec replace(term(), #{term() => term()}) -> term().
 replace(Term, Mapping) ->
     replace_term(Term, Mapping).
 
--spec replace_term(dynamic(), #{term() => term()}) -> dynamic().
-%-spec replace_term(A, #{term() => term()}) -> A. % rank-2 types needed
+-spec replace_term(term(), #{term() => term()}) -> term().
 replace_term({node, _} = Ref, Mapping) ->
     case maps:find(Ref, Mapping) of
         {ok, NewTerm} -> NewTerm;

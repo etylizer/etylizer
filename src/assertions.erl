@@ -37,7 +37,8 @@ assert(File, {At, Kind, Text}, Forms) ->
                                     false -> {E, Acc}
                                 end
                         end, Pos, [], Forms),
-    Forms2.
+    % visit/4 is a traversal of terms: it gives forms for forms, its type does not say so
+    ?assert_type(Forms2, [ast_erl:form()]).
 
 % The parsed expression is hashed, so its layout in the source does not matter.
 -spec hash(ast_erl:exp()) -> string().
@@ -102,7 +103,7 @@ anno(E) -> ?assert_type(element(2, E), ast_erl:anno()).
 
 % Replaces every expression at Pos by what F makes of it, innermost first, threading
 % Acc. Only expressions are visited: no patterns, no guards, no function names of calls.
--spec visit(fun((ast_erl:exp(), Acc) -> {ast_erl:exp(), Acc}), pos(), Acc, any()) -> {dynamic(), Acc}.
+-spec visit(fun((ast_erl:exp(), Acc) -> {ast_erl:exp(), Acc}), pos(), Acc, term()) -> {term(), Acc}.
 visit(F, Pos, Acc, Xs) when is_list(Xs) ->
     lists:mapfoldl(fun(X, A) -> visit(F, Pos, A, X) end, Acc, ?assert_type(Xs, [any()]));
 visit(_, _, Acc, {attribute, _, _, _} = Form) -> {Form, Acc};
@@ -146,7 +147,7 @@ visit(_, _, Acc, T) -> {T, Acc}.
 
 % The cells of a list after the first sit at the position of their element and are
 % not expressions of their own.
--spec tail(fun((ast_erl:exp(), Acc) -> {ast_erl:exp(), Acc}), pos(), Acc, any()) -> {dynamic(), Acc}.
+-spec tail(fun((ast_erl:exp(), Acc) -> {ast_erl:exp(), Acc}), pos(), Acc, term()) -> {term(), Acc}.
 tail(F, Pos, Acc, {cons, A, H, T}) ->
     {H2, Acc1} = visit(F, Pos, Acc, H),
     {T2, Acc2} = tail(F, Pos, Acc1, T),

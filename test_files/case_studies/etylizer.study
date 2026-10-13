@@ -31,7 +31,7 @@
 {reason, unreviewed,   unknown, "does not type check, not analysed"}.
 {reason, timeout,      fixable, "the checker does not finish in 10 s"}.
 {reason, no_spec,      real,    "no spec, the function is checked against dynamic()"}.
-{reason, dynamic,      real,    "dynamic() in the spec or in an ?assert_type"}.
+{reason, dynamic,      fixable, "?assert_type with dynamic() for a type variable of the spec, which an assertion cannot name"}.
 {reason, cast,         unknown, "?assert_type on a value that has a type, not analysed"}.
 {reason, cast_library, fixable, "?assert_type on the result of a library function, whose spec in OTP is wider than its use"}.
 {reason, flag,         unknown, "exhaustiveness check switched off by an -etylizer attribute in the source, not analysed"}.
@@ -40,8 +40,6 @@
 {exception, assertions, parse, 1, [], cast_library}.
 {exception, assertions, render, 1, [], cast_library}.
 {exception, assertions, set_anno, 2, [], cast_library}.
-{exception, assertions, tail, 4, [], dynamic}.
-{exception, assertions, visit, 4, [], dynamic}.
 {exception, assertions, wrapper, 2, [], cast}.
 
 {module, ast, #{file => "etylizer/src/ast.erl", overlays => [{library, "../../overlays/etylizer_overlay.erl"}], timeout => 10000}}.
@@ -62,7 +60,6 @@
 {module, ast_utils, #{file => "etylizer/src/ast_utils.erl", overlays => [{library, "../../overlays/etylizer_overlay.erl"}], timeout => 10000}}.
 
 {module, attr, #{file => "etylizer/src/attr.erl", overlays => [{library, "../../overlays/etylizer_overlay.erl"}], timeout => 10000}}.
-{exception, attr, parse_ety_attr, 2, [], dynamic}.
 
 {module, cm_check, #{file => "etylizer/src/cm_check.erl", overlays => [{library, "../../overlays/etylizer_overlay.erl"}], timeout => 10000}}.
 {exception, cm_check, do_type_check, 7, [], cast}.
@@ -221,7 +218,6 @@
 
 {module, utils, #{file => "etylizer/src/utils.erl", overlays => [{library, "../../overlays/etylizer_overlay.erl"}], timeout => 10000}}.
 {exception, utils, compare, 3, [no_exhaustiveness], flag}.
-{exception, utils, replace_term, 2, [], dynamic}.
 
 {module, varenv, #{file => "etylizer/src/varenv.erl", overlays => [{library, "../../overlays/etylizer_overlay.erl"}], timeout => 10000}}.
 

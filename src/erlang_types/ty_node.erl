@@ -531,7 +531,8 @@ redirect_to_existing(ToDefine, ExistingNode, StartRef, Bodies, LocalDefs, RevGra
       case maps:find(E, Acc) of
         error -> Acc;
         {ok, Val} ->
-          NewVal = utils:replace(Val, #{ToDefine => ExistingNode}),
+          % a node for a node: the descriptor stays one
+          NewVal = ?assert_type(utils:replace(Val, #{ToDefine => ExistingNode}), type_descriptor()),
           Acc#{E => dnf_ty_variable:reorder(NewVal)}
       end
     end, Bodies1, ContainedIn),

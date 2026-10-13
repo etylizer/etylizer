@@ -248,7 +248,7 @@ define_or_replace(DefineOrReplace, RevGraph, Acc = {ReplacedRef0, Refmapping, Re
                 % e.g. replacing {node, 80} by {node, 1}
                 % might need to trigger a reorder of the BDD
                 % also, remove duplicate nodes after local unification
-                Fin = utils:replace(Val, #{ToDefine => N}),
+                Fin = ?assert_type(utils:replace(Val, #{ToDefine => N}), ty_rec()), % a node for a node
                 FinalReordered = dnf_ty_variable:reorder(Fin),
                 dnf_ty_variable:assert_valid(FinalReordered),
                 Acc0#{E => FinalReordered}
@@ -702,7 +702,8 @@ unify(Ref, {IdToTy, TyToIds}) ->
 
   % replace equivalent refs with representative
   ToReplace = maps:from_list(lists:flatten([[{Single, Represent} || Single <- Dupl ] || {_, {Represent, Dupl}}<- ToUnify])),
-  utils:replace({Ref, IdToTy}, ToReplace).
+  % a reference for a reference: the term keeps its type
+  ?assert_type(utils:replace({Ref, IdToTy}, ToReplace), {temporary_ref(), #{temporary_ref() => ty_rec()}}).
 
 -spec unparse(type()) -> ast_ty().
 unparse(Node) ->
