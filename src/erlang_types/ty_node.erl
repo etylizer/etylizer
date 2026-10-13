@@ -431,12 +431,9 @@ topo_sccs(Bodies) ->
   KeySet = sets:from_list(maps:keys(Bodies)),
   Graph = build_internal_graph(Bodies, KeySet),
   RevGraph = tarjan:reverse_graph(Graph),
-  % tarjan widens Node to term(); we know inputs are type(), so re-tag.
-  {SCCsRaw, CondensedRaw} = tarjan:condense(Graph),
-  SCCs = ?assert_type(SCCsRaw, #{type() => type()}),
-  Condensed = ?assert_type(CondensedRaw, #{type() => [type()]}),
+  {SCCs, Condensed} = tarjan:condense(Graph),
   Components = group_components(SCCs),
-  Sort = ?assert_type(tarjan:dfs(Condensed), [type()]),
+  Sort = tarjan:dfs(Condensed),
   DefineOrder = [maps:get(R, Components) || R <- Sort],
   {DefineOrder, RevGraph}.
 

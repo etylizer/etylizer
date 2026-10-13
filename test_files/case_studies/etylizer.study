@@ -213,7 +213,6 @@
 {module, global_state, #{file => "etylizer/src/erlang_types/global_state.erl", overlays => [{library, "../../overlays/etylizer_overlay.erl"}], timeout => 10000}}.
 
 {module, tarjan, #{file => "etylizer/src/erlang_types/tarjan.erl", overlays => [{library, "../../overlays/etylizer_overlay.erl"}], timeout => 10000}}.
-{exception, tarjan, condense, 1, [], cast}.
 {exception, tarjan, check_adj, 4, [ignore], unreviewed}.
 
 {module, ty, #{file => "etylizer/src/erlang_types/ty.erl", overlays => [{library, "../../overlays/etylizer_overlay.erl"}], timeout => 10000}}.
@@ -236,11 +235,9 @@
 {exception, ty_map, unparse, 2, [no_exhaustiveness], flag}.
 
 {module, ty_node, #{file => "etylizer/src/erlang_types/ty_node.erl", overlays => [{library, "../../overlays/etylizer_overlay.erl"}], timeout => 10000}}.
-{exception, ty_node, all_variables, 1, [], cast}.
 {exception, ty_node, consing_pass, 4, [], cast}.
 {exception, ty_node, group_components, 1, [], cast}.
 {exception, ty_node, normalize, 3, [ignore], unreviewed}.
-{exception, ty_node, topo_sccs, 1, [], cast}.
 
 {module, ty_parser, #{file => "etylizer/src/erlang_types/ty_parser.erl", overlays => [{library, "../../overlays/etylizer_overlay.erl"}], timeout => 10000}}.
 {exception, ty_parser, convert, 3, [ignore], unreviewed}.

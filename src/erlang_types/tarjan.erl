@@ -121,25 +121,21 @@
    {#{Id => maps:get(Id, Unfilled, []) || Id <- lists:seq(0, Max-1)}, Mapping}.
  
  
- -spec condense(Graph) -> {SCCs, CondensedGraph} when
-     Graph :: #{term() => [term()]},
-     SCCs :: #{term() => term()},  % Maps each node to its root (SCC representative)
-     CondensedGraph :: #{term() => [term()]}.  % Adjacency list of SCC roots
+ % Maps each node to its root (SCC representative), and the adjacency list of the SCC roots.
+ -spec condense(Graph :: #{Node => [Node]}) -> {SCCs :: #{Node => Node}, CondensedGraph :: #{Node => [Node]}}
+     when Node :: term().
  condense(Graph) ->
    {MappedGraph, Mapping} = map(Graph),
    IdNodeMapping = maps:from_list([{Id, Node} || {Node, Id} <- maps:to_list(Mapping)]),
    G = erlang:list_to_tuple([Adjacency || {_, Adjacency} <- lists:sort(maps:to_list(MappedGraph))]),
    {SCCs, Map} = tarjan:scc(G),
  
-   ScctoN = #{Id => [maps:get(NN, IdNodeMapping) || NN <- Nodes] || {Id, Nodes} <- SCCs},
+   % the root of an SCC is its first node, an SCC is never empty
+   ScctoRoot = #{Id => maps:get(N, IdNodeMapping) || {Id, [N | _]} <- SCCs},
    NtoScc = maps:from_list([{maps:get(K, IdNodeMapping), V} || {K, V} <- maps:to_list(Map)]),
    
    % Build a mapping from each node to its root (SCC representative)
-   %Roots = #{Node => hd(maps:get(Id, ScctoN)) || Node := Id <- NtoScc},
-   Roots = maps:map(fun(_Node, Id) -> 
-                            Ns = maps:get(Id, ScctoN),
-                            hd(?assert_type(Ns, nonempty_list(vertex()))) % TODO document invariant
-                            end, NtoScc), 
+   Roots = maps:map(fun(_Node, Id) -> maps:get(Id, ScctoRoot) end, NtoScc),
    
    % Get all unique SCC roots
    AllRoots = lists:usort(maps:values(Roots)),
