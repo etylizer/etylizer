@@ -341,7 +341,6 @@
 
 {module, typing_check, #{file => "etylizer/src/typing_check.erl", overlays => [{library, "../../overlays/etylizer_overlay.erl"}], timeout => 10000}}.
 {exception, typing_check, check_all, 4, [ignore], unreviewed}.
-{exception, typing_check, check_all_report, 5, [ignore], unreviewed}.
 
 {module, typing_common, #{file => "etylizer/src/typing_common.erl", overlays => [{library, "../../overlays/etylizer_overlay.erl"}], timeout => 10000}}.
 

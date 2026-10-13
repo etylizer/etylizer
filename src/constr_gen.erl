@@ -853,8 +853,9 @@ catch_clause_pat_env(Ctx, L, ExcType, Pat, Stack) ->
             #{}
     end,
 
-    % Pattern binds the exception value - we use `any()` as exception value type
-    ExceptionValueTy = {predef, any},
+    % The value of an exception has no type. The clause is entered only with a value that
+    % the pattern matches, so inside the clause the value has the potential type of the pattern.
+    ExceptionValueTy = ty_of_pat(#{}, Pat, upper),
     {PatCs, PatEnv} = pat_env(Ctx, L, ExceptionValueTy, Pat),
 
     % Merge all environments

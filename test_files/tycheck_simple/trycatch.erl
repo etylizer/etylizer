@@ -125,3 +125,27 @@ try_24(X) ->
         throw:ok -> ok;
         throw:error -> error
     end.
+
+% a pattern for the value: the clause is entered only if the value matches
+-spec try_25() -> ok | caught.
+try_25() -> try ok catch throw:{my_error, _} -> caught end.
+
+% the variables of the pattern are bound in the body, a guard refines them
+-spec try_26() -> ok | atom().
+try_26() -> try ok catch throw:{my_error, Kind} when is_atom(Kind) -> Kind end.
+
+% with a stacktrace
+-spec try_27() -> ok | {term(), term()}.
+try_27() -> try ok catch error:{badmatch, V}:Stack -> {V, Stack} end.
+
+% the value of an exception has no type, so its components have none either
+-spec try_28_fail() -> ok | integer().
+try_28_fail() -> try ok catch throw:{my_error, N} -> N end.
+
+% several clauses with patterns, a value that matches none of them is not caught
+-spec try_29() -> ok | 1 | 2.
+try_29() -> try ok catch throw:{a, _} -> 1; throw:[_ | _] -> 2 end.
+
+% with an of section
+-spec try_30(integer()) -> integer() | false.
+try_30(X) -> try X of 1 -> 1; _ -> false catch throw:{my_error, _, _} -> false end.
