@@ -304,39 +304,6 @@ m_pat_bin_elem(FL, {bin_element, L, V, default, Spec}) -> {bin_element, FL(L), m
 m_pat_bin_elem(FL, {bin_element, L, V, Size, Spec}) ->
     {bin_element, FL(L), m_pat(FL, V), m_exp(FL, Size), Spec}.
 
+% A guard is a list of tests, which are expressions.
 -spec m_guards(loc_fun(), [ast:guard()]) -> [ast:guard()].
-m_guards(FL, Guards) -> lists:map(fun(G) -> m_guard_tests(FL, G) end, Guards).
-
--spec m_guard_tests
-    (loc_fun(), [ast:guard_test(), ...]) -> [ast:guard_test(), ...];
-    (loc_fun(), [ast:guard_test()]) -> [ast:guard_test()].
-m_guard_tests(FL, Ts) -> lists:map(fun(T) -> m_guard_test(FL, T) end, Ts).
-
--spec m_guard_test(loc_fun(), ast:guard_test()) -> ast:guard_test().
-m_guard_test(FL, {atom, L, A}) -> {atom, FL(L), A};
-m_guard_test(FL, {char, L, C}) -> {char, FL(L), C};
-m_guard_test(FL, {float, L, F}) -> {float, FL(L), F};
-m_guard_test(FL, {integer, L, I}) -> {integer, FL(L), I};
-m_guard_test(FL, {string, L, S}) -> {string, FL(L), S};
-m_guard_test(FL, {nil, L}) -> {nil, FL(L)};
-m_guard_test(FL, {var, L, Ref}) -> {var, FL(L), Ref};
-m_guard_test(FL, {bin, L, Elems}) ->
-    {bin, FL(L), lists:map(fun(El) -> m_guard_bin_elem(FL, El) end, Elems)};
-m_guard_test(FL, {cons, L, Hd, Tl}) -> {cons, FL(L), m_guard_test(FL, Hd), m_guard_test(FL, Tl)};
-m_guard_test(FL, {call, L, F, Args}) -> {call, FL(L), m_guard_test(FL, F), m_guard_tests(FL, Args)};
-m_guard_test(FL, {call_remote, L, M, F, Args}) ->
-    {call_remote, FL(L), m_guard_test(FL, M), m_guard_test(FL, F), m_guard_tests(FL, Args)};
-m_guard_test(FL, {map_create, L, Assocs}) ->
-    {map_create, FL(L), lists:map(fun(A) -> m_map_assoc_opt(FL, A) end, Assocs)};
-m_guard_test(FL, {map_update, L, T, Assocs}) ->
-    {map_update, FL(L), m_guard_test(FL, T), m_map_assocs(FL, Assocs)};
-m_guard_test(FL, {op, L, Op, A, B}) -> {op, FL(L), Op, m_guard_test(FL, A), m_guard_test(FL, B)};
-m_guard_test(FL, {op, L, Op, A}) -> {op, FL(L), Op, m_guard_test(FL, A)};
-m_guard_test(FL, {tuple, L, Ts}) -> {tuple, FL(L), m_guard_tests(FL, Ts)}.
-
--spec m_guard_bin_elem(loc_fun(), external_types:bin_elem(ast:guard_test(), ast:guard_test())) ->
-    external_types:bin_elem(ast:guard_test(), ast:guard_test()).
-m_guard_bin_elem(FL, {bin_element, L, V, default, Spec}) ->
-    {bin_element, FL(L), m_guard_test(FL, V), default, Spec};
-m_guard_bin_elem(FL, {bin_element, L, V, Size, Spec}) ->
-    {bin_element, FL(L), m_guard_test(FL, V), m_guard_test(FL, Size), Spec}.
+m_guards(FL, Guards) -> lists:map(fun(G) -> m_exps(FL, G) end, Guards).

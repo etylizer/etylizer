@@ -455,10 +455,10 @@ loc_exp({_, L, _, _, _, _}) -> L.
 -type guard_test_tuple() :: gen_tuple(guard_test()).
 -type guard_test_var() :: gen_var().
 
--type guard_test() :: atomic_lit() | guard_test_bitstring_constr() | guard_test_cons()
-    | guard_test_funcall() | guard_test_map_create() | guard_test_map_update() | guard_test_nil()
-    | guard_test_binop() | guard_test_unop() | guard_test_tuple()
-    | guard_test_var().
+% The tests of a guard are expressions. That only the expressions that a guard allows occur
+% is what the compiler checks; this type does not say it. The transformation of ast_transform
+% is the same for a guard and for any other expression.
+-type guard_test() :: exp().
 
 % 8.7  Types
 -type ty_singleton() :: {singleton, atom() | integer() | char()}.

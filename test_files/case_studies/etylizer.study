@@ -56,10 +56,6 @@
 %% trans_exp/3 takes 8 s
 {module, ast_transform, #{file => "etylizer/src/ast_transform.erl", overlays => [{library, "../../overlays/etylizer_overlay.erl"}], timeout => 30000}}.
 {exception, ast_transform, parse_type, 2, [], cast_library}.
-{exception, ast_transform, replace_mu_var, 2, [ignore], unreviewed}.
-{exception, ast_transform, replace_mu_var_list, 2, [ignore], unreviewed}.
-{exception, ast_transform, trans_form, 3, [ignore], unreviewed}.
-{exception, ast_transform, trans_guards, 3, [ignore], unreviewed}.
 
 {module, ast_traverse, #{file => "etylizer/src/ast_traverse.erl", overlays => [{library, "../../overlays/etylizer_overlay.erl"}], timeout => 10000}}.
 

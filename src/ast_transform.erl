@@ -117,17 +117,10 @@ trans_form(Ctx, Form, Mode) ->
             {attribute, Anno, module, X} -> {attribute, to_loc(Ctx, Anno), module, X};
             {attribute, Anno, compile, X} -> {attribute, to_loc(Ctx, Anno), compile, X};
             {attribute, Anno, etylizer, EtylizerOpt} ->
-                case EtylizerOpt of
-                    {functions_exhaustive, off} ->
-                        {attribute, to_loc(Ctx, Anno), etylizer, EtylizerOpt};
-                    {functions_exhaustive, off, _Funs} ->
-                        {attribute, to_loc(Ctx, Anno), etylizer, EtylizerOpt};
-                    {functions_redundant, off} ->
-                        {attribute, to_loc(Ctx, Anno), etylizer, EtylizerOpt};
-                    {functions_redundant, off, _Funs} ->
-                        {attribute, to_loc(Ctx, Anno), etylizer, EtylizerOpt};
-                    _ ->
-                        error
+                Loc = to_loc(Ctx, Anno),
+                case trans_etylizer_opt(Ctx, Loc, EtylizerOpt) of
+                    {ok, Opt} -> {attribute, Loc, etylizer, Opt};
+                    error -> error
                 end;
             {attribute, _, file, _} -> error;
             {attribute, _, behaviour, _} -> error;
@@ -192,6 +185,19 @@ trans_form(Ctx, Form, Mode) ->
             X -> errors:uncovered_case(?FILE, ?LINE, X)
         end,
     R.
+
+% The option of an -etylizer attribute, which is any term as the user has written it.
+-spec trans_etylizer_opt(ctx(), ast:loc(), term()) -> {ok, ast:etylizer_opt()} | error.
+trans_etylizer_opt(_Ctx, _Loc, Opt) ->
+    case Opt of
+        {Kind, off} when Kind =:= functions_exhaustive; Kind =:= functions_redundant ->
+            {ok, {Kind, off}};
+        {Kind, off, Funs} when Kind =:= functions_exhaustive; Kind =:= functions_redundant ->
+            % the term of the attribute: a list of name/arity pairs
+            {ok, {Kind, off, ?assert_type(Funs, [ast:fun_with_arity()])}};
+        _ ->
+            error
+    end.
 
 -spec to_loc(ctx(), ast_erl:anno()) -> ast:loc().
 to_loc(Ctx, Anno) -> ast:to_loc(Ctx#ctx.current_file, Anno).
@@ -329,18 +335,13 @@ mu_name(Loc) ->
     list_to_atom(lists:flatten(
         io_lib:format("$mu_~s_~p_~p_~p", [filename:basename(File), Line, Col, erlang:phash2(File)]))).
 
+% The placeholder that etylizer:mu_var() leaves becomes the variable of the enclosing mu.
 -spec replace_mu_var(ast:ty(), atom()) -> ast:ty().
-replace_mu_var({mu_var, '$mu_placeholder'}, Name) -> {mu_var, Name};
-replace_mu_var(T, Name) when is_tuple(T) ->
-    list_to_tuple(replace_mu_var_list(tuple_to_list(T), Name));
-replace_mu_var(L, Name) when is_list(L) ->
-    replace_mu_var_list(L, Name);
-replace_mu_var(T, _Name) -> T.
-
--spec replace_mu_var_list([term()], atom()) -> [term()].
-replace_mu_var_list([], _Name) -> [];
-replace_mu_var_list([H | T], Name) ->
-    [replace_mu_var(H, Name) | replace_mu_var_list(T, Name)].
+replace_mu_var(Ty, Name) ->
+    ast_traverse:ty_everywhere(
+        fun({mu_var, '$mu_placeholder'}) -> {ok, {mu_var, Name}};
+           (_) -> error
+        end, Ty).
 
 -spec eval_const_ty(ast_erl:ty_binop() | ast_erl:ty_unop(), ast:loc()) -> {singleton, integer()}.
 eval_const_ty(Ty, Loc) ->
