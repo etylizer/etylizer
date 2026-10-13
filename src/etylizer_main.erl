@@ -267,12 +267,7 @@ doWork(Opts) ->
                       % only typecheck the files given
                       cm_depgraph:new(SourceList);
                   false ->
-                      ?LOG_DEBUG("Entry points: ~p, now building dependency graph", SourceList),
-                      G = cm_depgraph:build_dep_graph(
-                          SourceList,
-                          SearchPath),
-                      ?LOG_DEBUG("Reverse dependency graph: ~p", cm_depgraph:pretty_depgraph(G)),
-                      G
+                      dep_graph(SourceList, SearchPath, Opts)
               end,
           case Opts#opts.dump_transformed of
               true ->
@@ -294,6 +289,34 @@ doWork(Opts) ->
           paths:clear_module_cache()
       end
                                 end).
+
+% The dependency graph for the entry points: the cached one, brought up to date with the
+% sources that have changed, or a new one if there is none for these entry points and
+% options or a rebuild is forced.
+-spec dep_graph([file:filename()], paths:search_path(), cmd_opts()) -> cm_depgraph:dep_graph().
+dep_graph(SourceList, SearchPath, Opts) ->
+    File = paths:depgraph_file_name(Opts),
+    Key = {lists:sort(SourceList), SearchPath, symtab_cache:stamp(Opts)},
+    Cached = case Opts#opts.force of
+                 true -> stale;
+                 false -> cm_depgraph:load_depgraph(File, Key)
+             end,
+    case Cached of
+        {ok, G, []} ->
+            ?LOG_DEBUG("Using cached dependency graph"),
+            G;
+        {ok, G0, Changed} ->
+            ?LOG_DEBUG("Updating cached dependency graph for ~p", Changed),
+            G = cm_depgraph:refresh(Changed, SearchPath, G0),
+            cm_depgraph:save_depgraph(File, Key, G),
+            G;
+        stale ->
+            ?LOG_DEBUG("Entry points: ~p, now building dependency graph", SourceList),
+            G = cm_depgraph:build_dep_graph(SourceList, SearchPath),
+            ?LOG_DEBUG("Reverse dependency graph: ~p", cm_depgraph:pretty_depgraph(G)),
+            cm_depgraph:save_depgraph(File, Key, G),
+            G
+    end.
 
 -spec main([string()]) -> ok.
 main(Args) ->
