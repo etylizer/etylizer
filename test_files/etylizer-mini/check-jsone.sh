@@ -52,6 +52,7 @@ QF=$QF" -i local_offset_dst/0" # 10)
 QF=$QF" -i my_integer_to_list/1" # overlay
 QF=$QF" -i format_tz_/1" # ?)
 QF=$QF" -i object_members/4" # ?)
+QF=$QF" -i next/3" # ?)
 ../../ety --no-deps -f $QF -l info jsone/src/jsone_encode.erl
 
 # Added 1 type spec

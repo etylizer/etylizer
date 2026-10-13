@@ -98,10 +98,23 @@ normalize_line({[], Neg = [TNeg | _], T}, Fixed, ST) ->
   Dim = length(ty_tuple:components(TNeg)),
   PosAny = ty_tuple:any(Dim),
   normalize_line({[PosAny], Neg, T}, Fixed, ST);
-normalize_line({Pos, Neg, T}, Fixed, ST) -> 
+normalize_line(Line = {Pos, Neg, T}, Fixed, ST) -> 
   ?assert_pattern(T, ?LEAF:any()), % sanity
-  BigS = ty_tuple:big_intersect(Pos),
-  phi_norm(ty_tuple:components(BigS), Neg, Fixed, ST).
+  case is_ground_line(Line, Fixed) of
+    % ground hand-over (see ty_node:normalize/3): the subtype check decides the line
+    true ->
+      case is_empty_line(Line, #{}) of
+        {true, _} -> {[[]], ST};
+        {false, _} -> {[], ST}
+      end;
+    false ->
+      BigS = ty_tuple:big_intersect(Pos),
+      phi_norm(ty_tuple:components(BigS), Neg, Fixed, ST)
+  end.
+
+-spec is_ground_line(line(), monomorphic_variables()) -> boolean().
+is_ground_line({Pos, Neg, _T}, Fixed) ->
+  lists:all(fun(Ty) -> ty_node:is_ground(Ty, Fixed) end, lists:flatmap(fun ty_tuple:components/1, Pos ++ Neg)).
 
 -spec phi_norm([ty_node:type()], [T], monomorphic_variables(), S) -> 
     {set_of_constraint_sets(), S} when S :: normalize_cache(), T :: ?ATOM:type().

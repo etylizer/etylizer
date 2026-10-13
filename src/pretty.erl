@@ -177,10 +177,18 @@ ty(Prec, T) ->
             end;
         {bitstring} ->
             text("bitstring()");
-        % {binary, I, J} ->
-        %     text(utils:sformat("<<_:~w, _:_*~w>>", I, J));
-        {binary, M, N} ->
+        {bitstring, 0, 0} ->
+            text("<<>>");
+        {bitstring, 0, 8} ->
+            text("binary()");
+        {bitstring, M, 0} ->
+            text(utils:sformat("<<_:~w>>", M));
+        {bitstring, 0, N} ->
+            text(utils:sformat("<<_:_*~w>>", N));
+        {bitstring, M, N} ->
             text(utils:sformat("<<_:~w, _:_*~w>>", M, N));
+        {empty_bitstring} ->
+            text("<<>>");
         {empty_list} ->
             text("[]");
         {fun_simple} ->
@@ -213,6 +221,8 @@ ty_list_or_fun(Prec, T) ->
     case T of
         {cons, A, B} ->
             beside(text("["), ty(A), text(" @ "), ty(B), text("]"));
+        {bitstring_cons, A, B} ->
+            beside(text("<<"), ty(A), text(" | "), ty(B), text(">>"));
         {list, U} ->
             beside(text("list("), ty(U), text(")"));
         {nonempty_list, U} ->
