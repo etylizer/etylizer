@@ -30,7 +30,7 @@
 % does not solve the equations
 -spec is_tally_satisfiable(input_constraints(), monomorphic_variables()) -> boolean().
 is_tally_satisfiable(Constraints, MonomorphicVariables) ->
-  case os:getenv(?assert_type(string:to_upper("TALLY"), nonempty_string())) of
+  case os:getenv(string:to_upper("TALLY")) of
     "v1" -> is_satisfiable_v1(Constraints, MonomorphicVariables);
     "v2" -> is_satisfiable_v2(Constraints, MonomorphicVariables);
     "v3" -> is_satisfiable_v3(Constraints, MonomorphicVariables);

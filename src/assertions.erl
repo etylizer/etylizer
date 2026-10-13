@@ -54,7 +54,7 @@ parse(Text) ->
                                       errors:some_error("Cannot parse ~s", [Text])),
     {ok, [E]} = ?assert_pattern({ok, [_]}, erl_parse:parse_exprs(Tokens),
                                 errors:some_error("Cannot parse ~s", [Text])),
-    ?assert_type(E, ast_erl:exp()).
+    E.
 
 -spec strip(ast_erl:exp()) -> ast_erl:exp().
 strip(E) ->
@@ -68,12 +68,12 @@ strip(E) ->
 
 -spec set_anno(ast_erl:anno(), ast_erl:exp()) -> ast_erl:exp().
 set_anno(A, E) ->
-    ?assert_type(erl_parse:map_anno(fun(_) -> A end, ?assert_type(E, erl_parse:abstract_expr())), ast_erl:exp()).
+    erl_parse:map_anno(fun(_) -> A end, E).
 
 -spec render([ast_erl:exp()]) -> string().
 render([]) -> "none";
 render(Es) ->
-    string:join([utils:sformat("`~s` (~s)", [erl_pp:expr(?assert_type(E, erl_parse:abstract_expr())), hash(E)])
+    string:join([utils:sformat("`~s` (~s)", [erl_pp:expr(E), hash(E)])
                  || E <- Es], ", ").
 
 -spec wrapper(kind(), string()) -> wrapper().

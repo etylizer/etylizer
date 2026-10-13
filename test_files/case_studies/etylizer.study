@@ -37,9 +37,6 @@
 {reason, flag,         unknown, "exhaustiveness check switched off by an -etylizer attribute in the source, not analysed"}.
 
 {module, assertions, #{file => "etylizer/src/assertions.erl", overlays => [{library, "../../overlays/etylizer_overlay.erl"}], timeout => 10000}}.
-{exception, assertions, parse, 1, [], cast_library}.
-{exception, assertions, render, 1, [], cast_library}.
-{exception, assertions, set_anno, 2, [], cast_library}.
 {exception, assertions, wrapper, 2, [], cast}.
 
 {module, ast, #{file => "etylizer/src/ast.erl", overlays => [{library, "../../overlays/etylizer_overlay.erl"}], timeout => 10000}}.
@@ -53,7 +50,6 @@
 
 %% trans_exp/3 takes 8 s
 {module, ast_transform, #{file => "etylizer/src/ast_transform.erl", overlays => [{library, "../../overlays/etylizer_overlay.erl"}], timeout => 30000}}.
-{exception, ast_transform, parse_type, 2, [], cast_library}.
 
 {module, ast_traverse, #{file => "etylizer/src/ast_traverse.erl", overlays => [{library, "../../overlays/etylizer_overlay.erl"}], timeout => 10000}}.
 
@@ -67,11 +63,8 @@
 {module, cm_depgraph, #{file => "etylizer/src/cm_depgraph.erl", overlays => [{library, "../../overlays/etylizer_overlay.erl"}], timeout => 10000}}.
 
 {module, cm_fun_deps, #{file => "etylizer/src/cm_fun_deps.erl", overlays => [{library, "../../overlays/etylizer_overlay.erl"}], timeout => 10000}}.
-{exception, cm_fun_deps, hash, 1, [], cast_library}.
 
 {module, cm_index, #{file => "etylizer/src/cm_index.erl", overlays => [{library, "../../overlays/etylizer_overlay.erl"}], timeout => 10000}}.
-{exception, cm_index, interface_hash, 1, [], cast_library}.
-{exception, cm_index, save_index, 2, [], cast_library}.
 
 {module, cm_module_interface, #{file => "etylizer/src/cm_module_interface.erl", overlays => [{library, "../../overlays/etylizer_overlay.erl"}], timeout => 10000}}.
 
@@ -121,7 +114,6 @@
 {module, dnf_ty_variable, #{file => "etylizer/src/erlang_types/dnf_ty_variable.erl", overlays => [{library, "../../overlays/etylizer_overlay.erl"}], timeout => 10000}}.
 
 {module, etally, #{file => "etylizer/src/erlang_types/etally.erl", overlays => [{library, "../../overlays/etylizer_overlay.erl"}], timeout => 10000}}.
-{exception, etally, is_tally_satisfiable, 2, [], cast_library}.
 
 {module, feature_flags, #{file => "etylizer/src/erlang_types/feature_flags.erl", overlays => [{library, "../../overlays/etylizer_overlay.erl"}], timeout => 10000}}.
 

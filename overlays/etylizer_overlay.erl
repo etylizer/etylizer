@@ -48,6 +48,23 @@
 -spec 'erlang:raise'(error | exit | throw, term(), erlang:stacktrace()) -> no_return().
 'erlang:raise'(_, _, _) -> error(overlay).
 
+% write/1 writes latin1, a character above 255 is escaped: the text is an iolist
+-spec 'io_lib:write'(term()) -> iolist().
+'io_lib:write'(_) -> error(overlay).
+
+% erl_parse and erl_pp have their own types for the abstract format, ast_erl describes
+% the same terms
+-spec 'erl_parse:parse_exprs'([erl_scan:token()]) -> {ok, [ast_erl:exp()]} | {error, erl_parse:error_info()}.
+'erl_parse:parse_exprs'(_) -> error(overlay).
+-spec 'erl_parse:parse_form'([erl_scan:token()]) -> {ok, ast_erl:form()} | {error, erl_parse:error_info()}.
+'erl_parse:parse_form'(_) -> error(overlay).
+-spec 'erl_parse:map_anno'(fun((ast_erl:anno()) -> ast_erl:anno()), ast_erl:exp()) -> ast_erl:exp().
+'erl_parse:map_anno'(_, _) -> error(overlay).
+-spec 'erl_pp:expr'(ast_erl:exp()) -> io_lib:chars().
+'erl_pp:expr'(_) -> error(overlay).
+-spec 'erl_pp:form'(ast_erl:form()) -> io_lib:chars().
+'erl_pp:form'(_) -> error(overlay).
+
 % in OTP the term is a variable of the spec with the bound term()
 -spec 'erl_parse:parse_term'([erl_scan:token()]) -> {ok, term()} | {error, erl_parse:error_info()}.
 'erl_parse:parse_term'(_) -> error(overlay).
@@ -144,6 +161,8 @@
 'string:trim'(_) -> error(badarg).
 -spec 'string:trim'(string(), leading | trailing | both) -> string().
 'string:trim'(_, _) -> error(badarg).
+-spec 'string:trim'(string(), leading | trailing | both, [char()]) -> string().
+'string:trim'(_, _, _) -> error(badarg).
 -spec 'os:cmd'(string()) -> string().
 'os:cmd'(_) -> error(badarg).
 -spec 'file:write_file'(string(), string() | iodata()) -> _.

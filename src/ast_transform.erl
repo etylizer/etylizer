@@ -1391,9 +1391,8 @@ parse_type(Ctx, Src) ->
     % at some point, we could extend this like Haskell's ScopeTypeVariables, if there is any need
     case erl_parse:parse_form(Tokens) of
         {ok, {attribute, _, type, Def = {t, _Type, []}}} ->
-            % the parser has its own types for a form, ast_erl describes the same terms
             {_, {ty_scheme, [], TyNew}} =
-                ?assert_pattern({_, {ty_scheme, [], _}}, trans_tydef(Ctx, ?assert_type(Def, ast_erl:tydef()))),
+                ?assert_pattern({_, {ty_scheme, [], _}}, trans_tydef(Ctx, Def)),
             {ok, TyNew};
         _ -> error
     end.

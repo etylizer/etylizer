@@ -212,7 +212,7 @@ save_depgraph(Path, Key, DepGraph, Kept) ->
               end || F <- lists:sort(all_sources(DepGraph))],
     Stored = {etylizer_depgraph, ?DEPGRAPH_VERSION, Key, Hashes, DepGraph},
     Formatted = lists:flatten(io_lib:format("~p.~n", [Stored])),
-    case file:write_file(Path, ?assert_type(Formatted, string())) of
+    case file:write_file(Path, Formatted) of
         ok -> ok;
         Error -> ?LOG_WARN("Could not save the dependency graph at ~p: ~p", Path, Error)
     end.

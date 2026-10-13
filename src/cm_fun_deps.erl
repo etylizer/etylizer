@@ -62,4 +62,4 @@ hash(Term) ->
                 false -> error
             end
         end, Term),
-    utils:hash_sha1(?assert_type(io_lib:write(NoLocs), iodata())).
+    utils:hash_sha1(io_lib:write(NoLocs)).
