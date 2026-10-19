@@ -116,9 +116,6 @@ representations.
 """.
 -compile([{nowarn_deprecated_function, [{erlang,phash,2}]}]).
 
--etylizer({functions_exhaustive, off, [intersection_heuristic/6, intersection_decided/3, subtract_heuristic/6]}).
--etylizer({functions_exhaustive, off, [new/1, from_list/2, rehash/4, subtract_decided/3]}).
-
 %% Standard interface.
 -export([new/0,is_set/1,size/1,is_empty/1,to_list/1,from_list/1]).
 -export([is_element/2,add_element/2,del_element/2]).

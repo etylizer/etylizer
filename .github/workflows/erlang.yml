@@ -56,6 +56,7 @@ jobs:
             cmd: .github/scripts/report_etylizer
           - name: typecheck
             cmd: .github/scripts/report_typecheck
+          - name: case-study
     steps:
     - name: Checkout PR
       uses: actions/checkout@v4
@@ -88,7 +89,7 @@ jobs:
         if-no-files-found: ignore
     # On push (no base to compare) just run the PR report as a smoke check.
     - name: Report PR (push smoke check)
-      if: github.event_name != 'pull_request'
+      if: github.event_name != 'pull_request' && matrix.cmd
       working-directory: pr
       run: ${{ matrix.cmd }}
 
@@ -162,10 +163,11 @@ jobs:
         # POSIX positional params hold the accumulated --suite ... args for
         # the unified partitions report. Container shell is sh, not bash.
         set --
-        for suite in etylizer typecheck; do
+        for suite in etylizer typecheck case-study; do
           case $suite in
             etylizer)     title="etylizer";;
             typecheck)    title="typecheck tests";;
+            case-study)   title="case studies";;
           esac
           dir="/tmp/artifacts/metrics-${suite}-matrix"
           # Engine-effect + diagonal tables straight from the 2x2 matrix cells.
@@ -224,23 +226,3 @@ jobs:
               body,
             });
           }
-
-  case-study:
-    name: "case study: ${{ matrix.study.name }} (OTP ${{ matrix.otp }})"
-    needs: build
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    container:
-      image: erlang:${{ matrix.otp }}
-    strategy:
-      matrix:
-        otp: ['28', '29']
-        study:
-          - name: stdlib
-            cmd: test_files/case_studies/check-stdlib.sh
-          - name: jsone
-            cmd: test_files/case_studies/check-jsone.sh
-    steps:
-    - uses: actions/checkout@v4
-    - run: make build
-    - run: ETYLIZER_CASE_STUDY_LOGLEVEL=warn ${{ matrix.study.cmd }}
