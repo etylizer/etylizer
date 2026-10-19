@@ -1,0 +1,13 @@
+-module(bar).
+
+-compile([export_all, nowarn_export_all]).
+
+-spec b1() -> boolean().
+b1() -> foo:f1().
+
+% the call is nested in another call
+-spec b2() -> boolean().
+b2() -> id(foo:f1()).
+
+-spec id(T) -> T.
+id(X) -> X.

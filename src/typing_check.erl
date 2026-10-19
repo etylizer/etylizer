@@ -19,15 +19,16 @@
 -include("etylizer.hrl").
 
 % Checks all functions against their specs, only print a report.
+% Returns the functions that got no ok verdict.
 -spec check_all_report(
         ctx(), string(), symtab:fun_env(), [{ast:fun_decl(), ast:ty_scheme()}]
-       ) -> ok.
+       ) -> [{ast:fun_with_arity(), error | timeout}].
 check_all_report(Ctx, FileName, Env, Decls) ->
     ?LOG_NOTE("Checking ~w functions in ~s against their specs", length(Decls), FileName),
     ExtSymtab = symtab:extend_symtab_with_fun_env(Env, Ctx#ctx.symtab),
     ExtCtx = Ctx#ctx { symtab = ExtSymtab },
     F = fun(FN) -> filename:basename(filename:rootname(FN)) end,
-    lists:foreach(
+    lists:filtermap(
         fun({Decl, Ty}) ->
             {function, _, Name, Arity, _, _} = Decl,
             ?METRIC_SET_FUN(list_to_atom(utils:sformat("~s:~w/~w", [F(FileName), Name, Arity]))),
@@ -36,34 +37,39 @@ check_all_report(Ctx, FileName, Env, Decls) ->
                 success ->
                     Time = ?TIME(T0),
                     ?METRIC(typecheck_time, {list_to_atom(utils:sformat("~s:~w/~w", [F(FileName), Name, Arity])), Time, ok}),
-                    io:format(user,"Ok: ~s:~w/~w (~p ms)~n", [F(FileName), Name, Arity, Time]);
+                    io:format(user,"Ok: ~s:~w/~w (~p ms)~n", [F(FileName), Name, Arity, Time]),
+                    false;
                 timeout ->
                     Time = ?TIME(T0),
                     ?METRIC(typecheck_time, {list_to_atom(utils:sformat("~s:~w/~w", [F(FileName), Name, Arity])), Time, timeout}),
-                    io:format(user,"Timeout: ~s:~w/~w (~p ms)~n", [F(FileName), Name, Arity, Time])
+                    io:format(user,"Timeout: ~s:~w/~w (~p ms)~n", [F(FileName), Name, Arity, Time]),
+                    {true, {{Name, Arity}, timeout}}
             catch
                 throw:{etylizer, ty_error, Msg} ->
                     Time = ?TIME(T0),
                     ?METRIC(typecheck_time, {list_to_atom(utils:sformat("~s:~w/~w", [F(FileName), Name, Arity])), Time, error}),
-                    io:format(user,"Error: ~s:~w/~w (~p ms)~n  ~s~n", [F(FileName), Name, Arity, Time, Msg]);
+                    io:format(user,"Error: ~s:~w/~w (~p ms)~n  ~s~n", [F(FileName), Name, Arity, Time, Msg]),
+                    {true, {{Name, Arity}, error}};
                 throw:{etylizer, unsupported, Msg} ->
                     ?METRIC_TYPE_ERROR(unsupported, element(2, Decl)),
-                    io:format(user,"Unsupported: ~s:~w/~w~n  ~s~n", [F(FileName), Name, Arity, Msg]);
+                    io:format(user,"Unsupported: ~s:~w/~w~n  ~s~n", [F(FileName), Name, Arity, Msg]),
+                    {true, {{Name, Arity}, error}};
                 throw:{etylizer, Type, _Msg} ->
                     Time = ?TIME(T0),
                     ?METRIC_TYPE_ERROR(Type, element(2, Decl)),
                     ?METRIC(typecheck_time, {list_to_atom(utils:sformat("~s:~w/~w", [F(FileName), Name, Arity])), Time, error}),
-                    io:format(user,"Error: (~p) ~s:~w/~w (~p ms)~n", [Type, F(FileName), Name, Arity, Time]);
+                    io:format(user,"Error: (~p) ~s:~w/~w (~p ms)~n", [Type, F(FileName), Name, Arity, Time]),
+                    {true, {{Name, Arity}, error}};
                 _:T ->
                     Time = ?TIME(T0),
                     ?METRIC_TYPE_ERROR(crash, element(2, Decl)),
                     ?METRIC(typecheck_time, {list_to_atom(utils:sformat("~s:~w/~w", [F(FileName), Name, Arity])), Time, error}),
-                    io:format(user,"Other: (~p) ~s:~w/~w (~p ms)~n", [{T}, F(FileName), Name, Arity, Time])
+                    io:format(user,"Other: (~p) ~s:~w/~w (~p ms)~n", [{T}, F(FileName), Name, Arity, Time]),
+                    {true, {{Name, Arity}, error}}
             end
         end,
         Decls
-    ),
-    ok.
+    ).
 
 % Checks a function against its spec, skips timeouts and does not report errors.
 -spec check_report(ctx(), ast:fun_decl(), ast:ty_scheme()) -> success | timeout.
