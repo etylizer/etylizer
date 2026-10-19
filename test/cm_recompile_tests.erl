@@ -236,6 +236,12 @@ file_changes_test_() ->
      % report mode: foo:foo/1 fails in V2 and is checked again in V3
      ?_timeout(?_test(test_recompile("type_error",
         #{1 => ["foo.erl", "main.erl"], 2 => ["foo.erl"], 3 => [{"foo.erl", [{foo, 1}]}]},
-        #opts{report_mode = report})))
+        #opts{report_mode = report}))),
+     % functions excluded with -o or -i are checked by the next run without them
+     ?_timeout(?_test(test_runs("function_changes",
+        [{1, [{"foo.erl", [{f1, 0}]}], #opts{type_check_only = ["foo:f1/0"]}},
+         {1, ["bar.erl", {"foo.erl", [{f2, 0}]}, "main.erl"], tycheck},
+         {2, [], #opts{type_check_ignore = ["foo:f2/0"]}},
+         {2, [{"foo.erl", [{f2, 0}]}], tycheck}])))
     ].
 
