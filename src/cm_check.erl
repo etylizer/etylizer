@@ -147,12 +147,10 @@ perform_sanity_check(CurrentFile, Forms, DoCheck, Includes) ->
 
 -spec overlay_symtab(cmd_opts()) -> symtab:t().
 overlay_symtab(Opts) ->
-    OverlayForms = case Opts#opts.type_overlay of
-        [] ->
-            ?LOG_DEBUG("Not using any overlays"),
-            [];
-        OverlayFile ->
+    lists:foldl(
+        fun(OverlayFile, Tab) ->
             ?LOG_INFO("Using overlays from ~s", OverlayFile),
-            parse_cache:parse(intern, OverlayFile)
-    end,
-    symtab:overlay_symtab(OverlayForms).
+            symtab:overlay_symtab(parse_cache:parse(intern, OverlayFile), Tab)
+        end,
+        symtab:empty(),
+        Opts#opts.type_overlay).
