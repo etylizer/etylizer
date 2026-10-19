@@ -190,36 +190,46 @@ cached(SourceList, SearchPath, Opts) ->
                  true -> stale;
                  false -> load_depgraph(File, Key)
              end,
-    {Old, Changed} = case Loaded of
-                         {ok, G0, Cs} -> {G0, Cs};
-                         stale -> {new(), SourceList}
-                     end,
+    {Old, Changed, Kept} = case Loaded of
+                               {ok, G0, Cs, Ks} -> {G0, Cs, Ks};
+                               stale -> {new(), SourceList, #{}}
+                           end,
     ?LOG_DEBUG("Updating the dependency graph for ~p", Changed),
     G = refresh(Changed, SearchPath, Old),
-    case Changed of [] -> ok; _ -> save_depgraph(File, Key, G) end,
+    case Changed of [] -> ok; _ -> save_depgraph(File, Key, G, Kept) end,
     G.
 
--define(DEPGRAPH_VERSION, 3).
+-define(DEPGRAPH_VERSION, 4).
 
--spec save_depgraph(file:filename(), term(), dep_graph()) -> ok.
-save_depgraph(Path, Key, DepGraph) ->
+% Kept are the hashes of the unchanged sources, the others were parsed in this run.
+-spec save_depgraph(file:filename(), term(), dep_graph(), #{file:filename() => hashes()}) -> ok.
+save_depgraph(Path, Key, DepGraph, Kept) ->
     filelib:ensure_dir(Path),
-    Stored = {etylizer_depgraph, ?DEPGRAPH_VERSION, Key, source_hashes(all_sources(DepGraph)), DepGraph},
+    Hashes = [case maps:find(F, Kept) of
+                  {ok, Hs} -> {F, Hs};
+                  error -> {F, hashes([F | parse_cache:headers(F)])}
+              end || F <- lists:sort(all_sources(DepGraph))],
+    Stored = {etylizer_depgraph, ?DEPGRAPH_VERSION, Key, Hashes, DepGraph},
     Formatted = lists:flatten(io_lib:format("~p.~n", [Stored])),
     case file:write_file(Path, ?assert_type(Formatted, string())) of
         ok -> ok;
         Error -> ?LOG_WARN("Could not save the dependency graph at ~p: ~p", Path, Error)
     end.
 
-% stale if there is none for Key or one of its sources is gone.
--spec load_depgraph(file:filename(), term()) -> {ok, dep_graph(), [file:filename()]} | stale.
+% stale if there is none for Key or one of its sources is gone. A source changed when it or
+% a header it includes changed. Also returns the hashes of the unchanged sources.
+-spec load_depgraph(file:filename(), term()) ->
+    {ok, dep_graph(), [file:filename()], #{file:filename() => hashes()}} | stale.
 load_depgraph(Path, Key) ->
     case file:consult(Path) of
         {ok, [{etylizer_depgraph, ?DEPGRAPH_VERSION, Key, Saved, DepGraph}]} ->
-            Old = ?assert_type(Saved, [{file:filename(), source_hash()}]),
-            New = source_hashes([F || {F, _} <- Old]),
-            case [F || {F, {error, _}} <- New] of
-                [] -> {ok, ?assert_type(DepGraph, dep_graph()), [F || {F, _} <- New -- Old]};
+            Old = ?assert_type(Saved, [{file:filename(), hashes()}]),
+            New = [{F, hashes([H || {H, _} <- Hs])} || {F, Hs} <- Old],
+            case [F || {F, [{_, {error, _}} | _]} <- New] of
+                [] ->
+                    Kept = maps:from_list([E || {E, E} <- lists:zip(Old, New)]),
+                    Changed = [F || {F, _} <- New, not maps:is_key(F, Kept)],
+                    {ok, ?assert_type(DepGraph, dep_graph()), Changed, Kept};
                 _ -> stale
             end;
         _ -> stale
@@ -227,8 +237,11 @@ load_depgraph(Path, Key) ->
 
 -type source_hash() :: string() | {error, any()}.
 
--spec source_hashes([file:filename()]) -> [{file:filename(), source_hash()}].
-source_hashes(Files) -> [{F, utils:hash_file(F)} || F <- lists:sort(Files)].
+% A source, followed by the headers it includes, with their hashes
+-type hashes() :: [{file:filename(), source_hash()}].
+
+-spec hashes([file:filename()]) -> hashes().
+hashes(Files) -> [{F, utils:hash_file(F)} || F <- Files].
 
 -spec parse_intern(file:filename()) -> [ast:form()].
 parse_intern(P) -> parse_cache:parse(intern, P).

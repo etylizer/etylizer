@@ -17,16 +17,18 @@ parse_versions(S) ->
     end.
 
 % Parse a filename such as "foo_V1+2.erl" to return {ok, "foo.erl", sets:from_list([1,2])}
+% Headers (.hrl) have versions, too.
 -spec parse_filename(file:name()) -> {ok, string(), sets:set(integer())} | error.
 parse_filename(Name) ->
-    case filename:extension(Name) =:= ".erl" of
+    Ext = filename:extension(Name),
+    case lists:member(Ext, [".erl", ".hrl"]) of
         false -> error;
         true ->
             Root = filename:rootname(Name),
             case string:split(Root, "_", trailing) of
                 [Start, "V" ++ VersionsString] ->
                     case parse_versions(VersionsString) of
-                        {ok, Versions} -> {ok, Start ++ ".erl", Versions};
+                        {ok, Versions} -> {ok, Start ++ Ext, Versions};
                         error -> error
                     end;
                 _ -> error
@@ -207,6 +209,9 @@ file_changes_test_() ->
      ?_timeout(?_test(test_runs("options_change",
         [{1, ["foo.erl", "main.erl"], tycheck},
          {2, ["main.erl"], #opts{defines = [{'V', "2"}]}},
-         {3, ["foo.erl", "main.erl"], #opts{defines = [{'V', "2"}]}}])))
+         {3, ["foo.erl", "main.erl"], #opts{defines = [{'V', "2"}]}}]))),
+     % V2 changes a type in the header that foo exports in a spec, V3 a macro
+     ?_timeout(?_test(test_recompile_dont_tycheck("header_change",
+        #{1 => ["foo.erl", "main.erl"], 2 => ["foo.erl", "main.erl"], 3 => ["foo.erl"]})))
     ].
 
