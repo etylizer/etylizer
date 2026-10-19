@@ -1,5 +1,3 @@
--type opts_mode() :: prod_mode | test_mode.
-
 -record(opts, {log_level = default :: log:log_level() | default,
                log_file = "etylizer.log" :: string(),
                help = false :: boolean(),
@@ -31,8 +29,7 @@
                verbose = false :: boolean(),
                metrics_file = undefined :: undefined | string(),
                no_exhaustiveness = [] :: [string()],
-               no_redundancy = [] :: [string()],
-               mode = prod_mode :: opts_mode() % only used internally
+               no_redundancy = [] :: [string()]
             }).
 
 -type cmd_opts() :: #opts{}.

@@ -57,7 +57,6 @@ check(Dir, Defines) ->
     Opts = #opts{
         files = [filename:join(Dir, "main.erl")],
         project_root = Dir,
-        mode = test_mode,
         defines = Defines
     },
     lists:sort([filename:basename(F) || F <- etylizer_main:doWork(Opts)]).

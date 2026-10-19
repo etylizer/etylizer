@@ -23,19 +23,17 @@
 perform_type_checks(SearchPath, SourceList, DepGraph, Opts) ->
     IndexFile = paths:index_file_name(Opts),
     RebarLockFile = paths:rebar_lock_file(Opts),
-    Index = cm_index:load_index(RebarLockFile, IndexFile, Opts#opts.mode),
+    Stamp = stamp(Opts),
+    Index = cm_index:load_index(RebarLockFile, Stamp, IndexFile),
     ?LOG_DEBUG("All sources: ~p", SourceList),
     {DepsChanged, NewIndex1} =
-        cm_index:has_external_dep_changed(RebarLockFile, Index),
+        cm_index:has_external_dep_changed(RebarLockFile, Stamp, Index),
     CheckList =
-        case {DepsChanged, Opts#opts.force} of
-            {true, false} ->
-                ?LOG_DEBUG("Some external dependency has changed, rechecking everything"),
+        case DepsChanged orelse Opts#opts.force of
+            true ->
+                ?LOG_DEBUG("Rechecking everything (dependencies changed: ~p, forced: ~p)", DepsChanged, Opts#opts.force),
                 SourceList;
-            {false, true} ->
-                ?LOG_TRACE("Forced to recheck everything"),
-                SourceList;
-            _ ->
+            false ->
                 ?LOG_TRACE("No external dependency has changed"),
                 create_check_list(SourceList, NewIndex1, DepGraph)
         end,
@@ -51,6 +49,17 @@ perform_type_checks(SearchPath, SourceList, DepGraph, Opts) ->
         OverlaySymtab, SearchPath, Opts, NewIndex1),
     cm_index:save_index(IndexFile, NewIndex2),
     CheckList.
+
+% what the index depend on besides the sources
+-spec stamp(cmd_opts()) -> term().
+stamp(Opts) ->
+    Assertions = case Opts#opts.assertions of
+                     undefined -> none;
+                     File -> utils:hash_file(File)
+                 end,
+    {symtab_cache:stamp(Opts), Opts#opts.exhaustiveness_mode, Opts#opts.check_exports,
+     Opts#opts.no_type_checking, lists:sort(Opts#opts.no_exhaustiveness),
+     lists:sort(Opts#opts.no_redundancy), Assertions}.
 
 -spec create_check_list([file:filename()], cm_index:index(), cm_depgraph:dep_graph()) -> [file:filename()].
 create_check_list(SourceList, Index, DepGraph) ->

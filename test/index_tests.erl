@@ -7,7 +7,7 @@ has_file_changed_test() ->
     TestFilePath = "./test_files/index/test/module.erl",
     RawForms = parse:parse_file_or_die(TestFilePath),
     Forms = ast_transform:trans(TestFilePath, RawForms),
-    Index = cm_index:insert(TestFilePath, Forms, {{"", ""}, maps:new()}),
+    Index = cm_index:insert(TestFilePath, Forms, {{"", "", none}, maps:new()}),
     swap_test_files(),
     true = cm_index:has_file_changed(TestFilePath, Index),
     clean_up_test_file().
@@ -17,12 +17,24 @@ has_exported_interface_changed_test() ->
     TestFilePath = "./test_files/index/test/module.erl",
     RawForms = parse:parse_file_or_die(TestFilePath),
     Forms = ast_transform:trans(TestFilePath, RawForms),
-    Index = cm_index:insert(TestFilePath, Forms, {{"", ""}, maps:new()}),
+    Index = cm_index:insert(TestFilePath, Forms, {{"", "", none}, maps:new()}),
     swap_test_files(),
     ChangedRawForms = parse:parse_file_or_die(TestFilePath),
     ChangedForms = ast_transform:trans(TestFilePath, ChangedRawForms),
     true = cm_index:has_exported_interface_changed(TestFilePath, ChangedForms, Index),
     clean_up_test_file().
+
+bad_index_test() ->
+    tmp:with_tmp_dir("index", "bad", delete, fun(Dir) ->
+        Path = filename:join(Dir, "index"),
+        lists:foreach(
+            fun(Content) ->
+                ok = file:write_file(Path, Content),
+                {_, Entries} = cm_index:load_index(filename:join(Dir, "rebar.lock"), stamp, Path),
+                ?assertEqual(#{}, Entries)
+            end,
+            ["{etylizer_index, 1, {{\"27\", []}, #{\"m.erl\" => {\"h\", \"h\"}}}}.\n", "", "{"])
+    end).
 
 prepare_test_file() ->
     case filelib:is_file("./test_files/index/test/module.erl") of

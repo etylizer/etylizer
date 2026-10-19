@@ -9,7 +9,7 @@
     save_index/2,
     has_file_changed/2,
     has_exported_interface_changed/3,
-    has_external_dep_changed/2,
+    has_external_dep_changed/3,
     insert/3
 ]).
 
@@ -19,8 +19,8 @@
 -include("etylizer_main.hrl").
 
 -type index() :: {
-    % OTP version and hash of rebar.lock
-    {string(), string()},
+    % OTP version, hash of rebar.lock, stamp of the options and the checker
+    {string(), string(), term()},
     % map .erl-file -> {FileHash, InterfaceHash}
     #{file:filename() => {string(), string()}}
     }.
@@ -32,22 +32,20 @@
 %    index()
 %}.
 
--define(INDEX_VERSION, 1).
+-define(INDEX_VERSION, 2).
 
--spec empty_index(file:filename()) -> index().
-empty_index(RebarLockFile) ->
-    Deps = get_external_deps(RebarLockFile),
+-spec empty_index(file:filename(), term()) -> index().
+empty_index(RebarLockFile, Stamp) ->
+    Deps = get_external_deps(RebarLockFile, Stamp),
     {Deps, maps:new()}.
 
--spec load_index(file:filename(), file:filename(), opts_mode()) -> index().
-load_index(RebarLockFile, Path, Mode) ->
+% replace index that cannot be used
+-spec load_index(file:filename(), term(), file:filename()) -> index().
+load_index(RebarLockFile, Stamp, Path) ->
     BadIndex =
         fun(Msg) ->
             ?LOG_WARN(Msg),
-            case Mode of
-                test_mode -> throw("bad index: " ++ Msg);
-                prod_mode -> empty_index(RebarLockFile)
-            end
+            empty_index(RebarLockFile, Stamp)
         end,
     case filelib:is_file(Path) of
         true ->
@@ -66,7 +64,7 @@ load_index(RebarLockFile, Path, Mode) ->
             end;
         false ->
             ?LOG_DEBUG("No index exists at ~p, using empty index", Path),
-            empty_index(RebarLockFile)
+            empty_index(RebarLockFile, Stamp)
     end.
 
 -spec save_index(file:filename(), index()) -> ok.
@@ -103,8 +101,8 @@ has_exported_interface_changed(Path, Forms, {_, Index}) ->
             OldInterfaceHash =/= NewHash
     end.
 
--spec get_external_deps(file:filename()) -> {string(), string()}.
-get_external_deps(RebarLockFile) ->
+-spec get_external_deps(file:filename(), term()) -> {string(), string(), term()}.
+get_external_deps(RebarLockFile, Stamp) ->
     OtpVersion = erlang:system_info(otp_release),
     RebarHash =
         case utils:hash_file(RebarLockFile) of
@@ -118,23 +116,28 @@ get_external_deps(RebarLockFile) ->
                 end;
             H -> H
         end,
-    {OtpVersion, RebarHash}.
+    {OtpVersion, RebarHash, Stamp}.
 
--spec has_external_dep_changed(file:filename(), index()) -> {boolean(), index()}.
-has_external_dep_changed(RebarLockFile, {{StoredOtpVersion, StoredRebarHash}, Index}) ->
-    {OtpVersion, RebarHash} = get_external_deps(RebarLockFile),
+-spec has_external_dep_changed(file:filename(), term(), index()) -> {boolean(), index()}.
+has_external_dep_changed(RebarLockFile, Stamp, {{StoredOtpVersion, StoredRebarHash, StoredStamp}, Index}) ->
+    New = {OtpVersion, RebarHash, _} = get_external_deps(RebarLockFile, Stamp),
     Changed =
-        case {OtpVersion =:= StoredOtpVersion, RebarHash =:= StoredRebarHash} of
-            {true, true} -> false;
-            {false, _} ->
+        case {OtpVersion =:= StoredOtpVersion, RebarHash =:= StoredRebarHash, Stamp =:= StoredStamp} of
+            {true, true, true} -> false;
+            {false, _, _} ->
                 ?LOG_INFO("OTP version changed from ~p to ~p", StoredOtpVersion, OtpVersion),
                 true;
-            {true, false} ->
+            {true, false, _} ->
                 ?LOG_INFO("Rebar lock file ~p changed", RebarLockFile),
+                true;
+            {true, true, false} ->
+                ?LOG_INFO("The options or the checker changed"),
                 true
         end,
-    NewIndex = {{OtpVersion, RebarHash}, Index},
-    {Changed, NewIndex}.
+    case Changed of
+        true -> {true, {New, #{}}};
+        false -> {false, {New, Index}}
+    end.
 
 -spec insert(file:filename(), ast:forms(), index()) -> index().
 insert(Path, Forms, {DepVersions, Index}) ->

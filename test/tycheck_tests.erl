@@ -11,7 +11,6 @@ run_typechecker(File) ->
     Opts = #opts{
         files = [File],
         project_root = filename:dirname(File),
-        mode = test_mode,
         force = true,
         type_overlay = ["./overlays/eqwalizer_specs.erl"],
         check_exports = true
