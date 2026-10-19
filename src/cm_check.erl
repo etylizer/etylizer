@@ -95,7 +95,7 @@ traverse_and_check([], _, _, _, _, Index) ->
 
 traverse_and_check([CurrentFile | RemainingFiles], Symtab, OverlaySymtab, SearchPath, Opts, Index) ->
     {Forms, _ExpandedSymtab} = check_single_file(CurrentFile, Symtab, OverlaySymtab, SearchPath, Opts, Index),
-    NewIndex = cm_index:insert(CurrentFile, Forms, Index),
+    NewIndex = cm_index:insert(CurrentFile, Forms, parse_cache:headers(CurrentFile), Index),
     traverse_and_check(RemainingFiles, Symtab, OverlaySymtab, SearchPath, Opts, NewIndex).
 
 -spec check_single_file(

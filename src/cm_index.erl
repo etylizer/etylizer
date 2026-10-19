@@ -10,7 +10,7 @@
     has_file_changed/2,
     has_exported_interface_changed/3,
     has_external_dep_changed/3,
-    insert/3
+    insert/4
 ]).
 
 -export_type([index/0]).
@@ -21,8 +21,9 @@
 -type index() :: {
     % OTP version, hash of rebar.lock, stamp of the options and the checker
     {string(), string(), term()},
-    % map .erl-file -> {FileHash, InterfaceHash}
-    #{file:filename() => {string(), string()}}
+    % map .erl-file -> {Sources, InterfaceHash}, Sources are the file and the headers it
+    % includes, with their hashes
+    #{file:filename() => {[{file:filename(), string() | {error, any()}}], string()}}
     }.
 
 % Format of index on disk:
@@ -32,7 +33,7 @@
 %    index()
 %}.
 
--define(INDEX_VERSION, 2).
+-define(INDEX_VERSION, 3).
 
 -spec empty_index(file:filename(), term()) -> index().
 empty_index(RebarLockFile, Stamp) ->
@@ -78,15 +79,13 @@ save_index(Path, Index) ->
             ?ABORT("Error occurred while trying to save index. Reason: ~s", Reason)
     end.
 
+% Whether the file or one of the headers it includes changed.
 -spec has_file_changed(file:filename(), index()) -> boolean().
 has_file_changed(Path, {_, Index}) ->
     case maps:find(Path, Index) of
-        error ->
-            true;
-        {ok, {OldFileHash, _}} ->
-            {ok, Content} = file:read_file(Path),
-            NewHash = utils:hash_sha1(Content),
-            NewHash =/= OldFileHash
+        {ok, {Sources, _}} ->
+            lists:any(fun({File, Hash}) -> utils:hash_file(File) =/= Hash end, Sources);
+        error -> true
     end.
 
 -spec has_exported_interface_changed(file:filename(), ast:forms(), index()) -> boolean().
@@ -139,10 +138,9 @@ has_external_dep_changed(RebarLockFile, Stamp, {{StoredOtpVersion, StoredRebarHa
         false -> {false, {New, Index}}
     end.
 
--spec insert(file:filename(), ast:forms(), index()) -> index().
-insert(Path, Forms, {DepVersions, Index}) ->
-    {ok, FileContent} = file:read_file(Path),
-    FileHash = utils:hash_sha1(FileContent),
+-spec insert(file:filename(), ast:forms(), [file:filename()], index()) -> index().
+insert(Path, Forms, Headers, {DepVersions, Index}) ->
+    Sources = [{File, utils:hash_file(File)} || File <- [Path | Headers]],
     Interface = cm_module_interface:extract_interface_declaration(Forms),
     InterfaceHash = utils:hash_sha1(io_lib:write(Interface)),
-    {DepVersions, maps:put(Path, {FileHash, InterfaceHash}, Index)}.
+    {DepVersions, maps:put(Path, {Sources, InterfaceHash}, Index)}.

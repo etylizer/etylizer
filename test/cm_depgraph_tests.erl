@@ -78,5 +78,19 @@ cached_test_() ->
         ?assertEqual(["main.erl"], check(Dir, New)),
         File = filename:join([Dir, "_etylizer", "depgraph"]),
         {ok, [{etylizer_depgraph, _, Key, _, Graph}]} = file:consult(File),
-        ?assertEqual({ok, Graph, []}, cm_depgraph:load_depgraph(File, Key))
+        ?assertMatch({ok, Graph, [], _}, cm_depgraph:load_depgraph(File, Key))
+    end) end}.
+
+header_test_() ->
+    {timeout, 45, fun() -> tmp:with_tmp_dir("depgraph", "header", delete, fun(Dir) ->
+        utils:mkdirs(filename:join(Dir, "_build/default/lib")),
+        write(Dir, "rebar.lock", ""),
+        write(Dir, "m.erl", "-module(m).\n-export([g/0]).\n-spec g() -> integer().\ng() -> 1.\n"),
+        write(Dir, "h.hrl", "-define(V, 1).\n"),
+        write(Dir, "main.erl", ?MAIN ++ "-include(\"h.hrl\").\nf() -> ?V.\n"),
+        ?assertEqual(["main.erl"], check(Dir, [])),
+        write(Dir, "h.hrl", "-define(V, m:g()).\n"),
+        ?assertEqual(["m.erl", "main.erl"], check(Dir, [])),
+        write(Dir, "m.erl", "-module(m).\n-export([g/0]).\n-spec g() -> atom().\ng() -> a.\n"),
+        ?assertThrow({etylizer, ty_error, _}, check(Dir, []))
     end) end}.
