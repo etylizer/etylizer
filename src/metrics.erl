@@ -11,7 +11,8 @@
     set_stage/1,
     count/2,
     flush_counts/0,
-    record_partition_vars/2
+    record_partition_vars/2,
+    record_type_error/2
 ]).
 
 -define(TABLE, ety_metrics_table).
@@ -43,6 +44,15 @@ record(Category, DataPoint) ->
     catch
         error:badarg -> ok
     end.
+
+-spec record_type_error(atom(), ast:loc()) -> ok.
+record_type_error(Kind, Loc) ->
+    record(typecheck_error, {current_fun(), Kind, loc_line(Loc)}).
+
+-spec loc_line(ast:loc()) -> integer().
+loc_line({loc, _, Line, _}) -> Line;
+loc_line({generated, _, From}) -> loc_line(From);
+loc_line({internal, _}) -> 0.
 
 % Counts are kept in the process dictionary of the checking process: the
 % counting sites (deep in erlang_types) are hot and know neither the function

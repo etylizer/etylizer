@@ -47,13 +47,16 @@ check_all_report(Ctx, FileName, Env, Decls) ->
                     ?METRIC(typecheck_time, {list_to_atom(utils:sformat("~s:~w/~w", [F(FileName), Name, Arity])), Time, error}),
                     io:format(user,"Error: ~s:~w/~w (~p ms)~n  ~s~n", [F(FileName), Name, Arity, Time, Msg]);
                 throw:{etylizer, unsupported, Msg} ->
+                    ?METRIC_TYPE_ERROR(unsupported, element(2, Decl)),
                     io:format(user,"Unsupported: ~s:~w/~w~n  ~s~n", [F(FileName), Name, Arity, Msg]);
                 throw:{etylizer, Type, _Msg} ->
                     Time = ?TIME(T0),
+                    ?METRIC_TYPE_ERROR(Type, element(2, Decl)),
                     ?METRIC(typecheck_time, {list_to_atom(utils:sformat("~s:~w/~w", [F(FileName), Name, Arity])), Time, error}),
                     io:format(user,"Error: (~p) ~s:~w/~w (~p ms)~n", [Type, F(FileName), Name, Arity, Time]);
                 _:T ->
                     Time = ?TIME(T0),
+                    ?METRIC_TYPE_ERROR(crash, element(2, Decl)),
                     ?METRIC(typecheck_time, {list_to_atom(utils:sformat("~s:~w/~w", [F(FileName), Name, Arity])), Time, error}),
                     io:format(user,"Other: (~p) ~s:~w/~w (~p ms)~n", [{T}, F(FileName), Name, Arity, Time])
             end
@@ -135,8 +138,10 @@ ensure_type_supported(Loc, T) ->
                 {map, []} -> error;
                 {map, [{map_field_opt, _, _}]} -> error;
                 {map, [{map_field_req, _, _}]} ->
+                    ?METRIC_TYPE_ERROR(unsupported, Loc),
                     errors:ty_error(Loc, "map types with mandatory associations are not supported");
                 {map, _} ->
+                    ?METRIC_TYPE_ERROR(unsupported, Loc),
                     errors:ty_error(Loc, "map types with more than one association are not supported");
                 _ -> error
             end
@@ -247,6 +252,7 @@ check_alt(Ctx, Decl = {function, Loc, Name, Arity, _, _}, FunTy, BranchMode, Fix
         {error, Err} ->
             case Err of
                 none ->
+                    ?METRIC_TYPE_ERROR(unlocated, Loc),
                     errors:ty_error(Loc, "function ~w/~w failed to type check against type~n~s~n~s",
                             [Name, Arity, pretty:render_ty(FunTy),
                                 typing_common:format_src_loc(Loc)]);
@@ -265,6 +271,7 @@ tyerror_msg(Kind) ->
 
 -spec report_tyerror(string(), constr_error_locs:constr_error_kind(), ast:loc(), string()) -> no_return().
 report_tyerror(FunName, Kind, Loc, Hint) ->
+    ?METRIC_TYPE_ERROR(Kind, Loc),
     SrcCtx = typing_common:format_src_loc(Loc),
     case Hint of
         "" -> errors:ty_error(Loc, "in ~s, ~s~n~s", [FunName, tyerror_msg(Kind), SrcCtx]);
