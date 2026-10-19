@@ -3,22 +3,24 @@
 %% Case study manifest, see .github/scripts/ety_case_study.
 
 {study, jsone}.
+%% jsone/src is src/*.erl of https://github.com/sile/jsone at a1c481f (2024-11-28), unchanged.
 
 %% {reason, Id, Class, Text}. Class: real (the program or its spec is wrong), inherent (correct at
 %% run time, not provable by types), fixable (gap in the type system or checker), unknown.
-{reason, try_catch,       fixable,  "try-catch (crashed the checker)"}.
-{reason, arithmetic,      inherent, "arithmetic on type level"}.
-{reason, binary_patterns, fixable,  "binary patterns too imprecise"}.
-{reason, spec_imprecise,  real,     "imprecise type spec in the source"}.
-{reason, timeout,         fixable,  "timeout"}.
-{reason, record_defaults, fixable,  "default values of records"}.
-{reason, unknown,         unknown,  "not analysed"}.
+{reason, arithmetic,          inherent, "arithmetic on type level"}.
+{reason, defensive,           inherent, "defensive clause, dead for the spec"}.
+{reason, body_exhaustiveness, inherent, "exhaustiveness of a case or match inside the body"}.
+{reason, binary_patterns,     fixable,  "binary patterns too imprecise"}.
+{reason, negative_literal,    fixable,  "a negative literal is typed as integer()"}.
+{reason, spec_imprecise,      real,     "imprecise type spec in the source"}.
+{reason, spec_wrong,          real,     "wrong type in the source"}.
+{reason, unknown,             unknown,  "not analysed"}.
 
 {module, jsone, #{file => "jsone/src/jsone.erl", timeout => 30000}}.
-{exception, jsone, decode, 2, [ignore], try_catch}.
-{exception, jsone, encode, 2, [ignore], try_catch}.
+{exception, jsone, decode, 2, [ignore], body_exhaustiveness}.
+{exception, jsone, encode, 2, [ignore], body_exhaustiveness}.
 {exception, jsone, term_to_json_string, 1, [ignore], arithmetic}.
-{exception, jsone, check_decode_remainings, 1, [ignore], binary_patterns}.
+{exception, jsone, check_decode_remainings, 1, [no_redundancy], binary_patterns}.
 
 {module, jsone_inet, #{file => "jsone/src/jsone_inet.erl", timeout => 30000}}.
 {exception, jsone_inet, ip_address_to_json_string, 1, [ignore], unknown}.
@@ -26,45 +28,40 @@
 {exception, jsone_inet, to_hex, 1, [ignore], unknown}.
 
 {module, jsone_encode, #{file => "jsone/src/jsone_encode.erl", timeout => 30000}}.
-{exception, jsone_encode, value, 4, [ignore], try_catch}.
-{exception, jsone_encode, datetime, 4, [ignore], timeout}.
-{exception, jsone_encode, padding, 2, [ignore], timeout}.
-{exception, jsone_encode, parse_option, 2, [ignore], timeout}.
+% OTP 28: datetime/4 needs no_redundancy, calendar:year() is non_neg_integer() there
+{exception, jsone_encode, value, 4, [ignore], spec_imprecise}. % json_object_format_map() is map(), [{}] is a list of {}
+{exception, jsone_encode, parse_option, 2, [ignore], defensive}. % inside the body
 {exception, jsone_encode, encode, 2, [ignore], spec_imprecise}.
 {exception, jsone_encode, string, 4, [ignore], spec_imprecise}.
-{exception, jsone_encode, format2digit, 1, [ignore], timeout}.
 {exception, jsone_encode, format_seconds, 1, [ignore], spec_imprecise}.
-{exception, jsone_encode, object_key, 4, [ignore], unknown}.
+{exception, jsone_encode, object_key, 4, [ignore], spec_wrong}. % next() says {char, binary()}, the code uses a byte
 {exception, jsone_encode, escape_string, 4, [ignore], binary_patterns}.
-{exception, jsone_encode, unescaped_string_length, 3, [ignore], binary_patterns}.
+{exception, jsone_encode, unescaped_string_length, 3, [ignore], body_exhaustiveness}.
 {exception, jsone_encode, hex, 1, [ignore], unknown}.
-{exception, jsone_encode, parse_options, 1, [ignore], record_defaults}.
 {exception, jsone_encode, local_offset, 0, [ignore], arithmetic}.
 {exception, jsone_encode, local_offset_dst, 0, [ignore], arithmetic}.
-{exception, jsone_encode, my_integer_to_list, 1, [ignore], unknown}. % overlay
+{exception, jsone_encode, format2digit, 1, [ignore], spec_imprecise}. % integer_to_list returns string()
 {exception, jsone_encode, format_tz_, 1, [ignore], unknown}.
-{exception, jsone_encode, object_members, 4, [ignore], unknown}.
+{exception, jsone_encode, object_members, 4, [no_redundancy], defensive}.
 
-{module, jsone_decode, #{file => "jsone/src/jsone_decode.erl", timeout => 30000}}.
-{exception, jsone_decode, string, 6, [ignore], timeout}.
-{exception, jsone_decode, parse_option, 2, [ignore], timeout}.
-{exception, jsone_decode, object_key, 5, [ignore], try_catch}.
-{exception, jsone_decode, object_key, 2, [ignore], try_catch}.
-{exception, jsone_decode, unicode_string, 5, [ignore], try_catch}.
-{exception, jsone_decode, number_exponation_part, 6, [ignore], try_catch}.
-{exception, jsone_decode, number_exponation_part, 9, [ignore], try_catch}.
-{exception, jsone_decode, next, 5, [ignore], binary_patterns}.
+{module, jsone_decode, #{file => "jsone/src/jsone_decode.erl", overlays => [{missing, "overlay_jsone.erl"}], timeout => 30000}}.
+{exception, jsone_decode, string, 6, [ignore], binary_patterns}.
+{exception, jsone_decode, parse_option, 2, [no_redundancy], defensive}.
+{exception, jsone_decode, object_key, 5, [no_redundancy], binary_patterns}.
+{exception, jsone_decode, object_key, 2, [ignore], spec_imprecise}.
+{exception, jsone_decode, unicode_string, 5, [ignore], binary_patterns}.
+{exception, jsone_decode, number_exponation_part, 6, [ignore], negative_literal}.
+{exception, jsone_decode, number_exponation_part, 9, [ignore], binary_patterns}.
+{exception, jsone_decode, next, 5, [ignore], spec_imprecise}.
 {exception, jsone_decode, whitespace, 5, [ignore], binary_patterns}.
-{exception, jsone_decode, value, 4, [ignore], binary_patterns}.
-{exception, jsone_decode, array, 4, [ignore], binary_patterns}.
-{exception, jsone_decode, array_next, 5, [ignore], binary_patterns}.
-{exception, jsone_decode, object, 4, [ignore], binary_patterns}.
-{exception, jsone_decode, object_value, 6, [ignore], binary_patterns}.
-{exception, jsone_decode, object_next, 5, [ignore], binary_patterns}.
-{exception, jsone_decode, number, 4, [ignore], binary_patterns}.
-{exception, jsone_decode, number_integer_parts, 5, [ignore], binary_patterns}.
-{exception, jsone_decode, number_integer_part, 5, [ignore], binary_patterns}.
-{exception, jsone_decode, number_integer_part_rest, 6, [ignore], binary_patterns}.
-{exception, jsone_decode, number_fraction_part, 6, [ignore], binary_patterns}.
-{exception, jsone_decode, number_fraction_part_rest, 7, [ignore], record_defaults}.
-{exception, jsone_decode, parse_options, 1, [ignore], record_defaults}.
+{exception, jsone_decode, value, 4, [no_redundancy], binary_patterns}.
+{exception, jsone_decode, array, 4, [no_redundancy], binary_patterns}.
+{exception, jsone_decode, array_next, 5, [no_redundancy], binary_patterns}.
+{exception, jsone_decode, object, 4, [no_redundancy], binary_patterns}.
+{exception, jsone_decode, object_value, 6, [no_redundancy], binary_patterns}.
+{exception, jsone_decode, object_next, 5, [no_redundancy], binary_patterns}.
+{exception, jsone_decode, number, 4, [ignore], negative_literal}.
+{exception, jsone_decode, number_integer_part, 5, [no_redundancy], binary_patterns}.
+{exception, jsone_decode, number_integer_part_rest, 6, [no_redundancy], binary_patterns}.
+{exception, jsone_decode, number_fraction_part, 6, [no_redundancy], binary_patterns}.
+{exception, jsone_decode, number_fraction_part_rest, 7, [no_redundancy], binary_patterns}.

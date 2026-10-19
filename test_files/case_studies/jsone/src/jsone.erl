@@ -430,21 +430,9 @@ try_encode(JsonValue, Options) ->
 
 
 %% @doc Converts the given term `X' to its string representation (i.e., the result of `io_lib:format("~p", [X])').
-% -spec term_to_json_string(term()) -> {ok, json_string()} | error.
--spec term_to_json_string(term()) -> {ok, binary()} | error.
+-spec term_to_json_string(term()) -> {ok, json_string()} | error.
 term_to_json_string(X) ->
-    % result should be -type chars() :: [char() | chars()].
-    % Z :: chars()
-    % -type char() :: 0..16#10FFFF.
-    Z = io_lib:format("~0p", [X]),
-    
-    % list_to_binary expects
-    %-type iolist() :: maybe_improper_list(byte() | binary() | iolist(), binary() | []).
-    % and returns binary()
-    %
-    % result should be
-    % binary()
-    {ok, list_to_binary(Z)}.
+    {ok, list_to_binary(io_lib:format("~0p", [X]))}.
 
 
 %% @doc Convert an IP address into a text representation.
@@ -471,9 +459,8 @@ term_to_json_string(X) ->
 %% <<"[\"foo\",\"::ffff:127.0.0.1\"]">>
 %% '''
 -spec ip_address_to_json_string(inet:ip_address() | any()) -> {ok, json_string()} | error.
-ip_address_to_json_string(_X) ->
-    %jsone_inet:ip_address_to_json_string(X). % type checks, but compilation manager bug
-    error. 
+ip_address_to_json_string(X) ->
+    jsone_inet:ip_address_to_json_string(X).
 
 
 %%--------------------------------------------------------------------------------
