@@ -113,6 +113,9 @@ cmd_spec() ->
               help => "Path to the log file (default: etylizer.log)"},
             #{name => type_overlay, long => "-type-overlay", action => append,
               help => "Overlays for fun and type specs. May be given multiple times."},
+            #{name => assertions, long => "-assertions",
+              help => "File of {assertion, Module, {Line, Column, Hash}, Kind, Text, _} terms: wrap the "
+                      "expression at that position in assert_type, annotate_type or assert_pattern"},
             #{name => check_exports, long => "-check-exports", type => boolean, default => false,
               help => "Check that all exported functions have a type spec."},
             #{name => no_exhaustiveness, long => "-no-exhaustiveness", action => append, default => [],
@@ -169,6 +172,7 @@ parse_args(Args) ->
         no_redundancy = maps:get(no_redundancy, ArgMap),
         files = maps:get(files, ArgMap),
         type_overlay = maps:get(type_overlay, ArgMap, []),
+        assertions = maps:get(assertions, ArgMap, undefined),
         verbose = maps:get(verbose, ArgMap, false),
         metrics_file = maps:get(metrics_file, ArgMap, undefined)
     },

@@ -1,0 +1,6 @@
+{assertion, asserted, {11, 5, "680d17"}, assert_pattern, "[_ | _]", test}.
+{assertion, asserted, {15, 11, "ed0a1f"}, assert_type, "integer()", test}.
+{assertion, asserted, {18, 16, "ed0a1f"}, assert_type, "integer()", test}.
+{assertion, asserted, {21, 20, "ed0a1f"}, assert_type, "integer()", test}.
+{assertion, asserted, {24, 15, "ca1cce"}, assert_type, "fun((integer()) -> integer())", test}.
+{assertion, another_module, {1, 1, "000000"}, assert_type, "integer()", test}.

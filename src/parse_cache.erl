@@ -137,9 +137,14 @@ transform_forms(Kind, File, RawForms, Opts) ->
         false -> []
     end,
 
+    AssertedForms = case Opts#opts.assertions of
+        undefined -> RawForms;
+        AssertionFile when IsIntern -> assertions:inject(File, RawForms, AssertionFile);
+        _ -> RawForms
+    end,
     ?LOG_DEBUG("Transforming ~s ...", File),
     TransMode = case Kind of intern -> full; {extern, _} -> flat end,
-    Forms = ast_transform:trans(File, ExtraForms ++ RawForms, TransMode),
+    Forms = ast_transform:trans(File, ExtraForms ++ AssertedForms, TransMode),
     case Opts#opts.dump of
         true ->
             ?LOG_NOTE("Transformed forms in ~s:~n~p", File, ast_utils:remove_locs(Forms));
