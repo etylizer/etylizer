@@ -267,12 +267,7 @@ doWork(Opts) ->
                       % only typecheck the files given
                       cm_depgraph:new(SourceList);
                   false ->
-                      ?LOG_DEBUG("Entry points: ~p, now building dependency graph", SourceList),
-                      G = cm_depgraph:build_dep_graph(
-                          SourceList,
-                          SearchPath),
-                      ?LOG_DEBUG("Reverse dependency graph: ~p", cm_depgraph:pretty_depgraph(G)),
-                      G
+                      cm_depgraph:cached(SourceList, SearchPath, Opts)
               end,
           case Opts#opts.dump_transformed of
               true ->

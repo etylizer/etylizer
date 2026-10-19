@@ -46,3 +46,38 @@ find_dependent_files_test() ->
     ?assertEqual(["bar.erl", "foo.erl"], lists:sort(Deps)).
 
 % cycles
+
+-define(MAIN, "-module(main).\n-export([f/0]).\n-spec f() -> integer().\n").
+
+-spec write(file:name(), file:name(), string()) -> ok.
+write(Dir, Name, Content) -> ok = file:write_file(filename:join(Dir, Name), Content).
+
+-spec check(file:name(), [{atom(), string()}]) -> [file:name()].
+check(Dir, Defines) ->
+    Opts = #opts{
+        files = [filename:join(Dir, "main.erl")],
+        project_root = Dir,
+        mode = test_mode,
+        defines = Defines
+    },
+    lists:sort([filename:basename(F) || F <- etylizer_main:doWork(Opts)]).
+
+cached_test_() ->
+    {timeout, 45, fun() -> tmp:with_tmp_dir("depgraph", "root", delete, fun(Dir) ->
+        utils:mkdirs(filename:join(Dir, "_build/default/lib")),
+        write(Dir, "rebar.lock", ""),
+        write(Dir, "main.erl", ?MAIN ++ "-ifdef(WITH_NEW).\nf() -> newmod:h().\n-else.\nf() -> 1.\n-endif.\n"),
+        write(Dir, "helper.erl", "-module(helper).\n-export([g/0]).\n-spec g() -> integer().\ng() -> 1.\n"),
+        write(Dir, "newmod.erl", "-module(newmod).\n-export([h/0]).\n-spec h() -> integer().\nh() -> 2.\n"),
+        New = [{'WITH_NEW', "true"}],
+        ?assertEqual(["main.erl"], check(Dir, [])),
+        ?assertEqual(["main.erl", "newmod.erl"], check(Dir, New)),
+        write(Dir, "main.erl", ?MAIN ++ "f() -> helper:g().\n"),
+        ?assertEqual(["helper.erl", "main.erl"], check(Dir, New)),
+        ok = file:delete(filename:join(Dir, "helper.erl")),
+        write(Dir, "main.erl", ?MAIN ++ "f() -> 1.\n"),
+        ?assertEqual(["main.erl"], check(Dir, New)),
+        File = filename:join([Dir, "_etylizer", "depgraph"]),
+        {ok, [{etylizer_depgraph, _, Key, _, Graph}]} = file:consult(File),
+        ?assertEqual({ok, Graph, []}, cm_depgraph:load_depgraph(File, Key))
+    end) end}.
