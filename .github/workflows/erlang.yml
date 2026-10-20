@@ -126,6 +126,18 @@ jobs:
         name: ${{ matrix.check.artifact }}
         path: /tmp/test_report.log
 
+  test-elixir:
+    name: "test: elixir"
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    container:
+      image: elixir:1.19.5-otp-28
+    steps:
+    - uses: actions/checkout@v4
+    - run: make build
+    - run: make elixir-tests
+
   test-base:
     name: "test (base): infer"
     needs: build

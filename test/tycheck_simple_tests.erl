@@ -8,6 +8,8 @@
 -include("parse.hrl").
 -include("typing.hrl").
 
+-export([check_decls_in_files/3]).
+
 -spec check_ok_fun(string(), symtab:t(), symtab:t(), sets:set({atom(), arity()}), sets:set({atom(), arity()}), ast:fun_decl(), ast:ty_scheme()) -> ok.
 check_ok_fun(Filename, Tab, OverlayTab, DisableExhaustiveness, DisableRedundancy, Decl = {function, L, Name, Arity, _, _}, Ty) ->
     Includes = ["include", "src", "src/erlang_types", "src/erlang_types/dnf", "src/erlang_types/utils"],
