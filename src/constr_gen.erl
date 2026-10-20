@@ -183,6 +183,9 @@ exp_constrs(Ctx, E, T) ->
             sets:add_element(ListC, Cs);
         {fun_ref, L, GlobalRef} ->
             utils:single({cvar, mk_locs("function ref", L), GlobalRef, T});
+        {fun_ref_dyn, L, {qref_dyn, ModExp, FunExp, ArityExp}} ->
+            Cs = [exp_constrs(Ctx, E, {predef, dynamic}) || E <- [ModExp, FunExp, ArityExp]],
+            sets:union([utils:single({csubty, mk_locs("dynamic function ref", L), {predef, dynamic}, T}) | Cs]);
         {'fun', L, RecName, Args, BodyExps} ->
             ArgTys = lists:map(fun(X) -> {{local_ref, X}, fresh_tyvar(Ctx)} end, Args),
             ArgEnv = maps:from_list(ArgTys),
