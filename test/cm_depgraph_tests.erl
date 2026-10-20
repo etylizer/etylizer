@@ -59,7 +59,7 @@ check(Dir, Defines) ->
         project_root = Dir,
         defines = Defines
     },
-    lists:sort([filename:basename(F) || F <- etylizer_main:doWork(Opts)]).
+    lists:sort([filename:basename(F) || {F, _} <- etylizer_main:doWork(Opts)]).
 
 cached_test_() ->
     {timeout, 45, fun() -> tmp:with_tmp_dir("depgraph", "root", delete, fun(Dir) ->

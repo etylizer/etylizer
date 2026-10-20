@@ -60,7 +60,7 @@ get_files_with_version(Dir, Version) ->
 
 -type tycheck_mode() :: tycheck | dont_tycheck | #opts{}.
 
--spec run_typechecker(file:name(), tycheck_mode()) -> [file:name()].
+-spec run_typechecker(file:name(), tycheck_mode()) -> cm_check:check_list().
 run_typechecker(SrcDir, Mode) ->
     Opts = case Mode of
                #opts{} -> Mode;
@@ -71,8 +71,21 @@ run_typechecker(SrcDir, Mode) ->
         project_root = SrcDir
     }).
 
+% What a run is expected to check: files, or files with the functions checked in them
+-type expected() :: type_error | [string() | {string(), all | [{atom(), arity()}]}].
+
+% A file that the expected changes name without functions may have any checked
+-spec expected_form({file:name(), all | [{atom(), arity()}]}, expected()) ->
+    string() | {string(), all | [{atom(), arity()}]}.
+expected_form({Path, Funs}, Expected) ->
+    F = filename:basename(Path),
+    case is_list(Expected) andalso lists:member(F, Expected) of
+        true -> F;
+        false -> {F, Funs}
+    end.
+
 -spec test_recompile_version(
-    file:name(), file:name(), integer(), string(), [string()] | type_error, tycheck_mode()
+    file:name(), file:name(), integer(), string(), expected(), tycheck_mode()
 ) -> ok.
 test_recompile_version(TargetDir, Dir, Version, RebarLockContent, ExpectedChanges, Mode) ->
     ?LOG_NOTE("Testing code version ~p in ~p", Version, Dir),
@@ -105,13 +118,13 @@ test_recompile_version(TargetDir, Dir, Version, RebarLockContent, ExpectedChange
            true -> ExpectedChanges
         end,
     RealChangesSorted =
-        if is_list(RealChanges) -> lists:sort(lists:map(fun filename:basename/1, RealChanges));
+        if is_list(RealChanges) -> lists:sort([expected_form(E, ExpectedChanges) || E <- RealChanges]);
            true -> RealChanges
         end,
     ?assertEqual(ExpectedChangesSorted, RealChangesSorted),
     ?LOG_NOTE("Test successful for code version ~p in ~p", Version, Dir).
 
--type changes_map() :: #{integer() => [string()] | type_error }.
+-type changes_map() :: #{integer() => expected()}.
 
 -spec test_recompile(file:name(), changes_map()) -> ok.
 test_recompile(Dir, VersionMap) ->
@@ -125,7 +138,7 @@ test_recompile_dont_tycheck(Dir, VersionMap) ->
 test_recompile(Dir, VersionMap, Mode) ->
     test_runs(Dir, [{V, maps:get(V, VersionMap), Mode} || V <- lists:sort(maps:keys(VersionMap))]).
 
--spec test_runs(file:name(), [{integer(), [string()] | type_error, tycheck_mode()}]) -> ok.
+-spec test_runs(file:name(), [{integer(), expected(), tycheck_mode()}]) -> ok.
 test_runs(Dir, Runs) ->
     tmp:with_tmp_dir(Dir, "root", delete,
         fun(TargetDir) ->
@@ -212,6 +225,17 @@ file_changes_test_() ->
          {3, ["foo.erl", "main.erl"], #opts{defines = [{'V', "2"}]}}]))),
      % V2 changes a type in the header that foo exports in a spec, V3 a macro
      ?_timeout(?_test(test_recompile_dont_tycheck("header_change",
-        #{1 => ["foo.erl", "main.erl"], 2 => ["foo.erl", "main.erl"], 3 => ["foo.erl"]})))
+        #{1 => ["foo.erl", "main.erl"], 2 => ["foo.erl", "main.erl"], 3 => ["foo.erl"]}))),
+     % V2 changes the body of foo:f2, V3 the spec of foo:f1, V4 removes bar:b3 from a
+     % module without an export list
+     ?_timeout(?_test(test_recompile_dont_tycheck("function_changes",
+        #{1 => ["bar.erl", "foo.erl", "main.erl"],
+          2 => [{"foo.erl", [{f2, 0}]}],
+          3 => [{"bar.erl", [{b1, 0}, {b2, 0}]}, {"foo.erl", [{f1, 0}]}],
+          4 => [{"main.erl", [{main, 0}]}]}))),
+     % report mode: foo:foo/1 fails in V2 and is checked again in V3
+     ?_timeout(?_test(test_recompile("type_error",
+        #{1 => ["foo.erl", "main.erl"], 2 => ["foo.erl"], 3 => [{"foo.erl", [{foo, 1}]}]},
+        #opts{report_mode = report})))
     ].
 
