@@ -128,7 +128,7 @@ merge_filters(Funs1, Funs2) -> lists:usort(Funs1 ++ Funs2).
     -> {{file:filename(), fun_filter()}, cm_index:index()}.
 check_single_file(CurrentFile, Filter, Symtab, OverlaySymtab, SearchPath, Opts, Index) ->
     Forms = parse_cache:parse(intern, CurrentFile),
-    Checked = selection(CurrentFile, Forms, Filter, Opts),
+    {Checked, Unchecked} = selection(CurrentFile, Forms, Filter, Opts),
     Failed =
         case Checked of
             [] ->
@@ -149,17 +149,26 @@ check_single_file(CurrentFile, Filter, Symtab, OverlaySymtab, SearchPath, Opts, 
                     end,
                 do_type_check(CurrentFile, Forms, Only, Ignore, ExpandedSymtab, OverlaySymtab, Opts)
         end,
+    % a function that was due and is excluded on the command line stays due
+    NotOk = Failed ++ [{F, unchecked} || F <- Unchecked],
     Headers = parse_cache:headers(CurrentFile),
-    {{CurrentFile, Checked}, cm_index:insert(CurrentFile, Forms, Headers, Failed, Index)}.
+    {{CurrentFile, Checked}, cm_index:insert(CurrentFile, Forms, Headers, NotOk, Index)}.
 
-% The functions of the filter that the command line selects
--spec selection(file:filename(), ast:forms(), fun_filter(), cmd_opts()) -> fun_filter().
-selection(_, _, all, _) -> all;
+% The functions of the filter that the command line selects, and those it excludes.
+-spec selection(file:filename(), ast:forms(), fun_filter(), cmd_opts()) ->
+    {fun_filter(), [ast:fun_with_arity()]}.
 selection(File, Forms, Filter, Opts) ->
     {Only, Ignore} = only_and_ignore(Opts),
     ModName = ast_utils:modname_from_path(File),
     Funs = [{N, A} || {function, _, N, A, _, _} <- Forms],
-    [F || F <- Filter, lists:member(F, Funs), typing:should_check(ModName, F, Only, Ignore)].
+    Recheck = case Filter of
+                  all -> Funs;
+                  _ -> [F || F <- Filter, lists:member(F, Funs)]
+              end,
+    case lists:partition(fun(F) -> typing:should_check(ModName, F, Only, Ignore) end, Recheck) of
+        {_, []} when Filter =:= all -> {all, []};
+        {Selected, Excluded} -> {Selected, Excluded}
+    end.
 
 % Returns the functions that failed (empty in early-exit mode).
 -spec do_type_check(

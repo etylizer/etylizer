@@ -23,7 +23,8 @@
 -include("etylizer.hrl").
 -include("cm_fun_deps.hrl").
 
--type failure() :: error | timeout.
+% unchecked: needed a recheck, but the command line excluded it
+-type failure() :: error | timeout | unchecked.
 
 -type file_entry() ::
     {[{file:filename(), string() | {error, any()}}], string(),
@@ -43,7 +44,7 @@
 %    index()
 %}.
 
--define(INDEX_VERSION, 5).
+-define(INDEX_VERSION, 6).
 
 -spec empty_index(file:filename(), term()) -> index().
 empty_index(RebarLockFile, Stamp) ->
