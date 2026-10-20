@@ -57,6 +57,9 @@ fun_ref_06(AF, A) ->
         _ -> A
     end.
 
+-spec fun_ref_07(atom(), atom(), arity()) -> fun((integer()) -> integer()).
+fun_ref_07(M, F, A) -> fun M:F/A.
+
 %%%%%%%%%%%%%%%%%%%%%%%% OPERATORS %%%%%%%%%%%%%%%%%%%%%%%
 
 -spec op_01() -> integer().
