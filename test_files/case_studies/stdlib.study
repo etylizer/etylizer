@@ -72,6 +72,7 @@
 {exception, sets, del_element, 2, [ignore], unknown}. % transitive
 {exception, sets, filtermap, 2, [ignore], unknown}. % folding over empty instatiation of new
 {exception, sets, update_bucket, 3, [ignore], unknown}. % works only for version 1
+{exception, sets, get_bucket, 2, [ignore], unknown}.
 {exception, sets, get_slot, 2, [ignore], unknown}. % only works for version 1
 {exception, sets, maybe_expand, 1, [ignore], unknown}. % only works for version 1
 {exception, sets, maybe_contract, 2, [ignore], unknown}. % only works for version 1
@@ -82,7 +83,3 @@
 {exception, sets, filter_seg_list, 4, [ignore], tuple_any}.
 {exception, sets, get_bucket_s, 2, [ignore], tuple_any}.
 {exception, sets, put_bucket_s, 3, [ignore], tuple_any}.
-{exception, sets, intersection_heuristic, 6, [no_exhaustiveness], unreviewed}.
-{exception, sets, intersection_decided, 3, [no_exhaustiveness], unreviewed}.
-{exception, sets, subtract_heuristic, 6, [no_exhaustiveness], unreviewed}.
-{exception, sets, subtract_decided, 3, [no_exhaustiveness], unreviewed}.

@@ -18,27 +18,27 @@
 'sets:fold_bucket'(_, _, _) -> error(overlay).
 -spec 'sets:filter_bucket'(fun((Element) -> boolean()), [Element], [Element], non_neg_integer()) -> {[Element], non_neg_integer()}.
 'sets:filter_bucket'(_, _, _, _) -> error(overlay).
--spec 'sets:put_bucket_s'(sets:segs(Element), non_neg_integer(), [Element]) -> sets:segs(Element).
+-spec 'sets:put_bucket_s'(sets:segs(Element), pos_integer(), [Element]) -> sets:segs(Element).
 'sets:put_bucket_s'(_, _, _) -> error(overlay).
--spec 'sets:intersection_heuristic'( maps:iterator(Element, []), [Element], [Element], integer(), #{Element => []}, #{Element => []}) -> #{Element => []}.
+-spec 'sets:intersection_heuristic'({Element, [], maps:iterator(Element, [])} | none, [Element], [Element], integer(), #{Element => []}, #{Element => []}) -> #{Element => []}.
 'sets:intersection_heuristic'(_, _, _, _, _, _) -> error(overlay).
--spec 'sets:intersection_decided'(maps:iterator(Element, []), #{Element => V}, #{Element => V}) -> #{Element => V}.
+-spec 'sets:intersection_decided'({Element, [], maps:iterator(Element, [])} | none, #{Element => V}, #{Element => V}) -> #{Element => V}.
 'sets:intersection_decided'(_, _, _) -> error(overlay).
 -spec 'sets:remove_keys'([Element], #{Element => V}) -> #{Element => V}.
 'sets:remove_keys'(_, _) -> error(overlay).
--spec 'sets:subtract_heuristic'(maps:iterator(Element, []), [Element], [Element], integer(), #{Element => []}, #{Element => []}) -> #{Element => []}.
+-spec 'sets:subtract_heuristic'({Element, [], maps:iterator(Element, [])} | none, [Element], [Element], integer(), #{Element => []}, #{Element => []}) -> #{Element => []}.
 'sets:subtract_heuristic'(_, _, _, _, _, _) -> error(overlay).
--spec 'sets:subtract_decided'(maps:iterator(K, []), #{K => []}, #{K => []}) -> #{K => []}.
+-spec 'sets:subtract_decided'({K, [], maps:iterator(K, [])} | none, #{K => []}, #{K => []}) -> #{K => []}.
 'sets:subtract_decided'(_, _, _) -> error(overlay).
 -spec 'sets:fold_segs'(fun((Element, Acc) -> Acc), Acc, sets:segs(Element), non_neg_integer()) -> Acc.
 'sets:fold_segs'(_, _, _, _) -> error(overlay).
 -spec 'sets:fold_seg'(fun((_Element, Acc) -> Acc), Acc, sets:seg(), non_neg_integer()) -> Acc.
 'sets:fold_seg'(_, _, _, _) -> error(overlay).
--spec 'sets:filter_set'(fun((_Element) -> boolean()), sets:set_v1(_)) -> sets:set_v1(_).
+-spec 'sets:filter_set'(fun((E) -> boolean()), sets:set_v1(E)) -> sets:set(E).
 'sets:filter_set'(_, _) -> error(overlay).
 -spec 'sets:filter_seg_list'( fun((_Element) -> boolean()), [sets:seg()], [sets:seg()], non_neg_integer()) -> {[sets:seg()], non_neg_integer()}.
 'sets:filter_seg_list'(_, _, _, _) -> error(overlay).
 -spec 'sets:filter_bkt_list'(fun((Element) -> boolean()), [[Element]], [[Element]], non_neg_integer()) -> {[[Element]], non_neg_integer()}.
 'sets:filter_bkt_list'(_, _, _, _) -> error(overlay).
--spec 'sets:get_bucket_s'(sets:segs(Element), non_neg_integer()) -> [Element].
+-spec 'sets:get_bucket_s'(sets:segs(Element), pos_integer()) -> [Element].
 'sets:get_bucket_s'(_, _) -> error(overlay).
