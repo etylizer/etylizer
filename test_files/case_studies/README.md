@@ -7,6 +7,8 @@ line, everything the check needs from outside:
 * a function that is expected to fail or needs a check switched off
 * assertions injected from outside similar to how they would in the source
 * the `overlays` of a module
+* the `deps`: directories of other studies whose code it uses; only these, the study's own
+  directories and the manifest's directory are on the search path
 
 A manifest is executable: `./jsone.study` runs the study with the etylizer of this tree, which
 has to be built already (`rebar3 as metrics escriptize`). On a terminal it ends with the tables
