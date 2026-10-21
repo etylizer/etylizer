@@ -176,7 +176,7 @@ representations.
 -spec intersection_heuristic( maps:iterator(Element, ?VALUE), [Element], [Element], integer(), #{Element => []}, #{Element => []}) -> #{Element => []}.
 -spec intersection_decided(maps:iterator(Element, ?VALUE), #{Element => V}, #{Element => V}) -> #{Element => V}.
 -spec remove_keys([Element], #{Element => V}) -> #{Element => V}.
--spec subtract_heuristic(maps:iterator(Element, ?VALUE), [Element], [Element], non_neg_integer(), #{Element => []}, #{Element => []}) -> #{Element => []}.
+-spec subtract_heuristic(maps:iterator(Element, ?VALUE), [Element], [Element], integer(), #{Element => []}, #{Element => []}) -> #{Element => []}.
 -spec subtract_decided(maps:iterator(K, ?VALUE), #{K => []}, #{K => []}) -> #{K => []}.
 -spec fold_segs(fun((Element, Acc) -> Acc), Acc, segs(Element), non_neg_integer()) -> Acc.
 -spec fold_seg(fun((_Element, Acc) -> Acc), Acc, seg(), non_neg_integer()) -> Acc.

@@ -105,3 +105,6 @@ op_14_fail() -> false orelse no.
 
 -spec op_15() -> nonempty_list(integer()).
 op_15() -> [1,2] ++ [3,4].
+
+-spec op_16_fail(non_neg_integer()) -> non_neg_integer().
+op_16_fail(X) -> X - 1.
