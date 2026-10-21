@@ -3,7 +3,7 @@
 %%
 %% SPDX-License-Identifier: Apache-2.0
 %%
-%% Copyright Ericsson AB 1996-2025. All Rights Reserved.
+%% Copyright Ericsson AB 1996-2026. All Rights Reserved.
 %%
 %% Licensed under the Apache License, Version 2.0 (the "License");
 %% you may not use this file except in compliance with the License.
@@ -19,7 +19,7 @@
 %%
 %% %CopyrightEnd%
 
--module(ordsets2).
+-module(ordsets).
 -moduledoc """
 Functions for manipulating sets as ordered lists.
 
@@ -37,13 +37,10 @@ See the [Compatibility Section in the `sets` module](`m:sets#module-compatibilit
 for more information about the compatibility of the different implementations of
 sets in the Standard Library.
 
-## See Also
+### See Also
 
 `m:gb_sets`, `m:sets`
 """.
-
--spec is_set(list(term()), term()) -> boolean().
--spec intersection1(ordset(_), [ordset(_)]) -> ordset(_).
 
 -export([new/0,is_set/1,size/1,is_empty/1,to_list/1,from_list/1]).
 -export([is_element/2,add_element/2,del_element/2]).
@@ -63,11 +60,11 @@ Returns a new empty ordered set.
 ## Examples
 
 ```erlang
-1> ordsets:new()
+1> ordsets:new().
 []
 ```
 """.
--spec new() -> [].
+-spec new() -> ordset(none()).
 
 new() -> [].
 
@@ -149,9 +146,9 @@ of one set is also a member of the other set; otherwise, returns `false`.
 ```erlang
 1> Empty = ordsets:new().
 2> S = ordsets:from_list([a,b]).
-3> ordsets:is_equal(S, S)
+3> ordsets:is_equal(S, S).
 true
-4> ordsets:is_equal(S, Empty)
+4> ordsets:is_equal(S, Empty).
 false
 ```
 """.
@@ -216,7 +213,7 @@ true
 
 is_element(E, [H|Es]) when E > H -> is_element(E, Es);
 is_element(E, [H|_]) when E < H -> false;
-is_element(_E, [_H|_]) -> true;            %E == H
+is_element(_E, [_H|_]) -> true;			%E == H
 is_element(_, []) -> false.
 
 -doc """
@@ -242,7 +239,7 @@ Returns a new ordered set formed from `Ordset1` with `Element` inserted.
 
 add_element(E, [H|Es]) when E > H -> [H|add_element(E, Es)];
 add_element(E, [H|_]=Set) when E < H -> [E|Set];
-add_element(_E, [_H|_]=Set) -> Set;        %E == H
+add_element(_E, [_H|_]=Set) -> Set;		%E == H
 add_element(E, []) -> [E].
 
 -doc """
@@ -265,7 +262,7 @@ Returns a copy of `Ordset1` with `Element` removed.
 
 del_element(E, [H|Es]) when E > H -> [H|del_element(E, Es)];
 del_element(E, [H|_]=Set) when E < H -> Set;
-del_element(_E, [_H|Es]) -> Es;            %E == H
+del_element(_E, [_H|Es]) -> Es;			%E == H
 del_element(_, []) -> [].
 
 -doc """
@@ -308,7 +305,7 @@ all sets, without duplicates.
 ```erlang
 1> S0 = ordsets:from_list([a,b,c,d]).
 2> S1 = ordsets:from_list([d,e,f]).
-3> S2 = ordsets:from_list([q,r])
+3> S2 = ordsets:from_list([q,r]).
 4> Sets = [S0, S1, S2].
 5> ordsets:union(Sets).
 [a,b,c,d,e,f,q,r]
@@ -366,7 +363,7 @@ elements that are present in all sets.
 ```erlang
 1> S0 = ordsets:from_list([a,b,c,d]).
 2> S1 = ordsets:from_list([d,e,f]).
-3> S2 = ordsets:from_list([q,r])
+3> S2 = ordsets:from_list([q,r]).
 4> Sets = [S0, S1, S2].
 5> ordsets:intersection([S0, S1, S2]).
 []
@@ -394,15 +391,14 @@ returns `false`.
 
 Two sets are disjoint if they have no elements in common.
 
-This function is equivalent to `ordsets:intersection(Ordset1, Ordset2)
-=:= []`, but faster.
+This function is equivalent to `ordsets:is_empty(ordsets:intersection(Ordset1, Ordset2))`, but faster.
 
 ## Examples
 
 ```erlang
 1> S0 = ordsets:from_list([a,b,c,d]).
 2> S1 = ordsets:from_list([d,e,f]).
-3> S2 = ordsets:from_list([q,r])
+3> S2 = ordsets:from_list([q,r]).
 4> ordsets:is_disjoint(S0, S1).
 false
 5> ordsets:is_disjoint(S1, S2).
@@ -425,7 +421,8 @@ is_disjoint(_, []) ->
     true.
 
 -doc """
-Returns the elements of `Ordset1` that are not elements in `Ordset2`.
+Returns a new ordered set containing the elements of `Ordset1`
+that are not elements in `Ordset2`.
 
 ## Examples
 
@@ -557,13 +554,13 @@ value, with `true` being equivalent to `{true, Elem}`.
 
 ```erlang
 filtermap(Fun, Ordset1) ->
-    ordsets:from_list(lists:filtermap(Fun, Ordset1)).
+    ordsets:from_list(lists:filtermap(Fun, ordsets:to_list(Ordset1))).
 ```
 
 ## Examples
 
 ```erlang
-1> S = ordsets:from_list([2,4,5,6,8,9])
+1> S = ordsets:from_list([2,4,5,6,8,9]).
 2> F = fun(X) ->
            case X rem 2 of
                0 -> {true, X div 2};
@@ -576,7 +573,7 @@ filtermap(Fun, Ordset1) ->
 """.
 -doc(#{since => <<"OTP 27.0">>}).
 -spec filtermap(Fun, Ordset1) -> Ordset2 when
-      Fun :: fun((Element1 :: T1) -> boolean | ({true, Element2 :: T2})),
+      Fun :: fun((Element1 :: T1) -> boolean() | {true, Element2 :: T2}),
       Ordset1 :: ordset(T1),
       Ordset2 :: ordset(T1 | T2).
 
