@@ -79,14 +79,13 @@ check_forms(Ctx, FileName, Forms, Only, Ignore, CheckExports, {CliNoExhaustivene
             case Form of
                 {function, Loc, Name, Arity, _Args, _Body} ->
                     ModuleName = ast_utils:modname_from_path(FileName),
-                    Ref = {ref, Name, Arity},
                     RefStr = utils:sformat("~w/~w", Name, Arity),
                     QRefStr = utils:sformat("~w:~s", ModuleName, RefStr),
                     NameStr = utils:sformat("~w", Name),
                     ModStr = utils:sformat("~w", ModuleName),
                     X = {QRefStr, RefStr, NameStr, ModStr},
                     Check = should_check(QRefStr, RefStr, NameStr, ModStr, Only, Ignore),
-                    case symtab:find_fun(Ref, ExtTab) of
+                    case own_spec(Name, Arity, Forms, ExtTab) of
                         error ->
                             if
                               Check ->
@@ -130,6 +129,10 @@ check_forms(Ctx, FileName, Forms, Only, Ignore, CheckExports, {CliNoExhaustivene
         false ->
             ?LOG_INFO("Unknown functions in only: ~200p", sets:to_list(Unknowns))
     end,
+    % A function with its own spec and an overlay spec is checked against both
+    Overlaid = [{Form, OverlayTy} || {Form = {function, _, Name, Arity, _, _}, Ty} <- FunsWithSpec,
+                                     {ok, OverlayTy} <- [symtab:find_fun({ref, Name, Arity}, ExtTab)],
+                                     OverlayTy =/= Ty],
     % Infer types of functions without spec (empty in dynamic mode)
     InferredTyEnvs = typing_infer:infer_all(ExtCtx, FileName, FunsWithoutSpec),
     % Typechecks the functions with a type spec. We need to check against all InferredTyEnvs,
@@ -166,12 +169,13 @@ check_forms(Ctx, FileName, Forms, Only, Ignore, CheckExports, {CliNoExhaustivene
                     [E | RestEnvs] ->
                         case ReportMode of
                             early_exit ->
-                                case typing_check:check_all(ExtCtx, FileName, E, FunsWithSpec) of
+                                case typing_check:check_all(ExtCtx, FileName, E, FunsWithSpec ++ Overlaid) of
                                     ok -> []; % we are done
                                     {error, Msg} -> Loop(RestEnvs, [{E, Msg} | Errs])
                                 end;
                             report ->
                                 typing_check:check_all_report(ExtCtx, FileName, E, FunsWithSpec)
+                                    ++ typing_check:check_all_report(ExtCtx, FileName, E, Overlaid, " [overlay]")
                         end
                 end
         end,
@@ -203,6 +207,15 @@ should_check(QRefStr, RefStr, NameStr, ModStr, Only, Ignore) ->
     end.
 
 % Creates a dynamic type scheme for a function with the given arity.
+% The spec in the module itself, else the one from the symtab (overlay or dynamic()).
+% An overlay spec for a function with a spec applies to its calls.
+-spec own_spec(atom(), arity(), ast:forms(), symtab:t()) -> t:opt(ast:ty_scheme()).
+own_spec(Name, Arity, Forms, Tab) ->
+    case [T || {attribute, _, spec, N, A, T, _} <- Forms, N =:= Name, A =:= Arity] of
+        [T | _] -> {ok, T};
+        [] -> symtab:find_fun({ref, Name, Arity}, Tab)
+    end.
+
 -spec dynamic_ty_scheme(non_neg_integer()) -> ast:ty_scheme().
 dynamic_ty_scheme(Arity) ->
     DynamicArgs = lists:duplicate(Arity, {predef, dynamic}),

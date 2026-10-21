@@ -217,11 +217,19 @@ section_title(Title, Section) -> Title ++ ": " ++ Section.
 %%   stale       exception with ignore, type checks: the exception is not needed
 %%   dangling    exception for a function that has no verdict
 %%   unexpected  fails without ignore
+%% A function with an overlay spec besides its own is also checked against the overlay spec
+%% ("f/n [overlay]"); no exception covers that check, it is a row of its own only if it fails.
+%% A {correction, ...} of the manifest, a spec that an overlay corrects, is a row "f/n [correction]"
+%% with status correction (studied code), library_correction, or dangling without that overlay spec.
 %% Rows are {Fun, Status, Handling, Class}; Class is none without an exception.
 case_study_rows(Cell) ->
     Exceptions = #{Fun => {Handling, Class}
                    || [Fun, Handling, _Reason, Class] <- maps:get(<<"case_study_exception">>, Cell, [])},
-    Verdicts = #{Fun => Verdict || [Fun, _Time, Verdict] <- maps:get(<<"typecheck_time">>, Cell, [])},
+    Verdicts = #{Fun => Verdict || [Fun, _Time, Verdict] <- maps:get(<<"typecheck_time">>, Cell, []),
+                                   binary:match(Fun, <<" [overlay]">>) =:= nomatch},
+    Overlays = [{Label, unexpected, [], none}
+                || [Label, _Time, Verdict] <- maps:get(<<"typecheck_time">>, Cell, []),
+                   binary:match(Label, <<" [overlay]">>) =/= nomatch, Verdict =/= <<"ok">>],
     [case maps:find(Fun, Exceptions) of
          error -> {Fun, case Verdict of <<"ok">> -> ok; _ -> unexpected end, [], none};
          {ok, {Handling, Class}} ->
@@ -233,7 +241,14 @@ case_study_rows(Cell) ->
                       end,
              {Fun, Status, Handling, Class}
      end || Fun := Verdict <- Verdicts]
-    ++ [{Fun, dangling, Handling, Class} || Fun := {Handling, Class} <- Exceptions, not maps:is_key(Fun, Verdicts)].
+    ++ [{Fun, dangling, Handling, Class} || Fun := {Handling, Class} <- Exceptions, not maps:is_key(Fun, Verdicts)]
+    ++ Overlays
+    ++ [{<<Fun/binary, " [correction]">>, case {Scope, Hash} of
+                                              {_, false} -> dangling;
+                                              {<<"study">>, _} -> correction;
+                                              {<<"library">>, _} -> library_correction
+                                          end, [], Class}
+        || [Fun, _Reason, Class, Scope, Hash] <- maps:get(<<"case_study_correction">>, Cell, [])].
 
 %% The rows of the table: {Label, fun(Rows) -> integer()}.
 case_study_metrics(Classes) ->
@@ -249,6 +264,13 @@ case_study_metrics(Classes) ->
      {"Stale exceptions", Is([stale, dangling])},
      {"Unexpected failures", Is([unexpected])}]
     ++ [{["Exceptions: ", Class], Count(fun({_, S, _, C}) -> C =:= Class andalso lists:member(S, [flagged, ignored]) end)}
+        || Class <- Classes]
+    % a function with an exception and a correction is one finding
+    ++ [{["Findings: ", Class],
+         fun(Rows) -> length(lists:usort([hd(binary:split(F, <<" [correction]">>)) || {F, S, _, C} <- Rows, C =:= Class,
+                                          lists:member(S, [flagged, ignored, correction])]))
+         end} || Class <- Classes]
+    ++ [{["Library findings: ", Class], Count(fun({_, S, _, C}) -> C =:= Class andalso S =:= library_correction end)}
         || Class <- Classes].
 
 print_case_study_section(Title, Pr, Base, HasBase) ->

@@ -16,7 +16,10 @@ main([Manifest | Engine]) ->
     Rows = [[label(M, F, A), Handling, Reason, maps:get(Reason, Classes)] || {exception, M, F, A, Handling, Reason} <- Exceptions],
     Asserted = [[iolist_to_binary(io_lib:format("~w:~w:~w", [M, element(1, At), element(2, At)])), Kind, Reason, maps:get(Reason, Classes)]
                 || {assertion, M, At, Kind, _, Reason} <- Terms],
-    Json = [json:encode(Merged#{case_study_exception => Rows, case_study_assertion => Asserted}), "\n"],
+    Corrected = [[label(M, F, A), Reason, maps:get(Reason, Classes), scope(M, Terms), overlaid(Dir, Terms, M, F, A)]
+                 || {correction, M, F, A, Reason} <- Terms],
+    Json = [json:encode(Merged#{case_study_exception => Rows, case_study_assertion => Asserted,
+                                case_study_correction => Corrected}), "\n"],
     % JSON: files and pipes, terminal: tables
     case proplists:get_value(stdout, io:getopts()) of
         true -> report(Study, filename:join(Work, Study ++ ".study.json"), Json);
@@ -43,6 +46,23 @@ report(Title, File, Json) ->
     0 = wait(Port, standard_io).
 
 label(M, F, A) -> iolist_to_binary(io_lib:format("~w:~w/~w", [M, F, A])).
+
+% A corrected spec is of the studied code or of a library
+scope(M, Terms) ->
+    case [x || {module, M2, _} <- Terms, M2 =:= M] of [] -> library; _ -> study end.
+
+% The hash of the corrected spec in an overlay of the study, false without one. Equal
+% corrections in several studies have the same hash.
+overlaid(Dir, Terms, M, F, A) ->
+    Name = list_to_atom(atom_to_list(M) ++ ":" ++ atom_to_list(F)),
+    Files = lists:usort([O || {module, _, Opts} <- Terms, {_, O} <- maps:get(overlays, Opts, [])]),
+    Specs = [erl_parse:anno_to_term(erl_parse:map_anno(fun(_) -> 0 end, Ty))
+             || O <- Files, {ok, Forms} <- [epp:parse_file(filename:join(Dir, O), [])],
+                {attribute, _, spec, {{N, Ar}, Ty}} <- Forms, {N, Ar} =:= {Name, A}],
+    case Specs of
+        [] -> false;
+        _ -> iolist_to_binary(io_lib:format("~8.16.0b", [erlang:phash2(lists:usort(Specs), 16#100000000)]))
+    end.
 
 % The directories of the study's modules and its deps; other studies stay off the search path
 search_dirs(Terms) ->

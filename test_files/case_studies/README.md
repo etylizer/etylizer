@@ -7,6 +7,8 @@ line, everything the check needs from outside:
 * a function that is expected to fail or needs a check switched off
 * assertions injected from outside similar to how they would in the source
 * the `overlays` of a module
+* the specs that overlays correct, `{correction, Mod, Fun, Arity, Reason}`: findings, of the studied
+  code or, for a module the study does not check, of a library
 * the `deps`: directories of other studies whose code it uses; only these, the study's own
   directories and the manifest's directory are on the search path
 

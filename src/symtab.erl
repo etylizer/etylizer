@@ -266,12 +266,13 @@ extend_symtab_internal(Filename, Forms, RefType, Tab, OverlaySymtab) ->
     % in the checked module no overlay spec may miss its target
     case RefType of
         ref ->
+            Defined = [{Name, Arity} || {function, _, Name, Arity, _, _} <- Forms],
             lists:foreach(
                 fun({qref, M, Name, Arity}) when M =:= ModuleName ->
-                        case lists:member({Name, Arity}, Unspecced) of
+                        case lists:member({Name, Arity}, Defined) of
                             true -> ok;
                             false ->
-                                errors:some_error("Overlay spec for ~w:~w/~w, which is not a function without spec",
+                                errors:some_error("Overlay spec for ~w:~w/~w, which is not defined",
                                                   [M, Name, Arity])
                         end;
                    (_) -> ok
@@ -317,8 +318,8 @@ extend_process_form(_, AccTab, _RefType, _ModuleName, _Forms, _OverlaySymtab) ->
 
 -spec extend_add_spec(atom(), arity(), ast:ty_scheme(), t(), ref(), atom(), ast:forms(), t()) -> t().
 extend_add_spec(Name, Arity, T, AccTab, RefType, ModuleName, Forms, OverlaySymtab) ->
-    Ref = create_ref_tuple(RefType, Name, Arity),
-    case find_fun(Ref, OverlaySymtab) of
+    % calls use an overlay spec, typing checks the function against its own spec
+    case find_fun({qref, ModuleName, Name, Arity}, OverlaySymtab) of
         error ->
             ?LOG_TRACE("No Overlay found for ~w:~w/~p", ModuleName, Name, Arity),
             % if we are in local ref mode,
@@ -327,7 +328,7 @@ extend_add_spec(Name, Arity, T, AccTab, RefType, ModuleName, Forms, OverlaySymta
             maybe_add_qref(RefType, ModuleName, Name, Arity, T, Forms, AccTab);
         {ok, OverlayT} ->
             ?LOG_DEBUG("Overlay found for ~w:~w/~p", ModuleName, Name, Arity),
-            AccTab#tab { funs = maps:put(create_ref_tuple(RefType, Name, Arity), OverlayT, AccTab#tab.funs) }
+            maybe_add_qref(RefType, ModuleName, Name, Arity, OverlayT, Forms, AccTab)
     end.
 
 -spec extend_add_type(atom(), ast:ty_scheme(), [{atom(), any()}], atom(), t()) -> t().
