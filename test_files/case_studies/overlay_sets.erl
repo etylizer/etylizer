@@ -4,6 +4,9 @@
 
 % Specs for the functions of sets.erl that have none upstream.
 
+% A segment is always mk_seg(16), upstream types it seg() :: tuple().
+-type seg(E) :: {[E], [E], [E], [E], [E], [E], [E], [E], [E], [E], [E], [E], [E], [E], [E], [E]}.
+
 -spec 'sets:canonicalize_v2'(sets:set(Element)) -> sets:set(Element).
 'sets:canonicalize_v2'(_) -> error(overlay).
 -spec 'sets:is_disjoint_1'(map(), maps:iterator(_Element, [])) -> boolean().
@@ -32,11 +35,11 @@
 'sets:subtract_decided'(_, _, _) -> error(overlay).
 -spec 'sets:fold_segs'(fun((Element, Acc) -> Acc), Acc, sets:segs(Element), non_neg_integer()) -> Acc.
 'sets:fold_segs'(_, _, _, _) -> error(overlay).
--spec 'sets:fold_seg'(fun((_Element, Acc) -> Acc), Acc, sets:seg(), non_neg_integer()) -> Acc.
+-spec 'sets:fold_seg'(fun((Element, Acc) -> Acc), Acc, seg(Element), non_neg_integer()) -> Acc.
 'sets:fold_seg'(_, _, _, _) -> error(overlay).
 -spec 'sets:filter_set'(fun((E) -> boolean()), sets:set_v1(E)) -> sets:set(E).
 'sets:filter_set'(_, _) -> error(overlay).
--spec 'sets:filter_seg_list'( fun((_Element) -> boolean()), [sets:seg()], [sets:seg()], non_neg_integer()) -> {[sets:seg()], non_neg_integer()}.
+-spec 'sets:filter_seg_list'(fun((Element) -> boolean()), [seg(Element)], [sets:seg()], non_neg_integer()) -> {[sets:seg()], non_neg_integer()}.
 'sets:filter_seg_list'(_, _, _, _) -> error(overlay).
 -spec 'sets:filter_bkt_list'(fun((Element) -> boolean()), [[Element]], [[Element]], non_neg_integer()) -> {[[Element]], non_neg_integer()}.
 'sets:filter_bkt_list'(_, _, _, _) -> error(overlay).

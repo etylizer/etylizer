@@ -22,7 +22,7 @@
 'proplists:key_uniq'(_) -> error(overlay).
 -spec 'proplists:key_uniq_1'(proplists:property(), [{proplists:property(), [term()]}]) -> [{proplists:property(), [term()]}].
 'proplists:key_uniq_1'(_, _) -> error(overlay).
--spec 'proplists:flatten'([[A]]) -> [A]; ([etylizer:without(A, maybe_improper_list())]) -> [A]. % top-level flatten only
+-spec 'proplists:flatten'([etylizer:without(term(), nonempty_improper_list(term(), etylizer:without(term(), list())))]) -> [term()]. % top-level flatten only
 'proplists:flatten'(_) -> error(overlay).
 -spec 'proplists:apply_stages'([term()], [({'aliases', [{term(), term()}]} | {'negations', [{term(), term()}]} | {'expand', [{proplists:property(), [term()]}]})]) -> [term()].
 'proplists:apply_stages'(_, _) -> error(overlay).
