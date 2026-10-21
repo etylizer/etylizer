@@ -634,19 +634,12 @@ receive_clause_constrs(Ctx, {case_clause, L, Pat, Guards, Exps}, T) ->
     % Overriding ensures guarded variables get only the guard type.
     % Unguarded variables remain dynamic().
     VarEnv = maps:merge(DynamicPatEnv, GuardEnv),
-    % Generate guard constraints to evaluate to boolean()
-    GuardCs = sets:union(
-        lists:map(
-            fun(Guard) ->
-                exps_constrs(Ctx, L, Guard, {predef_alias, boolean})
-            end,
-            Guards)),
     % Generate body constraints
     Beta = fresh_tyvar(Ctx),
     BodyCs = exps_constrs(Ctx, L, Exps, Beta),
     ResultCs = utils:single({csubty, mk_locs("receive clause result", L), Beta, T}),
     % Wrap in cdef with variable bindings
-    InnerCs = sets:union([GuardCs, BodyCs, ResultCs]),
+    InnerCs = sets:union([BodyCs, ResultCs]),
     utils:single({cdef, mk_locs("receive clause", L), VarEnv, InnerCs}).
 
 -spec needs_unmatched_check(ast:loc(), list(ast:case_clause())) -> boolean().
@@ -720,14 +713,6 @@ case_clause_constrs(Ctx, TyScrut, Scrut, NeedsUnmatchedCheck, LowersBefore,
     BodyCs = exps_constrs(Ctx, L, Exps, Beta),
     InnerCs = BodyCs,
 
-    CGuards =
-        sets:union(
-          lists:map(
-            fun(Guard) ->
-                    GuardCs = exps_constrs(Ctx, L, Guard, {predef_alias, boolean}),
-                    GuardCs
-            end,
-            Guards)),
     % The clauses that the maybe rewrite adds are not written by the user, they may be dead.
     CheckRedundancy = NeedsUnmatchedCheck andalso not ast:is_generated_by('maybe', L),
     RedundancyCs =
@@ -744,7 +729,7 @@ case_clause_constrs(Ctx, TyScrut, Scrut, NeedsUnmatchedCheck, LowersBefore,
     ResultLocs = mk_locs("case result", RL),
     ResultCs = utils:single({csubty, ResultLocs, Beta, ExpectedTy}),
     Payload = constr:mk_case_branch_payload(
-        {GuardEnv, CGuards}, {BodyEnv, InnerCs}, RedundancyCs, ResultCs),
+        {GuardEnv, sets:new()}, {BodyEnv, InnerCs}, RedundancyCs, ResultCs),
     ConstrBody = {ccase_branch, mk_locs("case branch", L), Payload},
     AllCs = sets:union([BodyEnvCs, GuardEnvCs]),
     {BodyLower, BodyUpper, AllCs, ConstrBody}.
@@ -774,15 +759,6 @@ catch_clause_constrs(Ctx, {catch_clause, L, ExcType, Pat, Stack, Guards, Body}, 
     BodyCs = exps_constrs(Ctx, L, Body, Beta),
     InnerCs = sets:union(BodyCs, InnerCs0),
 
-    % Generate guard constraints (guards must be boolean)
-    CGuards =
-        sets:union(
-          lists:map(
-            fun(Guard) ->
-                    exps_constrs(Ctx, L, Guard, {predef_alias, boolean})
-            end,
-            Guards)),
-
     % Result type constraint
     ResultLocs = mk_locs("catch clause result", L),
     ResultCs = utils:single({csubty, ResultLocs, Beta, ExpectedTy}),
@@ -791,7 +767,7 @@ catch_clause_constrs(Ctx, {catch_clause, L, ExcType, Pat, Stack, Guards, Body}, 
     % The pattern environment needs to be wrapped in cdef
     BodyWithEnv = sets:from_list([{cdef, mk_locs("catch clause", L), PatEnv, InnerCs}], [{version, 2}]),
     Payload = constr:mk_case_branch_payload(
-        {PatEnv0, CGuards},      % Guard constraints (PatEnv0 provides pattern vars in scope)
+        {PatEnv0, sets:new()},   % Guard constraints (PatEnv0 provides pattern vars in scope)
         {#{}, BodyWithEnv},      % Body constraints with env
         none,                     % No redundancy check for catch
         ResultCs),                % Result constraint

@@ -27,8 +27,8 @@ if_03_fail(X) ->
         true -> "foo"
     end.
 
--spec if_04_fail(atom()) -> integer().
-if_04_fail(X) ->
+-spec if_04(atom()) -> integer().
+if_04(X) ->
     if (X + 1) =:= 0 -> 0;
         true -> 1
     end.

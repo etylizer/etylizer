@@ -70,9 +70,9 @@ try_13() -> try throw(x) catch throw:x -> error; throw:y -> ok end.
 -spec try_14_fail() -> ok.
 try_14_fail() -> try error catch _:_ -> ok end.
 
-% guard in catch clause must be boolean, X + 1 is integer
--spec try_15_fail() -> any().
-try_15_fail() ->
+% a guard that is not true fails, whatever its value
+-spec try_15() -> any().
+try_15() ->
     try throw(42)
     catch throw:X when X + 1 -> X
     end.
