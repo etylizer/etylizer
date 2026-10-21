@@ -67,7 +67,7 @@ fun_local_03b_fail() ->
 fun_local_04() ->
     F = fun
             Add(X) when X =:= 0 -> 0;
-            Add(X) -> X + Add(X + 1)
+            Add(X) -> X + Add(X - 1)
         end,
     F(3).
 

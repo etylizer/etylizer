@@ -310,15 +310,23 @@ tyscm(Vars, Ty) -> {ty_scheme, lists:map(fun(Alpha) -> {Alpha, {predef, any}} en
 
 -spec builtin_ops() -> [{atom(), arity(), ast:ty_scheme()}].
 builtin_ops() ->
-    NumOpTy = tyscm(tinter([
+    NumArrows = [
         tfun([{predef_alias, non_neg_integer}, {predef_alias, non_neg_integer}], {predef_alias, non_neg_integer}),
         tfun([tint(), tint()], tint()),
         tfun([tint(), tfloat()], tfloat()),
         tfun([tfloat(), tint()], tfloat()),
         tfun([tfloat(), tfloat()], tfloat())
-    ])),
+    ],
+    PlusOpTy = tyscm(tinter([
+        tfun([tnon_neg_int(), {predef_alias, pos_integer}], {predef_alias, pos_integer}),
+        tfun([{predef_alias, pos_integer}, tnon_neg_int()], {predef_alias, pos_integer})
+        | NumArrows])),
+    TimesOpTy = tyscm(tinter([
+        tfun([{predef_alias, pos_integer}, {predef_alias, pos_integer}], {predef_alias, pos_integer})
+        | NumArrows])),
     % the difference of two non-negative integers can be negative
     MinusOpTy = tyscm(tinter([
+        tfun([{predef_alias, pos_integer}, tint(1)], tnon_neg_int()),
         tfun([tint(), tint()], tint()),
         tfun([tint(), tfloat()], tfloat()),
         tfun([tfloat(), tint()], tfloat()),
@@ -336,10 +344,10 @@ builtin_ops() ->
     OrShortcutOpTy = tyscm([a], tinter([tfun([tatom(true), tany()], tatom(true)), tfun([tatom(false), tvar(a)], tvar(a))])),
     PolyOpTy = tyscm([a], tfun([tvar(a), tvar(a)], tbool())),
     [
-        {'+', 2, NumOpTy},
+        {'+', 2, PlusOpTy},
         {'-', 2, MinusOpTy},
         {'-', 1, NumOp1Ty},
-        {'*', 2, NumOpTy},
+        {'*', 2, TimesOpTy},
         {'/', 2, tyscm(tinter([
             tfun([tint(), tint()], tfloat()),
             tfun([tint(), tfloat()], tfloat()),

@@ -36,8 +36,8 @@
 {exception, queue, get, 2, [no_exhaustiveness], spec_imprecise}. % accepts ([], [])
 {exception, queue, get, 1, [ignore, no_redundancy], spec_imprecise}. % get/2 returns term()
 {exception, queue, head, 1, [ignore, no_redundancy], spec_imprecise}. % get/2 returns term()
-{exception, queue, split_f1_to_r2, 5, [ignore, no_exhaustiveness], unreviewed}.
-{exception, queue, split_r1_to_f2, 5, [ignore, no_exhaustiveness], unreviewed}.
+{exception, queue, split_f1_to_r2, 5, [no_exhaustiveness], unreviewed}.
+{exception, queue, split_r1_to_f2, 5, [no_exhaustiveness], unreviewed}.
 {exception, queue, split, 2, [ignore, no_redundancy, no_exhaustiveness], body_exhaustiveness}. % the length test before [X|F1] = F
 {exception, queue, is_empty, 1, [no_redundancy], unreviewed}.
 {exception, queue, len, 1, [no_redundancy], unreviewed}.
@@ -76,7 +76,6 @@
 {exception, sets, update_bucket, 3, [ignore], unknown}. % works only for version 1
 {exception, sets, get_slot, 2, [ignore], unknown}. % only works for version 1
 {exception, sets, maybe_expand, 1, [ignore], unknown}. % only works for version 1
-{exception, sets, maybe_expand_segs, 1, [ignore], unknown}. % only works for version 1
 {exception, sets, maybe_contract, 2, [ignore], unknown}. % only works for version 1
 {exception, sets, maybe_contract_segs, 1, [ignore], unknown}. % only works for version 1
 {exception, sets, fold_segs, 4, [ignore], tuple_any}.
