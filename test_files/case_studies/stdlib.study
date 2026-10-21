@@ -16,9 +16,7 @@
 {module, proplists, #{file => "stdlib/proplists.erl", overlays => [{missing, "overlay_proplists.erl"}, {library, "overlay.erl"}], timeout => 10000}}.
 {exception, proplists, expand, 2, [ignore], tuple_any}.
 {exception, proplists, normalize, 2, [ignore], tuple_any}.
-{exception, proplists, to_map, 2, [ignore], tuple_any}.
 {exception, proplists, append_values, 2, [ignore], tuple_any}.
-{exception, proplists, expand_2, 4, [ignore], tuple_any}.
 {exception, proplists, to_map, 1, [ignore], tuple_any}.
 
 {module, ordsets, #{file => "stdlib/ordsets.erl", overlays => [{missing, "overlay_ordsets.erl"}], timeout => 10000}}.
