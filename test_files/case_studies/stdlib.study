@@ -38,7 +38,7 @@
 {exception, queue, head, 1, [ignore, no_redundancy], spec_imprecise}. % get/2 returns term()
 {exception, queue, split_f1_to_r2, 5, [no_exhaustiveness], unreviewed}.
 {exception, queue, split_r1_to_f2, 5, [no_exhaustiveness], unreviewed}.
-{exception, queue, split, 2, [ignore, no_redundancy, no_exhaustiveness], body_exhaustiveness}. % the length test before [X|F1] = F
+{exception, queue, split, 2, [no_redundancy], unreviewed}.
 {exception, queue, is_empty, 1, [no_redundancy], unreviewed}.
 {exception, queue, len, 1, [no_redundancy], unreviewed}.
 {exception, queue, to_list, 1, [no_redundancy], unreviewed}.

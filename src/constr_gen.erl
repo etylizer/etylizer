@@ -24,7 +24,9 @@
           % when true, exhaustiveness checking is disabled for the top-level function clauses
           disable_exhaustiveness = false :: boolean(),
           % when true, redundancy checking is disabled for the top-level function clauses
-          disable_redundancy = false :: boolean()
+          disable_redundancy = false :: boolean(),
+          % linear facts that hold here
+          lin = constr_lin:empty() :: constr_lin:t()
         }).
 -type ctx() :: #ctx{}.
 
@@ -375,8 +377,18 @@ case_constrs(Ctx, L, ScrutE, Clauses, T) ->
             true -> sets:new();
             false ->
                 case Ctx#ctx.exhaustiveness_mode of
-                    enabled -> utils:single(
-                                  {csubty, mk_locs("case exhaustiveness", L), Alpha, ast_lib:mk_union(Lowers)});
+                    enabled ->
+                        % [] needs no clause if the facts rule out length(V) = 0
+                        Covered = case ScrutE of
+                                      {var, _, {local_ref, V}} ->
+                                          case constr_lin:nonempty(Ctx#ctx.lin, V) of
+                                              true -> [{empty_list} | Lowers];
+                                              false -> Lowers
+                                          end;
+                                      _ -> Lowers
+                                  end,
+                        utils:single(
+                          {csubty, mk_locs("case exhaustiveness", L), Alpha, ast_lib:mk_union(Covered)});
                     disabled -> sets:new()
                 end
         end,
@@ -748,7 +760,7 @@ case_clause_constrs(Ctx, TyScrut, Scrut, NeedsUnmatchedCheck, LowersBefore,
         pretty:render_constr(BodyEnvCs)
     ),
     Beta = fresh_tyvar(Ctx),
-    BodyCs = exps_constrs(Ctx, L, Exps, Beta),
+    BodyCs = exps_constrs(Ctx#ctx{lin = constr_lin:clause(Ctx#ctx.lin, Scrut, Pat, Guards)}, L, Exps, Beta),
     InnerCs = BodyCs,
 
     % The clauses that the maybe rewrite adds are not written by the user, they may be dead.
