@@ -17,14 +17,8 @@
 {exception, proplists2, expand, 2, [ignore], tuple_any}.
 {exception, proplists2, normalize, 2, [ignore], tuple_any}.
 {exception, proplists2, to_map, 2, [ignore], tuple_any}.
-{exception, proplists2, lookup, 2, [ignore], tuple_any}.
-{exception, proplists2, lookup_all, 2, [ignore], tuple_any}.
 {exception, proplists2, append_values, 2, [ignore], tuple_any}.
-{exception, proplists2, get_keys, 2, [ignore], tuple_any}.
-{exception, proplists2, substitute_aliases_1, 2, [ignore], tuple_any}.
-{exception, proplists2, expand_1, 3, [ignore], tuple_any}.
 {exception, proplists2, expand_2, 4, [ignore], tuple_any}.
-{exception, proplists2, split, 3, [ignore], tuple_any}.
 {exception, proplists2, to_map, 1, [ignore], tuple_any}.
 
 {module, ordsets2, #{file => "stdlib/ordsets2.erl", timeout => 10000}}.

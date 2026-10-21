@@ -1198,7 +1198,8 @@ guard_test_disj_envs(G, Mode) ->
 guard_disj_envs(Tests, Mode) ->
     lists:foldl(
         fun(Test, AccEnvs) ->
-            TestEnvs = guard_test_disj_envs(Test, Mode),
+            Dom = call_domain_env(Test),
+            TestEnvs = [{intersect_envs(E, Dom), S} || {E, S} <- guard_test_disj_envs(Test, Mode)],
             [{intersect_envs(E1, E2), merge_status(S1, S2)}
              || {E1, S1} <- AccEnvs,
                 {E2, S2} <- TestEnvs]
@@ -1242,9 +1243,6 @@ comparison_refine_env(Mode, Op, X, ConstExp) ->
         _ -> {#{}, unsafe}
     end.
 
-% A guard test that is true or false and cannot raise: a type test or comparison of variables
-% and literals, and their combinations. Guards are not type checked, so not B or B orelse T
-% raises for a B that is no boolean, as do element(1, {}), X div 0 and is_function(F, a).
 -spec total_test(ast:guard_test()) -> boolean().
 total_test(G) ->
     case G of
@@ -1283,7 +1281,60 @@ guard_seq_env(Guards) ->
 
 -spec guard_env(ast:guard()) -> {constr:constr_env(), safe | unsafe}.
 guard_env(Guards) ->
-    combine_guard_result(Guards, fun guard_test_env/1, fun intersect_envs/2).
+    combine_guard_result(
+      Guards,
+      fun(G) -> {Env, Status} = guard_test_env(G), {intersect_envs(Env, call_domain_env(G)), Status} end,
+      fun intersect_envs/2).
+
+% A guard test that holds did not raise: the variables passed to guard BIFs and operators
+% are in their domains. Of an andalso that holds both operands were evaluated, of an
+% expression that was only evaluated the left operand of andalso and orelse.
+-spec call_domain_env(ast:guard_test()) -> constr:constr_env().
+call_domain_env({op, _, 'andalso', Left, Right}) ->
+    intersect_envs(call_domain_env(Left), call_domain_env(Right));
+call_domain_env(G) -> eval_domain_env(G).
+
+-spec eval_domain_env(ast:guard_test()) -> constr:constr_env().
+eval_domain_env(G) ->
+    Envs = utils:everything(
+             fun({op, _, Op, Left, _}) when Op =:= 'andalso'; Op =:= 'orelse' -> {ok, eval_domain_env(Left)};
+                ({op, _, Op, Left, Right}) -> {rec, args_domain_env(domains(Op, 2), [Left, Right])};
+                ({op, _, Op, Arg}) -> {rec, args_domain_env(domains(Op, 1), [Arg])};
+                ({call, _, {var, _, {ref, F, A}}, Args}) -> {rec, args_domain_env(domains(F, A), Args)};
+                ({call, _, {var, _, {qref, erlang, F, A}}, Args}) -> {rec, args_domain_env(domains(F, A), Args)};
+                (_) -> error
+             end, G),
+    lists:foldl(fun intersect_envs/2, #{}, Envs).
+
+-spec args_domain_env([ast:ty() | any], [ast:guard_test()]) -> constr:constr_env().
+args_domain_env(Doms, Args) ->
+    lists:foldl(fun intersect_envs/2, #{},
+                [#{X => Ty} || {Ty, {var, _, X = {local_ref, _}}} <- lists:zip(Doms, Args, trim), Ty =/= any]).
+
+% Domains of the guard BIFs and operators that raise outside them, per argument
+-spec domains(atom(), arity()) -> [ast:ty() | any].
+domains(F, N) ->
+    case {F, N} of
+        _ when F =:= '+'; F =:= '-'; F =:= '*'; F =:= '/'; F =:= abs; F =:= ceil; F =:= floor;
+               F =:= round; F =:= trunc; F =:= float ->
+            [{predef_alias, number} || _ <- lists:seq(1, N)];
+        _ when F =:= 'div'; F =:= 'rem'; F =:= 'band'; F =:= 'bor'; F =:= 'bxor'; F =:= 'bsl';
+               F =:= 'bsr'; F =:= 'bnot' ->
+            [{predef, integer} || _ <- lists:seq(1, N)];
+        _ when F =:= 'and'; F =:= 'or'; F =:= 'xor'; F =:= 'not' -> [{predef_alias, boolean} || _ <- lists:seq(1, N)];
+        {_, 1} when F =:= byte_size; F =:= bit_size -> [{predef_alias, bitstring}];
+        {_, 1} when F =:= hd; F =:= tl -> [{predef_alias, nonempty_maybe_improper_list}];
+        {length, 1} -> [{predef_alias, list}];
+        {map_size, 1} -> [{predef_alias, map}];
+        {tuple_size, 1} -> [{tuple_any}];
+        {_, 2} when F =:= map_get; F =:= is_map_key -> [any, {predef_alias, map}];
+        {element, 2} -> [{predef_alias, pos_integer}, {tuple_any}];
+        {binary_part, 3} -> [{predef_alias, binary}, {predef_alias, non_neg_integer}, {predef, integer}];
+        {binary_part, 2} -> [{predef_alias, binary}, {tuple, [{predef_alias, non_neg_integer}, {predef, integer}]}];
+        {size, 1} -> [{union, [{tuple_any}, {predef_alias, bitstring}]}];
+        {is_function, 2} -> [any, {predef_alias, non_neg_integer}];
+        _ -> []
+    end.
 
 -spec combine_guard_result(list(G),
                            fun((G) -> {constr:constr_env(), safe | unsafe}),
