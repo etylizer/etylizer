@@ -398,8 +398,9 @@ process_qualifiers(Ctx, Loc, [Q | Qs], Env, Cs) ->
             ExpCs0 = exp_constrs(Ctx, Exp, stdtypes:tlist(Alpha)),
             ExpCs = sets:from_list([{cdef, mk_locs("strict list generator source", LGen), Env, ExpCs0}]),
 
-            % For strict generators, the list element type must be a subtype of the pattern type
-            TyPat = ty_of_pat(Env, Pat, upper),
+            % For strict generators, the list element type must be a subtype of the accepting
+            % type of the pattern
+            TyPat = ty_of_pat(Env, Pat, lower),
             StrictCs = sets:from_list([
                 {csubty, mk_locs("strict list generator", LGen), Alpha, TyPat}
             ]),
@@ -444,9 +445,10 @@ process_qualifiers(Ctx, Loc, [Q | Qs], Env, Cs) ->
             ExpCs0 = exp_constrs(Ctx, Exp, stdtypes:tmap(KeyAlpha, ValAlpha)),
             ExpCs = sets:from_list([{cdef, mk_locs("strict map generator source", LGen), Env, ExpCs0}]),
 
-            % For strict generators, the map element types must be subtypes of the pattern types
-            TyKeyPat = ty_of_pat(Env, KeyPat, upper),
-            TyValPat = ty_of_pat(Env, ValPat, upper),
+            % For strict generators, the map element types must be subtypes of the accepting
+            % types of the patterns
+            TyKeyPat = ty_of_pat(Env, KeyPat, lower),
+            TyValPat = ty_of_pat(Env, ValPat, lower),
             StrictCs = sets:from_list([
                 {csubty, mk_locs("strict map generator key", LGen), KeyAlpha, TyKeyPat},
                 {csubty, mk_locs("strict map generator value", LGen), ValAlpha, TyValPat}
