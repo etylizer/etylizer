@@ -17,12 +17,15 @@
 {reason, spec_wrong,          real,     "wrong type in the source"}.
 {reason, unknown,             unknown,  "not analysed"}.
 
+%% Library specs that overlays correct, in overlay_jsone_lib.erl
+{correction, erlang, max, 2, spec_imprecise}. % Maximum :: term(): the result is a free type variable
+
 {module, jsone, #{file => "jsone/src/jsone.erl", timeout => 30000}}.
 {exception, jsone, decode, 2, [ignore], body_exhaustiveness}.
 {exception, jsone, encode, 2, [ignore], body_exhaustiveness}.
 {exception, jsone, term_to_json_string, 1, [ignore], arithmetic}.
 
-{module, jsone_inet, #{file => "jsone/src/jsone_inet.erl", timeout => 30000}}.
+{module, jsone_inet, #{file => "jsone/src/jsone_inet.erl", overlays => [{library, "overlay_jsone_lib.erl"}], timeout => 30000}}.
 {exception, jsone_inet, ip_address_to_json_string, 1, [ignore], unknown}.
 {exception, jsone_inet, format_ipv6, 1, [ignore], spec_imprecise}. % string:lowercase
 {exception, jsone_inet, to_hex, 1, [ignore], unknown}.

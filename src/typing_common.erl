@@ -104,6 +104,26 @@ order_bounds(BoundedTyvars) ->
                 L)
     end.
 
+% Type variables of the arguments, with those of their bounds.
+-spec arg_vars(ast:ty(), [ast:bounded_tyvar()]) -> sets:set(ast:ty_varname()).
+arg_vars(T, Bounds) ->
+    Direct = case T of
+        {fun_full, Args, _} -> tyutils:free_in_ty({tuple, Args});
+        {intersection, Fs = [_ | _]} ->
+            sets:union([tyutils:free_in_ty({tuple, As}) || {fun_full, As, _} <- Fs] ++ [sets:new([{version, 2}])]);
+        _ -> tyutils:free_in_ty(T)
+    end,
+    close_vars(sets:to_list(Direct), Direct, Bounds).
+
+-spec close_vars([ast:ty_varname()], sets:set(ast:ty_varname()), [ast:bounded_tyvar()]) -> sets:set(ast:ty_varname()).
+close_vars([], Acc, _) -> Acc;
+close_vars([A | Rest], Acc, Bounds) ->
+    New = case lists:keyfind(A, 1, Bounds) of
+        {_, B} -> [V || V <- sets:to_list(tyutils:free_in_ty(B)), not sets:is_element(V, Acc)];
+        false -> []
+    end,
+    close_vars(New ++ Rest, sets:union(Acc, sets:from_list(New, [{version, 2}])), Bounds).
+
 -spec is_any_bound(ast:ty()) -> boolean().
 is_any_bound({predef, any}) -> true;
 is_any_bound({predef_alias, term}) -> true;
@@ -111,20 +131,21 @@ is_any_bound(_) -> false.
 
 % assumes that the bounds are already ordered so that if {Beta, Bound} is in the list of
 % bounds and Alpha is free in Bound, the Alpha appears in the list of bounds before Beta,
+% A term() bound of a variable only in results is no polymorphism: the caller gets term().
 -spec replace_bounds
-([ast:bounded_tyvar()], [ast:ty_varname()], subst:t(), State, fresh_fun(State), symtab:t()) ->
+([ast:bounded_tyvar()], sets:set(ast:ty_varname()), [ast:ty_varname()], subst:t(), State, fresh_fun(State), symtab:t()) ->
     {[ast:ty_varname()], subst:t(), State}.
-replace_bounds([], Polys, Subst, State, _FreshFun, _SymTab) ->
+replace_bounds([], _ArgVars, Polys, Subst, State, _FreshFun, _SymTab) ->
     {lists:reverse(Polys), Subst, State};
-replace_bounds([{Alpha, Bound} | Rest], Polys, Subst, State, FreshFun, SymTab) ->
-    case is_any_bound(Bound) of
+replace_bounds([{Alpha, Bound} | Rest], ArgVars, Polys, Subst, State, FreshFun, SymTab) ->
+    case is_any_bound(Bound) andalso (Bound =/= {predef_alias, term} orelse sets:is_element(Alpha, ArgVars)) of
         true  ->
             {Fresh, NewState} = FreshFun(Alpha, State),
             NewSubst = subst:extend(Subst, Alpha, {var, Fresh}),
-            replace_bounds(Rest, [Fresh | Polys], NewSubst, NewState, FreshFun, SymTab);
+            replace_bounds(Rest, ArgVars, [Fresh | Polys], NewSubst, NewState, FreshFun, SymTab);
         false ->
             NewSubst = subst:extend(Subst, Alpha, subst:apply(Subst, Bound, {clean, SymTab})),
-            replace_bounds(Rest, Polys, NewSubst, State, FreshFun, SymTab)
+            replace_bounds(Rest, ArgVars, Polys, NewSubst, State, FreshFun, SymTab)
     end.
 
 -spec mono_ty(ast:loc(), ast:ty_scheme(), State, fresh_fun(State), symtab:t()) ->
@@ -138,7 +159,7 @@ mono_ty(Loc, TyScm = {ty_scheme, Bounds, T}, FreshStart, FreshFun, SymTab) ->
         OrderedBounds ->
             ?LOG_TRACE("Ordered bounds: ~200p", OrderedBounds),
             {Fresh, Subst, NewState} =
-                replace_bounds(OrderedBounds, [], subst:empty(), FreshStart, FreshFun, SymTab),
+                replace_bounds(OrderedBounds, arg_vars(T, Bounds), [], subst:empty(), FreshStart, FreshFun, SymTab),
             Res = subst:apply(Subst, T, {clean, SymTab}),
             ?LOG_TRACE("Result of monomorphizing type scheme ~s:~n~s~nRaw: ~w~nFresh: ~200p",
                pretty:render_tyscheme(TyScm), pretty:render_ty(Res), Res, Fresh),

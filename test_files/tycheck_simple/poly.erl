@@ -37,3 +37,13 @@ poly_inter(X) ->
 % Only matches tuples
 -spec foo5_fail(Foo) -> Foo.
 foo5_fail({_}) -> ok.
+
+% A result-only variable with a term() bound is term(), not a type of the caller's choice
+-spec result_term(integer()) -> R when R :: term().
+result_term(X) -> X.
+
+-spec result_term_fail(integer()) -> atom().
+result_term_fail(X) -> result_term(X).
+
+-spec result_term_case(integer()) -> integer().
+result_term_case(X) -> H = result_term(X), if H > 0 -> 1; true -> 2 end.
