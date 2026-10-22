@@ -222,10 +222,25 @@ section_title(Title, Section) -> Title ++ ": " ++ Section.
 %% ("f/n [overlay]"); no exception covers that check, it is a row of its own only if it fails.
 %% A {correction, ...} of the manifest, a spec that an overlay corrects, is a row "f/n [correction]"
 %% with status correction (studied code), library_correction, or dangling without that overlay spec.
+%% Several exception lines for one function add up their handlings; the class of the ignore line,
+%% else of the first line, counts for the function, the other classes as rows "f/n [exception]"
+%% with status also.
 %% Rows are {Fun, Status, Handling, Class}; Class is none without an exception.
 case_study_rows(Cell) ->
-    Exceptions = #{Fun => {Handling, Class}
-                   || [Fun, Handling, _Reason, Class] <- maps:get(<<"case_study_exception">>, Cell, [])},
+    Lines = [{Fun, Handling, Class} || [Fun, Handling, _Reason, Class] <- maps:get(<<"case_study_exception">>, Cell, [])],
+    Exceptions = maps:map(
+                   fun(Fun, Hs) ->
+                           Mine = [L || L = {F, _, _} <- Lines, F =:= Fun],
+                           Main = case [C || {_, H, C} <- Mine, lists:member(<<"ignore">>, H)] of
+                                      [C | _] -> C;
+                                      [] -> element(3, hd(Mine))
+                                  end,
+                           {lists:usort(Hs), Main}
+                   end,
+                   lists:foldl(fun({Fun, H, _}, Acc) -> maps:update_with(Fun, fun(Hs) -> H ++ Hs end, H, Acc) end,
+                               #{}, Lines)),
+    Also = lists:usort([{<<Fun/binary, " [exception]">>, also, H, C}
+                        || {Fun, H, C} <- Lines, C =/= element(2, map_get(Fun, Exceptions))]),
     Verdicts = #{Fun => Verdict || [Fun, _Time, Verdict] <- maps:get(<<"typecheck_time">>, Cell, []),
                                    binary:match(Fun, [<<" [overlay]">>, <<" [unflagged]">>]) =:= nomatch},
     Unflagged = #{Fun => Verdict || [Label, _Time, Verdict] <- maps:get(<<"typecheck_time">>, Cell, []),
@@ -247,6 +262,7 @@ case_study_rows(Cell) ->
      end || Fun := Verdict <- Verdicts]
     ++ [{Fun, dangling, Handling, Class} || Fun := {Handling, Class} <- Exceptions, not maps:is_key(Fun, Verdicts)]
     ++ Overlays
+    ++ Also
     ++ [{<<Fun/binary, " [correction]">>, case {Scope, Hash} of
                                               {_, false} -> dangling;
                                               {<<"study">>, _} -> correction;
@@ -267,12 +283,13 @@ case_study_metrics(Classes) ->
      {"Ignored", Is([ignored])},
      {"Stale exceptions", Is([stale, dangling])},
      {"Unexpected failures", Is([unexpected])}]
-    ++ [{["Exceptions: ", Class], Count(fun({_, S, _, C}) -> C =:= Class andalso lists:member(S, [flagged, ignored]) end)}
+    ++ [{["Exceptions: ", Class], Count(fun({_, S, _, C}) -> C =:= Class andalso lists:member(S, [flagged, ignored, also]) end)}
         || Class <- Classes]
     % a function with an exception and a correction is one finding
     ++ [{["Findings: ", Class],
-         fun(Rows) -> length(lists:usort([hd(binary:split(F, <<" [correction]">>)) || {F, S, _, C} <- Rows, C =:= Class,
-                                          lists:member(S, [flagged, ignored, correction])]))
+         fun(Rows) -> length(lists:usort([hd(binary:split(F, [<<" [correction]">>, <<" [exception]">>]))
+                                          || {F, S, _, C} <- Rows, C =:= Class,
+                                             lists:member(S, [flagged, ignored, correction, also])]))
          end} || Class <- Classes]
     ++ [{["Library findings: ", Class], Count(fun({_, S, _, C}) -> C =:= Class andalso S =:= library_correction end)}
         || Class <- Classes].
