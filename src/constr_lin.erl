@@ -23,17 +23,24 @@ empty() -> #lin{}.
 % scrutinee, then the comparisons of a single guard.
 -spec clause(t(), ast:exp(), ast:pat(), [ast:guard()]) -> t().
 clause(Fs0, Scrut, Pat, Guards) ->
-    Fs1 = case lin_of_exp(Fs0, Scrut) of
-              {ok, Lin} ->
-                  lists:foldl(fun(V, F) -> add_eq(F#lin{ints = [V | F#lin.ints]}, lin_var(V), Lin) end,
-                              Fs0, top_vars(Pat));
-              error -> Fs0
-          end,
+    Fs1 = bind(Fs0, Scrut, Pat),
     case Guards of
         [Tests] ->
             Fs2 = lists:foldl(fun guard_ints/2, Fs1, Tests),
             lists:foldl(fun guard_facts/2, Fs2, Tests);
         _ -> Fs1
+    end.
+
+% A tuple pattern on a tuple scrutinee binds componentwise (if rewrite, function clauses)
+-spec bind(t(), ast:exp(), ast:pat()) -> t().
+bind(Fs, {tuple, _, Es}, {tuple, _, Ps}) when length(Es) =:= length(Ps) ->
+    lists:foldl(fun({E, P}, F) -> bind(F, E, P) end, Fs, lists:zip(Es, Ps));
+bind(Fs, Scrut, Pat) ->
+    case lin_of_exp(Fs, Scrut) of
+        {ok, Lin} ->
+            lists:foldl(fun(V, F) -> add_eq(F#lin{ints = [V | F#lin.ints]}, lin_var(V), Lin) end,
+                        Fs, top_vars(Pat));
+        error -> Fs
     end.
 
 -spec top_vars(ast:pat()) -> [ast:local_varname()].

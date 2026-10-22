@@ -27,14 +27,15 @@ if_03_fail(X) ->
         true -> "foo"
     end.
 
--spec if_04(atom()) -> integer().
-if_04(X) ->
+-spec if_04_fail(atom()) -> integer().
+if_04_fail(X) ->
     if (X + 1) =:= 0 -> 0;
         true -> 1
     end.
 
--spec if_05(atom()) -> integer().
-if_05(X) ->
+% dead branch
+-spec if_05_fail(atom()) -> integer().
+if_05_fail(X) ->
     if X =:= 0 -> 0;
         true -> 1
     end.
@@ -43,6 +44,39 @@ if_05(X) ->
 -spec if_06(integer()) -> ok.
 if_06(X) ->
     if is_integer(X) -> ok end.
+
+% the guards partition the scrutinee {X}
+-spec if_07(integer()) -> pos | neg.
+if_07(X) ->
+    if X >= 0 -> pos;
+       X < 0 -> neg
+    end.
+
+-spec if_08_fail(integer()) -> pos | neg.
+if_08_fail(X) ->
+    if X > 0 -> pos;
+       X < 0 -> neg
+    end.
+
+% the first branch is dead under the first arrow
+-spec if_09({a, b}) -> b; (atom()) -> true.
+if_09(P) ->
+    if is_atom(P) -> true;
+       true -> {a, B} = P, B
+    end.
+
+-spec if_10_fail({a, b}) -> b.
+if_10_fail(P) ->
+    if is_atom(P) -> true;
+       true -> {a, B} = P, B
+    end.
+
+% the guards relate two variables, accepted only because of dynamic()
+-spec if_11(dynamic(), dynamic()) -> dynamic().
+if_11(X, Y) ->
+    if X >= Y -> X;
+       X < Y -> Y
+    end.
 
 % scoping of variables outside of the if expression if they are safe
 -spec if_15() -> ok.
@@ -60,22 +94,6 @@ if_17(X) ->
 % S has type foo | bar
 -spec if_18(integer() | atom()) -> foo | bar.
 if_18(X) ->
-    if is_integer(X) -> S = foo;
-       is_atom(X) -> S = bar
-    end,
-    S.
-
-% S has type foo | fail
--spec if_20_fail(integer() | atom()) -> foo | bar.
-if_20_fail(X) ->
-    if is_integer(X) -> S = foo;
-       is_atom(X) -> S = fail
-    end,
-    S.
-
-% S has type foo | bar
--spec if_21_fail(integer() | atom()) -> foo.
-if_21_fail(X) ->
     if is_integer(X) -> S = foo;
        is_atom(X) -> S = bar
     end,

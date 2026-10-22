@@ -237,16 +237,12 @@ simple_test_() ->
     % TODO better redundancy check detection for dynamic()
     "refine_times_02_fail",
     "refine_times_03_fail",
-    % TODO for if expressions guards always reference outer scope variables
-    %      lower is always none() for any non-trivial if guard
+    % TODO guards of case {} reference outer scope variables only
+    %      lower is always none() for any non-trivial guard
     %      see case_13_fail, maybe at some point we have better
     %      bounds for scoped variables
-    "if_06",
-    "if_17",
-    "if_18",
     "case_26",
-    "refinement_01c",
-    "refinement_01b"
+    "refinement_01c"
   ],
 
   NoInfer = [

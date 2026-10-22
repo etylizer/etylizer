@@ -640,9 +640,10 @@ trans_exp(Ctx, Env, Exp) ->
             {NewArgs, NewEnv} = trans_exps(Ctx, Env1, Args),
             {{call, to_loc(Ctx, Anno), NewFunExp, NewArgs}, NewEnv};
         {'if', Anno, Clauses} ->
-            {NewClauses, NewEnv} = trans_if_clauses(Ctx, Env, Clauses),
             G = ast:generated('if', to_loc(Ctx, Anno)),
-            {{'case', G, {tuple, G, []}, NewClauses}, NewEnv};
+            Vars = if_guard_vars(Ctx, Env, Clauses),
+            {NewClauses, NewEnv} = trans_if_clauses(Ctx, Env, Vars, Clauses),
+            {{'case', G, {tuple, G, [{var, G, {local_ref, V}} || V <- Vars]}, NewClauses}, NewEnv};
         {lc, Anno, E, Qualifiers} ->
             {NewQ, NewEnv} = trans_qualifiers(Ctx, Env, Qualifiers),
             % keep the old Env, list comprehension opens a new scope
@@ -1102,24 +1103,41 @@ trans_fun_clause(Ctx, Env, C) ->
         X -> errors:uncovered_case(?FILE, ?LINE, X)
     end.
 
--spec trans_if_clauses(ctx(), varenv_local:t(), [ast_erl:if_clause()])
+% The outer variables referenced by the guards of an if, in order of first occurrence.
+-spec if_guard_vars(ctx(), varenv_local:t(), [ast_erl:if_clause()]) -> [ast:local_varname()].
+if_guard_vars(Ctx, Env, Cs) ->
+    Guards = [trans_guards(Ctx, Env, Gs) || {clause, _, [], Gs, _} <- Cs],
+    lists:uniq(utils:everything(fun({local_ref, V = {N, U}}) when is_atom(N), is_integer(U) -> {ok, V};
+                                   (_) -> error
+                                end, Guards)).
+
+% `if G1 -> B1; ... end` becomes `case {X1, ..., Xn} of {Y1, ..., Yn} when G1[Y/X] -> B1[Y/X]; ...`
+% for the outer variables Xi of the guards, so that the guards narrow the scrutinee.
+-spec trans_if_clauses(ctx(), varenv_local:t(), [ast:local_varname()], [ast_erl:if_clause()])
                       -> {[ast:case_clause()], varenv_local:t()}.
-trans_if_clauses(_Ctx, Env, []) -> {[], Env};
-trans_if_clauses(Ctx, Env, Cs) ->
+trans_if_clauses(_Ctx, Env, _Vars, []) -> {[], Env};
+trans_if_clauses(Ctx, Env, Vars, Cs) ->
     {NewClauses, NewEnvs} =
-        lists:unzip(lists:map(fun(C) -> trans_if_clause(Ctx, Env, C) end, Cs)),
+        lists:unzip(lists:map(fun(C) -> trans_if_clause(Ctx, Env, Vars, C) end, Cs)),
     {NewClauses, varenv_local:merge_envs(NewEnvs)}.
 
-% Translates the if clause `G -> B` into the case clause `_ when G -> B`.
--spec trans_if_clause(ctx(), varenv_local:t(), ast_erl:if_clause())
+% The Yi shadow the Xi in the clause; afterwards the names refer to the Xi again.
+-spec trans_if_clause(ctx(), varenv_local:t(), [ast:local_varname()], ast_erl:if_clause())
                      -> {ast:case_clause(), varenv_local:t()}.
-trans_if_clause(Ctx, Env, C) ->
+trans_if_clause(Ctx, Env, Vars, C) ->
     case C of
         {clause, Anno, [], Guards, Body} ->
             Loc = to_loc(Ctx, Anno),
-            NewGuards = trans_guards(Ctx, Env, Guards),
-            {NewBody, NewEnv} = trans_exp_seq(Ctx, Env, Body),
-            {{case_clause, Loc, {wildcard, ast:generated('if', Loc)}, NewGuards, NewBody}, NewEnv};
+            G = ast:generated('if', Loc),
+            {Ys, ClauseEnv} = lists:mapfoldl(fun({N, _}, E) -> varenv_local:insert(N, E) end, Env, Vars),
+            Pat = case Ys of
+                      [] -> {wildcard, G};
+                      _ -> {tuple, G, [{var, G, {local_bind, Y}} || Y <- Ys]}
+                  end,
+            NewGuards = trans_guards(Ctx, ClauseEnv, Guards),
+            {NewBody, BodyEnv} = trans_exp_seq(Ctx, ClauseEnv, Body),
+            NewEnv = lists:foldl(fun varenv_local:insert_var/2, BodyEnv, Vars),
+            {{case_clause, Loc, Pat, NewGuards, NewBody}, NewEnv};
         X -> errors:uncovered_case(?FILE, ?LINE, X)
     end.
 
