@@ -76,6 +76,7 @@ run(Ety, Dir, Search, Manifest, Work, Mod, Opts = #{file := File, timeout := Tim
     Args = ["--no-deps", "-f", "-l", "error", "--report-mode", "report", "--report-timeout", integer_to_list(Timeout),
             "-P", Base, "--log-file", Base ++ ".log", "--metrics-file", Base ++ ".json", "--assertions", Manifest]
         ++ [Arg || {_, Overlay} <- maps:get(overlays, Opts, []), Arg <- ["--type-overlay", Overlay]]
+        ++ [Arg || {F, A} <- maps:get(only, Opts, []), Arg <- ["-o", atom_to_list(F) ++ "/" ++ integer_to_list(A)]]
         ++ [Arg || Inc <- found(Dir, Search, ".hrl"), Arg <- ["-I", Inc]]
         ++ [Arg || Src <- found(Dir, Search, ".erl"), Arg <- ["-I", Src]]
         ++ Flags ++ [File],
