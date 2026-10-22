@@ -1,0 +1,63 @@
+#!/usr/bin/env -S sh -c 'exec "$(dirname "$0")/../../.github/scripts/ety_case_study" "$0" "$@"'
+%% -*- erlang -*-
+%% Case study manifest, see .github/scripts/ety_case_study.
+{study, maps}.
+
+{reason, spec_imprecise,      real,     "imprecise type spec in the source"}.
+{reason, spec_wrong,          real,     "wrong type in the source"}.
+{reason, global_invariant,    inherent, "the callers ensure a relation between the arguments that no spec type can state, checking it crosses function boundaries"}.
+{reason, validation_by_exception, inherent, "takes any term and decides by catching the exception of a call that needs a narrower type"}.
+{reason, map_key_lookup,      fixable,  "a map pattern #{K := V} with a variable key gives V the values of all keys of the map, not those of the keys of K's type"}.
+{reason, map_key_narrowing,   fixable,  "a map pattern #{K := _} with a bound variable key does not narrow K to the key type of the map"}.
+{reason, heterogeneous_list,  fixable,  "a list with a different type per position, [Iter, Map | Pairs]: list types have one element type, needs cons types"}.
+{reason, defensive,           benign,   "defensive clause, dead for the spec"}.
+
+%% Library specs that overlays correct
+{correction, erts_internal, map_next, 3, spec_wrong}. % with iterator the result can be none: erts_internal:map_next(0, #{}, iterator) is none
+{correction, lists, foldl, 3, spec_imprecise}. % the term() bounds leave Acc0, AccIn, AccOut and Acc1 unrelated
+
+{module, maps, #{file => "stdlib/maps.erl", overlays => [{missing, "overlay_maps.erl"}, {library, "overlay_maps_lib.erl"}, {corrected, "overlay_maps_corrected.erl"}], timeout => 10000}}.
+{correction, maps, from_list, 1, spec_imprecise}. % ([{K, V}]) -> #{K => V}
+{correction, maps, put, 3, spec_imprecise}. % (K, V, #{K1 => V1}) -> #{K | K1 => V | V1}
+{correction, maps, fold, 3, spec_wrong}.
+{correction, maps, update, 3, spec_wrong}. % BIF: update(a, 1, #{a => x, b => x}) is #{a => 1, b => x}, the spec gives #{a | b := 1, _ => _} for Key = a | b
+{correction, maps, update_with, 3, spec_wrong}.
+{correction, maps, update_with, 4, spec_wrong}.
+{correction, maps, merge_with, 3, spec_wrong}.
+{correction, maps, groups_from_list, 3, spec_wrong}.
+%% the last clause of each, for a non-map or non-fun argument, is dead for the spec
+{exception, maps, intersect, 2, [no_redundancy], defensive}.
+{exception, maps, intersect_with, 3, [no_redundancy], defensive}.
+{exception, maps, merge_with, 3, [no_redundancy], defensive}.
+{exception, maps, filter, 2, [no_redundancy], defensive}.
+{exception, maps, filtermap, 2, [no_redundancy], defensive}.
+{exception, maps, foreach, 2, [no_redundancy], defensive}.
+{exception, maps, fold, 3, [no_redundancy], defensive}.
+{exception, maps, map, 2, [no_redundancy], defensive}.
+{exception, maps, iterator, 1, [no_redundancy], defensive}.
+{exception, maps, iterator, 2, [no_redundancy], defensive}.
+{exception, maps, without, 2, [no_redundancy], defensive}.
+{exception, maps, with, 2, [no_redundancy], defensive}.
+{exception, maps, groups_from_list, 2, [no_redundancy], defensive}.
+{exception, maps, groups_from_list, 3, [no_redundancy], defensive}.
+{exception, maps, update_with, 3, [no_redundancy], defensive}.
+{exception, maps, update_with, 4, [no_redundancy], defensive}.
+{exception, maps, get, 3, [no_redundancy], defensive}.
+{exception, maps, fold, 3, [ignore], spec_wrong}. % Init :: term() and -> AccOut, but maps:fold(F, a, #{}) is a; corrected (fun((K, V, Acc0 | Acc) -> Acc), Acc0, Map) -> Acc0 | Acc
+{exception, maps, groups_from_list, 3, [ignore], spec_wrong}. % -> #{Key := Group}, but an empty list gives #{}; corrected -> #{K => [V]}
+{exception, maps, update_with, 3, [ignore], spec_wrong}. % #{Key := Value2, _ => _} for a Key type of more than one key: update_with(a, fun(_) -> 1 end, #{a => x, b => x}) is #{a => 1, b => x}, the spec gives #{a | b := 1, _ => _}
+{exception, maps, update_with, 4, [ignore], spec_wrong}. % the same: update_with(a, fun(_) -> 1 end, 0, #{b => x}) is #{a => 0, b => x}
+{exception, maps, merge_with, 3, [ignore], spec_wrong}. % leftmost Key1 => CombineResult: merge_with(fun(_, _, _) -> c end, #{a => 1}, #{b => 2}) is #{a => 1, b => 2}
+{assertion, maps, {218, 13, "7a7cf7"}, assert_type, "dynamic()", map_key_narrowing}. % intersect/2: keys of the small map Map2 kept only if in Map1
+{assertion, maps, {264, 13, "c7779a"}, assert_type, "dynamic()", map_key_narrowing}. % intersect_with/3: the same
+{assertion, maps, {264, 44, "59b5cf"}, assert_type, "dynamic()", map_key_narrowing}. % intersect_with/3: RCombiner gets keys of Map2 that are in Map1
+{assertion, maps, {391, 53, "c36fe7"}, assert_type, "dynamic()", map_key_narrowing}. % merge_with/3: the combiner gets keys of Map2 that are in Map1
+{assertion, maps, {405, 47, "780528"}, assert_type, "dynamic()", global_invariant}. % merge_with_1/3: each key comes once from the iterator, Map1 still has its own value there
+{assertion, maps, {526, 5, "a1b5bc"}, assert_type, "[dynamic()]", heterogeneous_list}. % to_list/1
+{assertion, maps, {540, 45, "48e8ce"}, assert_type, "non_neg_integer()", heterogeneous_list}. % to_list_internal/1
+{assertion, maps, {540, 51, "9fdd36"}, assert_type, "map()", heterogeneous_list}. % to_list_internal/1
+{assertion, maps, {691, 28, "2caa2e"}, assert_type, "dynamic()", map_key_lookup}. % get/3
+{assertion, maps, {1106, 32, "d67ff8"}, assert_type, "non_neg_integer() | list()", spec_imprecise}. % next/1: the opaque iterator type has integer(), iterators hold a non_neg_integer()
+{assertion, maps, {1172, 26, "e91551"}, assert_type, "dynamic()", map_key_lookup}. % with_1/2
+{assertion, maps, {1319, 30, "91df3b"}, assert_type, "dynamic()", validation_by_exception}. % is_iterator_valid_1/1
+{assertion, maps, {1321, 14, "48e8ce"}, assert_type, "dynamic()", validation_by_exception}. % is_iterator_valid_1/1
