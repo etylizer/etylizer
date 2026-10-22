@@ -41,7 +41,7 @@ assert(File, {At, Kind, Text}, Forms) ->
 
 % The parsed expression is hashed, so its layout in the source does not matter.
 -spec hash(ast_erl:exp()) -> string().
-hash(E) -> utils:sformat("~6.16.0b", [erlang:phash2(E, 16#1000000)]).
+hash(E) -> utils:sformat1("~6.16.0b", erlang:phash2(E, 16#1000000)).
 
 -spec pos(at()) -> pos().
 pos({Line, Col}) -> {Line, Col};

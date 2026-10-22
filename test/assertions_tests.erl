@@ -71,3 +71,7 @@ field_no_hash_test_() ->
 field_name_test_() ->
     ?_timeout(fails_with("asserted.erl:33:21: assert_type needs the hash of an expression that starts here: none",
                          check("asserted.erl", "field_name.assertions"))).
+
+small_hash_test_() ->
+    ?_timeout(fails_with("asserted.erl:37:13: assert_type needs the hash of an expression that starts here: `14` (0ce950)",
+                         check("asserted.erl", "small_hash.assertions"))).
