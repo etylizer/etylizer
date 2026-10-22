@@ -158,3 +158,7 @@ refinement_string(X) -> X.
 -spec refinement_nil([] | foo) -> foo.
 refinement_nil(X) when X =:= [] -> foo;
 refinement_nil(X) -> X.
+
+-spec comparison_atom_03(integer() | atom()) -> integer().
+comparison_atom_03(X) when X < 5 -> X;
+comparison_atom_03(_) -> 0.
