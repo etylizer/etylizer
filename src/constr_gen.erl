@@ -855,7 +855,8 @@ pat_guard_lower_upper(P, Gs, E) ->
     % For 'or' guards like is_atom(X) or is_atom(Y), each branch contributes
     % a separate bound, and the union gives: {atom, any} | {any, atom}.
     % Both Upper and Lower must be computed disjunctively so they stay consistent
-    DisjEnvs = guard_seq_lower_envs(Gs),
+    UpperEnvs = guard_seq_disj_envs(Gs, upper),
+    LowerEnvs = guard_seq_disj_envs(Gs, lower),
     Upper =
         ast_lib:mk_union(
             lists:map(
@@ -864,7 +865,7 @@ pat_guard_lower_upper(P, Gs, E) ->
                     UpperETy = ty_of_pat(UEnv, EPat, upper),
                     ast_lib:mk_intersection([UpperPatTy, UpperETy])
                 end,
-                DisjEnvs)),
+                UpperEnvs)),
     Lower =
         ast_lib:mk_union(
             lists:map(
@@ -879,13 +880,13 @@ pat_guard_lower_upper(P, Gs, E) ->
                         _ -> {predef, none}
                     end
                 end,
-                DisjEnvs)),
+                LowerEnvs)),
     ?LOG_TRACE("EPat=~200p, Upper=~s, Lower=~s, BoundVars=~w, DisjEnvs=~w",
                EPat,
                pretty:render_ty(Upper),
                pretty:render_ty(Lower),
                sets:to_list(BoundVars),
-               length(DisjEnvs)),
+               length(LowerEnvs)),
     {Lower, Upper}.
 
 % The variables bound by a pattern
@@ -1182,36 +1183,34 @@ union_envs(Env1, Env2) ->
 -spec negate_env(constr:constr_env()) -> constr:constr_env().
 negate_env(Env) -> maps:map(fun (_Key, T) -> ast_lib:mk_negation(T) end, Env).
 
-% Returns a list of disjunctive environments for computing Lower.
-% For 'or' guards, each branch produces a separate environment.
-% For 'and' guards, environments are intersected (Cartesian product).
-% For other guards, falls back to guard_test_env.
--spec guard_test_lower_envs(ast:guard_test()) -> [{constr:constr_env(), safe | unsafe}].
-guard_test_lower_envs(G) ->
+% The environments of a guard test, one per alternative of an 'or'; 'and' intersects them.
+% Mode upper: the values for which the test can be true. Mode lower: values for which it is
+% true, if the status is safe.
+-spec guard_test_disj_envs(ast:guard_test(), upper | lower) -> [{constr:constr_env(), safe | unsafe}].
+guard_test_disj_envs(G, Mode) ->
     case G of
         {op, _L, Op, Left, Right} when Op =:= 'orelse'; Op =:= 'or' ->
-            guard_test_lower_envs(Left) ++ guard_test_lower_envs(Right);
+            guard_test_disj_envs(Left, Mode) ++ guard_test_disj_envs(Right, Mode);
         {op, _L, Op, Left, Right} when Op =:= 'andalso'; Op =:= 'and' ->
             [{intersect_envs(EL, ER), merge_status(SL, SR)}
-             || {EL, SL} <- guard_test_lower_envs(Left),
-                {ER, SR} <- guard_test_lower_envs(Right)];
+             || {EL, SL} <- guard_test_disj_envs(Left, Mode),
+                {ER, SR} <- guard_test_disj_envs(Right, Mode)];
         % De Morgan: not(A or B) = not(A) and not(B)
         {op, L, 'not', {op, _, Op, Left, Right}} when Op =:= 'orelse'; Op =:= 'or' ->
-            guard_test_lower_envs({op, L, 'andalso', {op, L, 'not', Left}, {op, L, 'not', Right}});
+            guard_test_disj_envs({op, L, 'andalso', {op, L, 'not', Left}, {op, L, 'not', Right}}, Mode);
         % De Morgan: not(A and B) = not(A) or not(B)
         {op, L, 'not', {op, _, Op, Left, Right}} when Op =:= 'andalso'; Op =:= 'and' ->
-            guard_test_lower_envs({op, L, 'orelse', {op, L, 'not', Left}, {op, L, 'not', Right}});
+            guard_test_disj_envs({op, L, 'orelse', {op, L, 'not', Left}, {op, L, 'not', Right}}, Mode);
         _ ->
-            [guard_test_env(G)]
+            [guard_test_env(G, Mode)]
     end.
 
-% Like guard_env/1 but returns disjunctive environments.
 % Tests within a guard are conjunctive (,) so we take the Cartesian product.
--spec guard_lower_envs(ast:guard()) -> [{constr:constr_env(), safe | unsafe}].
-guard_lower_envs(Tests) ->
+-spec guard_disj_envs(ast:guard(), upper | lower) -> [{constr:constr_env(), safe | unsafe}].
+guard_disj_envs(Tests, Mode) ->
     lists:foldl(
         fun(Test, AccEnvs) ->
-            TestEnvs = guard_test_lower_envs(Test),
+            TestEnvs = guard_test_disj_envs(Test, Mode),
             [{intersect_envs(E1, E2), merge_status(S1, S2)}
              || {E1, S1} <- AccEnvs,
                 {E2, S2} <- TestEnvs]
@@ -1219,11 +1218,10 @@ guard_lower_envs(Tests) ->
         [{#{}, safe}],
         Tests).
 
-% Like guard_seq_env/1 but returns a list of disjunctive environments for Lower computation.
 % Guard sequences are disjunctive (;) so we concatenate.
--spec guard_seq_lower_envs([ast:guard()]) -> [{constr:constr_env(), safe | unsafe}].
-guard_seq_lower_envs([]) -> [{#{}, safe}];
-guard_seq_lower_envs(Guards) -> lists:flatmap(fun guard_lower_envs/1, Guards).
+-spec guard_seq_disj_envs([ast:guard()], upper | lower) -> [{constr:constr_env(), safe | unsafe}].
+guard_seq_disj_envs([], _Mode) -> [{#{}, safe}];
+guard_seq_disj_envs(Guards, Mode) -> lists:flatmap(fun(G) -> guard_disj_envs(G, Mode) end, Guards).
 
 % Flips a comparison operator: N op X becomes X flip(op) N.
 -spec flip_comparison_op(atom()) -> atom().
@@ -1233,17 +1231,24 @@ flip_comparison_op('>=') -> '=<';
 flip_comparison_op('=<') -> '>='.
 
 % X Op N for an integer N. In the term order a number is smaller than every other term, so
-% all terms that are no numbers are greater than N. Floats cannot be told apart.
--spec comparison_refine_env(atom(), ast:local_varname(), ast:exp()) -> {constr:constr_env(), safe | unsafe}.
-comparison_refine_env(Op, X, ConstExp) ->
+% all terms that are no numbers are greater than N. Floats cannot be told apart: they are in
+% the potential type and not in the accepting type.
+-spec comparison_refine_env(upper | lower, atom(), ast:local_varname(), ast:exp()) -> {constr:constr_env(), safe | unsafe}.
+comparison_refine_env(Mode, Op, X, ConstExp) ->
     NoNumber = ty_without({predef, any}, {predef_alias, number}),
     case ty_of_const_exp(ConstExp) of
         {ok, {singleton, N}} when is_integer(N) ->
-            Ty = case Op of
-                '>'  -> ast_lib:mk_union([stdtypes:trange(N + 1, '*'), {predef, float}, NoNumber]);
-                '>=' -> ast_lib:mk_union([stdtypes:trange(N, '*'), {predef, float}, NoNumber]);
-                '<'  -> ast_lib:mk_union([stdtypes:trange('*', N - 1), {predef, float}]);
-                '=<' -> ast_lib:mk_union([stdtypes:trange('*', N), {predef, float}])
+            {Ints, Greater} = case Op of
+                '>'  -> {stdtypes:trange(N + 1, '*'), true};
+                '>=' -> {stdtypes:trange(N, '*'), true};
+                '<'  -> {stdtypes:trange('*', N - 1), false};
+                _ -> {stdtypes:trange('*', N), false} % =<
+            end,
+            Ty = case {Mode, Greater} of
+                {upper, true} -> ast_lib:mk_union([Ints, {predef, float}, NoNumber]);
+                {upper, false} -> ast_lib:mk_union([Ints, {predef, float}]);
+                {lower, true} -> ast_lib:mk_union([Ints, NoNumber]);
+                {lower, false} -> Ints
             end,
             {#{{local_ref, X} => Ty}, safe};
         _ -> {#{}, unsafe}
@@ -1277,7 +1282,12 @@ combine_guard_result(Guards, RecFun, CombineFun) ->
 % that the the type checker could fully analyze the guard, that is the guard test
 % does not use anything like the "oracle" from the IFL 2022 paper.
 -spec guard_test_env(ast:guard_test()) -> {constr:constr_env(), safe | unsafe}.
-guard_test_env(G) ->
+guard_test_env(G) -> guard_test_env(G, upper).
+
+% Mode upper: the environment holds for every value that passes the test. Mode lower: with
+% status safe, every value of the environment passes the test.
+-spec guard_test_env(ast:guard_test(), upper | lower) -> {constr:constr_env(), safe | unsafe}.
+guard_test_env(G, Mode) ->
     Default = {#{}, unsafe},
     case G of
         {call, _L, FunExp, Args} ->
@@ -1293,29 +1303,47 @@ guard_test_env(G) ->
         {op, _L, Op, Left, Right} ->
             if
                 (Op =:= 'andalso') orelse (Op =:= 'and') ->
-                    {EnvLeft, StatusLeft} = guard_test_env(Left),
-                    {EnvRight, StatusRight} = guard_test_env(Right),
+                    {EnvLeft, StatusLeft} = guard_test_env(Left, Mode),
+                    {EnvRight, StatusRight} = guard_test_env(Right, Mode),
                     {intersect_envs(EnvLeft, EnvRight), merge_status(StatusLeft, StatusRight)};
+                % the union of two environments accepts more than the two tests
+                ((Op =:= 'orelse') orelse (Op =:= 'or')) andalso Mode =:= lower -> Default;
                 (Op =:= 'orelse') orelse (Op =:= 'or') ->
-                    {EnvLeft, StatusLeft} = guard_test_env(Left),
-                    {EnvRight, StatusRight} = guard_test_env(Right),
+                    {EnvLeft, StatusLeft} = guard_test_env(Left, Mode),
+                    {EnvRight, StatusRight} = guard_test_env(Right, Mode),
                     {union_envs(EnvLeft, EnvRight), merge_status(StatusLeft, StatusRight)};
                 (Op =:= '==') orelse (Op =:= '=:=') ->
                     refine_eq_env(Op, Left, Right);
                 (Op =:= '>') orelse (Op =:= '<') orelse (Op =:= '>=') orelse (Op =:= '=<') ->
                     case {Left, Right} of
-                        {{var, _, {local_ref, X}}, E} -> comparison_refine_env(Op, X, E);
-                        {E, {var, _, {local_ref, X}}} -> comparison_refine_env(flip_comparison_op(Op), X, E);
+                        {{var, _, {local_ref, X}}, E} -> comparison_refine_env(Mode, Op, X, E);
+                        {E, {var, _, {local_ref, X}}} -> comparison_refine_env(Mode, flip_comparison_op(Op), X, E);
                         _ -> Default
                     end;
                 true -> Default
             end;
         {op, _L, 'not', Exp} ->
-            {Env, Status} = guard_test_env(Exp),
-            {negate_env(Env), Status};
+            case Mode of
+                % what is accepted by `not G` is outside of what G can accept
+                lower -> negate_guard_env(guard_test_env(Exp, upper), lower);
+                % `not G` can only hold outside of what G accepts
+                upper -> negate_guard_env(guard_test_env(Exp, lower), upper)
+            end;
         {'atom', _Loc, true} ->
             {#{}, safe};
         _ -> Default
+    end.
+
+% The environment of `not G` in Mode, from the environment of G in the other mode.
+-spec negate_guard_env({constr:constr_env(), safe | unsafe}, upper | lower) -> {constr:constr_env(), safe | unsafe}.
+negate_guard_env({Env, Status}, Mode) ->
+    case {Mode, Status, maps:size(Env)} of
+        % G accepts these values of one variable: `not G` can only hold outside of them
+        {upper, safe, 1} -> {negate_env(Env), safe};
+        {upper, _, _} -> {#{}, unsafe};
+        % G cannot hold when one of the variables is outside its type
+        {lower, _, 0} -> {#{}, unsafe};
+        {lower, _, _} -> {negate_env(Env), safe}
     end.
 
 % Best-effort recursive refine variable types from an equality guard Left == Right or Left =:= Right.
