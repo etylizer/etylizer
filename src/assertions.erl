@@ -56,7 +56,14 @@ parse(Text) ->
     ?assert_type(E, ast_erl:exp()).
 
 -spec strip(ast_erl:exp()) -> ast_erl:exp().
-strip(E) -> set_anno(erl_anno:new(0), E).
+strip(E) ->
+    A = erl_anno:new(0),
+    % OTP 29 erl_parse:map_anno/2 keeps the annotation of the field name of R#r.f:
+    % the hash would depend on the column of the field and on the OTP release
+    ?assert_type(utils:everywhere(fun({atom, _, Name}) when is_atom(Name) -> {ok, {atom, A, Name}};
+                                     (_) -> error
+                                  end, set_anno(A, E)),
+                 ast_erl:exp()).
 
 -spec set_anno(ast_erl:anno(), ast_erl:exp()) -> ast_erl:exp().
 set_anno(A, E) ->
@@ -104,12 +111,17 @@ visit(F, Pos, Acc, {clause, A, Ps, Gs, Body}) ->
     {{clause, A, Ps, Gs, Body2}, Acc2};
 visit(F, Pos, Acc0, T) when is_tuple(T) ->
     Skip = case T of
-               {match, _, _, _} -> [3];
+               {M, _, _, _} when M =:= match; M =:= maybe_match -> [3];
                {G, _, _, _} when G =:= generate; G =:= b_generate; G =:= m_generate;
                                  G =:= generate_strict; G =:= b_generate_strict;
                                  G =:= m_generate_strict -> [3];
                {call, _, {atom, _, _}, _} -> [3];
                {call, _, {remote, _, _, _}, _} -> [3];
+               {'fun', _, {function, _, _, _}} -> [3];
+               % field names
+               {record_field, _, _, _, _} -> [5];
+               {record_field, _, _, _} -> [3];
+               {record_index, _, _, _} -> [4];
                _ -> []
            end,
     {Elems, Acc1} = lists:mapfoldl(
@@ -142,8 +154,10 @@ tail(F, Pos, Acc, {cons, A, H, T}) ->
 tail(F, Pos, Acc, T) -> visit(F, Pos, Acc, T).
 
 -spec is_expr(tuple()) -> boolean().
+is_expr({record_field, _, _, _, _}) -> true;
 is_expr(T) ->
     tuple_size(T) >= 2 andalso
     lists:member(element(1, T),
                  [var, atom, integer, float, char, string, nil, cons, tuple, map, bin, call, op, match,
-                  'case', 'if', 'receive', 'try', 'catch', 'fun', named_fun, block, lc, bc, mc, 'maybe']).
+                  'case', 'if', 'receive', 'try', 'catch', 'fun', named_fun, block, lc, bc, mc, 'maybe',
+                  record, record_index]).
