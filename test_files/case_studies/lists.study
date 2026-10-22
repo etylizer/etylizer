@@ -1,0 +1,56 @@
+#!/usr/bin/env -S sh -c 'exec "$(dirname "$0")/../../.github/scripts/ety_case_study" "$0" "$@"'
+%% -*- erlang -*-
+%% Case study manifest, see .github/scripts/ety_case_study.
+
+{study, lists}.
+
+%% {reason, Id, Class, Text}. Class: real (the program or its spec is wrong), inherent (correct at
+%% run time, not provable by types), fixable (gap in the type system or checker), benign (dead for
+%% the spec, kept on purpose), unknown.
+{reason, spec_imprecise,      real,     "imprecise type spec in the source"}.
+{reason, spec_wrong,          real,     "wrong type in the source"}.
+{reason, arithmetic,          inherent, "arithmetic on type level"}.
+{reason, documented_exception, inherent, "raises an exception that the documentation promises, a spec cannot say so"}.
+{reason, global_invariant,    inherent, "the callers ensure a relation between the arguments that no spec type can state, checking it crosses function boundaries"}.
+{reason, defensive,           benign,   "defensive clause, dead for the spec"}.
+{reason, constant_offset,     fixable,  "a pattern or guard bounds the variable (N > 1, N >= 4, S >= 2), but '-' has no arrow for subtracting the constant from that range"}.
+{reason, andalso_narrowing,   fixable,  "the left operand of andalso does not narrow the variables of the right one"}.
+
+{module, lists, #{file => "stdlib/lists.erl", overlays => [{missing, "overlay_lists.erl"}, {corrected, "overlay_lists_corrected.erl"}], timeout => 10000}}.
+{correction, lists, reverse, 2, spec_wrong}. % ([T], term()) -> [T]: reverse([], b) is b, and it loses non-emptiness, which the merge helpers need
+{correction, lists, reverse, 1, spec_imprecise}. % ([T]) -> [T] loses non-emptiness, which keysort_1/5 needs
+{correction, lists, umerge, 3, spec_wrong}. % fun((A | B, A | B) -> boolean()): ufmerge2_1/6 calls Fun(B, A)
+{correction, lists, rumerge, 3, spec_wrong}. % fun((A | B, A | B) -> boolean()): rufmerge2_2/6 calls Fun(B, A)
+{correction, lists, foldl, 3, spec_imprecise}.
+{correction, lists, foldr, 3, spec_imprecise}.
+{correction, lists, mapfoldl, 3, spec_imprecise}. % fun((A, Acc) -> {B, Acc}), Acc, [A]) -> {[B], Acc}
+{correction, lists, mapfoldr, 3, spec_imprecise}. % the same
+{exception, lists, umerge, 3, [ignore], spec_wrong}. % umerge(fun(A, B) when is_atom(A), is_integer(B) -> true end, [a, b], [1]) calls Fun(1, b)
+{exception, lists, rumerge, 3, [ignore], spec_wrong}. % rumerge(the same Fun, [a], [1, 2]) calls Fun(2, a)
+{exception, lists, foldl, 3, [ignore], spec_imprecise}. % the term() bounds leave Acc0, AccIn, AccOut and Acc1 unrelated
+{exception, lists, foldr, 3, [ignore], spec_imprecise}.
+{exception, lists, mapfoldl, 3, [ignore], spec_imprecise}.
+{exception, lists, mapfoldr, 3, [ignore], spec_imprecise}.
+{exception, lists, do_flatten, 2, [ignore], spec_imprecise}. % flatten([[a|b]]) crashes: the element type term() of DeepList admits improper lists
+{exception, lists, flatlength, 2, [ignore], spec_imprecise}. % flatlength([[a|b]]) crashes, the same
+{exception, lists, nth_1, 2, [no_exhaustiveness], global_invariant}. % N =< length of the list
+{exception, lists, nthtail, 2, [no_exhaustiveness], global_invariant}. % N =< length of the list
+{exception, lists, nthtail_1, 2, [no_exhaustiveness], global_invariant}. % N =< length of the list
+{exception, lists, seq, 2, [no_exhaustiveness], documented_exception}. % To < From - 1 fails
+{exception, lists, zip, 3, [no_exhaustiveness], documented_exception}. % fail: lists of different lengths
+{exception, lists, zip3, 4, [no_exhaustiveness], documented_exception}.
+{exception, lists, zipwith, 4, [no_exhaustiveness], documented_exception}.
+{exception, lists, zipwith3, 5, [no_exhaustiveness], documented_exception}.
+{exception, lists, split, 2, [no_redundancy], defensive}. % error(badarg) for arguments that the spec excludes
+{assertion, lists, {414, 32, "9e234f"}, assert_type, "non_neg_integer()", andalso_narrowing}. % suffix/2: Delta >= 0 andalso nthtail(Delta, List)
+{assertion, lists, {480, 24, "cd33be"}, assert_type, "non_neg_integer()", arithmetic}. % seq/2: Last-First+1, First-1 =< Last
+{assertion, lists, {483, 15, "6ae1dc"}, assert_type, "non_neg_integer()", constant_offset}. % seq_loop/3: N-4 for N >= 4
+{assertion, lists, {485, 15, "86ae35"}, assert_type, "non_neg_integer()", constant_offset}. % seq_loop/3: N-2 for N >= 2
+{assertion, lists, {537, 14, "4add4e"}, assert_type, "non_neg_integer()", arithmetic}. % seq/3: N = (Last - First + Inc) div Inc, by the guard (an assertion at the div crashes etylizer: its hash 0a9a49 is a code point, utils:sformat/2 wraps it once more)
+{assertion, lists, {546, 16, "6ae1dc"}, assert_type, "non_neg_integer()", constant_offset}. % seq_loop/4: N-4 for N >= 4
+{assertion, lists, {549, 16, "86ae35"}, assert_type, "non_neg_integer()", constant_offset}. % seq_loop/4: N-2 for N >= 2
+{assertion, lists, {673, 17, "3a9ca2"}, assert_type, "pos_integer()", constant_offset}. % sublist/3: S-1 for S >= 2
+{assertion, lists, {3333, 23, "44b57e"}, assert_pattern, "[_ | _]", global_invariant}. % umerge3_1/7: H2 == HdM only when HdM is the head of M
+{assertion, lists, {3850, 38, "44b57e"}, assert_pattern, "[_ | _]", global_invariant}. % ukeymerge3_1/11: E2 == HdM only when HdM is the key of the head of M
+{assertion, lists, {324, 13, "873fea"}, assert_type, "pos_integer()", constant_offset}. % nth_1/2: N - 1 for N > 1 (the first clause takes 1)
+{assertion, lists, {357, 17, "873fea"}, assert_type, "pos_integer()", constant_offset}. % nthtail_1/2: the same
