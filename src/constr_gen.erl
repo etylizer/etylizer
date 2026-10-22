@@ -1209,8 +1209,7 @@ bits_ty(N, Tail) -> {bitstring_cons, {range, 0, 1}, bits_ty(?assert_type(N - 1, 
 -spec analyze_bin_tyspec(default | ast:bitstring_tyspec_list()) ->
     {integer | float | binary | bitstring | utf8 | utf16 | utf32, boolean(), integer() | default, pos_integer()}.
 analyze_bin_tyspec(default) -> {integer, false, 8, 1};
-analyze_bin_tyspec(TyspecList0) ->
-    TyspecList = ?assert_type(TyspecList0, ast:bitstring_tyspec_list()),
+analyze_bin_tyspec(TyspecList) ->
     Type =
         case [T || T <- TyspecList, lists:member(T, [integer, float, binary, bytes, bitstring, bits, utf8, utf16, utf32])] of
             [] -> integer;
@@ -1220,7 +1219,7 @@ analyze_bin_tyspec(TyspecList0) ->
         end,
     Unit =
         case [U || {unit, U} <- TyspecList] of
-            [U | _] -> ?assert_type(U, pos_integer());
+            [U | _] -> U;
             [] when Type =:= binary -> 8;
             [] -> 1
         end,

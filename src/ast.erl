@@ -412,7 +412,8 @@ loc_exp({_, L, _, _, _, _}) -> L.
     | qual_bitstring_gen() | qual_bitstring_strict_gen() | qual_map_gen() | qual_map_strict_gen().
 -type qualifier() :: exp() | generators().
 
--type bitstring_tyspec() :: atom() | {atom(), Value::integer()}.
+% unit:N is the only specifier with a value
+-type bitstring_tyspec() :: atom() | {unit, pos_integer()}.
 -type bitstring_tyspec_list() :: [bitstring_tyspec(), ...].
 
 -type map_assoc_opt() :: {map_field_opt, loc(), exp(), exp()}.
