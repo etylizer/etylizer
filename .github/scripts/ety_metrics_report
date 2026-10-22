@@ -214,7 +214,8 @@ section_title(Title, Section) -> Title ++ ": " ++ Section.
 %%   ok          no exception, type checks as is
 %%   flagged     exception without ignore, type checks with its flags
 %%   ignored     exception with ignore, fails
-%%   stale       exception with ignore, type checks: the exception is not needed
+%%   stale       exception with ignore, type checks, or with flags, type checks without them
+%%               ("f/n [unflagged]"): the exception is not needed
 %%   dangling    exception for a function that has no verdict
 %%   unexpected  fails without ignore
 %% A function with an overlay spec besides its own is also checked against the overlay spec
@@ -226,7 +227,9 @@ case_study_rows(Cell) ->
     Exceptions = #{Fun => {Handling, Class}
                    || [Fun, Handling, _Reason, Class] <- maps:get(<<"case_study_exception">>, Cell, [])},
     Verdicts = #{Fun => Verdict || [Fun, _Time, Verdict] <- maps:get(<<"typecheck_time">>, Cell, []),
-                                   binary:match(Fun, <<" [overlay]">>) =:= nomatch},
+                                   binary:match(Fun, [<<" [overlay]">>, <<" [unflagged]">>]) =:= nomatch},
+    Unflagged = #{Fun => Verdict || [Label, _Time, Verdict] <- maps:get(<<"typecheck_time">>, Cell, []),
+                                    [Fun, <<>>] <- [binary:split(Label, <<" [unflagged]">>)]},
     Overlays = [{Label, unexpected, [], none}
                 || [Label, _Time, Verdict] <- maps:get(<<"typecheck_time">>, Cell, []),
                    binary:match(Label, <<" [overlay]">>) =/= nomatch, Verdict =/= <<"ok">>],
@@ -234,6 +237,7 @@ case_study_rows(Cell) ->
          error -> {Fun, case Verdict of <<"ok">> -> ok; _ -> unexpected end, [], none};
          {ok, {Handling, Class}} ->
              Status = case {lists:member(<<"ignore">>, Handling), Verdict} of
+                          _ when map_get(Fun, Unflagged) =:= <<"ok">> -> stale;
                           {true, <<"ok">>} -> stale;
                           {true, _} -> ignored;
                           {false, <<"ok">>} -> flagged;

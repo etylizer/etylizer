@@ -10,6 +10,7 @@
 
 -include("log.hrl").
 -include("typing.hrl").
+-include("metrics.hrl").
 
 -spec new_ctx(symtab:t(), symtab:t(), t:opt(ast_check:ty_map())) -> ctx().
 new_ctx(Tab, Overlay, Sanity) ->
@@ -174,6 +175,13 @@ check_forms(Ctx, FileName, Forms, Only, Ignore, CheckExports, {CliNoExhaustivene
                                     {error, Msg} -> Loop(RestEnvs, [{E, Msg} | Errs])
                                 end;
                             report ->
+                                % metrics only: whether flagged functions type check without their flags
+                                ?METRIC_DO(typing_check:check_all_report(
+                                    ExtCtx#ctx { disable_exhaustiveness = sets:new(), disable_redundancy = sets:new() },
+                                    FileName, E, [D || D = {{function, _, N, A, _, _}, _} <- FunsWithSpec,
+                                                       sets:is_element({N, A}, DisableExhaustiveness)
+                                                       orelse sets:is_element({N, A}, DisableRedundancy)],
+                                    " [unflagged]")),
                                 typing_check:check_all_report(ExtCtx, FileName, E, FunsWithSpec)
                                     ++ typing_check:check_all_report(ExtCtx, FileName, E, Overlaid, " [overlay]")
                         end
