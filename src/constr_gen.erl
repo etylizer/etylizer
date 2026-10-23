@@ -1360,12 +1360,21 @@ refine_eq_env(Op, Left, Right) ->
     end.
 
 % For =:= (strict equality), refinement is always safe.
-% For == (loose equality), refinement is unsafe when the constant is numeric,
-% because == treats integers and floats as equal (e.g. 1 == 1.0).
+% For == (loose equality), refinement is unsafe when the constant holds a number,
+% because == treats integers and floats as equal (e.g. {1, a} == {1.0, a}).
 -spec eq_status(atom(), ast:ty()) -> safe | unsafe.
 eq_status('=:=', _) -> safe;
-eq_status('==', {singleton, N}) when is_integer(N); is_float(N) -> unsafe;
-eq_status('==', _) -> safe.
+eq_status('==', Ty) ->
+    case has_number(Ty) of
+        true -> unsafe;
+        false -> safe
+    end.
+
+-spec has_number(ast:ty()) -> boolean().
+has_number({singleton, N}) -> is_number(N);
+has_number({tuple, Ts}) -> lists:any(fun has_number/1, Ts);
+has_number({cons, H, T}) -> has_number(H) orelse has_number(T);
+has_number(_) -> false.
 
 % Returns the type of a constant (variable-free) expression, or error if not constant.
 -spec ty_of_const_exp(ast:exp()) -> t:opt(ast:ty()).
