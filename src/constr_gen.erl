@@ -1189,18 +1189,30 @@ negate_env(Env) -> maps:map(fun (_Key, T) -> ast_lib:mk_negation(T) end, Env).
 -spec guard_test_disj_envs(ast:guard_test(), upper | lower) -> [{constr:constr_env(), safe | unsafe}].
 guard_test_disj_envs(G, Mode) ->
     case G of
-        {op, _L, Op, Left, Right} when Op =:= 'orelse'; Op =:= 'or' ->
-            guard_test_disj_envs(Left, Mode) ++ guard_test_disj_envs(Right, Mode);
+        % An exception in a guard makes the guard fail. The right side of an orelse is only
+        % reached without one if the left side cannot raise; 'or' evaluates both sides.
+        {op, _L, 'orelse', Left, Right} ->
+            case Mode =:= upper orelse total_test(Left) of
+                true -> guard_test_disj_envs(Left, Mode) ++ guard_test_disj_envs(Right, Mode);
+                false -> guard_test_disj_envs(Left, Mode)
+            end;
+        {op, _L, 'or', Left, Right} ->
+            case Mode =:= upper orelse (total_test(Left) andalso total_test(Right)) of
+                true -> guard_test_disj_envs(Left, Mode) ++ guard_test_disj_envs(Right, Mode);
+                false -> [{#{}, unsafe}]
+            end;
         {op, _L, Op, Left, Right} when Op =:= 'andalso'; Op =:= 'and' ->
             [{intersect_envs(EL, ER), merge_status(SL, SR)}
              || {EL, SL} <- guard_test_disj_envs(Left, Mode),
                 {ER, SR} <- guard_test_disj_envs(Right, Mode)];
         % De Morgan: not(A or B) = not(A) and not(B)
         {op, L, 'not', {op, _, Op, Left, Right}} when Op =:= 'orelse'; Op =:= 'or' ->
-            guard_test_disj_envs({op, L, 'andalso', {op, L, 'not', Left}, {op, L, 'not', Right}}, Mode);
+            And = case Op of 'orelse' -> 'andalso'; 'or' -> 'and' end,
+            guard_test_disj_envs({op, L, And, {op, L, 'not', Left}, {op, L, 'not', Right}}, Mode);
         % De Morgan: not(A and B) = not(A) or not(B)
         {op, L, 'not', {op, _, Op, Left, Right}} when Op =:= 'andalso'; Op =:= 'and' ->
-            guard_test_disj_envs({op, L, 'orelse', {op, L, 'not', Left}, {op, L, 'not', Right}}, Mode);
+            Or = case Op of 'andalso' -> 'orelse'; 'and' -> 'or' end,
+            guard_test_disj_envs({op, L, Or, {op, L, 'not', Left}, {op, L, 'not', Right}}, Mode);
         _ ->
             [guard_test_env(G, Mode)]
     end.
@@ -1252,6 +1264,40 @@ comparison_refine_env(Mode, Op, X, ConstExp) ->
             end,
             {#{{local_ref, X} => Ty}, safe};
         _ -> {#{}, unsafe}
+    end.
+
+% A guard test that is true or false and cannot raise: a type test or comparison of variables
+% and literals, and their combinations. Guards are not type checked, so not B or B orelse T
+% raises for a B that is no boolean, as do element(1, {}), X div 0 and is_function(F, a).
+-spec total_test(ast:guard_test()) -> boolean().
+total_test(G) ->
+    case G of
+        {'atom', _, B} -> is_boolean(B);
+        {op, _, 'not', A} -> total_test(A);
+        {op, _, Op, A, B} when Op =:= 'andalso'; Op =:= 'orelse'; Op =:= 'and'; Op =:= 'or' ->
+            total_test(A) andalso total_test(B);
+        {op, _, Op, A, B} when Op =:= '=:='; Op =:= '=/='; Op =:= '=='; Op =:= '/=';
+                               Op =:= '<'; Op =:= '>'; Op =:= '=<'; Op =:= '>=' ->
+            total_operand(A) andalso total_operand(B);
+        {call, _, {var, _, Ref}, [A]} ->
+            Name = case Ref of {ref, N, 1} -> N; {qref, erlang, N, 1} -> N; _ -> none end,
+            lists:member(Name, [is_atom, is_binary, is_bitstring, is_boolean, is_float, is_function,
+                                is_integer, is_list, is_map, is_number, is_pid, is_port,
+                                is_reference, is_tuple])
+                andalso total_operand(A);
+        _ -> false
+    end.
+
+-spec total_operand(ast:guard_test()) -> boolean().
+total_operand(E) ->
+    case E of
+        {var, _, _} -> true;
+        {nil, _} -> true;
+        {op, _, '-', {Lit, _, _}} -> Lit =:= integer orelse Lit =:= float;
+        {tuple, _, Es} -> lists:all(fun total_operand/1, Es);
+        {cons, _, H, T} -> total_operand(H) andalso total_operand(T);
+        {Lit, _, _} -> lists:member(Lit, [atom, integer, char, float, string]);
+        _ -> false
     end.
 
 % env(g)
@@ -1324,8 +1370,12 @@ guard_test_env(G, Mode) ->
             end;
         {op, _L, 'not', Exp} ->
             case Mode of
-                % what is accepted by `not G` is outside of what G can accept
-                lower -> negate_guard_env(guard_test_env(Exp, upper), lower);
+                % what is accepted by `not G` is outside of what G can accept, if G cannot raise
+                lower ->
+                    case total_test(Exp) of
+                        true -> negate_guard_env(guard_test_env(Exp, upper), lower);
+                        false -> Default
+                    end;
                 % `not G` can only hold outside of what G accepts
                 upper -> negate_guard_env(guard_test_env(Exp, lower), upper)
             end;

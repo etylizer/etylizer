@@ -179,6 +179,18 @@ comparison_atom_03(_) -> 0.
 eq_tuple_float_fail(X) when X == {1, a} -> X;
 eq_tuple_float_fail(_) -> other.
 
+-spec guard_raise_01_fail(integer(), tuple()) -> ok.
+guard_raise_01_fail(X, T) when element(1, T) =:= a orelse is_integer(X) -> ok.
+
+-spec guard_raise_02_fail(integer(), tuple()) -> ok.
+guard_raise_02_fail(X, T) when is_integer(X) or (element(1, T) =:= a) -> ok.
+
+-spec guard_raise_03_fail(integer(), tuple()) -> ok.
+guard_raise_03_fail(X, T) when not (is_atom(X) and (element(1, T) =:= a)) -> ok.
+
+-spec guard_raise_04_fail(term(), integer()) -> ok.
+guard_raise_04_fail(B, X) when B orelse is_integer(X) -> ok.
+
 % a float can be greater than 0, so not (X > 0) accepts none
 -spec not_float_01(float()) -> neg | other.
 not_float_01(X) when not (X > 0) -> neg;
