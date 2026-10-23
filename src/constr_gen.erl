@@ -1232,23 +1232,18 @@ flip_comparison_op('<') -> '>';
 flip_comparison_op('>=') -> '=<';
 flip_comparison_op('=<') -> '>='.
 
-% Refinement heuristic for < > <= >= operators and constant types.
-% For integer constants, returns an integer range (e.g. X > 2 gives 3..*).
+% X Op N for an integer N. In the term order a number is smaller than every other term, so
+% all terms that are no numbers are greater than N. Floats cannot be told apart.
 -spec comparison_refine_env(atom(), ast:local_varname(), ast:exp()) -> {constr:constr_env(), safe | unsafe}.
 comparison_refine_env(Op, X, ConstExp) ->
-    % operators work for any term
-    % we can refine only on the integer part
-    TyOther = fun(Ty) -> stdtypes:tunion(
-                         Ty,
-                         ty_without({predef, any}, {predef, integer})
-                         ) end,
+    NoNumber = ty_without({predef, any}, {predef_alias, number}),
     case ty_of_const_exp(ConstExp) of
         {ok, {singleton, N}} when is_integer(N) ->
             Ty = case Op of
-                '>'  -> TyOther(stdtypes:trange(N + 1, '*'));
-                '>=' -> TyOther(stdtypes:trange(N, '*'));
-                '<'  -> TyOther(stdtypes:trange('*', N - 1));
-                '=<' -> TyOther(stdtypes:trange('*', N))
+                '>'  -> ast_lib:mk_union([stdtypes:trange(N + 1, '*'), {predef, float}, NoNumber]);
+                '>=' -> ast_lib:mk_union([stdtypes:trange(N, '*'), {predef, float}, NoNumber]);
+                '<'  -> ast_lib:mk_union([stdtypes:trange('*', N - 1), {predef, float}]);
+                '=<' -> ast_lib:mk_union([stdtypes:trange('*', N), {predef, float}])
             end,
             {#{{local_ref, X} => Ty}, safe};
         _ -> {#{}, unsafe}
