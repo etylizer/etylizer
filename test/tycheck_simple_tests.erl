@@ -232,6 +232,7 @@ simple_test_() ->
     "refine_01",
     "refine_02",
     "refine_tagged_tuple",
+    "case_34",
     % TODO timeout, with flipped variable ordering it infers instantly
     "match_13",
     % TODO slow (tuple-encoded lists) inference #255
