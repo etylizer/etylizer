@@ -462,10 +462,18 @@ do_convert({AstTy = {mu, RecVar = {mu_var, Name}, Ty}, R}, Q, Cache) ->
     false -> ok;
     true -> NewRef = maps:get(RecVar, Cache)
   end,
-  NewCache = Cache#{RecVar => NewRef},
-  {InternalTy, NewQ, {R0, R1}, C0} = do_convert({Ty, R}, Q, NewCache),
-  % return record
-  {InternalTy, NewQ, {R0#{NewRef => InternalTy}, group(R1, InternalTy, NewRef)}, C0};
+  case ets:lookup(?CACHE, NewRef) of
+    [] ->
+      NewCache = Cache#{RecVar => NewRef},
+      {InternalTy, NewQ, {R0, R1}, C0} = do_convert({Ty, R}, Q, NewCache),
+      % return record
+      {InternalTy, NewQ, {R0#{NewRef => InternalTy}, group(R1, InternalTy, NewRef)}, C0};
+    Cached ->
+      % defined by an earlier parse: converting the body again could give another record
+      [{_, CachedNode}] = ?assert_pattern([{_, _}], Cached),
+      % ETS boundary: the cache only holds nodes
+      {?NODE:load(?assert_type(CachedNode, type())), Q, R, Cache}
+  end;
 
 % exit for recursion: local equation variable
 do_convert({AstTy = {mu_var, Name}, R = {IdTy, _}}, Q, Cache) ->
