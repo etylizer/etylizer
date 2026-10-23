@@ -159,6 +159,17 @@ refinement_string(X) -> X.
 refinement_nil(X) when X =:= [] -> foo;
 refinement_nil(X) -> X.
 
+% a float need not be greater than 0
+-spec comparison_float_01_fail(float()) -> ok.
+comparison_float_01_fail(X) when X > 0 -> ok.
+
+-spec comparison_float_01(float()) -> ok | other.
+comparison_float_01(X) when X > 0 -> ok;
+comparison_float_01(_) -> other.
+
+-spec comparison_float_02_fail(float()) -> ok.
+comparison_float_02_fail(X) when not (X > 0) -> ok.
+
 -spec comparison_atom_03(integer() | atom()) -> integer().
 comparison_atom_03(X) when X < 5 -> X;
 comparison_atom_03(_) -> 0.
@@ -167,3 +178,8 @@ comparison_atom_03(_) -> 0.
 -spec eq_tuple_float_fail({number(), a}) -> {1, a} | other.
 eq_tuple_float_fail(X) when X == {1, a} -> X;
 eq_tuple_float_fail(_) -> other.
+
+% a float can be greater than 0, so not (X > 0) accepts none
+-spec not_float_01(float()) -> neg | other.
+not_float_01(X) when not (X > 0) -> neg;
+not_float_01(_) -> other.
