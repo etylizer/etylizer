@@ -200,9 +200,34 @@ simple_test_() ->
     "mu_01_fail"
   ],
 
+  BinaryPart = [
+    % feature: project bits into integer values
+    "bin_let_04",
+    % feature: exact float segments, the bits of the finite floats (exponent not all ones)
+    % and of a float literal
+    "bin_float_exact_05_fail",
+    % feature: exact little, native, signed, utf16 and utf32 segments, the bits in their byte
+    % order, the range of a signed integer, the encodings of the code points
+    "bin_little_01_fail",
+    % feature: guards on a segment variable that need unions, intersections or negations of
+    % ranges (ty_ints takes only ranges)
+    "bin_seg_guard_02",
+    % feature: exact utf8 segments, the encodings of the code points
+    "bin_exp_05",
+    % feature: segment variables have the range of their segment
+    "bin_seg_02",
+    "strict_list_binary_01",
+    % feature: a last /binary segment keeps the type of its value (expression) or of the
+    % matched rest (pattern)
+    "b5_embed_binary",
+    % feature: literals in binary expressions are their bits
+    "bin_exp_10"
+  ],
+
 
   % The following functions are currently excluded from being tested.
-  WhatNot = NominalPart ++ [
+  WhatNot = NominalPart ++
+    BinaryPart ++ [
     % FIXME slow, waiting for optiization
     "refine_02",
     % TODO binary pattern element size verification
@@ -234,12 +259,29 @@ simple_test_() ->
     "refine_tagged_tuple",
     "refinement_string",
     "b3",
-    "b5",
     "bin_construct_unit_01",
+    "bin_size_guard_02",
+    "strict_list_binary_01",
+    "bin_seg_02",
+    "bin_seg_guard_01",
+    "bin_seg_guard_02",
+    "bin_run_time_03",
+    "bin_utf8_var_01",
+    "bin_unit_01",
     "bin_exp_01",
+    "bin_exp_05",
     "bin_exp_08",
+    "bin_exp_10",
     "bin_kinds_01",
+    "b5_embed_binary",
+    "bin_match_int_02",
+    "bin_match_bin_02",
+    "bin_match_literal_02",
+    "bin_guard_literal_01",
     "bin_precise_01",
+    "bin_let_01",
+    "bin_cons_03",
+    "bin_utf8_cons_01",
     % TODO timeout, with flipped variable ordering it infers instantly
     "match_13",
     % TODO slow (tuple-encoded lists) inference #255
