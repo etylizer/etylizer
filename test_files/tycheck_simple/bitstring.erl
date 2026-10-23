@@ -65,3 +65,16 @@ b5() ->
   <<_/binary-unit:16>> = <<"abcd">>,
   <<"ab">> = <<(<<"abc">>):2/binary>>,
   <<>>.
+
+% A bitstring cell holds one bit and a bitstring, so the kinds of terms cover term()
+-spec bin_kinds_01(term()) -> ok.
+bin_kinds_01(X) when is_atom(X) -> ok;
+bin_kinds_01(X) when is_number(X) -> ok;
+bin_kinds_01(X) when is_bitstring(X) -> ok;
+bin_kinds_01(X) when is_list(X) -> ok;
+bin_kinds_01(X) when is_tuple(X) -> ok;
+bin_kinds_01(X) when is_map(X) -> ok;
+bin_kinds_01(X) when is_function(X) -> ok;
+bin_kinds_01(X) when is_pid(X) -> ok;
+bin_kinds_01(X) when is_port(X) -> ok;
+bin_kinds_01(X) when is_reference(X) -> ok.
