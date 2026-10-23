@@ -267,8 +267,8 @@
 
 % fun Name/Arity or fun Mod:Name/Arity
 -type exp_fun_ref() :: {'fun', anno(), {function, Name::atom(), Arity::integer()}}.
--type exp_fun_qref() :: {'fun', anno(), {function, Mod::rep_atom(), Name::rep_atom(),
-                                         Arity::rep_integer()}}.
+-type exp_fun_qref() :: {'fun', anno(), {function, Mod::rep_atom() | exp_var(), Name::rep_atom() | exp_var(),
+                                         Arity::rep_integer() | exp_var()}}.
 -type exp_fun() :: {'fun', anno(), {clauses, [fun_clause(), ...]}}.
 -type exp_named_fun() :: {named_fun, anno(), Name::atom(), [fun_clause(), ...]}.
 -type gen_funcall(T) :: {call, anno(), Fun::T, Args::[T]}.
