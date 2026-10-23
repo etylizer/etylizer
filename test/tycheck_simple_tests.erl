@@ -232,7 +232,15 @@ simple_test_() ->
     "refine_01",
     "refine_02",
     "refine_tagged_tuple",
+    "refinement_string",
+    "b3",
+    "b5",
+    "bin_construct_unit_01",
+    "bin_exp_01",
+    "bin_exp_08",
     "case_34",
+    "bin_precise_01",
+    "bin_construct_string_01",
     % TODO timeout, with flipped variable ordering it infers instantly
     "match_13",
     % TODO slow (tuple-encoded lists) inference #255
@@ -250,9 +258,7 @@ simple_test_() ->
     "op_08",
     % TODO slow maybe inference
     "maybe_08",
-    "maybe_09",
-    % TODO slow list inference (nonempty_string)
-    "refinement_string"
+    "maybe_09"
   ],
 
   %What = ["atom_03_fail"],
