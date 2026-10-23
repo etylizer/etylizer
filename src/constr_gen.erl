@@ -882,10 +882,9 @@ bound_vars_pat(P) ->
                 sets:new([{version, 2}]), 
                 Elems);
         default -> sets:new([{version, 2}]); % gen_bitstring_elem
-        {bin_element, _L, Value, Size, _TyspecList} -> 
-            % Size can have bound vars
-            % TyspecList is static
-            sets:union(bound_vars_pat(Value), bound_vars_pat(Size));
+        {bin_element, _L, Value, _Size, _TyspecList} ->
+            % the size is an expression, it binds nothing
+            bound_vars_pat(Value);
         {match, _L, P1, P2} ->
             sets:union(bound_vars_pat(P1), bound_vars_pat(P2));
         {nil, _L} -> sets:new([{version, 2}]);
@@ -939,8 +938,7 @@ ty_of_pat(Env, P, Mode) ->
         {'integer', _L, I} -> {singleton, I};
         {'float', _L, _F} -> {predef, float};
         {'string', _L, Z} -> string_to_cons_ty(Z);
-        % TODO correct binary patterns
-        {bin, _L, _Elems} -> {bitstring};
+        {bin, _L, Elems} -> ty_of_bin_pat(Env, Elems, Mode);
         {match, _L, P1, P2} ->
             ast_lib:mk_intersection([ty_of_pat(Env, P1, Mode), ty_of_pat(Env, P2, Mode)]);
         {nil, _L} -> {empty_list};
@@ -1001,6 +999,24 @@ ty_of_pat(Env, P, Mode) ->
             end
     end.
 
+% Type of a binary pattern, built from 1-bit cells.
+%
+% A segment whose matching bitstrings do not depend on a run-time value is typed exactly, the
+% same for both modes. A segment with a size or a value known only at run time has no accepting
+% type (lower); its potential type (upper) are the bitstrings it matches for some size or value.
+-spec ty_of_bin_pat(constr:constr_env(), [ast:gen_bitstring_elem(ast:pat(), ast:exp())], upper | lower) -> ast:ty().
+ty_of_bin_pat(Env, Elems, Mode) ->
+    {Init, Rest} = split_rest_segment(Elems),
+    Tail =
+        case Rest of
+            none -> {empty_bitstring};
+            {{wildcard, _}, Unit} -> rest_ty(Unit);
+            {{var, _, {local_bind, V}}, Unit} ->
+                ast_lib:mk_intersection([maps:get({local_ref, V}, Env, {predef, any}), rest_ty(Unit)]);
+            {_BoundVar, Unit} -> at_run_time(Mode, rest_ty(Unit))
+        end,
+    segments_ty(Env, Init, Mode, Tail).
+
 % A last segment <<..., V/binary>> or <<..., V/bitstring>> takes the rest, a number of units.
 -spec split_rest_segment([ast:gen_bitstring_elem(P, ast:exp())]) ->
     {[ast:gen_bitstring_elem(P, ast:exp())], none | {P, pos_integer()}}.
@@ -1022,16 +1038,24 @@ rest_ty(Unit) ->
     X = {mu_var, list_to_atom("$rest" ++ integer_to_list(Unit))},
     {mu, X, {union, [{empty_bitstring}, bits_ty(Unit, X)]}}.
 
-% The segments of a binary expression, then Tail: an upper bound of its value.
--spec segments_ty([ast:exp_bitstring_elem()], ast:ty()) -> ast:ty().
-segments_ty([], Tail) -> Tail;
-segments_ty([{bin_element, L, {'string', _, S}, Size, Tyspecs} | Elems], Tail) ->
+-spec at_run_time(upper | lower | exp, ast:ty()) -> ast:ty().
+at_run_time(upper, T) -> T;
+at_run_time(exp, T) -> T;
+at_run_time(lower, _) -> {predef, none}.
+
+% Mode exp: the segments of a binary expression; its type is an upper bound of the value.
+-spec segments_ty(constr:constr_env(), [ast:gen_bitstring_elem(ast:pat() | ast:exp(), ast:exp())], upper | lower | exp, ast:ty()) ->
+    ast:ty().
+segments_ty(_Env, [], _Mode, Tail) -> Tail;
+segments_ty(Env, [{bin_element, L, {'string', _, S}, Size, Tyspecs} | Elems], Mode, Tail) ->
     % <<"ab">> is <<$a, $b>>
-    segments_ty([{bin_element, L, {'integer', L, C}, Size, Tyspecs} || C <- S] ++ Elems, Tail);
-segments_ty([{bin_element, _, _Value, Size, Tyspecs} | Elems], Tail0) ->
-    Tail = segments_ty(Elems, Tail0),
-    {Seg, _, _, Unit} = analyze_bin_tyspec(Tyspecs),
-    AnyOf = fun(Sizes) -> ast_lib:mk_union([bits_ty(B, Tail) || B <- Sizes]) end,
+    segments_ty(Env, [{bin_element, L, {'integer', L, C}, Size, Tyspecs} || C <- S] ++ Elems, Mode, Tail);
+segments_ty(Env, [{bin_element, _, Value, Size, Tyspecs} | Elems], Mode, Tail0) ->
+    Tail = segments_ty(Env, Elems, Mode, Tail0),
+    {Seg, Signed, _, Unit} = analyze_bin_tyspec(Tyspecs),
+    % a big-endian unsigned integer: literals are tracked
+    Plain = Seg =:= integer andalso not Signed andalso big_endian(Tyspecs),
+    AnyOf = fun(Sizes) -> at_run_time(Mode, ast_lib:mk_union([bits_ty(B, Tail) || B <- Sizes])) end,
     case {Seg, segment_bits(Size, Tyspecs)} of
         % the bits of utf and float segments are not tracked
         {utf8, _} -> AnyOf([8, 16, 24, 32]);
@@ -1041,9 +1065,35 @@ segments_ty([{bin_element, _, _Value, Size, Tyspecs} | Elems], Tail0) ->
         % any number of units: mu X. Tail | <<_:Unit, X>>
         {_, run_time} ->
             X = {mu_var, list_to_atom("$bits" ++ integer_to_list(erlang:unique_integer([positive])))},
-            {mu, X, ast_lib:mk_union([Tail, bits_ty(Unit, X)])};
-        {_, Bits} -> bits_ty(Bits, Tail)
+            at_run_time(Mode, {mu, X, ast_lib:mk_union([Tail, bits_ty(Unit, X)])});
+        {integer, Bits} when Plain, Mode =/= exp ->
+            case literal_int(Value) of
+                none -> bits_segment_ty(Env, Bits, Value, Mode, Tail);
+                I when I >= 0, I < 1 bsl Bits -> int_bits_ty(I, Bits, Tail);
+                % a literal that does not fit matches nothing
+                _ -> {predef, none}
+            end;
+        {_, Bits} -> bits_segment_ty(Env, Bits, Value, Mode, Tail)
     end.
+
+-spec big_endian(default | ast:bitstring_tyspec_list()) -> boolean().
+big_endian(default) -> true;
+big_endian(Tyspecs) -> not lists:member(little, Tyspecs) andalso not lists:member(native, Tyspecs).
+
+% The value of an integer literal in a pattern
+-spec literal_int(ast:pat() | ast:exp()) -> integer() | none.
+literal_int(Value) ->
+    case Value of
+        {'integer', _, V} -> V;
+        {'char', _, V} -> V;
+        {op, _, '-', [{'integer', _, V}]} -> -V;
+        _ -> none
+    end.
+
+% The Bits bits of I, most significant first, then Tail
+-spec int_bits_ty(integer(), non_neg_integer(), ast:ty()) -> ast:ty().
+int_bits_ty(_, 0, Tail) -> Tail;
+int_bits_ty(I, N, Tail) -> {bitstring_cons, {singleton, (I bsr (N - 1)) band 1}, int_bits_ty(I, N - 1, Tail)}.
 
 % The size of a segment in bits, if the pattern says it.
 -spec segment_bits(ast:exp() | default, default | ast:bitstring_tyspec_list()) -> non_neg_integer() | run_time.
@@ -1054,6 +1104,22 @@ segment_bits(Size, Tyspecs) ->
         {default, N} -> ?assert_type(N * Unit, non_neg_integer());
         {{'integer', _, N}, _} -> ?assert_type(N * Unit, non_neg_integer());
         _ -> run_time
+    end.
+
+% An integer, binary or bitstring segment with a size: its bits are not tracked.
+-spec bits_segment_ty(constr:constr_env(), non_neg_integer(), ast:pat() | ast:exp(), upper | lower | exp, ast:ty()) ->
+    ast:ty().
+bits_segment_ty(Env, Bits, Value, Mode, Tail) ->
+    All = bits_ty(Bits, Tail),
+    case Value of
+        {wildcard, _} -> All;
+        % a guard on the variable is not used
+        {var, _, {local_bind, V}} ->
+            case maps:is_key({local_ref, V}, Env) of
+                false -> All;
+                true -> at_run_time(Mode, All)
+            end;
+        _ -> at_run_time(Mode, All)
     end.
 
 % Bits bits, then Tail
@@ -1159,7 +1225,12 @@ bin_expr_constrs(Ctx, _L, BinElems) ->
             none -> {empty_bitstring};
             {_, Unit} -> rest_ty(Unit)
         end,
-    {Cs, segments_ty(Init, Tail)}.
+    {Cs, segments_ty(#{}, Init, exp, Tail)}.
+
+-spec run_time_size(ast:gen_bitstring_elem(ast:pat() | ast:exp(), ast:exp())) -> boolean().
+run_time_size({bin_element, _, _, Size, Tyspecs}) ->
+    {Seg, _, _, _} = analyze_bin_tyspec(Tyspecs),
+    segment_bits(Size, Tyspecs) =:= run_time andalso lists:member(Seg, [integer, float, binary, bitstring]).
 
 % t // pg
 -spec pat_guard_env(ctx(), ast:loc(), ast:ty(), ast:pat(), [ast:guard()]) ->
@@ -1179,26 +1250,33 @@ pat_env(Ctx, OuterL, T, P) ->
         {'integer', _L, _I} -> Empty;
         {'float', _L, _F} -> Empty;
         {'string', _L, _S} -> Empty;
-        % TODO correct pattern environment for binaries
-        {bin, _L, Elems} -> 
-            {Cs, Env} =
+        {bin, _L, Elems} ->
+            % Like the tail of a list cons, a rest segment gets a type variable; behind a
+            % segment whose size is known only at run time it gets the type of the segment.
+            {Init, Rest} = split_rest_segment(Elems),
+            {ElemCs, ElemEnv} =
                 lists:foldl(
-                  fun (P, {Cs, Env}) ->
-                          % unused type variables
-                          Alpha = fresh_tyvar(Ctx),
-                          {ThisCs, ThisEnv} = pat_env(Ctx, OuterL, Alpha, P),
-                          {sets:union(Cs, ThisCs),
-                           intersect_envs(Env, ThisEnv)}
-                  end,
-                  {sets:new([{version, 2}]), #{}},
-                  Elems),
-            C = {csubty, mk_locs("t // <<...>>", OuterL), T, {bitstring}},
-            {sets:add_element(C, Cs), Env};
+                    fun(E, {AccCs, AccEnv}) ->
+                        {ThisCs, ThisEnv} = bin_elem_pat_env(Ctx, OuterL, E),
+                        {sets:union(AccCs, ThisCs), intersect_envs(AccEnv, ThisEnv)}
+                    end,
+                    Empty, Init),
+            RunTimeSize = lists:any(fun run_time_size/1, Init),
+            {Tail, RestCs, RestEnv} =
+                case Rest of
+                    none -> {{empty_bitstring}, sets:new([{version, 2}]), #{}};
+                    {Value, Unit} when RunTimeSize ->
+                        {Cs, Env} = pat_env(Ctx, OuterL, {bitstring, 0, Unit}, Value),
+                        {rest_ty(Unit), Cs, Env};
+                    {Value, _Unit} ->
+                        Alpha = fresh_tyvar(Ctx),
+                        {Cs, Env} = pat_env(Ctx, OuterL, Alpha, Value),
+                        {Alpha, Cs, Env}
+                end,
+            ConsTy = segments_ty(#{}, Init, upper, Tail),
+            C = {csubty, mk_locs("t // <<...>>", OuterL), T, ConsTy},
+            {sets:add_element(C, sets:union(ElemCs, RestCs)), intersect_envs(ElemEnv, RestEnv)};
         default -> Empty;
-        {bin_element, _L, Value, Size, _TyspecList} -> 
-            {Cs1, Env1} = pat_env(Ctx, OuterL, T, Value),
-            {Cs2, Env2} = pat_env(Ctx, OuterL, T, Size),
-            {sets:union(Cs1, Cs2), intersect_envs(Env1, Env2)};
         {match, _L, P1, P2} ->
             {Cs1, Env1} = pat_env(Ctx, OuterL, T, P1),
             {Cs2, Env2} = pat_env(Ctx, OuterL, T, P2),
@@ -1263,6 +1341,23 @@ pat_env(Ctx, OuterL, T, P) ->
             % V refers to an existing variable
             {sets:new([{version, 2}]), #{ LocalRef => T }}
     end.
+
+% Process a single bin_element in a binary pattern: the type of its value.
+-spec bin_elem_pat_env(ctx(), ast:loc(), ast:gen_bitstring_elem(ast:pat(), ast:exp())) ->
+    {constr:constrs(), constr:constr_env()}.
+bin_elem_pat_env(Ctx, OuterL, {bin_element, _L, Value, _Size, TyspecList}) ->
+    {SegType, Signed, _, Unit} = analyze_bin_tyspec(TyspecList),
+    ValueTy = segment_value_ty(SegType, Signed, Unit),
+    pat_env(Ctx, OuterL, ValueTy, Value).
+
+% The values a segment of a binary pattern can bind its variable to.
+-spec segment_value_ty(integer | float | binary | bitstring | utf8 | utf16 | utf32, boolean(), pos_integer()) ->
+    ast:ty().
+segment_value_ty(integer, true, _) -> {predef, integer};
+segment_value_ty(integer, false, _) -> {predef_alias, non_neg_integer};
+segment_value_ty(float, _, _) -> {predef, float};
+segment_value_ty(Bin, _, Unit) when Bin =:= binary; Bin =:= bitstring -> {bitstring, 0, Unit};
+segment_value_ty(_Utf, _, _) -> {predef_alias, non_neg_integer}.
 
 % (| e |)
 -spec pat_of_exp(ast:exp()) -> ast:pat().
