@@ -318,6 +318,13 @@ builtin_ops() ->
         tfun([tfloat(), tint()], tfloat()),
         tfun([tfloat(), tfloat()], tfloat())
     ])),
+    % the difference of two non-negative integers can be negative
+    MinusOpTy = tyscm(tinter([
+        tfun([tint(), tint()], tint()),
+        tfun([tint(), tfloat()], tfloat()),
+        tfun([tfloat(), tint()], tfloat()),
+        tfun([tfloat(), tfloat()], tfloat())
+    ])),
     NumOp1Ty = tyscm(tinter([
         tfun([tint()], tint()),
         tfun([tfloat()], tfloat())
@@ -331,7 +338,7 @@ builtin_ops() ->
     PolyOpTy = tyscm([a], tfun([tvar(a), tvar(a)], tbool())),
     [
         {'+', 2, NumOpTy},
-        {'-', 2, NumOpTy},
+        {'-', 2, MinusOpTy},
         {'-', 1, NumOp1Ty},
         {'*', 2, NumOpTy},
         {'/', 2, tyscm(tinter([

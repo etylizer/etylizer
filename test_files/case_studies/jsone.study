@@ -8,6 +8,7 @@
 %% {reason, Id, Class, Text}. Class: real (the program or its spec is wrong), inherent (correct at
 %% run time, not provable by types), fixable (gap in the type system or checker), unknown.
 {reason, arithmetic,          inherent, "arithmetic on type level"}.
+{reason, arith_range,         fixable,  "the range of an arithmetic result follows from the clauses before and the operand types, the type of - is too coarse"}.
 {reason, defensive,           inherent, "defensive clause, dead for the spec"}.
 {reason, body_exhaustiveness, inherent, "exhaustiveness of a case or match inside the body"}.
 {reason, binary_patterns,     fixable,  "binary patterns too imprecise"}.
@@ -40,6 +41,8 @@
 {exception, jsone_encode, hex, 1, [ignore], unknown}.
 {exception, jsone_encode, local_offset, 0, [ignore], arithmetic}.
 {exception, jsone_encode, local_offset_dst, 0, [ignore], arithmetic}.
+{exception, jsone_encode, format_year, 1, [ignore], arith_range}. % 4 - byte_size(B) after the clause for Y > 999
+{exception, jsone_encode, padding, 2, [ignore], arith_range}. % N - 9 after the clauses for 0..8
 {exception, jsone_encode, format2digit, 1, [ignore], spec_imprecise}. % integer_to_list returns string()
 {exception, jsone_encode, format_tz_, 1, [ignore], unknown}.
 {exception, jsone_encode, object_members, 4, [no_redundancy], defensive}.
