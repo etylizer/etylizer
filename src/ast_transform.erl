@@ -330,7 +330,13 @@ trans_ty(Ctx, Env, Ty) ->
         {'atom', _, X} -> {singleton, X};
         {'char', _, X} -> {singleton, X};
         {'integer', _, X} -> {singleton, X};
-        {type, _, binary, _} -> {bitstring}; % TODO full bitstring support
+        {type, _, binary, []} -> {bitstring, 0, 8};  % binary()
+        {type, _, binary, [M, N]} ->
+            case {M, N} of
+                {{integer, _, MI}, {integer, _, NI}} when MI >= 0, NI >= 0 -> {bitstring, MI, NI};
+                % sizes written as expressions are not evaluated
+                _ -> {bitstring}
+            end;
         {type, _, nil, []} -> {empty_list};
         {type, _, list, [T]} -> {list, trans_ty(Ctx, Env, T)};
         {type, _, 'fun', []} -> {fun_simple};

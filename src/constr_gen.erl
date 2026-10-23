@@ -28,6 +28,8 @@
         }).
 -type ctx() :: #ctx{}.
 
+-include("etylizer.hrl").
+
 -spec new_ctx(symtab:t(), feature_flags:exhaustiveness_mode()) -> ctx().
 new_ctx(Symtab, ExhaustivenessMode) ->
     Counter = counters:new(1, []),
@@ -110,11 +112,10 @@ exp_constrs(Ctx, E, T) ->
         {'float', L, _F} -> utils:single({csubty, mk_locs("float literal", L), {predef, float}, T});
         {'string', L, ""} -> utils:single({csubty, mk_locs("empty string literal", L), {empty_list}, T});
         {'string', L, S} -> utils:single({csubty, mk_locs("string literal", L), string_to_cons_ty(S), T});
-        {bin, L, []} -> utils:single({csubty, mk_locs("empty bitstring", L), {bitstring}, T});
-        {bin, L, _Cs} ->
-            % TODO constraints for inner binary pattern elements
-            ?LOG_WARN("Skipping verification of binary pattern elements of ~s", ast:format_loc(L)),
-            utils:single({csubty, mk_locs("bitstring", L), {bitstring}, T});
+        {bin, L, []} -> utils:single({csubty, mk_locs("empty bitstring", L), {bitstring, 0, 0}, T});
+        {bin, L, BinElems} ->
+            {ElemCs, ResultTy} = bin_expr_constrs(Ctx, L, BinElems),
+            sets:add_element({csubty, mk_locs("bitstring", L), ResultTy, T}, ElemCs);
         {bc, L, _E, _Qs} -> errors:unsupported(L, "bitstrings");
         {block, L, Es} ->
             exps_constrs(Ctx, L, Es, T);
@@ -999,6 +1000,166 @@ ty_of_pat(Env, P, Mode) ->
                 lower -> stdtypes:tnone()
             end
     end.
+
+% A last segment <<..., V/binary>> or <<..., V/bitstring>> takes the rest, a number of units.
+-spec split_rest_segment([ast:gen_bitstring_elem(P, ast:exp())]) ->
+    {[ast:gen_bitstring_elem(P, ast:exp())], none | {P, pos_integer()}}.
+split_rest_segment(Elems) ->
+    case lists:reverse(Elems) of
+        [{bin_element, _, Value, default, Tyspecs} | RevInit] ->
+            case analyze_bin_tyspec(Tyspecs) of
+                {binary, _, _, Unit} -> {lists:reverse(RevInit), {Value, Unit}};
+                {bitstring, _, _, Unit} -> {lists:reverse(RevInit), {Value, Unit}};
+                _ -> {Elems, none}
+            end;
+        _ -> {Elems, none}
+    end.
+
+% <<_:_*Unit>>, written out: {bitstring, 0, Unit} as an alternative right below a mu makes
+% ty_parser fail (error:sanity in is_not_defined/2) when the type is parsed a second time.
+-spec rest_ty(pos_integer()) -> ast:ty().
+rest_ty(Unit) ->
+    X = {mu_var, list_to_atom("$rest" ++ integer_to_list(Unit))},
+    {mu, X, {union, [{empty_bitstring}, bits_ty(Unit, X)]}}.
+
+% The segments of a binary expression, then Tail: an upper bound of its value.
+-spec segments_ty([ast:exp_bitstring_elem()], ast:ty()) -> ast:ty().
+segments_ty([], Tail) -> Tail;
+segments_ty([{bin_element, L, {'string', _, S}, Size, Tyspecs} | Elems], Tail) ->
+    % <<"ab">> is <<$a, $b>>
+    segments_ty([{bin_element, L, {'integer', L, C}, Size, Tyspecs} || C <- S] ++ Elems, Tail);
+segments_ty([{bin_element, _, _Value, Size, Tyspecs} | Elems], Tail0) ->
+    Tail = segments_ty(Elems, Tail0),
+    {Seg, _, _, Unit} = analyze_bin_tyspec(Tyspecs),
+    AnyOf = fun(Sizes) -> ast_lib:mk_union([bits_ty(B, Tail) || B <- Sizes]) end,
+    case {Seg, segment_bits(Size, Tyspecs)} of
+        % the bits of utf and float segments are not tracked
+        {utf8, _} -> AnyOf([8, 16, 24, 32]);
+        {utf16, _} -> AnyOf([16, 32]);
+        {utf32, _} -> AnyOf([32]);
+        {float, Bits} -> AnyOf([B || B <- [16, 32, 64], Bits =:= run_time orelse Bits =:= B]);
+        % any number of units: mu X. Tail | <<_:Unit, X>>
+        {_, run_time} ->
+            X = {mu_var, list_to_atom("$bits" ++ integer_to_list(erlang:unique_integer([positive])))},
+            {mu, X, ast_lib:mk_union([Tail, bits_ty(Unit, X)])};
+        {_, Bits} -> bits_ty(Bits, Tail)
+    end.
+
+% The size of a segment in bits, if the pattern says it.
+-spec segment_bits(ast:exp() | default, default | ast:bitstring_tyspec_list()) -> non_neg_integer() | run_time.
+segment_bits(Size, Tyspecs) ->
+    {_, _, DefaultSize, Unit} = analyze_bin_tyspec(Tyspecs),
+    case {Size, DefaultSize} of
+        {default, default} -> run_time;
+        {default, N} -> ?assert_type(N * Unit, non_neg_integer());
+        {{'integer', _, N}, _} -> ?assert_type(N * Unit, non_neg_integer());
+        _ -> run_time
+    end.
+
+% Bits bits, then Tail
+-spec bits_ty(non_neg_integer(), ast:ty()) -> ast:ty().
+bits_ty(_, {predef, none}) -> {predef, none};
+bits_ty(0, Tail) -> Tail;
+bits_ty(N, Tail) -> {bitstring_cons, {range, 0, 1}, bits_ty(N - 1, Tail)}.
+
+% Analyze a bitstring type specifier list to determine segment type, signedness, default size, and unit.
+-spec analyze_bin_tyspec(default | ast:bitstring_tyspec_list()) ->
+    {integer | float | binary | bitstring | utf8 | utf16 | utf32, boolean(), integer() | default, pos_integer()}.
+analyze_bin_tyspec(default) -> {integer, false, 8, 1};
+analyze_bin_tyspec(TyspecList0) ->
+    TyspecList = ?assert_type(TyspecList0, ast:bitstring_tyspec_list()),
+    Type = determine_segment_type(TyspecList),
+    Signed = lists:member(signed, TyspecList),
+    TupleTyspecs = ?assert_type([X || X <- TyspecList, is_tuple(X)], [{atom(), integer()}]),
+    Unit = case lists:keyfind(unit, 1, TupleTyspecs) of
+        {unit, U} -> ?assert_type(U, pos_integer());
+        _ -> default_unit(Type)
+    end,
+    DefaultSize = default_size(Type),
+    {Type, Signed, DefaultSize, Unit}.
+
+-spec determine_segment_type(ast:bitstring_tyspec_list()) -> integer | float | binary | bitstring | utf8 | utf16 | utf32.
+determine_segment_type([]) -> integer;
+determine_segment_type([integer | _]) -> integer;
+determine_segment_type([float | _]) -> float;
+determine_segment_type([binary | _]) -> binary;
+determine_segment_type([bytes | _]) -> binary;
+determine_segment_type([bitstring | _]) -> bitstring;
+determine_segment_type([bits | _]) -> bitstring;
+determine_segment_type([utf8 | _]) -> utf8;
+determine_segment_type([utf16 | _]) -> utf16;
+determine_segment_type([utf32 | _]) -> utf32;
+determine_segment_type([_ | Rest]) -> determine_segment_type(Rest).
+
+-spec default_unit(integer | float | binary | bitstring | utf8 | utf16 | utf32) -> pos_integer().
+default_unit(integer) -> 1;
+default_unit(float) -> 1;
+default_unit(binary) -> 8;
+default_unit(bitstring) -> 1;
+default_unit(utf8) -> 1;
+default_unit(utf16) -> 1;
+default_unit(utf32) -> 1.
+
+-spec default_size(integer | float | binary | bitstring | utf8 | utf16 | utf32) -> integer() | default.
+default_size(integer) -> 8;
+default_size(float) -> 64;
+default_size(binary) -> default;
+default_size(bitstring) -> default;
+default_size(utf8) -> default;
+default_size(utf16) -> default;
+default_size(utf32) -> default.
+
+% Generate constraints for binary expression elements (non-empty binary construction).
+-spec bin_expr_constrs(ctx(), ast:loc(), [ast:exp_bitstring_elem()]) -> {constr:constrs(), ast:ty()}.
+bin_expr_constrs(Ctx, _L, BinElems) ->
+    Cs = lists:foldl(
+        fun({bin_element, ElemL, Value, Size, TyspecList}, AccCs) ->
+            {SegType, _Signed, _DefaultSize, Unit} = analyze_bin_tyspec(TyspecList),
+            % Generate constraint for the value expression
+            IsStringValue = case Value of
+                {'string', _, _} -> true;
+                _ -> false
+            end,
+            % Upper bound for the value expression, validating that it has the
+            % right type for the segment specifier (e.g. <<X/float>> requires X
+            % to be a number, <<X/binary>> requires X to be a binary).
+            % The precise type of the value is captured separately by exp_constrs.
+            ValueTy = case {SegType, IsStringValue} of
+                {_, true} -> {predef, any};  % strings in binaries are always valid
+                {integer, _} -> {predef, integer};
+                {float, _} -> {predef_alias, number};  % floats accept integers too
+                {binary, _} when Unit =:= 8 -> {bitstring, 0, 8};
+                {binary, _} -> {bitstring};  % binary with non-default unit accepts any bitstring
+                {bitstring, _} -> {bitstring};
+                {utf8, _} -> {predef, integer};
+                {utf16, _} -> {predef, integer};
+                {utf32, _} -> {predef, integer}
+            end,
+            Alpha = fresh_tyvar(Ctx),
+            ValCs = exp_constrs(Ctx, Value, Alpha),
+            ValConstr = {csubty, mk_locs("bin element value", ElemL), Alpha, ValueTy},
+            % Generate constraint for the size expression (if present)
+            SizeCs = case Size of
+                default -> sets:new([{version, 2}]);
+                _ ->
+                    SizeAlpha = fresh_tyvar(Ctx),
+                    SCs = exp_constrs(Ctx, Size, SizeAlpha),
+                    sets:add_element(
+                        {csubty, mk_locs("bin element size", ElemL), SizeAlpha, {predef, integer}},
+                        SCs)
+            end,
+            sets:union([AccCs, ValCs, SizeCs, sets:from_list([ValConstr])])
+        end,
+        sets:new([{version, 2}]),
+        BinElems),
+    % a last segment without size is any number of units
+    {Init, Rest} = split_rest_segment(BinElems),
+    Tail =
+        case Rest of
+            none -> {empty_bitstring};
+            {_, Unit} -> rest_ty(Unit)
+        end,
+    {Cs, segments_ty(Init, Tail)}.
 
 % t // pg
 -spec pat_guard_env(ctx(), ast:loc(), ast:ty(), ast:pat(), [ast:guard()]) ->
