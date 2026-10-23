@@ -93,6 +93,8 @@ unfold_ty(Tab, {nonempty_list, T}, Memo) ->
     {nonempty_list, unfold_ty(Tab, T, Memo)};
 unfold_ty(Tab, {cons, A, B}, Memo) ->
     {cons, unfold_ty(Tab, A, Memo), unfold_ty(Tab, B, Memo)};
+unfold_ty(Tab, {bitstring_cons, A, B}, Memo) ->
+    {bitstring_cons, unfold_ty(Tab, A, Memo), unfold_ty(Tab, B, Memo)};
 unfold_ty(Tab, {improper_list, A, B}, Memo) ->
     {improper_list, unfold_ty(Tab, A, Memo), unfold_ty(Tab, B, Memo)};
 unfold_ty(Tab, {nonempty_improper_list, A, B}, Memo) ->
