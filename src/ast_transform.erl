@@ -197,14 +197,13 @@ to_loc(Ctx, Anno) -> ast:to_loc(Ctx#ctx.current_file, Anno).
 % Updates ctx.current_file when a top-level -file marker (inserted by epp at
 % include boundaries) is encountered. 
 % The module's own marker is mapped back to the original Path 
-% so module locs keep their exact file string.
+% so module locs keep their exact file string. The locs of a BEAM file
+% point at the source named by its marker.
 % Only header code switches to the header's path, 
 % which is what makes header loc()s distinct from same-numbered module lines.
 -spec update_current_file(ctx(), ast_erl:form()) -> ctx().
 update_current_file(Ctx, {attribute, _, file, {MarkerFile, _}}) ->
-    SameAsModule =
-        filename:rootname(filename:basename(MarkerFile)) =:=
-            filename:rootname(filename:basename(Ctx#ctx.path)),
+    SameAsModule = filename:basename(MarkerFile) =:= filename:basename(Ctx#ctx.path),
     NewFile = case SameAsModule of true -> Ctx#ctx.path; false -> MarkerFile end,
     Ctx#ctx{ current_file = NewFile };
 update_current_file(Ctx, _Form) -> Ctx.
