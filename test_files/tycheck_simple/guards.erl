@@ -162,3 +162,8 @@ refinement_nil(X) -> X.
 -spec comparison_atom_03(integer() | atom()) -> integer().
 comparison_atom_03(X) when X < 5 -> X;
 comparison_atom_03(_) -> 0.
+
+% {1.0, a} == {1, a}
+-spec eq_tuple_float_fail({number(), a}) -> {1, a} | other.
+eq_tuple_float_fail(X) when X == {1, a} -> X;
+eq_tuple_float_fail(_) -> other.
