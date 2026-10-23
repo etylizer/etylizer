@@ -72,11 +72,10 @@ case_09(X) ->
         _ -> 42.0
     end.
 
--spec case_10_fail(any()) -> integer().
-case_10_fail(X) ->
+-spec case_10(any()) -> integer().
+case_10(X) ->
     case X of
-        % should fail because Y does not have type integer
-        % in the guard but abs requires a number
+        % abs(Y) on a non-number only makes the guard fail
         Y when abs(Y) > 2 andalso is_integer(Y) -> Y;
         _ -> 42
     end.

@@ -162,9 +162,9 @@ get_name_from_invoice_02_fail(X) -> X#invoice.person#person.name.
 guard_01(P) when P#person.age + 1 > 18 -> true;
 guard_01(_) -> false.
 
--spec guard_02_fail(#person{}) -> boolean().
-guard_02_fail(P) when P#person.name + 1 > 18 -> true;
-guard_02_fail(_) -> false.
+-spec guard_02(#person{}) -> boolean().
+guard_02(P) when P#person.name + 1 > 18 -> true;
+guard_02(_) -> false.
 
 -spec guard_03(#invoice{}) -> boolean().
 guard_03(X) when X#invoice.person#person.age > 18 -> true;
