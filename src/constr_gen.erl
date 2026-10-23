@@ -250,41 +250,20 @@ exp_constrs(Ctx, E, T) ->
         {map_create, L, []} ->
             utils:single({csubty, mk_locs("empty map", L), {map, []}, T});
         {map_create, L, Assocs} ->
-            KeyAlpha = fresh_tyvar(Ctx),
-            ValAlpha = fresh_tyvar(Ctx),
-            MapTy = {map, [{map_field_opt, KeyAlpha, ValAlpha}]},
-            AssocsCs =
-                lists:foldl(
-                  fun({map_field_opt, _FieldL, KeyE, ValE}, AccCs) ->
-                          KeyCs = exp_constrs(Ctx, KeyE, KeyAlpha),
-                          ValCs = exp_constrs(Ctx, ValE, ValAlpha),
-                          sets:union([AccCs, KeyCs, ValCs])
-                  end,
-                  sets:new([{version, 2}]),
-                  Assocs),
-            ResultC = {csubty, mk_locs("map_create", L), MapTy, T},
+            {Fields, AssocsCs} = map_assoc_fields(Ctx, Assocs, [], {map, []}),
+            ResultC = {csubty, mk_locs("map_create", L), {map, Fields}, T},
             sets:add_element(ResultC, AssocsCs);
         {map_update, L, MapExp, Assocs} ->
+            MapAlpha = fresh_tyvar(Ctx),
             KeyAlpha = fresh_tyvar(Ctx),
             ValAlpha = fresh_tyvar(Ctx),
-            MapTy = {map, [{map_field_opt, KeyAlpha, ValAlpha}]},
-            Cs1 = exp_constrs(Ctx, MapExp, MapTy),
-            Cs2 =
-                lists:foldl(
-                fun(Assoc, AccCs) ->
-                    {KeyE, ValE} =
-                        case Assoc of
-                            {map_field_opt, _FieldL, K, V} -> {K, V};
-                            {map_field_req, _FieldL, K, V} -> {K, V}
-                        end,
-                    KeyCs = exp_constrs(Ctx, KeyE, KeyAlpha),
-                    ValCs = exp_constrs(Ctx, ValE, ValAlpha),
-                    sets:union([AccCs, KeyCs, ValCs])
-                end,
-                Cs1,
-                Assocs),
-            ResultC = {csubty, mk_locs("map_update", L), MapTy, T},
-            sets:add_element(ResultC, Cs2);
+            Cs1 = sets:add_element({csubty, mk_locs("map_update", L), MapAlpha, {map, [{map_field_opt, KeyAlpha, ValAlpha}]}},
+                                   exp_constrs(Ctx, MapExp, MapAlpha)),
+            % the new associations take precedence over those of the old map
+            {Fields, Cs2} = map_assoc_fields(Ctx, Assocs, [{map_field_opt, KeyAlpha, ValAlpha}], MapAlpha),
+            ResultTy = {map, Fields},
+            ResultC = {csubty, mk_locs("map_update", L), ResultTy, T},
+            sets:add_element(ResultC, sets:union(Cs1, Cs2));
         {nil, L} ->
             utils:single({csubty, mk_locs("result of nil", L), {empty_list}, T});
         {op, L, Op, Lhs, Rhs} ->
@@ -521,6 +500,40 @@ process_qualifiers(Ctx, Loc, [Q | Qs], Env, Cs) ->
             NewEnv = intersect_envs(Env, GuardEnv),
             process_qualifiers(Ctx, Loc, Qs, NewEnv, sets:union(Cs, FilterCs))
     end.
+
+% Fields of the map type that the associations add to Fields0. The last association wins at
+% run time, the leftmost field in a map type: a literal key comes first and is mandatory. A
+% key of type atom() is one atom, not all of them: it may overwrite the key of any field so
+% far, which gets its value too, and the other keys of its type are optional, last.
+% K := V raises badkey unless K is a key of Old, the map before the associations.
+-spec map_assoc_fields(ctx(), [ast:map_assoc()], [ast:ty_map_assoc()], ast:ty()) ->
+    {[ast:ty_map_assoc()], constr:constrs()}.
+map_assoc_fields(Ctx, Assocs, Fields0, Old) ->
+    Any = stdtypes:tany(),
+    lists:foldl(
+      fun(Assoc, {Fields, AccCs}) ->
+              {_, FieldL, KeyE, ValE} = Assoc,
+              ValAlpha = fresh_tyvar(Ctx),
+              ValCs = exp_constrs(Ctx, ValE, ValAlpha),
+              {KeyTy, KeyCs, NewFields} =
+                  case ty_of_const_exp(KeyE) of
+                      {ok, Lit} -> {Lit, sets:new(), [{map_field_req, Lit, ValAlpha} | Fields]};
+                      error ->
+                          KeyAlpha = fresh_tyvar(Ctx),
+                          Overwritten = [{Kind, K, ast_lib:mk_union([V, ValAlpha])} || {Kind, K, V} <- Fields],
+                          {KeyAlpha, exp_constrs(Ctx, KeyE, KeyAlpha), Overwritten ++ [{map_field_opt, KeyAlpha, ValAlpha}]}
+                  end,
+              PresentCs =
+                  case Assoc of
+                      {map_field_req, _, _, _} ->
+                          Present = stdtypes:tmap([{map_field_req, KeyTy, Any}, {map_field_opt, Any, Any}]),
+                          [{csubty, mk_locs("map update with :=", FieldL), Old, Present}];
+                      {map_field_opt, _, _, _} -> []
+                  end,
+              {NewFields, sets:union([AccCs, KeyCs, ValCs, sets:from_list(PresentCs)])}
+      end,
+      {Fields0, sets:new()},
+      Assocs).
 
 -spec gen_funcall_constrs(ctx(), ast:loc(), ast:exp(), [ast:exp()], ast:ty()) -> constr:constrs().
 gen_funcall_constrs(Ctx, L, FunExp, Args, T) ->
@@ -976,21 +989,18 @@ ty_of_pat(Env, P, Mode) ->
             Any = stdtypes:tany(),
             stdtypes:tmap(Any, Any);
         {map, _L, Assocs} ->
-            {KeyTs, ValTs} =
-                lists:foldl(
-                    fun({map_field_req, _, KeyP, ValP}, {KeyTs, ValTs}) ->
-                        K = ty_of_pat(Env, KeyP, Mode),
-                        V = ty_of_pat(Env, ValP, Mode),
-                        {[K | KeyTs], [V | ValTs]}
-                    end,
-                    {[], []},
-                    Assocs),
-            F =
-                case Mode of
-                    upper -> fun ast_lib:mk_union/1;
-                    lower -> fun ast_lib:mk_intersection/1
-                end,
-            stdtypes:tmap_req(F(KeyTs), F(ValTs));
+            % Literal keys are mandatory, other keys may be present. Another key pattern
+            % matches some key of its type: no upper bound, no lower bound.
+            Any = stdtypes:tany(),
+            Lit = [{K, ty_of_pat(Env, ValP, Mode)} || {map_field_req, _, KeyP, ValP} <- Assocs,
+                                                      {ok, K} <- [ty_of_const_exp(KeyP)]],
+            AllLit = length(Lit) =:= length(Assocs),
+            Keys = lists:usort([K || {K, _} <- Lit]),
+            Fields = [{map_field_req, K, ast_lib:mk_intersection([V || {K2, V} <- Lit, K2 =:= K])} || K <- Keys],
+            case Mode =:= lower andalso not AllLit of
+                true -> {predef, none};
+                false -> stdtypes:tmap(Fields ++ [{map_field_opt, Any, Any}])
+            end;
         {tuple, _L, Ps} -> {tuple, lists:map(fun(P) -> ty_of_pat(Env, P, Mode) end, Ps)};
         {wildcard, _L} -> {predef, any};
         {var, _L, {local_bind, V}} ->
@@ -1350,14 +1360,26 @@ pat_env(Ctx, OuterL, T, P) ->
         {map, _L, Assocs} ->
             AlphaK = fresh_tyvar(Ctx),
             AlphaV = fresh_tyvar(Ctx),
+            Any = stdtypes:tany(),
             {AssocCs, AssocEnv} =
                 lists:foldl(
                     fun({map_field_req, _L, PK, PV}, {Cs, Env}) ->
-                        {CK, _} = pat_env(Ctx, OuterL, AlphaK, PK),
-                        {CV, EnvV} = pat_env(Ctx, OuterL, AlphaV, PV),
-                        {sets:union([Cs, CK, CV]), intersect_envs(Env, EnvV)}
+                        case ty_of_const_exp(PK) of
+                            {ok, K} ->
+                                % the value at a literal key; an optional field, because a
+                                % mandatory one would also compare the function part
+                                AlphaKV = fresh_tyvar(Ctx),
+                                At = stdtypes:tmap([{map_field_opt, K, AlphaKV}, {map_field_opt, Any, Any}]),
+                                CKV = {csubty, mk_locs("t // #{k := _}", OuterL), T, At},
+                                {CV, EnvV} = pat_env(Ctx, OuterL, AlphaKV, PV),
+                                {sets:add_element(CKV, sets:union(Cs, CV)), intersect_envs(Env, EnvV)};
+                            error ->
+                                {CK, _} = pat_env(Ctx, OuterL, AlphaK, PK),
+                                {CV, EnvV} = pat_env(Ctx, OuterL, AlphaV, PV),
+                                {sets:union([Cs, CK, CV]), intersect_envs(Env, EnvV)}
+                        end
                     end,
-                    {sets:new([{version, 2}]), #{}},
+                    {sets:new(), #{}},
                     Assocs),
             C = {csubty, mk_locs("t // #{_}", OuterL), T, stdtypes:tmap(AlphaK, AlphaV)},
             {sets:add_element(C, AssocCs), AssocEnv};
@@ -1781,7 +1803,7 @@ has_number({cons, H, T}) -> has_number(H) orelse has_number(T);
 has_number(_) -> false.
 
 % Returns the type of a constant (variable-free) expression, or error if not constant.
--spec ty_of_const_exp(ast:exp()) -> t:opt(ast:ty()).
+-spec ty_of_const_exp(ast:exp() | ast:pat()) -> t:opt(ast:ty()).
 ty_of_const_exp(E) ->
     case E of
         {'atom', _, A} -> {ok, {singleton, A}};
