@@ -11,7 +11,7 @@
 {reason, arith_range,         fixable,  "the range of an arithmetic result follows from the clauses before and the operand types, the type of - is too coarse"}.
 {reason, defensive,           inherent, "defensive clause, dead for the spec"}.
 {reason, body_exhaustiveness, inherent, "exhaustiveness of a case or match inside the body"}.
-{reason, binary_patterns,     fixable,  "binary patterns too imprecise"}.
+{reason, binary_value,        fixable,  "the guards determine the content of a binary: <<High:16, Low:16>> is valid UTF-16 for High in D800..DBFF and Low in DC00..DFFF"}.
 {reason, negative_literal,    fixable,  "a negative literal is typed as integer()"}.
 {reason, spec_imprecise,      real,     "imprecise type spec in the source"}.
 {reason, spec_wrong,          real,     "wrong type in the source"}.
@@ -21,7 +21,6 @@
 {exception, jsone, decode, 2, [ignore], body_exhaustiveness}.
 {exception, jsone, encode, 2, [ignore], body_exhaustiveness}.
 {exception, jsone, term_to_json_string, 1, [ignore], arithmetic}.
-{exception, jsone, check_decode_remainings, 1, [no_redundancy], binary_patterns}.
 
 {module, jsone_inet, #{file => "jsone/src/jsone_inet.erl", timeout => 30000}}.
 {exception, jsone_inet, ip_address_to_json_string, 1, [ignore], unknown}.
@@ -36,7 +35,7 @@
 {exception, jsone_encode, string, 4, [ignore], spec_imprecise}.
 {exception, jsone_encode, format_seconds, 1, [ignore], spec_imprecise}.
 {exception, jsone_encode, object_key, 4, [ignore], spec_wrong}. % next() says {char, binary()}, the code uses a byte
-{exception, jsone_encode, escape_string, 4, [ignore], binary_patterns}.
+{exception, jsone_encode, escape_string, 4, [ignore], body_exhaustiveness}. % <<Unescaped:Len/binary, Rest/binary>> = Str
 {exception, jsone_encode, unescaped_string_length, 3, [ignore], body_exhaustiveness}.
 {exception, jsone_encode, hex, 1, [ignore], unknown}.
 {exception, jsone_encode, local_offset, 0, [ignore], arithmetic}.
@@ -49,23 +48,13 @@
 {exception, jsone_encode, next, 3, [ignore], spec_wrong}. % next() says {char, binary()}, the code uses a byte
 
 {module, jsone_decode, #{file => "jsone/src/jsone_decode.erl", overlays => [{missing, "overlay_jsone.erl"}], timeout => 30000}}.
-{exception, jsone_decode, string, 6, [ignore], binary_patterns}.
+{exception, jsone_decode, unicode_string, 5, [ignore], binary_value}. % <<Unicode/utf16>> = <<High:16, Low:16>>
 {exception, jsone_decode, parse_option, 2, [no_redundancy], defensive}.
-{exception, jsone_decode, object_key, 5, [no_redundancy], binary_patterns}.
 {exception, jsone_decode, object_key, 2, [ignore], spec_imprecise}.
-{exception, jsone_decode, unicode_string, 5, [ignore], binary_patterns}.
 {exception, jsone_decode, number_exponation_part, 6, [ignore], negative_literal}.
-{exception, jsone_decode, number_exponation_part, 9, [ignore], binary_patterns}.
 {exception, jsone_decode, next, 5, [ignore], spec_imprecise}.
-{exception, jsone_decode, whitespace, 5, [ignore], binary_patterns}.
-{exception, jsone_decode, value, 4, [no_redundancy], binary_patterns}.
-{exception, jsone_decode, array, 4, [no_redundancy], binary_patterns}.
-{exception, jsone_decode, array_next, 5, [no_redundancy], binary_patterns}.
-{exception, jsone_decode, object, 4, [no_redundancy], binary_patterns}.
-{exception, jsone_decode, object_value, 6, [no_redundancy], binary_patterns}.
-{exception, jsone_decode, object_next, 5, [no_redundancy], binary_patterns}.
 {exception, jsone_decode, number, 4, [ignore], negative_literal}.
-{exception, jsone_decode, number_integer_part, 5, [no_redundancy], binary_patterns}.
-{exception, jsone_decode, number_integer_part_rest, 6, [no_redundancy], binary_patterns}.
-{exception, jsone_decode, number_fraction_part, 6, [no_redundancy], binary_patterns}.
-{exception, jsone_decode, number_fraction_part_rest, 7, [no_redundancy], binary_patterns}.
+{exception, jsone_decode, number_integer_part, 5, [ignore], arith_range}. % C - $0 for C in $1..$9
+{exception, jsone_decode, number_integer_part_rest, 6, [ignore], arith_range}. % N * 10 + C - $0 for C in $0..$9
+{exception, jsone_decode, number_fraction_part_rest, 7, [ignore], arith_range}. % the same
+{exception, jsone_decode, number_exponation_part, 9, [ignore], arith_range}. % the same

@@ -135,3 +135,10 @@ lc_nested_gen_fail(L) -> [X || Xs <- L, X <- Xs]. % X is integer(), not atom()
 -spec mc_nested_gen([#{atom() => integer()}]) -> #{atom() => integer()}.
 mc_nested_gen(Ms) -> #{K => V || M <- Ms, K := V <- M}.
 
+% a strict generator needs elements that the pattern accepts
+-spec strict_list_binary_01([<<_:8>>]) -> [byte()].
+strict_list_binary_01(Bs) -> [X || <<X>> <:- Bs].
+
+% an element need not have N bits
+-spec strict_list_binary_01_fail([bitstring()], integer()) -> [integer()].
+strict_list_binary_01_fail(Bs, N) -> [X || <<X:N>> <:- Bs].
