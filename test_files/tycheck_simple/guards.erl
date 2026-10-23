@@ -195,3 +195,7 @@ guard_raise_04_fail(B, X) when B orelse is_integer(X) -> ok.
 -spec not_float_01(float()) -> neg | other.
 not_float_01(X) when not (X > 0) -> neg;
 not_float_01(_) -> other.
+
+-spec domain_01(term()) -> number().
+domain_01(X) when X + 1 > 0 -> X;
+domain_01(_) -> 0.
