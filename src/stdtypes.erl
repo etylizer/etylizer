@@ -52,7 +52,7 @@
     ttuple1/1, 
     ttuple2/2,
     ttuple_n/1,
-    tunion/2, 
+    tunion/2,
     tyscm/2,
     tvar/1
 ]).
@@ -248,11 +248,10 @@ tbool() -> {predef_alias, boolean}.
 
 -spec expand_predef_alias(ast:predef_alias_name()) -> ast:ty().
 expand_predef_alias(term) -> {predef, any};
-% TODO better binaries
-expand_predef_alias(binary) -> {bitstring};
-expand_predef_alias(nonempty_binary) -> {bitstring};
+expand_predef_alias(binary) -> {bitstring, 0, 8};
+expand_predef_alias(nonempty_binary) -> {bitstring, 8, 8};
 expand_predef_alias(bitstring) -> {bitstring};
-expand_predef_alias(nonempty_bitstring) -> {bitstring};
+expand_predef_alias(nonempty_bitstring) -> {bitstring, 1, 1};
 expand_predef_alias(boolean) -> {union, [{singleton, true}, {singleton, false}]};
 expand_predef_alias(byte) -> {range, 0, 255};
 expand_predef_alias(char) -> {range, 0, 1114111};
@@ -311,15 +310,23 @@ tyscm(Vars, Ty) -> {ty_scheme, lists:map(fun(Alpha) -> {Alpha, {predef, any}} en
 
 -spec builtin_ops() -> [{atom(), arity(), ast:ty_scheme()}].
 builtin_ops() ->
-    NumOpTy = tyscm(tinter([
+    NumArrows = [
         tfun([{predef_alias, non_neg_integer}, {predef_alias, non_neg_integer}], {predef_alias, non_neg_integer}),
         tfun([tint(), tint()], tint()),
         tfun([tint(), tfloat()], tfloat()),
         tfun([tfloat(), tint()], tfloat()),
         tfun([tfloat(), tfloat()], tfloat())
-    ])),
+    ],
+    PlusOpTy = tyscm(tinter([
+        tfun([tnon_neg_int(), {predef_alias, pos_integer}], {predef_alias, pos_integer}),
+        tfun([{predef_alias, pos_integer}, tnon_neg_int()], {predef_alias, pos_integer})
+        | NumArrows])),
+    TimesOpTy = tyscm(tinter([
+        tfun([{predef_alias, pos_integer}, {predef_alias, pos_integer}], {predef_alias, pos_integer})
+        | NumArrows])),
     % the difference of two non-negative integers can be negative
     MinusOpTy = tyscm(tinter([
+        tfun([{predef_alias, pos_integer}, tint(1)], tnon_neg_int()),
         tfun([tint(), tint()], tint()),
         tfun([tint(), tfloat()], tfloat()),
         tfun([tfloat(), tint()], tfloat()),
@@ -337,10 +344,10 @@ builtin_ops() ->
     OrShortcutOpTy = tyscm([a], tinter([tfun([tatom(true), tany()], tatom(true)), tfun([tatom(false), tvar(a)], tvar(a))])),
     PolyOpTy = tyscm([a], tfun([tvar(a), tvar(a)], tbool())),
     [
-        {'+', 2, NumOpTy},
+        {'+', 2, PlusOpTy},
         {'-', 2, MinusOpTy},
         {'-', 1, NumOp1Ty},
-        {'*', 2, NumOpTy},
+        {'*', 2, TimesOpTy},
         {'/', 2, tyscm(tinter([
             tfun([tint(), tint()], tfloat()),
             tfun([tint(), tfloat()], tfloat()),
@@ -353,6 +360,7 @@ builtin_ops() ->
         {'bxor', 2, IntOpTy},
         {'bsl', 2, IntOpTy},
         {'bsr', 2, IntOpTy},
+        {'bnot', 1, tyscm(tfun([tint()], tint()))},
         {'not', 1, tyscm(tfun([tbool()], tbool()))},
         {'and', 2, BoolOpTy},
         {'or', 2, BoolOpTy},
@@ -414,12 +422,14 @@ builtin_funs() ->
         _ -> ok
     end,
     Dir = utils:assert_no_error(code:lib_dir(erts)),
-    Path = ?assert_type(filename:join([Dir, "src", "erlang.erl"]), string()),
+    Path = filename:join([Dir, "src", "erlang.erl"]),
     Hash = utils:assert_no_error( utils:hash_file(Path)),
     case ets:lookup(?TABLE, Key) of
         [{_, {StoredHash, Result}}] when Hash =:= StoredHash -> ?assert_type(Result, fun_types());
         [] ->
-            X = symtab_cache:cached(builtin_funs, fun() -> {mk_builtin_funs(Path), [Path]} end),
+            % the cache holds terms: under this key what the fun computes
+            X = ?assert_type(symtab_cache:cached(builtin_funs, fun() -> {mk_builtin_funs(Path), [Path]} end),
+                             fun_types()),
             true = ets:insert(?TABLE, {Key, {Hash, X}}),
             X;
         Y -> ?ABORT("Unexpected entry in stdtypes_table: ~p", Y)

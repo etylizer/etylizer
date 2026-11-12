@@ -33,6 +33,8 @@
     record_field/0,
     type_decl/0,
     tydef/0,
+    etylizer_opt/0,
+    etylizer_form/0,
     form/0,
     forms/0,
     rep_atom/0,
@@ -115,6 +117,8 @@
     guard_test/0,
     ty_singleton/0,
     ty_bitstring/0,
+    ty_bitstring_cons/0,
+    ty_empty_bitstring/0,
     ty_empty_list/0,
     ty_list/0,
     ty_cons/0,
@@ -155,6 +159,7 @@
 -export([
     format_loc/1, to_loc/2, generated/2, generated_by/1, is_generated_by/2, source_loc/1, is_loc/1,
     min_loc/2, leq_loc/2, is_predef_name/1, is_predef_alias_name/1,
+    predef_name/1, predef_alias_name/1,
     local_varname_from_any_ref/1, get_fun_name/1, loc_exp/1
 ]).
 
@@ -287,7 +292,13 @@ get_fun_name({function, _Loc, Name, Arity, _, _}) -> utils:sformat("~w/~w", Name
 
 % Attribute "-file(File,Line)" ignored.
 % Wild attributes ignored.
--type etylizer_form() :: {attribute, loc(), etylizer, term()}.
+% Options given via -etylizer(...) attributes, after the AST transformation.
+-type etylizer_opt() ::
+      {functions_exhaustive | functions_redundant, off}
+    | {functions_exhaustive | functions_redundant, off, [fun_with_arity()]}
+    | {msg_type, atom(), arity(), ty() | [ty_full_fun()]}
+    | {msg_type, atom(), arity(), ty() | [ty_full_fun()], noexhaustiveness}.
+-type etylizer_form() :: {attribute, loc(), etylizer, etylizer_opt()}.
 -type form() :: export_form() | export_type_form() | import_form() | mod_form() | compile_form()
     | fun_decl() | fun_spec() | record_decl() | type_decl() | etylizer_form().
 -type forms() :: [form()].
@@ -402,7 +413,8 @@ loc_exp({_, L, _, _, _, _}) -> L.
     | qual_bitstring_gen() | qual_bitstring_strict_gen() | qual_map_gen() | qual_map_strict_gen().
 -type qualifier() :: exp() | generators().
 
--type bitstring_tyspec() :: atom() | {atom(), Value::integer()}.
+% unit:N is the only specifier with a value
+-type bitstring_tyspec() :: atom() | {unit, pos_integer()}.
 -type bitstring_tyspec_list() :: [bitstring_tyspec(), ...].
 
 -type map_assoc_opt() :: {map_field_opt, loc(), exp(), exp()}.
@@ -443,15 +455,17 @@ loc_exp({_, L, _, _, _, _}) -> L.
 -type guard_test_tuple() :: gen_tuple(guard_test()).
 -type guard_test_var() :: gen_var().
 
--type guard_test() :: atomic_lit() | guard_test_bitstring_constr() | guard_test_cons()
-    | guard_test_funcall() | guard_test_map_create() | guard_test_map_update() | guard_test_nil()
-    | guard_test_binop() | guard_test_unop() | guard_test_tuple()
-    | guard_test_var().
+% The tests of a guard are expressions. That only the expressions that a guard allows occur
+% is what the compiler checks; this type does not say it. The transformation of ast_transform
+% is the same for a guard and for any other expression.
+-type guard_test() :: exp().
 
 % 8.7  Types
 -type ty_singleton() :: {singleton, atom() | integer() | char()}.
-% TODO bitstring is imprecise
--type ty_bitstring() :: {bitstring}. %{binary, binary(), integer(), integer()}.
+% {bitstring} = any bitstring, {bitstring, M, N} = bitstrings of size M + K*N for K >= 0
+-type ty_bitstring() :: {bitstring} | {bitstring, non_neg_integer(), non_neg_integer()}.
+-type ty_bitstring_cons() :: {bitstring_cons, ty(), ty()}.
+-type ty_empty_bitstring() :: {empty_bitstring}.
 
 -type ty_empty_list() :: {empty_list}.
 -type ty_list() :: {list, ty()}.
@@ -483,20 +497,24 @@ loc_exp({_, L, _, _, _, _}) -> L.
 -type predef_name() :: any | none | pid | port | reference | float | integer | atom | dynamic.
 -type ty_predef() :: {predef, predef_name()}.
 
--spec is_predef_name(atom()) -> boolean().
-is_predef_name(N) ->
+% The name with its type, if it is one of the predefined types.
+-spec predef_name(atom()) -> {ok, predef_name()} | error.
+predef_name(N) ->
     case N of
-        any -> true;
-        none -> true;
-        pid -> true;
-        port -> true;
-        reference -> true;
-        float -> true;
-        integer -> true;
-        atom -> true;
-        dynamic -> true;
-        _ -> false
+        any -> {ok, any};
+        none -> {ok, none};
+        pid -> {ok, pid};
+        port -> {ok, port};
+        reference -> {ok, reference};
+        float -> {ok, float};
+        integer -> {ok, integer};
+        atom -> {ok, atom};
+        dynamic -> {ok, dynamic};
+        _ -> error
     end.
+
+-spec is_predef_name(atom()) -> boolean().
+is_predef_name(N) -> predef_name(N) =/= error.
 
 % Predefined type aliases. They can be expanded away, but the expansion may contain other
 % predefined type aliases (see iolist for example).
@@ -510,42 +528,46 @@ is_predef_name(N) ->
       | timeout | no_return | non_neg_integer | pos_integer | neg_integer.
 -type ty_predef_alias() :: {predef_alias, predef_alias_name()}.
 
--spec is_predef_alias_name(atom()) -> boolean().
-is_predef_alias_name(N) ->
+% The name with its type, if it is one of the predefined aliases.
+-spec predef_alias_name(atom()) -> {ok, predef_alias_name()} | error.
+predef_alias_name(N) ->
     case N of
-        term -> true;
-        binary -> true;
-        nonempty_binary -> true;
-        bitstring -> true;
-        nonempty_bitstring -> true;
-        boolean -> true;
-        byte -> true;
-        char -> true;
-        nil -> true;
-        number -> true;
-        list -> true;
-        nonempty_list -> true;
-        maybe_improper_list -> true;
-        nonempty_improper_list -> true;
-        nonempty_maybe_improper_list -> true;
-        string -> true;
-        nonempty_string -> true;
-        iodata -> true;
-        iolist -> true;
-        map -> true;
-        function -> true;
-        module -> true;
-        mfa -> true;
-        arity -> true;
-        identifier -> true;
-        node -> true;
-        timeout -> true;
-        no_return -> true;
-        non_neg_integer -> true;
-        pos_integer -> true;
-        neg_integer -> true;
-        _ -> false
+        term -> {ok, term};
+        binary -> {ok, binary};
+        nonempty_binary -> {ok, nonempty_binary};
+        bitstring -> {ok, bitstring};
+        nonempty_bitstring -> {ok, nonempty_bitstring};
+        boolean -> {ok, boolean};
+        byte -> {ok, byte};
+        char -> {ok, char};
+        nil -> {ok, nil};
+        number -> {ok, number};
+        list -> {ok, list};
+        nonempty_list -> {ok, nonempty_list};
+        maybe_improper_list -> {ok, maybe_improper_list};
+        nonempty_improper_list -> {ok, nonempty_improper_list};
+        nonempty_maybe_improper_list -> {ok, nonempty_maybe_improper_list};
+        string -> {ok, string};
+        nonempty_string -> {ok, nonempty_string};
+        iodata -> {ok, iodata};
+        iolist -> {ok, iolist};
+        map -> {ok, map};
+        function -> {ok, function};
+        module -> {ok, module};
+        mfa -> {ok, mfa};
+        arity -> {ok, arity};
+        identifier -> {ok, identifier};
+        node -> {ok, node};
+        timeout -> {ok, timeout};
+        no_return -> {ok, no_return};
+        non_neg_integer -> {ok, non_neg_integer};
+        pos_integer -> {ok, pos_integer};
+        neg_integer -> {ok, neg_integer};
+        _ -> error
     end.
+
+-spec is_predef_alias_name(atom()) -> boolean().
+is_predef_alias_name(N) -> predef_alias_name(N) =/= error.
 
 % A reference to a user defined type. At point of construction, it's still unclear
 % whether the usage is valid, so we include the location for better error reporting
@@ -573,7 +595,7 @@ is_predef_alias_name(N) ->
 -type ty_negation() :: {negation, ty()}.
 
 % We do not have an explicit type for records. We encode them as tuples instead.
--type ty() :: ty_singleton() | ty_bitstring() | ty_some_list()
+-type ty() :: ty_singleton() | ty_bitstring() | ty_bitstring_cons() | ty_empty_bitstring() | ty_some_list()
     | ty_fun() | ty_integer_range() | ty_map_any() | ty_map() | ty_predef() | ty_predef_alias()
     | ty_named() | ty_tuple_any() | ty_tuple() | ty_var() | ty_mu_var() | ty_mu()
     | ty_union() | ty_intersection() | ty_negation().

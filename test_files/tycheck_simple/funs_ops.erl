@@ -57,6 +57,9 @@ fun_ref_06(AF, A) ->
         _ -> A
     end.
 
+-spec fun_ref_07(atom(), atom(), arity()) -> fun((integer()) -> integer()).
+fun_ref_07(M, F, A) -> fun M:F/A.
+
 %%%%%%%%%%%%%%%%%%%%%%%% OPERATORS %%%%%%%%%%%%%%%%%%%%%%%
 
 -spec op_01() -> integer().
@@ -108,3 +111,15 @@ op_15() -> [1,2] ++ [3,4].
 
 -spec op_16_fail(non_neg_integer()) -> non_neg_integer().
 op_16_fail(X) -> X - 1.
+
+-spec op_17(pos_integer()) -> non_neg_integer().
+op_17(X) -> X - 1.
+
+-spec op_18(non_neg_integer()) -> pos_integer().
+op_18(X) -> X + 1.
+
+-spec op_19(pos_integer(), pos_integer()) -> pos_integer().
+op_19(X, Y) -> X * Y.
+
+-spec op_20_fail(non_neg_integer(), pos_integer()) -> pos_integer().
+op_20_fail(X, Y) -> X * Y.

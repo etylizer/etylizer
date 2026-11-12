@@ -38,6 +38,9 @@ testtest:
 	$(REBAR) eunit -d test_files/tycheck/
 	$(REBAR) eunit -d test_files/tycheck_disabled/
 
+elixir-tests:
+	ERL_LIBS=$$(elixir -e 'IO.write Path.dirname(:code.lib_dir(:elixir))') $(REBAR) eunit -d test_files/elixir/
+
 check:
 	$(REBAR) as test dialyzer
 	@echo "Run etylizer to type check erlang_types library..."

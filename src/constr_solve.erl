@@ -18,6 +18,8 @@
 -export([search_failing_prefix/3]).
 -endif.
 
+-include("etylizer.hrl").
+
 -type error_kind() :: constr_error_locs:constr_error_kind().
 -type error() :: {error_kind(), ast:loc(), string()}.
 
@@ -59,32 +61,28 @@ check_simp_constrs_return_unmatched(Tab, FixedTyvars, Ds, What) ->
     end.
 
 % Check if dynamic() appears anywhere in the constraint set.
-% If so, redundancy checks are skipped entirely because dynamic() is consistent
-% with both T and not(T) for any T, making the satisfiability-based redundancy
-% check unsound.
 -spec has_dynamic_constr(symtab:t(), constr:collected_constrs()) -> boolean().
 has_dynamic_constr(Tab, Constrs) ->
     Tys = lists:flatmap(
         fun ({scsubty, _, T1, T2}) -> [T1, T2];
-            ({scmater, _, T1, _}) -> [T1];
-            (_) -> []
+            ({scmater, _, T1, _}) -> [T1]
         end,
         sets:to_list(Constrs)),
     search_dynamic(Tab, Tys, #{}).
 
--spec search_dynamic(symtab:t(), [ast:ty()], #{term() => ast:loc()}) -> boolean().
+-spec search_dynamic(symtab:t(), [ast:ty()], #{{ast:ty_ref(), [ast:ty()]} => ast:loc()}) -> boolean().
 search_dynamic(Tab, Tys, Seen) ->
-    Found = utils:everything(
+    Found = ast_traverse:everything(
         fun ({predef, dynamic}) -> {ok, dynamic};
             ({named, Loc, {_, M, N, A}, Args}) ->
-                {ok, {{{ty_ref, M, N, A}, ast_utils:remove_locs(Args)}, Loc}};
+                {ok, {{{ty_ref, M, N, A}, ast_utils:remove_locs_tys(Args)}, Loc}};
             (_) -> error
         end, Tys),
     case lists:member(dynamic, Found) of
         true -> true;
         false ->
             New = maps:without(maps:keys(Seen),
-                maps:from_list([X || X <- Found, X =/= dynamic])),
+                maps:from_list([X || X = {_, _} <- Found])),
             case maps:size(New) of
                 0 -> false;
                 _ ->
@@ -94,8 +92,55 @@ search_dynamic(Tab, Tys, Seen) ->
             end
     end.
 
--spec check_redundant_branch(symtab:t(), sets:set(ast:ty_varname()), constr:subty_constrs(),
-    {ast:loc(), constr:subty_constrs()}, ok | {error, error()}) -> ok | {error, error()}.
+% Type variables whose least solution can depend on the materialization of a dynamic():
+% for L <: R, the variables on the upper side (negative in L, positive in R) depend on
+% dynamic() and on the variables of the lower side.
+-spec dyn_influenced(symtab:t(), sets:set(ast:ty_varname()), constr:collected_constrs())
+    -> sets:set(ast:ty_varname()).
+dyn_influenced(Tab, Fixed, Constrs) ->
+    VCache = subst:compute_variance_cache(Tab),
+    Edges = lists:map(
+        fun ({scsubty, _, T1, T2}) ->
+                Pos = subst:collect_vars(T1, 0, subst:collect_vars(T2, 1, #{}, Fixed, VCache),
+                                         Fixed, VCache),
+                {search_dynamic(Tab, [T1, T2], #{}),
+                 [V || {V, Ps} <- maps:to_list(Pos), lists:member(0, Ps)],
+                 [V || {V, Ps} <- maps:to_list(Pos), lists:member(1, Ps)]};
+            % the materialization variable equals the type: both sides
+            ({scmater, _, T, Alpha}) ->
+                Vs = [Alpha | maps:keys(subst:collect_vars(T, 0, #{}, Fixed, VCache))],
+                {search_dynamic(Tab, [T], #{}), Vs, Vs}
+        end,
+        sets:to_list(Constrs)),
+    dyn_fixpoint(Edges, sets:new([{version, 2}])).
+
+-spec dyn_fixpoint([{boolean(), [ast:ty_varname()], [ast:ty_varname()]}], sets:set(ast:ty_varname()))
+    -> sets:set(ast:ty_varname()).
+dyn_fixpoint(Edges, Dyn) ->
+    New = lists:foldl(
+        fun ({HasDyn, Lower, Upper}, Acc) ->
+            case HasDyn orelse lists:any(fun (V) -> sets:is_element(V, Acc) end, Lower) of
+                true -> utils:set_add_many(Upper, Acc);
+                false -> Acc
+            end
+        end,
+        Dyn, Edges),
+    case sets:size(New) =:= sets:size(Dyn) of
+        true -> Dyn;
+        false -> dyn_fixpoint(Edges, New)
+    end.
+
+-spec dyn_reaches(symtab:t(), sets:set(ast:ty_varname()), constr:collected_constrs()) -> boolean().
+dyn_reaches(Tab, Dyn, Constrs) ->
+    has_dynamic_constr(Tab, Constrs) orelse
+        lists:any(fun (C) -> not sets:is_disjoint(Dyn, constr_vars(C)) end, sets:to_list(Constrs)).
+
+-spec constr_vars(constr:simp_constr_subty() | constr:simp_constr_mater()) -> sets:set(ast:ty_varname()).
+constr_vars({scsubty, _, T1, T2}) -> sets:union(tyutils:free_in_ty(T1), tyutils:free_in_ty(T2));
+constr_vars({scmater, _, T, Alpha}) -> sets:add_element(Alpha, tyutils:free_in_ty(T)).
+
+-spec check_redundant_branch(symtab:t(), sets:set(ast:ty_varname()), constr:collected_constrs(),
+    {ast:loc(), constr:collected_constrs()}, ok | {error, error()}) -> ok | {error, error()}.
 check_redundant_branch(_Tab, _FixedTyvars, _SubtyConstrs, _LocAndConstrs, Acc = {error, _}) -> Acc;
 check_redundant_branch(Tab, FixedTyvars, SubtyConstrs, {Loc, UnmatchedConstrs}, ok) ->
     All = sets:union(UnmatchedConstrs, SubtyConstrs),
@@ -148,18 +193,28 @@ check_simp_constrs(Tab, FixedTyvars, Ds, What) ->
             ReduDs = constr_collect:collect_matching_cond_constrs(Ds),
             ?LOG_DEBUG("Constraints are satisfiable, now checking ~w branches for redundancy",
                 length(ReduDs)),
-            case has_dynamic_constr(Tab, SubtyConstrs) of
-                true ->
-                    ?LOG_DEBUG("Skipping all redundancy checks (dynamic() found in constraints)"),
-                    ok;
-                false ->
-                    lists:foldl(
-                        fun (LocAndConstrs, Acc) ->
+            % dynamic() materializes to anything, also to a type that switches a branch off,
+            % so skip the branches whose matching condition dynamic() can reach
+            Skip =
+                case has_dynamic_constr(Tab, SubtyConstrs) of
+                    false -> fun (_) -> false end;
+                    true ->
+                        Dyn = dyn_influenced(Tab, FixedTyvars, SubtyConstrs),
+                        fun (Cs) -> dyn_reaches(Tab, Dyn, Cs) end
+                end,
+            lists:foldl(
+                fun ({Loc, Cs} = LocAndConstrs, Acc) ->
+                    case Skip(Cs) of
+                        true ->
+                            ?LOG_DEBUG("Skipping redundancy check of branch at ~s (dynamic())",
+                                ast:format_loc(Loc)),
+                            Acc;
+                        false ->
                             check_redundant_branch(Tab, FixedTyvars, SubtyConstrs, LocAndConstrs, Acc)
-                        end,
-                        ok,
-                        ReduDs)
-            end;
+                    end
+                end,
+                ok,
+                ReduDs);
         false ->
             locate_unsat_error(Tab, FixedTyvars, Ds)
     end.
@@ -175,7 +230,8 @@ search_failing_prefix(L, F, Pred) ->
     N = length(L),
     ?LOG_DEBUG("Search for a minimal unsatisfiable prefix in ~w blocks", N),
     I = search_failing_prefix(L, F, Pred, 1, N),
-    lists:nth(I, L).
+    % the search starts at 1 and only goes up; by the precondition the list is not empty
+    lists:nth(?assert_type(I, pos_integer()), ?assert_pattern([_ | _], L)).
 
 % Helper function for search_failing_prefix.
 % We some sort of binary search here to minimize the calls of Pred. (In reality, Pred is tally,
@@ -183,8 +239,8 @@ search_failing_prefix(L, F, Pred) ->
 % Left and Right are the (inclusive) boundaries of the search, starting at 1.
 % Invariants: Left <= Right and Pred(F(X1) union ... union F(X_Right)) yields false
 -spec search_failing_prefix(
-    list(T), fun((T) -> sets:set(U)), fun((sets:set(U)) -> boolean()), integer(), integer())
-    -> integer().
+    list(T), fun((T) -> sets:set(U)), fun((sets:set(U)) -> boolean()), non_neg_integer(), non_neg_integer())
+    -> non_neg_integer().
 search_failing_prefix(L, F, Pred, Left, Right) ->
     Mid = (Left + Right) div 2,
     Prefix = lists:sublist(L, Mid), % take all elements until Mid (inclusive)

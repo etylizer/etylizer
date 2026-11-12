@@ -64,10 +64,28 @@ compute_search_path(Opts) ->
             {[], sets:new([{version, 2}])},
             SrcDirs),
     LocalPaths = lists:reverse(LocalPathEntries),
+    ExtraCodePaths = build_extra_code_paths(Opts),
     ?LOG_TRACE2("OTP search path: ~p", OtpPaths),
     ?LOG_TRACE2("rebar search path: ~p", DepPaths),
     ?LOG_TRACE2("Local search path: ~p", LocalPaths),
-    LocalPaths ++ DepPaths ++ OtpPaths.
+    ?LOG_TRACE2("Extra code paths: ~p", ExtraCodePaths),
+    LocalPaths ++ DepPaths ++ ExtraCodePaths ++ OtpPaths.
+
+-spec build_extra_code_paths(cmd_opts()) -> search_path().
+build_extra_code_paths(Opts) ->
+    CodeDirs = Opts#opts.load_start ++ Opts#opts.load_end,
+    InputDirs = Opts#opts.src_paths ++ [filename:dirname(F) || F <- Opts#opts.files],
+    Dirs = CodeDirs ++ lists:flatmap(fun sibling_ebins/1, CodeDirs ++ InputDirs),
+    [{dep, D, []} || D <- lists:usort(Dirs), filelib:is_dir(D)].
+
+-spec sibling_ebins(file:filename()) -> [file:filename()].
+sibling_ebins(Dir) ->
+    LibDir = filename:dirname(filename:dirname(Dir)),
+    case {filename:basename(Dir), filename:basename(LibDir), file:list_dir(LibDir)} of
+        {"ebin", "lib", {ok, Subs}} ->
+            lists:filter(fun filelib:is_dir/1, [filename:join([LibDir, Sub, "ebin"]) || Sub <- Subs]);
+        _ -> []
+    end.
 
 -spec has_erl_files(file:filename()) -> boolean().
 has_erl_files(Dir) ->
@@ -185,7 +203,20 @@ generate_input_file_list(Opts) ->
                     Opts#opts.files,
                     Paths)
         end,
-    lists:map(fun utils:normalize_path/1, L).
+    prefer_erl(lists:map(fun utils:normalize_path/1, L)).
+
+-spec prefer_erl([file:filename()]) -> [file:filename()].
+prefer_erl(Files) ->
+    Mod = fun(F) -> filename:rootname(filename:basename(F)) end,
+    ErlMods = [Mod(F) || F <- Files, filename:extension(F) =:= ".erl"],
+    Kept = lists:uniq([F || F <- Files, filename:extension(F) =/= ".beam" orelse not lists:member(Mod(F), ErlMods)]),
+    lists:foreach(
+        fun({M, [_, _ | _] = Fs}) ->
+                ?LOG_WARN("Module ~s is in more than one file, other modules see the first: ~s",
+                    M, string:join(Fs, " "));
+           (_) -> ok
+        end, lists:sort(maps:to_list(maps:groups_from_list(Mod, Kept)))),
+    Kept.
 
 -spec add_dir_to_list(file:filename()) -> [file:filename()].
 add_dir_to_list(Path) ->
@@ -194,8 +225,7 @@ add_dir_to_list(Path) ->
             []; % Exit recursion if directory is empty
         {ok, DirContent} ->
             {Dirs, Files} = lists:splitwith(fun(F) -> filelib:is_dir(F) end, DirContent),
-            Sources = lists:filter(
-                        fun(F) -> utils:string_ends_with(F, ".erl") end, Files),
+            Sources = lists:filter(fun(F) -> lists:member(filename:extension(F), [".erl", ".beam"]) end, Files),
             SourcesFull = lists:map(fun(F) -> filename:join(Path, F) end, Sources),
             ChildSources = lists:append(lists:map(fun(F) -> add_dir_to_list(filename:join(Path, F)) end, Dirs)),
             lists:append(SourcesFull, ChildSources);
@@ -261,17 +291,12 @@ find_module_path(SearchPath, Module) ->
 
 -spec really_find_module_path(search_path(), atom()) -> search_path_entry().
 really_find_module_path(SearchPath, Module) ->
-    Filename = string:concat(atom_to_list(Module), ".erl"),
-    SearchResult = lists:search(
-      fun({_, SrcPath, _Includes}) ->
-            case filelib:find_file(Filename, SrcPath) of
-                {ok, _} -> true;
-                {error, not_found} -> false
-            end
-      end, SearchPath),
-    case SearchResult of
-        {value, {Kind, SrcPath, Includes}} ->
-            File = utils:normalize_path(filename:join(SrcPath, Filename)),
+    % an .erl file anywhere before a .beam file
+    Candidates = [{Kind, filename:join(SrcPath, atom_to_list(Module) ++ Ext), Includes}
+                  || Ext <- [".erl", ".beam"], {Kind, SrcPath, Includes} <- SearchPath],
+    case lists:search(fun({_, F, _}) -> filelib:is_regular(F) end, Candidates) of
+        {value, {Kind, F, Includes}} ->
+            File = utils:normalize_path(F),
             ?LOG_DEBUG("Resolved module ~p to file ~p", Module, File),
             {Kind, File, Includes};
         false ->

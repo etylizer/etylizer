@@ -3,6 +3,7 @@
 -export([
     modname_from_path/1,
     remove_locs/1,
+    remove_locs_tys/1,
     referenced_modules/1,
     referenced_modules_via_types/1,
     referenced_recursive_variables/1,
@@ -14,43 +15,42 @@
 -include("etylizer.hrl").
 
 -spec modname_from_path(file:filename()) -> ast:mod_name().
-modname_from_path(Path) -> list_to_atom(filename:basename(Path, ".erl")).
+modname_from_path(Path) -> list_to_atom(filename:rootname(filename:basename(Path))).
 
--spec loc_replacer(term()) -> {ok, {loc, string(), 0, 0}} | error.
-loc_replacer(X) ->
-    case ast:is_loc(X) of
-        true -> {ok, {loc, "", 0, 0}};
-        false -> error
-    end.
+-spec no_loc(ast:loc()) -> ast:loc().
+no_loc(_) -> {loc, "", 0, 0}.
 
--spec remove_locs(dynamic()) -> dynamic().
-remove_locs(X) ->
-    utils:everywhere(fun loc_replacer/1, X).
+% Replaces all locations by a dummy location.
+-spec remove_locs(ast:forms()) -> ast:forms().
+remove_locs(Forms) -> ast_traverse:map_locs_forms(fun no_loc/1, Forms).
+
+-spec remove_locs_tys([ast:ty()]) -> [ast:ty()].
+remove_locs_tys(Tys) -> ast_traverse:map_locs_tys(fun no_loc/1, Tys).
 
 -spec referenced_modules_via_types(ast:forms()) -> [ast:mod_name()].
 referenced_modules_via_types(Forms) ->
-    Modules = utils:everything(
+    Modules = ast_traverse:everything(
                 fun(T) ->
                         case T of
-                            {attribute, _, import, {ModuleName, _}} when is_atom(ModuleName) -> {ok, ModuleName};
-                            {ty_qref, ModuleName, _, _} when is_atom(ModuleName) -> {ok, ModuleName};
+                            {attribute, _, import, {ModuleName, _}} -> {ok, ModuleName};
+                            {ty_qref, ModuleName, _, _} -> {ok, ModuleName};
                             _ -> error
                         end
-                end, Forms),
-    ?assert_type(lists:uniq(Modules), [ast:mod_name()]).
+                end, [Forms]),
+    lists:uniq(Modules).
 
 -spec referenced_modules(ast:forms()) -> [ast:mod_name()].
 referenced_modules(Forms) ->
-    Modules = utils:everything(
+    Modules = ast_traverse:everything(
                 fun(T) ->
                         case T of
-                            {attribute, _, import, {ModuleName, _}} when is_atom(ModuleName) -> {ok, ModuleName};
-                            {qref, ModuleName, _, _} when is_atom(ModuleName) -> {ok, ModuleName};
-                            {ty_qref, ModuleName, _, _} when is_atom(ModuleName) -> {ok, ModuleName};
+                            {attribute, _, import, {ModuleName, _}} -> {ok, ModuleName};
+                            {qref, ModuleName, _, _} -> {ok, ModuleName};
+                            {ty_qref, ModuleName, _, _} -> {ok, ModuleName};
                             _ -> error
                         end
-                end, Forms),
-    ?assert_type(lists:uniq(Modules), [ast:mod_name()]).
+                end, [Forms]),
+    lists:uniq(Modules).
 
 -spec referenced_recursive_variables(ast:ty()) -> [ast:ty_mu_var()].
 referenced_recursive_variables(Forms) ->
@@ -64,14 +64,15 @@ referenced_recursive_variables(Forms) ->
     ?assert_type(lists:uniq(Modules), [ast:ty_mu_var()]).
 
 % unfold a type by resolving all named type references via the symtab
-% recursive back-references are replaced with {ty_hole}
--spec unfold_ty(symtab:t(), ast:ty()) -> ast:ty() | {ty_hole}.
+% a recursive back-reference is replaced with the recursion variable '$back_reference':
+% it is where the unfolding stops, so the result is a type again
+-spec unfold_ty(symtab:t(), ast:ty()) -> ast:ty().
 unfold_ty(Tab, Ty) -> unfold_ty(Tab, Ty, #{}).
 
--spec unfold_ty(symtab:t(), ast:ty(), map()) -> ast:ty() | {ty_hole}.
+-spec unfold_ty(symtab:t(), ast:ty(), #{{ast:ty_ref(), [ast:ty()]} => []}) -> ast:ty().
 unfold_ty(Tab, {named, Loc, Ref, Args}, Memo) ->
     case Memo of
-        #{{Ref, Args} := _} -> {ty_hole};
+        #{{Ref, Args} := _} -> {mu_var, '$back_reference'};
         _ ->
             unfold_ty(Tab, unfold_named(Tab, Ref, Args, Loc), Memo#{{Ref, Args} => []})
     end;
@@ -93,6 +94,8 @@ unfold_ty(Tab, {nonempty_list, T}, Memo) ->
     {nonempty_list, unfold_ty(Tab, T, Memo)};
 unfold_ty(Tab, {cons, A, B}, Memo) ->
     {cons, unfold_ty(Tab, A, Memo), unfold_ty(Tab, B, Memo)};
+unfold_ty(Tab, {bitstring_cons, A, B}, Memo) ->
+    {bitstring_cons, unfold_ty(Tab, A, Memo), unfold_ty(Tab, B, Memo)};
 unfold_ty(Tab, {improper_list, A, B}, Memo) ->
     {improper_list, unfold_ty(Tab, A, Memo), unfold_ty(Tab, B, Memo)};
 unfold_ty(Tab, {nonempty_improper_list, A, B}, Memo) ->

@@ -67,7 +67,7 @@ fun_local_03b_fail() ->
 fun_local_04() ->
     F = fun
             Add(X) when X =:= 0 -> 0;
-            Add(X) -> X + Add(X + 1)
+            Add(X) -> X + Add(X - 1)
         end,
     F(3).
 
@@ -140,6 +140,12 @@ fun_local_07_fail(X) ->
 
 -spec head_size_01(pos_integer(), bitstring()) -> integer().
 head_size_01(N, B) ->
+    F = fun(<<X:N, _/bitstring>>) -> X; (_) -> 0 end,
+    F(B).
+
+% B need not have N bits
+-spec head_size_01_fail(pos_integer(), bitstring()) -> integer().
+head_size_01_fail(N, B) ->
     F = fun(<<X:N, _/bitstring>>) -> X end,
     F(B).
 

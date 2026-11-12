@@ -5,89 +5,101 @@
 {study, stdlib}.
 
 %% {reason, Id, Class, Text}. Class: real (the program or its spec is wrong), inherent (correct at
-%% run time, not provable by types), fixable (gap in the type system or checker), unknown.
+%% run time, not provable by types), fixable (gap in the type system or checker), benign (dead for
+%% the spec, kept on purpose), unknown.
 {reason, spec_imprecise,      real,     "imprecise type spec in the source"}.
-{reason, tuple_any,           fixable,  "needs a type for tuples of any size, {T, ...}"}.
-{reason, body_exhaustiveness, inherent, "exhaustiveness of a case or match inside the body"}.
-{reason, defensive,           inherent, "defensive clause, dead for the spec"}.
-{reason, unknown,             unknown,  "not analysed"}.
-{reason, unreviewed,          unknown,  "flag taken over from an -etylizer attribute, no reason recorded"}.
+{reason, spec_wrong,          real,     "wrong type in the source"}.
+{reason, arithmetic,          inherent, "arithmetic on type level"}.
+{reason, source_bug,          real,     "error in the program"}.
+{reason, documented_exception, inherent, "raises an exception that the documentation promises, a spec cannot say so"}.
+{reason, untyped_tuple,       fixable,  "the source types a tuple of one element type as tuple(): needs a type for tuples of any size, {T, ...}, and corrected types in overlays; element/2 and tuple_to_list/1 give term()"}.
+{reason, global_invariant,    inherent, "the callers ensure a relation between the arguments that no spec type can state, checking it crosses function boundaries"}.
+{reason, defensive,           benign,   "defensive clause, dead for the spec"}.
 
-{module, proplists2, #{file => "stdlib/proplists2.erl", overlays => [{library, "overlay.erl"}], timeout => 10000}}.
-{exception, proplists2, expand, 2, [ignore], tuple_any}.
-{exception, proplists2, normalize, 2, [ignore], tuple_any}.
-{exception, proplists2, to_map, 2, [ignore], tuple_any}.
-{exception, proplists2, append_values, 2, [ignore], tuple_any}.
-{exception, proplists2, expand_2, 4, [ignore], tuple_any}.
-{exception, proplists2, to_map, 1, [ignore], tuple_any}.
+%% Library specs that overlays correct
+{correction, lists, foldl, 3, spec_imprecise}.
+{correction, lists, foldr, 3, spec_imprecise}.
+{correction, maps, from_keys, 2, spec_imprecise}.
+{correction, maps, merge, 2, spec_imprecise}.
+{correction, maps, remove, 2, spec_imprecise}.
 
-{module, ordsets2, #{file => "stdlib/ordsets2.erl", timeout => 10000}}.
-{exception, ordsets2, is_set, 1, [ignore], unknown}.
-{exception, ordsets2, filtermap, 2, [ignore], unknown}.
+{module, proplists, #{file => "stdlib/proplists.erl", overlays => [{missing, "overlay_proplists.erl"}, {library, "overlay.erl"}, {corrected, "overlay_proplists_corrected.erl"}], timeout => 10000}}.
+{correction, proplists, compact, 1, spec_imprecise}. % ([T]) -> [T | atom()]: property/1 takes any term
+{correction, proplists, property, 1, spec_imprecise}. % (T) -> T | atom()
+{correction, proplists, to_map, 1, spec_wrong}. % ([term()]) -> #{term() => term()}
+{correction, proplists, append_values, 2, source_bug}. % no value that is an improper list
+{exception, proplists, expand, 2, [ignore], source_bug}. % badarg on an improper list
+{exception, proplists, append_values, 2, [ignore], source_bug}. % badarg on an improper list
+{exception, proplists, to_map, 1, [ignore], spec_wrong}. % #{Shorthand => true, Key => Value}: the leftmost association takes precedence, so atom keys map to true only; to_map([{b, 1}]) is #{b => 1}
 
-{module, orddict2, #{file => "stdlib/orddict2.erl", overlays => [{library, "overlay.erl"}], timeout => 13000}}.
-{exception, orddict2, append, 3, [ignore], spec_imprecise}.
-{exception, orddict2, append_list, 3, [ignore], spec_imprecise}.
-{exception, orddict2, update_counter, 3, [ignore], spec_imprecise}.
-{exception, orddict2, merge, 3, [ignore], spec_imprecise}.
-{exception, orddict2, fetch, 2, [no_exhaustiveness], unreviewed}.
-{exception, orddict2, update, 3, [no_exhaustiveness], unreviewed}.
+{module, ordsets, #{file => "stdlib/ordsets.erl", overlays => [{missing, "overlay_ordsets.erl"}], timeout => 10000}}.
+{exception, ordsets, is_set, 2, [no_exhaustiveness], source_bug}. % is_set([1|1]) crashes here: no clause for an improper tail
 
-{module, queue2, #{file => "stdlib/queue2.erl", overlays => [{library, "overlay_queue.erl"}], timeout => 150000}}.
-{exception, queue2, get, 2, [no_exhaustiveness], spec_imprecise}. % accepts ([], [])
-{exception, queue2, get, 1, [ignore, no_redundancy], spec_imprecise}. % get/2 returns term()
-{exception, queue2, head, 1, [ignore, no_redundancy], spec_imprecise}. % get/2 returns term()
-{exception, queue2, split_f1_to_r2, 5, [no_exhaustiveness], unreviewed}.
-{exception, queue2, split_r1_to_f2, 5, [no_exhaustiveness], unreviewed}.
-{exception, queue2, split, 2, [ignore, no_redundancy, no_exhaustiveness], body_exhaustiveness}. % the length test before [X|F1] = F
-{exception, queue2, is_empty, 1, [no_redundancy], unreviewed}.
-{exception, queue2, len, 1, [no_redundancy], unreviewed}.
-{exception, queue2, to_list, 1, [no_redundancy], unreviewed}.
-{exception, queue2, from_list, 1, [no_redundancy], unreviewed}.
-{exception, queue2, member, 2, [no_redundancy], unreviewed}.
-{exception, queue2, in, 2, [no_redundancy], unreviewed}.
-{exception, queue2, in_r, 2, [no_redundancy], unreviewed}.
-{exception, queue2, out, 1, [no_redundancy], unreviewed}.
-{exception, queue2, out_r, 1, [no_redundancy], unreviewed}.
-{exception, queue2, get_r, 1, [no_redundancy], unreviewed}.
-{exception, queue2, peek, 1, [no_redundancy], unreviewed}.
-{exception, queue2, peek_r, 1, [no_redundancy], unreviewed}.
-{exception, queue2, drop, 1, [no_redundancy], unreviewed}.
-{exception, queue2, drop_r, 1, [no_redundancy], unreviewed}.
-{exception, queue2, filter, 2, [no_redundancy], unreviewed}.
-{exception, queue2, filtermap, 2, [no_redundancy], unreviewed}.
-{exception, queue2, fold, 3, [no_redundancy], unreviewed}.
-{exception, queue2, any, 2, [no_redundancy], unreviewed}.
-{exception, queue2, all, 2, [no_redundancy], unreviewed}.
-{exception, queue2, delete, 2, [no_redundancy], unreviewed}.
-{exception, queue2, delete_r, 2, [no_redundancy], unreviewed}.
-{exception, queue2, delete_with, 2, [no_redundancy], unreviewed}.
-{exception, queue2, delete_with_r, 2, [no_redundancy], unreviewed}.
-{exception, queue2, reverse, 1, [no_redundancy], defensive}.
-{exception, queue2, join, 2, [no_redundancy], defensive}.
+{module, orddict, #{file => "stdlib/orddict.erl", overlays => [{missing, "overlay_orddict.erl"}, {library, "overlay.erl"}, {corrected, "overlay_orddict_corrected.erl"}], timeout => 13000}}.
+{correction, orddict, append, 3, spec_wrong}.
+{correction, orddict, append_list, 3, spec_wrong}.
+{correction, orddict, update_counter, 3, spec_wrong}.
+{correction, orddict, merge, 3, spec_wrong}.
+{exception, orddict, append, 3, [ignore], spec_wrong}. % a dict of lists, orddict(Key, [Value]), in overlay_orddict_corrected.erl
+{exception, orddict, append_list, 3, [ignore], spec_wrong}. % a dict of lists, orddict(Key, [Value]), in overlay_orddict_corrected.erl
+{exception, orddict, update_counter, 3, [ignore], spec_wrong}. % a dict of numbers, per number type closed under +, in overlay_orddict_corrected.erl
+{exception, orddict, merge, 3, [ignore], spec_wrong}. % entries of one dict pass through, orddict(Key, Value | Value1 | Value2), in overlay_orddict_corrected.erl
+{exception, orddict, fetch, 2, [no_exhaustiveness], documented_exception}.
+{exception, orddict, update, 3, [no_exhaustiveness], documented_exception}.
 
-{module, sets2, #{file => "stdlib/sets2.erl", overlays => [{library, "overlay.erl"}], timeout => 190000}}.
-{exception, sets2, rehash, 4, [ignore, no_exhaustiveness], unknown}.
-{exception, sets2, new, 1, [ignore, no_exhaustiveness], body_exhaustiveness}.
-{exception, sets2, from_list, 2, [ignore, no_exhaustiveness], body_exhaustiveness}.
-{exception, sets2, is_element, 2, [ignore], unknown}. % transitive
-{exception, sets2, add_element, 2, [ignore], unknown}. % transitive
-{exception, sets2, del_element, 2, [ignore], unknown}. % transitive
-{exception, sets2, filtermap, 2, [ignore], unknown}. % folding over empty instatiation of new
-{exception, sets2, update_bucket, 3, [ignore], unknown}. % works only for version 1
-{exception, sets2, get_slot, 2, [ignore], unknown}. % only works for version 1
-{exception, sets2, get_bucket, 2, [ignore], unknown}. % only works for version 1
-{exception, sets2, maybe_expand, 1, [ignore], unknown}. % only works for version 1
-{exception, sets2, maybe_expand_segs, 1, [ignore], unknown}. % only works for version 1
-{exception, sets2, maybe_contract, 2, [ignore], unknown}. % only works for version 1
-{exception, sets2, maybe_contract_segs, 1, [ignore], unknown}. % only works for version 1
-{exception, sets2, fold_segs, 4, [ignore], tuple_any}.
-{exception, sets2, fold_seg, 4, [ignore], tuple_any}.
-{exception, sets2, filter_set, 2, [ignore], tuple_any}.
-{exception, sets2, filter_seg_list, 4, [ignore], tuple_any}.
-{exception, sets2, get_bucket_s, 2, [ignore], tuple_any}.
-{exception, sets2, put_bucket_s, 3, [ignore], tuple_any}.
-{exception, sets2, intersection_heuristic, 6, [no_exhaustiveness], unreviewed}.
-{exception, sets2, intersection_decided, 3, [no_exhaustiveness], unreviewed}.
-{exception, sets2, subtract_heuristic, 6, [no_exhaustiveness], unreviewed}.
-{exception, sets2, subtract_decided, 3, [no_exhaustiveness], unreviewed}.
+{module, queue, #{file => "stdlib/queue.erl", overlays => [{missing, "overlay_queue.erl"}, {library, "overlay_queue_lib.erl"}, {corrected, "overlay_queue_corrected.erl"}], timeout => 150000}}.
+{correction, queue, get, 2, spec_imprecise}. % (list(), list()) -> term(): per arrow -> Item, ([], []) -> none(), in overlay_queue_corrected.erl
+{correction, lists, reverse, 2, spec_wrong}. % ([T], term()) -> [T]: reverse([], b) is b, and it loses non-emptiness, which out/1, out_r/1, drop/1 and drop_r/1 need
+{exception, queue, get, 2, [no_exhaustiveness], spec_imprecise}. % (list(), list()) -> term() admits ([], []), which has no clause; the check against the corrected spec needs the flag too, for its arrow ([], []) -> none()
+{exception, queue, split_f1_to_r2, 5, [no_exhaustiveness], global_invariant}. % N =< length of the list
+{exception, queue, split_r1_to_f2, 5, [no_exhaustiveness], global_invariant}. % N =< length of the list
+%% the last clause of each, erlang:error(badarg, Args), is for arguments that the spec excludes
+{exception, queue, get, 1, [no_redundancy], defensive}.
+{exception, queue, head, 1, [no_redundancy], defensive}.
+{exception, queue, split, 2, [no_redundancy], defensive}.
+{exception, queue, is_empty, 1, [no_redundancy], defensive}.
+{exception, queue, len, 1, [no_redundancy], defensive}.
+{exception, queue, to_list, 1, [no_redundancy], defensive}.
+{exception, queue, from_list, 1, [no_redundancy], defensive}.
+{exception, queue, member, 2, [no_redundancy], defensive}.
+{exception, queue, in, 2, [no_redundancy], defensive}.
+{exception, queue, in_r, 2, [no_redundancy], defensive}.
+{exception, queue, out, 1, [no_redundancy], defensive}.
+{exception, queue, out_r, 1, [no_redundancy], defensive}.
+{exception, queue, get_r, 1, [no_redundancy], defensive}.
+{exception, queue, peek, 1, [no_redundancy], defensive}.
+{exception, queue, peek_r, 1, [no_redundancy], defensive}.
+{exception, queue, drop, 1, [no_redundancy], defensive}.
+{exception, queue, drop_r, 1, [no_redundancy], defensive}.
+{exception, queue, filter, 2, [no_redundancy], defensive}.
+{exception, queue, filtermap, 2, [no_redundancy], defensive}.
+{exception, queue, fold, 3, [no_redundancy], defensive}.
+{exception, queue, any, 2, [no_redundancy], defensive}.
+{exception, queue, all, 2, [no_redundancy], defensive}.
+{exception, queue, delete, 2, [no_redundancy], defensive}.
+{exception, queue, delete_r, 2, [no_redundancy], defensive}.
+{exception, queue, delete_with, 2, [no_redundancy], defensive}.
+{exception, queue, delete_with_r, 2, [no_redundancy], defensive}.
+{exception, queue, reverse, 1, [no_redundancy], defensive}.
+{exception, queue, join, 2, [no_redundancy], defensive}.
+
+{module, sets, #{file => "stdlib/sets.erl", overlays => [{missing, "overlay_sets.erl"}, {library, "overlay.erl"}, {library, "overlay_sets_lib.erl"}, {corrected, "overlay_sets_corrected.erl"}], timeout => 190000}}.
+{correction, sets, get_slot, 2, spec_imprecise}. % -> pos_integer()
+{correction, sets, get_bucket, 2, spec_imprecise}. % (set_v1(E), pos_integer()) -> [E]
+{correction, sets, update_bucket, 3, spec_imprecise}. % (set_v1(E), pos_integer(), [E]) -> set_v1(E)
+{correction, proplists, get_value, 3, spec_imprecise}. % for a list of pairs, in overlay_proplists_corrected.erl (also a library overlay of sets)
+{exception, sets, rehash, 4, [ignore], source_bug}. % case_clause for a hash outside both slots
+{exception, sets, update_bucket, 3, [ignore], spec_imprecise}. % slot 0 gives setelement(0, ...)
+{exception, sets, get_bucket, 2, [ignore], spec_imprecise}. % slot 0 gives element(0, ...); -> term(), corrected spec (set_v1(E), pos_integer()) -> [E]
+{assertion, sets, {480, 11, "260db6"}, assert_type, "overlay_sets:seg(dynamic())", untyped_tuple}. % update_bucket/3, for the corrected spec: element(SegI, Segs)
+{assertion, sets, {957, 19, "2a91a7"}, assert_type, "pos_integer()", arithmetic}. % get_slot/2: H - bso for H > n, positive by an invariant
+{assertion, sets, {1034, 15, "6cf436"}, assert_type, "pos_integer()", arithmetic}. % maybe_expand/1: N - bso, positive by an invariant
+{assertion, sets, {1058, 15, "ff8da4"}, assert_type, "pos_integer()", arithmetic}. % maybe_contract/2: N - bso, positive by an invariant
+{assertion, sets, {1066, 49, "f347ee"}, assert_type, "non_neg_integer()", global_invariant}. % maybe_contract/2: size - Dc, the callers delete at most size elements
+{assertion, sets, {1071, 50, "bfb8e0"}, assert_type, "non_neg_integer()", global_invariant}. % maybe_contract/2: the same
+{assertion, sets, {1075, 29, "42c816"}, assert_type, "pos_integer()", arithmetic}. % maybe_contract_segs/1, before the casts of T: maxn div 2, maxn >= 32 by an invariant
+{assertion, sets, {948, 10, "3eefd7"}, assert_type, "sets:set(dynamic())", untyped_tuple}. % filtermap/2: set_v1(Element) does not mention Element, segs(_Element) :: tuple()
+{assertion, sets, {978, 11, "d259ff"}, assert_type, "overlay_sets:seg(dynamic())", untyped_tuple}. % fold_segs/4: element(I, Segs)
+{assertion, sets, {991, 13, "8bd304"}, assert_type, "[overlay_sets:seg(dynamic())]", untyped_tuple}. % filter_set/2: tuple_to_list(D#set.segs)
+{assertion, sets, {1021, 19, "260db6"}, assert_type, "overlay_sets:seg(dynamic())", untyped_tuple}. % get_bucket_s/2: element(SegI, Segs)
+{assertion, sets, {1026, 28, "260db6"}, assert_type, "overlay_sets:seg(dynamic())", untyped_tuple}. % put_bucket_s/3: element(SegI, Segs)

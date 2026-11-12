@@ -10,7 +10,7 @@
 
 -ifdef(TEST).
 -export([
-         pat_guard_lower_upper/3,
+         pat_guard_lower_upper/4,
          ty_of_pat/3
         ]).
 -endif.
@@ -24,9 +24,13 @@
           % when true, exhaustiveness checking is disabled for the top-level function clauses
           disable_exhaustiveness = false :: boolean(),
           % when true, redundancy checking is disabled for the top-level function clauses
-          disable_redundancy = false :: boolean()
+          disable_redundancy = false :: boolean(),
+          % linear facts that hold here
+          lin = constr_lin:empty() :: constr_lin:t()
         }).
 -type ctx() :: #ctx{}.
+
+-include("etylizer.hrl").
 
 -spec new_ctx(symtab:t(), feature_flags:exhaustiveness_mode()) -> ctx().
 new_ctx(Symtab, ExhaustivenessMode) ->
@@ -110,12 +114,26 @@ exp_constrs(Ctx, E, T) ->
         {'float', L, _F} -> utils:single({csubty, mk_locs("float literal", L), {predef, float}, T});
         {'string', L, ""} -> utils:single({csubty, mk_locs("empty string literal", L), {empty_list}, T});
         {'string', L, S} -> utils:single({csubty, mk_locs("string literal", L), string_to_cons_ty(S), T});
-        {bin, L, []} -> utils:single({csubty, mk_locs("empty bitstring", L), {bitstring}, T});
-        {bin, L, _Cs} ->
-            % TODO constraints for inner binary pattern elements
-            ?LOG_WARN("Skipping verification of binary pattern elements of ~s", ast:format_loc(L)),
-            utils:single({csubty, mk_locs("bitstring", L), {bitstring}, T});
-        {bc, L, _E, _Qs} -> errors:unsupported(L, "bitstrings");
+        {bin, L, []} -> utils:single({csubty, mk_locs("empty bitstring", L), {bitstring, 0, 0}, T});
+        {bin, L, BinElems} ->
+            {ElemCs, ResultTy} = bin_expr_constrs(Ctx, L, BinElems),
+            sets:add_element({csubty, mk_locs("bitstring", L), ResultTy, T}, ElemCs);
+        {bc, L, Exp, Qs} ->
+            {Env, Cs0} = process_qualifiers(Ctx, L, Qs, #{}, sets:new()),
+            Beta = fresh_tyvar(Ctx),
+            ExpCs = sets:add_element({csubty, mk_locs("binary comprehension body", L), Beta, {bitstring}},
+                                     exps_constrs(Ctx, L, [Exp], Beta)),
+            BodyCs = sets:from_list([{cdef, mk_locs("binary comprehension body", L), Env, ExpCs}], []),
+            % the result is any number of bodies: for a body <<...>> its segments, repeated
+            ResultTy =
+                case Exp of
+                    {bin, _, BinElems} -> repeated(BinElems, exp);
+                    % PRECISION we could repeat the type of the body
+                    %   2026-10-23 albsch
+                    _ -> {bitstring}
+                end,
+            Cs1 = sets:add_element({csubty, mk_locs("binary comprehension result", L), ResultTy, T}, BodyCs),
+            sets:union(Cs0, Cs1);
         {block, L, Es} ->
             exps_constrs(Ctx, L, Es, T);
         {'case', L, ScrutE, Clauses} ->
@@ -183,6 +201,9 @@ exp_constrs(Ctx, E, T) ->
             sets:add_element(ListC, Cs);
         {fun_ref, L, GlobalRef} ->
             utils:single({cvar, mk_locs("function ref", L), GlobalRef, T});
+        {fun_ref_dyn, L, {qref_dyn, ModExp, FunExp, ArityExp}} ->
+            Cs = [exp_constrs(Ctx, E, {predef, dynamic}) || E <- [ModExp, FunExp, ArityExp]],
+            sets:union([utils:single({csubty, mk_locs("dynamic function ref", L), {predef, dynamic}, T}) | Cs]);
         {'fun', L, RecName, Args, BodyExps} ->
             ArgTys = lists:map(fun(X) -> {{local_ref, X}, fresh_tyvar(Ctx)} end, Args),
             ArgEnv = maps:from_list(ArgTys),
@@ -236,41 +257,22 @@ exp_constrs(Ctx, E, T) ->
         {map_create, L, []} ->
             utils:single({csubty, mk_locs("empty map", L), {map, []}, T});
         {map_create, L, Assocs} ->
-            KeyAlpha = fresh_tyvar(Ctx),
-            ValAlpha = fresh_tyvar(Ctx),
-            MapTy = {map, [{map_field_opt, KeyAlpha, ValAlpha}]},
-            AssocsCs =
-                lists:foldl(
-                  fun({map_field_opt, _FieldL, KeyE, ValE}, AccCs) ->
-                          KeyCs = exp_constrs(Ctx, KeyE, KeyAlpha),
-                          ValCs = exp_constrs(Ctx, ValE, ValAlpha),
-                          sets:union([AccCs, KeyCs, ValCs])
-                  end,
-                  sets:new([{version, 2}]),
-                  Assocs),
-            ResultC = {csubty, mk_locs("map_create", L), MapTy, T},
+            {Fields, AssocsCs} = map_assoc_fields(Ctx, Assocs, [], {map, []}),
+            ResultC = {csubty, mk_locs("map_create", L), {map, Fields}, T},
             sets:add_element(ResultC, AssocsCs);
         {map_update, L, MapExp, Assocs} ->
+            % PRECISION we could keep the fields of the old map instead of one optional field
+            %   2026-10-23 albsch
+            MapAlpha = fresh_tyvar(Ctx),
             KeyAlpha = fresh_tyvar(Ctx),
             ValAlpha = fresh_tyvar(Ctx),
-            MapTy = {map, [{map_field_opt, KeyAlpha, ValAlpha}]},
-            Cs1 = exp_constrs(Ctx, MapExp, MapTy),
-            Cs2 =
-                lists:foldl(
-                fun(Assoc, AccCs) ->
-                    {KeyE, ValE} =
-                        case Assoc of
-                            {map_field_opt, _FieldL, K, V} -> {K, V};
-                            {map_field_req, _FieldL, K, V} -> {K, V}
-                        end,
-                    KeyCs = exp_constrs(Ctx, KeyE, KeyAlpha),
-                    ValCs = exp_constrs(Ctx, ValE, ValAlpha),
-                    sets:union([AccCs, KeyCs, ValCs])
-                end,
-                Cs1,
-                Assocs),
-            ResultC = {csubty, mk_locs("map_update", L), MapTy, T},
-            sets:add_element(ResultC, Cs2);
+            Cs1 = sets:add_element({csubty, mk_locs("map_update", L), MapAlpha, {map, [{map_field_opt, KeyAlpha, ValAlpha}]}},
+                                   exp_constrs(Ctx, MapExp, MapAlpha)),
+            % the new associations take precedence over those of the old map
+            {Fields, Cs2} = map_assoc_fields(Ctx, Assocs, [{map_field_opt, KeyAlpha, ValAlpha}], MapAlpha),
+            ResultTy = {map, Fields},
+            ResultC = {csubty, mk_locs("map_update", L), ResultTy, T},
+            sets:add_element(ResultC, sets:union(Cs1, Cs2));
         {nil, L} ->
             utils:single({csubty, mk_locs("result of nil", L), {empty_list}, T});
         {op, L, Op, Lhs, Rhs} ->
@@ -378,14 +380,36 @@ case_constrs(Ctx, L, ScrutE, Clauses, T) ->
             true -> sets:new();
             false ->
                 case Ctx#ctx.exhaustiveness_mode of
-                    enabled -> utils:single(
-                                  {csubty, mk_locs("case exhaustiveness", L), Alpha, ast_lib:mk_union(Lowers)});
+                    enabled ->
+                        % [] needs no clause if the facts rule out length(V) = 0
+                        Covered = case ScrutE of
+                                      {var, _, {local_ref, V}} ->
+                                          case constr_lin:nonempty(Ctx#ctx.lin, V) of
+                                              true -> [{empty_list} | Lowers];
+                                              false -> Lowers
+                                          end;
+                                      _ -> Lowers
+                                  end,
+                        utils:single(
+                          {csubty, mk_locs("case exhaustiveness", L), Alpha, ast_lib:mk_union(Covered)});
                     disabled -> sets:new()
                 end
         end,
     sets:from_list([
         {ccase, mk_locs("case", L), CsScrut, Exhaust, BodyList}
     ]).
+
+% A qualifier that is no generator is a filter. The generators have their cases in
+% process_qualifiers/5; the one that gets here is a strict binary generator whose pattern is
+% no binary.
+-spec filter_exp(ast:qualifier()) -> ast:exp().
+filter_exp({K, L, _, _}) when K == generate; K == generate_strict; K == b_generate; K == b_generate_strict ->
+    errors:ty_error(L, "The pattern of a strict binary generator has to be a binary");
+filter_exp({K, L, _, _, _}) when K == m_generate; K == m_generate_strict ->
+    errors:bug("~s: map generator taken for a filter", [ast:format_loc(L)]);
+filter_exp({zip, L, _}) ->
+    errors:bug("~s: zip generator taken for a filter", [ast:format_loc(L)]);
+filter_exp(Exp) -> Exp.
 
 -spec process_qualifiers(ctx(), ast:loc(), [ast:qualifier()], constr:constr_env(), constr:constrs()) ->
           {constr:constr_env(), constr:constrs()}.
@@ -435,9 +459,14 @@ process_qualifiers(Ctx, Loc, [Q | Qs], Env, Cs) ->
         % Pat <= Exp
         {b_generate, _, _, _} ->
             errors:unsupported(Loc, "generator ~w", Q);
-        % Pat <:= Exp
-        {b_generate_strict, _, _, _} ->
-            errors:unsupported(Loc, "generator ~w", Q);
+        % Pat <:= Exp (strict binary generator): the source has to be pieces the pattern accepts
+        {b_generate_strict, LGen, Pat = {bin, _, PatElems}, Exp} ->
+            Pieces = repeated(PatElems, lower),
+            ExpCs0 = exp_constrs(Ctx, Exp, Pieces),
+            ExpCs = sets:from_list([{cdef, mk_locs("strict binary generator source", LGen), Env, ExpCs0}]),
+            {PatCs, PatEnv} = pat_env(Ctx, LGen, fresh_tyvar(Ctx), Pat),
+            NewEnv = intersect_envs(Env, PatEnv),
+            process_qualifiers(Ctx, Loc, Qs, NewEnv, sets:union([Cs, ExpCs, PatCs]));
         % strict map generator: KeyPat := ValPat <:- Exp
         {m_generate_strict, LGen, KeyPat, ValPat, Exp} ->
             KeyAlpha = fresh_tyvar(Ctx),
@@ -490,7 +519,8 @@ process_qualifiers(Ctx, Loc, [Q | Qs], Env, Cs) ->
         % be careful here,
         % the catch-all will handle cases that are not supposed to be filters
         % this can happen when a new feature is introduced (e.g. zip, strict_generate)
-        Filter ->
+        Other ->
+            Filter = filter_exp(Other),
             % apply current environment to filter expression
             FilterExpCs = exps_constrs(Ctx, Loc, [Filter], stdtypes:tbool()),
             FilterCs = sets:from_list([{cdef, mk_locs("filter", Loc), Env, FilterExpCs}]),
@@ -498,10 +528,46 @@ process_qualifiers(Ctx, Loc, [Q | Qs], Env, Cs) ->
             % treat filter as if it is a guard to refine existing variable types
             % guard_seq_env cannot be applied to any expression,
             % but the default case is unsafe, so we do it anyway
-            {GuardEnv, _} = guard_seq_env([[Filter]]),
+            {GuardEnv, _} = guard_seq_env(Ctx#ctx.symtab, [[Filter]]),
             NewEnv = intersect_envs(Env, GuardEnv),
             process_qualifiers(Ctx, Loc, Qs, NewEnv, sets:union(Cs, FilterCs))
     end.
+
+% Fields of the map type that the associations add to Fields0. The last association wins at
+% run time, the leftmost field in a map type: a literal key comes first and is mandatory. A
+% key of type atom() is one atom, not all of them: it may overwrite the key of any field so
+% far, which gets its value too, and the other keys of its type are optional, last.
+% K := V raises badkey unless K is a key of Old, the map before the associations.
+-spec map_assoc_fields(ctx(), [ast:map_assoc()], [ast:ty_map_assoc()], ast:ty()) ->
+    {[ast:ty_map_assoc()], constr:constrs()}.
+map_assoc_fields(Ctx, Assocs, Fields0, Old) ->
+    Any = stdtypes:tany(),
+    lists:foldl(
+      fun(Assoc, {Fields, AccCs}) ->
+              {_, FieldL, KeyE, ValE} = Assoc,
+              ValAlpha = fresh_tyvar(Ctx),
+              ValCs = exp_constrs(Ctx, ValE, ValAlpha),
+              {KeyTy, KeyCs, NewFields} =
+                  case ty_of_const_exp(KeyE) of
+                      {ok, Lit} -> {Lit, sets:new(), [{map_field_req, Lit, ValAlpha} | Fields]};
+                      error ->
+                          KeyAlpha = fresh_tyvar(Ctx),
+                          % PRECISION we could leave fields whose key is disjoint from the key type alone
+                          %   2026-10-23 albsch
+                          Overwritten = [{Kind, K, ast_lib:mk_union([V, ValAlpha])} || {Kind, K, V} <- Fields],
+                          {KeyAlpha, exp_constrs(Ctx, KeyE, KeyAlpha), Overwritten ++ [{map_field_opt, KeyAlpha, ValAlpha}]}
+                  end,
+              PresentCs =
+                  case Assoc of
+                      {map_field_req, _, _, _} ->
+                          Present = stdtypes:tmap([{map_field_req, KeyTy, Any}, {map_field_opt, Any, Any}]),
+                          [{csubty, mk_locs("map update with :=", FieldL), Old, Present}];
+                      {map_field_opt, _, _, _} -> []
+                  end,
+              {NewFields, sets:union([AccCs, KeyCs, ValCs, sets:from_list(PresentCs)])}
+      end,
+      {Fields0, sets:new()},
+      Assocs).
 
 -spec gen_funcall_constrs(ctx(), ast:loc(), ast:exp(), [ast:exp()], ast:ty()) -> constr:constrs().
 gen_funcall_constrs(Ctx, L, FunExp, Args, T) ->
@@ -628,7 +694,7 @@ receive_clause_constrs(Ctx, {case_clause, L, Pat, Guards, Exps}, T) ->
         fun(V, Acc) -> maps:put({local_ref, V}, {predef, dynamic}, Acc) end,
         #{},
         BoundVars),
-    {GuardEnv, _} = guard_seq_env(Guards),
+    {GuardEnv, _} = guard_seq_env(Ctx#ctx.symtab, Guards),
     % #FIXME HACK until #329 is fixed
     % Guard refinements override dynamic(), not intersect with it.
     % Overriding ensures guarded variables get only the guard type.
@@ -710,11 +776,16 @@ case_clause_constrs(Ctx, TyScrut, Scrut, NeedsUnmatchedCheck, LowersBefore,
         pretty:render_constr(BodyEnvCs)
     ),
     Beta = fresh_tyvar(Ctx),
-    BodyCs = exps_constrs(Ctx, L, Exps, Beta),
+    BodyCs = exps_constrs(Ctx#ctx{lin = constr_lin:clause(Ctx#ctx.lin, Scrut, Pat, Guards)}, L, Exps, Beta),
     InnerCs = BodyCs,
 
-    % The clauses that the maybe rewrite adds are not written by the user, they may be dead.
-    CheckRedundancy = NeedsUnmatchedCheck andalso not ast:is_generated_by('maybe', L),
+    % Clauses that the programmer never wrote are exempt from the redundancy check: those
+    % that the maybe rewrite adds, and compiler-generated clauses, which are defensive
+    % branches (e.g. those Elixir emits for `cond`, string interpolation and strict
+    % `and`/`or`). They still contribute their lower bound to the exhaustiveness check.
+    CheckRedundancy = NeedsUnmatchedCheck
+        andalso not ast:is_generated_by('maybe', L)
+        andalso not ast:is_generated_by(compiler, L),
     RedundancyCs =
         if
             CheckRedundancy ->
@@ -750,7 +821,7 @@ catch_clause_constrs(Ctx, {catch_clause, L, ExcType, Pat, Stack, Guards, Body}, 
     {PatCs, PatEnv0} = catch_clause_pat_env(Ctx, L, ExcType, Pat, Stack),
 
     % Apply guards to refine the environment
-    {GuardEnv, _GuardStatus} = guard_seq_env(Guards),
+    {GuardEnv, _GuardStatus} = guard_seq_env(Ctx#ctx.symtab, Guards),
     PatEnv = intersect_envs(PatEnv0, GuardEnv),
 
     % Generate constraints for body in the refined environment
@@ -794,17 +865,17 @@ catch_clause_pat_env(Ctx, L, ExcType, Pat, Stack) ->
 
     % Stacktrace can be a variable or wildcard
     StackEnv = case Stack of
-        {var, _StackLoc, {local_bind, StackName}} ->
-            % Stacktrace is bound to a variable - type is any() (list of stack frames)
-            StackTy = {predef, any},
+        {var, StackLoc, {local_bind, StackName}} ->
+            StackTy = {named, StackLoc, {ty_qref, erlang, stacktrace, 0}, []},
             #{{local_ref, StackName} => StackTy};
         _ ->
             % Wildcard - no binding
             #{}
     end,
 
-    % Pattern binds the exception value - we use `any()` as exception value type
-    ExceptionValueTy = {predef, any},
+    % The value of an exception has no type. The clause is entered only with a value that
+    % the pattern matches, so inside the clause the value has the potential type of the pattern.
+    ExceptionValueTy = ty_of_pat(#{}, Pat, upper),
     {PatCs, PatEnv} = pat_env(Ctx, L, ExceptionValueTy, Pat),
 
     % Merge all environments
@@ -815,7 +886,7 @@ catch_clause_pat_env(Ctx, L, ExcType, Pat, Stack) ->
 -spec case_clause_env(ctx(), ast:loc(), ast:ty(), ast:exp(), ast:pat(), [ast:guard()]) ->
           {ast:ty(), ast:ty(), constr:constrs(), constr:constr_env()}.
 case_clause_env(Ctx, L, TyScrut, Scrut, Pat, Guards) ->
-    {Lower, Upper} = pat_guard_lower_upper(Pat, Guards, Scrut),
+    {Lower, Upper} = pat_guard_lower_upper(Ctx#ctx.symtab, Pat, Guards, Scrut),
     Ti = ast_lib:mk_intersection([TyScrut, Upper]),
     {Ci0, Gamma0} = pat_env(Ctx, L, Ti, pat_of_exp(Scrut)),
     {Ci1, Gamma1} = pat_guard_env(Ctx, L, Ti, Pat, Guards),
@@ -823,16 +894,16 @@ case_clause_env(Ctx, L, TyScrut, Scrut, Pat, Guards) ->
     {Lower, Upper, sets:union(Ci0, Ci1), Gamma2}.
 
 % ⌊ p when g ⌋_e and ⌈ p when g ⌉_e
--spec pat_guard_lower_upper(ast:pat(), [ast:guard()], ast:exp()) -> {ast:ty(), ast:ty()}.
-pat_guard_lower_upper(P, Gs, E) ->
+-spec pat_guard_lower_upper(symtab:t(), ast:pat(), [ast:guard()], ast:exp()) -> {ast:ty(), ast:ty()}.
+pat_guard_lower_upper(Tab, P, Gs, E) ->
     EPat = pat_of_exp(E),
     BoundVars = sets:union(bound_vars_pat(P), bound_vars_pat(EPat)),
     % Compute Lower and Upper as unions over disjunctive guard branches.
     % For 'or' guards like is_atom(X) or is_atom(Y), each branch contributes
     % a separate bound, and the union gives: {atom, any} | {any, atom}.
     % Both Upper and Lower must be computed disjunctively so they stay consistent
-    UpperEnvs = guard_seq_disj_envs(Gs, upper),
-    LowerEnvs = guard_seq_disj_envs(Gs, lower),
+    UpperEnvs = guard_seq_disj_envs(Tab, Gs, upper),
+    LowerEnvs = guard_seq_disj_envs(Tab, Gs, lower),
     Upper =
         ast_lib:mk_union(
             lists:map(
@@ -866,7 +937,8 @@ pat_guard_lower_upper(P, Gs, E) ->
     {Lower, Upper}.
 
 % The variables bound by a pattern
--spec bound_vars_pat(ast:pat()) -> sets:set(ast:local_varname()).
+% Also for an element of a binary pattern and for the size of one, which may be default.
+-spec bound_vars_pat(ast:pat() | ast:pat_bitstring_elem() | default) -> sets:set(ast:local_varname()).
 bound_vars_pat(P) ->
     case P of
         {'atom', _L, _A} -> sets:new([{version, 2}]);
@@ -881,10 +953,9 @@ bound_vars_pat(P) ->
                 sets:new([{version, 2}]), 
                 Elems);
         default -> sets:new([{version, 2}]); % gen_bitstring_elem
-        {bin_element, _L, Value, Size, _TyspecList} -> 
-            % Size can have bound vars
-            % TyspecList is static
-            sets:union(bound_vars_pat(Value), bound_vars_pat(Size));
+        {bin_element, _L, Value, _Size, _TyspecList} ->
+            % the size is an expression, it binds nothing
+            bound_vars_pat(Value);
         {match, _L, P1, P2} ->
             sets:union(bound_vars_pat(P1), bound_vars_pat(P2));
         {nil, _L} -> sets:new([{version, 2}]);
@@ -938,8 +1009,7 @@ ty_of_pat(Env, P, Mode) ->
         {'integer', _L, I} -> {singleton, I};
         {'float', _L, _F} -> {predef, float};
         {'string', _L, Z} -> string_to_cons_ty(Z);
-        % TODO correct binary patterns
-        {bin, _L, _Elems} -> {bitstring};
+        {bin, _L, Elems} -> ty_of_bin_pat(Env, Elems, Mode);
         {match, _L, P1, P2} ->
             ast_lib:mk_intersection([ty_of_pat(Env, P1, Mode), ty_of_pat(Env, P2, Mode)]);
         {nil, _L} -> {empty_list};
@@ -959,21 +1029,20 @@ ty_of_pat(Env, P, Mode) ->
             Any = stdtypes:tany(),
             stdtypes:tmap(Any, Any);
         {map, _L, Assocs} ->
-            {KeyTs, ValTs} =
-                lists:foldl(
-                    fun({map_field_req, _, KeyP, ValP}, {KeyTs, ValTs}) ->
-                        K = ty_of_pat(Env, KeyP, Mode),
-                        V = ty_of_pat(Env, ValP, Mode),
-                        {[K | KeyTs], [V | ValTs]}
-                    end,
-                    {[], []},
-                    Assocs),
-            F =
-                case Mode of
-                    upper -> fun ast_lib:mk_union/1;
-                    lower -> fun ast_lib:mk_intersection/1
-                end,
-            stdtypes:tmap_req(F(KeyTs), F(ValTs));
+            % Literal keys are mandatory, other keys may be present. Another key pattern
+            % matches some key of its type: no upper bound, no lower bound.
+            % PRECISION we could treat a bound key variable of singleton type as a literal
+            %   2026-10-23 albsch
+            Any = stdtypes:tany(),
+            Lit = [{K, ty_of_pat(Env, ValP, Mode)} || {map_field_req, _, KeyP, ValP} <- Assocs,
+                                                      {ok, K} <- [ty_of_const_exp(KeyP)]],
+            AllLit = length(Lit) =:= length(Assocs),
+            Keys = lists:usort([K || {K, _} <- Lit]),
+            Fields = [{map_field_req, K, ast_lib:mk_intersection([V || {K2, V} <- Lit, K2 =:= K])} || K <- Keys],
+            case Mode =:= lower andalso not AllLit of
+                true -> {predef, none};
+                false -> stdtypes:tmap(Fields ++ [{map_field_opt, Any, Any}])
+            end;
         {tuple, _L, Ps} -> {tuple, lists:map(fun(P) -> ty_of_pat(Env, P, Mode) end, Ps)};
         {wildcard, _L} -> {predef, any};
         {var, _L, {local_bind, V}} ->
@@ -1000,12 +1069,252 @@ ty_of_pat(Env, P, Mode) ->
             end
     end.
 
+% Type of a binary pattern, built from 1-bit cells.
+%
+% A segment whose matching bitstrings do not depend on a run-time value is typed exactly, the
+% same for both modes. A segment with a size or a value known only at run time has no accepting
+% type (lower); its potential type (upper) are the bitstrings it matches for some size or value.
+-spec ty_of_bin_pat(constr:constr_env(), [ast:gen_bitstring_elem(ast:pat(), ast:exp())], upper | lower) -> ast:ty().
+ty_of_bin_pat(Env, Elems, Mode) ->
+    {Init, Rest} = split_rest_segment(Elems),
+    Tail =
+        case Rest of
+            none -> {empty_bitstring};
+            {{wildcard, _}, Unit} -> {bitstring, 0, Unit};
+            {{var, _, {local_bind, V}}, Unit} ->
+                ast_lib:mk_intersection([maps:get({local_ref, V}, Env, {predef, any}), {bitstring, 0, Unit}]);
+            % PRECISION we could use the type of a bound variable
+            %   2026-10-23 albsch
+            {_BoundVar, Unit} -> at_run_time(Mode, {bitstring, 0, Unit})
+        end,
+    segments_ty(Env, Init, Mode, Tail).
+
+% A last segment <<..., V/binary>> or <<..., V/bitstring>> takes the rest, a number of units.
+-spec split_rest_segment([ast:gen_bitstring_elem(P, ast:exp())]) ->
+    {[ast:gen_bitstring_elem(P, ast:exp())], none | {P, pos_integer()}}.
+split_rest_segment(Elems) ->
+    case lists:reverse(Elems) of
+        [{bin_element, _, Value, default, Tyspecs} | RevInit] ->
+            case analyze_bin_tyspec(Tyspecs) of
+                {binary, _, _, Unit} -> {lists:reverse(RevInit), {Value, Unit}};
+                {bitstring, _, _, Unit} -> {lists:reverse(RevInit), {Value, Unit}};
+                _ -> {Elems, none}
+            end;
+        _ -> {Elems, none}
+    end.
+
+% Any number of pieces, mu X. <<>> | Piece(X). A piece without bits adds nothing, so Piece(X)
+% leaves it out: X must sit below a cell.
+-spec repeated([ast:gen_bitstring_elem(ast:pat() | ast:exp(), ast:exp())], lower | exp) -> ast:ty().
+repeated(Elems, Mode) ->
+    X = {mu_var, list_to_atom("$bits" ++ integer_to_list(erlang:unique_integer([positive])))},
+    {mu, X, ast_lib:mk_union([{empty_bitstring}, nonempty_segments_ty(Elems, Mode, X)])}.
+
+% The segments, then Tail, where the segments have at least one bit
+-spec nonempty_segments_ty([ast:gen_bitstring_elem(ast:pat() | ast:exp(), ast:exp())], lower | exp, ast:ty()) ->
+    ast:ty().
+nonempty_segments_ty([], _Mode, _Tail) -> {predef, none};
+nonempty_segments_ty([{bin_element, L, {'string', _, S}, Size, Tyspecs} | Elems], Mode, Tail) ->
+    nonempty_segments_ty([{bin_element, L, {'integer', L, C}, Size, Tyspecs} || C <- S] ++ Elems, Mode, Tail);
+nonempty_segments_ty([E = {bin_element, _, _, Size, Tyspecs} | Elems], Mode, Tail) ->
+    {Seg, _, _, Unit} = analyze_bin_tyspec(Tyspecs),
+    Fixed = lists:member(Seg, [utf8, utf16, utf32, float]),
+    case segment_bits(Size, Tyspecs) of
+        % a run-time size: one unit or more, or the segment has no bits
+        run_time when not Fixed ->
+            ast_lib:mk_union([bits_ty(Unit, segments_ty(#{}, [E | Elems], Mode, Tail)),
+                              nonempty_segments_ty(Elems, Mode, Tail)]);
+        0 when not Fixed -> nonempty_segments_ty(Elems, Mode, Tail);
+        _ -> segments_ty(#{}, [E | Elems], Mode, Tail)
+    end.
+
+-spec at_run_time(upper | lower | exp, ast:ty()) -> ast:ty().
+at_run_time(upper, T) -> T;
+at_run_time(exp, T) -> T;
+at_run_time(lower, _) -> {predef, none}.
+
+% Mode exp: the segments of a binary expression; its type is an upper bound of the value.
+-spec segments_ty(constr:constr_env(), [ast:gen_bitstring_elem(ast:pat() | ast:exp(), ast:exp())], upper | lower | exp, ast:ty()) ->
+    ast:ty().
+segments_ty(_Env, [], _Mode, Tail) -> Tail;
+segments_ty(Env, [{bin_element, L, {'string', _, S}, Size, Tyspecs} | Elems], Mode, Tail) ->
+    % <<"ab">> is <<$a, $b>>
+    segments_ty(Env, [{bin_element, L, {'integer', L, C}, Size, Tyspecs} || C <- S] ++ Elems, Mode, Tail);
+segments_ty(Env, [{bin_element, _, Value, Size, Tyspecs} | Elems], Mode, Tail0) ->
+    Tail = segments_ty(Env, Elems, Mode, Tail0),
+    {Seg, Signed, _, Unit} = analyze_bin_tyspec(Tyspecs),
+    % a big-endian unsigned integer: literals are tracked
+    % PRECISION we could track signed and little-endian literals too
+    %   2026-10-23 albsch
+    Plain = Seg =:= integer andalso not Signed andalso big_endian(Tyspecs),
+    AnyOf = fun(Sizes) -> at_run_time(Mode, ast_lib:mk_union([bits_ty(B, Tail) || B <- Sizes])) end,
+    case {Seg, segment_bits(Size, Tyspecs)} of
+        % the bits of utf and float segments are not tracked
+        % PRECISION a utf segment could get its length from the type of its value
+        %   2026-10-23 albsch
+        {utf8, _} -> AnyOf([8, 16, 24, 32]);
+        {utf16, _} -> AnyOf([16, 32]);
+        {utf32, _} -> AnyOf([32]);
+        {float, Bits} -> AnyOf([B || B <- [16, 32, 64], Bits =:= run_time orelse Bits =:= B]);
+        % any number of units: mu X. Tail | <<_:Unit, X>>
+        {_, run_time} ->
+            X = {mu_var, list_to_atom("$bits" ++ integer_to_list(erlang:unique_integer([positive])))},
+            at_run_time(Mode, {mu, X, ast_lib:mk_union([Tail, bits_ty(Unit, X)])});
+        {integer, Bits} when Plain, Mode =/= exp ->
+            case literal_int(Value) of
+                none -> bits_segment_ty(Env, Bits, Value, Mode, Tail);
+                I when I >= 0, I < 1 bsl Bits -> int_bits_ty(I, Bits, Tail);
+                % a literal that does not fit matches nothing
+                _ -> {predef, none}
+            end;
+        {_, Bits} -> bits_segment_ty(Env, Bits, Value, Mode, Tail)
+    end.
+
+-spec big_endian(default | ast:bitstring_tyspec_list()) -> boolean().
+big_endian(default) -> true;
+big_endian(Tyspecs) -> not lists:member(little, Tyspecs) andalso not lists:member(native, Tyspecs).
+
+% The value of an integer literal in a pattern
+-spec literal_int(ast:pat() | ast:exp()) -> integer() | none.
+literal_int(Value) ->
+    case Value of
+        {'integer', _, V} -> V;
+        {'char', _, V} -> V;
+        {op, _, '-', [{'integer', _, V}]} -> -V;
+        _ -> none
+    end.
+
+% The Bits bits of I, most significant first, then Tail
+-spec int_bits_ty(integer(), non_neg_integer(), ast:ty()) -> ast:ty().
+int_bits_ty(_, 0, Tail) -> Tail;
+int_bits_ty(I, N, Tail) -> {bitstring_cons, {singleton, (I bsr (N - 1)) band 1}, int_bits_ty(I, ?assert_type(N - 1, non_neg_integer()), Tail)}.
+
+% The size of a segment in bits, if the pattern says it.
+-spec segment_bits(ast:exp() | default, default | ast:bitstring_tyspec_list()) -> non_neg_integer() | run_time.
+segment_bits(Size, Tyspecs) ->
+    {_, _, DefaultSize, Unit} = analyze_bin_tyspec(Tyspecs),
+    case {Size, DefaultSize} of
+        {default, default} -> run_time;
+        {default, N} -> ?assert_type(N * Unit, non_neg_integer());
+        {{'integer', _, N}, _} -> ?assert_type(N * Unit, non_neg_integer());
+        % PRECISION we could evaluate constant size expressions or use a singleton type of the size
+        %   2026-10-23 albsch
+        _ -> run_time
+    end.
+
+% An integer, binary or bitstring segment with a size: its bits are not tracked.
+-spec bits_segment_ty(constr:constr_env(), non_neg_integer(), ast:pat() | ast:exp(), upper | lower | exp, ast:ty()) ->
+    ast:ty().
+bits_segment_ty(Env, Bits, Value, Mode, Tail) ->
+    All = bits_ty(Bits, Tail),
+    case Value of
+        {wildcard, _} -> All;
+        % PRECISION we could use the type a guard gives the variable
+        %   2026-10-23 albsch
+        {var, _, {local_bind, V}} ->
+            case maps:is_key({local_ref, V}, Env) of
+                false -> All;
+                true -> at_run_time(Mode, All)
+            end;
+        % PRECISION we could use the type of a literal or a bound variable
+        %   2026-10-23 albsch
+        _ -> at_run_time(Mode, All)
+    end.
+
+% Bits bits, then Tail
+-spec bits_ty(non_neg_integer(), ast:ty()) -> ast:ty().
+bits_ty(_, {predef, none}) -> {predef, none};
+bits_ty(0, Tail) -> Tail;
+bits_ty(N, Tail) -> {bitstring_cons, {range, 0, 1}, bits_ty(?assert_type(N - 1, non_neg_integer()), Tail)}.
+
+% Analyze a bitstring type specifier list to determine segment type, signedness, default size, and unit.
+-spec analyze_bin_tyspec(default | ast:bitstring_tyspec_list()) ->
+    {integer | float | binary | bitstring | utf8 | utf16 | utf32, boolean(), integer() | default, pos_integer()}.
+analyze_bin_tyspec(default) -> {integer, false, 8, 1};
+analyze_bin_tyspec(TyspecList) ->
+    Type =
+        case [T || T <- TyspecList, lists:member(T, [integer, float, binary, bytes, bitstring, bits, utf8, utf16, utf32])] of
+            [] -> integer;
+            [bytes | _] -> binary;
+            [bits | _] -> bitstring;
+            [T | _] -> ?assert_type(T, integer | float | binary | bitstring | utf8 | utf16 | utf32)
+        end,
+    Unit =
+        case [U || {unit, U} <- TyspecList] of
+            [U | _] -> U;
+            [] when Type =:= binary -> 8;
+            [] -> 1
+        end,
+    DefaultSize =
+        case Type of
+            integer -> 8;
+            float -> 64;
+            _ -> default
+        end,
+    {Type, lists:member(signed, TyspecList), DefaultSize, Unit}.
+
+% Generate constraints for binary expression elements (non-empty binary construction).
+-spec bin_expr_constrs(ctx(), ast:loc(), [ast:exp_bitstring_elem()]) -> {constr:constrs(), ast:ty()}.
+bin_expr_constrs(Ctx, _L, BinElems) ->
+    Cs = lists:foldl(
+        fun({bin_element, ElemL, Value, Size, TyspecList}, AccCs) ->
+            {SegType, _Signed, _DefaultSize, Unit} = analyze_bin_tyspec(TyspecList),
+            % Upper bound for the value expression, validating that it has the
+            % right type for the segment specifier (e.g. <<X/float>> requires X
+            % to be a number, <<X/binary>> requires X to be a binary).
+            % The precise type of the value is captured separately by exp_constrs.
+            ValueTy = case {SegType, Size} of
+                {integer, _} -> {predef, integer};
+                {float, _} -> {predef_alias, number};  % floats accept integers too
+                % without a size the value is the segment: a number of units
+                {_, default} when SegType =:= binary; SegType =:= bitstring -> {bitstring, 0, Unit};
+                % PRECISION we could require at least Size * Unit bits
+                %   2026-10-23 albsch
+                {_, _} when SegType =:= binary; SegType =:= bitstring -> {bitstring};
+                % PRECISION we could require a valid code point
+                %   2026-10-23 albsch
+                {utf8, _} -> {predef, integer};
+                {utf16, _} -> {predef, integer};
+                {utf32, _} -> {predef, integer}
+            end,
+            ValLocs = mk_locs("bin element value", ElemL),
+            ValCs = case Value of
+                {'string', _, ""} -> sets:new([{version, 2}]);
+                % <<"ab">> is <<$a, $b>>
+                {'string', _, _} -> utils:single({csubty, ValLocs, {predef, integer}, ValueTy});
+                _ ->
+                    Alpha = fresh_tyvar(Ctx),
+                    sets:add_element({csubty, ValLocs, Alpha, ValueTy}, exp_constrs(Ctx, Value, Alpha))
+            end,
+            % Generate constraint for the size expression (if present)
+            SizeCs = case Size of
+                default -> sets:new([{version, 2}]);
+                _ ->
+                    SizeAlpha = fresh_tyvar(Ctx),
+                    SCs = exp_constrs(Ctx, Size, SizeAlpha),
+                    sets:add_element(
+                        {csubty, mk_locs("bin element size", ElemL), SizeAlpha, {predef, integer}},
+                        SCs)
+            end,
+            sets:union([AccCs, ValCs, SizeCs])
+        end,
+        sets:new([{version, 2}]),
+        BinElems),
+    % a last segment without size is any number of units
+    {Init, Rest} = split_rest_segment(BinElems),
+    Tail =
+        case Rest of
+            none -> {empty_bitstring};
+            {_, Unit} -> {bitstring, 0, Unit}
+        end,
+    {Cs, segments_ty(#{}, Init, exp, Tail)}.
+
 % t // pg
 -spec pat_guard_env(ctx(), ast:loc(), ast:ty(), ast:pat(), [ast:guard()]) ->
           {constr:constrs(), constr:constr_env()}.
 pat_guard_env(Ctx, L, T, P, Gs) ->
     {Cs, Env} = pat_env(Ctx, L, T, P),
-    {EnvGuards, _} = guard_seq_env(Gs),
+    {EnvGuards, _} = guard_seq_env(Ctx#ctx.symtab, Gs),
     {Cs, intersect_envs(Env, EnvGuards)}.
 
 % t // p
@@ -1018,26 +1327,34 @@ pat_env(Ctx, OuterL, T, P) ->
         {'integer', _L, _I} -> Empty;
         {'float', _L, _F} -> Empty;
         {'string', _L, _S} -> Empty;
-        % TODO correct pattern environment for binaries
-        {bin, _L, Elems} -> 
-            {Cs, Env} =
+        {bin, _L, Elems} ->
+            % Like the tail of a list cons, a rest segment gets a type variable; behind a
+            % segment of variable length it gets the type of the segment.
+            {Init, Rest} = split_rest_segment(Elems),
+            {ElemCs, ElemEnv} =
                 lists:foldl(
-                  fun (P, {Cs, Env}) ->
-                          % unused type variables
-                          Alpha = fresh_tyvar(Ctx),
-                          {ThisCs, ThisEnv} = pat_env(Ctx, OuterL, Alpha, P),
-                          {sets:union(Cs, ThisCs),
-                           intersect_envs(Env, ThisEnv)}
-                  end,
-                  {sets:new([{version, 2}]), #{}},
-                  Elems),
-            C = {csubty, mk_locs("t // <<...>>", OuterL), T, {bitstring}},
-            {sets:add_element(C, Cs), Env};
-        default -> Empty;
-        {bin_element, _L, Value, Size, _TyspecList} -> 
-            {Cs1, Env1} = pat_env(Ctx, OuterL, T, Value),
-            {Cs2, Env2} = pat_env(Ctx, OuterL, T, Size),
-            {sets:union(Cs1, Cs2), intersect_envs(Env1, Env2)};
+                    fun(E, {AccCs, AccEnv}) ->
+                        {ThisCs, ThisEnv} = bin_elem_pat_env(Ctx, OuterL, E),
+                        {sets:union(AccCs, ThisCs), intersect_envs(AccEnv, ThisEnv)}
+                    end,
+                    Empty, Init),
+            VarLength = lists:any(fun variable_length/1, Init),
+            {Tail, RestCs, RestEnv} =
+                case Rest of
+                    none -> {{empty_bitstring}, sets:new([{version, 2}]), #{}};
+                    % PRECISION we could type the rest by the bits left after the segments
+                    %   2026-10-23 albsch
+                    {Value, Unit} when VarLength ->
+                        {Cs, Env} = pat_env(Ctx, OuterL, {bitstring, 0, Unit}, Value),
+                        {{bitstring, 0, Unit}, Cs, Env};
+                    {Value, _Unit} ->
+                        Alpha = fresh_tyvar(Ctx),
+                        {Cs, Env} = pat_env(Ctx, OuterL, Alpha, Value),
+                        {Alpha, Cs, Env}
+                end,
+            ConsTy = segments_ty(#{}, Init, upper, Tail),
+            C = {csubty, mk_locs("t // <<...>>", OuterL), T, ConsTy},
+            {sets:add_element(C, sets:union(ElemCs, RestCs)), intersect_envs(ElemEnv, RestEnv)};
         {match, _L, P1, P2} ->
             {Cs1, Env1} = pat_env(Ctx, OuterL, T, P1),
             {Cs2, Env2} = pat_env(Ctx, OuterL, T, P2),
@@ -1068,14 +1385,28 @@ pat_env(Ctx, OuterL, T, P) ->
         {map, _L, Assocs} ->
             AlphaK = fresh_tyvar(Ctx),
             AlphaV = fresh_tyvar(Ctx),
+            Any = stdtypes:tany(),
             {AssocCs, AssocEnv} =
                 lists:foldl(
                     fun({map_field_req, _L, PK, PV}, {Cs, Env}) ->
-                        {CK, _} = pat_env(Ctx, OuterL, AlphaK, PK),
-                        {CV, EnvV} = pat_env(Ctx, OuterL, AlphaV, PV),
-                        {sets:union([Cs, CK, CV]), intersect_envs(Env, EnvV)}
+                        case ty_of_const_exp(PK) of
+                            {ok, K} ->
+                                % the value at a literal key; an optional field, because a
+                                % mandatory one would also compare the function part
+                                AlphaKV = fresh_tyvar(Ctx),
+                                At = stdtypes:tmap([{map_field_opt, K, AlphaKV}, {map_field_opt, Any, Any}]),
+                                CKV = {csubty, mk_locs("t // #{k := _}", OuterL), T, At},
+                                {CV, EnvV} = pat_env(Ctx, OuterL, AlphaKV, PV),
+                                {sets:add_element(CKV, sets:union(Cs, CV)), intersect_envs(Env, EnvV)};
+                            % PRECISION we could give a non-literal key only the values of fields its key may match
+                            %   2026-10-23 albsch
+                            error ->
+                                {CK, _} = pat_env(Ctx, OuterL, AlphaK, PK),
+                                {CV, EnvV} = pat_env(Ctx, OuterL, AlphaV, PV),
+                                {sets:union([Cs, CK, CV]), intersect_envs(Env, EnvV)}
+                        end
                     end,
-                    {sets:new([{version, 2}]), #{}},
+                    {sets:new(), #{}},
                     Assocs),
             C = {csubty, mk_locs("t // #{_}", OuterL), T, stdtypes:tmap(AlphaK, AlphaV)},
             {sets:add_element(C, AssocCs), AssocEnv};
@@ -1103,16 +1434,39 @@ pat_env(Ctx, OuterL, T, P) ->
             {sets:new([{version, 2}]), #{ LocalRef => T }}
     end.
 
+% A segment matches bitstrings of more than one length: a size known at run time or utf8, utf16
+-spec variable_length(ast:gen_bitstring_elem(ast:pat() | ast:exp(), ast:exp())) -> boolean().
+variable_length({bin_element, _, _, Size, Tyspecs}) ->
+    {Seg, _, _, _} = analyze_bin_tyspec(Tyspecs),
+    lists:member(Seg, [utf8, utf16]) orelse
+        (segment_bits(Size, Tyspecs) =:= run_time andalso lists:member(Seg, [integer, float, binary, bitstring])).
+
+% The bindings of a segment's value
+-spec bin_elem_pat_env(ctx(), ast:loc(), ast:gen_bitstring_elem(ast:pat(), ast:exp())) ->
+    {constr:constrs(), constr:constr_env()}.
+bin_elem_pat_env(Ctx, OuterL, {bin_element, _L, Value, _Size, TyspecList}) ->
+    {SegType, Signed, _, Unit} = analyze_bin_tyspec(TyspecList),
+    ValueTy = segment_value_ty(SegType, Signed, Unit),
+    pat_env(Ctx, OuterL, ValueTy, Value).
+
+% The values a segment of a binary pattern can bind its variable to.
+% PRECISION we could bind an integer segment of known size to its range and a utf segment to char()
+%   2026-10-23 albsch
+-spec segment_value_ty(integer | float | binary | bitstring | utf8 | utf16 | utf32, boolean(), pos_integer()) ->
+    ast:ty().
+segment_value_ty(integer, true, _) -> {predef, integer};
+segment_value_ty(integer, false, _) -> {predef_alias, non_neg_integer};
+segment_value_ty(float, _, _) -> {predef, float};
+segment_value_ty(Bin, _, Unit) when Bin =:= binary; Bin =:= bitstring -> {bitstring, 0, Unit};
+segment_value_ty(_Utf, _, _) -> {predef_alias, non_neg_integer}.
+
 % (| e |)
 -spec pat_of_exp(ast:exp()) -> ast:pat().
 pat_of_exp(E) ->
     Wc = {wildcard, ast:generated(exp_pattern, ast:loc_exp(E))},
     case E of
         {block, _L, Es} ->
-            case lists:reverse(Es) of
-                [] -> Wc;
-                [Last | _] -> pat_of_exp(Last)
-            end;
+            pat_of_exp(lists:last(Es));
         {cons, L, Head, Tail} ->
             {cons, ast:generated(exp_pattern, L), pat_of_exp(Head), pat_of_exp(Tail)};
         {tuple, L, Args} ->
@@ -1162,44 +1516,44 @@ negate_env(Env) -> maps:map(fun (_Key, T) -> ast_lib:mk_negation(T) end, Env).
 % The environments of a guard test, one per alternative of an 'or'; 'and' intersects them.
 % Mode upper: the values for which the test can be true. Mode lower: values for which it is
 % true, if the status is safe.
--spec guard_test_disj_envs(ast:guard_test(), upper | lower) -> [{constr:constr_env(), safe | unsafe}].
-guard_test_disj_envs(G, Mode) ->
+-spec guard_test_disj_envs(symtab:t(), ast:exp(), upper | lower) -> [{constr:constr_env(), safe | unsafe}].
+guard_test_disj_envs(Tab, G, Mode) ->
     case G of
         % An exception in a guard makes the guard fail. The right side of an orelse is only
         % reached without one if the left side cannot raise; 'or' evaluates both sides.
         {op, _L, 'orelse', Left, Right} ->
             case Mode =:= upper orelse total_test(Left) of
-                true -> guard_test_disj_envs(Left, Mode) ++ guard_test_disj_envs(Right, Mode);
-                false -> guard_test_disj_envs(Left, Mode)
+                true -> guard_test_disj_envs(Tab, Left, Mode) ++ guard_test_disj_envs(Tab, Right, Mode);
+                false -> guard_test_disj_envs(Tab, Left, Mode)
             end;
         {op, _L, 'or', Left, Right} ->
             case Mode =:= upper orelse (total_test(Left) andalso total_test(Right)) of
-                true -> guard_test_disj_envs(Left, Mode) ++ guard_test_disj_envs(Right, Mode);
+                true -> guard_test_disj_envs(Tab, Left, Mode) ++ guard_test_disj_envs(Tab, Right, Mode);
                 false -> [{#{}, unsafe}]
             end;
         {op, _L, Op, Left, Right} when Op =:= 'andalso'; Op =:= 'and' ->
             [{intersect_envs(EL, ER), merge_status(SL, SR)}
-             || {EL, SL} <- guard_test_disj_envs(Left, Mode),
-                {ER, SR} <- guard_test_disj_envs(Right, Mode)];
+             || {EL, SL} <- guard_test_disj_envs(Tab, Left, Mode),
+                {ER, SR} <- guard_test_disj_envs(Tab, Right, Mode)];
         % De Morgan: not(A or B) = not(A) and not(B)
         {op, L, 'not', {op, _, Op, Left, Right}} when Op =:= 'orelse'; Op =:= 'or' ->
             And = case Op of 'orelse' -> 'andalso'; 'or' -> 'and' end,
-            guard_test_disj_envs({op, L, And, {op, L, 'not', Left}, {op, L, 'not', Right}}, Mode);
+            guard_test_disj_envs(Tab, {op, L, And, {op, L, 'not', Left}, {op, L, 'not', Right}}, Mode);
         % De Morgan: not(A and B) = not(A) or not(B)
         {op, L, 'not', {op, _, Op, Left, Right}} when Op =:= 'andalso'; Op =:= 'and' ->
             Or = case Op of 'andalso' -> 'orelse'; 'and' -> 'or' end,
-            guard_test_disj_envs({op, L, Or, {op, L, 'not', Left}, {op, L, 'not', Right}}, Mode);
+            guard_test_disj_envs(Tab, {op, L, Or, {op, L, 'not', Left}, {op, L, 'not', Right}}, Mode);
         _ ->
-            [guard_test_env(G, Mode)]
+            [guard_test_env(Tab, G, Mode)]
     end.
 
 % Tests within a guard are conjunctive (,) so we take the Cartesian product.
--spec guard_disj_envs(ast:guard(), upper | lower) -> [{constr:constr_env(), safe | unsafe}].
-guard_disj_envs(Tests, Mode) ->
+-spec guard_disj_envs(symtab:t(), tests(), upper | lower) -> [{constr:constr_env(), safe | unsafe}].
+guard_disj_envs(Tab, Tests, Mode) ->
     lists:foldl(
         fun(Test, AccEnvs) ->
-            Dom = call_domain_env(Test),
-            TestEnvs = [{intersect_envs(E, Dom), S} || {E, S} <- guard_test_disj_envs(Test, Mode)],
+            Dom = call_domain_env(Tab, Test),
+            TestEnvs = [{intersect_envs(E, Dom), S} || {E, S} <- guard_test_disj_envs(Tab, Test, Mode)],
             [{intersect_envs(E1, E2), merge_status(S1, S2)}
              || {E1, S1} <- AccEnvs,
                 {E2, S2} <- TestEnvs]
@@ -1208,12 +1562,12 @@ guard_disj_envs(Tests, Mode) ->
         Tests).
 
 % Guard sequences are disjunctive (;) so we concatenate.
--spec guard_seq_disj_envs([ast:guard()], upper | lower) -> [{constr:constr_env(), safe | unsafe}].
-guard_seq_disj_envs([], _Mode) -> [{#{}, safe}];
-guard_seq_disj_envs(Guards, Mode) -> lists:flatmap(fun(G) -> guard_disj_envs(G, Mode) end, Guards).
+-spec guard_seq_disj_envs(symtab:t(), [tests()], upper | lower) -> [{constr:constr_env(), safe | unsafe}].
+guard_seq_disj_envs(_, [], _Mode) -> [{#{}, safe}];
+guard_seq_disj_envs(Tab, Guards, Mode) -> lists:flatmap(fun(G) -> guard_disj_envs(Tab, G, Mode) end, Guards).
 
 % Flips a comparison operator: N op X becomes X flip(op) N.
--spec flip_comparison_op(atom()) -> atom().
+-spec flip_comparison_op('>' | '<' | '>=' | '=<') -> '>' | '<' | '>=' | '=<'.
 flip_comparison_op('>') -> '<';
 flip_comparison_op('<') -> '>';
 flip_comparison_op('>=') -> '=<';
@@ -1222,8 +1576,8 @@ flip_comparison_op('=<') -> '>='.
 % X Op N for an integer N. In the term order a number is smaller than every other term, so
 % all terms that are no numbers are greater than N. Floats cannot be told apart: they are in
 % the potential type and not in the accepting type.
--spec comparison_refine_env(upper | lower, atom(), ast:local_varname(), ast:exp()) -> {constr:constr_env(), safe | unsafe}.
-comparison_refine_env(Mode, Op, X, ConstExp) ->
+-spec comparison_refine_env(upper | lower, atom(), guard_target(), ast:exp()) -> {constr:constr_env(), safe | unsafe}.
+comparison_refine_env(Mode, Op, {X, Wrap}, ConstExp) ->
     NoNumber = ty_without({predef, any}, {predef_alias, number}),
     case ty_of_const_exp(ConstExp) of
         {ok, {singleton, N}} when is_integer(N) ->
@@ -1239,11 +1593,11 @@ comparison_refine_env(Mode, Op, X, ConstExp) ->
                 {lower, true} -> ast_lib:mk_union([Ints, NoNumber]);
                 {lower, false} -> Ints
             end,
-            {#{{local_ref, X} => Ty}, safe};
+            {#{{local_ref, X} => Wrap(Ty)}, safe};
         _ -> {#{}, unsafe}
     end.
 
--spec total_test(ast:guard_test()) -> boolean().
+-spec total_test(ast:exp()) -> boolean().
 total_test(G) ->
     case G of
         {'atom', _, B} -> is_boolean(B);
@@ -1262,7 +1616,7 @@ total_test(G) ->
         _ -> false
     end.
 
--spec total_operand(ast:guard_test()) -> boolean().
+-spec total_operand(ast:exp()) -> boolean().
 total_operand(E) ->
     case E of
         {var, _, _} -> true;
@@ -1275,41 +1629,79 @@ total_operand(E) ->
     end.
 
 % env(g)
--spec guard_seq_env([ast:guard()]) -> {constr:constr_env(), safe | unsafe}.
-guard_seq_env(Guards) ->
-    combine_guard_result(Guards, fun guard_env/1, fun union_envs/2).
+% A guard, or the filter of a comprehension, which is refined in the same way: the tests are
+% expressions, and what is no test of a guard refines nothing.
+-type tests() :: [ast:exp(), ...].
 
--spec guard_env(ast:guard()) -> {constr:constr_env(), safe | unsafe}.
-guard_env(Guards) ->
+-spec guard_seq_env(symtab:t(), [tests()]) -> {constr:constr_env(), safe | unsafe}.
+guard_seq_env(Tab, Guards) ->
+    combine_guard_result(Guards, fun(G) -> guard_env(Tab, G) end, fun union_envs/2).
+
+-spec guard_env(symtab:t(), tests()) -> {constr:constr_env(), safe | unsafe}.
+guard_env(Tab, Guards) ->
     combine_guard_result(
       Guards,
-      fun(G) -> {Env, Status} = guard_test_env(G), {intersect_envs(Env, call_domain_env(G)), Status} end,
+      fun(G) -> {Env, Status} = guard_test_env(Tab, G), {intersect_envs(Env, call_domain_env(Tab, G)), Status} end,
       fun intersect_envs/2).
 
 % A guard test that holds did not raise: the variables passed to guard BIFs and operators
-% are in their domains. Of an andalso that holds both operands were evaluated, of an
-% expression that was only evaluated the left operand of andalso and orelse.
--spec call_domain_env(ast:guard_test()) -> constr:constr_env().
-call_domain_env({op, _, 'andalso', Left, Right}) ->
-    intersect_envs(call_domain_env(Left), call_domain_env(Right));
-call_domain_env(G) -> eval_domain_env(G).
+% are in their domains, a record field is only read from its record. Of an andalso that
+% holds both operands were evaluated, of an expression that was only evaluated the left
+% operand of andalso and orelse.
+-spec call_domain_env(symtab:t(), ast:exp()) -> constr:constr_env().
+call_domain_env(Tab, {op, _, 'andalso', Left, Right}) ->
+    intersect_envs(call_domain_env(Tab, Left), call_domain_env(Tab, Right));
+call_domain_env(Tab, G) -> eval_domain_env(Tab, G).
 
--spec eval_domain_env(ast:guard_test()) -> constr:constr_env().
-eval_domain_env(G) ->
-    Envs = utils:everything(
-             fun({op, _, Op, Left, _}) when Op =:= 'andalso'; Op =:= 'orelse' -> {ok, eval_domain_env(Left)};
-                ({op, _, Op, Left, Right}) -> {rec, args_domain_env(domains(Op, 2), [Left, Right])};
-                ({op, _, Op, Arg}) -> {rec, args_domain_env(domains(Op, 1), [Arg])};
-                ({call, _, {var, _, {ref, F, A}}, Args}) -> {rec, args_domain_env(domains(F, A), Args)};
-                ({call, _, {var, _, {qref, erlang, F, A}}, Args}) -> {rec, args_domain_env(domains(F, A), Args)};
+-spec eval_domain_env(symtab:t(), ast:exp()) -> constr:constr_env().
+eval_domain_env(Tab, G) ->
+    Envs = ast_traverse:everything(
+             fun({op, _, Op, Left, _}) when Op =:= 'andalso'; Op =:= 'orelse' -> {ok, eval_domain_env(Tab, Left)};
+                ({op, _, Op, Left, Right}) -> {rec, args_domain_env(Tab, domains(Op, 2), [Left, Right])};
+                ({op, _, Op, Arg}) when is_tuple(Arg) -> {rec, args_domain_env(Tab, domains(Op, 1), [Arg])};
+                (Call = {call, _, {var, _, Ref}, Args}) ->
+                    Doms = case Ref of
+                               {ref, F, A} -> domains(F, A);
+                               {qref, erlang, F, A} -> domains(F, A);
+                               _ -> []
+                           end,
+                    % a call without a domain may be a record field read
+                    {rec, case Doms of
+                              [] -> args_domain_env(Tab, [{predef, any}], [Call]);
+                              _ -> args_domain_env(Tab, Doms, Args)
+                          end};
                 (_) -> error
-             end, G),
+             end, [G]),
     lists:foldl(fun intersect_envs/2, #{}, Envs).
 
--spec args_domain_env([ast:ty() | any], [ast:guard_test()]) -> constr:constr_env().
-args_domain_env(Doms, Args) ->
+-spec args_domain_env(symtab:t(), [ast:ty() | any], [ast:exp()]) -> constr:constr_env().
+args_domain_env(Tab, Doms, Args) ->
     lists:foldl(fun intersect_envs/2, #{},
-                [#{X => Ty} || {Ty, {var, _, X = {local_ref, _}}} <- lists:zip(Doms, Args, trim), Ty =/= any]).
+                [arg_domain_env(Tab, Arg, Dom) || {Dom, Arg} <- lists:zip(Doms, Args, trim)]).
+
+-spec arg_domain_env(symtab:t(), ast:exp(), ast:ty() | any) -> constr:constr_env().
+arg_domain_env(_, _, any) -> #{};
+arg_domain_env(Tab, Arg, Ty) ->
+    case guard_target(Tab, Arg) of
+        {ok, {X, Wrap}} -> #{{local_ref, X} => Wrap(Ty)};
+        error -> #{}
+    end.
+
+% A guard operand whose type narrows a variable: the variable, or a record field read from
+% a target. Wrap turns the type of the operand into one of the variable.
+-type guard_target() :: {ast:local_varname(), fun((ast:ty()) -> ast:ty())}.
+-spec guard_target(symtab:t(), ast:exp()) -> t:opt(guard_target()).
+guard_target(_, {var, _, {local_ref, X}}) -> {ok, {X, fun(T) -> T end}};
+guard_target(Tab, {call, L, {var, _, Ref = {ref, _, 1}}, [Arg]}) ->
+    case ast:is_generated_by(record_field, L) andalso symtab:find_fun(Ref, Tab) of
+        {ok, Reader} ->
+            case guard_target(Tab, Arg) of
+                {ok, {X, Wrap}} -> {ok, {X, fun(T) -> Wrap(ety_records:reader_arg(Reader, T)) end}};
+                error -> error
+            end;
+        _ -> error
+    end;
+guard_target(_, _) -> error.
 
 % Domains of the guard BIFs and operators that raise outside them, per argument
 -spec domains(atom(), arity()) -> [ast:ty() | any].
@@ -1354,43 +1746,40 @@ combine_guard_result(Guards, RecFun, CombineFun) ->
 % Constructs an environment and a status from a guard test. The status 'safe' expresses
 % that the the type checker could fully analyze the guard, that is the guard test
 % does not use anything like the "oracle" from the IFL 2022 paper.
--spec guard_test_env(ast:guard_test()) -> {constr:constr_env(), safe | unsafe}.
-guard_test_env(G) -> guard_test_env(G, upper).
+-spec guard_test_env(symtab:t(), ast:exp()) -> {constr:constr_env(), safe | unsafe}.
+guard_test_env(Tab, G) -> guard_test_env(Tab, G, upper).
 
 % Mode upper: the environment holds for every value that passes the test. Mode lower: with
 % status safe, every value of the environment passes the test.
--spec guard_test_env(ast:guard_test(), upper | lower) -> {constr:constr_env(), safe | unsafe}.
-guard_test_env(G, Mode) ->
+-spec guard_test_env(symtab:t(), ast:exp(), upper | lower) -> {constr:constr_env(), safe | unsafe}.
+guard_test_env(Tab, G, Mode) ->
     Default = {#{}, unsafe},
     case G of
-        {call, _L, FunExp, Args} ->
-            % check whether first arg is a variable
-            case Args of
-                [Fst | Rest] ->
-                    case Fst of
-                        {var, _, {local_ref, X}} -> var_test_env(FunExp, X, Rest);
-                        _ -> Default
-                    end;
-                _ -> Default
+        {call, _L, FunExp, [Fst | Rest]} ->
+            case guard_target(Tab, Fst) of
+                {ok, {X, Wrap}} ->
+                    {Env, Status} = var_test_env(FunExp, X, Rest),
+                    {maps:map(fun(_, T) -> Wrap(T) end, Env), Status};
+                error -> Default
             end;
         {op, _L, Op, Left, Right} ->
             if
                 (Op =:= 'andalso') orelse (Op =:= 'and') ->
-                    {EnvLeft, StatusLeft} = guard_test_env(Left, Mode),
-                    {EnvRight, StatusRight} = guard_test_env(Right, Mode),
+                    {EnvLeft, StatusLeft} = guard_test_env(Tab, Left, Mode),
+                    {EnvRight, StatusRight} = guard_test_env(Tab, Right, Mode),
                     {intersect_envs(EnvLeft, EnvRight), merge_status(StatusLeft, StatusRight)};
                 % the union of two environments accepts more than the two tests
                 ((Op =:= 'orelse') orelse (Op =:= 'or')) andalso Mode =:= lower -> Default;
                 (Op =:= 'orelse') orelse (Op =:= 'or') ->
-                    {EnvLeft, StatusLeft} = guard_test_env(Left, Mode),
-                    {EnvRight, StatusRight} = guard_test_env(Right, Mode),
+                    {EnvLeft, StatusLeft} = guard_test_env(Tab, Left, Mode),
+                    {EnvRight, StatusRight} = guard_test_env(Tab, Right, Mode),
                     {union_envs(EnvLeft, EnvRight), merge_status(StatusLeft, StatusRight)};
                 (Op =:= '==') orelse (Op =:= '=:=') ->
-                    refine_eq_env(Op, Left, Right);
+                    refine_eq_env(Tab, Op, Left, Right);
                 (Op =:= '>') orelse (Op =:= '<') orelse (Op =:= '>=') orelse (Op =:= '=<') ->
-                    case {Left, Right} of
-                        {{var, _, {local_ref, X}}, E} -> comparison_refine_env(Mode, Op, X, E);
-                        {E, {var, _, {local_ref, X}}} -> comparison_refine_env(Mode, flip_comparison_op(Op), X, E);
+                    case {guard_target(Tab, Left), guard_target(Tab, Right)} of
+                        {{ok, X}, _} -> comparison_refine_env(Mode, Op, X, Right);
+                        {_, {ok, X}} -> comparison_refine_env(Mode, flip_comparison_op(Op), X, Left);
                         _ -> Default
                     end;
                 true -> Default
@@ -1400,11 +1789,14 @@ guard_test_env(G, Mode) ->
                 % what is accepted by `not G` is outside of what G can accept, if G cannot raise
                 lower ->
                     case total_test(Exp) of
-                        true -> negate_guard_env(guard_test_env(Exp, upper), lower);
+                        true -> negate_guard_env(guard_test_env(Tab, Exp, upper), lower);
                         false -> Default
                     end;
-                % `not G` can only hold outside of what G accepts
-                upper -> negate_guard_env(guard_test_env(Exp, lower), upper)
+                % `not G` can only hold outside of what G accepts; a negated test was evaluated
+                % without raising (T#r.f is still read from the record)
+                upper ->
+                    {Env, Status} = negate_guard_env(guard_test_env(Tab, Exp, lower), upper),
+                    {intersect_envs(Env, eval_domain_env(Tab, Exp)), Status}
             end;
         {'atom', _Loc, true} ->
             {#{}, safe};
@@ -1424,34 +1816,18 @@ negate_guard_env({Env, Status}, Mode) ->
     end.
 
 % Best-effort recursive refine variable types from an equality guard Left == Right or Left =:= Right.
-% Variables in Left are refined to a possibly constant type of the corresponding part of Right, and vice versa.
+% Variables and record fields in Left are refined to a possibly constant type of the corresponding part of Right, and vice versa.
 % For == with numeric constants, we return unsafe because == has loose numeric comparison (1 == 1.0 is true).
--spec refine_eq_env(atom(), ast:exp(), ast:exp()) -> {constr:constr_env(), safe | unsafe}.
-refine_eq_env(Op, Left, Right) ->
-    case {Left, Right} of
-        {{var, _, {local_ref, X}}, _} ->
-            case ty_of_const_exp(Right) of
-                {ok, Ty} ->
-                    case eq_status(Op, Ty) of
-                        safe -> {#{{local_ref, X} => Ty}, safe};
-                        unsafe -> {#{}, unsafe}
-                    end;
-                error -> {#{}, unsafe}
-            end;
-        {_, {var, _, {local_ref, X}}} ->
-            case ty_of_const_exp(Left) of
-                {ok, Ty} ->
-                    case eq_status(Op, Ty) of
-                        safe -> {#{{local_ref, X} => Ty}, safe};
-                        unsafe -> {#{}, unsafe}
-                    end;
-                error -> {#{}, unsafe}
-            end;
-        {{tuple, _, LeftElems}, {tuple, _, RightElems}}
+-spec refine_eq_env(symtab:t(), '=:=' | '==', ast:exp(), ast:exp()) -> {constr:constr_env(), safe | unsafe}.
+refine_eq_env(Tab, Op, Left, Right) ->
+    case {guard_target(Tab, Left), guard_target(Tab, Right), Left, Right} of
+        {{ok, X}, _, _, _} -> eq_target_env(Op, X, Right);
+        {_, {ok, X}, _, _} -> eq_target_env(Op, X, Left);
+        {_, _, {tuple, _, LeftElems}, {tuple, _, RightElems}}
                 when length(LeftElems) =:= length(RightElems) ->
             lists:foldl(
                 fun({L, R}, {EnvAcc, StatusAcc}) ->
-                    {Env, Status} = refine_eq_env(Op, L, R),
+                    {Env, Status} = refine_eq_env(Tab, Op, L, R),
                     {intersect_envs(Env, EnvAcc), merge_status(Status, StatusAcc)}
                 end,
                 {#{}, safe},
@@ -1464,10 +1840,21 @@ refine_eq_env(Op, Left, Right) ->
             end
     end.
 
+-spec eq_target_env('=:=' | '==', guard_target(), ast:exp()) -> {constr:constr_env(), safe | unsafe}.
+eq_target_env(Op, {X, Wrap}, ConstExp) ->
+    case ty_of_const_exp(ConstExp) of
+        {ok, Ty} ->
+            case eq_status(Op, Ty) of
+                safe -> {#{{local_ref, X} => Wrap(Ty)}, safe};
+                unsafe -> {#{}, unsafe}
+            end;
+        error -> {#{}, unsafe}
+    end.
+
 % For =:= (strict equality), refinement is always safe.
 % For == (loose equality), refinement is unsafe when the constant holds a number,
 % because == treats integers and floats as equal (e.g. {1, a} == {1.0, a}).
--spec eq_status(atom(), ast:ty()) -> safe | unsafe.
+-spec eq_status('=:=' | '==', ast:ty()) -> safe | unsafe.
 eq_status('=:=', _) -> safe;
 eq_status('==', Ty) ->
     case has_number(Ty) of
@@ -1482,29 +1869,33 @@ has_number({cons, H, T}) -> has_number(H) orelse has_number(T);
 has_number(_) -> false.
 
 % Returns the type of a constant (variable-free) expression, or error if not constant.
--spec ty_of_const_exp(ast:exp()) -> t:opt(ast:ty()).
+-spec ty_of_const_exp(ast:exp() | ast:pat()) -> t:opt(ast:ty()).
 ty_of_const_exp(E) ->
     case E of
         {'atom', _, A} -> {ok, {singleton, A}};
         {'integer', _, I} -> {ok, {singleton, I}};
         {'char', _, C} -> {ok, {singleton, C}};
         {'string', _, S} -> {ok, string_to_cons_ty(S)};
+        % PRECISION we could also take the pattern form {op, _, '-', [{'integer', _, I}]}
+        %   2026-10-23 albsch
         {op, _, '-', {'integer', _, I}} -> {ok, {singleton, -I}};
         {nil, _} -> {ok, {empty_list}};
         {tuple, _, Elems} ->
             TysOpt = lists:map(fun ty_of_const_exp/1, Elems),
-            case lists:all(fun(R) -> R =/= error end, TysOpt) of
-                true -> {ok, {tuple, lists:map(fun({ok, T}) -> T end, TysOpt)}};
+            Tys = [T || {ok, T} <- TysOpt],
+            case length(Tys) =:= length(TysOpt) of
+                true -> {ok, {tuple, Tys}};
                 false -> error
             end;
         _ -> error
     end.
 
+-spec merge_status(safe | unsafe, safe | unsafe) -> safe | unsafe.
 merge_status(safe, safe) -> safe;
 merge_status(_, _) -> unsafe.
 
 % {var,{loc,"test_files/tycheck_simple.erl",202,16},{qref,erlang,is_integer,1}} for {'Y',0} and args []: {#{},unsafe}
--spec var_test_env(ast:guard_test(), ast:local_varname(), [ast:guard_test()]) ->
+-spec var_test_env(ast:exp(), ast:local_varname(), [ast:exp()]) ->
           {constr:constr_env(), safe | unsafe}.
 var_test_env(FunExp, X, RestArgs) ->
     Default = {#{}, unsafe},

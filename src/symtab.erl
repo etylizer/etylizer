@@ -8,6 +8,7 @@
 
 -export_type([
     t/0,
+    ty_key/0,
     fun_env/0,
     ty_env/0,
     op_env/0
@@ -25,7 +26,11 @@
     extend_symtab_with_module_list/4,
     dump_symtab/2, overlay_symtab/2,
     get_types/1,
-    get_variances/1
+    get_variances/1,
+    has_any_nominals/1,
+    is_nominal/2,
+    get_nominals/1,
+    ref_to_key/1
 ]).
 
 -ifdef(TEST). % for tally tests
@@ -47,7 +52,8 @@
               types :: ty_env(),
               modules :: mod_env(),
               gradual = dynamic :: feature_flags:gradual_typing_mode(),
-              variances = undefined :: undefined | subst:variance_cache()
+              variances = undefined :: undefined | subst:variance_cache(),
+              nominals :: sets:set(ty_key())
 }).
 
 -type t() :: #tab{}.
@@ -57,6 +63,21 @@ get_types(#tab{types = Types}) -> Types.
 
 -spec get_variances(t()) -> undefined | subst:variance_cache().
 get_variances(#tab{variances = Variances}) -> Variances.
+
+-spec ref_to_key(ast:ty_ref()) -> ty_key().
+ref_to_key({ty_ref, M, N, A}) -> {ty_key, M, N, A};
+ref_to_key({ty_qref, M, N, A}) -> {ty_key, M, N, A}.
+
+-spec has_any_nominals(t()) -> boolean().
+has_any_nominals(Tab) ->
+    sets:size(Tab#tab.nominals) > 0.
+
+-spec is_nominal(ast:ty_ref(), t()) -> boolean().
+is_nominal(Ref, Tab) ->
+    sets:is_element(ref_to_key(Ref), Tab#tab.nominals).
+
+-spec get_nominals(t()) -> sets:set(ty_key()).
+get_nominals(#tab{nominals = Nominals}) -> Nominals.
 
 -spec dump_symtab(string(), t()) -> ok.
 dump_symtab(Msg, Tab) ->
@@ -119,11 +140,7 @@ lookup_ty(Ref, Loc, Tab) ->
 
 -spec find_ty(ast:ty_ref(), t()) -> t:opt(ast:ty_scheme()).
 find_ty(Ref, Tab) ->
-    TyRef = case Ref of
-                {ty_ref, M, N, A} -> {ty_key, M, N, A};
-                {ty_qref, M, N ,A} -> {ty_key, M, N, A}
-            end ,
-    maps:find(TyRef, Tab#tab.types).
+    maps:find(ref_to_key(Ref), Tab#tab.types).
 
 -spec symbols_for_module(atom(), t()) -> [{ref, atom(), arity()}].
 symbols_for_module(Mod, Tab) ->
@@ -139,7 +156,7 @@ symbols_for_module(Mod, Tab) ->
         ).
 
 -spec empty() -> t().
-empty() -> #tab { funs = #{}, ops = #{}, types = #{}, modules = #{} }.
+empty() -> #tab { funs = #{}, ops = #{}, types = #{}, modules = #{}, nominals = sets:new() }.
 
 -spec std_symtab(paths:search_path(), t(), feature_flags:gradual_typing_mode()) -> t().
 std_symtab(SearchPath, OverlaySymtab, Gradual) ->
@@ -147,7 +164,8 @@ std_symtab(SearchPath, OverlaySymtab, Gradual) ->
     case persistent_term:get(std_symtab_cache, undefined) of
         {CacheKey, CachedTab} ->
             ?LOG_DEBUG("Using cached standard symtab"),
-            CachedTab;
+            % a persistent term has no type: the table that was put there under this key
+            ?assert_type(CachedTab, t());
         _ ->
             Tab = build_std_symtab(SearchPath, OverlaySymtab, Gradual),
             persistent_term:put(std_symtab_cache, {CacheKey, Tab}),
@@ -166,7 +184,7 @@ build_std_symtab(SearchPath, OverlaySymtab, Gradual) ->
         lists:foldl(fun({Name, Arity, T}, Map) -> maps:put({Name, Arity}, T, Map) end,
                     #{},
                     stdtypes:builtin_ops()),
-    Tab = #tab { funs = Funs, ops = Ops, types = #{}, modules = #{}, gradual = Gradual },
+    Tab = #tab { funs = Funs, ops = Ops, types = #{}, modules = #{}, gradual = Gradual, nominals = sets:new() },
     ExtTab = extend_symtab_with_module_list(Tab, SearchPath, [erlang], OverlaySymtab),
     % Merge overlay types into the main symtab so they are available for type resolution
     ExtTab2 = ExtTab#tab { types = maps:merge(ExtTab#tab.types, OverlaySymtab#tab.types) },
@@ -192,22 +210,26 @@ overlay_symtab(OverlayForms, Tab0) ->
 -spec overlay_process_form(ast:form(), t(), atom() | undefined) -> t().
 overlay_process_form({attribute, _, spec, Name, Arity, T, _}, Tab, _ModuleName) ->
     overlay_add_spec(Name, Arity, T, Tab);
-overlay_process_form({attribute, _, type, _Visibility, {Name, TyScm = {ty_scheme, TyVars, _}}}, Tab, ModuleName) when ModuleName =/= undefined ->
+overlay_process_form({attribute, _, type, Visibility, {Name, TyScm = {ty_scheme, TyVars, _}}}, Tab, ModuleName) when ModuleName =/= undefined ->
     Arity = length(TyVars),
-    overlay_add_type(ModuleName, Name, Arity, TyScm, Tab);
+    overlay_add_type(ModuleName, Name, Arity, TyScm, Visibility, Tab);
 overlay_process_form(_, Tab, _ModuleName) -> Tab.
 
 -spec overlay_add_spec(atom(), arity(), ast:ty_scheme(), t()) -> t().
 overlay_add_spec(Name, Arity, T, Tab) ->
     ?LOG_DEBUG("Overlay added for ~w/~p", Name, Arity),
-    [Module, FunName] = string:split(atom_to_list(Name), ":"),
+    [Module, FunName] = ?assert_pattern([_, _], string:split(atom_to_list(Name), ":")),
     Tab#tab { funs = maps:put(create_ref_tuple({qref, list_to_atom(Module)}, list_to_atom(FunName), Arity), T, Tab#tab.funs) }.
 
--spec overlay_add_type(atom(), atom(), arity(), ast:ty_scheme(), t()) -> t().
-overlay_add_type(ModuleName, Name, Arity, TyScm, Tab) ->
+-spec overlay_add_type(atom(), atom(), arity(), ast:ty_scheme(), atom(), t()) -> t().
+overlay_add_type(ModuleName, Name, Arity, TyScm, Visibility, Tab) ->
     Key = {ty_key, ModuleName, Name, Arity},
     ?LOG_DEBUG("Overlay type added: ~w/~p", Name, Arity),
-    Tab#tab { types = maps:put(Key, TyScm, Tab#tab.types) }.
+    Tab1 = Tab#tab { types = maps:put(Key, TyScm, Tab#tab.types) },
+    case Visibility of
+        nominal -> Tab1#tab { nominals = sets:add_element(Key, Tab1#tab.nominals) };
+        _ -> Tab1
+    end.
 
 -type ref() :: ref | {qref, ModuleName::atom()}.
 
@@ -229,8 +251,12 @@ is_exported(Forms, Name, Arity) ->
                 {attribute, _, export, Exports} ->
                     lists:member({Name, Arity}, Exports);
                 {attribute, _, compile, export_all} -> true;
-                {attribute, _, compile, Opts} when is_list(Opts) ->
-                    lists:member(export_all, Opts);
+                {attribute, _, compile, Opts} ->
+                    % the options of a compile attribute are any term
+                    case utils:proper_list(Opts) of
+                        {ok, L} -> lists:member(export_all, L);
+                        error -> false
+                    end;
                 _ -> false
             end
         end, Forms).
@@ -266,12 +292,13 @@ extend_symtab_internal(Filename, Forms, RefType, Tab, OverlaySymtab) ->
     % in the checked module no overlay spec may miss its target
     case RefType of
         ref ->
+            Defined = [{Name, Arity} || {function, _, Name, Arity, _, _} <- Forms],
             lists:foreach(
                 fun({qref, M, Name, Arity}) when M =:= ModuleName ->
-                        case lists:member({Name, Arity}, Unspecced) of
+                        case lists:member({Name, Arity}, Defined) of
                             true -> ok;
                             false ->
-                                errors:some_error("Overlay spec for ~w:~w/~w, which is not a function without spec",
+                                errors:some_error("Overlay spec for ~w:~w/~w, which is not defined",
                                                   [M, Name, Arity])
                         end;
                    (_) -> ok
@@ -303,13 +330,13 @@ extend_symtab_internal(Filename, Forms, RefType, Tab, OverlaySymtab) ->
 % A function scheme that is dynamic() in all arguments and the result.
 -spec dynamic_fun_scheme(arity()) -> ast:ty_scheme().
 dynamic_fun_scheme(Arity) ->
-    {ty_scheme, [], {fun_full, lists:duplicate(Arity, {predef, dynamic}), {predef, dynamic}}}.
+    {ty_scheme, [], {fun_full, [{predef, dynamic} || _ <- lists:seq(1, Arity)], {predef, dynamic}}}.
 
 -spec extend_process_form(ast:form(), t(), ref(), atom(), ast:forms(), t()) -> t().
 extend_process_form({attribute, _, spec, Name, Arity, T, _}, AccTab, RefType, ModuleName, Forms, OverlaySymtab) ->
     extend_add_spec(Name, Arity, T, AccTab, RefType, ModuleName, Forms, OverlaySymtab);
-extend_process_form({attribute, _, type, _, {Name, TyScm = {ty_scheme, TyVars, _}}}, AccTab, _RefType, ModuleName, _Forms, _OverlaySymtab) ->
-    extend_add_type(Name, TyScm, TyVars, ModuleName, AccTab);
+extend_process_form({attribute, _, type, Visibility, {Name, TyScm = {ty_scheme, TyVars, _}}}, AccTab, _RefType, ModuleName, _Forms, _OverlaySymtab) ->
+    extend_add_type(Name, TyScm, TyVars, ModuleName, Visibility, AccTab);
 extend_process_form({attribute, _, record, {RecordName, Fields}}, AccTab, RefType, ModuleName, _Forms, _OverlaySymtab) ->
     extend_add_record(RecordName, Fields, RefType, ModuleName, AccTab);
 extend_process_form(_, AccTab, _RefType, _ModuleName, _Forms, _OverlaySymtab) ->
@@ -317,8 +344,8 @@ extend_process_form(_, AccTab, _RefType, _ModuleName, _Forms, _OverlaySymtab) ->
 
 -spec extend_add_spec(atom(), arity(), ast:ty_scheme(), t(), ref(), atom(), ast:forms(), t()) -> t().
 extend_add_spec(Name, Arity, T, AccTab, RefType, ModuleName, Forms, OverlaySymtab) ->
-    Ref = create_ref_tuple(RefType, Name, Arity),
-    case find_fun(Ref, OverlaySymtab) of
+    % calls use an overlay spec, typing checks the function against its own spec
+    case find_fun({qref, ModuleName, Name, Arity}, OverlaySymtab) of
         error ->
             ?LOG_TRACE("No Overlay found for ~w:~w/~p", ModuleName, Name, Arity),
             % if we are in local ref mode,
@@ -327,15 +354,20 @@ extend_add_spec(Name, Arity, T, AccTab, RefType, ModuleName, Forms, OverlaySymta
             maybe_add_qref(RefType, ModuleName, Name, Arity, T, Forms, AccTab);
         {ok, OverlayT} ->
             ?LOG_DEBUG("Overlay found for ~w:~w/~p", ModuleName, Name, Arity),
-            AccTab#tab { funs = maps:put(create_ref_tuple(RefType, Name, Arity), OverlayT, AccTab#tab.funs) }
+            maybe_add_qref(RefType, ModuleName, Name, Arity, OverlayT, Forms, AccTab)
     end.
 
--spec extend_add_type(atom(), ast:ty_scheme(), [{atom(), any()}], atom(), t()) -> t().
-extend_add_type(Name, TyScm, TyVars, ModuleName, AccTab) ->
+-spec extend_add_type(atom(), ast:ty_scheme(), [{atom(), any()}], atom(), atom(), t()) -> t().
+extend_add_type(Name, TyScm, TyVars, ModuleName, Visibility, AccTab) ->
     Arity = length(TyVars),
-    AccTab#tab { types = maps:put({ty_key, ModuleName, Name, Arity}, TyScm, AccTab#tab.types) }.
+    Key = {ty_key, ModuleName, Name, Arity},
+    AccTab1 = AccTab#tab { types = maps:put(Key, TyScm, AccTab#tab.types) },
+    case Visibility of
+        nominal -> AccTab1#tab { nominals = sets:add_element(Key, AccTab1#tab.nominals) };
+        _ -> AccTab1
+    end.
 
--spec extend_add_record(atom(), list(), ref(), atom(), t()) -> t().
+-spec extend_add_record(atom(), [ast:record_field()], ref(), atom(), t()) -> t().
 extend_add_record(RecordName, Fields, RefType, ModuleName, AccTab) ->
     RecordTy = ety_records:record_ty_from_decl(RecordName, Fields),
     RecTypeName = ety_records:record_type_name(RecordName),
@@ -408,11 +440,12 @@ traverse_module_list(_, Symtab, [], _) ->
     {t(), [ast:mod_name()]}.
 % Gradual mode and overlay are the same for a whole run and part of the cache stamp.
 module_contribution(Entry = {_, Filename, _}, Module, Gradual, OverlaySymtab) ->
-    symtab_cache:cached({module, Filename, parse_kind(Entry)}, fun() ->
+    % the cache holds terms: under this key what the fun below computes
+    ?assert_type(symtab_cache:cached({module, Filename, parse_kind(Entry)}, fun() ->
         Forms = retrieve_forms_for_source(Entry),
         Contribution = extend_symtab(Filename, Forms, Module, (empty())#tab{gradual = Gradual}, OverlaySymtab),
         {{Contribution, ast_utils:referenced_modules_via_types(Forms)}, [Filename | parse_cache:headers(Filename)]}
-    end).
+    end), {t(), [ast:mod_name()]}).
 
 -spec merge_contribution(t(), t()) -> t().
 merge_contribution(Tab, Contribution) ->

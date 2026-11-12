@@ -3,7 +3,7 @@
 %%
 %% SPDX-License-Identifier: Apache-2.0
 %%
-%% Copyright Ericsson AB 2000-2025. All Rights Reserved.
+%% Copyright Ericsson AB 2000-2026. All Rights Reserved.
 %%
 %% Licensed under the Apache License, Version 2.0 (the "License");
 %% you may not use this file except in compliance with the License.
@@ -39,7 +39,7 @@
 %% Note that as the order of the keys is undefined we may freely
 %% reorder keys within in a bucket.
 
--module(sets2).
+-module(sets).
 -moduledoc """
 Sets are collections of elements with no duplicate elements.
 
@@ -78,6 +78,7 @@ representations.
 - `from_list/1`
 - `intersection/1`
 - `intersection/2`
+- `is_disjoint/2`
 - `is_element/2`
 - `is_empty/1`
 - `is_equal/2`
@@ -110,7 +111,7 @@ representations.
 > true
 > ```
 
-## See Also
+### See Also
 
 `m:gb_sets`, `m:ordsets`
 """.
@@ -143,7 +144,6 @@ representations.
 
 %%------------------------------------------------------------------------------
 
-
 -type seg()          :: tuple().
 -type segs(_Element) :: tuple().
 
@@ -162,29 +162,10 @@ representations.
 -type set() :: set(_).
 
 -doc "As returned by `new/0`.".
--opaque set(Element) :: #set{segs :: segs(Element)} | #{Element => ?VALUE}.
+-opaque set(Element) :: set_v1(Element) | set_v2(Element).
 
-% ADDED TYPE SPECS
--spec canonicalize_v2(set(Element)) -> set(Element).
--spec is_disjoint_1(map(), maps:iterator(_Element, ?VALUE)) -> boolean().
--spec is_subset_1(map(), maps:iterator(_Element, ?VALUE)) -> boolean().
--spec fold_1(fun((Element, Acc) -> Acc), Acc, maps:iterator(Element, ?VALUE)) -> Acc.
--spec fold_set(fun((_Element, Acc) -> Acc), Acc, #set{}) -> Acc.
--spec fold_bucket(fun((Element, Acc) -> Acc), Acc, [Element]) -> Acc.
--spec filter_bucket(fun((Element) -> boolean()), [Element], [Element], non_neg_integer()) -> {[Element], non_neg_integer()}.
--spec put_bucket_s(segs(Element), non_neg_integer(), [Element]) -> segs(Element).
--spec intersection_heuristic( maps:iterator(Element, ?VALUE), [Element], [Element], integer(), #{Element => []}, #{Element => []}) -> #{Element => []}.
--spec intersection_decided(maps:iterator(Element, ?VALUE), #{Element => V}, #{Element => V}) -> #{Element => V}.
--spec remove_keys([Element], #{Element => V}) -> #{Element => V}.
--spec subtract_heuristic(maps:iterator(Element, ?VALUE), [Element], [Element], integer(), #{Element => []}, #{Element => []}) -> #{Element => []}.
--spec subtract_decided(maps:iterator(K, ?VALUE), #{K => []}, #{K => []}) -> #{K => []}.
--spec fold_segs(fun((Element, Acc) -> Acc), Acc, segs(Element), non_neg_integer()) -> Acc.
--spec fold_seg(fun((_Element, Acc) -> Acc), Acc, seg(), non_neg_integer()) -> Acc.
--spec filter_set(fun((_Element) -> boolean()), #set{}) -> #set{}.
--spec filter_seg_list( fun((_Element) -> boolean()), [seg()], [seg()], non_neg_integer()) -> {[seg()], non_neg_integer()}.
--spec filter_bkt_list(fun((Element) -> boolean()), [[Element]], [[Element]], non_neg_integer()) -> {[[Element]], non_neg_integer()}.
--spec get_bucket_s(segs(Element), non_neg_integer()) -> [Element].
-% ADDED TYPE SPECS
+-type set_v1(Element) :: #set{segs :: segs(Element)}.
+-type set_v2(Element) :: #{Element => ?VALUE}.
 
 %%------------------------------------------------------------------------------
 
@@ -222,8 +203,7 @@ new(Opts) ->
     case proplists:get_value(version, Opts, 2) of
         1 ->
             Empty = mk_seg(?seg_size),
-            %#set{empty = Empty, segs = {Empty}}; CHANGE
-            #set{size = 0, n = ?seg_size,maxn = ?seg_size,bso = ?seg_size div 2, exp_size = ?exp_size, con_size = ?con_size, empty = Empty, segs = {Empty}};
+            #set{empty = Empty, segs = {Empty}};
         2 -> new()
     end.
 
@@ -347,9 +327,9 @@ of one set is also a member of the other set; otherwise, returns `false`.
 ```erlang
 1> Empty = sets:new().
 2> S = sets:from_list([a,b]).
-3> sets:is_equal(S, S)
+3> sets:is_equal(S, S).
 true
-4> sets:is_equal(S, Empty)
+4> sets:is_equal(S, Empty).
 false
 5> OldSet = sets:from_list([a,b], [{version,1}]).
 6> sets:is_equal(S, OldSet).
@@ -489,8 +469,8 @@ del_element(E, #set{}=S0) ->
 %% update_bucket(Set, Slot, NewBucket) -> UpdatedSet.
 %%  Replace bucket in Slot by NewBucket
 -spec update_bucket(Set1, Slot, Bkt) -> Set2 when
-      Set1 :: set(Element),
-      Set2 :: set(Element),
+      Set1 :: set_v1(Element),
+      Set2 :: set_v1(Element),
       Slot :: non_neg_integer(),
       Bkt :: [Element].
 update_bucket(Set, Slot, NewBucket) ->
@@ -541,7 +521,7 @@ all sets, without duplicates.
 ```erlang
 1> S0 = sets:from_list([a,b,c,d]).
 2> S1 = sets:from_list([d,e,f]).
-3> S2 = sets:from_list([q,r])
+3> S2 = sets:from_list([q,r]).
 4> Sets = [S0, S1, S2].
 5> Union = sets:union(Sets).
 6> lists:sort(sets:to_list(Union)).
@@ -644,7 +624,7 @@ elements that are present in all sets.
 ```erlang
 1> S0 = sets:from_list([a,b,c,d]).
 2> S1 = sets:from_list([d,e,f]).
-3> S2 = sets:from_list([q,r])
+3> S2 = sets:from_list([q,r]).
 4> Sets = [S0, S1, S2].
 5> sets:to_list(sets:intersection([S0, S1, S2])).
 []
@@ -672,7 +652,7 @@ Returns `true` if `Set1` and `Set2` are disjoint; otherwise, returns
 
 Two sets are disjoint if they have no elements in common.
 
-This function is equivalent to `sets:intersection(Set1, Set2) =:= []`,
+This function is equivalent to `sets:is_empty(sets:intersection(Set1, Set2))`,
 but faster.
 
 ## Examples
@@ -680,7 +660,7 @@ but faster.
 ```erlang
 1> S0 = sets:from_list([a,b,c,d]).
 2> S1 = sets:from_list([d,e,f]).
-3> S2 = sets:from_list([q,r])
+3> S2 = sets:from_list([q,r]).
 4> sets:is_disjoint(S0, S1).
 false
 5> sets:is_disjoint(S1, S2).
@@ -721,7 +701,8 @@ is_disjoint_1(Set, Iter) ->
     end.
 
 -doc """
-Returns the elements of `Set1` that are not elements in `Set2`.
+Returns a new set containing the elements of `Set1`
+that are not elements in `Set2`.
 
 ## Examples
 
@@ -930,13 +911,13 @@ value, with `true` being equivalent to `{true, Elem}`.
 
 ```erlang
 filtermap(Fun, Set1) ->
-    sets:from_list(lists:filtermap(Fun, Set1)).
+    sets:from_list(lists:filtermap(Fun, sets:to_list(Set1))).
 ```
 
 ## Examples
 
 ```erlang
-1> S = sets:from_list([2,4,5,6,8,9])
+1> S = sets:from_list([2,4,5,6,8,9]).
 2> F = fun(X) ->
            case X rem 2 of
                0 -> {true, X div 2};
@@ -969,7 +950,7 @@ filtermap(F, #set{}=D) when is_function(F, 1) ->
 %% get_slot(Hashdb, Key) -> Slot.
 %%  Get the slot.  First hash on the new range, if we hit a bucket
 %%  which has not been split use the unsplit buddy bucket.
--spec get_slot(set(E), E) -> non_neg_integer().
+-spec get_slot(set_v1(E), E) -> non_neg_integer().
 get_slot(T, Key) ->
     H = erlang:phash(Key, T#set.maxn),
     if
@@ -978,7 +959,7 @@ get_slot(T, Key) ->
     end.
 
 %% get_bucket(Hashdb, Slot) -> Bucket.
--spec get_bucket(set(), non_neg_integer()) -> term().
+-spec get_bucket(set_v1(_), non_neg_integer()) -> term().
 get_bucket(T, Slot) -> get_bucket_s(T#set.segs, Slot).
 
 %% fold_set(Fun, Acc, Dictionary) -> Dictionary.
@@ -1045,7 +1026,7 @@ put_bucket_s(Segs, Slot, Bkt) ->
     Seg = setelement(BktI, element(SegI, Segs), Bkt),
     setelement(SegI, Segs, Seg).
 
--spec maybe_expand(set(E)) -> set(E).
+-spec maybe_expand(set_v1(E)) -> set_v1(E).
 maybe_expand(T0) when T0#set.size + 1 > T0#set.exp_size ->
     T = maybe_expand_segs(T0),			%Do we need more segments.
     N = T#set.n + 1,				%Next slot to expand into
@@ -1063,14 +1044,14 @@ maybe_expand(T0) when T0#set.size + 1 > T0#set.exp_size ->
 	  segs = Segs2};
 maybe_expand(T) -> T#set{size = T#set.size + 1}.
 
--spec maybe_expand_segs(set(E)) -> set(E).
+-spec maybe_expand_segs(set_v1(E)) -> set_v1(E).
 maybe_expand_segs(T) when T#set.n =:= T#set.maxn ->
     T#set{maxn = 2 * T#set.maxn,
 	  bso  = 2 * T#set.bso,
 	  segs = expand_segs(T#set.segs, T#set.empty)};
 maybe_expand_segs(T) -> T.
 
--spec maybe_contract(set(E), non_neg_integer()) -> set(E).
+-spec maybe_contract(set_v1(E), non_neg_integer()) -> set(E).
 maybe_contract(T, Dc) when T#set.size - Dc < T#set.con_size,
 			   T#set.n > ?seg_size ->
     N = T#set.n,

@@ -215,3 +215,19 @@ case_33_fail(F, Ref) ->
       __Z = [{Ref, _}] -> __Z; _ -> error(badarg)
   end,
   Node.
+
+% The type tests cover term()
+-spec case_34(term()) -> ok.
+case_34(X) ->
+    case X of
+        _ when is_atom(X) -> ok;
+        _ when is_number(X) -> ok;
+        _ when is_bitstring(X) -> ok;
+        _ when is_list(X) -> ok;
+        _ when is_tuple(X) -> ok;
+        _ when is_map(X) -> ok;
+        _ when is_function(X) -> ok;
+        _ when is_pid(X) -> ok;
+        _ when is_port(X) -> ok;
+        _ when is_reference(X) -> ok
+    end.

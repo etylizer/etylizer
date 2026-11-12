@@ -8,7 +8,7 @@ variable_test() ->
     Ty = ty_parser:parse({var, alpha}),
     Tyy = ty_node:dump(Ty),
     #{{node, 1} := {node, _, {leaf, Any}, {leaf, Empty}}} = Tyy,
-    gt = ty_rec:compare(Any, Empty),
+    gt = dnf_ty_nominal:compare(Any, Empty),
     ok
   end).
 
@@ -221,3 +221,15 @@ parse_consed_self_ref_nosymtab_test() ->
         {tuple, [{list, tnamed(expr)},
                  {union, [{nonempty_list, tnamed(expr)}, {empty_list}]}]}}
     }).
+
+% a mu parsed again outside the queue reuses its node; the list in its body
+% expands to a mu with a fresh name, converting the body again gave another record
+reparse_mu_test() ->
+  global_state:with_new_state(fun() ->
+    X = {mu_var, 'X'},
+    L = {mu, X, u([{list, tint()}, {cons, tatom(), X}])},
+    Ty = ty_parser:parse(L),
+    Ty2 = ty_parser:parse(u([L, tatom()])),
+    true = Ty2 =:= ty_node:union(Ty, ty_parser:parse(tatom())),
+    ok
+  end).

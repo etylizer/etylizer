@@ -20,7 +20,7 @@
 %%
 %% %CopyrightEnd%
 %%
--module(proplists2).
+-module(proplists).
 -moduledoc(#{ authors => [~"Richard Carlsson <carlsson.richard@gmail.com>"] }).
 -moduledoc """
 Support functions for property lists.
@@ -56,27 +56,6 @@ different keys.
 -type property()  :: atom() | tuple().
 -doc "A list of `t:property/0`, also knows as a proplist.".
 -type proplist()  :: [property()].
-
--type key() :: term().
--type property_norm() :: atom() | {key(), term()}.
--type expansion() :: {property_norm(), [term()]}.
--type stage() :: {'aliases', [{key(), key()}]}
-               | {'negations', [{key(), key()}]}
-               | {'expand', [expansion()]}.
-
--spec get_keys([term()], sets:set(key())) -> sets:set(key()).
--spec substitute_aliases_1([{key(), key()}], term()) -> term().
--spec substitute_negations_1([{key(), key()}], term()) -> term().
--spec expand_0([expansion()], [term()]) -> [term()].
--spec expand_1(property_norm(), [term()], [term()]) -> [term()].
--spec expand_2(key(), property_norm(), [term()], [term()]) -> [term()].
--spec expand_3(key(), property_norm(), property_norm(), [term()], [term()]) -> [term()].
--spec key_uniq([expansion()]) -> [expansion()].
--spec key_uniq_1(property_norm(), [expansion()]) -> [expansion()].
--spec flatten([[A]]) -> [A]; ([etylizer:without(A, maybe_improper_list())]) -> [A]. % top-level flatten only
--spec apply_stages([term()], [stage()]) -> [term()].
--spec split([term()], #{key() => [term()]}, [term()]) -> {#{key() => [term()]}, [term()]}.
--spec maps_prepend(key(), term(), #{key() => [term()]}) -> #{key() => [term()]}.
 
 %% ---------------------------------------------------------------------
 

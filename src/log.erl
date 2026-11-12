@@ -23,6 +23,7 @@ num_level(L) ->
         trace2 -> 7
     end.
 
+-spec init(log_level() | default) -> ok.
 init(L) ->
     init(L, "etylizer.log").
 

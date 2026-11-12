@@ -164,21 +164,21 @@
 ]).
 
 % At several places, the AST contains lists with a fixed number of elements in a fixed order.
-% Such types are not expressible in erlang's type syntax. So we introduce various type synonyms
-% to clarify the intention.
+% Such types are not expressible in erlang's type syntax, so the type synonyms below are
+% built from etylizer:cons(Head, Tail), the type of a single list cell.
 
 % Lists with exactly three elements.
--type list3(T, U, V) :: [T | U | V, ...].
+-type list3(T, U, V) :: etylizer:cons(T, etylizer:cons(U, etylizer:cons(V, []))).
 
 % Lists with exactly two elements.
--type list2(T, U) :: [T | U, ...].
--type list2(T) :: [T, ...].
+-type list2(T, U) :: etylizer:cons(T, etylizer:cons(U, [])).
+-type list2(T) :: list2(T, T).
 
 % A list containing exactly one element of type T
--type list1(T) :: [T, ...].
+-type list1(T) :: etylizer:cons(T, []).
 
-% A list with first element of type T and then arbitrary manu Us.
--type list1star(T, U) :: [T | U, ...].
+% A list with first element of type T and then arbitrary many Us.
+-type list1star(T, U) :: etylizer:cons(T, [U]).
 
 
 % 8.1  Module Declarations and Forms
@@ -191,7 +191,13 @@
 -type file_form() :: {attribute, anno(), file, {File::string(), Line::integer()}}.
 -type mod_form() :: {attribute, anno(), module, Mod::atom()}.
 -type behavior_form() :: {attribute, anno(), behavior | behaviour, Mod::atom()}.
--type other_attr_form() :: {attribute, anno(), atom(), term()}.
+% An attribute with another name than those that have a form of their own. Without the
+% exclusion the payload of every attribute would be a term().
+-type other_attr_form() ::
+    {attribute, anno(),
+     etylizer:without(atom(), export | export_type | import | file | module | behavior | behaviour
+                              | spec | callback | record | type | opaque | nominal),
+     term()}.
 -type fun_decl() :: {function, anno(), Name::atom(), Arity::integer(), [fun_clause(), ...]}.
 -type fun_spec_q() :: {attribute, anno(), spec, {{Mod::atom(), Name::atom(), Arity::integer()},
                                                  [ty_full_fun(), ...]}}.
@@ -201,7 +207,7 @@
 -type record_decl() :: {attribute, anno(), record, {Name::atom(),[record_field()]}}.
 -type type_decl() :: {attribute, anno(), type|opaque|nominal, tydef()}.
 -type tydef() :: {Name::atom(), Rhs::ty(), [ty_var()]}.
--type wild_attr() :: {attribute, anno(), atom(), term()}.
+-type wild_attr() :: other_attr_form().
 -type eof() :: {eof, anno()}.
 -type warnings_errors() :: {error, any()} | {warning, any()}.
 
@@ -267,8 +273,8 @@
 
 % fun Name/Arity or fun Mod:Name/Arity
 -type exp_fun_ref() :: {'fun', anno(), {function, Name::atom(), Arity::integer()}}.
--type exp_fun_qref() :: {'fun', anno(), {function, Mod::rep_atom(), Name::rep_atom(),
-                                         Arity::rep_integer()}}.
+-type exp_fun_qref() :: {'fun', anno(), {function, Mod::rep_atom() | exp_var(), Name::rep_atom() | exp_var(),
+                                         Arity::rep_integer() | exp_var()}}.
 -type exp_fun() :: {'fun', anno(), {clauses, [fun_clause(), ...]}}.
 -type exp_named_fun() :: {named_fun, anno(), Name::atom(), [fun_clause(), ...]}.
 -type gen_funcall(T) :: {call, anno(), Fun::T, Args::[T]}.
@@ -277,7 +283,8 @@
 -type exp_funcall_q() :: gen_funcall_q(exp()).
 -type exp_if() :: {'if', anno(), [if_clause(), ...]}.
 -type exp_list_compr() :: {lc, anno(), exp(), [qualifier(), ...]}.
--type gen_map_create() :: {map, anno(), [map_assoc()]}.
+% only an update has := associations
+-type gen_map_create() :: {map, anno(), [map_assoc_opt()]}.
 -type exp_map_create() :: gen_map_create().
 -type gen_map_update(T) :: {map, anno(), T, [map_assoc()]}.
 -type exp_map_update() :: gen_map_update(exp()).
@@ -292,8 +299,9 @@
 -type exp_unop() :: gen_unop(exp()).
 -type exp_recv() :: {'receive', anno(), [case_clause(), ...]}.
 -type exp_recv_after() :: {'receive', anno(), [case_clause()], exp(), exps()}.
+% #r{_ = E} gives the fields that are not listed: its field is the variable _
 -type gen_record_create(T) :: {record, anno(), Name::atom(),
-                               [{record_field, anno(), Field::rep_atom(), T}]}.
+                               [{record_field, anno(), Field::rep_atom() | {var, anno(), '_'}, T}]}.
 -type exp_record_create() :: gen_record_create(exp()).
 -type gen_record_access(T) :: {record_field, anno(), T, Name::atom(), Field::rep_atom()}.
 -type exp_record_access() :: gen_record_access(exp()).
@@ -326,13 +334,16 @@
 -type qual_list_gen() ::  {generate, anno(), pat(), exp()}.
 -type qual_bitstring_gen() ::  {b_generate, anno(), pat(), exp()}.
 -type qual_bitstring_strict_gen() ::  {b_generate_strict, anno(), pat(), exp()}.
--type qual_map_gen() ::  {m_generate, anno(), KeyPat::pat(), ValPath::pat(), exp()}.
--type qual_map_strict_gen() ::  {m_generate_strict, anno(), KeyPat::pat(), ValPath::pat(), exp()}.
+% K := V <- M: the parser keeps the two patterns in one node
+-type qual_map_gen() ::  {m_generate, anno(), {map_field_exact, anno(), KeyPat::pat(), ValPat::pat()}, exp()}.
+-type qual_map_strict_gen() ::
+    {m_generate_strict, anno(), {map_field_exact, anno(), KeyPat::pat(), ValPat::pat()}, exp()}.
 -type generators() :: qual_zip_gen() | qual_list_strict_gen() | qual_list_gen() 
     | qual_bitstring_gen() | qual_bitstring_strict_gen() | qual_map_gen() | qual_map_strict_gen().
 -type qualifier() :: exp() | generators().
 
--type bitstring_tyspec() :: atom() | {atom(), Value::integer()}.
+% unit:N is the only specifier with a value
+-type bitstring_tyspec() :: atom() | {unit, pos_integer()}.
 -type bitstring_tyspec_list() :: [bitstring_tyspec(), ...].
 
 -type map_assoc_opt() :: {map_field_assoc, anno(), exp(), exp()}.
@@ -346,9 +357,8 @@
 -type catch_clause() :: {clause, anno(), Header::list1(catch_clause_header()), Guards::[guard()],
                          Body::exps()}.
 -type exc_type_pat() :: rep_atom() | pat_var().
--type catch_clause_header() :: {tuple, anno(),
-                                [X::exc_type_pat() | P::pat() | S::pat_var()]}.
-                                 % The order is always X, P, S.
+% the class, the value and the stacktrace
+-type catch_clause_header() :: {tuple, anno(), list3(exc_type_pat(), pat(), pat_var())}.
                                  % - X is the exception type (a variable or one of the atoms
                                  %   'throw', 'exit' or 'error'.
                                  % - P is a pattern
@@ -413,7 +423,16 @@
 % at compile time.
 -type ty_binop() :: {op, anno(), binop(), ty(), ty()}.
 -type ty_unop() :: {op, anno(), unop(), ty()}.
--type ty_predef() :: {type, anno(), atom(), [ty()]}.
+% A builtin type or alias by name, with its arguments. The names of the forms that have a type
+% of their own are not among them, apart from binary(), list() and #{}-less record() without
+% arguments: otherwise the arguments of every form would be a list of any types.
+-type ty_predef() ::
+    {type, anno(),
+     etylizer:without(atom(), binary | nil | list | 'fun' | bounded_fun | range | map | record | tuple
+                              | union | product | constraint | map_field_assoc | map_field_exact
+                              | field_type),
+     [ty()]}
+  | {type, anno(), binary | list | record, []}.
 -type ty_record() :: {type, anno(), record, list1star(Name::rep_atom(), ty_field())}.
 -type ty_field() :: {type, anno(), field_type, list2(Name::rep_atom(), ty())}.
 -type ty_remote() :: {remote_type, anno(), list3(Module::rep_atom(), Name::rep_atom(), Args::[ty()])}.

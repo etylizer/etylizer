@@ -3,6 +3,11 @@
 -include("log.hrl").
 -include_lib("eunit/include/eunit.hrl").
 
+% The terms of the tests have annotations made with erl_anno:new/1 and annotations written
+% as a tuple. dialyzer joins them into one type for the argument of check_against/2 and then
+% reports the opaque ones.
+-dialyzer(no_opaque).
+
 mk_full_spec() ->
     {Spec, _} = ast_check:parse_spec("src/ast_erl.erl"),
     Spec.
@@ -52,6 +57,94 @@ check_against(TyName, X) ->
     M = mk_full_spec(),
     Ty = ast_check:lookup_ty_or_die(M, ast_erl, TyName, []),
     true = ast_check:check_against_type(M, ast_erl, Ty, X).
+
+check_not_against(TyName, X) ->
+    M = mk_full_spec(),
+    Ty = ast_check:lookup_ty_or_die(M, ast_erl, TyName, []),
+    false = ast_check:check_against_type(M, ast_erl, Ty, X).
+
+% Lists with a fixed number of elements in a fixed order are checked exactly,
+% see the types list1, list2, list3 and list1star in ast_erl.erl
+check_fixed_lists_test() ->
+    A = erl_anno:new({1,1}),
+    Int = {type, A, integer, []},
+    Name = {atom, A, foo},
+    Product = {type, A, product, [Int]},
+    % two elements
+    check_against(ty_map_assoc, {type, A, map_field_assoc, [Int, Int]}),
+    check_not_against(ty_map_assoc, {type, A, map_field_assoc, [Int]}),
+    check_not_against(ty_map_assoc, {type, A, map_field_assoc, [Int, Int, Int]}),
+    % two elements of different types
+    check_against(ty_fun_unconstrained_ty, {type, A, 'fun', [Product, Int]}),
+    check_not_against(ty_fun_unconstrained_ty, {type, A, 'fun', [Product, {type, A, any}]}),
+    check_not_against(ty_fun_unconstrained_ty, {type, A, 'fun', [Product]}),
+    check_against(ty_field, {type, A, field_type, [Name, Int]}),
+    check_not_against(ty_field, {type, A, field_type, [Int, Name]}),
+    % three elements
+    check_against(ty_remote, {remote_type, A, [Name, Name, [Int]]}),
+    check_not_against(ty_remote, {remote_type, A, [Name, Name]}),
+    check_not_against(ty_remote, {remote_type, A, [Name, [Int], Name]}),
+    % one element followed by arbitrary many
+    check_against(ty_record, {type, A, record, [Name]}),
+    check_against(ty_record, {type, A, record, [Name, {type, A, field_type, [Name, Int]}]}),
+    check_not_against(ty_record, {type, A, record, []}),
+    check_not_against(ty_record, {type, A, record, [Name, Name]}).
+
+% a guard is a non-empty sequence of guard tests
+check_guard_test() ->
+    A = erl_anno:new({1,1}),
+    Test = {atom, A, true},
+    check_against(guard, [Test]),
+    check_against(guard, [Test, Test]),
+    check_not_against(guard, []).
+
+% fun M:F/A takes a variable in each of the three places
+check_fun_ref_test() ->
+    A = erl_anno:new({1,1}),
+    Mod = {atom, A, m}, Name = {atom, A, f}, Arity = {integer, A, 1}, Var = {var, A, 'X'},
+    check_against(exp, {'fun', A, {function, Mod, Name, Arity}}),
+    check_against(exp, {'fun', A, {function, Var, Name, Arity}}),
+    check_against(exp, {'fun', A, {function, Mod, Var, Var}}),
+    check_not_against(exp, {'fun', A, {function, Mod, Name, {atom, A, one}}}).
+
+% a map is created with =>, only an update has :=
+check_map_create_test() ->
+    A = erl_anno:new({1,1}),
+    One = {integer, A, 1},
+    check_against(exp, {map, A, [{map_field_assoc, A, One, One}]}),
+    check_not_against(exp, {map, A, [{map_field_exact, A, One, One}]}),
+    check_against(exp, {map, A, {var, A, 'M'}, [{map_field_exact, A, One, One}]}).
+
+% #r{_ = 1}: the field of a record creation is a name or the variable _
+check_record_create_test() ->
+    A = erl_anno:new({1,1}),
+    One = {integer, A, 1},
+    check_against(exp, {record, A, r, [{record_field, A, {atom, A, f}, One}]}),
+    check_against(exp, {record, A, r, [{record_field, A, {var, A, '_'}, One}]}),
+    check_not_against(exp, {record, A, r, [{record_field, A, {var, A, 'X'}, One}]}).
+
+% an attribute with a form of its own is not also an attribute of any other kind
+check_attribute_test() ->
+    A = erl_anno:new({1,1}),
+    check_against(form, {attribute, A, export, [{f, 1}]}),
+    check_not_against(form, {attribute, A, export, not_a_list}),
+    check_against(form, {attribute, A, import, {m, [{f, 1}]}}),
+    check_not_against(form, {attribute, A, import, m}),
+    check_against(form, {attribute, A, my_attribute, not_a_list}),
+    check_against(form, {attribute, A, compile, [export_all]}).
+
+% the generators of a comprehension, K := V <- M has its two patterns in one node
+check_generator_test() ->
+    A = erl_anno:new({1,1}),
+    X = {var, A, 'X'}, Y = {var, A, 'Y'}, M = {var, A, 'M'},
+    check_against(qualifier, {generate, A, X, M}),
+    check_against(qualifier, {m_generate, A, {map_field_exact, A, X, Y}, M}),
+    check_against(qualifier, {m_generate_strict, A, {map_field_exact, A, X, Y}, M}),
+    check_not_against(qualifier, {m_generate, A, X, Y, M}),
+    check_against(qualifier, {zip, A, [{generate, A, X, M}, {b_generate, A, Y, M}]}),
+    % a class, a value and a stacktrace
+    check_against(catch_clause, {clause, A, [{tuple, A, [{atom, A, throw}, X, Y]}], [], [X]}),
+    check_not_against(catch_clause, {clause, A, [{tuple, A, [{atom, A, throw}, X]}], [], [X]}).
 
 check_antidote1_test() ->
     Exp0 =

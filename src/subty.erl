@@ -12,6 +12,7 @@
 ]).
 -endif.
 
+-spec is_equivalent(symtab:t(), ast:ty(), ast:ty()) -> boolean().
 is_equivalent(SymTab, S, T) -> is_subty(SymTab, S,T) andalso is_subty(SymTab, T,S).
 
 -spec is_subty(symtab:t(), ast:ty(), ast:ty()) -> boolean().
@@ -24,6 +25,7 @@ is_subty(Symtab, T1, T2) ->
   ty_node:leq(H1, H2).
 
 
+-spec is_any(ast:ty(), symtab:t()) -> boolean().
 is_any(T, Sym) ->
   is_subty(Sym, stdtypes:tany(), T).
 

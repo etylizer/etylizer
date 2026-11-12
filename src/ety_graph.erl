@@ -86,9 +86,8 @@ topsort({G, _}) ->
             lists:map(fun(InternV) -> get_extern(G, InternV) end, L)
     end.
 
--spec to_list(graph(V), fun((V) -> string())) -> list({V, list(V)}).
-to_list(G = {_, Tab}, F) ->
-    ets:foldl(
-      fun({V, _}, Acc) -> [ {F(V), lists:map(F, out_neighbours(G, V))} | Acc ] end,
-      [],
-      Tab).
+% Every vertex with its neighbours, printed with F.
+-spec to_list(graph(V), fun((V) -> string())) -> [{string(), [string()]}].
+to_list(Graph = {G, _}, F) ->
+    [{F(V), lists:map(F, out_neighbours(Graph, V))}
+     || V <- lists:map(fun(InternV) -> get_extern(G, InternV) end, digraph:vertices(G))].

@@ -2,6 +2,7 @@
 
 -export([
     check_forms/6, check_forms/7,
+    collect_diagnostics/6, collect_diagnostics/7,
     new_ctx/3,
     new_ctx/7,
     resolve_disabled_funs/2
@@ -10,6 +11,8 @@
 
 -include("log.hrl").
 -include("typing.hrl").
+-include("metrics.hrl").
+-include("etylizer.hrl").
 
 -spec new_ctx(symtab:t(), symtab:t(), t:opt(ast_check:ty_map())) -> ctx().
 new_ctx(Tab, Overlay, Sanity) ->
@@ -56,8 +59,8 @@ resolve_disabled_funs(Feature, Forms) ->
 check_forms(Ctx, FileName, Forms, Only, Ignore, CheckExports) ->
     check_forms(Ctx, FileName, Forms, Only, Ignore, CheckExports, {sets:new(), sets:new()}).
 
--spec check_forms(ctx(), string(), ast:forms(), sets:set(string()), sets:set(string()), boolean(), {sets:set({atom(), arity()}), sets:set({atom(), arity()})}) -> [{ast:fun_with_arity(), error | timeout}].
-check_forms(Ctx, FileName, Forms, Only, Ignore, CheckExports, {CliNoExhaustiveness, CliNoRedundancy}) ->
+-spec prepare_check(ctx(), string(), ast:forms(), sets:set(string()), sets:set(string()), boolean(), {sets:set({atom(), arity()}), sets:set({atom(), arity()})}) -> {ctx(), [{ast:fun_decl(), ast:ty_scheme()}], [symtab:fun_env()]}.
+prepare_check(Ctx, FileName, Forms, Only, Ignore, CheckExports, {CliNoExhaustiveness, CliNoRedundancy}) ->
     case CheckExports orelse Ctx#ctx.gradual_typing_mode =:= infer of
         true ->
             ?LOG_DEBUG("Checking whether exported functions in ~s have a type spec", FileName),
@@ -79,14 +82,13 @@ check_forms(Ctx, FileName, Forms, Only, Ignore, CheckExports, {CliNoExhaustivene
             case Form of
                 {function, Loc, Name, Arity, _Args, _Body} ->
                     ModuleName = ast_utils:modname_from_path(FileName),
-                    Ref = {ref, Name, Arity},
                     RefStr = utils:sformat("~w/~w", Name, Arity),
                     QRefStr = utils:sformat("~w:~s", ModuleName, RefStr),
                     NameStr = utils:sformat("~w", Name),
                     ModStr = utils:sformat("~w", ModuleName),
                     X = {QRefStr, RefStr, NameStr, ModStr},
                     Check = should_check(QRefStr, RefStr, NameStr, ModStr, Only, Ignore),
-                    case symtab:find_fun(Ref, ExtTab) of
+                    case own_spec(Name, Arity, Forms, ExtTab) of
                         error ->
                             if
                               Check ->
@@ -137,7 +139,16 @@ check_forms(Ctx, FileName, Forms, Only, Ignore, CheckExports, {CliNoExhaustivene
     ?LOG_DEBUG("Checking ~w functions in ~s against their specs (~w environments)",
               length(FunsWithSpec), FileName, length(InferredTyEnvs)),
 
-    % if in report mode, continue type checking
+    {ExtCtx, FunsWithSpec, InferredTyEnvs}.
+
+-spec check_forms(ctx(), string(), ast:forms(), sets:set(string()), sets:set(string()), boolean(), {sets:set({atom(), arity()}), sets:set({atom(), arity()})}) -> [{ast:fun_with_arity(), error | timeout}].
+check_forms(Ctx, FileName, Forms, Only, Ignore, CheckExports, NoExhaustivenessRedundancy) ->
+    {ExtCtx, FunsWithSpec, InferredTyEnvs} =
+        prepare_check(Ctx, FileName, Forms, Only, Ignore, CheckExports, NoExhaustivenessRedundancy),
+    % A function with its own spec and an overlay spec is checked against both
+    Overlaid = [{Form, OverlayTy} || {Form = {function, _, Name, Arity, _, _}, Ty} <- FunsWithSpec,
+                                     {ok, OverlayTy} <- [symtab:find_fun({ref, Name, Arity}, ExtCtx#ctx.symtab)],
+                                     OverlayTy =/= Ty],
     ReportMode = Ctx#ctx.report_mode,
     Loop =
         fun Loop(Envs, Errs) ->
@@ -166,19 +177,43 @@ check_forms(Ctx, FileName, Forms, Only, Ignore, CheckExports, {CliNoExhaustivene
                     [E | RestEnvs] ->
                         case ReportMode of
                             early_exit ->
-                                case typing_check:check_all(ExtCtx, FileName, E, FunsWithSpec) of
+                                case typing_check:check_all(ExtCtx, FileName, E, FunsWithSpec ++ Overlaid) of
                                     ok -> []; % we are done
                                     {error, Msg} -> Loop(RestEnvs, [{E, Msg} | Errs])
                                 end;
                             report ->
+                                % metrics only: whether flagged functions type check without their flags
+                                ?METRIC_DO(typing_check:check_all_report(
+                                    ExtCtx#ctx { disable_exhaustiveness = sets:new(), disable_redundancy = sets:new() },
+                                    FileName, E, [D || D = {{function, _, N, A, _, _}, _} <- FunsWithSpec,
+                                                       sets:is_element({N, A}, ExtCtx#ctx.disable_exhaustiveness)
+                                                       orelse sets:is_element({N, A}, ExtCtx#ctx.disable_redundancy)],
+                                    " [unflagged]")),
                                 typing_check:check_all_report(ExtCtx, FileName, E, FunsWithSpec)
+                                    ++ typing_check:check_all_report(ExtCtx, FileName, E, Overlaid, " [overlay]");
+                            json ->
+                                errors:bug("check_forms/7 called in report mode json")
                         end
                 end
         end,
-    FailedFuns = Loop(InferredTyEnvs, []),
+    Result = Loop(InferredTyEnvs, []),
     ?LOG_INFO("Checking ~w functions in ~s against their specs finished successfully",
               length(FunsWithSpec), FileName),
-    FailedFuns.
+    Result.
+
+-spec collect_diagnostics(ctx(), string(), ast:forms(), sets:set(string()), sets:set(string()), boolean()) -> [diagnostics:diagnostic()].
+collect_diagnostics(Ctx, FileName, Forms, Only, Ignore, CheckExports) ->
+    collect_diagnostics(Ctx, FileName, Forms, Only, Ignore, CheckExports, {sets:new(), sets:new()}).
+
+-spec collect_diagnostics(ctx(), string(), ast:forms(), sets:set(string()), sets:set(string()), boolean(), {sets:set({atom(), arity()}), sets:set({atom(), arity()})}) -> [diagnostics:diagnostic()].
+collect_diagnostics(Ctx, FileName, Forms, Only, Ignore, CheckExports, NoExhaustivenessRedundancy) ->
+    {ExtCtx, FunsWithSpec, InferredTyEnvs} =
+        prepare_check(Ctx, FileName, Forms, Only, Ignore, CheckExports, NoExhaustivenessRedundancy),
+    ?LOG_DEBUG("Collecting diagnostics for ~w functions in ~s", length(FunsWithSpec), FileName),
+    case InferredTyEnvs of
+        [Env | _] -> typing_check:check_all_collect(ExtCtx, FileName, Env, FunsWithSpec);
+        [] -> []
+    end.
 
 % Whether the only and ignore options select a function for checking
 -spec should_check(atom(), ast:fun_with_arity(), sets:set(string()), sets:set(string())) -> boolean().
@@ -203,9 +238,18 @@ should_check(QRefStr, RefStr, NameStr, ModStr, Only, Ignore) ->
     end.
 
 % Creates a dynamic type scheme for a function with the given arity.
--spec dynamic_ty_scheme(non_neg_integer()) -> ast:ty_scheme().
+% The spec in the module itself, else the one from the symtab (overlay or dynamic()).
+% An overlay spec for a function with a spec applies to its calls.
+-spec own_spec(atom(), arity(), ast:forms(), symtab:t()) -> t:opt(ast:ty_scheme()).
+own_spec(Name, Arity, Forms, Tab) ->
+    case [T || {attribute, _, spec, N, A, T, _} <- Forms, N =:= Name, A =:= Arity] of
+        [T | _] -> {ok, T};
+        [] -> symtab:find_fun({ref, Name, Arity}, Tab)
+    end.
+
+-spec dynamic_ty_scheme(arity()) -> ast:ty_scheme().
 dynamic_ty_scheme(Arity) ->
-    DynamicArgs = lists:duplicate(Arity, {predef, dynamic}),
+    DynamicArgs = [{predef, dynamic} || _ <- lists:seq(1, Arity)],
     {ty_scheme, [], {fun_full, DynamicArgs, {predef, dynamic}}}.
 
 -spec check_exported_funs_specified(ast:forms()) -> ok | no_return().

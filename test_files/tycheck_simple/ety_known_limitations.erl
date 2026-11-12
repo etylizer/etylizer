@@ -63,3 +63,19 @@ case_30_fail(X) ->
 if_16_fail() ->
     if true -> S = foo end,
     S.
+
+% S has type foo | fail
+-spec if_20_fail(integer() | atom()) -> foo | bar.
+if_20_fail(X) ->
+    if is_integer(X) -> S = foo;
+       is_atom(X) -> S = fail
+    end,
+    S.
+
+% S has type foo | bar
+-spec if_21_fail(integer() | atom()) -> foo.
+if_21_fail(X) ->
+    if is_integer(X) -> S = foo;
+       is_atom(X) -> S = bar
+    end,
+    S.

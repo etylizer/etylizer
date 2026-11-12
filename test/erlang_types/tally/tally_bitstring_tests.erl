@@ -14,3 +14,20 @@ bitstring_01_test() ->
     [{tbitstring(), tbitstring()}],
     solutions(1)
   ).
+
+% binary <= alpha, alpha <= bitstring => alpha in [binary..bitstring]
+binary_leq_var_leq_bitstring_test() ->
+  test_tally(
+    [{tbinary(), v(alpha)}, {v(alpha), tbitstring()}],
+    [{
+      #{alpha => tbinary()},
+      #{alpha => tbitstring()}
+    }]
+  ).
+
+% bitstring <= alpha, alpha <= binary => unsatisfiable
+bitstring_leq_var_leq_binary_unsat_test() ->
+  test_tally(
+    [{tbitstring(), v(alpha)}, {v(alpha), tbinary()}],
+    solutions(0)
+  ).

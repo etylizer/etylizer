@@ -20,7 +20,7 @@ clean() ->
     ty_parser:clean(),
     ty_variable:clean().
 
--spec with_new_state(fun(() -> _)) -> _.
+-spec with_new_state(fun(() -> T)) -> T.
 with_new_state(Fun) ->
     clean(),
     init(),

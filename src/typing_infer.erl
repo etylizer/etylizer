@@ -51,18 +51,11 @@ infer(Ctx, Decls) ->
     PolyEnv = maps:map(fun(_Key, T) -> {ty_scheme, [], T} end, Env),
     Tab = Ctx#ctx.symtab,
     SimpCtx = constr_simp:new_ctx(Tab, PolyEnv, Ctx#ctx.sanity),
-    Funs =
-        lists:map(
-            fun({function, _Loc, Name, Arity, _, _}) ->
-                    utils:sformat("~w/~w", Name, Arity)
-            end,
-            Decls),
-
     SolveRes = simplify_and_log(SimpCtx, Cs, Ctx, Funs),
     ResultEnvs = build_result_envs(SolveRes, Decls, Env, Ctx),
     check_result_envs(ResultEnvs, Loc, FunsStr).
 
--spec simplify_and_log(term(), term(), ctx(), [string()]) -> term().
+-spec simplify_and_log(constr_simp:ctx(), constr:constrs(), ctx(), [string()]) -> error | nonempty_list(subst:t()).
 simplify_and_log(SimpCtx, Cs, Ctx, Funs) ->
     SimpConstrs = constr_simp:simp_constrs(SimpCtx, Cs),
     case Ctx#ctx.sanity of
@@ -76,7 +69,7 @@ simplify_and_log(SimpCtx, Cs, Ctx, Funs) ->
     Tab = Ctx#ctx.symtab,
     constr_solve:solve_simp_constrs(Tab, SimpConstrs, "inference").
 
--spec build_result_envs(term(), [ast:fun_decl()], map(), ctx()) -> [symtab:fun_env()].
+-spec build_result_envs(error | nonempty_list(subst:t()), [ast:fun_decl()], constr:constr_env(), ctx()) -> [symtab:fun_env()].
 build_result_envs(error, _Decls, _Env, _Ctx) -> [];
 build_result_envs(Substs, Decls, Env, Ctx) ->
     utils:map_flip(Substs,

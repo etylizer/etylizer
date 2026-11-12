@@ -3,4 +3,5 @@
 {assertion, asserted, {18, 16, "ed0a1f"}, assert_type, "integer()", test}.
 {assertion, asserted, {21, 20, "ed0a1f"}, assert_type, "integer()", test}.
 {assertion, asserted, {24, 15, "ca1cce"}, assert_type, "fun((integer()) -> integer())", test}.
+{assertion, asserted, {29, 14, "6123a8"}, assert_type, "integer()", test}.
 {assertion, another_module, {1, 1, "000000"}, assert_type, "integer()", test}.

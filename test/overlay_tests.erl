@@ -36,7 +36,21 @@ unspecced_function_test_() ->
     ?_timeout(fails_with("in use/0", check("unspecced.erl", ["spec_inc.erl"]))).
 
 function_with_spec_test_() ->
-    ?_timeout(fails_with("Overlay spec for unspecced:use/0", check("unspecced.erl", ["spec_use.erl"]))).
+    ?_timeout(?assertEqual(ok, check("unspecced.erl", ["spec_use.erl"]))).
+
+% the function is checked against its overlay spec, too
+overlay_spec_checked_test_() ->
+    ?_timeout(begin
+        ?assertEqual(ok, check("overlaid.erl", [])),
+        fails_with("in first/1", check("overlaid.erl", ["spec_overlaid.erl"]))
+    end).
+
+% calls of first/1 use the overlay spec, first/1 itself its own spec
+corrected_spec_test_() ->
+    ?_timeout(begin
+        fails_with("in get/1", check("corrected.erl", [])),
+        fails_with("in first/1", check("corrected.erl", ["spec_first.erl"]))
+    end).
 
 missing_function_test_() ->
     ?_timeout(fails_with("Overlay spec for unspecced:no_such_function/1", check("unspecced.erl", ["spec_missing.erl"]))).

@@ -40,6 +40,7 @@
   empty/0,
 
   all_variables/1,
+  is_ground/2,
   substitute/2,
 
   force_load/2
@@ -142,7 +143,7 @@ force_load(Reference = {node, Id}, Node) ->
   % update counter
   CurrentId = ets:update_counter(?ID, id, 0),
   case CurrentId < Id of
-    true -> 
+    true ->
       ets:update_counter(?ID, id, (Id - CurrentId + 1));
     _ -> ok
   end,
@@ -305,10 +306,16 @@ normalize(TyNode, FixedVariables) ->
 normalize(TyNode, FixedVariables, Cache) ->
   Ty = load(TyNode),
 
-  case Cache of
-    #{{Ty, FixedVariables} := Res} -> 
+  case {is_ground(TyNode, FixedVariables), Cache} of
+    % ground hand-over: nothing can be constrained, so the subtype check decides
+    {true, _} ->
+      case is_empty(TyNode) of
+        true -> {[[]], Cache};
+        false -> {[], Cache}
+      end;
+    {false, #{{Ty, FixedVariables} := Res}} -> 
       {Res, Cache};
-    _ -> 
+    {false, _} -> 
       % assume type is normalized and add to local cache
       {Result, LC_0} = dnf_ty_variable:normalize(Ty, FixedVariables, Cache#{{Ty, FixedVariables} => [[]]}),
 
@@ -330,6 +337,16 @@ normalize(TyNode, FixedVariables, Cache) ->
           {Normalized, Cache#{{Ty, FixedVariables} => Normalized}}
       end
   end.
+
+% A type whose variables are all monomorphic is ground for tallying: normalizing it
+% yields [[]] if it is empty and [] otherwise. The subtype check gives the same answer,
+% because it ignores variables (dnf_ty_variable:is_empty_line/2) and normalization
+% drops the monomorphic variables of a line that has no polymorphic ones
+% (dnf_ty_variable:normalize_line/3).
+% all_variables/1 is not cached, it walks everything reachable from the type.
+-spec is_ground(type(), monomorphic_variables()) -> boolean().
+is_ground(TyNode, FixedVariables) ->
+  lists:all(fun(V) -> maps:is_key(V, FixedVariables) end, sets:to_list(all_variables(TyNode))).
 
 -spec unparse(type(), ST) -> {ast_ty(), ST} when ST :: unparse_cache().
 unparse(Node = {node, Id}, Cache) -> 
@@ -431,12 +448,9 @@ topo_sccs(Bodies) ->
   KeySet = sets:from_list(maps:keys(Bodies)),
   Graph = build_internal_graph(Bodies, KeySet),
   RevGraph = tarjan:reverse_graph(Graph),
-  % tarjan widens Node to term(); we know inputs are type(), so re-tag.
-  {SCCsRaw, CondensedRaw} = tarjan:condense(Graph),
-  SCCs = ?assert_type(SCCsRaw, #{type() => type()}),
-  Condensed = ?assert_type(CondensedRaw, #{type() => [type()]}),
+  {SCCs, Condensed} = tarjan:condense(Graph),
   Components = group_components(SCCs),
-  Sort = ?assert_type(tarjan:dfs(Condensed), [type()]),
+  Sort = tarjan:dfs(Condensed),
   DefineOrder = [maps:get(R, Components) || R <- Sort],
   {DefineOrder, RevGraph}.
 
@@ -451,7 +465,7 @@ build_internal_graph(Bodies, KeySet) ->
 
 -spec group_components(#{type() => type()}) -> #{type() => [type()]}.
 group_components(SCCs) ->
-  Acc0 = ?assert_type(#{}, #{type() => [type()]}),
+  Acc0 = ?annotate_type(#{}, #{type() => [type()]}),
   lists:foldl(
     fun({N, Root}, Acc) ->
       maps:update_with(Root, fun(Ns) -> [N | Ns] end, [N], Acc)
@@ -463,7 +477,7 @@ group_components(SCCs) ->
                    #{type() => type_descriptor()}) ->
     {type(), #{type() => type_descriptor()}}.
 consing_pass(DefineOrder, RevGraph, StartRef, Bodies) ->
-  LocalDefs0 = ?assert_type(#{}, #{type_descriptor() => type()}),
+  LocalDefs0 = ?annotate_type(#{}, #{type_descriptor() => type()}),
   {S, B, _} = lists:foldl(
     fun(SCC, Acc) -> process_scc(SCC, RevGraph, Acc) end,
     {StartRef, Bodies, LocalDefs0},
@@ -534,7 +548,8 @@ redirect_to_existing(ToDefine, ExistingNode, StartRef, Bodies, LocalDefs, RevGra
       case maps:find(E, Acc) of
         error -> Acc;
         {ok, Val} ->
-          NewVal = utils:replace(Val, #{ToDefine => ExistingNode}),
+          % a node for a node: the descriptor stays one
+          NewVal = ?assert_type(utils:replace(Val, #{ToDefine => ExistingNode}), type_descriptor()),
           Acc#{E => dnf_ty_variable:reorder(NewVal)}
       end
     end, Bodies1, ContainedIn),
