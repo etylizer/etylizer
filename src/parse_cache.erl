@@ -167,5 +167,8 @@ really_parse_file(Kind, File, Opts) ->
 
     maybe_sanity_check(Kind, Opts#opts.sanity, File, RawForms),
 
-    Headers = lists:usort([F || {attribute, _, file, {F, _}} <- RawForms, F =/= File, filelib:is_regular(F)]),
+    Headers = case filename:extension(File) of
+        ".beam" -> []; % not preprocessed here
+        _ -> lists:usort([F || {attribute, _, file, {F, _}} <- RawForms, F =/= File, filelib:is_regular(F)])
+    end,
     {transform_forms(Kind, File, RawForms, Opts), Headers}.

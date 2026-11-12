@@ -31,6 +31,8 @@ parse_file(Path, Opts) ->
     if
         Ext == ".erl" ->
             do_parse_erl(Path, Opts);
+        Ext == ".beam" ->
+            parse_beam:parse_beam_file(Path);
         true ->
             ?LOG_ERROR("Invalid input file: ~s", Path),
             error

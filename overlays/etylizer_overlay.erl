@@ -255,3 +255,10 @@
 'file:change_mode'(_, _) -> error(overlay).
 -spec 'file:consult'(string()) -> {ok, [term()]} | {error, term()}.
 'file:consult'(_) -> error(overlay).
+
+% parse_beam reads these two chunks, the abstract code is in the format that ast_erl describes
+-spec 'beam_lib:chunks'(beam_lib:beam(), [debug_info | abstract_code]) ->
+    {ok, {module(), [{debug_info, {atom(), module(), term()} | no_debug_info}
+                     | {abstract_code, {atom(), [ast_erl:form()]} | no_abstract_code}]}}
+    | {error, beam_lib, beam_lib:chnk_rsn()}.
+'beam_lib:chunks'(_, _) -> error(overlay).

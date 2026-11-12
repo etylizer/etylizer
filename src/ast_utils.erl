@@ -15,7 +15,7 @@
 -include("etylizer.hrl").
 
 -spec modname_from_path(file:filename()) -> ast:mod_name().
-modname_from_path(Path) -> list_to_atom(filename:basename(Path, ".erl")).
+modname_from_path(Path) -> list_to_atom(filename:rootname(filename:basename(Path))).
 
 -spec no_loc(ast:loc()) -> ast:loc().
 no_loc(_) -> {loc, "", 0, 0}.
