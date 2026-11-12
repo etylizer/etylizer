@@ -68,6 +68,8 @@
 
 {module, diagnostics, #{file => "etylizer/src/diagnostics.erl", overlays => [{library, "../../overlays/etylizer_overlay.erl"}], timeout => 10000}}.
 
+{module, ast_parser, #{file => "etylizer/src/erlang_types/ast_parser.erl", overlays => [{library, "../../overlays/etylizer_overlay.erl"}], timeout => 10000}}.
+
 {module, constraint_set, #{file => "etylizer/src/erlang_types/constraint_set.erl", overlays => [{library, "../../overlays/etylizer_overlay.erl"}], timeout => 10000}}.
 
 {module, dnf_minimizer, #{file => "etylizer/src/erlang_types/dnf_minimizer.erl", overlays => [{library, "../../overlays/etylizer_overlay.erl"}], timeout => 10000}}.
@@ -97,6 +99,10 @@
 {module, feature_flags, #{file => "etylizer/src/erlang_types/feature_flags.erl", overlays => [{library, "../../overlays/etylizer_overlay.erl"}], timeout => 10000}}.
 
 {module, global_state, #{file => "etylizer/src/erlang_types/global_state.erl", overlays => [{library, "../../overlays/etylizer_overlay.erl"}], timeout => 10000}}.
+
+{module, parser_combinator, #{file => "etylizer/src/erlang_types/parser_combinator.erl", overlays => [{library, "../../overlays/etylizer_overlay.erl"}], timeout => 10000}}.
+
+{module, repl, #{file => "etylizer/src/erlang_types/repl.erl", overlays => [{library, "../../overlays/etylizer_overlay.erl"}], timeout => 10000}}.
 
 {module, tarjan, #{file => "etylizer/src/erlang_types/tarjan.erl", overlays => [{library, "../../overlays/etylizer_overlay.erl"}], timeout => 10000}}.
 

@@ -158,7 +158,7 @@
 
 -export([
     format_loc/1, to_loc/2, generated/2, generated_by/1, is_generated_by/2, source_loc/1, is_loc/1,
-    min_loc/2, leq_loc/2, is_predef_name/1, is_predef_alias_name/1,
+    min_loc/2, leq_loc/2, maybe_predef_name/1, is_predef_name/1, is_predef_alias_name/1,
     predef_name/1, predef_alias_name/1,
     local_varname_from_any_ref/1, get_fun_name/1, loc_exp/1
 ]).
@@ -515,6 +515,20 @@ predef_name(N) ->
 
 -spec is_predef_name(atom()) -> boolean().
 is_predef_name(N) -> predef_name(N) =/= error.
+
+-spec maybe_predef_name(atom()) -> {true, predef_name()} | false.
+maybe_predef_name(N) ->
+    case N of
+        any -> {true, any};
+        none -> {true, none};
+        pid -> {true, pid};
+        port -> {true, port};
+        reference -> {true, reference};
+        float -> {true, float};
+        integer -> {true, integer};
+        atom -> {true, atom};
+        _ -> false
+    end.
 
 % Predefined type aliases. They can be expanded away, but the expansion may contain other
 % predefined type aliases (see iolist for example).
