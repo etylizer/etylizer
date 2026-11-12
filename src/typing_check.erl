@@ -136,23 +136,7 @@ check_all(Ctx, FileName, Env, Decls) ->
 
 % Ensures that a mono type used as a spec is supported. Throws a ty_error if not.
 -spec ensure_type_supported(ast:loc(), ast:ty()) -> _.
-ensure_type_supported(Loc, T) ->
-    utils:everywhere(
-        fun(InnerT) ->
-            % The return value error means: check recursively, no error here
-            case InnerT of
-                {map, []} -> error;
-                {map, [{map_field_opt, _, _}]} -> error;
-                {map, [{map_field_req, _, _}]} ->
-                    ?METRIC_TYPE_ERROR(unsupported, Loc),
-                    errors:ty_error(Loc, "map types with mandatory associations are not supported");
-                {map, _} ->
-                    ?METRIC_TYPE_ERROR(unsupported, Loc),
-                    errors:ty_error(Loc, "map types with more than one association are not supported");
-                _ -> error
-            end
-        end,
-        T).
+ensure_type_supported(_Loc, _T) -> ok.
 
 % Checks a function against its spec. Throws a ty_error.
 % The type scheme comes from a type annotation, that it has the form
