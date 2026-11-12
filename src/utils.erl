@@ -8,10 +8,10 @@
 
 -export([
     quit/3, quit/2,
-    everywhere/2, everything/2,
+    everywhere/2, everywhere/3, everything/2, everything/3,
     error/2,
     is_string/1, is_char/1,
-    sformat/2, sformat/3, sformat/4,  sformat/6, sformat/5, sformat/7, sformat1/2,
+    sformat/2, sformat/3, sformat/4,  sformat/6, sformat/5, sformat/7, sformat1/2, proper_list/1,
     if_true/2,
     file_get_lines/1, set_add_many/2, assert_no_error/1,
     replicate/2,
@@ -57,18 +57,28 @@ sformat_raw(Msg, L) ->
 sformat(Msg, []) ->
     % we dont know whether we have no argument or a single argument "".
     try sformat_raw(Msg, [])
-    catch badarg:_:_ -> sformat_raw(Msg, [""])
+    catch error:badarg -> sformat_raw(Msg, [""])
     end;
 sformat(Msg, X) ->
     L = case io_lib:char_list(X) of
             true -> [X]; % we have a single string argument
             false ->
-                if
-                    is_list(X) -> X; % we have a list of arguments
-                    true -> [X]      % we have a single argument
+                case proper_list(X) of
+                    {ok, Args} -> Args; % we have a list of arguments
+                    error -> [X]        % we have a single argument
                 end
         end,
     sformat_raw(Msg, L).
+
+% is_list/1 also holds for an improper list, which is no list of arguments.
+-spec proper_list(term()) -> {ok, list()} | error.
+proper_list([]) -> {ok, []};
+proper_list([X | Xs]) ->
+    case proper_list(Xs) of
+        {ok, L} -> {ok, [X | L]};
+        error -> error
+    end;
+proper_list(_) -> error.
 
 -spec sformat1(string(), term()) -> string().
 sformat1(Msg, X1) -> sformat_raw(Msg, [X1]).
@@ -97,28 +107,42 @@ is_string(X) -> io_lib:char_list(X).
 -spec is_char(term()) -> boolean().
 is_char(X) -> is_string([X]).
 
-% Generically traverses the lists and tuples of a term
+% Generically traverses the lists, tuples and maps of a term
 % and performs replacements as demanded by the given function.
 % - If the function given returns {ok, X}, then the term is replaced
 %   by X, no further recursive traversal is done.
 % - If the function given returns {rec, X}, then the term is replaced
 %   by X, and recursive traversal is done.
 % - If the funtion returns error, then everywhere traverses the term recursively.
-% -spec everywhere(fun((term()) -> t:opt(term())), T) -> T.
-% we can't assert the result type T without scoped variables
--spec everywhere(fun((any()) -> {rec, any()} | t:opt(any())), any()) -> dynamic().
+% The result type cannot be more precise than term(): the function given would have to
+% preserve the type of every subterm, which needs rank-2 polymorphism. Use everywhere/3
+% for trees with a known node type.
+-spec everywhere(fun((term()) -> t:opt(term()) | {rec, term()}), term()) -> term().
 everywhere(F, T) ->
-    TransList = fun(L) -> lists:map(fun(X) -> everywhere(F, X) end, L) end,
     case F(T) of
-        error ->
-            case T of
-                X when is_list(X) -> TransList(X);
-                X when is_tuple(X) -> list_to_tuple(TransList(tuple_to_list(X)));
-                X when is_map(X) -> maps:from_list(TransList(maps:to_list(X)));
-                X -> X
-            end;
+        error -> everywhere_subterms(F, T);
         {ok, X} -> X;
         {rec, X} -> everywhere(F, X)
+    end.
+
+-spec everywhere_subterms(fun((term()) -> t:opt(term()) | {rec, term()}), term()) -> term().
+everywhere_subterms(F, [H | T]) when is_list(T) -> [everywhere(F, H) | everywhere_subterms(F, T)];
+everywhere_subterms(F, [H | T]) -> [everywhere(F, H) | everywhere(F, T)]; % improper list
+everywhere_subterms(F, X) when is_tuple(X) ->
+    list_to_tuple(lists:map(fun(E) -> everywhere(F, E) end, tuple_to_list(X)));
+everywhere_subterms(F, X) when is_map(X) ->
+    maps:from_list(lists:map(fun({K, V}) -> {everywhere(F, K), everywhere(F, V)} end, maps:to_list(X)));
+everywhere_subterms(_, X) -> X.
+
+% Like everywhere/2, but for trees whose structure is given by the Descend function,
+% which applies a function to the direct subnodes of a node. The function given is only
+% applied to nodes of type N and has to return such a node.
+-spec everywhere(fun((fun((N) -> N), N) -> N), fun((N) -> t:opt(N) | {rec, N}), N) -> N.
+everywhere(Descend, F, T) ->
+    case F(T) of
+        error -> Descend(fun(C) -> everywhere(Descend, F, C) end, T);
+        {ok, X} -> X;
+        {rec, X} -> everywhere(Descend, F, X)
     end.
 
 % Generically transforms the term given and collects all results T
@@ -126,20 +150,35 @@ everywhere(F, T) ->
 % {ok, T} collects T and stops recursion; {rec, T} collects T and continues recursion.
 -spec everything(fun((term()) -> t:opt(T) | {rec, T}), term()) -> [T].
 everything(F, T) ->
-    TransList = fun(L) -> lists:flatmap(fun(X) -> everything(F, X) end, L) end,
-    Recurse = fun() ->
-        case T of
-            X when is_list(X) -> TransList(X);
-            X when is_tuple(X) -> TransList(tuple_to_list(X));
-            X when is_map(X) -> TransList(maps:to_list(X));
-            _ -> []
-        end
-    end,
     case F(T) of
-        error -> Recurse();
+        error -> everything_subterms(F, T);
         {ok, X} -> [X];
-        {rec, X} -> [X | Recurse()]
+        {rec, X} -> [X | everything_subterms(F, T)]
     end.
+
+-spec everything_subterms(fun((term()) -> t:opt(T) | {rec, T}), term()) -> [T].
+everything_subterms(F, [H | T]) when is_list(T) -> everything(F, H) ++ everything_subterms(F, T);
+everything_subterms(F, [H | T]) -> everything(F, H) ++ everything(F, T); % improper list
+everything_subterms(F, X) when is_tuple(X) ->
+    lists:flatmap(fun(E) -> everything(F, E) end, tuple_to_list(X));
+everything_subterms(F, X) when is_map(X) ->
+    lists:flatmap(fun(E) -> everything(F, E) end, maps:to_list(X));
+everything_subterms(_, _) -> [].
+
+% Like everything/2, but for trees whose structure is given by the Children function.
+% The given function is only applied to nodes of type N, never to arbitrary subterms,
+% so it can match on the nodes precisely.
+-spec everything(fun((N) -> [N]), fun((N) -> t:opt(R) | {rec, R}), [N]) -> [R].
+everything(Children, F, Nodes) ->
+    lists:flatmap(
+        fun(N) ->
+            case F(N) of
+                error -> everything(Children, F, Children(N));
+                {ok, X} -> [X];
+                {rec, X} -> [X | everything(Children, F, Children(N))]
+            end
+        end,
+        Nodes).
 
 -spec if_true(boolean(), fun(() -> _T)) -> ok.
 if_true(B, Action) ->
@@ -267,7 +306,7 @@ assocs_find(K, L) ->
         {_Key, X} -> {ok, X}
     end.
 
--spec assocs_find_index(K, [{K, V}]) -> {ok, V, integer()} | error.
+-spec assocs_find_index(K, [{K, V}]) -> {ok, V, non_neg_integer()} | error.
 assocs_find_index(_, []) -> error;
 assocs_find_index(K, [{K2, V} | _]) when K =:= K2 -> {ok, V, 0};
 assocs_find_index(K, [_ | Rest]) ->
@@ -343,12 +382,14 @@ compare(Cmp, [T1 | Ts1], [T2 | Ts2]) ->
 %     false -> false
 %   end.
 
--spec replace(A, #{term() => term()}) -> A.
+% Replaces every {node, _} in Term that is a key of Mapping by its value. The result has
+% the type of Term when the values are nodes too, which the type of a term traversal
+% cannot say (rank-2 types needed): the caller asserts it.
+-spec replace(term(), #{term() => term()}) -> term().
 replace(Term, Mapping) ->
     replace_term(Term, Mapping).
 
--spec replace_term(dynamic(), #{term() => term()}) -> dynamic().
-%-spec replace_term(A, #{term() => term()}) -> A. % rank-2 types needed
+-spec replace_term(term(), #{term() => term()}) -> term().
 replace_term({node, _} = Ref, Mapping) ->
     case maps:find(Ref, Mapping) of
         {ok, NewTerm} -> NewTerm;
@@ -390,14 +431,9 @@ update_ets_from_map(EtsTable, LocalMap) ->
 %     {Result, NewT} = Fun({H, T}),
 %     map_with_context(Fun, NewT, [Result|Acc]).
 
--spec fold_with_context(Fun, Acc, List) -> Acc when
-    Fun :: fun(({Acc, H, T}) -> {NewAcc, NewT}),
-    Acc :: term(),
-    List :: [H],
-    H :: term(),
-    T :: [H],
-    NewAcc :: term(),
-    NewT :: [H].
+% Fun gets the accumulator, the head and the tail of the list, and returns the new accumulator
+% and the list to go on with.
+-spec fold_with_context(fun(({Acc, H, [H]}) -> {Acc, [H]}), Acc, [H]) -> Acc.
 fold_with_context(_Fun, Acc, []) ->
     Acc;
 fold_with_context(Fun, Acc, [H|T]) ->
@@ -406,6 +442,7 @@ fold_with_context(Fun, Acc, [H|T]) ->
 
 % transforms a tally:tally constraints to a config file which can be loaded in the tally_tests.erl tests
 % TODO free variables #74
+-spec format_tally_config([constr:simp_constr_subty()], sets:set(ast:ty_varname()), symtab:t()) -> io_lib:chars().
 format_tally_config(Constraints, FixedVars, Symtab) ->
     "[" ++ lists:join(",", [io_lib:format("{~p, ~p}", [S, T]) || {_, _, S, T} <- Constraints]) ++ "]." 
     ++ "\n" 

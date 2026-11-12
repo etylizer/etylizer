@@ -13,6 +13,74 @@
 'lists:foldl'(_, _, _) -> error(badarg).
 -spec 'lists:foldr'(fun((T, Acc) -> Acc), Acc, [T]) -> Acc.
 'lists:foldr'(_, _, _) -> error(badarg).
+% OTP: Maximum :: term(), Minimum :: term(); the result is one of the arguments
+-spec 'erlang:max'(A, B) -> A | B.
+'erlang:max'(_, _) -> error(overlay).
+-spec 'erlang:min'(A, B) -> A | B.
+'erlang:min'(_, _) -> error(overlay).
+% The process dictionary holds any terms. The specs of OTP name the value with a type variable
+% that nothing bounds from below, which the checker takes to be none().
+-spec 'erlang:get'(term()) -> term().
+'erlang:get'(_) -> error(overlay).
+
+-spec 'erlang:get'() -> [{term(), term()}].
+'erlang:get'() -> error(overlay).
+
+% argparse checks the command and the options at run time, and gives the values of the
+% arguments as terms
+-spec 'argparse:parse'([string()], map(), map()) -> {ok, #{atom() => term()}, [atom()], map()} | {error, term()}.
+'argparse:parse'(_, _, _) -> error(overlay).
+-spec 'argparse:help'(map(), map()) -> unicode:chardata().
+'argparse:help'(_, _) -> error(overlay).
+-spec 'argparse:format_error'(term()) -> unicode:chardata().
+'argparse:format_error'(_) -> error(overlay).
+
+-spec 'application:load'(atom()) -> ok | {error, term()}.
+'application:load'(_) -> error(overlay).
+
+% the value of a key of an application is any term
+-spec 'application:get_key'(atom(), atom()) -> undefined | {ok, term()}.
+'application:get_key'(_, _) -> error(overlay).
+
+% encodes any term, a term that has no JSON form is an error at run time
+-spec 'json:encode'(term()) -> iodata().
+'json:encode'(_) -> error(overlay).
+
+-spec 'maps:intersect_with'(fun((Key, Value, Value) -> Value), #{Key => Value}, #{Key => Value}) -> #{Key => Value}.
+'maps:intersect_with'(_, _, _) -> error(overlay).
+
+% with a stacktrace it never returns
+-spec 'erlang:raise'(error | exit | throw, term(), erlang:stacktrace()) -> no_return().
+'erlang:raise'(_, _, _) -> error(overlay).
+
+% write/1 writes latin1, a character above 255 is escaped: the text is an iolist
+-spec 'io_lib:write'(term()) -> iolist().
+'io_lib:write'(_) -> error(overlay).
+
+% erl_parse and erl_pp have their own types for the abstract format, ast_erl describes
+% the same terms
+-spec 'erl_parse:parse_exprs'([erl_scan:token()]) -> {ok, [ast_erl:exp()]} | {error, erl_parse:error_info()}.
+'erl_parse:parse_exprs'(_) -> error(overlay).
+-spec 'erl_parse:parse_form'([erl_scan:token()]) -> {ok, ast_erl:form()} | {error, erl_parse:error_info()}.
+'erl_parse:parse_form'(_) -> error(overlay).
+-spec 'erl_parse:map_anno'(fun((ast_erl:anno()) -> ast_erl:anno()), ast_erl:exp()) -> ast_erl:exp();
+                          (fun((ast_erl:anno()) -> ast_erl:anno()), ast_erl:pat()) -> ast_erl:pat().
+'erl_parse:map_anno'(_, _) -> error(overlay).
+-spec 'erl_pp:expr'(ast_erl:exp()) -> io_lib:chars().
+'erl_pp:expr'(_) -> error(overlay).
+-spec 'erl_pp:form'(ast_erl:form()) -> io_lib:chars().
+'erl_pp:form'(_) -> error(overlay).
+
+% in OTP the term is a variable of the spec with the bound term()
+-spec 'erl_parse:parse_term'([erl_scan:token()]) -> {ok, term()} | {error, erl_parse:error_info()}.
+'erl_parse:parse_term'(_) -> error(overlay).
+
+% evaluates any term, a term that is no expression is an error at run time
+-spec 'erl_eval:expr'(term(), map()) -> {value, term(), term()}.
+'erl_eval:expr'(_, _) -> error(overlay).
+
+-spec 'lists:mapfoldl'(fun((A, Acc) -> {B, Acc}), Acc, [A]) -> {[B], Acc}.
+'lists:mapfoldl'(_, _, _) -> error(badarg).
 -spec 'lists:map'
   (fun((A) -> B), nonempty_list(A)) -> nonempty_list(B);
   (fun((A) -> B), list(A)) -> list(B).
@@ -35,6 +103,27 @@
   (list(T)) -> list(T).
 'lists:usort'(_) -> error(overlay).
 
+% the elements are not smaller than the first one
+-spec 'lists:seq'
+  (pos_integer(), integer()) -> [pos_integer()];
+  (non_neg_integer(), integer()) -> [non_neg_integer()];
+  (integer(), integer()) -> [integer()].
+'lists:seq'(_, _) -> error(overlay).
+
+% counts from 1
+-spec 'lists:enumerate'([T]) -> [{pos_integer(), T}].
+'lists:enumerate'(_) -> error(overlay).
+
+-spec 'lists:unzip'
+  (nonempty_list({A, B})) -> {nonempty_list(A), nonempty_list(B)};
+  (list({A, B})) -> {list(A), list(B)}.
+'lists:unzip'(_) -> error(overlay).
+
+-spec 'lists:unzip3'
+  (nonempty_list({A, B, C})) -> {nonempty_list(A), nonempty_list(B), nonempty_list(C)};
+  (list({A, B, C})) -> {list(A), list(B), list(C)}.
+'lists:unzip3'(_) -> error(overlay).
+
 -spec 'lists:keysort'(1, [{K, V}]) -> [{K, V}].
 'lists:keysort'(1, _) -> error(overlay).
 
@@ -52,7 +141,7 @@
     (nonempty_list(_)) -> pos_integer().
 'erlang:length'(_List) -> error(overlay).
 
--spec 'erlang:tl'(nonempty_list(A)) -> A.
+-spec 'erlang:tl'(nonempty_list(A)) -> [A].
 'erlang:tl'(_List) -> error(overlay).
 
 -spec 'erlang:hd'(nonempty_list(A)) -> A.
@@ -71,11 +160,18 @@
 'string:split'(_, _, _) -> error(badarg).
 -spec 'string:slice'(string(), non_neg_integer(), non_neg_integer()) -> string().
 'string:slice'(_, _, _) -> error(badarg).
+% the pieces of the string, with the replacement between them
+-spec 'string:replace'(string(), string(), string(), all | leading | trailing) -> [string()].
+'string:replace'(_, _, _, _) -> error(badarg).
+-spec 'string:trim'(string()) -> string().
+'string:trim'(_) -> error(badarg).
 -spec 'string:trim'(string(), leading | trailing | both) -> string().
 'string:trim'(_, _) -> error(badarg).
+-spec 'string:trim'(string(), leading | trailing | both, [char()]) -> string().
+'string:trim'(_, _, _) -> error(badarg).
 -spec 'os:cmd'(string()) -> string().
 'os:cmd'(_) -> error(badarg).
--spec 'file:write_file'(string(), string()) -> _.
+-spec 'file:write_file'(string(), string() | iodata()) -> _.
 'file:write_file'(_, _) -> error(badarg).
 
 -spec 'io:get_line'(pid(), string()) -> string() | eof.

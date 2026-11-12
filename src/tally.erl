@@ -23,6 +23,8 @@ var_metrics(FixedVars, Constraints, _SymTab) ->
 %% Compute {NumConstraints, Poly, Frame, MonoUsed, MonoUnused} for a list of
 %% constraints. Poly = non-fixed vars whose atom name does not start with "%";
 %% Frame = non-fixed vars whose name starts with "%" (gradual framevars).
+-spec shape_metrics([{ast:ty(), ast:ty()}], sets:set(ast:ty_varname())) ->
+    {non_neg_integer(), integer(), integer(), non_neg_integer(), integer()}.
 shape_metrics(Constraints, FixedVars) ->
     NumConstrs = length(Constraints),
     AllVars = sets:from_list(utils:everything(
@@ -121,7 +123,7 @@ rounds(Cons, FixedVars, SymTab) ->
         false -> rounds(subst:clean_cons_syntactic(Decomposed, FixedVars, SymTab), FixedVars, SymTab)
     end.
 
--spec do_satisfiable([{ast:ty(), ast:ty()}], map()) ->
+-spec do_satisfiable([{ast:ty(), ast:ty()}], etally:monomorphic_variables()) ->
     {false, [{error, string()}]} | {true, term()}.
 do_satisfiable(FinalCons, MonomorphicTallyVariables) ->
     ?METRIC_DO(T0 = erlang:monotonic_time(microsecond)),
@@ -166,13 +168,17 @@ tally(SymTab, Constraints, FixedVars) ->
     Free = tyutils:free_in_subty_constrs(InlinedConstrs),
     case InternalResult of
         {error, []} -> {error, []};
-        _ ->
-            % transform to subst:t()
-            Sigmas = [subst:mk_tally_subst(
-               sets:union(FixedVars, Free),
-               maps:from_list([{VarName, ty_parser:unparse(Ty)}
-                               || {{var, _, VarName, _}, Ty} <- maps:to_list(Subst)])) % FIXME depends on internal ty_variable representation
-             || Subst <- InternalResult],
+        % no solution is no error message either
+        [] -> {error, []};
+        [_ | _] ->
+            % transform to subst:t(), there is at least one solution
+            Sigmas = lists:map(
+              fun(Subst) ->
+                subst:mk_tally_subst(
+                  sets:union(FixedVars, Free),
+                  maps:from_list([{VarName, ty_parser:unparse(Ty)}
+                                  || {{var, _, VarName, _}, Ty} <- maps:to_list(Subst)])) % FIXME depends on internal ty_variable representation
+              end, InternalResult),
 
             lists:map(
               fun({tally_subst, S, Fixed}) ->
@@ -226,14 +232,17 @@ varset(Constraint, FixedVars) ->
         end, Constraint)).
 
 %% Union-Find with path compression (functional, returns updated parent map).
--spec uf_ensure(ast:ty_var(), map()) -> map().
+% A union-find structure: the parent of every variable, a root is its own parent.
+-type uf() :: #{ast:ty_var() => ast:ty_var()}.
+
+-spec uf_ensure(ast:ty_var(), uf()) -> uf().
 uf_ensure(V, Parent) ->
     case maps:is_key(V, Parent) of
         true -> Parent;
         false -> maps:put(V, V, Parent)
     end.
 
--spec uf_find(ast:ty_var(), map()) -> {ast:ty_var(), map()}.
+-spec uf_find(ast:ty_var(), uf()) -> {ast:ty_var(), uf()}.
 uf_find(V, Parent) ->
     case maps:get(V, Parent) of
         V -> {V, Parent};
@@ -242,7 +251,7 @@ uf_find(V, Parent) ->
             {Root, maps:put(V, Root, Parent1)}
     end.
 
--spec uf_union(ast:ty_var(), ast:ty_var(), map()) -> map().
+-spec uf_union(ast:ty_var(), ast:ty_var(), uf()) -> uf().
 uf_union(A, B, Parent) ->
     {RootA, Parent1} = uf_find(A, Parent),
     {RootB, Parent2} = uf_find(B, Parent1),

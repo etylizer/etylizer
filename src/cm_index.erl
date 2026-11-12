@@ -83,7 +83,7 @@ load_index(RebarLockFile, Stamp, Path) ->
 save_index(Path, Index) ->
     filelib:ensure_dir(Path),
     Formatted = lists:flatten(io_lib:format("~p.~n", [{etylizer_index, ?INDEX_VERSION, Index}])),
-    case file:write_file(Path, ?assert_type(Formatted, string())) of
+    case file:write_file(Path, Formatted) of
         ok -> ok;
         Error -> ?ABORT("Could not save the index at ~p: ~p", Path, Error)
     end.
@@ -114,7 +114,7 @@ has_exported_interface_changed(Path, Forms, {_, Index}) ->
 -spec interface_hash(ast:forms()) -> string().
 interface_hash(Forms) ->
     Interface = cm_module_interface:extract_interface_declaration(Forms),
-    utils:hash_sha1(?assert_type(io_lib:write(Interface), iodata())).
+    utils:hash_sha1(io_lib:write(Interface)).
 
 -spec analyze(file:filename(), ast:forms()) -> cm_fun_deps:module_info().
 analyze(Path, Forms) ->

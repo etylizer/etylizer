@@ -144,10 +144,11 @@ traverse_module_list(Path, [CurrentModule | RemainingModules], SearchPath, DepGr
 
 -spec type_refs(file:filename()) -> [ast:mod_name()].
 type_refs(Path) ->
-    symtab_cache:cached({type_refs, Path}, fun() ->
+    % the cache holds terms: under this key what the fun below computes
+    ?assert_type(symtab_cache:cached({type_refs, Path}, fun() ->
         Forms = parse_intern(Path),
         {ast_utils:referenced_modules_via_types(Forms), [Path | parse_cache:headers(Path)]}
-    end).
+    end), [ast:mod_name()]).
 
 -spec find_source_for_module(atom(), paths:search_path()) -> false | file:filename().
 find_source_for_module(Module, SearchPath) ->
@@ -211,7 +212,7 @@ save_depgraph(Path, Key, DepGraph, Kept) ->
               end || F <- lists:sort(all_sources(DepGraph))],
     Stored = {etylizer_depgraph, ?DEPGRAPH_VERSION, Key, Hashes, DepGraph},
     Formatted = lists:flatten(io_lib:format("~p.~n", [Stored])),
-    case file:write_file(Path, ?assert_type(Formatted, string())) of
+    case file:write_file(Path, Formatted) of
         ok -> ok;
         Error -> ?LOG_WARN("Could not save the dependency graph at ~p: ~p", Path, Error)
     end.

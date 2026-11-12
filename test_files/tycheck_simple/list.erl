@@ -173,3 +173,44 @@ str_precise_03() -> "hello".
         {list(Item), list(Item)}) -> Item.
 list_01_fail(_Fun, {[],[]}) -> error(todo); % both R and F are non-empty in the next branch
 list_01_fail(Fun, {R,F}) when is_list(R), is_list(F) -> Fun(R, F).
+
+%%%%%%%%%%%%%%%%%%%%%%%% LISTS OF FIXED LENGTH %%%%%%%%%%%%%%%%%%%%%%%
+
+% etylizer:cons(Head, Tail) is the type of a single list cell
+
+-spec fixed_01() -> etylizer:cons(integer(), etylizer:cons(atom(), [])).
+fixed_01() -> [1, foo].
+
+-spec fixed_02_fail() -> etylizer:cons(integer(), etylizer:cons(atom(), [])).
+fixed_02_fail() -> [foo, 1].
+
+-spec fixed_03_fail() -> etylizer:cons(integer(), etylizer:cons(atom(), [])).
+fixed_03_fail() -> [1, foo, bar].
+
+-spec fixed_04_fail() -> etylizer:cons(integer(), etylizer:cons(atom(), [])).
+fixed_04_fail() -> [1].
+
+% the elements keep their types when the list is taken apart
+-spec fixed_05(etylizer:cons(T, etylizer:cons(U, []))) -> {T, U}.
+fixed_05([X, Y]) -> {X, Y}.
+
+-spec fixed_06_fail(etylizer:cons(T, etylizer:cons(U, []))) -> {U, T}.
+fixed_06_fail([X, Y]) -> {X, Y}.
+
+% this is not possible with a list type, where every element has type T | U
+-spec fixed_07_fail([T | U]) -> {T, U}.
+fixed_07_fail([X, Y]) -> {X, Y};
+fixed_07_fail(_) -> error(badarg).
+
+-spec fixed_08(etylizer:cons(integer(), etylizer:cons(atom(), []))) -> [integer() | atom()].
+fixed_08(L) -> L.
+
+-spec fixed_09_fail([integer() | atom()]) -> etylizer:cons(integer(), etylizer:cons(atom(), [])).
+fixed_09_fail(L) -> L.
+
+% a fixed head followed by arbitrary many elements
+-spec fixed_10(etylizer:cons(atom(), [integer()])) -> {atom(), [integer()]}.
+fixed_10([Name | Args]) -> {Name, Args}.
+
+-spec fixed_11_fail(etylizer:cons(atom(), [integer()])) -> {atom(), [integer()]}.
+fixed_11_fail([Name | Args]) -> {Name, [Name | Args]}.

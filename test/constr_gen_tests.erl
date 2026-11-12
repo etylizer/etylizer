@@ -11,7 +11,7 @@ pat_guard_lower_upper_test() ->
     P = {wildcard, Loc},
     G = [{'atom', Loc, true}],
     E = {var, Loc, {local_ref, {foo, 1}}},
-    {Upper, Lower} = constr_gen:pat_guard_lower_upper(P, [G], E),
+    {Upper, Lower} = constr_gen:pat_guard_lower_upper(symtab:empty(), P, [G], E),
     ?LOG_WARN("Upper: ~w, Lower: ~w", Upper, Lower),
     % Upper and Lower should be equiv to any()
     Any = {predef, any},

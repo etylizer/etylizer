@@ -1,0 +1,206 @@
+#!/usr/bin/env -S sh -c 'exec "$(dirname "$0")/../../.github/scripts/ety_case_study" "$0" "$@"'
+%% -*- erlang -*-
+%% Case study manifest, see .github/scripts/ety_case_study.
+%%
+%% The OTP functions that etylizer's src calls, closed transitively over the calls inside OTP
+%% (xref on the beams, stopping at BIFs): each module's `only` is its share of that closure.
+%% lists and maps are in lists.study and maps.study, sets, queue, proplists, ordsets and
+%% orddict in stdlib.study, all of them whole.
+
+{study, otp_etylizer}.
+
+%% {reason, Id, Class, Text}. Class: real (the program or its spec is wrong), inherent (correct at
+%% run time, not provable by types), fixable (gap in the type system or checker), benign (dead for
+%% the spec, kept on purpose), unknown.
+{reason, spec_wrong,          real,     "wrong type in the source"}.
+{reason, spec_imprecise,      real,     "imprecise type spec in the source"}.
+{reason, node_type,           real,     "gb_set_node(Element) :: nil | {Element, _, _} leaves the subtrees untyped, term(); the recursive type is tree(E) in overlay_gb_sets.erl"}.
+{reason, arithmetic,          inherent, "arithmetic on type level"}.
+{reason, documented_exception, inherent, "raises an exception that the documentation promises, a spec cannot say so"}.
+{reason, global_invariant,    inherent, "the callers ensure a relation between the arguments that no spec type can state, checking it crosses function boundaries"}.
+{reason, balance_invariant,   inherent, "the size and height counters of a balanced tree decide the shape of the result: a rebalancing below the root, a list of exactly the counted length"}.
+{reason, ets_value,           inherent, "what an ets table holds is not in its type: ets:lookup/2 gives [tuple()], for a set it is [] or one row of the shape the module inserts"}.
+{reason, anno_term,           inherent, "from_term/1 takes what to_term/1 gave, anno_term() is term()"}.
+{reason, result_by_args,      fixable,  "the result for these arguments is one case of the result type of the callee: lists:keyfind(file, 1, Annos) gives the file annotation"}.
+{reason, type_predicate,      fixable,  "a type test returns true only for a type, its boolean() result does not narrow the argument: a predicate function (is_anno1/1), case is_integer(X) of true -> ..."}.
+{reason, arith_range,         fixable,  "the range of an arithmetic result follows from guards and the ranges of the operands, operator and BIF types are too coarse"}.
+{reason, range_guard,         fixable,  "the guard is_integer(X, Lo, Hi) (OTP 29) does not narrow X to Lo..Hi"}.
+{reason, format_chars,        fixable,  "integer_to_list/1 gives string(), the characters of an integer are bytes; a list of them is not empty"}.
+{reason, untyped_value,       inherent, "term() from a proplist, used at the type the program expects"}.
+{reason, defensive,           benign,   "defensive clause, dead for the spec"}.
+
+%% Library specs that overlays correct, in overlay_otp_etylizer_lib.erl
+{correction, lists, reverse, 1, spec_imprecise}. % ([T]) -> [T] loses non-emptiness
+{correction, lists, foldl, 3, spec_imprecise}. % the term() bounds leave Acc0, AccIn, AccOut and Acc1 unrelated
+{correction, lists, keyfind, 3, spec_imprecise}. % ([Tuple]) -> Tuple | false
+{correction, lists, keydelete, 3, spec_imprecise}. % ([T]) -> [T]: the bound Tuple :: tuple() loses the element type
+{correction, lists, keyreplace, 4, spec_imprecise}. % the same
+{correction, erts_internal, atomics_new, 2, spec_wrong}. % (pos_integer(), non_neg_integer()): atomics:new(1, [{signed, false}]) passes the options 0 and works (run)
+{correction, erlang, max, 2, spec_imprecise}. % Maximum :: term() for two integers
+{correction, erlang, min, 2, spec_imprecise}.
+{correction, erlang, hd, 1, spec_imprecise}. % Head :: term()
+
+{module, gb_sets, #{file => "stdlib/gb_sets.erl", overlays => [{missing, "overlay_gb_sets.erl"}, {library, "overlay_otp_etylizer_lib.erl"}], timeout => 10000,
+  only => [
+      {add, 2}, {add_element, 2}, {balance_list_checked, 2}, {balance_list_checked_1, 2},
+      {balance_list_unchecked, 2}, {balance_list_unchecked_1, 2}, {balance_revlist, 2},
+      {balance_revlist_1, 2}, {balance_unchecked, 2}, {count, 1}, {difference, 2}, {difference, 4},
+      {difference_1, 2}, {difference_1, 4}, {difference_2, 3}, {difference_2, 4}, {empty, 0},
+      {fold, 3}, {fold_1, 3}, {from_list, 1}, {from_ordset, 1}, {from_ordset_unchecked, 1},
+      {insert, 2}, {insert_1, 3}, {intersection, 1}, {intersection, 2}, {intersection, 4},
+      {intersection_1, 2}, {intersection_1, 4}, {intersection_2, 2}, {intersection_2, 4},
+      {intersection_list, 2}, {is_element, 2}, {is_member, 2}, {is_member_1, 2}, {mk_set, 2},
+      {new, 0}, {push, 2}, {split_list_size, 1}, {subtract, 2}, {to_list, 1}, {to_list, 2},
+      {to_list_1, 1}, {union, 2}, {union, 4}, {union_1, 2}, {union_2, 3}, {union_2, 4}
+  ]}}.
+{exception, gb_sets, balance_list_unchecked_1, 2, [no_exhaustiveness], balance_invariant}.
+{exception, gb_sets, balance_list_checked_1, 2, [no_exhaustiveness], balance_invariant}.
+{exception, gb_sets, balance_revlist_1, 2, [no_exhaustiveness], balance_invariant}.
+{assertion, gb_sets, {407, 22, "74a720"}, assert_pattern, "{_, [_ | _]}", balance_invariant}. % balance_list_unchecked_1/2
+{assertion, gb_sets, {422, 22, "32c703"}, assert_pattern, "{_, [_ | _]}", balance_invariant}. % balance_list_checked_1/2
+{assertion, gb_sets, {1074, 22, "b3069e"}, assert_pattern, "{_, [_ | _]}", balance_invariant}. % balance_revlist_1/2
+{assertion, gb_sets, {284, 22, "1a79a8"}, assert_type, "overlay_gb_sets:tree(dynamic())", node_type}. % is_member/2
+{assertion, gb_sets, {320, 24, "1a79a8"}, assert_type, "overlay_gb_sets:tree(dynamic())", node_type}. % insert/2
+{assertion, gb_sets, {320, 10, "c32fd1"}, assert_type, "overlay_gb_sets:tree(dynamic())", balance_invariant}. % insert/2: rebalanced below the root
+{assertion, gb_sets, {795, 13, "1a79a8"}, assert_type, "overlay_gb_sets:tree(dynamic())", node_type}. % to_list/1
+{assertion, gb_sets, {986, 21, "2251a6"}, assert_type, "overlay_gb_sets:tree(dynamic())", node_type}. % union/2
+{assertion, gb_sets, {986, 30, "da379d"}, assert_type, "overlay_gb_sets:tree(dynamic())", node_type}. % union/2
+{assertion, gb_sets, {988, 21, "da379d"}, assert_type, "overlay_gb_sets:tree(dynamic())", node_type}. % union/2
+{assertion, gb_sets, {988, 30, "2251a6"}, assert_type, "overlay_gb_sets:tree(dynamic())", node_type}. % union/2
+{assertion, gb_sets, {1140, 28, "2251a6"}, assert_type, "overlay_gb_sets:tree(dynamic())", node_type}. % intersection/2
+{assertion, gb_sets, {1140, 37, "da379d"}, assert_type, "overlay_gb_sets:tree(dynamic())", node_type}. % intersection/2
+{assertion, gb_sets, {1142, 28, "da379d"}, assert_type, "overlay_gb_sets:tree(dynamic())", node_type}. % intersection/2
+{assertion, gb_sets, {1142, 37, "2251a6"}, assert_type, "overlay_gb_sets:tree(dynamic())", node_type}. % intersection/2
+{assertion, gb_sets, {1299, 26, "da379d"}, assert_type, "overlay_gb_sets:tree(dynamic())", node_type}. % difference/2
+{assertion, gb_sets, {1299, 35, "2251a6"}, assert_type, "overlay_gb_sets:tree(dynamic())", node_type}. % difference/2
+{assertion, gb_sets, {1555, 18, "1a79a8"}, assert_type, "overlay_gb_sets:tree(dynamic())", node_type}. % fold/3
+{assertion, gb_sets, {1057, 35, "3a9ca2"}, assert_type, "non_neg_integer()", global_invariant}. % union_2/4: S counts each common element twice
+{assertion, gb_sets, {1334, 34, "3a9ca2"}, assert_type, "non_neg_integer()", global_invariant}. % difference_2/4: S counts the elements of Xs
+{assertion, gb_sets, {1567, 12, "3a9ca2"}, assert_type, "non_neg_integer()", arithmetic}. % split_list_size/1: S - 1 for S > 0
+{assertion, gb_sets, {1569, 13, "4ad0d2"}, assert_type, "non_neg_integer()", arithmetic}. % split_list_size/1: Sm - Sm div 2
+
+{module, gb_trees, #{file => "stdlib/gb_trees.erl", overlays => [{missing, "overlay_gb_trees.erl"}, {library, "overlay_otp_etylizer_lib.erl"}], timeout => 10000,
+  only => [
+      {balance, 2}, {balance_list_unchecked, 2}, {balance_list_unchecked_1, 2}, {count, 1},
+      {empty, 0}, {get, 2}, {get_1, 2}, {insert, 3}, {insert_1, 4}, {lookup, 2}, {lookup_1, 2},
+      {split_list_size, 1}, {to_list, 1}, {to_list, 2}, {to_list_1, 1}, {update, 3}, {update_1, 3}
+  ]}}.
+{exception, gb_trees, get_1, 2, [no_exhaustiveness], documented_exception}. % get/2 crashes when the key is absent
+{exception, gb_trees, update_1, 3, [no_exhaustiveness], documented_exception}. % update/3 crashes when the key is absent
+{exception, gb_trees, balance_list_unchecked_1, 2, [no_exhaustiveness], balance_invariant}.
+{assertion, gb_trees, {442, 27, "74a720"}, assert_pattern, "{_, [_ | _]}", balance_invariant}. % balance_list_unchecked_1/2
+{assertion, gb_trees, {322, 10, "1b86c1"}, assert_pattern, "{_, _, _, _}", balance_invariant}. % insert/3: rebalanced below the root
+{assertion, gb_trees, {437, 15, "01fa1d"}, assert_pattern, "{_, []}", balance_invariant}. % balance_list_unchecked/2: S is the length of L
+{assertion, gb_trees, {1108, 12, "3a9ca2"}, assert_type, "non_neg_integer()", arithmetic}. % split_list_size/1: S - 1 for S > 0
+{assertion, gb_trees, {1110, 13, "4ad0d2"}, assert_type, "non_neg_integer()", arithmetic}. % split_list_size/1: Sm - Sm div 2
+
+{module, digraph, #{file => "stdlib/digraph.erl", overlays => [{missing, "overlay_digraph.erl"}, {library, "overlay_otp_etylizer_lib.erl"}], timeout => 10000,
+  only => [
+      {acyclic_add_edge, 5}, {add_edge, 3}, {add_vertex, 1}, {add_vertex, 2}, {add_vertex, 3},
+      {check_type, 3}, {collect_elems, 3}, {collect_elems, 4}, {delete, 1}, {do_add_edge, 2},
+      {do_add_vertex, 2}, {do_insert_edge, 5}, {get_path, 3}, {in_neighbours, 2}, {new, 0},
+      {new, 1}, {new_edge_id, 1}, {new_vertex_id, 1}, {one_path, 8}, {other_edge_exists, 4},
+      {out_neighbours, 2}, {prune_short_path, 2}, {set_type, 2}, {vertex, 2}, {vertices, 1}
+  ]}}.
+{exception, digraph, check_type, 3, [no_redundancy], defensive}. % for a Type of new/1 that is not a [d_type()]
+{exception, digraph, vertex, 2, [ignore], ets_value}. % case ets:lookup(...) of [] -> ..; [Vertex] -> .. end: a set table, a list type cannot say "at most one"
+{assertion, digraph, {367, 19, "edcd70"}, assert_type, "[{{in, digraph:vertex()}, digraph:edge()}]", ets_value}. % in_neighbours/2
+{assertion, digraph, {401, 19, "0de8d9"}, assert_type, "[{{out, digraph:vertex()}, digraph:edge()}]", ets_value}. % out_neighbours/2
+{assertion, digraph, {532, 21, "4968b1"}, assert_pattern, "[{'$eid', _}]", ets_value}. % new_edge_id/1
+{assertion, digraph, {534, 36, "73dba9"}, assert_type, "non_neg_integer()", ets_value}. % new_edge_id/1
+{assertion, digraph, {546, 21, "d8e618"}, assert_pattern, "[{'$vid', _}]", ets_value}. % new_vertex_id/1
+{assertion, digraph, {548, 36, "73dba9"}, assert_type, "non_neg_integer()", ets_value}. % new_vertex_id/1
+
+{module, digraph_utils, #{file => "stdlib/digraph_utils.erl", overlays => [{missing, "overlay_digraph_utils.erl"}, {library, "overlay_otp_etylizer_lib.erl"}], timeout => 10000,
+  only => [
+      {forest, 3}, {forest, 4}, {in, 3}, {out, 3}, {posttraverse, 4}, {pretraverse, 6},
+      {ptraverse, 6}, {reachable, 2}, {reachable_neighbours, 2}, {revpostorder, 1},
+      {strong_components, 1}, {topsort, 1}
+  ]}}.
+
+{module, erl_anno, #{file => "stdlib/erl_anno.erl", overlays => [{missing, "overlay_erl_anno.erl"}, {library, "overlay_otp_etylizer_lib.erl"}], timeout => 10000,
+  only => [
+      {anno_info, 2}, {anno_info, 3}, {column, 1}, {default, 2}, {end_location, 1},
+      {end_location, 2}, {end_location, 3}, {file, 1}, {from_term, 1}, {generated, 1},
+      {is_anno, 1}, {is_anno1, 1}, {is_anno2, 2}, {is_filename, 1}, {is_settable, 2},
+      {is_string, 1}, {line, 1}, {location, 1}, {new, 1}, {new_location, 1}, {record, 1},
+      {reset, 2}, {reset_simplify, 1}, {set, 3}, {set_anno, 3}, {set_file, 2}, {set_generated, 2},
+      {set_location, 2}, {set_record, 2}, {set_text, 2}, {simplify, 1}, {text, 1}, {to_term, 1}
+  ]}}.
+{exception, erl_anno, new, 1, [no_redundancy], defensive}. % badarg for a Location that is no location()
+{assertion, erl_anno, {174, 29, "6a4f17"}, assert_type, "pos_integer()", arithmetic}. % from_term/1: -Line for Line < 0
+{assertion, erl_anno, {211, 35, "ee9231"}, assert_type, "[{term(), term()}]", type_predicate}. % is_anno/1
+{assertion, erl_anno, {176, 5, "d36386"}, assert_type, "erl_anno:anno()", anno_term}. % from_term/1
+{assertion, erl_anno, {479, 28, "59e606"}, assert_type, "[erl_anno:annotation()]", global_invariant}. % set_anno/3: set/3 checked is_settable(Item, Value)
+{assertion, erl_anno, {497, 5, "ee9231"}, assert_type, "[erl_anno:annotation(), ...]", global_invariant}. % simplify/1: a list of annotations always has the location
+{exception, erl_anno, anno_info, 3, [ignore], result_by_args}. % {Item, Value} = lists:keyfind(Item, 1, Anno): Value of the annotation for Item
+{exception, erl_anno, anno_info, 2, [ignore], result_by_args}.
+
+{module, prettypr, #{file => "syntax_tools/prettypr.erl", overlays => [{missing, "overlay_prettypr.erl"}, {library, "overlay_otp_etylizer_lib.erl"}], timeout => 10000,
+  only => [
+      {above, 2}, {beside, 2}, {best, 3}, {concat, 2}, {enter_sep, 4}, {expand_par, 3},
+      {expand_sep, 3}, {fit, 1}, {flatrev, 2}, {flatrev, 3}, {floating, 3}, {foldr1, 2},
+      {format, 2}, {format, 3}, {horizontal, 1}, {hspace, 0}, {indent, 2}, {is_empty_string, 1},
+      {layout, 1}, {layout, 3}, {mksep, 3}, {mktext, 1}, {nest, 2}, {nil, 0}, {par, 1}, {par, 2},
+      {rewrite, 2}, {sep, 1}, {string, 1}, {string_chars, 1}, {strwidth, 1}, {strwidth, 2},
+      {text, 1}, {union, 2}, {vertical, 1}, {width, 1}
+  ]}}.
+{exception, prettypr, layout, 3, [no_exhaustiveness], global_invariant}. % best/3 leaves only text, nest, above and null
+{exception, prettypr, concat, 2, [ignore], spec_imprecise}. % #text.s :: deep_string() holds [Width | Chars], L1 + L2 is no char() for a width above 16#10ffff
+{exception, prettypr, string, 1, [ignore], spec_imprecise}. % [strwidth(S) | S]: the same
+{assertion, prettypr, {599, 46, "4cd178"}, assert_type, "overlay_prettypr:str()", spec_imprecise}. % layout/3: #text.s :: deep_string() for [Width | Chars]
+{assertion, prettypr, {603, 26, "4cd178"}, assert_type, "overlay_prettypr:str()", spec_imprecise}. % layout/3: the same
+{exception, prettypr, rewrite, 2, [ignore], spec_imprecise}. % #text.s :: deep_string() and #c_text_beside.s :: string() for [Width | Chars]: mktext(S) at 729:21
+{exception, prettypr, width, 1, [ignore], spec_imprecise}. % hd(S) of [Width | Chars] is no char()
+{assertion, prettypr, {1324, 32, "b31135"}, assert_type, "non_neg_integer()", arith_range}. % strwidth/2: N - (N rem 8) + 8 for N >= 0
+
+%% gregorian_days_to_date/1 takes 3 s
+{module, calendar, #{file => "stdlib/calendar.erl", overlays => [{missing, "overlay_calendar.erl"}], timeout => 30000,
+  only => [
+      {check, 3}, {date_to_gregorian_days, 1}, {date_to_gregorian_days, 3},
+      {datetime_to_gregorian_seconds, 1}, {factor, 1}, {fraction_str, 2},
+      {gregorian_days_to_date, 1}, {gregorian_seconds_to_datetime, 1}, {local_offset, 2},
+      {log10, 1}, {mod, 2}, {now_to_datetime, 1}, {offset, 2}, {offset_adjustment, 3},
+      {offset_string_adjustment, 3}, {pad, 2}, {pad2, 1}, {pad4, 1}, {seconds_to_time, 1},
+      {system_time_to_datetime, 1}, {system_time_to_rfc3339, 2}, {system_time_to_rfc3339_do, 4},
+      {system_time_to_universal_time, 2}, {time_to_seconds, 1}
+  ]}}.
+{exception, calendar, time_to_seconds, 1, [no_exhaustiveness], range_guard}.
+{exception, calendar, offset_string_adjustment, 3, [ignore], spec_imprecise}. % offset() :: [byte()] | integer() admits any string, system_time_to_rfc3339(0, [{offset, "+1"}]) gives {badmatch, "+1"} (run)
+{exception, calendar, fraction_str, 2, [ignore], global_invariant}. % Factor is factor(Unit) =/= 1, log10/1 has no clause for another native time unit
+{assertion, calendar, {542, 5, "0926f3"}, assert_type, "calendar:datetime1970()", arithmetic}. % now_to_datetime/1: seconds since 1970, upstream: year1970() :: 1970..10000 "should probably be 1970.."
+{assertion, calendar, {875, 26, "d8ea58"}, assert_type, "0..86399", arith_range}. % time_to_seconds/1
+{assertion, calendar, {983, 32, "c3391d"}, assert_type, "non_neg_integer()", arith_range}. % offset/2: abs(Secs0) div 3600
+{assertion, calendar, {983, 49, "8b0271"}, assert_type, "non_neg_integer()", arith_range}. % offset/2: (abs(Secs0) rem 3600) div 60
+{assertion, calendar, {1045, 24, "991b19"}, assert_type, "pos_integer()", result_by_args}. % factor/1: convert_time_unit(1, second, native)
+{assertion, calendar, {320, 5, "686859"}, assert_type, "calendar:date()", arithmetic}. % gregorian_days_to_date/1: Neri-Schneider
+{assertion, calendar, {335, 52, "cd2928"}, assert_type, "0..86399", arithmetic}. % gregorian_seconds_to_datetime/1: Secs rem 86400, plus 86400 when negative
+{assertion, calendar, {709, 5, "64d06b"}, assert_type, "calendar:time()", arithmetic}. % seconds_to_time/1
+{assertion, calendar, {796, 12, "592a1b"}, assert_type, "calendar:rfc3339_time_unit()", untyped_value}. % system_time_to_rfc3339/2
+{assertion, calendar, {797, 18, "22af73"}, assert_type, "calendar:offset()", untyped_value}. % system_time_to_rfc3339/2
+{assertion, calendar, {814, 9, "191c2f"}, assert_type, "byte()", untyped_value}. % system_time_to_rfc3339_do/4
+{assertion, calendar, {804, 50, "a4b5fc"}, assert_type, "integer()", type_predicate}. % system_time_to_rfc3339/2: case is_integer(OffsetOpt0) of true -> ...
+{assertion, calendar, {833, 13, "4a73f7"}, assert_type, "[byte(), ...]", format_chars}. % system_time_to_rfc3339_do/4: lists:append(L)
+{assertion, calendar, {835, 30, "22443f"}, assert_type, "iolist()", format_chars}. % system_time_to_rfc3339_do/4: iolist_to_binary(L)
+{assertion, calendar, {831, 10, "1eee72"}, assert_type, "string | binary", untyped_value}. % system_time_to_rfc3339_do/4
+
+{module, timer, #{file => "stdlib/timer.erl", timeout => 10000,
+  only => [
+      {now_diff, 2}, {sleep, 1}
+  ]}}.
+{assertion, timer, {552, 21, "21f8ea"}, assert_type, "pos_integer()", arith_range}. % sleep/1: T - ?MAX_RECEIVE_AFTER for T > ?MAX_RECEIVE_AFTER
+
+{module, counters, #{file => "erts/counters.erl", overlays => [{missing, "overlay_counters.erl"}], timeout => 10000,
+  only => [
+      {add, 3}, {error_with_info, 2}, {get, 2}, {new, 2}
+  ]}}.
+{exception, counters, get, 2, [ignore], defensive}. % error(badarg) for a Ref that is no counters_ref(), in the body
+{exception, counters, add, 3, [ignore], defensive}.
+
+{module, atomics, #{file => "erts/atomics.erl", overlays => [{missing, "overlay_atomics.erl"}, {library, "overlay_otp_etylizer_lib.erl"}], timeout => 10000,
+  only => [
+      {encode_opts, 2}, {error_with_info, 2}, {new, 2}
+  ]}}.
+{exception, atomics, encode_opts, 2, [no_redundancy], defensive}. % throw(badopt) for an option that is no {signed, boolean()}
+{assertion, atomics, {102, 24, "129e85"}, assert_type, "non_neg_integer()", arith_range}. % encode_opts/2: Acc band (bnot 1) for Acc >= 0
+

@@ -9,13 +9,17 @@ main([Manifest | Engine]) ->
     {ok, Terms} = file:consult(Plain),
     Exceptions = [X || X = {exception, _, _, _, _, _} <- Terms],
     Dir = filename:dirname(filename:absname(Manifest)),
-    Metrics = [run(Ety, Dir, Plain, Work, Mod, Opts, Exceptions) || {module, Mod, Opts} <- Terms],
+    Search = search_dirs(Terms),
+    Metrics = [run(Ety, Dir, Search, Plain, Work, Mod, Opts, Exceptions) || {module, Mod, Opts} <- Terms],
     Merged = lists:foldl(fun(M, Acc) -> maps:merge_with(fun(_, A, B) -> A ++ B end, Acc, M) end, #{}, Metrics),
     Classes = #{Id => Class || {reason, Id, Class, _} <- Terms},
     Rows = [[label(M, F, A), Handling, Reason, maps:get(Reason, Classes)] || {exception, M, F, A, Handling, Reason} <- Exceptions],
     Asserted = [[iolist_to_binary(io_lib:format("~w:~w:~w", [M, element(1, At), element(2, At)])), Kind, Reason, maps:get(Reason, Classes)]
                 || {assertion, M, At, Kind, _, Reason} <- Terms],
-    Json = [json:encode(Merged#{case_study_exception => Rows, case_study_assertion => Asserted}), "\n"],
+    Corrected = [[label(M, F, A), Reason, maps:get(Reason, Classes), scope(M, Terms), overlaid(Dir, Terms, M, F, A)]
+                 || {correction, M, F, A, Reason} <- Terms],
+    Json = [json:encode(Merged#{case_study_exception => Rows, case_study_assertion => Asserted,
+                                case_study_correction => Corrected}), "\n"],
     % JSON: files and pipes, terminal: tables
     case proplists:get_value(stdout, io:getopts()) of
         true -> report(Study, filename:join(Work, Study ++ ".study.json"), Json);
@@ -43,7 +47,28 @@ report(Title, File, Json) ->
 
 label(M, F, A) -> iolist_to_binary(io_lib:format("~w:~w/~w", [M, F, A])).
 
-run(Ety, Dir, Manifest, Work, Mod, Opts = #{file := File, timeout := Timeout}, Exceptions) ->
+% A corrected spec is of the studied code or of a library
+scope(M, Terms) ->
+    case [x || {module, M2, _} <- Terms, M2 =:= M] of [] -> library; _ -> study end.
+
+% The hash of the corrected spec in an overlay of the study, false without one. Equal
+% corrections in several studies have the same hash.
+overlaid(Dir, Terms, M, F, A) ->
+    Name = list_to_atom(atom_to_list(M) ++ ":" ++ atom_to_list(F)),
+    Files = lists:usort([O || {module, _, Opts} <- Terms, {_, O} <- maps:get(overlays, Opts, [])]),
+    Specs = [erl_parse:anno_to_term(erl_parse:map_anno(fun(_) -> 0 end, Ty))
+             || O <- Files, {ok, Forms} <- [epp:parse_file(filename:join(Dir, O), [])],
+                {attribute, _, spec, {{N, Ar}, Ty}} <- Forms, {N, Ar} =:= {Name, A}],
+    case Specs of
+        [] -> false;
+        _ -> iolist_to_binary(io_lib:format("~8.16.0b", [erlang:phash2(lists:usort(Specs), 16#100000000)]))
+    end.
+
+% The directories of the study's modules and its deps; other studies stay off the search path
+search_dirs(Terms) ->
+    lists:usort([hd(filename:split(F)) || {module, _, #{file := F}} <- Terms] ++ [D || {deps, Ds} <- Terms, D <- Ds]).
+
+run(Ety, Dir, Search, Manifest, Work, Mod, Opts = #{file := File, timeout := Timeout}, Exceptions) ->
     Base = filename:join(Work, atom_to_list(Mod)),
     ok = filelib:ensure_path(Base),
     Flags = [Arg || {exception, M, F, A, Handling, _} <- Exceptions, M =:= Mod, H <- Handling, H =/= ignore,
@@ -51,13 +76,19 @@ run(Ety, Dir, Manifest, Work, Mod, Opts = #{file := File, timeout := Timeout}, E
     Args = ["--no-deps", "-f", "-l", "error", "--report-mode", "report", "--report-timeout", integer_to_list(Timeout),
             "-P", Base, "--log-file", Base ++ ".log", "--metrics-file", Base ++ ".json", "--assertions", Manifest]
         ++ [Arg || {_, Overlay} <- maps:get(overlays, Opts, []), Arg <- ["--type-overlay", Overlay]]
-        ++ [Arg || Inc <- lists:usort([filename:dirname(H) || H <- filelib:wildcard("**/*.hrl", Dir)]), Arg <- ["-I", Inc]]
-        ++ [Arg || Src <- lists:usort([filename:dirname(E) || E <- filelib:wildcard("*/**/*.erl", Dir)]), Arg <- ["-I", Src]]
+        ++ [Arg || {F, A} <- maps:get(only, Opts, []), Arg <- ["-o", atom_to_list(F) ++ "/" ++ integer_to_list(A)]]
+        ++ [Arg || Inc <- found(Dir, Search, ".hrl"), Arg <- ["-I", Inc]]
+        ++ [Arg || Src <- found(Dir, Search, ".erl"), Arg <- ["-I", Src]]
         ++ Flags ++ [File],
     Port = open_port({spawn_executable, Ety}, [{args, Args}, {cd, Dir}, exit_status, stderr_to_stdout, binary]),
     0 = wait(Port, standard_error),
     {ok, Json} = file:read_file(Base ++ ".json"),
     json:decode(Json).
+
+% Directories with files of that extension: the manifest's own (the overlays) and those below Search
+found(Dir, Search, Ext) ->
+    lists:usort([filename:dirname(F) || F <- filelib:wildcard("*" ++ Ext, Dir) ++
+                                         [G || D <- Search, G <- filelib:wildcard(D ++ "/**/*" ++ Ext, Dir)]]).
 
 flag(no_redundancy) -> "--no-redundancy";
 flag(no_exhaustiveness) -> "--no-exhaustiveness".

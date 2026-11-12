@@ -12,6 +12,8 @@
 
 -export([load/1, save/1, cached/2, stamp/1]).
 
+-include("etylizer.hrl").
+
 -define(TABLE, symtab_cache).
 -define(CODE_MODULES, [ast, ast_erl, ast_lib, ast_transform, ast_utils, attr, errors, ety_records,
                        feature_flags, parse, parse_cache, stdtypes, symtab, symtab_cache, utils, varenv]).
@@ -25,7 +27,9 @@ load(Opts) ->
     case file:read_file(File) of
         {ok, Bin} ->
             case catch binary_to_term(Bin) of
-                {Stamp, Entries} ->
+                {Stamp, Entries0} ->
+                    % as save/1 has written them
+                    Entries = ?assert_type(Entries0, [tuple()]),
                     ets:insert(?TABLE, Entries),
                     ?LOG_DEBUG("Loaded ~p cached entries from ~s", length(Entries), File);
                 _ ->
@@ -47,22 +51,27 @@ save(Opts) ->
     end.
 
 % Compute returns the value and the files it was computed from.
--spec cached(term(), fun(() -> {T, [file:filename()]})) -> T.
+% The cache holds terms: the caller knows the type of what it has computed under its key.
+-spec cached(term(), fun(() -> {term(), [file:filename()]})) -> term().
 cached(Key, Compute) ->
     case ets:whereis(?TABLE) of
-        undefined -> element(1, Compute());
+        undefined ->
+            {Value, _} = Compute(),
+            Value;
         _ ->
             case ets:lookup(?TABLE, Key) of
-                [{_, Hashes, Value}] ->
+                [{_, Hashes0, Value}] ->
+                    % as store/2 has put them into the table
+                    Hashes = ?assert_type(Hashes0, [{file:filename(), term()}]),
                     case lists:all(fun({F, H}) -> utils:hash_file(F) =:= H end, Hashes) of
                         true -> Value;
                         false -> store(Key, Compute())
                     end;
-                [] -> store(Key, Compute())
+                _ -> store(Key, Compute())
             end
     end.
 
--spec store(term(), {T, [file:filename()]}) -> T.
+-spec store(term(), {term(), [file:filename()]}) -> term().
 store(Key, {Value, Files}) ->
     ets:insert(?TABLE, {Key, [{F, utils:hash_file(F)} || F <- Files], Value}),
     Value.

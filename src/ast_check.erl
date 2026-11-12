@@ -25,6 +25,8 @@
    ]).
 -endif.
 
+-include("etylizer.hrl").
+
 
 % The first argument is the ty_map obtain from the ast module.
 % The second argument is a filename.
@@ -48,7 +50,7 @@ check(Spec, Module, Path, ParseOpts) ->
 -type ty_map_key() :: {module_name(), atom(), arity()}. % qualified
 -opaque ty_map() :: #{ty_map_key() => {[atom()], ast_erl:ty()}}.
 
--spec prepare_spec(module_name(), term()) -> ty_map().
+-spec prepare_spec(module_name(), [ast_erl:form()]) -> ty_map().
 prepare_spec(Module, Forms) ->
     Insert = fun (Form, M) ->
         case Form of
@@ -73,7 +75,7 @@ parse_spec(Path, Opts) ->
 
 -spec otp_dep_specs() -> [ty_map()].
 otp_dep_specs() ->
-    ErlAnnoPath = filename:join([code:lib_dir(stdlib), "src", "erl_anno.erl"]),
+    ErlAnnoPath = filename:join([utils:assert_no_error(code:lib_dir(stdlib)), "src", "erl_anno.erl"]),
     ErlAnnoForms = parse:parse_file_or_die(ErlAnnoPath),
     [prepare_spec(erl_anno, ErlAnnoForms)].
 
@@ -113,19 +115,13 @@ inst_ty(Vars, Args, Ty) ->
                 end
             end,
             ?LOG_TRACE("Instantiating type ~p with arguments ~p", Ty, Args),
-            utils:everywhere(Replace, Ty)
+            % replacing type variables by types yields a type again
+            ?assert_type(utils:everywhere(Replace, Ty), ast_erl:ty())
     end.
 
 -spec check_against_type(ty_map(), module_name(), ast_erl:ty() | atom(), term()) -> boolean().
 check_against_type(Spec, Module, TyOrTyName, Term) ->
-    ResolvedTy =
-        if is_atom(TyOrTyName) ->
-                case lookup_ty(Spec, Module, TyOrTyName, []) of
-                    error -> ?ABORT("Cannot resolve type ~w", TyOrTyName);
-                    {ok, X} -> X
-                end;
-            true -> TyOrTyName
-        end,
+    ResolvedTy = resolve_ty(Spec, Module, TyOrTyName),
     Res = check_ty_with_result(Spec, Module, ResolvedTy, Term, 0),
     case Res of
         ok ->
@@ -135,6 +131,23 @@ check_against_type(Spec, Module, TyOrTyName, Term) ->
             ?LOG_WARN("Invalid term wrt type ~w:~w:~n~200p~n~nSubterm does not have type ~200p at depth ~p~n~200p",
                 Module, TyOrTyName, Term, SubTy, Depth, SubTerm),
             false
+    end.
+
+% A type as it is, and the type that a name without arguments stands for.
+-spec resolve_ty(ty_map(), module_name(), ast_erl:ty() | atom()) -> ast_erl:ty().
+resolve_ty(Spec, Module, Name) when is_atom(Name) ->
+    case lookup_ty(Spec, Module, Name, []) of
+        error -> ?ABORT("Cannot resolve type ~w", Name);
+        {ok, X} -> X
+    end;
+resolve_ty(_Spec, _Module, Ty) -> Ty.
+
+% The elements of a list, a term that is no proper list does not have the type.
+-spec elements(ast_erl:ty(), term(), integer()) -> [term()].
+elements(Ty, Form, Depth) ->
+    case utils:proper_list(Form) of
+        {ok, L} -> L;
+        error -> raise(Ty, Form, Depth)
     end.
 
 -spec raise(ast_erl:ty(), term(), integer()) -> no_return().
@@ -152,7 +165,8 @@ check_ty_with_result(Spec, CurModule, Ty, Form, Depth) ->
         check_ty(Spec, CurModule, Ty, Form, Depth),
         ok
     catch
-        throw:{ast_check_error, X} -> X
+        % the value of an exception has no type: raise/3 and raise_unless/4 throw this triple
+        throw:{ast_check_error, X} -> ?assert_type(X, {ast_erl:ty(), term(), integer()})
     end.
 
 -spec check_ty(ty_map(), module_name(), ast_erl:ty(), term(), integer()) -> ok.
@@ -168,12 +182,13 @@ check_ty(Spec, CurModule, Ty, Form, Depth) ->
             utils:error("Checking of types for bitstrings not implemented: ~p", Ty);
         {type, _, nil, []} -> raise_unless(Form =:= [], Ty, Form, Depth);
         {type, _, list, [Ty2]} ->
-            raise_unless(is_list(Form), Ty, Form, Depth),
-            lists:foreach(fun (X) -> check_ty(Spec, CurModule, Ty2, X, Depth + 1) end, Form),
+            lists:foreach(fun (X) -> check_ty(Spec, CurModule, Ty2, X, Depth + 1) end,
+                          elements(Ty, Form, Depth)),
             ok;
         {type, _, nonempty_list, [Ty2]} ->
-            raise_unless(is_list(Form) andalso Form =/= [], Ty, Form, Depth),
-            lists:foreach(fun (X) -> check_ty(Spec, CurModule, Ty2, X, Depth + 1) end, Form),
+            raise_unless(Form =/= [], Ty, Form, Depth),
+            lists:foreach(fun (X) -> check_ty(Spec, CurModule, Ty2, X, Depth + 1) end,
+                          elements(Ty, Form, Depth)),
             ok;
         {type, _, 'fun', _} ->
             utils:error("Cannot check term against function type ~p", Ty);
@@ -183,14 +198,11 @@ check_ty(Spec, CurModule, Ty, Form, Depth) ->
             utils:error("Checking of types for integer ranges not implemented: ~p", Ty);
         {type, _, map, any} ->
             raise_unless({} =:= Form, Ty, Form, Depth);
-        {type, Anno, map, TyAssocs} ->
-                case
-                    try maps:to_list(Form)
-                    catch {badmap, _} -> false
-                    end
-                of
-                    false -> raise(Ty, Form, Depth);
-                    List ->
+        {type, Anno, map, TyAssocs} when is_list(TyAssocs) ->
+                case Form of
+                    _ when not is_map(Form) -> raise(Ty, Form, Depth);
+                    _ ->
+                        List = maps:to_list(Form),
                         % don't care about required fields
                         KeyTy = {type, Anno, union,
                                  lists:map(fun({type, _, _, [K, _]}) -> K end, TyAssocs)},
@@ -229,10 +241,22 @@ check_ty(Spec, CurModule, Ty, Form, Depth) ->
             utils:error("Checking of types with records not implemented: ~p", Ty);
         {remote_type, _, [{atom, _, RemoteMod}, {atom, _, Name}, Args]} ->
                 case {RemoteMod, Name, Args} of
+                    {etylizer, cons, [HdTy, TlTy]} ->
+                        case Form of
+                            [Hd | Tl] ->
+                                check_ty(Spec, CurModule, HdTy, Hd, Depth + 1),
+                                check_ty(Spec, CurModule, TlTy, Tl, Depth + 1);
+                            _ -> raise(Ty, Form, Depth)
+                        end;
+                    {etylizer, without, [Ty1, Ty2]} ->
+                        check_ty(Spec, CurModule, Ty1, Form, Depth + 1),
+                        raise_unless(check_ty_with_result(Spec, CurModule, Ty2, Form, Depth + 1) =/= ok,
+                                     Ty, Form, Depth);
                     {sets, set, [Ty2]} ->
                         raise_unless(sets:is_set(Form), Ty, Form, Depth),
+                        % a term that sets:is_set/1 has just accepted: there is no type test for a set
                         lists:foreach(fun (X) -> check_ty(Spec, CurModule, Ty2, X, Depth + 1) end,
-                                  sets:to_list(Form)),
+                                  sets:to_list(?assert_type(Form, sets:set(term())))),
                         ok;
                     _ ->
                         Ty3 = lookup_ty_or_die(Spec, RemoteMod, Name, Args),
@@ -240,9 +264,11 @@ check_ty(Spec, CurModule, Ty, Form, Depth) ->
                 end;
         {type, _,tuple, any} ->
             raise_unless(is_tuple(Form), Ty, Form, Depth);
-        {type, _, tuple, Tys} ->
-            raise_unless(is_tuple(Form), Ty, Form, Depth),
-            FormList = tuple_to_list(Form),
+        {type, _, tuple, Tys} when is_list(Tys) ->
+            FormList = case Form of
+                _ when is_tuple(Form) -> tuple_to_list(Form);
+                _ -> raise(Ty, Form, Depth)
+            end,
             raise_unless(length(Tys) =:= length(FormList), Ty, Form, Depth),
             lists:foreach(fun ({T, F}) -> check_ty(Spec, CurModule, T, F, Depth + 1) end,
                 lists:zip(Tys, FormList)),
@@ -258,7 +284,7 @@ check_ty(Spec, CurModule, Ty, Form, Depth) ->
             case lists:search(fun (X) -> X =:= ok end, Results) of
                 {value, _} -> ok;
                 false ->
-                    Errors = lists:filter(fun (X) -> X =/= ok end, Results),
+                    Errors = [E || E = {_, _, _} <- Results],
                     case lists:sort(fun ({_, _, D1}, {_, _, D2}) -> (D2 =< D1) end, Errors) of
                         [] -> utils:error("empty union ~p", Ty);
                         [Err | _] -> throw({ast_check_error, Err})

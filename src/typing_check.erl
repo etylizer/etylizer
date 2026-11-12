@@ -2,7 +2,8 @@
 
 -export([
     check_all/4,
-    check_all_report/4
+    check_all_report/4,
+    check_all_report/5
 ]).
 
 -ifdef(TEST).
@@ -24,6 +25,13 @@
         ctx(), string(), symtab:fun_env(), [{ast:fun_decl(), ast:ty_scheme()}]
        ) -> [{ast:fun_with_arity(), error | timeout}].
 check_all_report(Ctx, FileName, Env, Decls) ->
+    check_all_report(Ctx, FileName, Env, Decls, "").
+
+% Suffix marks the label of each function in the output and the metrics
+-spec check_all_report(
+        ctx(), string(), symtab:fun_env(), [{ast:fun_decl(), ast:ty_scheme()}], string()
+       ) -> [{ast:fun_with_arity(), error | timeout}].
+check_all_report(Ctx, FileName, Env, Decls, Suffix) ->
     ?LOG_NOTE("Checking ~w functions in ~s against their specs", length(Decls), FileName),
     ExtSymtab = symtab:extend_symtab_with_fun_env(Env, Ctx#ctx.symtab),
     ExtCtx = Ctx#ctx { symtab = ExtSymtab },
@@ -31,40 +39,41 @@ check_all_report(Ctx, FileName, Env, Decls) ->
     lists:filtermap(
         fun({Decl, Ty}) ->
             {function, _, Name, Arity, _, _} = Decl,
-            ?METRIC_SET_FUN(list_to_atom(utils:sformat("~s:~w/~w", [F(FileName), Name, Arity]))),
+            Label = utils:sformat("~s:~w/~w~s", [F(FileName), Name, Arity, Suffix]),
+            ?METRIC_SET_FUN(list_to_atom(Label)),
             T0 = erlang:system_time(millisecond),
             try check_report(ExtCtx, Decl, Ty) of
                 success ->
                     Time = ?TIME(T0),
-                    ?METRIC(typecheck_time, {list_to_atom(utils:sformat("~s:~w/~w", [F(FileName), Name, Arity])), Time, ok}),
-                    io:format(user,"Ok: ~s:~w/~w (~p ms)~n", [F(FileName), Name, Arity, Time]),
+                    ?METRIC(typecheck_time, {list_to_atom(Label), Time, ok}),
+                    io:format(user,"Ok: ~s (~p ms)~n", [Label, Time]),
                     false;
                 timeout ->
                     Time = ?TIME(T0),
-                    ?METRIC(typecheck_time, {list_to_atom(utils:sformat("~s:~w/~w", [F(FileName), Name, Arity])), Time, timeout}),
-                    io:format(user,"Timeout: ~s:~w/~w (~p ms)~n", [F(FileName), Name, Arity, Time]),
+                    ?METRIC(typecheck_time, {list_to_atom(Label), Time, timeout}),
+                    io:format(user,"Timeout: ~s (~p ms)~n", [Label, Time]),
                     {true, {{Name, Arity}, timeout}}
             catch
                 throw:{etylizer, ty_error, Msg} ->
                     Time = ?TIME(T0),
-                    ?METRIC(typecheck_time, {list_to_atom(utils:sformat("~s:~w/~w", [F(FileName), Name, Arity])), Time, error}),
-                    io:format(user,"Error: ~s:~w/~w (~p ms)~n  ~s~n", [F(FileName), Name, Arity, Time, Msg]),
+                    ?METRIC(typecheck_time, {list_to_atom(Label), Time, error}),
+                    io:format(user,"Error: ~s (~p ms)~n  ~s~n", [Label, Time, Msg]),
                     {true, {{Name, Arity}, error}};
                 throw:{etylizer, unsupported, Msg} ->
                     ?METRIC_TYPE_ERROR(unsupported, element(2, Decl)),
-                    io:format(user,"Unsupported: ~s:~w/~w~n  ~s~n", [F(FileName), Name, Arity, Msg]),
+                    io:format(user,"Unsupported: ~s~n  ~s~n", [Label, Msg]),
                     {true, {{Name, Arity}, error}};
                 throw:{etylizer, Type, _Msg} ->
                     Time = ?TIME(T0),
                     ?METRIC_TYPE_ERROR(Type, element(2, Decl)),
-                    ?METRIC(typecheck_time, {list_to_atom(utils:sformat("~s:~w/~w", [F(FileName), Name, Arity])), Time, error}),
-                    io:format(user,"Error: (~p) ~s:~w/~w (~p ms)~n", [Type, F(FileName), Name, Arity, Time]),
+                    ?METRIC(typecheck_time, {list_to_atom(Label), Time, error}),
+                    io:format(user,"Error: (~p) ~s (~p ms)~n", [Type, Label, Time]),
                     {true, {{Name, Arity}, error}};
                 _:T ->
                     Time = ?TIME(T0),
                     ?METRIC_TYPE_ERROR(crash, element(2, Decl)),
-                    ?METRIC(typecheck_time, {list_to_atom(utils:sformat("~s:~w/~w", [F(FileName), Name, Arity])), Time, error}),
-                    io:format(user,"Other: (~p) ~s:~w/~w (~p ms)~n", [{T}, F(FileName), Name, Arity, Time]),
+                    ?METRIC(typecheck_time, {list_to_atom(Label), Time, error}),
+                    io:format(user,"Other: (~p) ~s (~p ms)~n", [{T}, Label, Time]),
                     {true, {{Name, Arity}, error}}
             end
         end,
@@ -129,30 +138,15 @@ check_all(Ctx, FileName, Env, Decls) ->
          ),
         ?LOG_NOTE("Successfully checked functions in ~s against their specs", FileName),
         ok
-    catch throw:{etylizer, ty_error, Msg} ->
+    catch throw:{etylizer, ty_error, Msg0} ->
+            {_, Msg} = errors:caught(ty_error, Msg0),
             ?LOG_NOTE("Checking failed: ~s", Msg),
             {error, Msg}
     end.
 
 % Ensures that a mono type used as a spec is supported. Throws a ty_error if not.
--spec ensure_type_supported(ast:loc(), ast:ty()) -> _.
-ensure_type_supported(Loc, T) ->
-    utils:everywhere(
-        fun(InnerT) ->
-            % The return value error means: check recursively, no error here
-            case InnerT of
-                {map, []} -> error;
-                {map, [{map_field_opt, _, _}]} -> error;
-                {map, [{map_field_req, _, _}]} ->
-                    ?METRIC_TYPE_ERROR(unsupported, Loc),
-                    errors:ty_error(Loc, "map types with mandatory associations are not supported");
-                {map, _} ->
-                    ?METRIC_TYPE_ERROR(unsupported, Loc),
-                    errors:ty_error(Loc, "map types with more than one association are not supported");
-                _ -> error
-            end
-        end,
-        T).
+-spec ensure_type_supported(ast:loc(), ast:ty()) -> ok.
+ensure_type_supported(_Loc, _T) -> ok.
 
 % Checks a function against its spec. Throws a ty_error.
 % The type scheme comes from a type annotation, that it has the form

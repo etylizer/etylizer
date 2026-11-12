@@ -16,15 +16,18 @@
 -include("log.hrl").
 -include("parse.hrl").
 -include("etylizer_main.hrl").
+-include("etylizer.hrl").
 
 -spec parse_define(string()) -> {atom(), string()}.
 parse_define(S) ->
-    case string:split(string:strip(S), "=") of
-        [Name] -> {list_to_atom(Name), ""};
-        [Name | Val] -> {list_to_atom(Name), Val}
+    Stripped = string:strip(S),
+    case string:split(Stripped, "=") of
+        [Name, Val] -> {list_to_atom(Name), Val};
+        _ -> {list_to_atom(Stripped), ""}
     end.
 
--spec cmd_spec() -> argparse:command().
+% The command for argparse, which checks it at run time.
+-spec cmd_spec() -> map().
 cmd_spec() ->
     #{
         arguments => [
@@ -63,10 +66,7 @@ cmd_spec() ->
             #{name => no_type_checking, long => "-no-type-checking", type => boolean, default => false,
               help => "Do not perform type cecking at all"},
             #{name => report_mode, long => "-report-mode",
-              type => {custom, fun("early-exit") -> early_exit;
-                                  ("report") -> report;
-                                  (_) -> error(badarg)
-                       end},
+              type => {custom, one_of([{"early-exit", early_exit}, {"report", report}])},
               default => early_exit,
               help => "Choose a different mode of error reporting. The default 'early-exit' stops "
                       "on the first type error encountered, the 'report' mode continues and prints "
@@ -76,19 +76,13 @@ cmd_spec() ->
               help => "Define a timeout in milliseconds for type checking a function in report_mode 'report'."
                       "Default timeout is 5000 milliseconds."},
             #{name => exhaustiveness_mode, long => "-exhaustiveness-mode",
-              type => {custom, fun("enabled") -> enabled;
-                                  ("disabled") -> disabled;
-                                  (_) -> error(badarg)
-                       end},
+              type => {custom, one_of([{"enabled", enabled}, {"disabled", disabled}])},
               default => enabled,
               help => "Change the mode of how to check for exhaustiveness. "
                       "The checker can either globally enable or disable exhaustiveness with this flag."
                       "Default: enabled (enabled, disabled)."},
             #{name => gradual_mode, long => "-gradual-mode",
-              type => {custom, fun("dynamic") -> dynamic;
-                                  ("infer") -> infer;
-                                  (_) -> error(badarg)
-                       end},
+              type => {custom, one_of([{"dynamic", dynamic}, {"infer", infer}])},
               default => dynamic,
               help => "Choose how to handle functions without type specs. "
                       "'dynamic' assigns dynamic types, 'infer' infers types. "
@@ -131,6 +125,25 @@ cmd_spec() ->
         ]
     }.
 
+% The type of an argument that is one of the given words: the atom for the word, and an error
+% for any other one.
+-spec one_of([{string(), atom()}]) -> fun((string()) -> atom()).
+one_of(Words) ->
+    fun(S) ->
+        case lists:keyfind(S, 1, Words) of
+            {_, Atom} -> Atom;
+            false -> error(badarg)
+        end
+    end.
+
+% argparse gives the value of an argument as a term(). Of which type it is, the command of
+% cmd_spec/0 says: the ?assert_type in parse_args/1 and here repeat that.
+-spec flag(atom(), #{atom() => term()}) -> boolean().
+flag(Key, ArgMap) -> maps:get(Key, ArgMap, false) =:= true.
+
+-spec strings(atom(), #{atom() => term()}) -> [string()].
+strings(Key, ArgMap) -> ?assert_type(maps:get(Key, ArgMap, []), [string()]).
+
 -spec parse_args([string()]) -> #opts{}.
 parse_args(Args) ->
     Command = cmd_spec(),
@@ -143,38 +156,40 @@ parse_args(Args) ->
             AM
     end,
     Opts = #opts{
-        help = maps:get(help, ArgMap),
-        version = maps:get(version, ArgMap, false),
-        log_level = maps:get(log_level, ArgMap, default),
-        log_file = maps:get(log_file, ArgMap, "etylizer.log"),
-        dump_raw = maps:get(dump_raw, ArgMap),
-        dump = maps:get(dump, ArgMap),
-        dump_transformed = maps:get(dump_transformed, ArgMap),
-        sanity = maps:get(sanity, ArgMap),
-        force = maps:get(force, ArgMap),
-        no_type_checking = maps:get(no_type_checking, ArgMap),
-        report_mode = maps:get(report_mode, ArgMap),
-        report_timeout = maps:get(report_timeout, ArgMap),
-        exhaustiveness_mode = maps:get(exhaustiveness_mode, ArgMap),
-        gradual_typing_mode = maps:get(gradual_mode, ArgMap),
-        no_deps = maps:get(no_deps, ArgMap),
-        check_exports = maps:get(check_exports, ArgMap),
-        type_check_only = maps:get(only, ArgMap),
-        type_check_ignore = maps:get(ignore, ArgMap),
-        ast_file = maps:get(check_ast, ArgMap, empty),
-        project_root = maps:get(project_root, ArgMap, empty),
-        src_paths = maps:get(src_path, ArgMap),
-        includes = maps:get(include, ArgMap),
-        defines = [parse_define(D) || D <- maps:get(define, ArgMap)],
-        load_start = maps:get(load_start, ArgMap),
-        load_end = maps:get(load_end, ArgMap),
-        no_exhaustiveness = maps:get(no_exhaustiveness, ArgMap),
-        no_redundancy = maps:get(no_redundancy, ArgMap),
-        files = maps:get(files, ArgMap),
-        type_overlay = maps:get(type_overlay, ArgMap, []),
-        assertions = maps:get(assertions, ArgMap, undefined),
-        verbose = maps:get(verbose, ArgMap, false),
-        metrics_file = maps:get(metrics_file, ArgMap, undefined)
+        help = flag(help, ArgMap),
+        version = flag(version, ArgMap),
+        log_level = ?assert_type(maps:get(log_level, ArgMap, default), log:log_level() | default),
+        log_file = ?assert_type(maps:get(log_file, ArgMap, "etylizer.log"), string()),
+        dump_raw = flag(dump_raw, ArgMap),
+        dump = flag(dump, ArgMap),
+        dump_transformed = flag(dump_transformed, ArgMap),
+        sanity = flag(sanity, ArgMap),
+        force = flag(force, ArgMap),
+        no_type_checking = flag(no_type_checking, ArgMap),
+        report_mode = ?assert_type(maps:get(report_mode, ArgMap), feature_flags:report_mode()),
+        report_timeout = ?assert_type(maps:get(report_timeout, ArgMap), pos_integer()),
+        exhaustiveness_mode =
+            ?assert_type(maps:get(exhaustiveness_mode, ArgMap), feature_flags:exhaustiveness_mode()),
+        gradual_typing_mode =
+            ?assert_type(maps:get(gradual_mode, ArgMap), feature_flags:gradual_typing_mode()),
+        no_deps = flag(no_deps, ArgMap),
+        check_exports = flag(check_exports, ArgMap),
+        type_check_only = strings(only, ArgMap),
+        type_check_ignore = strings(ignore, ArgMap),
+        ast_file = ?assert_type(maps:get(check_ast, ArgMap, empty), empty | string()),
+        project_root = ?assert_type(maps:get(project_root, ArgMap, empty), empty | string()),
+        src_paths = strings(src_path, ArgMap),
+        includes = strings(include, ArgMap),
+        defines = [parse_define(D) || D <- strings(define, ArgMap)],
+        load_start = strings(load_start, ArgMap),
+        load_end = strings(load_end, ArgMap),
+        no_exhaustiveness = strings(no_exhaustiveness, ArgMap),
+        no_redundancy = strings(no_redundancy, ArgMap),
+        files = strings(files, ArgMap),
+        type_overlay = strings(type_overlay, ArgMap),
+        assertions = ?assert_type(maps:get(assertions, ArgMap, undefined), undefined | string()),
+        verbose = flag(verbose, ArgMap),
+        metrics_file = ?assert_type(maps:get(metrics_file, ArgMap, undefined), undefined | string())
     },
     if
         Opts#opts.help ->
@@ -184,8 +199,8 @@ parse_args(Args) ->
     end,
     case Opts#opts.version of
         true ->
-            ok = application:load(etylizer),
-            {ok, Vsn} = application:get_key(etylizer, vsn),
+            ?assert_pattern(ok, application:load(etylizer)),
+            {ok, Vsn} = ?assert_pattern({ok, _}, application:get_key(etylizer, vsn)),
             io:format("etylizer ~s~n", [Vsn]),
             utils:quit(0, "");
         false -> ok
@@ -199,7 +214,7 @@ fix_load_path(Opts) ->
         {[], []} -> true;
         {Start, End} ->
             Path = Start ++ [D || D <- code:get_path(), D =/= "."] ++ End,
-            true = code:set_path(Path),
+            ?assert_pattern(true, code:set_path(Path)),
             true
     end.
 
@@ -296,7 +311,8 @@ main(Args) ->
     log:init(Opts#opts.log_level, Opts#opts.log_file),
     ?LOG_DEBUG("Parsed commandline options as ~200p", Opts),
     try doWork(Opts)
-    catch throw:{etylizer, K, Msg}:S ->
+    catch throw:{etylizer, K0, Msg0}:S ->
+            {K, Msg} = errors:caught(K0, Msg0),
             Raw = erl_error:format_exception(throw, K, S),
             IsExpected =
                 case K of

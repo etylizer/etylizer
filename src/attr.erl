@@ -42,15 +42,19 @@ ety_attrs_from_lines(Path, Lineno, Lines) ->
 
 -spec parse_ety_attr(ast:loc(), string()) -> no_attr | {ok, ety_attr()}.
 parse_ety_attr(Loc, S) ->
-    {loc, _, N, _} = Loc,
+    {loc, _, N, _} = ?assert_pattern({loc, _, _, _}, Loc),
+    % a generated location has the line -1, a comment of the source has a line
+    Line = case N of
+               _ when N >= 0 -> N;
+               _ -> 0
+           end,
     case S of
        "%-etylizer" ++ Rest ->
            case string:trim(Rest) of
                TermStr = ("(" ++ _) ->
-                   case erl_scan:string(TermStr, ?assert_type(N, erl_anno:location())) of
+                   case erl_scan:string(TermStr, Line) of
                        {ok, Toks, _} ->
-                           ParseResult = ?assert_type(erl_parse:parse_term(?assert_type(Toks, dynamic())), dynamic()),
-                           case ParseResult of
+                           case erl_parse:parse_term(Toks) of
                                {ok, Term} -> {ok, {etylizer, Loc, Term}};
                                {error, E} -> throw({bad_attr, E})
                             end;

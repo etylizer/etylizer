@@ -183,18 +183,18 @@ loc(Locs) ->
 -spec loc(constr:locs() | sets:set(ast:loc()) | constr:constrs(), T) -> T | ast:loc().
 loc({_, Locs}, Def) -> loc(Locs, Def);
 loc(Set, Def) ->
-    GetLoc = fun(X) ->
-        % X is either a constr:constr() or a ast:loc()
-        case ast:is_loc(X) of
-            true -> X;
-            false -> loc(constr:locs_of_constr(X))
-        end
-    end,
     case sets:to_list(Set) of
         [First | Rest] ->
-            lists:foldl(fun(X, L) -> ast:min_loc(L, GetLoc(X)) end, GetLoc(First), Rest);
+            lists:foldl(fun(X, L) -> ast:min_loc(L, loc_of(X)) end, loc_of(First), Rest);
         [] -> Def
     end.
+
+% A location as it is, and the first location of a constraint.
+-spec loc_of(ast:loc() | constr:constr()) -> ast:loc().
+loc_of(L = {loc, _, _, _}) -> L;
+loc_of(L = {generated, _, _}) -> L;
+loc_of(L = {internal, _}) -> L;
+loc_of(C) -> loc(constr:locs_of_constr(C)).
 
 -spec extend_env(ctx(), constr:constr_env()) -> ctx().
 extend_env(Ctx, Env) ->

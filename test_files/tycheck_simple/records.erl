@@ -162,13 +162,55 @@ get_name_from_invoice_02_fail(X) -> X#invoice.person#person.name.
 guard_01(P) when P#person.age + 1 > 18 -> true;
 guard_01(_) -> false.
 
--spec guard_02(#person{}) -> boolean().
-guard_02(P) when P#person.name + 1 > 18 -> true;
-guard_02(_) -> false.
+-spec guard_02_fail(#person{}) -> boolean().
+guard_02_fail(P) when P#person.name + 1 > 18 -> true;
+guard_02_fail(_) -> false.
 
 -spec guard_03(#invoice{}) -> boolean().
 guard_03(X) when X#invoice.person#person.age > 18 -> true;
 guard_03(_) -> false.
+
+-record(sz, {n :: non_neg_integer(), tag :: atom()}).
+
+% a comparison with a literal narrows the field
+-spec guard_field_01(#sz{}) -> pos_integer().
+guard_field_01(S) when S#sz.n > 16 -> N = S#sz.n, N;
+guard_field_01(_) -> 1.
+
+-spec guard_field_01_fail(#sz{}) -> pos_integer().
+guard_field_01_fail(S) when S#sz.n >= 0 -> S#sz.n;
+guard_field_01_fail(_) -> 1.
+
+% a field read in a guard only succeeds on the record
+-spec guard_field_02(#sz{} | #{}) -> #sz{}.
+guard_field_02(S) when S#sz.n =/= 0 -> S;
+guard_field_02(_) -> #sz{n = 0, tag = a}.
+
+-spec guard_field_03(#sz{}) -> 0..16.
+guard_field_03(S) when not (S#sz.n > 16) -> S#sz.n;
+guard_field_03(_) -> 0.
+
+-spec guard_field_04(#invoice{}) -> pos_integer().
+guard_field_04(X) when X#invoice.person#person.age > 0 -> X#invoice.person#person.age;
+guard_field_04(_) -> 1.
+
+-spec guard_field_05(#sz{} | #{}) -> atom().
+guard_field_05(S) when is_atom(S#sz.tag) andalso S#sz.tag =:= a -> S#sz.tag;
+guard_field_05(_) -> b.
+
+% the other guard of a sequence does not read the field
+-spec guard_field_02_fail(#sz{} | #{}) -> #sz{}.
+guard_field_02_fail(S) when S#sz.n =/= 0; is_map(S) -> S;
+guard_field_02_fail(_) -> #sz{n = 0, tag = a}.
+
+-spec guard_field_03_fail(#sz{}) -> pos_integer().
+guard_field_03_fail(S) when S#sz.n > 16 orelse S#sz.tag =:= a -> S#sz.n;
+guard_field_03_fail(_) -> 1.
+
+% the negated test still reads the field: a map is not covered by the first clause
+-spec guard_field_04_fail(#sz{} | #{}) -> ok.
+guard_field_04_fail(S) when true andalso not (S#sz.n > 16) -> ok;
+guard_field_04_fail(S) when is_tuple(S) -> ok.
 
 %%%%%%%%%%%%%%%%%%%%%%%% DEFAULT VALUES %%%%%%%%%%%%%%%%%%%%%%%
 

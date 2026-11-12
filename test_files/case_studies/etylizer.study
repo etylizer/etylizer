@@ -1,0 +1,187 @@
+#!/usr/bin/env -S sh -c 'exec "$(dirname "$0")/../../.github/scripts/ety_case_study" "$0" "$@"'
+%% -*- erlang -*-
+%% Case study manifest, see .github/scripts/ety_case_study.
+%%
+%% The source of etylizer itself. etylizer/src and etylizer/include are links to src and include
+%% of this tree, so the study checks the code as it is, with the overlay that typecheck_etylizer
+%% uses. A function is type safe when it type checks, its spec does not use dynamic(), and each
+%% of its ?assert_type is a cast from term() where the type is lost (an ETS table, a file of
+%% terms) or covers arithmetic.
+%%
+%% Every function type checks: no line has ignore. The functions with a line below are the ones
+%% that are not type safe.
+%%   ?assert_pattern is checked at run time and ?annotate_type by the type checker: they are no
+%%   casts in this sense.
+
+{study, etylizer}.
+
+%% {reason, Id, Class, Text}. Class: real (the program or its spec is wrong), inherent (correct at
+%% run time, not provable by types), fixable (gap in the type system or checker), unknown.
+{reason, dynamic, fixable,  "?assert_type with dynamic() for a type variable of the spec, which an assertion cannot name"}.
+{reason, flag,    inherent, "the clauses cover the values that occur, by an invariant of the data, and not the type: exhaustiveness check switched off by an -etylizer attribute in the source"}.
+
+{module, assertions, #{file => "etylizer/src/assertions.erl", overlays => [{library, "../../overlays/etylizer_overlay.erl"}], timeout => 10000}}.
+
+{module, ast, #{file => "etylizer/src/ast.erl", overlays => [{library, "../../overlays/etylizer_overlay.erl"}], timeout => 10000}}.
+
+%% check_ty/5 takes 6 s
+{module, ast_check, #{file => "etylizer/src/ast_check.erl", overlays => [{library, "../../overlays/etylizer_overlay.erl"}], timeout => 30000}}.
+
+{module, ast_erl, #{file => "etylizer/src/ast_erl.erl", overlays => [{library, "../../overlays/etylizer_overlay.erl"}], timeout => 10000}}.
+
+{module, ast_lib, #{file => "etylizer/src/ast_lib.erl", overlays => [{library, "../../overlays/etylizer_overlay.erl"}], timeout => 10000}}.
+
+%% trans_exp/3 takes 8 s
+{module, ast_transform, #{file => "etylizer/src/ast_transform.erl", overlays => [{library, "../../overlays/etylizer_overlay.erl"}], timeout => 30000}}.
+
+{module, ast_traverse, #{file => "etylizer/src/ast_traverse.erl", overlays => [{library, "../../overlays/etylizer_overlay.erl"}], timeout => 10000}}.
+
+{module, ast_utils, #{file => "etylizer/src/ast_utils.erl", overlays => [{library, "../../overlays/etylizer_overlay.erl"}], timeout => 10000}}.
+
+{module, attr, #{file => "etylizer/src/attr.erl", overlays => [{library, "../../overlays/etylizer_overlay.erl"}], timeout => 10000}}.
+
+{module, cm_check, #{file => "etylizer/src/cm_check.erl", overlays => [{library, "../../overlays/etylizer_overlay.erl"}], timeout => 10000}}.
+
+{module, cm_depgraph, #{file => "etylizer/src/cm_depgraph.erl", overlays => [{library, "../../overlays/etylizer_overlay.erl"}], timeout => 10000}}.
+
+{module, cm_fun_deps, #{file => "etylizer/src/cm_fun_deps.erl", overlays => [{library, "../../overlays/etylizer_overlay.erl"}], timeout => 10000}}.
+
+{module, cm_index, #{file => "etylizer/src/cm_index.erl", overlays => [{library, "../../overlays/etylizer_overlay.erl"}], timeout => 10000}}.
+
+{module, cm_module_interface, #{file => "etylizer/src/cm_module_interface.erl", overlays => [{library, "../../overlays/etylizer_overlay.erl"}], timeout => 10000}}.
+
+{module, constr, #{file => "etylizer/src/constr.erl", overlays => [{library, "../../overlays/etylizer_overlay.erl"}], timeout => 10000}}.
+
+{module, constr_collect, #{file => "etylizer/src/constr_collect.erl", overlays => [{library, "../../overlays/etylizer_overlay.erl"}], timeout => 10000}}.
+
+{module, constr_error_locs, #{file => "etylizer/src/constr_error_locs.erl", overlays => [{library, "../../overlays/etylizer_overlay.erl"}], timeout => 10000}}.
+
+{module, constr_gen, #{file => "etylizer/src/constr_gen.erl", overlays => [{library, "../../overlays/etylizer_overlay.erl"}], timeout => 10000}}.
+
+{module, constr_lin, #{file => "etylizer/src/constr_lin.erl", overlays => [{library, "../../overlays/etylizer_overlay.erl"}], timeout => 10000}}.
+
+{module, constr_simp, #{file => "etylizer/src/constr_simp.erl", overlays => [{library, "../../overlays/etylizer_overlay.erl"}], timeout => 10000}}.
+
+{module, constr_solve, #{file => "etylizer/src/constr_solve.erl", overlays => [{library, "../../overlays/etylizer_overlay.erl"}], timeout => 10000}}.
+
+{module, decompose, #{file => "etylizer/src/decompose.erl", overlays => [{library, "../../overlays/etylizer_overlay.erl"}], timeout => 10000}}.
+
+{module, constraint_set, #{file => "etylizer/src/erlang_types/constraint_set.erl", overlays => [{library, "../../overlays/etylizer_overlay.erl"}], timeout => 10000}}.
+
+{module, dnf_minimizer, #{file => "etylizer/src/erlang_types/dnf_minimizer.erl", overlays => [{library, "../../overlays/etylizer_overlay.erl"}], timeout => 10000}}.
+
+{module, dnf_ty_atom, #{file => "etylizer/src/erlang_types/dnf_ty_atom.erl", overlays => [{library, "../../overlays/etylizer_overlay.erl"}], timeout => 10000}}.
+
+{module, dnf_ty_bitstring, #{file => "etylizer/src/erlang_types/dnf_ty_bitstring.erl", overlays => [{library, "../../overlays/etylizer_overlay.erl"}], timeout => 10000}}.
+
+{module, dnf_ty_function, #{file => "etylizer/src/erlang_types/dnf_ty_function.erl", overlays => [{library, "../../overlays/etylizer_overlay.erl"}], timeout => 10000}}.
+
+{module, dnf_ty_interval, #{file => "etylizer/src/erlang_types/dnf_ty_interval.erl", overlays => [{library, "../../overlays/etylizer_overlay.erl"}], timeout => 10000}}.
+{exception, dnf_ty_interval, compare, 2, [no_exhaustiveness], flag}.
+{exception, dnf_ty_interval, negate_start_with, 2, [no_exhaustiveness], flag}.
+
+{module, dnf_ty_list, #{file => "etylizer/src/erlang_types/dnf_ty_list.erl", overlays => [{library, "../../overlays/etylizer_overlay.erl"}], timeout => 10000}}.
+
+{module, dnf_ty_map, #{file => "etylizer/src/erlang_types/dnf_ty_map.erl", overlays => [{library, "../../overlays/etylizer_overlay.erl"}], timeout => 10000}}.
+
+{module, dnf_ty_predefined, #{file => "etylizer/src/erlang_types/dnf_ty_predefined.erl", overlays => [{library, "../../overlays/etylizer_overlay.erl"}], timeout => 10000}}.
+
+{module, dnf_ty_tuple, #{file => "etylizer/src/erlang_types/dnf_ty_tuple.erl", overlays => [{library, "../../overlays/etylizer_overlay.erl"}], timeout => 10000}}.
+
+{module, dnf_ty_variable, #{file => "etylizer/src/erlang_types/dnf_ty_variable.erl", overlays => [{library, "../../overlays/etylizer_overlay.erl"}], timeout => 10000}}.
+
+{module, etally, #{file => "etylizer/src/erlang_types/etally.erl", overlays => [{library, "../../overlays/etylizer_overlay.erl"}], timeout => 10000}}.
+
+{module, feature_flags, #{file => "etylizer/src/erlang_types/feature_flags.erl", overlays => [{library, "../../overlays/etylizer_overlay.erl"}], timeout => 10000}}.
+
+{module, global_state, #{file => "etylizer/src/erlang_types/global_state.erl", overlays => [{library, "../../overlays/etylizer_overlay.erl"}], timeout => 10000}}.
+
+{module, tarjan, #{file => "etylizer/src/erlang_types/tarjan.erl", overlays => [{library, "../../overlays/etylizer_overlay.erl"}], timeout => 10000}}.
+
+{module, ty, #{file => "etylizer/src/erlang_types/ty.erl", overlays => [{library, "../../overlays/etylizer_overlay.erl"}], timeout => 10000}}.
+
+{module, ty_bitstring, #{file => "etylizer/src/erlang_types/ty_bitstring.erl", overlays => [{library, "../../overlays/etylizer_overlay.erl"}], timeout => 10000}}.
+
+{module, ty_bool, #{file => "etylizer/src/erlang_types/ty_bool.erl", overlays => [{library, "../../overlays/etylizer_overlay.erl"}], timeout => 10000}}.
+
+{module, ty_function, #{file => "etylizer/src/erlang_types/ty_function.erl", overlays => [{library, "../../overlays/etylizer_overlay.erl"}], timeout => 10000}}.
+
+{module, ty_functions, #{file => "etylizer/src/erlang_types/ty_functions.erl", overlays => [{library, "../../overlays/etylizer_overlay.erl"}], timeout => 10000}}.
+
+{module, ty_list, #{file => "etylizer/src/erlang_types/ty_list.erl", overlays => [{library, "../../overlays/etylizer_overlay.erl"}], timeout => 10000}}.
+{exception, ty_list, unparse, 2, [no_exhaustiveness], flag}.
+
+{module, ty_map, #{file => "etylizer/src/erlang_types/ty_map.erl", overlays => [{library, "../../overlays/etylizer_overlay.erl"}], timeout => 10000}}.
+{exception, ty_map, unparse, 2, [no_exhaustiveness], flag}.
+
+{module, ty_node, #{file => "etylizer/src/erlang_types/ty_node.erl", overlays => [{library, "../../overlays/etylizer_overlay.erl"}], timeout => 10000}}.
+
+{module, ty_parser, #{file => "etylizer/src/erlang_types/ty_parser.erl", overlays => [{library, "../../overlays/etylizer_overlay.erl"}], timeout => 10000}}.
+
+{module, ty_rec, #{file => "etylizer/src/erlang_types/ty_rec.erl", overlays => [{library, "../../overlays/etylizer_overlay.erl"}], timeout => 10000}}.
+{exception, ty_rec, tuple_to_map, 1, [no_exhaustiveness], flag}.
+
+{module, ty_tuple, #{file => "etylizer/src/erlang_types/ty_tuple.erl", overlays => [{library, "../../overlays/etylizer_overlay.erl"}], timeout => 10000}}.
+
+{module, ty_tuples, #{file => "etylizer/src/erlang_types/ty_tuples.erl", overlays => [{library, "../../overlays/etylizer_overlay.erl"}], timeout => 10000}}.
+
+{module, ty_variable, #{file => "etylizer/src/erlang_types/ty_variable.erl", overlays => [{library, "../../overlays/etylizer_overlay.erl"}], timeout => 10000}}.
+
+{module, errors, #{file => "etylizer/src/errors.erl", overlays => [{library, "../../overlays/etylizer_overlay.erl"}], timeout => 10000}}.
+
+{module, ety_graph, #{file => "etylizer/src/ety_graph.erl", overlays => [{library, "../../overlays/etylizer_overlay.erl"}], timeout => 10000}}.
+{exception, ety_graph, get_extern, 2, [], dynamic}.
+
+{module, ety_records, #{file => "etylizer/src/ety_records.erl", overlays => [{library, "../../overlays/etylizer_overlay.erl"}], timeout => 10000}}.
+
+{module, etylizer_main, #{file => "etylizer/src/etylizer_main.erl", overlays => [{library, "../../overlays/etylizer_overlay.erl"}], timeout => 10000}}.
+
+{module, external_types, #{file => "etylizer/src/external_types.erl", overlays => [{library, "../../overlays/etylizer_overlay.erl"}], timeout => 10000}}.
+
+{module, gradual_utils, #{file => "etylizer/src/gradual_utils.erl", overlays => [{library, "../../overlays/etylizer_overlay.erl"}], timeout => 10000}}.
+
+{module, log, #{file => "etylizer/src/log.erl", overlays => [{library, "../../overlays/etylizer_overlay.erl"}], timeout => 10000}}.
+
+{module, metrics, #{file => "etylizer/src/metrics.erl", overlays => [{library, "../../overlays/etylizer_overlay.erl"}], timeout => 10000}}.
+
+{module, parse, #{file => "etylizer/src/parse.erl", overlays => [{library, "../../overlays/etylizer_overlay.erl"}], timeout => 10000}}.
+
+{module, parse_cache, #{file => "etylizer/src/parse_cache.erl", overlays => [{library, "../../overlays/etylizer_overlay.erl"}], timeout => 10000}}.
+
+{module, paths, #{file => "etylizer/src/paths.erl", overlays => [{library, "../../overlays/etylizer_overlay.erl"}], timeout => 10000}}.
+
+{module, pretty, #{file => "etylizer/src/pretty.erl", overlays => [{library, "../../overlays/etylizer_overlay.erl"}], timeout => 10000}}.
+
+{module, stdtypes, #{file => "etylizer/src/stdtypes.erl", overlays => [{library, "../../overlays/etylizer_overlay.erl"}], timeout => 10000}}.
+
+{module, subst, #{file => "etylizer/src/subst.erl", overlays => [{library, "../../overlays/etylizer_overlay.erl"}], timeout => 10000}}.
+
+{module, subty, #{file => "etylizer/src/subty.erl", overlays => [{library, "../../overlays/etylizer_overlay.erl"}], timeout => 10000}}.
+
+{module, symtab, #{file => "etylizer/src/symtab.erl", overlays => [{library, "../../overlays/etylizer_overlay.erl"}], timeout => 10000}}.
+
+{module, symtab_cache, #{file => "etylizer/src/symtab_cache.erl", overlays => [{library, "../../overlays/etylizer_overlay.erl"}], timeout => 10000}}.
+
+{module, t, #{file => "etylizer/src/t.erl", overlays => [{library, "../../overlays/etylizer_overlay.erl"}], timeout => 10000}}.
+
+{module, tally, #{file => "etylizer/src/tally.erl", overlays => [{library, "../../overlays/etylizer_overlay.erl"}], timeout => 10000}}.
+
+{module, tmp, #{file => "etylizer/src/tmp.erl", overlays => [{library, "../../overlays/etylizer_overlay.erl"}], timeout => 10000}}.
+
+{module, typing, #{file => "etylizer/src/typing.erl", overlays => [{library, "../../overlays/etylizer_overlay.erl"}], timeout => 10000}}.
+
+{module, typing_check, #{file => "etylizer/src/typing_check.erl", overlays => [{library, "../../overlays/etylizer_overlay.erl"}], timeout => 10000}}.
+
+{module, typing_common, #{file => "etylizer/src/typing_common.erl", overlays => [{library, "../../overlays/etylizer_overlay.erl"}], timeout => 10000}}.
+
+{module, typing_infer, #{file => "etylizer/src/typing_infer.erl", overlays => [{library, "../../overlays/etylizer_overlay.erl"}], timeout => 10000}}.
+
+{module, tyutils, #{file => "etylizer/src/tyutils.erl", overlays => [{library, "../../overlays/etylizer_overlay.erl"}], timeout => 10000}}.
+
+{module, utils, #{file => "etylizer/src/utils.erl", overlays => [{library, "../../overlays/etylizer_overlay.erl"}], timeout => 10000}}.
+{exception, utils, compare, 3, [no_exhaustiveness], flag}.
+
+{module, varenv, #{file => "etylizer/src/varenv.erl", overlays => [{library, "../../overlays/etylizer_overlay.erl"}], timeout => 10000}}.
+
+{module, varenv_local, #{file => "etylizer/src/varenv_local.erl", overlays => [{library, "../../overlays/etylizer_overlay.erl"}], timeout => 10000}}.
+

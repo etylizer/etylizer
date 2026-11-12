@@ -200,9 +200,36 @@ simple_test_() ->
     "mu_01_fail"
   ],
 
+  BinaryPart = [
+    % feature: project bits into integer values
+    "bin_let_04",
+    % feature: exact float segments, the bits of the finite floats (exponent not all ones)
+    % and of a float literal
+    "bin_float_exact_05_fail",
+    % feature: exact little, native, signed, utf16 and utf32 segments, the bits in their byte
+    % order, the range of a signed integer, the encodings of the code points
+    "bin_little_01_fail",
+    % feature: guards on a segment variable that need unions, intersections or negations of
+    % ranges (ty_ints takes only ranges)
+    "bin_seg_guard_02",
+    % feature: exact utf8 segments, the encodings of the code points
+    "bin_exp_05",
+    % feature: segment variables have the range of their segment
+    "bin_seg_02",
+    "strict_list_binary_01",
+    % feature: a last /binary segment keeps the type of its value (expression) or of the
+    % matched rest (pattern)
+    "b5_embed_binary",
+    % feature: literals in binary expressions are their bits
+    "bin_exp_10",
+    % feature: the binary generator <=
+    "bin_comp_02"
+  ],
+
 
   % The following functions are currently excluded from being tested.
-  WhatNot = NominalPart ++ [
+  WhatNot = NominalPart ++
+    BinaryPart ++ [
     % FIXME slow, waiting for optiization
     "refine_02",
     % TODO binary pattern element size verification
@@ -210,16 +237,12 @@ simple_test_() ->
     % TODO better redundancy check detection for dynamic()
     "refine_times_02_fail",
     "refine_times_03_fail",
-    % TODO for if expressions guards always reference outer scope variables
-    %      lower is always none() for any non-trivial if guard
+    % TODO guards of case {} reference outer scope variables only
+    %      lower is always none() for any non-trivial guard
     %      see case_13_fail, maybe at some point we have better
     %      bounds for scoped variables
-    "if_06",
-    "if_17",
-    "if_18",
     "case_26",
-    "refinement_01c",
-    "refinement_01b"
+    "refinement_01c"
   ],
 
   NoInfer = [
@@ -232,6 +255,32 @@ simple_test_() ->
     "refine_01",
     "refine_02",
     "refine_tagged_tuple",
+    "refinement_string",
+    "b3",
+    "bin_construct_unit_01",
+    "bin_size_guard_02",
+    "bin_seg_guard_01",
+    "bin_run_time_03",
+    "bin_utf8_var_01",
+    "bin_utf8_rest_01",
+    "bin_unit_01",
+    "bin_exp_01",
+    "bin_exp_08",
+    "bin_comp_08",
+    "bin_comp_10",
+    "bin_comp_14",
+    "bin_gen_01",
+    "case_34",
+    "bin_match_int_02",
+    "bin_match_bin_02",
+    "bin_match_literal_02",
+    "bin_guard_literal_01",
+    "bin_precise_01",
+    "bin_construct_string_01",
+    "bin_comp_02",
+    "bin_let_01",
+    "bin_cons_03",
+    "bin_utf8_cons_01",
     % TODO timeout, with flipped variable ordering it infers instantly
     "match_13",
     % TODO slow (tuple-encoded lists) inference #255
@@ -249,9 +298,7 @@ simple_test_() ->
     "op_08",
     % TODO slow maybe inference
     "maybe_08",
-    "maybe_09",
-    % TODO slow list inference (nonempty_string)
-    "refinement_string"
+    "maybe_09"
   ],
 
   %What = ["atom_03_fail"],

@@ -54,8 +54,7 @@ check_kind(Kind, StoredKind, PathNorm) ->
 
 -spec parse_and_cache(file_kind(), file:filename(), string()) -> [ast:form()].
 parse_and_cache(Kind, PathNorm, Hash) ->
-    ?assert_pattern([{_, _}], ets:lookup(?TABLE, opts)),
-    [{_, Opts}] = ets:lookup(?TABLE, opts),
+    [{_, Opts}] = ?assert_pattern([{_, _}], ets:lookup(?TABLE, opts)),
     {Forms, Headers} = really_parse_file(Kind, PathNorm, ?assert_type(Opts, #opts{})),
     ets:insert(?TABLE, {PathNorm, {Hash, Kind, Forms, Headers}}),
     Forms.
@@ -66,7 +65,8 @@ parse(Kind, Path) ->
     Hash = hash_file(PathNorm),
     case ets:lookup(?TABLE, PathNorm) of
         [{_, {StoredHash, StoredKind, Forms, _}}] when Hash =:= StoredHash ->
-            check_kind(Kind, StoredKind, PathNorm),
+            % as parse_and_cache/3 has put it into the table
+            check_kind(Kind, ?assert_type(StoredKind, file_kind()), PathNorm),
             ?LOG_TRACE("Retrieving parse result for ~p from cache", PathNorm),
             ?assert_type(Forms, [ast:form()]);
         [] ->
@@ -76,7 +76,7 @@ parse(Kind, Path) ->
 
 -spec headers(file:filename()) -> [file:filename()].
 headers(Path) ->
-    [{_, {_, _, _, Headers}}] = ets:lookup(?TABLE, utils:normalize_path(Path)),
+    [{_, {_, _, _, Headers}}] = ?assert_pattern([{_, {_, _, _, _}}], ets:lookup(?TABLE, utils:normalize_path(Path))),
     ?assert_type(Headers, [file:filename()]).
 
 -spec make_parse_opts(file_kind(), #opts{}) -> parse_opts().

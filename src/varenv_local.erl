@@ -20,6 +20,7 @@
 -opaque t() :: {integer(), #{ atom() => ast:unique_tok() }, #{ atom() => integer()} }.
 
 -include("log.hrl").
+-include("etylizer.hrl").
 
 % Constructs a new, empty varenv.
 -spec empty() -> t().
@@ -95,7 +96,7 @@ merge_envs([Init | Rest]) ->
         end,
     lists:foldl(
         fun ({Next1, M, R}, {Next2, AccMap, R2}) ->
-            R = R2, % TODO
+            ?assert_pattern(true, R =:= R2), % TODO
             {max(Next1, Next2), maps:intersect_with(Combiner, M, AccMap), R2}
         end, Init, Rest).
 

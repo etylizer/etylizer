@@ -80,3 +80,29 @@ assert_pattern_03(X) ->
 assert_pattern_04(Z) ->
     {ok, Val} = ?assert_pattern({ok, _}, Z),
     {ok, Val}.
+
+%%%%%%%%%%%%%%%%%%%%%%%% DYNAMIC CASTS AND REDUNDANCY  %%%%%%%%%%%%%%%%%%%%%%%%
+
+% a cast only affects the expression it wraps: the last clause stays dead
+-spec assert_dynamic_dead_clause_fail({list(a), list(a)} | []) -> ok.
+assert_dynamic_dead_clause_fail([]) -> ok;
+assert_dynamic_dead_clause_fail({R, _F}) ->
+    _ = ?assert_type(R, dynamic()),
+    ok;
+assert_dynamic_dead_clause_fail(_) -> ok.
+
+-spec assert_dynamic_dead_branch_fail(a) -> integer().
+assert_dynamic_dead_branch_fail(X) ->
+    _ = ?assert_type(X, dynamic()),
+    case X of a -> 1; b -> 2 end.
+
+% the scrutinee is dynamic(), so no branch is dead
+-spec assert_dynamic_scrutinee(a) -> integer().
+assert_dynamic_scrutinee(X) ->
+    Y = ?assert_type(X, dynamic()),
+    case Y of a -> 1; b -> 2 end.
+
+-spec assert_dynamic_scrutinee_element({a, a}) -> integer().
+assert_dynamic_scrutinee_element(T) ->
+    {A, _} = ?assert_type(T, dynamic()),
+    case A of a -> 1; b -> 2 end.

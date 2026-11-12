@@ -6,13 +6,16 @@
     record_ty_from_decl/2,
     record_type_name/1,
     reader_name/2,
-    readers/1
+    readers/1,
+    reader_arg/2
 ]).
 
 -export_type([
     record_ty/0,
     record_field/0
 ]).
+
+-include("etylizer.hrl").
 
 -type record_ty() :: {Name::atom(), [record_field()]}.
 -type record_field() :: {Name::atom(), Type::ast:ty()}.
@@ -72,3 +75,10 @@ readers({RecName, Fields}) ->
                {ty_scheme, [{V, stdtypes:tany()}],
                 {fun_full, [encode_record_ty({RecName, Arg})], {var, V}}}}
       end, Fields).
+
+% The record that a reader of readers/1 accepts, with FieldTy in the field it reads
+-spec reader_arg(ast:ty_scheme(), ast:ty()) -> ast:ty().
+reader_arg(Reader, FieldTy) ->
+    {ty_scheme, [{V, _}], {fun_full, [{tuple, Tys}], _}} =
+        ?assert_pattern({ty_scheme, [_], {fun_full, [{tuple, _}], {var, _}}}, Reader),
+    {tuple, [case T of {var, V} -> FieldTy; _ -> T end || T <- Tys]}.

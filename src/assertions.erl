@@ -37,35 +37,46 @@ assert(File, {At, Kind, Text}, Forms) ->
                                     false -> {E, Acc}
                                 end
                         end, Pos, [], Forms),
-    Forms2.
+    % visit/4 is a traversal of terms: it gives forms for forms, its type does not say so
+    ?assert_type(Forms2, [ast_erl:form()]).
 
 % The parsed expression is hashed, so its layout in the source does not matter.
 -spec hash(ast_erl:exp()) -> string().
-hash(E) -> utils:sformat("~6.16.0b", [erlang:phash2(E, 16#1000000)]).
+hash(E) -> utils:sformat1("~6.16.0b", erlang:phash2(E, 16#1000000)).
 
 -spec pos(at()) -> pos().
 pos({Line, Col}) -> {Line, Col};
 pos({Line, Col, _}) -> {Line, Col}.
 
--spec parse(string()) -> ast_erl:exp().
-parse(Text) ->
-    {ok, Tokens, _} = ?assert_pattern({ok, _, _}, erl_scan:string(Text ++ "."),
+% The text of a pattern, parsed where the grammar has a pattern.
+-spec parse_pat(string()) -> ast_erl:pat().
+parse_pat(Text) ->
+    {ok, Tokens, _} = ?assert_pattern({ok, _, _}, erl_scan:string("case x of " ++ Text ++ " -> x end."),
                                       errors:some_error("Cannot parse ~s", [Text])),
-    {ok, [E]} = ?assert_pattern({ok, [_]}, erl_parse:parse_exprs(Tokens),
-                                errors:some_error("Cannot parse ~s", [Text])),
-    ?assert_type(E, ast_erl:exp()).
+    {ok, [{'case', _, _, [{clause, _, [P], [], _}]}]} =
+        ?assert_pattern({ok, [{'case', _, _, [{clause, _, [_], [], _}]}]}, erl_parse:parse_exprs(Tokens),
+                        errors:some_error("Cannot parse ~s", [Text])),
+    P.
 
 -spec strip(ast_erl:exp()) -> ast_erl:exp().
-strip(E) -> set_anno(erl_anno:new(0), E).
+strip(E) ->
+    A = erl_anno:new(0),
+    % OTP 29 erl_parse:map_anno/2 keeps the annotation of the field name of R#r.f:
+    % the hash would depend on the column of the field and on the OTP release
+    ?assert_type(utils:everywhere(fun({atom, _, Name}) when is_atom(Name) -> {ok, {atom, A, Name}};
+                                     (_) -> error
+                                  end, set_anno(A, E)),
+                 ast_erl:exp()).
 
--spec set_anno(ast_erl:anno(), ast_erl:exp()) -> ast_erl:exp().
+-spec set_anno(ast_erl:anno(), ast_erl:exp()) -> ast_erl:exp();
+              (ast_erl:anno(), ast_erl:pat()) -> ast_erl:pat().
 set_anno(A, E) ->
-    ?assert_type(erl_parse:map_anno(fun(_) -> A end, ?assert_type(E, erl_parse:abstract_expr())), ast_erl:exp()).
+    erl_parse:map_anno(fun(_) -> A end, E).
 
 -spec render([ast_erl:exp()]) -> string().
 render([]) -> "none";
 render(Es) ->
-    string:join([utils:sformat("`~s` (~s)", [erl_pp:expr(?assert_type(E, erl_parse:abstract_expr())), hash(E)])
+    string:join([utils:sformat("`~s` (~s)", [erl_pp:expr(E), hash(E)])
                  || E <- Es], ", ").
 
 -spec wrapper(kind(), string()) -> wrapper().
@@ -74,11 +85,11 @@ wrapper(assert_type, Text) ->
 wrapper(annotate_type, Text) ->
     fun(E) -> A = anno(E), {call, A, {atom, A, '::'}, [E, {string, A, Text}]} end;
 wrapper(assert_pattern, Text) ->
-    Pat0 = parse(Text),
+    Pat0 = parse_pat(Text),
     % the expansion of ?assert_pattern
     Wrap =
         fun(E, A) ->
-                Pat = ?assert_type(set_anno(A, Pat0), ast_erl:pat()),
+                Pat = set_anno(A, Pat0),
                 V = {var, A, 'X__V'},
                 Crash = {call, A, {atom, A, error}, [{atom, A, exhaustiveness_violated}]},
                 Case = {'case', A, V, [{clause, A, [Pat], [], [V]}, {clause, A, [{var, A, '_'}], [], [Crash]}]},
@@ -95,7 +106,7 @@ anno(E) -> ?assert_type(element(2, E), ast_erl:anno()).
 
 % Replaces every expression at Pos by what F makes of it, innermost first, threading
 % Acc. Only expressions are visited: no patterns, no guards, no function names of calls.
--spec visit(fun((ast_erl:exp(), Acc) -> {ast_erl:exp(), Acc}), pos(), Acc, any()) -> {dynamic(), Acc}.
+-spec visit(fun((ast_erl:exp(), Acc) -> {ast_erl:exp(), Acc}), pos(), Acc, term()) -> {term(), Acc}.
 visit(F, Pos, Acc, Xs) when is_list(Xs) ->
     lists:mapfoldl(fun(X, A) -> visit(F, Pos, A, X) end, Acc, ?assert_type(Xs, [any()]));
 visit(_, _, Acc, {attribute, _, _, _} = Form) -> {Form, Acc};
@@ -104,12 +115,17 @@ visit(F, Pos, Acc, {clause, A, Ps, Gs, Body}) ->
     {{clause, A, Ps, Gs, Body2}, Acc2};
 visit(F, Pos, Acc0, T) when is_tuple(T) ->
     Skip = case T of
-               {match, _, _, _} -> [3];
+               {M, _, _, _} when M =:= match; M =:= maybe_match -> [3];
                {G, _, _, _} when G =:= generate; G =:= b_generate; G =:= m_generate;
                                  G =:= generate_strict; G =:= b_generate_strict;
                                  G =:= m_generate_strict -> [3];
                {call, _, {atom, _, _}, _} -> [3];
                {call, _, {remote, _, _, _}, _} -> [3];
+               {'fun', _, {function, _, _, _}} -> [3];
+               % field names
+               {record_field, _, _, _, _} -> [5];
+               {record_field, _, _, _} -> [3];
+               {record_index, _, _, _} -> [4];
                _ -> []
            end,
     {Elems, Acc1} = lists:mapfoldl(
@@ -134,7 +150,7 @@ visit(_, _, Acc, T) -> {T, Acc}.
 
 % The cells of a list after the first sit at the position of their element and are
 % not expressions of their own.
--spec tail(fun((ast_erl:exp(), Acc) -> {ast_erl:exp(), Acc}), pos(), Acc, any()) -> {dynamic(), Acc}.
+-spec tail(fun((ast_erl:exp(), Acc) -> {ast_erl:exp(), Acc}), pos(), Acc, term()) -> {term(), Acc}.
 tail(F, Pos, Acc, {cons, A, H, T}) ->
     {H2, Acc1} = visit(F, Pos, Acc, H),
     {T2, Acc2} = tail(F, Pos, Acc1, T),
@@ -142,8 +158,10 @@ tail(F, Pos, Acc, {cons, A, H, T}) ->
 tail(F, Pos, Acc, T) -> visit(F, Pos, Acc, T).
 
 -spec is_expr(tuple()) -> boolean().
+is_expr({record_field, _, _, _, _}) -> true;
 is_expr(T) ->
     tuple_size(T) >= 2 andalso
     lists:member(element(1, T),
                  [var, atom, integer, float, char, string, nil, cons, tuple, map, bin, call, op, match,
-                  'case', 'if', 'receive', 'try', 'catch', 'fun', named_fun, block, lc, bc, mc, 'maybe']).
+                  'case', 'if', 'receive', 'try', 'catch', 'fun', named_fun, block, lc, bc, mc, 'maybe',
+                  record, record_index]).
