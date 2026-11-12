@@ -64,10 +64,28 @@ compute_search_path(Opts) ->
             {[], sets:new([{version, 2}])},
             SrcDirs),
     LocalPaths = lists:reverse(LocalPathEntries),
+    ExtraCodePaths = build_extra_code_paths(Opts),
     ?LOG_TRACE2("OTP search path: ~p", OtpPaths),
     ?LOG_TRACE2("rebar search path: ~p", DepPaths),
     ?LOG_TRACE2("Local search path: ~p", LocalPaths),
-    LocalPaths ++ DepPaths ++ OtpPaths.
+    ?LOG_TRACE2("Extra code paths: ~p", ExtraCodePaths),
+    LocalPaths ++ DepPaths ++ ExtraCodePaths ++ OtpPaths.
+
+-spec build_extra_code_paths(cmd_opts()) -> search_path().
+build_extra_code_paths(Opts) ->
+    CodeDirs = Opts#opts.load_start ++ Opts#opts.load_end,
+    InputDirs = Opts#opts.src_paths ++ [filename:dirname(F) || F <- Opts#opts.files],
+    Dirs = CodeDirs ++ lists:flatmap(fun sibling_ebins/1, CodeDirs ++ InputDirs),
+    [{dep, D, []} || D <- lists:usort(Dirs), filelib:is_dir(D)].
+
+-spec sibling_ebins(file:filename()) -> [file:filename()].
+sibling_ebins(Dir) ->
+    LibDir = filename:dirname(filename:dirname(Dir)),
+    case {filename:basename(Dir), filename:basename(LibDir), file:list_dir(LibDir)} of
+        {"ebin", "lib", {ok, Subs}} ->
+            lists:filter(fun filelib:is_dir/1, [filename:join([LibDir, Sub, "ebin"]) || Sub <- Subs]);
+        _ -> []
+    end.
 
 -spec has_erl_files(file:filename()) -> boolean().
 has_erl_files(Dir) ->
