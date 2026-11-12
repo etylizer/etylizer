@@ -52,7 +52,7 @@
     ttuple1/1, 
     ttuple2/2,
     ttuple_n/1,
-    tunion/2, 
+    tunion/2,
     tyscm/2,
     tvar/1
 ]).
@@ -248,11 +248,10 @@ tbool() -> {predef_alias, boolean}.
 
 -spec expand_predef_alias(ast:predef_alias_name()) -> ast:ty().
 expand_predef_alias(term) -> {predef, any};
-% TODO better binaries
-expand_predef_alias(binary) -> {bitstring};
-expand_predef_alias(nonempty_binary) -> {bitstring};
+expand_predef_alias(binary) -> {bitstring, 0, 8};
+expand_predef_alias(nonempty_binary) -> {bitstring, 8, 8};
 expand_predef_alias(bitstring) -> {bitstring};
-expand_predef_alias(nonempty_bitstring) -> {bitstring};
+expand_predef_alias(nonempty_bitstring) -> {bitstring, 1, 1};
 expand_predef_alias(boolean) -> {union, [{singleton, true}, {singleton, false}]};
 expand_predef_alias(byte) -> {range, 0, 255};
 expand_predef_alias(char) -> {range, 0, 1114111};

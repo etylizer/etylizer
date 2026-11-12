@@ -46,6 +46,7 @@
 {exception, jsone_encode, format2digit, 1, [ignore], spec_imprecise}. % integer_to_list returns string()
 {exception, jsone_encode, format_tz_, 1, [ignore], unknown}.
 {exception, jsone_encode, object_members, 4, [no_redundancy], defensive}.
+{exception, jsone_encode, next, 3, [ignore], spec_wrong}. % next() says {char, binary()}, the code uses a byte
 
 {module, jsone_decode, #{file => "jsone/src/jsone_decode.erl", overlays => [{missing, "overlay_jsone.erl"}], timeout => 30000}}.
 {exception, jsone_decode, string, 6, [ignore], binary_patterns}.
